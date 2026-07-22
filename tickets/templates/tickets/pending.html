@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}Pending — needs property{% endblock %}
+{% block content %}
+<h2 class="my-3">Pending ({{ tickets|length }})</h2>
+<p class="text-muted">These are unconfirmed candidates, not real tickets yet — usually auto-detected from Quo with no clear property. For each one: fix the description if needed, then either assign a property (which moves it into its department's real queue — pick a "general" option if it's not about one specific address) or delete it if it isn't actually a ticket.</p>
+
+{% regroup properties by get_property_type_display as property_groups %}
+
+{% for t in tickets %}
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold">{{ t.title }}</a>
+            <span class="text-nowrap small {% if t.due_date and t.due_date < now %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+                {% if t.due_date %}Due {{ t.due_date|date:"M j" }}{% endif %}
+            </span>
+        </div>
+        <form method="post" action="{% url 'ticket_pending_save' t.pk %}" class="row g-2 align-items-end">
+            {% csrf_token %}
+            <div class="col-md-6">
+                <label class="form-label small text-muted mb-1">Description</label>
+                <textarea name="description" class="form-control" rows="1">{{ t.description }}</textarea>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Assign property (moves it to a real ticket)</label>
+                <select name="property_id" class="form-select">
+                    <option value="">— leave pending —</option>
+                    {% for group in property_groups %}
+                    <optgroup label="{{ group.grouper }}">
+                        {% for p in group.list %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-primary flex-grow-1" type="submit">Save</button>
+            </div>
+        </form>
+        <form method="post" action="{% url 'ticket_pending_delete' t.pk %}" class="mt-2" onsubmit="return confirm('Delete this pending item? This can\'t be undone.');">
+            {% csrf_token %}
+            <button class="btn btn-link btn-sm text-danger p-0" type="submit">Delete — not actually a ticket</button>
+        </form>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted">Nothing pending — everything has a property.</p>
+{% endfor %}
+{% endblock %}

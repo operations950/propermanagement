@@ -1,0 +1,32 @@
+{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion.{% endcomment %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+    {% if calendar_token and calendar_token.google_email %}
+        <span class="small text-muted">{{ calendar_token.google_email }}</span>
+    {% else %}
+        <span></span>
+    {% endif %}
+    {% if calendar_token %}
+    <form method="post" action="{% url 'calendar_disconnect' %}" class="d-inline" onsubmit="return confirm('Disconnect Google Calendar?');">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button type="submit" class="btn btn-link btn-sm text-danger p-0">Disconnect</button>
+    </form>
+    {% endif %}
+</div>
+{% if calendar_token %}
+    <ul class="list-unstyled mb-0">
+    {% for e in calendar_events %}
+        <li class="mb-2 pb-2 border-bottom">
+            <div class="fw-medium small">{{ e.title }}</div>
+            <div class="small text-muted">{% if e.is_today %}Today{% elif e.day %}{{ e.day|date:"D M j" }}{% endif %} &middot; {{ e.label }}</div>
+        </li>
+    {% empty %}
+        <li class="text-muted small">Nothing on your calendar the next couple days.</li>
+    {% endfor %}
+    </ul>
+{% elif calendar_configured %}
+    <p class="text-muted small">Connect your Google Calendar to see your day alongside your tickets.</p>
+    <a href="{% url 'calendar_connect' %}?next={{ request.path|urlencode }}" class="btn btn-outline-primary btn-sm">Connect Google Calendar</a>
+{% else %}
+    <p class="text-muted small mb-0">Google Calendar isn't configured yet — ask an admin.</p>
+{% endif %}

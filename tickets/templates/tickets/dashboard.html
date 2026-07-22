@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — Proper Management{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-end my-3">
+    <div>
+        <h2 class="mb-0">Dashboard</h2>
+        <p class="mb-0" style="color: var(--ink-muted);">Every open ticket starts here, sorted into its department.</p>
+    </div>
+    <a href="{% url 'ticket_create' %}" class="btn btn-primary">+ New ticket</a>
+</div>
+
+{% if pending_property_count or no_role_count %}
+<div class="d-flex align-items-center gap-3 mb-4 px-3 py-2 rounded" style="background: var(--surface-card); border: 1px solid var(--border-hairline); font-size: 0.9rem;">
+    {% if pending_property_count %}
+    <a href="{% url 'ticket_pending' %}" class="text-decoration-none">
+        <span style="color: var(--status-warning);">●</span>
+        <strong>{{ pending_property_count }}</strong> pending property assignment
+    </a>
+    {% endif %}
+    {% if pending_property_count and no_role_count %}<span style="color: var(--border-hairline);">|</span>{% endif %}
+    {% if no_role_count %}
+    <a href="{% url 'ticket_list' %}?role=none" class="text-decoration-none" style="color: var(--ink-secondary);">
+        {{ no_role_count }} unrouted (no department)
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 mb-4">
+{% for box in boxes %}
+    <div class="col">
+        <div class="card h-100 shadow-sm" style="border-top: 4px solid var(--role-{{ box.role }});">
+            <div class="card-header d-flex justify-content-between align-items-center bg-white border-bottom py-3">
+                <a href="{% url 'department_dashboard' box.role %}" class="fw-bold text-uppercase text-decoration-none" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--role-{{ box.role }});">
+                    {{ box.label }}
+                </a>
+                <span class="d-flex align-items-center gap-2">
+                    {% if box.overdue_count %}
+                    <span class="fw-semibold" style="font-size: 0.8rem; color: var(--status-critical);">{{ box.overdue_count }} overdue</span>
+                    {% endif %}
+                    <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ box.total }}</span>
+                </span>
+            </div>
+            {% if box.top %}
+            <div class="list-group list-group-flush">
+            {% for t in box.top %}
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-start gap-2" style="border-left: 3px solid var(--role-{{ box.role }}); text-decoration: none;">
+                    <div class="min-width-0">
+                        <div class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:52 }}</div>
+                        <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ t.property.name|default:'—' }}</div>
+                    </div>
+                    <div class="text-nowrap text-end tabular-nums" style="font-size: 0.8rem;">
+                        {% if t.due_date %}
+                            <span {% if t.due_date < now %}style="color: var(--status-critical); font-weight: 600;"{% else %}style="color: var(--ink-muted);"{% endif %}>
+                                {{ t.due_date|date:"M j" }}
+                            </span>
+                        {% else %}
+                            <span style="color: var(--border-hairline);">—</span>
+                        {% endif %}
+                    </div>
+                </a>
+            {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">Nothing queued</div>
+            {% endif %}
+            {% if box.total > box.top|length %}
+            <a href="{% url 'ticket_list' %}?role={{ box.role }}" class="card-footer text-center text-decoration-none py-2" style="font-size: 0.85rem; color: var(--role-{{ box.role }});">
+                View all {{ box.total }} →
+            </a>
+            {% endif %}
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+{% if awaiting_verification %}
+<details class="mb-4">
+    <summary class="fw-medium" style="cursor: pointer; color: var(--ink-secondary);">Awaiting verification ({{ awaiting_verification|length }})</summary>
+    <div class="list-group mt-2">
+    {% for t in awaiting_verification %}
+        <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2">{{ t.title }} — <span style="color: var(--ink-muted);">{{ t.property.name|default:'no property' }}</span></a>
+    {% endfor %}
+    </div>
+</details>
+{% endif %}
+{% endblock %}

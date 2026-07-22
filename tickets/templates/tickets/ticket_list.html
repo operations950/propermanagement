@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}Tickets{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center my-3">
+    <h2>{% if selected_status == 'complete' %}Completed & cancelled{% else %}Tickets{% endif %}{% if selected_role == 'none' %} — no department assigned{% elif selected_role %} — {{ selected_role_label }}{% endif %}</h2>
+    <a href="{% url 'ticket_create' %}" class="btn btn-primary">+ New ticket</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-auto">
+        <select name="status" class="form-select" onchange="this.form.submit()">
+            <option value="active" {% if selected_status == 'active' %}selected{% endif %}>Active tickets</option>
+            <option value="complete" {% if selected_status == 'complete' %}selected{% endif %}>Completed & cancelled</option>
+            <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All statuses</option>
+            <optgroup label="Specific status">
+                {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </optgroup>
+        </select>
+    </div>
+    <div class="col-auto">
+        <select name="role" class="form-select" onchange="this.form.submit()">
+            <option value="">All departments</option>
+            <option value="none" {% if selected_role == 'none' %}selected{% endif %}>No department assigned</option>
+            {% for value, label in role_choices %}
+                <option value="{{ value }}" {% if value == selected_role %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</form>
+
+{% comment %}
+Desktop/tablet: a real table. table-responsive lets it scroll sideways
+rather than squeezing every column down to an unreadable sliver.
+{% endcomment %}
+<div class="table-responsive d-none d-md-block">
+<table class="table bg-white align-middle">
+    <thead><tr><th>Department</th><th>Property</th><th>Issue</th><th>Due</th><th>Status</th><th>Assignee</th><th></th></tr></thead>
+    <tbody>
+    {% for t in tickets %}
+        <tr>
+            <td>
+                <form method="post" action="{% url 'ticket_set_department' t.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                    <select name="assigned_role" class="form-select form-select-sm" onchange="this.form.submit()"
+                            style="min-width: 150px; {{ t.assigned_role|department_badge_style }}">
+                        <option value="" {% if not t.assigned_role %}selected{% endif %}>Unassigned</option>
+                        {% for value, label in role_choices %}
+                            <option value="{{ value }}" {% if value == t.assigned_role %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </td>
+            <td class="text-nowrap">{{ t.property.name|default:'⚠ none' }}</td>
+            <td class="w-100"><a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body">{{ t.title|truncatechars:70 }}</a></td>
+            <td>
+                <form method="post" action="{% url 'ticket_set_due_date' t.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                    <input type="date" name="due_date" class="form-control form-control-sm {% if t.due_date and t.due_date < now %}text-danger fw-semibold{% endif %}"
+                           style="min-width: 145px;" value="{{ t.due_date|date:'Y-m-d' }}" onchange="this.form.submit()">
+                </form>
+            </td>
+            <td>
+                <form method="post" action="{% url 'ticket_set_status' t.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                    <select name="status" class="form-select form-select-sm" style="min-width: 140px;" onchange="this.form.submit()">
+                        {% for value, label in status_choices %}
+                            <option value="{{ value }}" {% if value == t.status %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </td>
+            <td>
+                <form method="post" action="{% url 'ticket_set_assignee' t.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                    <select name="assignee" class="form-select form-select-sm" style="min-width: 170px;" onchange="this.form.submit()">
+                        <option value="" {% if not t.assigned_staff_id and not t.assigned_contact_id %}selected{% endif %}>Unassigned</option>
+                        <optgroup label="Staff">
+                            {% for s in staff_list %}
+                                <option value="staff-{{ s.pk }}" {% if t.assigned_staff_id == s.pk %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="Vendors">
+                            {% for v in vendor_list %}
+                                <option value="contact-{{ v.pk }}" {% if t.assigned_contact_id == v.pk %}selected{% endif %}>{{ v.name }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </form>
+            </td>
+            <td class="text-nowrap">
+                <form method="post" action="{% url 'ticket_delete' t.pk %}"
+                      onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                    <button class="btn btn-link btn-sm text-danger p-0" type="submit">Delete</button>
+                </form>
+            </td>
+        </tr>
+    {% empty %}<tr><td colspan="7" class="text-muted">No tickets.</td></tr>{% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% comment %}
+Mobile: a table can't fit this many editable fields readably at phone
+widths, so each ticket becomes a stacked card instead — same forms/views,
+just laid out top-to-bottom rather than in cells.
+{% endcomment %}
+<div class="d-md-none">
+{% for t in tickets %}
+    <div class="card mb-2">
+        <div class="card-body p-3">
+            <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold d-block mb-1">{{ t.title|truncatechars:70 }}</a>
+            <div class="text-muted small mb-2">{{ t.property.name|default:'⚠ no property' }}</div>
+
+            <div class="row g-2">
+                <div class="col-6">
+                    <label class="form-label small text-muted mb-1">Department</label>
+                    <form method="post" action="{% url 'ticket_set_department' t.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                        <select name="assigned_role" class="form-select form-select-sm" onchange="this.form.submit()"
+                                style="{{ t.assigned_role|department_badge_style }}">
+                            <option value="" {% if not t.assigned_role %}selected{% endif %}>Unassigned</option>
+                            {% for value, label in role_choices %}
+                                <option value="{{ value }}" {% if value == t.assigned_role %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                </div>
+                <div class="col-6">
+                    <label class="form-label small text-muted mb-1">Status</label>
+                    <form method="post" action="{% url 'ticket_set_status' t.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                        <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                            {% for value, label in status_choices %}
+                                <option value="{{ value }}" {% if value == t.status %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                </div>
+                <div class="col-6">
+                    <label class="form-label small text-muted mb-1">Due</label>
+                    <form method="post" action="{% url 'ticket_set_due_date' t.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                        <input type="date" name="due_date" class="form-control form-control-sm {% if t.due_date and t.due_date < now %}text-danger fw-semibold{% endif %}"
+                               value="{{ t.due_date|date:'Y-m-d' }}" onchange="this.form.submit()">
+                    </form>
+                </div>
+                <div class="col-6">
+                    <label class="form-label small text-muted mb-1">Assignee</label>
+                    <form method="post" action="{% url 'ticket_set_assignee' t.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                        <select name="assignee" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="" {% if not t.assigned_staff_id and not t.assigned_contact_id %}selected{% endif %}>Unassigned</option>
+                            <optgroup label="Staff">
+                                {% for s in staff_list %}
+                                    <option value="staff-{{ s.pk }}" {% if t.assigned_staff_id == s.pk %}selected{% endif %}>{{ s }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            <optgroup label="Vendors">
+                                {% for v in vendor_list %}
+                                    <option value="contact-{{ v.pk }}" {% if t.assigned_contact_id == v.pk %}selected{% endif %}>{{ v.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                        </select>
+                    </form>
+                </div>
+            </div>
+
+            <form method="post" action="{% url 'ticket_delete' t.pk %}" class="mt-2"
+                  onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
+                {% csrf_token %}
+                <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                <button class="btn btn-link btn-sm text-danger p-0" type="submit">Delete</button>
+            </form>
+        </div>
+    </div>
+{% empty %}<p class="text-muted">No tickets.</p>{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}{{ ticket.title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start my-3">
+    <div>
+        <h2>{{ ticket.title }}</h2>
+        <p class="text-muted mb-0">
+            <span class="badge" style="{{ ticket.assigned_role|department_badge_style }}">{{ ticket.get_assigned_role_display|default:'Unassigned' }}</span>
+            {{ ticket.property.name|default:'No property assigned' }} &middot;
+            source: {{ ticket.get_source_display }}
+        </p>
+    </div>
+    <span class="badge bg-{% if ticket.status == 'cancelled' %}secondary{% elif ticket.status == 'completed' or ticket.status == 'verified' %}success{% elif ticket.priority == 'urgent' %}danger{% else %}primary{% endif %} fs-6">
+        {{ ticket.get_status_display }}
+    </span>
+</div>
+
+{% if not ticket.property %}
+{% regroup properties by get_property_type_display as property_groups %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center gap-3">
+    <div>No property assigned yet. If it's not about one specific address, choose the general option for its business line, or "No specific property" if it's company-wide.</div>
+    <form method="post" action="{% url 'ticket_set_property' ticket.pk %}" class="d-flex gap-2 flex-shrink-0">
+        {% csrf_token %}
+        <select name="property_id" class="form-select form-select-lg flex-grow-1" style="min-width: 260px;" required>
+            <option value="">Choose a property…</option>
+            {% for group in property_groups %}
+            <optgroup label="{{ group.grouper }}">
+                {% for p in group.list %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+            </optgroup>
+            {% endfor %}
+        </select>
+        <button class="btn btn-warning text-nowrap" type="submit">Assign</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-7">
+        <div class="card mb-3">
+            <div class="card-body">
+                <p style="white-space: pre-wrap;">{{ ticket.description|default:'No description.' }}</p>
+                <p class="mb-1"><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
+                <p class="mb-1"><strong>Due:</strong> {{ ticket.due_date|default:'—' }}</p>
+                <p class="mb-1"><strong>Assigned to:</strong> {{ ticket.assignee_label }}</p>
+                {% if ticket.resolution_notes %}
+                    <p class="mb-1"><strong>Resolution notes:</strong> {{ ticket.resolution_notes }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if ticket.raw_context %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Original source text</h6>
+                <p class="small text-muted" style="white-space: pre-wrap;">{{ ticket.raw_context }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if vendor_link %}
+        <div class="card mb-3 border-info">
+            <div class="card-body">
+                <h6 class="card-title">Vendor completion link</h6>
+                <p class="mb-1 text-muted">Share this with {{ ticket.assigned_contact }} — no login needed. They can mark the job complete and upload photos.</p>
+                <input type="text" class="form-control" readonly value="{{ vendor_link }}" onclick="this.select()">
+            </div>
+        </div>
+        {% endif %}
+
+        {% if attachments %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Attachments / photos</h6>
+                <div class="row">
+                {% for a in attachments %}
+                    <div class="col-md-4 mb-2">
+                        {% if a.file.url|slice:"-4:" == ".jpg" or a.file.url|slice:"-5:" == ".jpeg" or a.file.url|slice:"-4:" == ".png" or a.file.url|slice:"-5:" == ".webp" %}
+                            <img src="{{ a.file.url }}" class="img-fluid rounded mb-1" alt="{{ a.caption }}">
+                        {% else %}
+                            <a href="{{ a.file.url }}">{{ a.file.name }}</a>
+                        {% endif %}
+                        <div><small class="text-muted">{{ a.caption }}{% if a.uploaded_by_contact %} — {{ a.uploaded_by_contact }}{% endif %}</small></div>
+                    </div>
+                {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Related contacts</h6>
+                <ul class="list-unstyled mb-0">
+                {% for tc in ticket_contacts %}
+                    <li>{{ tc.contact }} — <span class="text-muted">{{ tc.get_role_display }}</span></li>
+                {% empty %}<li class="text-muted">None linked.</li>{% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-5">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Update status</h6>
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
+                    {% csrf_token %}
+                    <select name="status" class="form-select mb-2">
+                        {% for value, label in status_choices %}
+                            <option value="{{ value }}" {% if value == ticket.status %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <textarea name="resolution_notes" class="form-control mb-2" rows="2" placeholder="Resolution notes (optional)"></textarea>
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Reassign</h6>
+                <form method="post" action="{% url 'ticket_reassign' ticket.pk %}">
+                    {% csrf_token %}
+                    {{ reassign_form.as_p }}
+                    <button class="btn btn-outline-secondary btn-sm" type="submit">Reassign</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Report resolution to reporter</h6>
+                <form method="post" action="{% url 'ticket_followup' ticket.pk %}">
+                    {% csrf_token %}
+                    {{ followup_form.as_p }}
+                    <button class="btn btn-success btn-sm" type="submit">Send follow-up</button>
+                </form>
+                {% if followups %}
+                <hr>
+                <small class="text-muted">Recent follow-ups:</small>
+                <ul class="list-unstyled small">
+                {% for f in followups %}
+                    <li>{{ f.sent_at }} — {{ f.get_channel_display }} to {{ f.sent_to }} {% if not f.success %}<span class="text-danger">(failed)</span>{% endif %}</li>
+                {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if assignment_logs %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Assignment history</h6>
+                <ul class="list-unstyled small mb-0">
+                {% for log in assignment_logs %}
+                    <li>{{ log.changed_at }} — {% if log.to_staff %}{{ log.to_staff }}{% elif log.to_contact %}{{ log.to_contact }}{% else %}unassigned{% endif %}</li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

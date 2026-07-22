@@ -1,0 +1,59 @@
+{% extends 'vendorportal/base.html' %}
+{% block title %}Job: {{ ticket.title }}{% endblock %}
+{% block content %}
+<div class="card my-4">
+    <div class="card-body">
+        <h3 class="card-title">{{ ticket.title }}</h3>
+        <h6 class="card-subtitle mb-2 text-muted">{{ ticket.property.name }}</h6>
+        <p class="mb-1"><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
+        {% if ticket.due_date %}<p class="mb-1"><strong>Due:</strong> {{ ticket.due_date }}</p>{% endif %}
+        <p class="mb-1"><strong>Status:</strong> {{ ticket.get_status_display }}</p>
+        <hr>
+        <p style="white-space: pre-wrap;">{{ ticket.description }}</p>
+    </div>
+</div>
+
+{% if attachments %}
+<div class="card my-4">
+    <div class="card-body">
+        <h5>Photos</h5>
+        <div class="row">
+            {% for a in attachments %}
+            <div class="col-md-3 mb-2">
+                <img src="{{ a.file.url }}" class="img-fluid rounded" alt="{{ a.caption }}">
+                {% if a.caption %}<small class="text-muted">{{ a.caption }}</small>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card my-4">
+    <div class="card-body">
+        <h5>Add a photo</h5>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="upload_photo">
+            {{ upload_form.as_p }}
+            <button class="btn btn-secondary" type="submit">Upload photo</button>
+        </form>
+    </div>
+</div>
+
+{% if not is_closed %}
+<div class="card my-4">
+    <div class="card-body">
+        <h5>Mark this job complete</h5>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="mark_complete">
+            {{ complete_form.as_p }}
+            <button class="btn btn-success" type="submit">Mark complete</button>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-success">This job has already been marked {{ ticket.get_status_display|lower }}. Thank you!</div>
+{% endif %}
+{% endblock %}

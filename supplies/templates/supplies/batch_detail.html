@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Order list — {{ batch.property.name }}{% endblock %}
+{% block content %}
+<h2 class="my-3">Order list — {{ batch.property.name }} ({{ batch.date }})</h2>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title">Copy/paste list</h6>
+        <textarea class="form-control" rows="{{ amazon_links|length|add:1 }}" readonly onclick="this.select()">{{ export_text }}</textarea>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h6 class="card-title">Amazon search links (open each, add to cart manually)</h6>
+        <ul>
+        {% for r, link in amazon_links %}
+            <li><a href="{{ link }}" target="_blank" rel="noopener">{{ r.item_guess|default:r.raw_text }}</a> {% if r.quantity_guess %}<span class="text-muted">({{ r.quantity_guess }})</span>{% endif %}</li>
+        {% endfor %}
+        </ul>
+        <p class="text-muted small">Checkout is a manual step — this app only builds the list, it doesn't place orders.</p>
+    </div>
+</div>
+{% endblock %}

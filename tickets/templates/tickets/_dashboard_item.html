@@ -1,0 +1,14 @@
+{% load ticket_extras %}
+<a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-start gap-2">
+    <div class="min-width-0">
+        <div class="fw-medium">
+            {{ t.title|truncatechars:60 }}
+            {% if t.due_date and t.due_date < now %}<span class="badge bg-danger ms-1">Overdue</span>{% endif %}
+            {% if t.recurrence_label %}<span class="badge bg-light text-dark border ms-1">{{ t.recurrence_label }}</span>{% endif %}
+        </div>
+        <div class="small" style="color: var(--ink-muted);">{{ t.property.name|default:'—' }} &middot; {{ t.assignee_label }}</div>
+    </div>
+    <div class="text-nowrap small text-end" style="color: var(--ink-muted);">
+        {% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}no due date{% endif %}
+    </div>
+</a>

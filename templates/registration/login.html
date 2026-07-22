@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Log in — Proper Management{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-4 mt-5 text-center">
+        <img src="{% static 'img/proper-realty-logo.png' %}" alt="Proper Realty" style="height: 44px;" class="mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h3 class="card-title mb-3" style="color: var(--ink-primary);">Staff login</h3>
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form.as_p }}
+                    <button class="btn btn-primary w-100" type="submit">Log in</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
