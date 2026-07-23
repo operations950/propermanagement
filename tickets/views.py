@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
-from core.models import Contact, Property, StaffProfile, properties_by_type, property_dropdown_queryset
+from core.models import Contact, Property, StaffProfile, is_valid_phone, properties_by_type, property_dropdown_queryset
 from messaging.services import send_followup_bulk
 
 from .forms import ReassignForm, TicketForm
@@ -544,6 +544,15 @@ def ticket_detail(request, pk):
             f'/vendor/t/{ticket.completion_token}/'
         ) if ticket.assigned_contact_id else None,
         'status_choices': Ticket.Status.choices,
+        # Completed is a hard status, deliberately excluded from the casual
+        # bubble picker — the "Mark Complete" button below is the one path
+        # to it. Still included when the ticket is *already* completed, so
+        # the bubble correctly rehydrates and displays that current value
+        # instead of the picker misleadingly showing "Choose a status".
+        'status_bubble_choices': [
+            (v, l) for v, l in Ticket.Status.choices
+            if v != Ticket.Status.COMPLETED or ticket.status == Ticket.Status.COMPLETED
+        ],
         'properties_by_type': properties_by_type(),
         'vendor_contacts_json': json.dumps([
             {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
@@ -572,12 +581,18 @@ def ticket_create(request):
         # submits alongside the ticket on the same POST (no separate
         # request/AJAX in this app) — create the Contact first, then feed
         # its id into the real field the rest of TicketForm expects.
+        phone_error = False
         for role, default_type in (('contractor', Contact.ContactType.VENDOR), ('reporter', None)):
             name = data.get(f'new_contact__name__{role}', '').strip()
             if name:
+                phone = data.get(f'new_contact__phone__{role}', '').strip()
+                if not is_valid_phone(phone):
+                    messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was saved.')
+                    phone_error = True
+                    continue
                 contact, _ = Contact.objects.get_or_create(
                     name=name,
-                    phone=data.get(f'new_contact__phone__{role}', '').strip(),
+                    phone=phone,
                     email=data.get(f'new_contact__email__{role}', '').strip(),
                     defaults={
                         'contact_type': default_type or Contact.ContactType.OTHER,
@@ -587,7 +602,7 @@ def ticket_create(request):
                 data['assigned_contact' if role == 'contractor' else 'reporter_contact'] = str(contact.pk)
 
         form = TicketForm(data)
-        if form.is_valid():
+        if not phone_error and form.is_valid():
             ticket = form.save(commit=False)
             ticket.source = Ticket.Source.MANUAL
             raw_due_date = form.cleaned_data.get('due_date')
@@ -654,19 +669,25 @@ def ticket_reassign(request, pk):
         # exact same markup/JS, which unconditionally renders an "add new"
         # row, so this needs to actually work rather than silently no-op.
         name = data.get('new_contact__name__contractor', '').strip()
+        phone_error = False
         if name:
-            contact, _ = Contact.objects.get_or_create(
-                name=name,
-                phone=data.get('new_contact__phone__contractor', '').strip(),
-                email=data.get('new_contact__email__contractor', '').strip(),
-                defaults={
-                    'contact_type': Contact.ContactType.VENDOR,
-                    'trade': data.get('new_contact__trade__contractor', '').strip(),
-                },
-            )
-            data['assigned_contact'] = str(contact.pk)
+            phone = data.get('new_contact__phone__contractor', '').strip()
+            if not is_valid_phone(phone):
+                messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was reassigned.')
+                phone_error = True
+            else:
+                contact, _ = Contact.objects.get_or_create(
+                    name=name,
+                    phone=phone,
+                    email=data.get('new_contact__email__contractor', '').strip(),
+                    defaults={
+                        'contact_type': Contact.ContactType.VENDOR,
+                        'trade': data.get('new_contact__trade__contractor', '').strip(),
+                    },
+                )
+                data['assigned_contact'] = str(contact.pk)
         form = ReassignForm(data)
-        if form.is_valid():
+        if not phone_error and form.is_valid():
             TicketAssignmentLog.objects.create(
                 ticket=ticket,
                 from_staff=ticket.assigned_staff, from_contact=ticket.assigned_contact,

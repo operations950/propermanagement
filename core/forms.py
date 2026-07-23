@@ -71,4 +71,5 @@ class ContactForm(forms.ModelForm):
         labels = {'name': 'Name', 'contact_type': 'Type', 'properties': 'Properties (optional)'}
         widgets = {
             'notes': forms.Textarea(attrs={'rows': 3}),
+            'phone': forms.TextInput(attrs={'type': 'tel', 'placeholder': '555-123-4567'}),
         }

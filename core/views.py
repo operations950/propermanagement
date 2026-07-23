@@ -15,7 +15,7 @@ from . import google_calendar, places, usps
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
     Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
-    PropertyAttributeAssignment, StaffProfile, properties_by_type, property_dropdown_queryset,
+    PropertyAttributeAssignment, StaffProfile, is_valid_phone, properties_by_type, property_dropdown_queryset,
 )
 
 logger = logging.getLogger(__name__)
@@ -284,6 +284,10 @@ def contact_review_approve(request, pk):
         contact_type = request.POST.get('contact_type') or candidate.suggested_contact_type
         trade = request.POST.get('trade', '').strip()
         property_id = request.POST.get('property_id') or None
+
+        if not is_valid_phone(phone):
+            messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was approved.')
+            return redirect('contact_review')
 
         candidate.name, candidate.phone, candidate.email = name, phone, email
         existing = _candidate_dupe(candidate)

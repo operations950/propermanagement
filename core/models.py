@@ -1,6 +1,21 @@
+import re
+
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Case, IntegerField, Value, When
+
+PHONE_REGEX = re.compile(r'^\d{3}-\d{3}-\d{4}$')
+phone_validator = RegexValidator(PHONE_REGEX.pattern, 'Enter phone as XXX-XXX-XXXX.')
+
+
+def is_valid_phone(phone):
+    """True for blank (every phone field in the app is optional) or a
+    properly dash-formatted 10-digit US number — the one standard format
+    static/js/phone-format.js auto-inserts dashes into as people type.
+    Used by the handful of raw-POST contact-creation paths that don't go
+    through a ModelForm (and so wouldn't otherwise run phone_validator)."""
+    return not phone or bool(PHONE_REGEX.fullmatch(phone))
 
 
 class Property(models.Model):
@@ -136,7 +151,7 @@ class Contact(models.Model):
         max_length=100, blank=True,
         help_text='For vendors: e.g. plumbing, HVAC, cleaning, handyman',
     )
-    phone = models.CharField(max_length=30, blank=True)
+    phone = models.CharField(max_length=30, blank=True, validators=[phone_validator])
     email = models.EmailField(blank=True)
     properties = models.ManyToManyField(
         Property, blank=True, related_name='contacts',
@@ -217,7 +232,7 @@ class StaffProfile(models.Model):
         max_length=20, choices=Role.choices, blank=True,
         help_text='Which team this person is on — also used as the default queue reactive tickets route to.',
     )
-    phone = models.CharField(max_length=30, blank=True)
+    phone = models.CharField(max_length=30, blank=True, validators=[phone_validator])
 
     def __str__(self):
         return self.user.get_full_name() or self.user.username

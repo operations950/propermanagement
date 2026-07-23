@@ -35,12 +35,14 @@
 
             <div class="mb-4">
                 <label class="form-label fw-medium" for="id_phone">Phone</label>
-                <input type="text" name="phone" id="id_phone" class="form-control" value="{{ form.phone.value|default:'' }}">
+                <input type="tel" name="phone" id="id_phone" class="form-control {% if form.phone.errors %}is-invalid{% endif %}" placeholder="555-123-4567" value="{{ form.phone.value|default:'' }}">
+                {% if form.phone.errors %}<div class="invalid-feedback d-block">{{ form.phone.errors|join:', ' }}</div>{% endif %}
             </div>
 
             <div class="mb-4">
                 <label class="form-label fw-medium" for="id_email">Email</label>
-                <input type="email" name="email" id="id_email" class="form-control" value="{{ form.email.value|default:'' }}">
+                <input type="email" name="email" id="id_email" class="form-control {% if form.email.errors %}is-invalid{% endif %}" value="{{ form.email.value|default:'' }}">
+                {% if form.email.errors %}<div class="invalid-feedback d-block">{{ form.email.errors|join:', ' }}</div>{% endif %}
             </div>
 
             <div class="mb-4">
