@@ -12,6 +12,11 @@
                 <i data-lucide="{% if is_new %}plus{% else %}check{% endif %}" class="icon"></i>
                 {% if is_new %}Create property{% else %}Save changes{% endif %}
             </button>
+            {% if not is_new %}
+            <a href="{% url 'property_recurring_tasks' property.pk %}" class="btn btn-outline-secondary">
+                <i data-lucide="repeat" class="icon"></i> Review recurring tasks
+            </a>
+            {% endif %}
         </form>
     </div>
 </div>

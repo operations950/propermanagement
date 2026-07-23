@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from core.models import Contact, Property, StaffProfile
+from core.models import Contact, Property, PropertyAttribute, StaffProfile
 
 
 class Priority(models.TextChoices):
@@ -66,10 +66,173 @@ class TicketTemplate(models.Model):
         help_text='If the scheduler was down and occurrences were missed, jump straight to the next '
                    'future occurrence instead of backfilling every missed one.',
     )
+
+    # --- Applicability rules (see tickets.services.applicability) ---
+    # `property` above stays highest-precedence: if set, this template applies
+    # to that one property only, regardless of everything below. These layers
+    # only matter when `property` is blank.
+    property_types = models.JSONField(
+        default=list, blank=True,
+        help_text='Property.Type codes this applies to (e.g. ["str", "commercial"]). Empty = every '
+                   'type. JSONField (not ArrayField) so this works on SQLite dev and Postgres prod alike.',
+    )
+    required_attributes = models.ManyToManyField(
+        PropertyAttribute, blank=True, related_name='required_by_templates',
+        help_text='Property must have ALL of these tags for this template to auto-apply. Empty = no constraint.',
+    )
+    lead_time_days = models.PositiveSmallIntegerField(
+        default=0, help_text='Generate the instance this many days before it\'s due, in status Upcoming.',
+    )
+    requires_approval = models.BooleanField(
+        default=False, help_text='Completing an instance moves it to Completed (submitted); a staff '
+                                  'member with approval_role must then approve it to reach Verified.',
+    )
+    approval_role = models.CharField(max_length=20, choices=StaffProfile.Role.choices, blank=True)
+    escalation_threshold_days = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Flag (not reassign) an instance once it is overdue by this many days.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f'{self.title} ({self.get_frequency_display()})'
+
+
+class TemplateChecklistItem(models.Model):
+    """A checklist item on a template's definition. Copied onto each
+    generated Ticket as a TicketChecklistItem — never referenced live — so
+    editing a template's checklist later never mutates an already-completed
+    historical instance."""
+    template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='checklist_items')
+    text = models.CharField(max_length=300)
+    sequence_order = models.PositiveSmallIntegerField(default=0)
+    is_required = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['sequence_order']
+
+    def __str__(self):
+        return self.text
+
+
+class TaskPackage(models.Model):
+    """A reusable, admin-authored bundle of TicketTemplates attachable to a
+    property (e.g. "STR Base Package") — see PropertyPackage. Steps may
+    optionally be dependency-ordered (see TaskPackageTemplate.depends_on),
+    which is what makes the same model also cover a "Recurring Process"
+    like "Monthly Accounting Close": the only structural difference is
+    whether a step has a depends_on set, not a different kind of object."""
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['title']
+
+    def __str__(self):
+        return self.title
+
+
+class TaskPackageTemplate(models.Model):
+    package = models.ForeignKey(TaskPackage, on_delete=models.CASCADE, related_name='steps')
+    template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='package_memberships')
+    sequence_order = models.PositiveSmallIntegerField(default=0)
+    depends_on = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='dependents',
+        help_text='If set, generated instances of this step start Blocked until the referenced '
+                   'step\'s instance (same property, same period) reaches a completed-like status.',
+    )
+
+    class Meta:
+        unique_together = [('package', 'template')]
+        ordering = ['sequence_order']
+
+    def __str__(self):
+        return f'{self.package} — {self.template}'
+
+
+class PropertyPackage(models.Model):
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='packages')
+    package = models.ForeignKey(TaskPackage, on_delete=models.CASCADE, related_name='property_assignments')
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        unique_together = [('property', 'package')]
+
+    def __str__(self):
+        return f'{self.property} — {self.package}'
+
+
+class PropertyTemplateOverride(models.Model):
+    """A property-specific exception to a template's normal applicability —
+    exclude it, force-include it, and/or change its frequency/role/assignee
+    for this one property. One row type covers all three, since a
+    modify-only row and an include-and-modify row need identical
+    override-application logic (see tickets.services.applicability)."""
+    class Action(models.TextChoices):
+        EXCLUDE = 'exclude', 'Exclude from this property'
+        INCLUDE = 'include', 'Include / adjust for this property'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='template_overrides')
+    template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='property_overrides')
+    action = models.CharField(max_length=10, choices=Action.choices, default=Action.INCLUDE)
+    frequency = models.CharField(max_length=20, choices=Frequency.choices, blank=True)
+    workday_of_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    assigned_role = models.CharField(max_length=20, choices=StaffProfile.Role.choices, blank=True)
+    assigned_staff = models.ForeignKey(
+        StaffProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    next_run_date = models.DateField(
+        null=True, blank=True,
+        help_text='Only used when frequency is overridden — this property then advances on its own '
+                   'schedule instead of the template\'s shared cursor.',
+    )
+    note = models.CharField(max_length=300, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('property', 'template')]
+
+    def __str__(self):
+        return f'{self.property} — {self.template} ({self.get_action_display()})'
+
+
+class TemplateOccurrence(models.Model):
+    """Groups sibling Tickets generated from the same template for the same
+    period, across every property it fanned out to — the parent for
+    multi-property roll-up (e.g. "Monthly Financial Statements — May
+    2026")."""
+    template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='occurrences')
+    scheduled_for = models.DateField()
+
+    class Meta:
+        unique_together = [('template', 'scheduled_for')]
+
+    def __str__(self):
+        return f'{self.template.title} — {self.scheduled_for}'
+
+
+class PackageRun(models.Model):
+    """Groups sibling Tickets generated from different templates (steps)
+    within the same package, for the same property and period — what
+    dependency-gating (TaskPackageTemplate.depends_on) checks against. A
+    property=None run is a company-wide package run."""
+    package = models.ForeignKey(TaskPackage, on_delete=models.CASCADE, related_name='runs')
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, null=True, blank=True, related_name='package_runs',
+    )
+    scheduled_for = models.DateField()
+
+    class Meta:
+        unique_together = [('package', 'property', 'scheduled_for')]
+
+    def __str__(self):
+        return f'{self.package.title} — {self.property or "company-wide"} — {self.scheduled_for}'
 
 
 class Ticket(models.Model):
@@ -78,9 +241,21 @@ class Ticket(models.Model):
         ASSIGNED = 'assigned', 'Assigned'
         IN_PROGRESS = 'in_progress', 'In progress'
         BLOCKED = 'blocked', 'Blocked'
+        UPCOMING = 'upcoming', 'Upcoming'
         COMPLETED = 'completed', 'Completed'
         VERIFIED = 'verified', 'Verified'
+        SKIPPED = 'skipped', 'Skipped'
+        NOT_APPLICABLE = 'not_applicable', 'Not applicable'
+        DEFERRED = 'deferred', 'Deferred'
         CANCELLED = 'cancelled', 'Cancelled'
+
+    # Statuses that require a stated reason at the form/view layer (not DB-enforced, matching the
+    # existing cancelled_reason convention which also isn't DB-enforced).
+    REASON_REQUIRED_STATUSES = ['skipped', 'not_applicable', 'deferred']
+
+    # Statuses a package step must reach before dependents blocked on it are released — see
+    # tickets.services.package_engine.unblock_dependents.
+    DEPENDENCY_SATISFYING_STATUSES = ['completed', 'verified', 'skipped', 'not_applicable', 'cancelled']
 
     class Source(models.TextChoices):
         MANUAL = 'manual', 'Manual'
@@ -140,6 +315,16 @@ class Ticket(models.Model):
         null=True, blank=True,
         help_text='For recurring tickets: the occurrence date this instance represents.',
     )
+    template_occurrence = models.ForeignKey(
+        TemplateOccurrence, on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets',
+        help_text='Groups this instance with its siblings generated from the same template for the '
+                   'same period, across every property — always null for one-off tickets.',
+    )
+    package_run = models.ForeignKey(
+        PackageRun, on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets',
+        help_text='Groups this instance with its sibling steps in the same task package run — always '
+                   'null for one-off tickets.',
+    )
 
     completion_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     completion_token_expires_at = models.DateTimeField(null=True, blank=True)
@@ -147,6 +332,10 @@ class Ticket(models.Model):
     resolution_notes = models.TextField(blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     cancelled_reason = models.CharField(max_length=300, blank=True)
+    status_reason = models.CharField(
+        max_length=300, blank=True,
+        help_text='Why this was Skipped / Not applicable / Deferred — see REASON_REQUIRED_STATUSES.',
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -190,6 +379,15 @@ class Ticket(models.Model):
         if self.assigned_staff_id and self.assigned_contact_id:
             raise ValidationError('A ticket can be assigned to staff OR a vendor contact, not both.')
 
+    def checklist_progress(self):
+        """(done, total), or None if this ticket has no checklist — reads
+        the (usually prefetched) checklist_items, no extra query when
+        called after a .prefetch_related('checklist_items')."""
+        items = list(self.checklist_items.all())
+        if not items:
+            return None
+        return sum(1 for i in items if i.is_checked), len(items)
+
     def recurrence_label(self):
         """How often this proactive task recurs, for display next to it on
         a department dashboard — e.g. "Monthly · Workday 15". Blank for
@@ -218,6 +416,27 @@ class Ticket(models.Model):
                 days=settings.VENDOR_TOKEN_EXPIRY_DAYS
             )
         super().save(*args, **kwargs)
+
+
+class TicketChecklistItem(models.Model):
+    """Copied from TemplateChecklistItem at generation time (see
+    generate_recurring_tickets) — a snapshot, not a live reference, so
+    editing the template later never touches an already-generated instance."""
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='checklist_items')
+    text = models.CharField(max_length=300)
+    sequence_order = models.PositiveSmallIntegerField(default=0)
+    is_required = models.BooleanField(default=True)
+    is_checked = models.BooleanField(default=False)
+    checked_at = models.DateTimeField(null=True, blank=True)
+    checked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        ordering = ['sequence_order']
+
+    def __str__(self):
+        return self.text
 
 
 class TicketContact(models.Model):

@@ -1,6 +1,9 @@
 from django import template
+from django.utils import timezone
 
 register = template.Library()
+
+NON_ESCALATABLE_STATUSES = ('completed', 'verified', 'cancelled', 'skipped', 'not_applicable')
 
 # Mirrors the --role-<code> CSS custom properties defined in
 # templates/base.html — a single tonal ramp in the brand's own steel-blue/
@@ -58,3 +61,41 @@ DEPARTMENT_ICONS = {
 @register.filter
 def department_icon(role):
     return DEPARTMENT_ICONS.get(role, 'circle-dot')
+
+
+@register.filter
+def is_overdue(ticket, now):
+    """True if ticket.due_date's LOCAL calendar date is before now's LOCAL
+    calendar date. Deliberately uses timezone.localtime() on both sides —
+    the naive `t.due_date.date < now.date` template comparison used
+    elsewhere in this app's history compares raw UTC-aware datetimes'
+    date() components, which silently disagrees with the business's actual
+    local day (settings.TIME_ZONE) for several hours every evening, once
+    UTC has rolled to the next calendar day but the local day hasn't yet —
+    flagging today's items as Overdue overnight."""
+    if not ticket.due_date or ticket.status == 'completed':
+        return False
+    return timezone.localtime(ticket.due_date).date() < timezone.localtime(now).date()
+
+
+@register.filter
+def is_due_today(ticket, now):
+    """True if ticket.due_date's LOCAL calendar date equals now's LOCAL
+    calendar date — see is_overdue for why this must use localtime()."""
+    if not ticket.due_date or ticket.status == 'completed':
+        return False
+    return timezone.localtime(ticket.due_date).date() == timezone.localtime(now).date()
+
+
+@register.filter
+def is_escalated(ticket, now):
+    """Flag-only escalation (see the build plan): true once a ticket is
+    overdue by at least its template's escalation_threshold_days. No
+    reassignment happens — this only drives a visible badge/banner."""
+    template = ticket.created_from_template
+    if not template or not template.escalation_threshold_days or not ticket.due_date:
+        return False
+    if ticket.status in NON_ESCALATABLE_STATUSES:
+        return False
+    overdue_days = (timezone.localtime(now).date() - timezone.localtime(ticket.due_date).date()).days
+    return overdue_days >= template.escalation_threshold_days

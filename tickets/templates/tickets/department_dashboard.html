@@ -16,11 +16,11 @@
 <div class="row g-4 d-none d-md-flex">
     <div class="col-md-4">
         <h5 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="ticket" class="icon"></i> Tickets {% if ticket_total %}<span class="badge rounded-pill bg-light text-dark border">{{ ticket_total }}</span>{% endif %}</h5>
-        {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tickets today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=role_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
+        {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tickets today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=ticket_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
     </div>
     <div class="col-md-4">
         <h5 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="repeat" class="icon"></i> Recurring Tasks {% if task_total %}<span class="badge rounded-pill bg-light text-dark border">{{ task_total }}</span>{% endif %}</h5>
-        {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tasks today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=role_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
+        {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tasks today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=task_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
     </div>
     <div class="col-md-4">
         <h5 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Calendar</h5>
@@ -38,7 +38,7 @@
         </h2>
         <div id="accTickets" class="accordion-collapse collapse show" data-bs-parent="#deptAccordion">
             <div class="accordion-body">
-                {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tickets today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=role_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
+                {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tickets today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=ticket_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
             </div>
         </div>
     </div>
@@ -50,7 +50,7 @@
         </h2>
         <div id="accTasks" class="accordion-collapse collapse" data-bs-parent="#deptAccordion">
             <div class="accordion-body">
-                {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tasks today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=role_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
+                {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tasks today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=task_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
             </div>
         </div>
     </div>

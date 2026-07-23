@@ -6,9 +6,12 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 
+from tickets.models import Frequency, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate, TicketTemplate
+from tickets.services import applicability
+
 from . import google_calendar
-from .forms import PropertyForm
-from .models import GoogleCalendarToken, Property
+from .forms import PropertyForm, PropertyTemplateOverrideForm
+from .models import GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, StaffProfile
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +121,8 @@ def property_create(request):
         form = PropertyForm(request.POST)
         if form.is_valid():
             prop = form.save()
-            messages.success(request, f'Property "{prop.name}" created.')
-            return redirect('property_list')
+            messages.success(request, f'Property "{prop.name}" created — review its recurring tasks below.')
+            return redirect('property_recurring_tasks', pk=prop.pk)
     else:
         form = PropertyForm(initial={'property_type': Property.Type.SHORT_TERM_RENTAL})
     return render(request, 'core/property_form.html', {'form': form, 'is_new': True})
@@ -137,3 +140,131 @@ def property_edit(request, pk):
     else:
         form = PropertyForm(instance=prop)
     return render(request, 'core/property_form.html', {'form': form, 'is_new': False, 'property': prop})
+
+
+def _template_source_label(template, prop, override, assigned_attribute_ids):
+    """Human-readable reason a template shows up in this property's
+    effective set — purely explanatory, not used for any logic."""
+    if override and override.action == PropertyTemplateOverride.Action.INCLUDE:
+        if override.frequency or override.assigned_role or override.assigned_staff_id:
+            return 'Manual override'
+        return 'Manual add'
+    if template.property_id:
+        return 'Auto — direct assignment'
+    package_step = TaskPackageTemplate.objects.filter(
+        template=template, package__is_active=True, package__property_assignments__property=prop,
+    ).select_related('package').first()
+    if package_step:
+        return f'Auto — package: {package_step.package.title}'
+    required_ids = set(template.required_attributes.values_list('id', flat=True))
+    if required_ids and required_ids <= assigned_attribute_ids:
+        return 'Auto — attribute match'
+    if template.property_types:
+        return 'Auto — type match'
+    return 'Auto — every type'
+
+
+@login_required
+def property_recurring_tasks(request, pk):
+    """A property's operational profile: the recurring task templates the
+    applicability rule engine (tickets.services.applicability) currently
+    resolves for it, plus the controls to review/adjust that result — add
+    a one-off template, exclude an applied one, override its frequency/
+    department/assignee for this property only, or toggle which task
+    packages and characteristics apply. Computed live on every load, same
+    as generation itself — see the build plan for why this isn't cached."""
+    prop = get_object_or_404(Property, pk=pk)
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        template_id = request.POST.get('template_id')
+
+        if action == 'exclude' and template_id:
+            PropertyTemplateOverride.objects.update_or_create(
+                property=prop, template_id=template_id,
+                defaults={'action': PropertyTemplateOverride.Action.EXCLUDE, 'created_by': request.user},
+            )
+            messages.success(request, 'Excluded for this property.')
+        elif action == 'reset' and template_id:
+            PropertyTemplateOverride.objects.filter(property=prop, template_id=template_id).delete()
+            messages.success(request, 'Reset to default.')
+        elif action == 'adjust' and template_id:
+            form = PropertyTemplateOverrideForm(request.POST)
+            if form.is_valid():
+                PropertyTemplateOverride.objects.update_or_create(
+                    property=prop, template_id=template_id,
+                    defaults={
+                        'action': PropertyTemplateOverride.Action.INCLUDE,
+                        'frequency': form.cleaned_data['frequency'],
+                        'workday_of_month': form.cleaned_data['workday_of_month'],
+                        'assigned_role': form.cleaned_data['assigned_role'],
+                        'assigned_staff': form.cleaned_data['assigned_staff'],
+                        'created_by': request.user,
+                    },
+                )
+                messages.success(request, 'Adjustment saved.')
+            else:
+                messages.error(request, 'Could not save that adjustment.')
+        elif action == 'add_one_off' and template_id:
+            PropertyTemplateOverride.objects.update_or_create(
+                property=prop, template_id=template_id,
+                defaults={'action': PropertyTemplateOverride.Action.INCLUDE, 'created_by': request.user},
+            )
+            messages.success(request, 'Added.')
+        elif action == 'toggle_package':
+            package_id = request.POST.get('package_id')
+            existing = PropertyPackage.objects.filter(property=prop, package_id=package_id)
+            if existing.exists():
+                existing.delete()
+                messages.success(request, 'Package removed.')
+            else:
+                PropertyPackage.objects.create(property=prop, package_id=package_id)
+                messages.success(request, 'Package added.')
+        elif action == 'toggle_attribute':
+            attribute_id = request.POST.get('attribute_id')
+            existing = PropertyAttributeAssignment.objects.filter(property=prop, attribute_id=attribute_id)
+            if existing.exists():
+                existing.delete()
+                messages.success(request, 'Attribute removed.')
+            else:
+                PropertyAttributeAssignment.objects.create(property=prop, attribute_id=attribute_id)
+                messages.success(request, 'Attribute added.')
+        return redirect('property_recurring_tasks', pk=prop.pk)
+
+    effective_templates = applicability.effective_templates_for_property(prop)
+    overrides = {o.template_id: o for o in PropertyTemplateOverride.objects.filter(property=prop)}
+    assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
+    assigned_package_ids = set(prop.packages.values_list('package_id', flat=True))
+
+    frequency_labels = dict(Frequency.choices)
+    role_labels = dict(StaffProfile.Role.choices)
+    rows = []
+    for t in effective_templates:
+        override = overrides.get(t.pk)
+        effective = applicability.effective_settings(t, prop, override=override)
+        effective['frequency_display'] = frequency_labels.get(effective['frequency'], effective['frequency'])
+        effective['assigned_role_display'] = role_labels.get(effective['assigned_role'], 'Unassigned')
+        rows.append({
+            'template': t,
+            'override': override,
+            'effective': effective,
+            'source': _template_source_label(t, prop, override, assigned_attribute_ids),
+        })
+    rows.sort(key=lambda r: r['template'].title)
+
+    return render(request, 'core/property_recurring_tasks.html', {
+        'property': prop,
+        'rows': rows,
+        'packages': TaskPackage.objects.filter(is_active=True),
+        'assigned_package_ids': assigned_package_ids,
+        'attributes': PropertyAttribute.objects.filter(is_active=True),
+        'assigned_attribute_ids': assigned_attribute_ids,
+        'addable_templates': (
+            TicketTemplate.objects.filter(is_active=True)
+            .exclude(pk__in=[t.pk for t in effective_templates])
+            .order_by('title')
+        ),
+        'frequency_choices': Frequency.choices,
+        'role_choices': StaffProfile.Role.choices,
+        'staff_list': StaffProfile.objects.select_related('user'),
+    })

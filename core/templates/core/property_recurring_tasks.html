@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% load core_extras ticket_extras %}
+{% block title %}{{ property.name }} — Recurring tasks{% endblock %}
+{% block content %}
+<div class="my-3">
+    <a href="{% url 'property_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Properties</a>
+    <h2 class="page-title mb-1 d-flex align-items-center gap-2">
+        <i data-lucide="{{ property.property_type|property_type_icon }}" class="icon-lg" style="color: var(--brand-slate);"></i>
+        {{ property.name }} — Recurring tasks
+    </h2>
+    <p class="text-muted mb-2">{{ property.get_property_type_display }}{% if property.address %} &middot; {{ property.address }}{% endif %}</p>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="tags" class="icon"></i> Attributes</h6>
+                <p class="small text-muted">Services, physical features, and compliance tags — templates can require one of these to auto-apply.</p>
+                {% for attr in attributes %}
+                    <form method="post" class="form-check">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="toggle_attribute">
+                        <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
+                        <input class="form-check-input" type="checkbox" id="attr-{{ attr.pk }}"
+                               {% if attr.pk in assigned_attribute_ids %}checked{% endif %} onchange="this.form.submit()">
+                        <label class="form-check-label small" for="attr-{{ attr.pk }}">{{ attr.label }} <span class="text-muted">({{ attr.get_category_display }})</span></label>
+                    </form>
+                {% empty %}
+                    <p class="text-muted small mb-0">No attributes defined yet — add some in Admin.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="package" class="icon"></i> Task packages</h6>
+                <p class="small text-muted">Reusable bundles of recurring tasks (e.g. "STR Base Package") — a property can carry several at once.</p>
+                {% for pkg in packages %}
+                    <form method="post" class="form-check">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="toggle_package">
+                        <input type="hidden" name="package_id" value="{{ pkg.pk }}">
+                        <input class="form-check-input" type="checkbox" id="pkg-{{ pkg.pk }}"
+                               {% if pkg.pk in assigned_package_ids %}checked{% endif %} onchange="this.form.submit()">
+                        <label class="form-check-label small" for="pkg-{{ pkg.pk }}">{{ pkg.title }}</label>
+                    </form>
+                {% empty %}
+                    <p class="text-muted small mb-0">No task packages defined yet — add some in Admin.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="repeat" class="icon"></i> Effective recurring tasks <span class="badge rounded-pill bg-light text-dark border">{{ rows|length }}</span></h6>
+        <p class="small text-muted">What the rule engine currently applies to this property — combining base type, attributes, packages, and any override below.</p>
+
+        {% for row in rows %}
+        <div class="border-top pt-3 mt-3 {% if forloop.first %}border-top-0 pt-0 mt-0{% endif %}">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                    <div class="fw-medium">{{ row.template.title }}</div>
+                    <div class="small text-muted">
+                        {{ row.source }} &middot;
+                        {{ row.effective.frequency_display }}{% if row.effective.workday_of_month %} · Workday {{ row.effective.workday_of_month }}{% endif %} &middot;
+                        <span class="badge" style="{{ row.effective.assigned_role|department_badge_style }}">{{ row.effective.assigned_role_display }}</span>
+                        {% if row.effective.assigned_staff %}&middot; {{ row.effective.assigned_staff }}{% endif %}
+                    </div>
+                </div>
+                <div class="d-flex gap-2 flex-shrink-0">
+                    {% if row.override %}
+                    <form method="post" onsubmit="return confirm('Reset this template back to its default rules for this property?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="reset">
+                        <input type="hidden" name="template_id" value="{{ row.template.pk }}">
+                        <button class="btn btn-outline-secondary btn-sm" type="submit">Reset to default</button>
+                    </form>
+                    {% endif %}
+                    <form method="post" onsubmit="return confirm('Exclude &quot;{{ row.template.title|escapejs }}&quot; from this property?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="exclude">
+                        <input type="hidden" name="template_id" value="{{ row.template.pk }}">
+                        <button class="btn btn-outline-danger btn-sm" type="submit">Exclude</button>
+                    </form>
+                </div>
+            </div>
+            <form method="post" class="row g-2 align-items-end">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="adjust">
+                <input type="hidden" name="template_id" value="{{ row.template.pk }}">
+                <div class="col-auto">
+                    <label class="form-label small text-muted mb-1">Frequency override</label>
+                    <select name="frequency" class="form-select form-select-sm">
+                        <option value="">Use default</option>
+                        {% for value, label in frequency_choices %}
+                            <option value="{{ value }}" {% if row.override.frequency == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small text-muted mb-1">Workday override</label>
+                    <input type="number" name="workday_of_month" min="1" max="31" class="form-control form-control-sm" style="width: 90px;" value="{{ row.override.workday_of_month|default_if_none:'' }}">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small text-muted mb-1">Department override</label>
+                    <select name="assigned_role" class="form-select form-select-sm">
+                        <option value="">Use default</option>
+                        {% for value, label in role_choices %}
+                            <option value="{{ value }}" {% if row.override.assigned_role == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small text-muted mb-1">Assignee override</label>
+                    <select name="assigned_staff" class="form-select form-select-sm">
+                        <option value="">Use default</option>
+                        {% for s in staff_list %}
+                            <option value="{{ s.pk }}" {% if row.override.assigned_staff_id == s.pk %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Save adjustment</button>
+                </div>
+            </form>
+        </div>
+        {% empty %}
+        <p class="text-muted mb-0">No recurring tasks currently apply to this property.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="plus" class="icon"></i> Add a one-off template</h6>
+        <p class="small text-muted">Force-include a template that wouldn't otherwise apply here.</p>
+        <form method="post" class="d-flex gap-2">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_one_off">
+            <select name="template_id" class="form-select flex-grow-1" style="max-width: 400px;" required>
+                <option value="">Choose a template…</option>
+                {% for t in addable_templates %}
+                    <option value="{{ t.pk }}">{{ t.title }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-primary" type="submit">Add</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

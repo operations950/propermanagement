@@ -16,6 +16,7 @@ urlpatterns = [
     path('tickets/<int:pk>/title/', views.ticket_set_title, name='ticket_set_title'),
     path('tickets/<int:pk>/status/', views.ticket_set_status, name='ticket_set_status'),
     path('tickets/<int:pk>/close-no-followup/', views.ticket_close_no_followup, name='ticket_close_no_followup'),
+    path('tickets/checklist/<int:pk>/toggle/', views.ticket_checklist_toggle, name='ticket_checklist_toggle'),
     path('tickets/<int:pk>/department/', views.ticket_set_department, name='ticket_set_department'),
     path('tickets/<int:pk>/assignee/', views.ticket_set_assignee, name='ticket_set_assignee'),
     path('tickets/<int:pk>/due-date/', views.ticket_set_due_date, name='ticket_set_due_date'),

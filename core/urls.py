@@ -9,4 +9,5 @@ urlpatterns = [
     path('properties/', views.property_list, name='property_list'),
     path('properties/new/', views.property_create, name='property_create'),
     path('properties/<int:pk>/edit/', views.property_edit, name='property_edit'),
+    path('properties/<int:pk>/recurring-tasks/', views.property_recurring_tasks, name='property_recurring_tasks'),
 ]

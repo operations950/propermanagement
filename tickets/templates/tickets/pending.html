@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load ticket_extras %}
 {% block title %}Pending — needs property{% endblock %}
 {% block content %}
 <h2 class="page-title my-3">Pending ({{ tickets|length }})</h2>
@@ -11,7 +12,7 @@
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-2">
             <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold">{{ t.title }}</a>
-            <span class="text-nowrap small {% if t.due_date and t.due_date.date < now.date %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+            <span class="text-nowrap small {% if t|is_overdue:now %}text-danger fw-semibold{% else %}text-muted{% endif %}">
                 {% if t.due_date %}Due {{ t.due_date|date:"M j" }}{% endif %}
             </span>
         </div>

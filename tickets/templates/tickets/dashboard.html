@@ -53,7 +53,7 @@
                     </div>
                     <div class="text-nowrap text-end tabular-nums" style="font-size: 0.8rem;">
                         {% if t.due_date %}
-                            <span {% if t.due_date.date < now.date %}style="color: var(--status-critical); font-weight: 600;"{% else %}style="color: var(--ink-muted);"{% endif %}>
+                            <span {% if t|is_overdue:now %}style="color: var(--status-critical); font-weight: 600;"{% else %}style="color: var(--ink-muted);"{% endif %}>
                                 {{ t.due_date|date:"M j" }}
                             </span>
                         {% else %}

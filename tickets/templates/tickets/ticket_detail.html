@@ -17,6 +17,13 @@
     </span>
 </div>
 
+{% if ticket|is_escalated:now %}
+<div class="alert d-flex align-items-center gap-2 mb-3" style="background: color-mix(in srgb, var(--status-critical) 12%, white); border: 1px solid color-mix(in srgb, var(--status-critical) 35%, white); color: var(--status-critical);">
+    <i data-lucide="triangle-alert" class="icon"></i>
+    <strong>Escalated</strong> — overdue by more than {{ ticket.created_from_template.escalation_threshold_days }} day{{ ticket.created_from_template.escalation_threshold_days|pluralize }}.
+</div>
+{% endif %}
+
 {% if not ticket.property %}
 {% regroup properties by get_property_type_display as property_groups %}
 <div class="alert alert-warning d-flex justify-content-between align-items-center gap-3">
@@ -49,6 +56,48 @@
                 {% endif %}
             </div>
         </div>
+
+        {% if checklist_items %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="list-checks" class="icon"></i> Checklist</h6>
+                <ul class="list-unstyled mb-0">
+                {% for item in checklist_items %}
+                    <li class="form-check mb-1">
+                        <form method="post" action="{% url 'ticket_checklist_toggle' item.pk %}" class="d-flex align-items-center gap-2">
+                            {% csrf_token %}
+                            <input class="form-check-input mt-0" type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="this.form.submit()" id="checklist-{{ item.pk }}">
+                            <label class="form-check-label {% if item.is_checked %}text-muted{% endif %}" style="{% if item.is_checked %}text-decoration: line-through;{% endif %}" for="checklist-{{ item.pk }}">
+                                {{ item.text }}{% if not item.is_required %} <span class="text-muted small">(optional)</span>{% endif %}
+                            </label>
+                        </form>
+                    </li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if ticket.package_run %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="list-tree" class="icon"></i> {{ ticket.package_run.package.title }} — {{ ticket.package_run.scheduled_for|date:"M Y" }}</h6>
+                {% if blocking_step_label %}
+                <p class="small mb-2" style="color: var(--status-warning);">
+                    <i data-lucide="lock" class="icon"></i> Blocked until "{{ blocking_step_label }}" is complete.
+                </p>
+                {% endif %}
+                <ul class="list-unstyled mb-0 small">
+                {% for step in package_siblings %}
+                    <li class="d-flex justify-content-between {% if step.pk == ticket.pk %}fw-bold{% endif %}">
+                        <span>{% if step.pk == ticket.pk %}{{ step.title }} (this task){% else %}<a href="{% url 'ticket_detail' step.pk %}" class="text-decoration-none">{{ step.title }}</a>{% endif %}</span>
+                        <span class="text-muted">{{ step.get_status_display }}</span>
+                    </li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
 
         {% if ticket.raw_context %}
         <div class="card mb-3">
@@ -113,10 +162,46 @@
                         {% endfor %}
                     </select>
                     <textarea name="resolution_notes" class="form-control mb-2" rows="2" placeholder="Resolution notes (optional)"></textarea>
+                    <textarea name="status_reason" class="form-control mb-2" rows="2" placeholder="Reason (required for Skipped / Not applicable / Deferred)"></textarea>
                     <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
                 </form>
             </div>
         </div>
+
+        {% if ticket.created_from_template.requires_approval and ticket.status == 'completed' %}
+        <div class="card mb-3" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="badge-check" class="icon"></i> Approval required</h6>
+                {% if can_approve %}
+                <p class="small text-muted">This template requires sign-off from {{ ticket.created_from_template.get_approval_role_display }} before it counts as done.</p>
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" onsubmit="return confirm('Approve this ticket?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="verified">
+                    <button class="btn btn-warning btn-sm w-100" type="submit"><i data-lucide="badge-check" class="icon"></i> Approve</button>
+                </form>
+                {% else %}
+                <p class="small text-muted mb-0">Waiting on {{ ticket.created_from_template.get_approval_role_display }} to approve.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if occurrence_siblings|length > 1 %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="layers" class="icon"></i> Across properties — {{ ticket.template_occurrence.scheduled_for|date:"M Y" }}</h6>
+                <p class="small text-muted mb-2">{{ occurrence_siblings|length }} properties this period</p>
+                <ul class="list-unstyled mb-0 small">
+                {% for sib in occurrence_siblings %}
+                    <li class="d-flex justify-content-between {% if sib.pk == ticket.pk %}fw-bold{% endif %}">
+                        <span>{% if sib.pk == ticket.pk %}{{ sib.property.name }} (this task){% else %}<a href="{% url 'ticket_detail' sib.pk %}" class="text-decoration-none">{{ sib.property.name }}</a>{% endif %}</span>
+                        <span class="text-muted">{{ sib.get_status_display }}</span>
+                    </li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
 
         <div class="card mb-3">
             <div class="card-body">

@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Contact, GoogleCalendarToken, Property, StaffProfile
+from .models import (
+    Contact, GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, StaffProfile,
+)
+
+
+class PropertyAttributeAssignmentInline(admin.TabularInline):
+    model = PropertyAttributeAssignment
+    extra = 1
 
 
 @admin.register(Property)
@@ -8,6 +15,15 @@ class PropertyAdmin(admin.ModelAdmin):
     list_display = ['name', 'property_type', 'is_general', 'address', 'is_active', 'created_at']
     list_filter = ['property_type', 'is_general', 'is_active']
     search_fields = ['name', 'address']
+    inlines = [PropertyAttributeAssignmentInline]
+
+
+@admin.register(PropertyAttribute)
+class PropertyAttributeAdmin(admin.ModelAdmin):
+    list_display = ['label', 'key', 'category', 'is_active']
+    list_filter = ['category', 'is_active']
+    search_fields = ['label', 'key']
+    prepopulated_fields = {'key': ('label',)}
 
 
 @admin.register(Contact)

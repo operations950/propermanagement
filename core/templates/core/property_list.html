@@ -47,6 +47,7 @@
             </td>
             <td class="text-muted small">{{ p.address|default:'—' }}</td>
             <td class="text-nowrap">
+                <a href="{% url 'property_recurring_tasks' p.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> Recurring tasks</a>
                 <a href="{% url 'property_edit' p.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
             </td>
         </tr>

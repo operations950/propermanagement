@@ -14,17 +14,22 @@ from core.models import Contact, StaffProfile, property_dropdown_queryset
 from messaging.services import send_followup as send_followup_message
 
 from .forms import FollowUpForm, ReassignForm, TicketForm
-from .models import FollowUpLog, Ticket, TicketAssignmentLog, TicketContact
+from .models import FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact
+from .services.package_engine import unblock_dependents
 
 OPEN_STATUSES = [
     Ticket.Status.OPEN, Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS, Ticket.Status.BLOCKED,
+    Ticket.Status.UPCOMING, Ticket.Status.DEFERRED,
 ]
 
 # The two buckets staff actually think in: still-active work, and done work
-# kept only for the record. Completed/Verified/Cancelled tickets are noise
-# on a day-to-day list — the tickets screen defaults to hiding them (see
-# ticket_list below) and only shows them when explicitly asked for.
-COMPLETE_STATUSES = [Ticket.Status.COMPLETED, Ticket.Status.VERIFIED, Ticket.Status.CANCELLED]
+# kept only for the record. Completed/Verified/Cancelled/Skipped/Not-applicable
+# tickets are noise on a day-to-day list — the tickets screen defaults to
+# hiding them (see ticket_list below) and only shows them when explicitly asked for.
+COMPLETE_STATUSES = [
+    Ticket.Status.COMPLETED, Ticket.Status.VERIFIED, Ticket.Status.CANCELLED,
+    Ticket.Status.SKIPPED, Ticket.Status.NOT_APPLICABLE,
+]
 
 # Fixed display order for the dashboard's role boxes — matches how the
 # business actually thinks about who owns what, not alphabetical/model order.
@@ -152,6 +157,7 @@ def department_dashboard(request, role):
         Ticket.objects.filter(assigned_role=role, property__isnull=False)
         .filter(Q(status__in=OPEN_STATUSES) | Q(status=Ticket.Status.COMPLETED, completed_at__date=today))
         .select_related('property', 'assigned_staff__user', 'assigned_contact', 'created_from_template')
+        .prefetch_related('checklist_items')
     )
 
     needs_date_tickets, needs_date_tasks = [], []
@@ -205,7 +211,8 @@ def department_dashboard(request, role):
         'soon_tasks': soon_tasks,
         'later_task_count': later_task_count,
         'task_total': len(needs_date_tasks) + len(today_tasks) + len(soon_tasks) + later_task_count,
-        'role_list_url': f"{reverse('ticket_list')}?role={role}",
+        'ticket_list_url': f"{reverse('ticket_list')}?role={role}&source=reactive",
+        'task_list_url': f"{reverse('ticket_list')}?role={role}&source=recurring",
         'now': now,
         'calendar_configured': calendar_is_configured(),
         'calendar_token': calendar_token,
@@ -288,6 +295,18 @@ def ticket_list(request):
         qs = qs.filter(assigned_role='')
     elif role:
         qs = qs.filter(assigned_role=role)
+
+    # A recurring task isn't just a ticket — the main-menu "Tickets" link only
+    # ever shows one-off/reactive rows, "Recurring Tasks" only shows
+    # source=recurring ones. A bookmarked/plain /tickets/ URL with no source
+    # param still shows everything, for anyone filtering by department/status
+    # across both kinds at once.
+    source = request.GET.get('source', '')
+    if source == 'reactive':
+        qs = qs.exclude(source=Ticket.Source.RECURRING)
+    elif source == 'recurring':
+        qs = qs.filter(source=Ticket.Source.RECURRING)
+
     return render(request, 'tickets/ticket_list.html', {
         'tickets': qs,
         'now': timezone.now(),
@@ -296,6 +315,7 @@ def ticket_list(request):
         'selected_status': status,
         'selected_role': role,
         'selected_role_label': dict(StaffProfile.Role.choices).get(role) if role else None,
+        'selected_source': source,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
         'properties': property_dropdown_queryset(),
@@ -384,7 +404,11 @@ def ticket_delete(request, pk):
 @login_required
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
-        Ticket.objects.select_related('property', 'assigned_staff__user', 'assigned_contact'), pk=pk,
+        Ticket.objects.select_related(
+            'property', 'assigned_staff__user', 'assigned_contact', 'created_from_template',
+            'template_occurrence', 'package_run__package',
+        ),
+        pk=pk,
     )
     reassign_form = ReassignForm(initial={
         'assigned_role': ticket.assigned_role,
@@ -392,6 +416,33 @@ def ticket_detail(request, pk):
         'assigned_contact': ticket.assigned_contact_id,
     })
     followup_form = FollowUpForm()
+
+    package_siblings = []
+    blocking_step_label = ''
+    if ticket.package_run_id:
+        package_siblings = list(
+            ticket.package_run.tickets.select_related('property', 'created_from_template')
+            .order_by('created_from_template__title')
+        )
+        if ticket.status == Ticket.Status.BLOCKED and ticket.created_from_template_id:
+            this_step = TaskPackageTemplate.objects.filter(
+                package=ticket.package_run.package_id, template=ticket.created_from_template_id,
+            ).select_related('depends_on__template').first()
+            if this_step and this_step.depends_on_id:
+                blocking_step_label = this_step.depends_on.template.title
+
+    occurrence_siblings = []
+    if ticket.template_occurrence_id:
+        occurrence_siblings = list(
+            ticket.template_occurrence.tickets.select_related('property').order_by('property__name')
+        )
+
+    can_approve = bool(
+        ticket.created_from_template_id and ticket.created_from_template.requires_approval
+        and getattr(getattr(request.user, 'staff_profile', None), 'role', None)
+        == ticket.created_from_template.approval_role
+    )
+
     return render(request, 'tickets/ticket_detail.html', {
         'ticket': ticket,
         'reassign_form': reassign_form,
@@ -400,11 +451,17 @@ def ticket_detail(request, pk):
         'ticket_contacts': ticket.ticket_contacts.select_related('contact').all(),
         'assignment_logs': ticket.assignment_logs.all()[:10],
         'followups': ticket.followups.all()[:10],
+        'checklist_items': ticket.checklist_items.all(),
+        'package_siblings': package_siblings,
+        'blocking_step_label': blocking_step_label,
+        'occurrence_siblings': occurrence_siblings,
+        'can_approve': can_approve,
         'vendor_link': request.build_absolute_uri(
             f'/vendor/t/{ticket.completion_token}/'
         ) if ticket.assigned_contact_id else None,
         'status_choices': Ticket.Status.choices,
         'properties': property_dropdown_queryset(),
+        'now': timezone.now(),
     })
 
 
@@ -502,7 +559,31 @@ def ticket_set_status(request, pk):
     if request.method == 'POST':
         new_status = request.POST.get('status')
         if new_status in Ticket.Status.values:
+            status_reason = request.POST.get('status_reason', '').strip()
+            if new_status in Ticket.REASON_REQUIRED_STATUSES and not status_reason:
+                messages.error(
+                    request,
+                    f'{dict(Ticket.Status.choices)[new_status]} needs a reason — nothing was changed.',
+                )
+                if 'next_qs' in request.POST:
+                    return _list_redirect(request)
+                return redirect('ticket_detail', pk=ticket.pk)
+
+            template = ticket.created_from_template
+            if new_status == Ticket.Status.VERIFIED and template and template.requires_approval:
+                user_role = getattr(getattr(request.user, 'staff_profile', None), 'role', None)
+                if user_role != template.approval_role:
+                    messages.error(
+                        request,
+                        f'Only {dict(StaffProfile.Role.choices).get(template.approval_role, template.approval_role)} '
+                        'can approve this — nothing was changed.',
+                    )
+                    if 'next_qs' in request.POST:
+                        return _list_redirect(request)
+                    return redirect('ticket_detail', pk=ticket.pk)
+
             ticket.status = new_status
+            ticket.status_reason = status_reason
             if new_status == Ticket.Status.COMPLETED:
                 ticket.completed_at = timezone.now()
             if new_status == Ticket.Status.CANCELLED:
@@ -512,10 +593,25 @@ def ticket_set_status(request, pk):
             if resolution_notes:
                 ticket.resolution_notes = resolution_notes
             ticket.save()
+            if new_status in Ticket.DEPENDENCY_SATISFYING_STATUSES:
+                unblock_dependents(ticket)
             messages.success(request, f'Status updated to {ticket.get_status_display()}.')
     if 'next_qs' in request.POST:
         return _list_redirect(request)
     return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_checklist_toggle(request, pk):
+    """Toggles one TicketChecklistItem's checked state from the ticket
+    detail page's checklist card — self-submitting, onchange="this.form.submit()"."""
+    item = get_object_or_404(TicketChecklistItem, pk=pk)
+    if request.method == 'POST':
+        item.is_checked = not item.is_checked
+        item.checked_at = timezone.now() if item.is_checked else None
+        item.checked_by = request.user if item.is_checked else None
+        item.save(update_fields=['is_checked', 'checked_at', 'checked_by'])
+    return redirect('ticket_detail', pk=item.ticket_id)
 
 
 @login_required

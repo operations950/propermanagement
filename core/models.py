@@ -106,6 +106,46 @@ class StaffProfile(models.Model):
         return self.user.get_full_name() or self.user.username
 
 
+class PropertyAttribute(models.Model):
+    """A tag catalog for property characteristics — services provided,
+    physical features, jurisdiction/compliance requirements, or anything
+    else operationally relevant. Deliberately one flexible model instead of
+    fixed booleans: staff can add a new attribute in admin (e.g. a new
+    jurisdiction, a new inspection requirement) without a code change, and
+    recurring task templates can require one to auto-apply — see
+    tickets.services.applicability."""
+    class Category(models.TextChoices):
+        SERVICE = 'service', 'Service provided'
+        PHYSICAL = 'physical', 'Physical characteristic'
+        COMPLIANCE = 'compliance', 'Jurisdiction / compliance'
+        OTHER = 'other', 'Other'
+
+    key = models.SlugField(max_length=60, unique=True)
+    label = models.CharField(max_length=120)
+    category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['category', 'label']
+
+    def __str__(self):
+        return self.label
+
+
+class PropertyAttributeAssignment(models.Model):
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='attribute_assignments')
+    attribute = models.ForeignKey(PropertyAttribute, on_delete=models.CASCADE, related_name='property_assignments')
+    note = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('property', 'attribute')]
+
+    def __str__(self):
+        return f'{self.property} — {self.attribute}'
+
+
 class GoogleCalendarToken(models.Model):
     """One staff member's own connected Google Calendar (their personal
     account, not the business's shared calendar — see intake/adapters and

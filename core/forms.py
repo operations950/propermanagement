@@ -1,6 +1,30 @@
 from django import forms
 
-from .models import Property
+from tickets.models import PropertyTemplateOverride
+
+from .models import Property, StaffProfile
+
+
+class PropertyTemplateOverrideForm(forms.ModelForm):
+    """Validates the property recurring-task review screen's per-row
+    "adjust" action — every field is optional, since a blank field just
+    means "use the template's default" (see tickets.services.applicability
+    .effective_settings)."""
+    class Meta:
+        model = PropertyTemplateOverride
+        fields = ['frequency', 'workday_of_month', 'assigned_role', 'assigned_staff']
+        labels = {
+            'frequency': 'Frequency override',
+            'workday_of_month': 'Workday of month override',
+            'assigned_role': 'Department override',
+            'assigned_staff': 'Assignee override',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in self.fields:
+            self.fields[name].required = False
+        self.fields['assigned_staff'].queryset = StaffProfile.objects.select_related('user')
 
 
 class PropertyForm(forms.ModelForm):
