@@ -178,11 +178,39 @@
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="contact" class="icon"></i> Related contacts</h6>
-                <ul class="list-unstyled mb-0">
-                {% for tc in ticket_contacts %}
-                    <li>{{ tc.contact }} — <span class="text-muted">{{ tc.get_role_display }}</span></li>
-                {% empty %}<li class="text-muted">None linked.</li>{% endfor %}
-                </ul>
+                <p class="small text-muted mb-2">Suggested from this ticket's reporter, our staff, and contacts tied to{% if ticket.property %} {{ ticket.property.name }}{% else %} its property{% endif %}.</p>
+                <form method="post" action="{% url 'ticket_set_contacts' ticket.pk %}">
+                    {% csrf_token %}
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="contact_ids" data-initial-values="{{ linked_contact_ids }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="No related contacts yet"></div>
+                        {% if reporter_contact %}
+                        <div class="small text-muted mb-1">Reporter</div>
+                        <div class="bubble-pool mb-2" data-bubble-pool>
+                            <button type="button" class="bubble" data-value="{{ reporter_contact.pk }}" data-label="{{ reporter_contact.name }}">{{ reporter_contact.name }}</button>
+                        </div>
+                        {% endif %}
+                        {% if staff_contacts %}
+                        <div class="small text-muted mb-1">Staff</div>
+                        <div class="bubble-pool mb-2" data-bubble-pool>
+                            {% for c in staff_contacts %}
+                                <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if property_contacts %}
+                        <div class="small text-muted mb-1">{{ ticket.property.name|default:'Property' }} contacts</div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for c in property_contacts %}
+                                <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if not reporter_contact and not staff_contacts and not property_contacts %}
+                        <p class="text-muted small mb-0">No suggested contacts yet — set a property or link a reporter to see suggestions here.</p>
+                        {% endif %}
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Save contacts</button>
+                </form>
             </div>
         </div>
     </div>

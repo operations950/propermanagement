@@ -13,6 +13,7 @@ urlpatterns = [
     path('tickets/<int:pk>/', views.ticket_detail, name='ticket_detail'),
     path('tickets/<int:pk>/reassign/', views.ticket_reassign, name='ticket_reassign'),
     path('tickets/<int:pk>/property/', views.ticket_set_property, name='ticket_set_property'),
+    path('tickets/<int:pk>/contacts/', views.ticket_set_contacts, name='ticket_set_contacts'),
     path('tickets/<int:pk>/title/', views.ticket_set_title, name='ticket_set_title'),
     path('tickets/<int:pk>/status/', views.ticket_set_status, name='ticket_set_status'),
     path('tickets/<int:pk>/close-no-followup/', views.ticket_close_no_followup, name='ticket_close_no_followup'),

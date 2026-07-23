@@ -415,6 +415,39 @@ def _followup_parties(ticket):
     return list(parties.values())
 
 
+def _related_contact_pools(ticket, linked_ticket_contacts):
+    """Scoped suggestions for the Related contacts bubble picker — not
+    every Contact site-wide, just the reporter (if one's linked), our own
+    staff-adjacent contacts, and anyone else tied to this ticket's
+    property, so a few clicks covers the realistic set. Deduped so a
+    contact who fits more than one bucket (e.g. the reporter is also
+    property-linked) only shows up once, in its highest-priority bucket."""
+    seen_ids = set()
+    reporter_tc = next((tc for tc in linked_ticket_contacts if tc.role == TicketContact.Role.REPORTER), None)
+    reporter_contact = reporter_tc.contact if reporter_tc else None
+    if reporter_contact:
+        seen_ids.add(reporter_contact.pk)
+
+    staff_contacts = []
+    for c in Contact.objects.filter(contact_type=Contact.ContactType.STAFF_ADJACENT):
+        if c.pk not in seen_ids:
+            staff_contacts.append(c)
+            seen_ids.add(c.pk)
+
+    property_contacts = []
+    if ticket.property_id:
+        for c in ticket.property.contacts.all():
+            if c.pk not in seen_ids:
+                property_contacts.append(c)
+                seen_ids.add(c.pk)
+
+    return {
+        'reporter_contact': reporter_contact,
+        'staff_contacts': staff_contacts,
+        'property_contacts': property_contacts,
+    }
+
+
 def _group_followups(followups):
     """One entry per batch_id (everything created by a single Follow-Up
     "Send" click) — followups is already ordered -sent_at, and every row
@@ -460,6 +493,8 @@ def ticket_detail(request, pk):
         'assigned_contact': ticket.assigned_contact_id,
     })
     followup_parties = _followup_parties(ticket)
+    linked_ticket_contacts = list(ticket.ticket_contacts.select_related('contact').all())
+    contact_pools = _related_contact_pools(ticket, linked_ticket_contacts)
 
     package_siblings = []
     blocking_step_label = ''
@@ -493,7 +528,11 @@ def ticket_detail(request, pk):
         'followup_text_parties': [c for c in followup_parties if c.phone],
         'followup_email_parties': [c for c in followup_parties if c.email],
         'attachments': ticket.attachments.all().order_by('-created_at'),
-        'ticket_contacts': ticket.ticket_contacts.select_related('contact').all(),
+        'ticket_contacts': linked_ticket_contacts,
+        'reporter_contact': contact_pools['reporter_contact'],
+        'staff_contacts': contact_pools['staff_contacts'],
+        'property_contacts': contact_pools['property_contacts'],
+        'linked_contact_ids': ','.join(str(tc.contact_id) for tc in linked_ticket_contacts),
         'assignment_logs': ticket.assignment_logs.all()[:10],
         'followup_batches': _group_followups(ticket.followups.select_related('contact')[:30]),
         'checklist_items': ticket.checklist_items.all(),
@@ -672,6 +711,29 @@ def ticket_set_property(request, pk):
         return _list_redirect(request)
     if request.POST.get('next') == 'pending':
         return redirect('ticket_pending')
+    return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_set_contacts(request, pk):
+    """Syncs this ticket's TicketContact links to whatever's locked in the
+    Related contacts bubble picker — new ids get linked (role=OTHER, unless
+    one was already the reporter, which is left untouched below since it's
+    simply not re-created), ids that dropped out of the submitted set get
+    unlinked. Mirrors Contact.properties' lock-to-add/unlock-to-remove
+    bubble convention rather than a plain additive picker."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        contact_ids = {int(v) for v in request.POST.getlist('contact_ids') if v.isdigit()}
+        existing = {tc.contact_id: tc for tc in ticket.ticket_contacts.all()}
+        for contact_id, tc in existing.items():
+            if contact_id not in contact_ids:
+                tc.delete()
+        for contact_id in contact_ids:
+            if contact_id not in existing:
+                TicketContact.objects.get_or_create(
+                    ticket=ticket, contact_id=contact_id, defaults={'role': TicketContact.Role.OTHER},
+                )
     return redirect('ticket_detail', pk=ticket.pk)
 
 
