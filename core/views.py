@@ -4,14 +4,18 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from tickets.models import Frequency, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate, TicketTemplate
 from tickets.services import applicability
 
 from . import google_calendar
-from .forms import PropertyForm, PropertyTemplateOverrideForm
-from .models import GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, StaffProfile
+from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
+from .models import (
+    Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
+    PropertyAttributeAssignment, StaffProfile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +143,132 @@ def property_edit(request, pk):
             return redirect('property_list')
     else:
         form = PropertyForm(instance=prop)
-    return render(request, 'core/property_form.html', {'form': form, 'is_new': False, 'property': prop})
+    return render(request, 'core/property_form.html', {
+        'form': form, 'is_new': False, 'property': prop, 'property_contacts': prop.contacts.all(),
+    })
+
+
+@login_required
+def contact_list(request):
+    qs = Contact.objects.select_related('property')
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(email__icontains=q))
+    selected_type = request.GET.get('type', '')
+    if selected_type:
+        qs = qs.filter(contact_type=selected_type)
+    qs = qs.order_by('name')
+
+    return render(request, 'core/contact_list.html', {
+        'contacts': qs,
+        'type_choices': Contact.ContactType.choices,
+        'q': q,
+        'selected_type': selected_type,
+        'pending_review_count': ContactImportCandidate.objects.filter(
+            status=ContactImportCandidate.Status.PENDING,
+        ).count(),
+    })
+
+
+@login_required
+def contact_create(request):
+    initial = {}
+    property_id = request.GET.get('property')
+    if property_id:
+        initial['property'] = property_id
+    if request.method == 'POST':
+        form = ContactForm(request.POST)
+        if form.is_valid():
+            contact = form.save()
+            messages.success(request, f'Contact "{contact.name}" created.')
+            if property_id:
+                return redirect('property_edit', pk=property_id)
+            return redirect('contact_list')
+    else:
+        form = ContactForm(initial=initial)
+    return render(request, 'core/contact_form.html', {'form': form, 'is_new': True})
+
+
+@login_required
+def contact_edit(request, pk):
+    contact = get_object_or_404(Contact, pk=pk)
+    if request.method == 'POST':
+        form = ContactForm(request.POST, instance=contact)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Contact "{contact.name}" updated.')
+            return redirect('contact_list')
+    else:
+        form = ContactForm(instance=contact)
+    return render(request, 'core/contact_form.html', {'form': form, 'is_new': False, 'contact': contact})
+
+
+@login_required
+def contact_review(request):
+    candidates = ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
+    return render(request, 'core/contact_review.html', {
+        'candidates': candidates,
+        'type_choices': Contact.ContactType.choices,
+        'properties': Property.objects.filter(is_active=True).order_by('name'),
+    })
+
+
+def _candidate_dupe(candidate):
+    """A Contact already matching this candidate's phone or email, if any —
+    checked again at approval time (not just at import time) in case
+    something else created a matching Contact in the meantime."""
+    lookup = Q()
+    if candidate.phone:
+        lookup |= Q(phone=candidate.phone)
+    if candidate.email:
+        lookup |= Q(email=candidate.email)
+    if not lookup:
+        return None
+    return Contact.objects.filter(lookup).first()
+
+
+@login_required
+def contact_review_approve(request, pk):
+    candidate = get_object_or_404(ContactImportCandidate, pk=pk, status=ContactImportCandidate.Status.PENDING)
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip() or candidate.name
+        phone = request.POST.get('phone', '').strip()
+        email = request.POST.get('email', '').strip()
+        contact_type = request.POST.get('contact_type') or candidate.suggested_contact_type
+        trade = request.POST.get('trade', '').strip()
+        property_id = request.POST.get('property_id') or None
+
+        candidate.name, candidate.phone, candidate.email = name, phone, email
+        existing = _candidate_dupe(candidate)
+        if existing:
+            contact = existing
+        else:
+            contact = Contact.objects.create(
+                name=name, phone=phone, email=email, contact_type=contact_type, trade=trade,
+                property_id=property_id, source=candidate.source,
+            )
+        candidate.status = ContactImportCandidate.Status.APPROVED
+        candidate.resolved_at = timezone.now()
+        candidate.resolved_by = request.user
+        candidate.resolved_contact = contact
+        candidate.save()
+        messages.success(
+            request,
+            f'Approved — {"linked to existing" if existing else "created"} contact "{contact.name}".',
+        )
+    return redirect('contact_review')
+
+
+@login_required
+def contact_review_reject(request, pk):
+    candidate = get_object_or_404(ContactImportCandidate, pk=pk, status=ContactImportCandidate.Status.PENDING)
+    if request.method == 'POST':
+        candidate.status = ContactImportCandidate.Status.REJECTED
+        candidate.resolved_at = timezone.now()
+        candidate.resolved_by = request.user
+        candidate.save()
+        messages.success(request, f'Rejected "{candidate.name}".')
+    return redirect('contact_review')
 
 
 def _template_source_label(template, prop, override, assigned_attribute_ids):

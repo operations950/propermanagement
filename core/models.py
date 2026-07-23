@@ -69,6 +69,11 @@ class Contact(models.Model):
         STAFF_ADJACENT = 'staff_adjacent', 'Staff-adjacent'
         OTHER = 'other', 'Other'
 
+    class Source(models.TextChoices):
+        MANUAL = 'manual', 'Manual'
+        QUO = 'quo', 'Quo'
+        GMAIL = 'gmail', 'Gmail'
+
     name = models.CharField(max_length=200)
     contact_type = models.CharField(max_length=20, choices=ContactType.choices, default=ContactType.OTHER)
     trade = models.CharField(
@@ -81,6 +86,10 @@ class Contact(models.Model):
         Property, on_delete=models.SET_NULL, null=True, blank=True, related_name='contacts',
         help_text='Optional: the property this contact is primarily associated with (e.g. a tenant or a guest).',
     )
+    source = models.CharField(
+        max_length=20, choices=Source.choices, default=Source.MANUAL,
+        help_text='Where this contact came from — set automatically, kept for provenance/audit.',
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -89,6 +98,52 @@ class Contact(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.get_contact_type_display()})'
+
+
+class ContactImportCandidate(models.Model):
+    """A contact harvested from a bulk Quo/Gmail import, held here — not in
+    the real Contact table — until a human reviews and approves it. Hard
+    gate by design: nothing from an import is usable anywhere in the app
+    (ticket pickers, property pages, assignment) until it's promoted. See
+    core/views.py's contact_review/_approve/_reject and the
+    import_quo_contacts/import_gmail_contacts management commands.
+
+    Deliberately no unique constraint on phone/email — both are optional
+    here, and dedup against existing Contacts/other pending candidates is
+    a functional check in the importer, not a DB guarantee (same pragmatic
+    approach as the inline add-contact flow on New Ticket)."""
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending review'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    source = models.CharField(max_length=20, choices=Contact.Source.choices)
+    name = models.CharField(max_length=200, blank=True)
+    phone = models.CharField(max_length=30, blank=True)
+    email = models.EmailField(blank=True)
+    trade = models.CharField(max_length=100, blank=True)
+    suggested_contact_type = models.CharField(
+        max_length=20, choices=Contact.ContactType.choices, default=Contact.ContactType.OTHER,
+    )
+    raw_context = models.TextField(
+        blank=True, help_text='Evidence for the reviewer — e.g. the Quo company field or a Gmail subject line.',
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    resolved_contact = models.ForeignKey(
+        Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='Set once approved — the real Contact this candidate became.',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name or self.phone or self.email} ({self.get_source_display()}, {self.get_status_display()})'
 
 
 class StaffProfile(models.Model):

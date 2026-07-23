@@ -199,6 +199,9 @@ RUN_FAKE_ADAPTER = env_bool('RUN_FAKE_ADAPTER', False)
 # static credentials file — see GOOGLE_OAUTH_CLIENT_ID/SECRET below.
 GMAIL_INITIAL_SYNC_DAYS = int(os.environ.get('GMAIL_INITIAL_SYNC_DAYS', '14'))
 GMAIL_POLL_INTERVAL_MINUTES = int(os.environ.get('GMAIL_POLL_INTERVAL_MINUTES', '10'))
+# Separate, wider window for the one-off/periodic import_gmail_contacts command — building a contact
+# base benefits from more history than the live per-thread ticket pipeline needs.
+GMAIL_CONTACT_IMPORT_DAYS = int(os.environ.get('GMAIL_CONTACT_IMPORT_DAYS', '90'))
 QUO_API_KEY = os.environ.get('QUO_API_KEY', '')
 # On the very first sync (no cursor yet), only look back this many days
 # instead of pulling the entire account history — a business with years of

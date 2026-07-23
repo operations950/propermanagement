@@ -12,9 +12,18 @@
             source: {{ ticket.get_source_display }}
         </p>
     </div>
-    <span class="badge rounded-pill bg-{% if ticket.status == 'cancelled' %}secondary{% elif ticket.status == 'completed' or ticket.status == 'verified' %}success{% elif ticket.priority == 'urgent' %}danger{% else %}primary{% endif %} fs-6 px-3 py-2">
-        {{ ticket.get_status_display }}
-    </span>
+    <div class="text-end">
+        <span class="badge rounded-pill bg-{% if ticket.status == 'cancelled' %}secondary{% elif ticket.status == 'completed' or ticket.status == 'verified' %}success{% elif ticket.priority == 'urgent' %}danger{% else %}primary{% endif %} fs-6 px-3 py-2">
+            {{ ticket.get_status_display }}
+        </span>
+        {% if ticket.followup_done %}
+        <div class="mt-1">
+            <span class="badge rounded-pill d-inline-flex align-items-center gap-1" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">
+                <i data-lucide="check-check" class="icon"></i> Followed up
+            </span>
+        </div>
+        {% endif %}
+    </div>
 </div>
 
 {% if ticket|is_escalated:now %}
@@ -216,12 +225,10 @@
 
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="send" class="icon"></i> Report resolution to reporter</h6>
-                <form method="post" action="{% url 'ticket_followup' ticket.pk %}">
-                    {% csrf_token %}
-                    {{ followup_form.as_p }}
-                    <button class="btn btn-success btn-sm" type="submit">Send follow-up</button>
-                </form>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="send" class="icon"></i> Follow-Up</h6>
+                <button type="button" class="btn btn-success btn-sm w-100" data-bs-toggle="modal" data-bs-target="#followupModal">
+                    <i data-lucide="send" class="icon"></i> Follow-Up
+                </button>
                 {% if ticket.status != 'completed' and ticket.status != 'verified' and ticket.status != 'cancelled' %}
                 <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" class="mt-2" onsubmit="return confirm('Mark this ticket complete?');">
                     {% csrf_token %}
@@ -229,12 +236,27 @@
                     <button class="btn btn-outline-success btn-sm w-100" type="submit"><i data-lucide="circle-check-big" class="icon"></i> Mark Complete</button>
                 </form>
                 {% endif %}
-                {% if followups %}
+                {% if followup_batches %}
                 <hr>
                 <small class="text-muted">Recent follow-ups:</small>
-                <ul class="list-unstyled small">
-                {% for f in followups %}
-                    <li>{{ f.sent_at }} — {{ f.get_channel_display }} to {{ f.sent_to }} {% if not f.success %}<span class="text-danger">(failed)</span>{% endif %}</li>
+                <ul class="list-unstyled small mb-0">
+                {% for batch in followup_batches %}
+                    <li class="mb-2">
+                        <a class="text-decoration-none d-flex justify-content-between align-items-center gap-2" data-bs-toggle="collapse" href="#followup-batch-{{ forloop.counter }}" role="button">
+                            <span>
+                                <i data-lucide="{% if batch.channel == 'sms' %}message-circle{% else %}mail{% endif %}" class="icon"></i>
+                                {{ batch.sent_at|date:"M j, g:i A" }} — {{ batch.recipients|join:", " }}
+                                {% if not batch.all_success %}<span class="text-danger">({% if batch.any_success %}partial failure{% else %}failed{% endif %})</span>{% endif %}
+                            </span>
+                            <i data-lucide="chevron-down" class="icon flex-shrink-0"></i>
+                        </a>
+                        <div class="collapse" id="followup-batch-{{ forloop.counter }}">
+                            <div class="p-2 mt-1 rounded" style="background: var(--surface-page);">
+                                {% if batch.subject %}<p class="mb-1"><strong>Subject:</strong> {{ batch.subject }}</p>{% endif %}
+                                <p class="mb-0" style="white-space: pre-wrap;">{{ batch.body }}</p>
+                            </div>
+                        </div>
+                    </li>
                 {% endfor %}
                 </ul>
                 {% endif %}
@@ -254,5 +276,69 @@
         </div>
         {% endif %}
     </div>
+</div>
+
+<div class="modal fade" id="followupModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius: var(--bs-border-radius-lg);">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2"><i data-lucide="send" class="icon"></i> Follow-Up</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-md-6 mb-3 mb-md-0">
+                <h6 class="d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Text</h6>
+                {% if followup_text_parties %}
+                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}"
+                      onsubmit="var n=this.querySelectorAll('input[name=contact_ids]').length; if(!n){alert('Choose at least one recipient first.'); return false;} return confirm('Send this text to ' + n + ' recipient(s)?');">
+                    {% csrf_token %}
+                    <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="No one selected"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for c in followup_text_parties %}
+                            <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <textarea name="body" class="form-control mb-2" rows="4" placeholder="Message…" required></textarea>
+                    <button class="btn btn-primary btn-sm w-100" type="submit">Send Text</button>
+                </form>
+                {% else %}
+                <p class="text-muted small">No party on this ticket has a phone number.</p>
+                {% endif %}
+          </div>
+          <div class="col-md-6">
+                <h6 class="d-flex align-items-center gap-2"><i data-lucide="mail" class="icon"></i> Email</h6>
+                {% if followup_email_parties %}
+                <form method="post" action="{% url 'ticket_followup_email' ticket.pk %}"
+                      onsubmit="var n=this.querySelectorAll('input[name=contact_ids]').length; if(!n){alert('Choose at least one recipient first.'); return false;} return confirm('Send this email to ' + n + ' recipient(s)?');">
+                    {% csrf_token %}
+                    <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="No one selected"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for c in followup_email_parties %}
+                            <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <input type="text" name="subject" class="form-control mb-2" placeholder="Subject" required>
+                    <textarea name="body" class="form-control mb-2" rows="4" placeholder="Message…" required></textarea>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="group" value="1" id="followup-group-check">
+                        <label class="form-check-label small" for="followup-group-check">
+                            Send as one group email (recipients will see each other)
+                        </label>
+                    </div>
+                    <button class="btn btn-primary btn-sm w-100" type="submit">Send Email</button>
+                </form>
+                {% else %}
+                <p class="text-muted small">No party on this ticket has an email address.</p>
+                {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

@@ -20,4 +20,30 @@
         </form>
     </div>
 </div>
+
+{% if not is_new %}
+<div class="card mt-3" style="max-width: 640px; border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-4">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="contact" class="icon"></i> Contacts at this property</h6>
+        {% if property_contacts %}
+        <ul class="list-unstyled mb-3">
+            {% for c in property_contacts %}
+            <li class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                <span>
+                    <a href="{% url 'contact_edit' c.pk %}" class="text-decoration-none">{{ c.name }}</a>
+                    <span class="badge rounded-pill bg-light text-dark border ms-1">{{ c.get_contact_type_display }}</span>
+                </span>
+                <span class="text-muted small">{{ c.phone|default:'' }} {{ c.email|default:'' }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small mb-3">No contacts attached to this property yet.</p>
+        {% endif %}
+        <a href="{% url 'contact_create' %}?property={{ property.pk }}" class="btn btn-outline-secondary btn-sm">
+            <i data-lucide="plus" class="icon"></i> Add contact
+        </a>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

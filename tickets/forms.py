@@ -77,10 +77,3 @@ class ReassignForm(forms.Form):
         if cleaned.get('assigned_staff') and cleaned.get('assigned_contact'):
             raise forms.ValidationError('Choose staff OR a vendor, not both — a role is required either way.')
         return cleaned
-
-
-class FollowUpForm(forms.Form):
-    channel = forms.ChoiceField(choices=[('email', 'Email'), ('sms', 'Text message')])
-    to_override = forms.CharField(
-        required=False, label='Send to (leave blank to use the reporter on file)',
-    )

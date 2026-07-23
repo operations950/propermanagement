@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Contacts{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center my-3">
+    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="contact" class="icon-lg"></i> Contacts</h2>
+    <div class="d-flex gap-2">
+        {% if pending_review_count %}
+        <a href="{% url 'contact_review' %}" class="btn btn-outline-warning d-flex align-items-center gap-1">
+            <i data-lucide="circle-alert" class="icon"></i> {{ pending_review_count }} to review
+        </a>
+        {% endif %}
+        <a href="{% url 'contact_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New contact</a>
+    </div>
+</div>
+
+<form method="get" class="row g-2 mb-3 align-items-center">
+    <div class="col-auto">
+        <input type="text" name="q" class="form-control" placeholder="Search name, phone, or email…" value="{{ q }}">
+    </div>
+    <div class="col-auto">
+        <select name="type" class="form-select" onchange="this.form.submit()">
+            <option value="">All types</option>
+            {% for value, label in type_choices %}
+                <option value="{{ value }}" {% if value == selected_type %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="search" class="icon"></i> Search</button>
+    </div>
+</form>
+
+<div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="table-responsive">
+<table class="table bg-white align-middle mb-0">
+    <thead><tr><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Property</th><th></th></tr></thead>
+    <tbody>
+    {% for c in contacts %}
+        <tr>
+            <td class="fw-medium">{{ c.name }}</td>
+            <td><span class="badge rounded-pill bg-light text-dark border">{{ c.get_contact_type_display }}</span>{% if c.trade %} <span class="text-muted small">{{ c.trade }}</span>{% endif %}</td>
+            <td class="text-muted small">{{ c.phone|default:'—' }}</td>
+            <td class="text-muted small">{{ c.email|default:'—' }}</td>
+            <td class="text-muted small">{% if c.property %}<a href="{% url 'property_edit' c.property_id %}" class="text-decoration-none">{{ c.property.name }}</a>{% else %}—{% endif %}</td>
+            <td class="text-nowrap"><a href="{% url 'contact_edit' c.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a></td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4"><i data-lucide="contact" class="icon-lg d-block mx-auto mb-1"></i>No contacts match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+</div>
+{% endblock %}

@@ -337,6 +337,12 @@ class Ticket(models.Model):
         help_text='Why this was Skipped / Not applicable / Deferred — see REASON_REQUIRED_STATUSES.',
     )
 
+    followup_done = models.BooleanField(
+        default=False,
+        help_text='Set the first time any Follow-Up text or email successfully sends — never reset, '
+                   'so it just means "someone has been contacted at least once," not "up to date."',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -497,10 +503,24 @@ class FollowUpLog(models.Model):
         SMS = 'sms', 'Text message'
 
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='followups')
+    contact = models.ForeignKey(
+        Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='Who this specific row was sent to — null on rows predating this field.',
+    )
     channel = models.CharField(max_length=10, choices=Channel.choices)
     sent_to = models.CharField(max_length=200)
     subject = models.CharField(max_length=200, blank=True)
     body = models.TextField()
+    batch_id = models.UUIDField(
+        default=uuid.uuid4,
+        help_text='Shared by every row created from one Follow-Up "Send" click, so the audit trail can '
+                   'render one line per send-action while keeping per-recipient success/failure.',
+    )
+    is_group = models.BooleanField(
+        default=False,
+        help_text='True only for a combined group email (all recipients in one to: list) — SMS and '
+                   'individual email sends are always False, one physical send per row.',
+    )
     sent_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )

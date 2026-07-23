@@ -1,7 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    Contact, GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, StaffProfile,
+    Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
+    PropertyAttributeAssignment, StaffProfile,
 )
 
 
@@ -28,9 +29,17 @@ class PropertyAttributeAdmin(admin.ModelAdmin):
 
 @admin.register(Contact)
 class ContactAdmin(admin.ModelAdmin):
-    list_display = ['name', 'contact_type', 'trade', 'phone', 'email', 'property']
-    list_filter = ['contact_type']
+    list_display = ['name', 'contact_type', 'trade', 'phone', 'email', 'property', 'source']
+    list_filter = ['contact_type', 'source']
     search_fields = ['name', 'phone', 'email']
+
+
+@admin.register(ContactImportCandidate)
+class ContactImportCandidateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'source', 'phone', 'email', 'status', 'created_at']
+    list_filter = ['source', 'status']
+    search_fields = ['name', 'phone', 'email']
+    readonly_fields = ['created_at', 'resolved_at', 'resolved_by', 'resolved_contact']
 
 
 @admin.register(StaffProfile)

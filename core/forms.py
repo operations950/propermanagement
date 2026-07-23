@@ -2,7 +2,7 @@ from django import forms
 
 from tickets.models import PropertyTemplateOverride
 
-from .models import Property, StaffProfile
+from .models import Contact, Property, StaffProfile
 
 
 class PropertyTemplateOverrideForm(forms.ModelForm):
@@ -46,4 +46,14 @@ class PropertyForm(forms.ModelForm):
                 'Check this only for a business-line placeholder like "Associations (general)" — '
                 'not a real property. Lets a ticket be scoped to a business line without a specific address.'
             ),
+        }
+
+
+class ContactForm(forms.ModelForm):
+    class Meta:
+        model = Contact
+        fields = ['name', 'contact_type', 'trade', 'phone', 'email', 'property', 'notes']
+        labels = {'name': 'Name', 'contact_type': 'Type', 'property': 'Property (optional)'}
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 3}),
         }

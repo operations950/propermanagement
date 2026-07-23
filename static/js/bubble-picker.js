@@ -108,6 +108,72 @@
     }
   }
 
+  // ---- Multi picker (Follow-Up: any number of simultaneous locks) -----
+  // Unlike single/drilldown, there's no one hidden input carrying "the"
+  // value — each locked bubble gets its own dynamically-created hidden
+  // input (name=data-name on the root), so plain request.POST.getlist()
+  // works server-side with zero custom serialization. No auto-unlock of
+  // siblings: any number of bubbles can be locked in the slot at once.
+
+  const multiHiddenInputs = new WeakMap(); // bubble el -> its own hidden <input>
+
+  function initMultiPicker(root) {
+    const name = root.dataset.name;
+    const slot = root.querySelector('[data-bubble-slot]');
+    const pools = Array.from(root.querySelectorAll('[data-bubble-pool]'));
+
+    function lock(bubble, duration) {
+      rememberHome(bubble);
+      flyTo(bubble, slot, null, duration);
+      bubble.classList.add('bubble-locked');
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = name;
+      hidden.value = bubble.dataset.value;
+      root.appendChild(hidden);
+      multiHiddenInputs.set(bubble, hidden);
+      root.dispatchEvent(new CustomEvent('bubble:lock', {
+        detail: { value: bubble.dataset.value, label: bubble.dataset.label },
+      }));
+    }
+
+    function unlock(bubble, duration) {
+      const home = homes.get(bubble);
+      bubble.classList.remove('bubble-locked');
+      if (home) {
+        // Unlike single/drilldown (never more than one locked bubble at a
+        // time), several siblings can be locked simultaneously here — the
+        // remembered "next sibling" may have *also* flown to the slot by
+        // now, which would make it an invalid insertBefore() reference
+        // (throwing, and aborting the rest of this function). Fall back to
+        // appending at the end of the pool when that's happened.
+        const beforeNode = home.next && home.next.parentElement === home.parent ? home.next : null;
+        flyTo(bubble, home.parent, beforeNode, duration);
+      }
+      const hidden = multiHiddenInputs.get(bubble);
+      if (hidden) {
+        hidden.remove();
+        multiHiddenInputs.delete(bubble);
+      }
+      root.dispatchEvent(new CustomEvent('bubble:unlock'));
+    }
+
+    pools.forEach(function (pool) {
+      pool.addEventListener('click', function (e) {
+        const bubble = e.target.closest('.bubble');
+        if (!bubble) return;
+        lock(bubble);
+      });
+    });
+
+    slot.addEventListener('click', function (e) {
+      const bubble = e.target.closest('.bubble');
+      if (bubble) unlock(bubble);
+    });
+
+    root._bubbleApi = { lock: lock, unlock: unlock };
+  }
+
   // ---- Drilldown picker (Property: type -> [city ->] property) --------
 
   function initDrilldownPicker(root) {
@@ -295,6 +361,7 @@
   function init() {
     document.querySelectorAll('[data-bubble-picker]').forEach(function (root) {
       if (root.dataset.mode === 'drilldown') initDrilldownPicker(root);
+      else if (root.dataset.mode === 'multi') initMultiPicker(root);
       else initSinglePicker(root);
     });
     document.querySelectorAll('[data-contact-filter]').forEach(initContactFilter);

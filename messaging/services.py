@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -77,3 +78,65 @@ def send_followup(ticket, channel, to_override=None, user=None, custom_body=None
 
     log.save()
     return log
+
+
+def send_followup_bulk(ticket, channel, contact_ids, body, subject='', group=False, user=None):
+    """The Follow-Up modal's send action — any number of recipients, one
+    FollowUpLog row per contact (even for a combined group email) so "who
+    did I message and when" stays per-contact, all sharing one batch_id so
+    the audit trail can render one line per Send click. Recipients missing
+    the relevant channel's field are silently dropped (defensive — the UI
+    only ever offers eligible bubbles to begin with)."""
+    from core.models import Contact
+
+    contacts = list(Contact.objects.filter(pk__in=contact_ids))
+    if channel == FollowUpLog.Channel.SMS:
+        contacts = [c for c in contacts if c.phone]
+    else:
+        contacts = [c for c in contacts if c.email]
+    if not contacts:
+        return []
+
+    batch_id = uuid.uuid4()
+    logs = []
+
+    if channel == FollowUpLog.Channel.EMAIL and group:
+        try:
+            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [c.email for c in contacts])
+            success, error = True, ''
+        except Exception as exc:
+            success, error = False, str(exc)[:300]
+            logger.exception('Follow-up group email failed for ticket %s', ticket.pk)
+        for contact in contacts:
+            logs.append(FollowUpLog(
+                ticket=ticket, contact=contact, channel=channel, sent_to=contact.email,
+                subject=subject, body=body, batch_id=batch_id, is_group=True,
+                sent_by=user, success=success, error_message=error,
+            ))
+    else:
+        for contact in contacts:
+            sent_to, success, error = '', True, ''
+            try:
+                if channel == FollowUpLog.Channel.SMS:
+                    sent_to = contact.phone
+                    get_sms_backend().send(sent_to, body)
+                else:
+                    sent_to = contact.email
+                    send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [sent_to])
+            except Exception as exc:
+                success, error = False, str(exc)[:300]
+                logger.exception('Follow-up send failed for ticket %s contact %s', ticket.pk, contact.pk)
+            logs.append(FollowUpLog(
+                ticket=ticket, contact=contact, channel=channel, sent_to=sent_to,
+                subject=subject, body=body, batch_id=batch_id, is_group=False,
+                sent_by=user, success=success, error_message=error,
+            ))
+
+    for log in logs:
+        log.save()
+
+    if any(log.success for log in logs) and not ticket.followup_done:
+        ticket.followup_done = True
+        ticket.save(update_fields=['followup_done'])
+
+    return logs

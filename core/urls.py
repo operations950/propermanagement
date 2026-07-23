@@ -10,4 +10,10 @@ urlpatterns = [
     path('properties/new/', views.property_create, name='property_create'),
     path('properties/<int:pk>/edit/', views.property_edit, name='property_edit'),
     path('properties/<int:pk>/recurring-tasks/', views.property_recurring_tasks, name='property_recurring_tasks'),
+    path('contacts/', views.contact_list, name='contact_list'),
+    path('contacts/new/', views.contact_create, name='contact_create'),
+    path('contacts/<int:pk>/edit/', views.contact_edit, name='contact_edit'),
+    path('contacts/review/', views.contact_review, name='contact_review'),
+    path('contacts/review/<int:pk>/approve/', views.contact_review_approve, name='contact_review_approve'),
+    path('contacts/review/<int:pk>/reject/', views.contact_review_reject, name='contact_review_reject'),
 ]

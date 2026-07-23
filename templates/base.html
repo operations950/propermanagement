@@ -164,6 +164,7 @@
                     <a class="nav-link {% if request.resolver_match.url_name == 'ticket_list' and request.GET.source == 'recurring' %}active{% endif %}" href="{% url 'ticket_list' %}?source=recurring"><i data-lucide="repeat" class="icon"></i> Recurring Tasks</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'ticket_pending' %}active{% endif %}" href="{% url 'ticket_pending' %}"><i data-lucide="inbox" class="icon"></i> Pending</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts</a>
                     <a class="nav-link" href="{% url 'supplies:digest' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
                     <a class="nav-link" href="/admin/"><i data-lucide="shield" class="icon"></i> Admin</a>
 
@@ -174,6 +175,7 @@
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: var(--bs-border-radius);">
                             <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'ticket_create' %}"><i data-lucide="ticket" class="icon"></i> New ticket</a></li>
                             <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'property_create' %}"><i data-lucide="building-2" class="icon"></i> New property</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'contact_create' %}"><i data-lucide="contact" class="icon"></i> New contact</a></li>
                         </ul>
                     </div>
 

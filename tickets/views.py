@@ -12,9 +12,9 @@ from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
 from core.models import Contact, Property, StaffProfile, property_dropdown_queryset
-from messaging.services import send_followup as send_followup_message
+from messaging.services import send_followup_bulk
 
-from .forms import FollowUpForm, ReassignForm, TicketForm
+from .forms import ReassignForm, TicketForm
 from .models import FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact
 from .services.package_engine import unblock_dependents
 
@@ -402,6 +402,49 @@ def ticket_delete(request, pk):
     return _list_redirect(request)
 
 
+def _followup_parties(ticket):
+    """Every real person attached to this ticket, for the Follow-Up modal's
+    bubble pools — the reporter/cc/other TicketContact links plus the
+    assigned vendor contact if set (a contractor is a party too),
+    deduped by contact id."""
+    parties = {}
+    for tc in ticket.ticket_contacts.select_related('contact').all():
+        parties[tc.contact_id] = tc.contact
+    if ticket.assigned_contact_id:
+        parties[ticket.assigned_contact_id] = ticket.assigned_contact
+    return list(parties.values())
+
+
+def _group_followups(followups):
+    """One entry per batch_id (everything created by a single Follow-Up
+    "Send" click) — followups is already ordered -sent_at, and every row
+    in one batch is created back-to-back in the same request, so rows for
+    a batch are always contiguous in that ordering."""
+    batches, order = {}, []
+    for log in followups:
+        if log.batch_id not in batches:
+            batches[log.batch_id] = []
+            order.append(log.batch_id)
+        batches[log.batch_id].append(log)
+    result = []
+    for batch_id in order:
+        logs = batches[batch_id]
+        first = logs[0]
+        result.append({
+            'logs': logs,
+            'channel': first.channel,
+            'sent_at': first.sent_at,
+            'sent_by': first.sent_by,
+            'subject': first.subject,
+            'body': first.body,
+            'is_group': first.is_group,
+            'recipients': [log.contact.name if log.contact else log.sent_to for log in logs],
+            'all_success': all(log.success for log in logs),
+            'any_success': any(log.success for log in logs),
+        })
+    return result
+
+
 @login_required
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
@@ -416,7 +459,7 @@ def ticket_detail(request, pk):
         'assigned_staff': ticket.assigned_staff_id,
         'assigned_contact': ticket.assigned_contact_id,
     })
-    followup_form = FollowUpForm()
+    followup_parties = _followup_parties(ticket)
 
     package_siblings = []
     blocking_step_label = ''
@@ -447,11 +490,12 @@ def ticket_detail(request, pk):
     return render(request, 'tickets/ticket_detail.html', {
         'ticket': ticket,
         'reassign_form': reassign_form,
-        'followup_form': followup_form,
+        'followup_text_parties': [c for c in followup_parties if c.phone],
+        'followup_email_parties': [c for c in followup_parties if c.email],
         'attachments': ticket.attachments.all().order_by('-created_at'),
         'ticket_contacts': ticket.ticket_contacts.select_related('contact').all(),
         'assignment_logs': ticket.assignment_logs.all()[:10],
-        'followups': ticket.followups.all()[:10],
+        'followup_batches': _group_followups(ticket.followups.select_related('contact')[:30]),
         'checklist_items': ticket.checklist_items.all(),
         'package_siblings': package_siblings,
         'blocking_step_label': blocking_step_label,
@@ -733,19 +777,49 @@ def ticket_close_no_followup(request, pk):
     return redirect('dashboard')
 
 
+def _followup_result_message(request, logs, recipient_noun):
+    succeeded = sum(1 for log in logs if log.success)
+    failed = len(logs) - succeeded
+    if not logs:
+        messages.error(request, 'Nothing sent — no eligible recipient was selected.')
+    elif failed == 0:
+        messages.success(request, f'Sent to {succeeded} {recipient_noun}.')
+    elif succeeded == 0:
+        messages.error(request, f'Failed to send to all {failed} {recipient_noun}.')
+    else:
+        messages.warning(request, f'Sent to {succeeded} {recipient_noun}, failed for {failed}.')
+
+
 @login_required
-def ticket_followup(request, pk):
+def ticket_followup_sms(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
-        form = FollowUpForm(request.POST)
-        if form.is_valid():
-            log = send_followup_message(
-                ticket, form.cleaned_data['channel'],
-                to_override=form.cleaned_data.get('to_override') or None,
-                user=request.user,
+        contact_ids = request.POST.getlist('contact_ids')
+        body = request.POST.get('body', '').strip()
+        if contact_ids and body:
+            logs = send_followup_bulk(
+                ticket, FollowUpLog.Channel.SMS, contact_ids, body, user=request.user,
             )
-            if log.success:
-                messages.success(request, f'Follow-up sent via {log.get_channel_display()} to {log.sent_to}.')
-            else:
-                messages.error(request, f'Follow-up failed: {log.error_message}')
+            _followup_result_message(request, logs, 'recipient(s) by text')
+        else:
+            messages.error(request, 'Choose at least one recipient and write a message first.')
+    return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_followup_email(request, pk):
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        contact_ids = request.POST.getlist('contact_ids')
+        subject = request.POST.get('subject', '').strip()
+        body = request.POST.get('body', '').strip()
+        group = request.POST.get('group') == '1'
+        if contact_ids and body:
+            logs = send_followup_bulk(
+                ticket, FollowUpLog.Channel.EMAIL, contact_ids, body, subject=subject,
+                group=group, user=request.user,
+            )
+            _followup_result_message(request, logs, 'recipient(s) by email')
+        else:
+            messages.error(request, 'Choose at least one recipient and write a message first.')
     return redirect('ticket_detail', pk=ticket.pk)

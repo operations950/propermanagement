@@ -21,5 +21,6 @@ urlpatterns = [
     path('tickets/<int:pk>/assignee/', views.ticket_set_assignee, name='ticket_set_assignee'),
     path('tickets/<int:pk>/due-date/', views.ticket_set_due_date, name='ticket_set_due_date'),
     path('tickets/<int:pk>/delete/', views.ticket_delete, name='ticket_delete'),
-    path('tickets/<int:pk>/followup/', views.ticket_followup, name='ticket_followup'),
+    path('tickets/<int:pk>/followup/sms/', views.ticket_followup_sms, name='ticket_followup_sms'),
+    path('tickets/<int:pk>/followup/email/', views.ticket_followup_email, name='ticket_followup_email'),
 ]
