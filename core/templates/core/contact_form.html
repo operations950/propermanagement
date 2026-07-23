@@ -47,13 +47,41 @@
 
             <div class="mb-4">
                 <label class="form-label fw-medium d-block">Properties <span class="fw-normal" style="color: var(--ink-muted);">(optional — a contact can be on more than one, e.g. a board member)</span></label>
-                <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="properties" data-initial-values="{{ selected_property_ids }}">
+                <div class="bubble-picker" data-bubble-picker data-mode="drilldown-multi" data-name="properties" data-initial-values="{{ selected_property_ids }}">
                     <div class="bubble-slot" data-bubble-slot data-empty-text="No properties selected"></div>
-                    <div class="bubble-pool" data-bubble-pool>
-                        {% for p in properties %}
-                        <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                    <div class="bubble-pool" data-bubble-pool data-tier="1">
+                        {% for entry in properties_by_type %}
+                            <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
                         {% endfor %}
                     </div>
+                    {% for entry in properties_by_type %}
+                        {% if entry.needs_city_tier %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                                <button type="button" class="bubble" data-back>← Other property type</button>
+                                {% for city_entry in entry.cities %}
+                                    <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                                {% endfor %}
+                            </div>
+                            {% for city_entry in entry.cities %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                                <button type="button" class="bubble" data-back>← Other property type</button>
+                                {% if city_entry.needs_filter %}
+                                    <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                                {% endif %}
+                                {% for p in city_entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                                <button type="button" class="bubble" data-back>← Other property type</button>
+                                {% for p in entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
                 </div>
             </div>
 

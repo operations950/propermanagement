@@ -282,6 +282,108 @@
     }
   }
 
+  // ---- Drilldown-multi picker (Contact's Properties: type -> property, ---
+  // any number of locks, possibly spanning more than one type — e.g. a
+  // board member on boards at two different associations) -------------
+  // Combines drilldown's type-first navigation with multi's "each locked
+  // bubble gets its own hidden input, no auto-unlock of siblings" behavior.
+  // Since only one tier-2 pool is shown at a time, a bubble tagged
+  // data-back in that pool (rendered first, styled distinctly in CSS)
+  // jumps back to tier-1 instead of locking, so a second/third property
+  // from a *different* type is reachable without unlocking anything.
+
+  function initDrilldownMultiPicker(root) {
+    const name = root.dataset.name;
+    const slot = root.querySelector('[data-bubble-slot]');
+    const tier1 = root.querySelector('[data-bubble-pool][data-tier="1"]');
+    const tier15Pools = Array.from(root.querySelectorAll('[data-bubble-pool][data-tier="1.5"]'));
+    const tier2Pools = Array.from(root.querySelectorAll('[data-bubble-pool][data-tier="2"]'));
+    const allPools = [tier1].concat(tier15Pools, tier2Pools);
+
+    function showOnly(poolToShow) {
+      allPools.forEach(function (p) {
+        if (p) p.hidden = p !== poolToShow;
+      });
+    }
+
+    function lock(bubble, duration) {
+      rememberHome(bubble);
+      flyTo(bubble, slot, null, duration);
+      bubble.classList.add('bubble-locked');
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = name;
+      hidden.value = bubble.dataset.value;
+      root.appendChild(hidden);
+      multiHiddenInputs.set(bubble, hidden);
+      root.dispatchEvent(new CustomEvent('bubble:lock', {
+        detail: { value: bubble.dataset.value, label: bubble.dataset.label },
+      }));
+    }
+
+    function unlock(bubble, duration) {
+      const home = homes.get(bubble);
+      bubble.classList.remove('bubble-locked');
+      if (home) {
+        const beforeNode = home.next && home.next.parentElement === home.parent ? home.next : null;
+        flyTo(bubble, home.parent, beforeNode, duration);
+      }
+      const hidden = multiHiddenInputs.get(bubble);
+      if (hidden) {
+        hidden.remove();
+        multiHiddenInputs.delete(bubble);
+      }
+      root.dispatchEvent(new CustomEvent('bubble:unlock'));
+    }
+
+    if (tier1) {
+      tier1.addEventListener('click', function (e) {
+        const bubble = e.target.closest('.bubble');
+        if (!bubble) return;
+        const typeKey = bubble.dataset.value;
+        const city = root.querySelector('[data-tier="1.5"][data-parent="' + cssEscape(typeKey) + '"]');
+        const flat = root.querySelector('[data-tier="2"][data-parent="' + cssEscape(typeKey) + '"]');
+        showOnly(city || flat);
+      });
+    }
+
+    tier15Pools.forEach(function (cityPool) {
+      cityPool.addEventListener('click', function (e) {
+        const bubble = e.target.closest('.bubble');
+        if (!bubble) return;
+        if (bubble.hasAttribute('data-back')) { showOnly(tier1); return; }
+        const tier2 = root.querySelector('[data-tier="2"][data-city="' + cssEscape(bubble.dataset.value) + '"]');
+        if (tier2) showOnly(tier2);
+      });
+    });
+
+    tier2Pools.forEach(function (pool) {
+      pool.addEventListener('click', function (e) {
+        const bubble = e.target.closest('.bubble');
+        if (!bubble || bubble.classList.contains('bubble-locked')) return;
+        if (bubble.hasAttribute('data-back')) { showOnly(tier1); return; }
+        lock(bubble);
+      });
+    });
+
+    slot.addEventListener('click', function (e) {
+      const bubble = e.target.closest('.bubble');
+      if (bubble) unlock(bubble);
+    });
+
+    root._bubbleApi = { lock: lock, unlock: unlock };
+
+    const initialValues = (root.dataset.initialValues || '').split(',').map(function (v) { return v.trim(); }).filter(Boolean);
+    initialValues.forEach(function (value) {
+      const match = tier2Pools.reduce(function (found, pool) {
+        return found || pool.querySelector('.bubble[data-value="' + cssEscape(value) + '"]');
+      }, null);
+      if (match) lock(match, 0);
+    });
+
+    if (tier1) showOnly(tier1);
+  }
+
   // ---- Ghost-text contact filter (Assigned Contractor / Reporter) -----
 
   function initContactFilter(root) {
@@ -362,6 +464,7 @@
     input.addEventListener('input', function () {
       const q = input.value.trim().toLowerCase();
       pool.querySelectorAll('.bubble').forEach(function (b) {
+        if (b.hasAttribute('data-back')) return; // always reachable, never a search match
         b.hidden = Boolean(q) && b.dataset.label.toLowerCase().indexOf(q) === -1;
       });
     });
@@ -374,6 +477,7 @@
   function init() {
     document.querySelectorAll('[data-bubble-picker]').forEach(function (root) {
       if (root.dataset.mode === 'drilldown') initDrilldownPicker(root);
+      else if (root.dataset.mode === 'drilldown-multi') initDrilldownMultiPicker(root);
       else if (root.dataset.mode === 'multi') initMultiPicker(root);
       else initSinglePicker(root);
     });

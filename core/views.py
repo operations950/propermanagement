@@ -15,7 +15,7 @@ from . import google_calendar, places, usps
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
     Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
-    PropertyAttributeAssignment, StaffProfile, is_valid_phone, properties_by_type, property_dropdown_queryset,
+    PropertyAttributeAssignment, StaffProfile, is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -212,7 +212,7 @@ def contact_list(request):
 def _contact_form_context(form, **extra):
     selected_ids = [str(v.pk if hasattr(v, 'pk') else v) for v in (form['properties'].value() or [])]
     return {
-        'form': form, 'properties': property_dropdown_queryset(),
+        'form': form, 'properties_by_type': properties_by_type(),
         'selected_property_ids': ','.join(selected_ids), **extra,
     }
 

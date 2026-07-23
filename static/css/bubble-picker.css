@@ -45,6 +45,18 @@
   margin-bottom: 0.5rem;
 }
 
+/* Drilldown-multi's "back to type" bubble — a utility action, not a
+   selectable value, so it reads as visually distinct from a real bubble. */
+.bubble[data-back] {
+  background: transparent;
+  border-style: dashed;
+  color: var(--ink-muted);
+}
+
+.bubble[data-back]:hover {
+  background: var(--surface-page);
+}
+
 .bubble {
   --bubble-color: var(--brand-primary);
   display: inline-flex;
