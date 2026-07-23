@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}New recurring task template{% endblock %}
+{% block content %}
+<a href="{% url 'ticket_list' %}?source=recurring" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Recurring tasks</a>
+<h2 class="page-title mb-3">New recurring task template</h2>
+
+<form method="post" class="card" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
+    {% csrf_token %}
+    <div class="card-body p-4">
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label fw-medium" for="id_title">Title</label>
+            <input type="text" name="title" id="id_title" required
+                   class="form-control {% if form.title.errors %}is-invalid{% endif %}"
+                   value="{{ form.title.value|default:'' }}">
+            {% if form.title.errors %}<div class="invalid-feedback d-block">{{ form.title.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_description">Description <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <textarea name="description" id="id_description" rows="3"
+                      class="form-control {% if form.description.errors %}is-invalid{% endif %}">{{ form.description.value|default:'' }}</textarea>
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Scheduling</h6>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Frequency</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="frequency">
+                <input type="hidden" name="frequency" data-bubble-input value="{{ form.frequency.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a frequency"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.frequency.choices %}
+                        {% if value %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>{% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_workday_of_month">Workday of month <span class="fw-normal" style="color: var(--ink-muted);">(only for "Monthly (by working day)")</span></label>
+            <input type="number" name="workday_of_month" id="id_workday_of_month" min="1" max="23"
+                   class="form-control {% if form.workday_of_month.errors %}is-invalid{% endif %}" style="max-width: 140px;"
+                   value="{{ form.workday_of_month.value|default_if_none:'' }}">
+            {% if form.workday_of_month.errors %}<div class="invalid-feedback d-block">{{ form.workday_of_month.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">First run date</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="next_run_date">
+                <input type="hidden" name="next_run_date" data-bubble-input value="{{ form.next_run_date.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a date"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for preset in due_date_presets %}
+                        <button type="button" class="bubble" data-value="{{ preset.value }}" data-label="{{ preset.label }}">{{ preset.label }}</button>
+                    {% endfor %}
+                    <button type="button" class="bubble" id="next-run-date-custom-bubble" data-label="Custom" data-no-autolock>Custom</button>
+                </div>
+                <input type="date" id="next-run-date-custom-input" class="form-control form-control-sm mt-2" style="max-width: 200px;" hidden>
+            </div>
+            {% if form.next_run_date.errors %}<div class="invalid-feedback d-block">{{ form.next_run_date.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3 mt-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Applies to</h6>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Specific property <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property">
+                <input type="hidden" name="property" data-bubble-input value="{{ form.property.value|default:'' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Every matching property — leave blank"></div>
+
+                <div class="bubble-pool" data-bubble-pool data-tier="1">
+                    {% for entry in properties_by_type %}
+                        <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                    {% endfor %}
+                </div>
+
+                {% for entry in properties_by_type %}
+                    {% if entry.needs_city_tier %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                            {% for city_entry in entry.cities %}
+                                <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                            {% endfor %}
+                        </div>
+                        {% for city_entry in entry.cities %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                            {% if city_entry.needs_filter %}
+                                <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                            {% endif %}
+                            {% for p in city_entry.properties %}
+                                <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                            {% for p in entry.properties %}
+                                <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% endfor %}
+                            {% if not entry.properties %}
+                                <span class="small" style="color: var(--ink-muted);">No properties in this type yet.</span>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <div class="form-text">{{ form.fields.property.help_text }}</div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Restrict to property types <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="property_types">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Every type"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.property_types.choices %}
+                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="form-text">{{ form.fields.property_types.help_text }}</div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Requires these attributes <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="required_attributes">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="No required attributes"></div>
+                {% for group in attributes_by_category %}
+                    <div class="small text-muted mb-1">{{ group.category_label }}</div>
+                    <div class="bubble-pool mb-2" data-bubble-pool>
+                        {% for attr in group.attributes %}
+                            <button type="button" class="bubble" data-value="{{ attr.pk }}" data-label="{{ attr.label }}">{{ attr.label }}</button>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="form-text">{{ form.fields.required_attributes.help_text }}</div>
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3 mt-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Assignment &amp; priority</h6>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Department</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="default_assigned_role" id="department-picker">
+                <input type="hidden" name="default_assigned_role" data-bubble-input value="{{ form.default_assigned_role.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a department"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.default_assigned_role.choices %}
+                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});">
+                            <i data-lucide="{{ value|department_icon }}" class="icon"></i> {{ label }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Specific person <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="default_assigned_staff">
+                <input type="hidden" name="default_assigned_staff" data-bubble-input value="{{ form.default_assigned_staff.value|default:'' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Unassigned"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for staff in form.fields.default_assigned_staff.queryset %}
+                        <button type="button" class="bubble" data-value="{{ staff.pk }}" data-label="{{ staff }}">{{ staff }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Priority</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="default_priority">
+                <input type="hidden" name="default_priority" data-bubble-input value="{{ form.default_priority.value|default:'medium' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a priority"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.default_priority.choices %}
+                        {% if value %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>{% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3 mt-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Approval &amp; escalation</h6>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="requires_approval" id="id_requires_approval" {% if form.requires_approval.value %}checked{% endif %}>
+            <label class="form-check-label" for="id_requires_approval">Requires approval</label>
+            <div class="form-text">{{ form.fields.requires_approval.help_text }}</div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Approval department <span class="fw-normal" style="color: var(--ink-muted);">(required if approval is needed)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="approval_role">
+                <input type="hidden" name="approval_role" data-bubble-input value="{{ form.approval_role.value|default:'' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="No approval department"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.approval_role.choices %}
+                        {% if value %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});">
+                            <i data-lucide="{{ value|department_icon }}" class="icon"></i> {{ label }}
+                        </button>{% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% if form.approval_role.errors %}<div class="invalid-feedback d-block">{{ form.approval_role.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_escalation_threshold_days">Flag overdue after <span class="fw-normal" style="color: var(--ink-muted);">(days, optional)</span></label>
+            <input type="number" name="escalation_threshold_days" id="id_escalation_threshold_days" min="1"
+                   class="form-control {% if form.escalation_threshold_days.errors %}is-invalid{% endif %}" style="max-width: 140px;"
+                   value="{{ form.escalation_threshold_days.value|default_if_none:'' }}">
+            {% if form.escalation_threshold_days.errors %}<div class="invalid-feedback d-block">{{ form.escalation_threshold_days.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3 mt-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Options</h6>
+
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="is_active" id="id_is_active" {% if form.is_active.value %}checked{% endif %}>
+            <label class="form-check-label" for="id_is_active">Active</label>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="skip_missed" id="id_skip_missed" {% if form.skip_missed.value %}checked{% endif %}>
+            <label class="form-check-label" for="id_skip_missed">Skip missed occurrences on scheduler downtime</label>
+            <div class="form-text">{{ form.fields.skip_missed.help_text }}</div>
+        </div>
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_lead_time_days">Generate early <span class="fw-normal" style="color: var(--ink-muted);">(days, optional)</span></label>
+            <input type="number" name="lead_time_days" id="id_lead_time_days" min="0" class="form-control" style="max-width: 140px;"
+                   value="{{ form.lead_time_days.value|default:'0' }}">
+        </div>
+
+        <button class="btn btn-primary" type="submit"><i data-lucide="plus" class="icon"></i> Create recurring task template</button>
+    </div>
+</form>
+
+<script>
+(function () {
+    var nextRunPicker = document.querySelector('[data-bubble-picker][data-name="next_run_date"]');
+    var customBubble = document.getElementById('next-run-date-custom-bubble');
+    var customInput = document.getElementById('next-run-date-custom-input');
+    if (nextRunPicker && customBubble && customInput) {
+        customBubble.addEventListener('click', function () {
+            customInput.hidden = false;
+            customInput.focus();
+        });
+        customInput.addEventListener('change', function () {
+            if (!customInput.value) return;
+            customBubble.dataset.value = customInput.value;
+            customBubble.dataset.label = new Date(customInput.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            nextRunPicker._bubbleApi.lock(customBubble);
+            customInput.hidden = true;
+        });
+        nextRunPicker.addEventListener('bubble:unlock', function () {
+            customInput.hidden = true;
+            customInput.value = '';
+        });
+
+        // Validation-error re-render with a next_run_date that isn't one of
+        // the fixed presets (a previously-chosen Custom date) — see
+        // ticket_form.html's identical due-date rehydration comment.
+        document.addEventListener('DOMContentLoaded', function () {
+            var input = nextRunPicker.querySelector('[data-bubble-input]');
+            var alreadyLocked = nextRunPicker.querySelector('[data-bubble-slot] .bubble');
+            if (input.value && !alreadyLocked) {
+                customBubble.dataset.value = input.value;
+                customBubble.dataset.label = new Date(input.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                nextRunPicker._bubbleApi.lock(customBubble, 0);
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

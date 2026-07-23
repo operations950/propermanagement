@@ -8,7 +8,7 @@
         {% if selected_role == 'none' %} — no department assigned{% elif selected_role %} — {{ selected_role_label }}{% endif %}
     </h2>
     {% if selected_source == 'recurring' %}
-    <a href="{% url 'admin:tickets_tickettemplate_add' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New recurring task template</a>
+    <a href="{% url 'ticket_template_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New recurring task template</a>
     {% else %}
     <a href="{% url 'ticket_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New ticket</a>
     {% endif %}

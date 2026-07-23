@@ -1,5 +1,6 @@
 import json
 from datetime import date, datetime, timedelta
+from itertools import groupby
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -11,11 +12,17 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
-from core.models import Contact, Property, StaffProfile, is_valid_phone, properties_by_type, property_dropdown_queryset
+from core.models import (
+    Contact, Property, PropertyAttribute, StaffProfile, is_valid_phone, properties_by_type,
+    property_dropdown_queryset,
+)
 from messaging.services import send_followup_bulk
 
-from .forms import ReassignForm, TicketForm
-from .models import FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact
+from .forms import ReassignForm, TicketForm, TicketTemplateForm
+from .models import (
+    FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact,
+    TicketTemplate,
+)
 from .services.package_engine import unblock_dependents
 
 OPEN_STATUSES = [
@@ -656,6 +663,45 @@ def ticket_create(request):
         'all_contacts_json': json.dumps(all_contacts),
         'selected_contractor_label': contact_label('assigned_contact'),
         'selected_reporter_label': contact_label('reporter_contact'),
+    })
+
+
+def _attributes_by_category():
+    """PropertyAttribute.objects, grouped for the New Recurring Task
+    screen's Required attributes bubble pool — mirrors the Staff/Vendors
+    labeled-section split on ticket_list's Assignee picker. Relies on
+    PropertyAttribute.Meta.ordering (category, then label) already
+    sorting the queryset the way groupby needs."""
+    attrs = PropertyAttribute.objects.filter(is_active=True)
+    category_labels = dict(PropertyAttribute.Category.choices)
+    return [
+        {'category_label': category_labels[category], 'attributes': list(group)}
+        for category, group in groupby(attrs, key=lambda a: a.category)
+    ]
+
+
+@login_required
+def ticket_template_create(request):
+    today = timezone.localdate()
+    if request.method == 'POST':
+        form = TicketTemplateForm(request.POST)
+        if form.is_valid():
+            template = form.save()
+            messages.success(request, f'Recurring task template "{template.title}" created.')
+            return redirect(f"{reverse('ticket_list')}?source=recurring")
+    else:
+        # A plain ISO string, not a date object — {{ }} auto-formats a raw
+        # date/datetime object into a locale-formatted string ("July 23,
+        # 2026"), which would silently break the hidden bubble-input's
+        # value match against the ISO-stringed date_presets below.
+        form = TicketTemplateForm(initial={'next_run_date': today.isoformat()})
+
+    return render(request, 'tickets/ticket_template_form.html', {
+        'form': form,
+        'today': today.isoformat(),
+        'due_date_presets': _due_date_presets(today),
+        'properties_by_type': properties_by_type(),
+        'attributes_by_category': _attributes_by_category(),
     })
 
 

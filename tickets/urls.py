@@ -10,6 +10,7 @@ urlpatterns = [
     path('tickets/<int:pk>/pending/save/', views.ticket_pending_save, name='ticket_pending_save'),
     path('tickets/<int:pk>/pending/delete/', views.ticket_pending_delete, name='ticket_pending_delete'),
     path('tickets/new/', views.ticket_create, name='ticket_create'),
+    path('templates/new/', views.ticket_template_create, name='ticket_template_create'),
     path('tickets/<int:pk>/', views.ticket_detail, name='ticket_detail'),
     path('tickets/<int:pk>/reassign/', views.ticket_reassign, name='ticket_reassign'),
     path('tickets/<int:pk>/property/', views.ticket_set_property, name='ticket_set_property'),

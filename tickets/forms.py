@@ -3,8 +3,8 @@ from datetime import datetime
 from django import forms
 from django.utils import timezone
 
-from core.models import Contact, StaffProfile, property_dropdown_queryset
-from .models import Ticket, TicketContact
+from core.models import Contact, Property, PropertyAttribute, StaffProfile, property_dropdown_queryset
+from .models import Frequency, Ticket, TicketContact, TicketTemplate
 
 
 class TicketForm(forms.ModelForm):
@@ -57,6 +57,70 @@ class TicketForm(forms.ModelForm):
         cleaned = super().clean()
         if cleaned.get('assigned_staff') and cleaned.get('assigned_contact'):
             raise forms.ValidationError('Assign to staff OR a vendor contact, not both.')
+        return cleaned
+
+
+class TicketTemplateForm(forms.ModelForm):
+    property_types = forms.MultipleChoiceField(
+        choices=Property.Type.choices, required=False,
+        label='Restrict to property types (optional)',
+        help_text='Leave every box unchecked for every type. Ignored if a specific property is chosen above.',
+    )
+    default_assigned_role = forms.ChoiceField(
+        choices=StaffProfile.Role.choices, label='Department',
+        help_text='Every recurring task belongs to a department first — a specific person can be assigned within it.',
+    )
+    next_run_date = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        help_text='The next date this task should be generated for.',
+    )
+
+    class Meta:
+        model = TicketTemplate
+        fields = [
+            'title', 'description', 'property', 'property_types', 'required_attributes',
+            'frequency', 'workday_of_month', 'next_run_date',
+            'default_assigned_role', 'default_assigned_staff', 'default_priority',
+            'lead_time_days', 'requires_approval', 'approval_role', 'escalation_threshold_days',
+            'is_active', 'skip_missed',
+        ]
+        labels = {
+            'title': 'Title',
+            'property': 'Specific property (optional)',
+            'required_attributes': 'Requires these attributes (optional)',
+            'default_assigned_staff': 'Specific person (optional)',
+            'default_priority': 'Priority',
+            'workday_of_month': 'Workday of month',
+            'lead_time_days': 'Generate this many days early (optional)',
+            'escalation_threshold_days': 'Flag overdue after this many days (optional)',
+        }
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
+        }
+        help_texts = {
+            'property': 'Leave blank to generate this for every property matching the type/attribute '
+                         'filters below — pick one to scope it to a single address instead.',
+            'workday_of_month': 'Only used when frequency is "Monthly (by working day)".',
+            'requires_approval': 'Completed instances need sign-off from the department below before counting as done.',
+            'escalation_threshold_days': 'Flags (doesn\'t reassign) an overdue instance for visibility.',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['property'].queryset = property_dropdown_queryset()
+        self.fields['required_attributes'].queryset = PropertyAttribute.objects.filter(is_active=True)
+        if self.instance and self.instance.pk:
+            self.initial['property_types'] = self.instance.property_types
+
+    def clean_property_types(self):
+        return list(self.cleaned_data['property_types'])
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('frequency') == Frequency.MONTHLY_WORKDAY and not cleaned.get('workday_of_month'):
+            self.add_error('workday_of_month', 'Required for "Monthly (by working day)" frequency.')
+        if cleaned.get('requires_approval') and not cleaned.get('approval_role'):
+            self.add_error('approval_role', 'Required when approval is needed.')
         return cleaned
 
 
