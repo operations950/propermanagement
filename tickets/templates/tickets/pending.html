@@ -3,48 +3,78 @@
 {% block title %}Pending — needs property{% endblock %}
 {% block content %}
 <h2 class="page-title my-3">Pending ({{ tickets|length }})</h2>
-<p class="text-muted">These are unconfirmed candidates, not real tickets yet — usually auto-detected from Quo with no clear property. For each one: fix the description if needed, then either assign a property (which moves it into its department's real queue — pick a "general" option if it's not about one specific address) or delete it if it isn't actually a ticket.</p>
-
-{% regroup properties by get_property_type_display as property_groups %}
+<p class="text-muted">These are unconfirmed candidates, not real tickets yet — usually auto-detected from Quo with no clear property. For each one: fix the description if needed, then either lock in a property (which moves it into its department's real queue — pick a "general" bubble if it's not about one specific address) or delete it if it isn't actually a ticket.</p>
 
 {% for t in tickets %}
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start mb-2">
-            <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold">{{ t.title }}</a>
+<div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold fs-5">{{ t.title }}</a>
             <span class="text-nowrap small {% if t|is_overdue:now %}text-danger fw-semibold{% else %}text-muted{% endif %}">
                 {% if t.due_date %}Due {{ t.due_date|date:"M j" }}{% endif %}
             </span>
         </div>
-        <form method="post" action="{% url 'ticket_pending_save' t.pk %}" class="row g-2 align-items-end">
+        <form method="post" action="{% url 'ticket_pending_save' t.pk %}">
             {% csrf_token %}
-            <div class="col-md-6">
-                <label class="form-label small text-muted mb-1">Description</label>
-                <textarea name="description" class="form-control" rows="1">{{ t.description }}</textarea>
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_description-{{ t.pk }}">Description</label>
+                <textarea name="description" id="id_description-{{ t.pk }}" class="form-control" rows="2">{{ t.description }}</textarea>
             </div>
-            <div class="col-md-4">
-                <label class="form-label small text-muted mb-1">Assign property (moves it to a real ticket)</label>
-                <select name="property_id" class="form-select">
-                    <option value="">— leave pending —</option>
-                    {% for group in property_groups %}
-                    <optgroup label="{{ group.grouper }}">
-                        {% for p in group.list %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
-                    </optgroup>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Property</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property_id">
+                    <input type="hidden" name="property_id" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="No property — leave pending"></div>
+
+                    <div class="bubble-pool" data-bubble-pool data-tier="1">
+                        {% for entry in properties_by_type %}
+                            <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                        {% endfor %}
+                    </div>
+
+                    {% for entry in properties_by_type %}
+                        {% if entry.needs_city_tier %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                                {% for city_entry in entry.cities %}
+                                    <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                                {% endfor %}
+                            </div>
+                            {% for city_entry in entry.cities %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                                {% if city_entry.needs_filter %}
+                                    <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                                {% endif %}
+                                {% for p in city_entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                                {% for p in entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                                {% if not entry.properties %}
+                                    <span class="small" style="color: var(--ink-muted);">No properties in this type yet.</span>
+                                {% endif %}
+                            </div>
+                        {% endif %}
                     {% endfor %}
-                </select>
+                </div>
             </div>
-            <div class="col-md-2 d-flex gap-2">
-                <button class="btn btn-primary flex-grow-1" type="submit">Save</button>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit"><i data-lucide="check" class="icon"></i> Save</button>
+                <button class="btn btn-outline-danger btn-sm ms-auto" type="submit" formaction="{% url 'ticket_pending_delete' t.pk %}" formnovalidate onclick="return confirm('Delete this pending item? This can\'t be undone.');">
+                    <i data-lucide="trash-2" class="icon"></i> Delete — not actually a ticket
+                </button>
             </div>
-        </form>
-        <form method="post" action="{% url 'ticket_pending_delete' t.pk %}" class="mt-2" onsubmit="return confirm('Delete this pending item? This can\'t be undone.');">
-            {% csrf_token %}
-            <button class="btn btn-link btn-sm text-danger p-0 d-inline-flex align-items-center gap-1" type="submit"><i data-lucide="trash-2" class="icon"></i> Delete — not actually a ticket</button>
         </form>
     </div>
 </div>
 {% empty %}
-<div class="card">
+<div class="card" style="max-width: 760px;">
     <div class="card-body text-center py-5" style="color: var(--ink-muted);">
         <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
         Nothing pending — everything has a property.

@@ -231,7 +231,7 @@ def ticket_pending(request):
         .select_related('assigned_staff__user', 'assigned_contact').order_by('-created_at')
     )
     return render(request, 'tickets/pending.html', {
-        'tickets': tickets, 'properties': property_dropdown_queryset(), 'now': timezone.now(),
+        'tickets': tickets, 'properties_by_type': _properties_by_type(), 'now': timezone.now(),
     })
 
 
