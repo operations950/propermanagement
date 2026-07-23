@@ -1,15 +1,232 @@
 {% extends 'base.html' %}
+{% load ticket_extras %}
 {% block title %}New ticket{% endblock %}
 {% block content %}
 <a href="{% url 'ticket_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> All tickets</a>
 <h2 class="page-title mb-3">New ticket</h2>
-<div class="card" style="max-width: 640px;">
+
+<form method="post" class="card" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
+    {% csrf_token %}
     <div class="card-body p-4">
-        <form method="post">
-            {% csrf_token %}
-            {{ form.as_p }}
-            <button class="btn btn-primary" type="submit"><i data-lucide="plus" class="icon"></i> Create ticket</button>
-        </form>
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label fw-medium" for="id_title">Title</label>
+            <input type="text" name="title" id="id_title" maxlength="60" required
+                   class="form-control {% if form.title.errors %}is-invalid{% endif %}"
+                   value="{{ form.title.value|default:'' }}" data-char-count="60">
+            <div class="char-count" data-char-count-for="id_title">0/60</div>
+            {% if form.title.errors %}<div class="invalid-feedback d-block">{{ form.title.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_description">Description</label>
+            <textarea name="description" id="id_description" rows="3" maxlength="200"
+                      class="form-control {% if form.description.errors %}is-invalid{% endif %}"
+                      data-char-count="200">{{ form.description.value|default:'' }}</textarea>
+            <div class="char-count" data-char-count-for="id_description">0/200</div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Property <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property">
+                <input type="hidden" name="property" data-bubble-input value="{{ form.property.value|default:'' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="No property — leave blank if this isn't about one specific address"></div>
+
+                <div class="bubble-pool" data-bubble-pool data-tier="1">
+                    {% for entry in properties_by_type %}
+                        <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                    {% endfor %}
+                </div>
+
+                {% for entry in properties_by_type %}
+                    {% if entry.needs_city_tier %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                            {% for city_entry in entry.cities %}
+                                <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                            {% endfor %}
+                        </div>
+                        {% for city_entry in entry.cities %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                            {% if city_entry.needs_filter %}
+                                <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                            {% endif %}
+                            {% for p in city_entry.properties %}
+                                <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                            {% for p in entry.properties %}
+                                <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% endfor %}
+                            {% if not entry.properties %}
+                                <span class="small" style="color: var(--ink-muted);">No properties in this type yet.</span>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Priority</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="priority">
+                <input type="hidden" name="priority" data-bubble-input value="{{ form.priority.value|default:'medium' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a priority"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.priority.choices %}
+                        {% if value %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>{% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Due date <span class="fw-normal" style="color: var(--ink-muted);">(optional, day only)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="due_date">
+                <input type="hidden" name="due_date" data-bubble-input value="{{ form.due_date.value|default:'' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="No due date"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for preset in due_date_presets %}
+                        <button type="button" class="bubble" data-value="{{ preset.value }}" data-label="{{ preset.label }}">{{ preset.label }}</button>
+                    {% endfor %}
+                    <button type="button" class="bubble" id="due-date-custom-bubble" data-label="Custom" data-no-autolock>Custom</button>
+                </div>
+                <input type="date" id="due-date-custom-input" class="form-control form-control-sm mt-2" style="max-width: 200px;" hidden min="{{ today }}">
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Department</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assigned_role" id="department-picker">
+                <input type="hidden" name="assigned_role" data-bubble-input value="{{ form.assigned_role.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a department"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.assigned_role.choices %}
+                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});">
+                            <i data-lucide="{{ value|department_icon }}" class="icon"></i> {{ label }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Staff <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assigned_staff" id="staff-picker">
+                <input type="hidden" name="assigned_staff" data-bubble-input value="{{ form.assigned_staff.value|default:'' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Unassigned"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for staff in form.fields.assigned_staff.queryset %}
+                        <button type="button" class="bubble" data-value="{{ staff.pk }}" data-label="{{ staff }}">{{ staff }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="form-text">A ticket can go to Staff or a Contractor below, not both.</div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Assigned Contractor <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="contact-filter" data-contact-filter id="contractor-filter">
+                <input type="hidden" name="assigned_contact" data-contact-filter-input value="{{ form.assigned_contact.value|default:'' }}">
+                <input type="text" class="form-control" placeholder="start typing…" data-contact-filter-text autocomplete="off" value="{{ selected_contractor_label|default:'' }}">
+                <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                <script type="application/json" data-contact-filter-source>{{ vendor_contacts_json|safe }}</script>
+                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                    <input type="text" name="new_contact__name__contractor" class="form-control form-control-sm" placeholder="Name">
+                    <input type="text" name="new_contact__phone__contractor" class="form-control form-control-sm" placeholder="Phone">
+                    <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
+                    <input type="text" name="new_contact__trade__contractor" class="form-control form-control-sm" placeholder="Trade (e.g. plumbing)">
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Reporter contact <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="contact-filter" data-contact-filter>
+                <input type="hidden" name="reporter_contact" data-contact-filter-input value="{{ form.reporter_contact.value|default:'' }}">
+                <input type="text" class="form-control" placeholder="start typing…" data-contact-filter-text autocomplete="off" value="{{ selected_reporter_label|default:'' }}">
+                <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                <script type="application/json" data-contact-filter-source>{{ all_contacts_json|safe }}</script>
+                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                    <input type="text" name="new_contact__name__reporter" class="form-control form-control-sm" placeholder="Name">
+                    <input type="text" name="new_contact__phone__reporter" class="form-control form-control-sm" placeholder="Phone">
+                    <input type="email" name="new_contact__email__reporter" class="form-control form-control-sm" placeholder="Email">
+                </div>
+            </div>
+            <div class="form-text">{{ form.reporter_contact.help_text }}</div>
+        </div>
+
+        <button class="btn btn-primary" type="submit"><i data-lucide="plus" class="icon"></i> Create ticket</button>
     </div>
-</div>
+</form>
+
+<script>
+(function () {
+    document.querySelectorAll('[data-char-count]').forEach(function (field) {
+        var max = parseInt(field.dataset.charCount, 10);
+        var display = document.querySelector('[data-char-count-for="' + field.id + '"]');
+        function update() {
+            var len = field.value.length;
+            display.textContent = len + '/' + max;
+            display.classList.toggle('char-count-warn', len >= max);
+        }
+        field.addEventListener('input', update);
+        update();
+    });
+
+    var dueDatePicker = document.querySelector('[data-bubble-picker][data-name="due_date"]');
+    var customBubble = document.getElementById('due-date-custom-bubble');
+    var customInput = document.getElementById('due-date-custom-input');
+    if (dueDatePicker && customBubble && customInput) {
+        customBubble.addEventListener('click', function () {
+            customInput.hidden = false;
+            customInput.focus();
+        });
+        customInput.addEventListener('change', function () {
+            if (!customInput.value) return;
+            customBubble.dataset.value = customInput.value;
+            customBubble.dataset.label = new Date(customInput.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            dueDatePicker._bubbleApi.lock(customBubble);
+            customInput.hidden = true;
+        });
+        dueDatePicker.addEventListener('bubble:unlock', function () {
+            customInput.hidden = true;
+            customInput.value = '';
+        });
+
+        // Validation-error re-render with a due_date that isn't one of the
+        // fixed presets (a previously-chosen Custom date) — bubble-picker.js's
+        // own rehydration pass (on DOMContentLoaded, registered before this
+        // listener since it loads earlier in <head>) only matches bubbles
+        // that already exist in the DOM at that point, which the Custom
+        // bubble's real value never does until this runs.
+        document.addEventListener('DOMContentLoaded', function () {
+            var input = dueDatePicker.querySelector('[data-bubble-input]');
+            var alreadyLocked = dueDatePicker.querySelector('[data-bubble-slot] .bubble');
+            if (input.value && !alreadyLocked) {
+                customBubble.dataset.value = input.value;
+                customBubble.dataset.label = new Date(input.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                dueDatePicker._bubbleApi.lock(customBubble, 0);
+            }
+        });
+    }
+
+    var staffPicker = document.getElementById('staff-picker');
+    var contractorFilter = document.getElementById('contractor-filter');
+    if (staffPicker && contractorFilter) {
+        staffPicker.addEventListener('bubble:lock', function () {
+            window.ContactFilter.clear(contractorFilter);
+        });
+        contractorFilter.addEventListener('contact:choose', function () {
+            window.BubblePicker.unlock(staffPicker);
+        });
+    }
+})();
+</script>
 {% endblock %}

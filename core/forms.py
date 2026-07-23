@@ -30,10 +30,11 @@ class PropertyTemplateOverrideForm(forms.ModelForm):
 class PropertyForm(forms.ModelForm):
     class Meta:
         model = Property
-        fields = ['name', 'property_type', 'address', 'timezone', 'is_general', 'is_active', 'notes']
+        fields = ['name', 'property_type', 'address', 'city', 'timezone', 'is_general', 'is_active', 'notes']
         labels = {
             'name': 'Name',
             'property_type': 'Type',
+            'city': 'City',
             'is_general': 'General placeholder (not a specific address)',
             'is_active': 'Active',
         }

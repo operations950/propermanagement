@@ -14,6 +14,11 @@ class Property(models.Model):
 
     name = models.CharField(max_length=200)
     address = models.CharField(max_length=300, blank=True)
+    city = models.CharField(
+        max_length=100, blank=True,
+        help_text='Only needed once a property type has enough properties that the New Ticket bubble '
+                   'picker groups them by city — safe to leave blank until then.',
+    )
     property_type = models.CharField(max_length=20, choices=Type.choices, default=Type.GENERAL)
     is_general = models.BooleanField(
         default=False,

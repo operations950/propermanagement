@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta
 
 from django.contrib import messages
@@ -10,7 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
-from core.models import Contact, StaffProfile, property_dropdown_queryset
+from core.models import Contact, Property, StaffProfile, property_dropdown_queryset
 from messaging.services import send_followup as send_followup_message
 
 from .forms import FollowUpForm, ReassignForm, TicketForm
@@ -465,13 +466,85 @@ def ticket_detail(request, pk):
     })
 
 
+def _due_date_presets(today):
+    """Concrete (label, ISO date) pairs for the New Ticket due-date bubbles
+    — computed server-side off the business's local calendar day so no
+    client-side date math (and no naive-UTC timezone bug) is needed at
+    all; the "Custom" bubble is the only one requiring any JS."""
+    presets = [('Today', 0), ('Tomorrow', 1)]
+    presets += [(f'{n} days', n) for n in (3, 4, 5, 6)]
+    presets += [('1 week', 7), ('2 weeks', 14), ('1 month', 30)]
+    return [{'label': label, 'value': (today + timedelta(days=n)).isoformat()} for label, n in presets]
+
+
+def _properties_by_type():
+    """Property picker data for the New Ticket bubble UI, grouped by type in
+    the same order as property_dropdown_queryset(). Each type also carries a
+    city breakdown for the (currently dormant, given real property counts
+    all being well under 50) capacity-aware drill-down: a type's properties
+    only get grouped by city once there are more than 50 of them, and a
+    city only gets a text filter once IT has more than 50."""
+    buckets = {}
+    for p in property_dropdown_queryset():
+        buckets.setdefault(p.property_type, []).append(p)
+
+    result = []
+    for value, label in Property.Type.choices:
+        props = buckets.get(value, [])
+        entry = {'type_key': value, 'type_label': label, 'needs_city_tier': len(props) > 50}
+        if entry['needs_city_tier']:
+            city_buckets = {}
+            for p in props:
+                city_buckets.setdefault(p.city or 'Unspecified', []).append(p)
+            entry['cities'] = [
+                {
+                    'city': city,
+                    'properties': [{'id': p.id, 'name': p.name} for p in city_props],
+                    'needs_filter': len(city_props) > 50,
+                }
+                for city, city_props in sorted(city_buckets.items())
+            ]
+        else:
+            entry['properties'] = [{'id': p.id, 'name': p.name} for p in props]
+        result.append(entry)
+    return result
+
+
 @login_required
 def ticket_create(request):
     if request.method == 'POST':
-        form = TicketForm(request.POST)
+        data = request.POST.copy()
+        # "Add new" on the Contractor/Reporter ghost-text filter fields
+        # submits alongside the ticket on the same POST (no separate
+        # request/AJAX in this app) — create the Contact first, then feed
+        # its id into the real field the rest of TicketForm expects.
+        for role, default_type in (('contractor', Contact.ContactType.VENDOR), ('reporter', None)):
+            name = data.get(f'new_contact__name__{role}', '').strip()
+            if name:
+                contact, _ = Contact.objects.get_or_create(
+                    name=name,
+                    phone=data.get(f'new_contact__phone__{role}', '').strip(),
+                    email=data.get(f'new_contact__email__{role}', '').strip(),
+                    defaults={
+                        'contact_type': default_type or Contact.ContactType.OTHER,
+                        'trade': data.get(f'new_contact__trade__{role}', '').strip(),
+                    },
+                )
+                data['assigned_contact' if role == 'contractor' else 'reporter_contact'] = str(contact.pk)
+
+        form = TicketForm(data)
         if form.is_valid():
             ticket = form.save(commit=False)
             ticket.source = Ticket.Source.MANUAL
+            raw_due_date = form.cleaned_data.get('due_date')
+            # due_date is a plain (day-only) DateField on the form — combine
+            # to a timezone-aware midnight explicitly rather than relying on
+            # DateTimeField's implicit naive-datetime fallback (which warns
+            # and is fragile around DST), matching ticket_set_due_date.
+            ticket.due_date = (
+                timezone.make_aware(datetime.combine(raw_due_date, datetime.min.time()))
+                if raw_due_date else None
+            )
             if ticket.assigned_staff_id or ticket.assigned_contact_id:
                 ticket.status = Ticket.Status.ASSIGNED
             ticket.full_clean()
@@ -485,7 +558,36 @@ def ticket_create(request):
             return redirect('ticket_detail', pk=ticket.pk)
     else:
         form = TicketForm()
-    return render(request, 'tickets/ticket_form.html', {'form': form})
+
+    vendor_contacts = [
+        {'id': c.id, 'label': str(c)}
+        for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
+    ]
+    all_contacts = [{'id': c.id, 'label': str(c)} for c in Contact.objects.all()]
+    today = timezone.localdate()
+
+    def contact_label(field_name):
+        # Repopulates the ghost-text filter's visible text (not just its
+        # hidden id) on a validation-error re-render — the hidden input
+        # already round-trips the id for free via form['...'].value().
+        contact_id = form[field_name].value()
+        if not contact_id:
+            return ''
+        try:
+            return str(Contact.objects.get(pk=contact_id))
+        except (Contact.DoesNotExist, ValueError, TypeError):
+            return ''
+
+    return render(request, 'tickets/ticket_form.html', {
+        'form': form,
+        'today': today.isoformat(),
+        'due_date_presets': _due_date_presets(today),
+        'properties_by_type': _properties_by_type(),
+        'vendor_contacts_json': json.dumps(vendor_contacts),
+        'all_contacts_json': json.dumps(all_contacts),
+        'selected_contractor_label': contact_label('assigned_contact'),
+        'selected_reporter_label': contact_label('reporter_contact'),
+    })
 
 
 @login_required

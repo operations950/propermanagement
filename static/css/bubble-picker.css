@@ -1,0 +1,168 @@
+/*
+ * Shared bubble-picker + contact-filter styling — built entirely from the
+ * design tokens already defined in templates/base.html's :root (no new
+ * colors introduced). See static/js/bubble-picker.js for behavior.
+ */
+
+.bubble-picker {
+  margin-bottom: 1rem;
+}
+
+.bubble-slot {
+  min-height: 3rem;
+  border: 2px dashed var(--border-hairline);
+  border-radius: var(--bs-border-radius);
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.6rem;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.bubble-slot:empty::before {
+  content: attr(data-empty-text);
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.bubble-slot.has-value {
+  border-style: solid;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--brand-primary) 8%, white);
+}
+
+.bubble-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.bubble-pool[hidden] {
+  display: none;
+}
+
+.bubble-filter {
+  margin-bottom: 0.5rem;
+}
+
+.bubble {
+  --bubble-color: var(--brand-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--bs-border-radius-xl);
+  border: 1.5px solid color-mix(in srgb, var(--bubble-color) 45%, white);
+  background: color-mix(in srgb, var(--bubble-color) 8%, white);
+  color: var(--ink-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+  line-height: 1.2;
+}
+
+.bubble:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
+  background: color-mix(in srgb, var(--bubble-color) 16%, white);
+}
+
+.bubble.bubble-locked {
+  background: var(--bubble-color);
+  border-color: var(--bubble-color);
+  color: #fff;
+  cursor: pointer;
+}
+
+.bubble.bubble-locked:hover {
+  transform: none;
+  box-shadow: none;
+  filter: brightness(0.94);
+}
+
+.bubble.bubble-locked::after {
+  content: '\2715'; /* × */
+  font-size: 0.75rem;
+  opacity: 0.85;
+  margin-left: 0.15rem;
+}
+
+/* Ghost-text contact filter */
+
+.contact-filter {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.contact-filter-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--bs-border-radius);
+  box-shadow: var(--shadow-card-hover);
+  padding: 0.25rem;
+}
+
+.contact-filter-list[hidden] {
+  display: none;
+}
+
+.contact-filter-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  background: none;
+  border-radius: var(--bs-border-radius-sm);
+  font-size: 0.9rem;
+  color: var(--ink-primary);
+  cursor: pointer;
+}
+
+.contact-filter-item:hover {
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+}
+
+.contact-filter-addnew-btn {
+  color: var(--brand-primary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-hairline);
+  margin-bottom: 0.25rem;
+  border-radius: 0;
+}
+
+.contact-filter-addnew {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--bs-border-radius);
+  background: color-mix(in srgb, var(--brand-surface) 60%, white);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.contact-filter-addnew[hidden] {
+  display: none;
+}
+
+/* Character-count fields (Title / Description) */
+
+.char-count {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  text-align: right;
+  margin-top: 0.2rem;
+}
+
+.char-count.char-count-warn {
+  color: var(--status-warning);
+}
