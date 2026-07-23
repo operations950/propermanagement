@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Pending — needs property{% endblock %}
 {% block content %}
-<h2 class="my-3">Pending ({{ tickets|length }})</h2>
+<h2 class="page-title my-3">Pending ({{ tickets|length }})</h2>
 <p class="text-muted">These are unconfirmed candidates, not real tickets yet — usually auto-detected from Quo with no clear property. For each one: fix the description if needed, then either assign a property (which moves it into its department's real queue — pick a "general" option if it's not about one specific address) or delete it if it isn't actually a ticket.</p>
 
 {% regroup properties by get_property_type_display as property_groups %}
@@ -11,7 +11,7 @@
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-2">
             <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold">{{ t.title }}</a>
-            <span class="text-nowrap small {% if t.due_date and t.due_date < now %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+            <span class="text-nowrap small {% if t.due_date and t.due_date.date < now.date %}text-danger fw-semibold{% else %}text-muted{% endif %}">
                 {% if t.due_date %}Due {{ t.due_date|date:"M j" }}{% endif %}
             </span>
         </div>
@@ -38,11 +38,16 @@
         </form>
         <form method="post" action="{% url 'ticket_pending_delete' t.pk %}" class="mt-2" onsubmit="return confirm('Delete this pending item? This can\'t be undone.');">
             {% csrf_token %}
-            <button class="btn btn-link btn-sm text-danger p-0" type="submit">Delete — not actually a ticket</button>
+            <button class="btn btn-link btn-sm text-danger p-0 d-inline-flex align-items-center gap-1" type="submit"><i data-lucide="trash-2" class="icon"></i> Delete — not actually a ticket</button>
         </form>
     </div>
 </div>
 {% empty %}
-<p class="text-muted">Nothing pending — everything has a property.</p>
+<div class="card">
+    <div class="card-body text-center py-5" style="color: var(--ink-muted);">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+        Nothing pending — everything has a property.
+    </div>
+</div>
 {% endfor %}
 {% endblock %}

@@ -1,10 +1,34 @@
 {% comment %}
-One Tickets/Tasks column body: Today, then Next 2 days, then a collapsed
-count for anything further out. Reused for both the desktop column layout
-and the mobile accordion body — see department_dashboard.html.
-Expects: today_items, soon_items, later_count, later_url, empty_today_text,
-empty_soon_text, now (all passed in via {% include ... with %}).
+One Tickets/Tasks column body: Needs a due date, then Today, then Next 2
+days, then a collapsed count for anything further out. Reused for both
+the desktop column layout and the mobile accordion body — see
+department_dashboard.html.
+Expects: needs_date_items, today_items, soon_items, later_count, later_url,
+empty_today_text, empty_soon_text, now, role (all passed in via
+{% include ... with %}).
 {% endcomment %}
+{% if needs_date_items %}
+<div class="mb-3 p-2 rounded" style="background: color-mix(in srgb, var(--status-warning) 12%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">
+    <h6 class="text-uppercase small fw-bold mb-2 d-flex align-items-center gap-2" style="letter-spacing: 0.06em; color: var(--ink-secondary);">
+        <i data-lucide="calendar-plus" class="icon" style="color: var(--status-warning);"></i>
+        Needs a due date
+        <span class="badge rounded-pill" style="background: var(--status-warning); color: #fff;">{{ needs_date_items|length }}</span>
+    </h6>
+    <div class="list-group list-group-flush">
+    {% for t in needs_date_items %}
+        <div class="list-group-item bg-transparent d-flex justify-content-between align-items-center gap-2 px-0 py-2">
+            <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body small fw-medium text-truncate" style="min-width: 0;">{{ t.title|truncatechars:45 }}</a>
+            <form method="post" action="{% url 'ticket_set_due_date' t.pk %}" class="d-flex align-items-center gap-1 flex-shrink-0">
+                {% csrf_token %}
+                <input type="hidden" name="next_role" value="{{ role }}">
+                <input type="date" name="due_date" class="form-control form-control-sm" style="width: 150px;" onchange="this.form.submit()">
+            </form>
+        </div>
+    {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <h6 class="text-uppercase small fw-bold mb-2" style="letter-spacing: 0.06em; color: var(--ink-muted);">
     Today {% if today_items %}<span class="badge rounded-pill" style="background: var(--role-{{ role }}); color: #fff;">{{ today_items|length }}</span>{% endif %}
 </h6>
@@ -12,7 +36,7 @@ empty_soon_text, now (all passed in via {% include ... with %}).
 {% for t in today_items %}
     {% include 'tickets/_dashboard_item.html' %}
 {% empty %}
-    <div class="list-group-item text-muted small">{{ empty_today_text }}</div>
+    <div class="list-group-item text-muted small d-flex align-items-center gap-2"><i data-lucide="check-circle-2" class="icon"></i> {{ empty_today_text }}</div>
 {% endfor %}
 </div>
 
@@ -28,5 +52,5 @@ empty_soon_text, now (all passed in via {% include ... with %}).
 </div>
 
 {% if later_count %}
-<a href="{{ later_url }}" class="text-decoration-none small">{{ later_count }} more later →</a>
+<a href="{{ later_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1">{{ later_count }} more later <i data-lucide="arrow-right" class="icon"></i></a>
 {% endif %}

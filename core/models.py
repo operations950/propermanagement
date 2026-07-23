@@ -9,6 +9,7 @@ class Property(models.Model):
         ASSOCIATION = 'association', 'Associations'
         SHORT_TERM_RENTAL = 'str', 'Short-Term Rentals'
         LONG_TERM_RENTAL = 'ltr', 'Long-Term Rentals'
+        SNOWBIRD = 'snowbird', 'Snowbird Oversight'
         COMMERCIAL = 'commercial', 'Commercial'
 
     name = models.CharField(max_length=200)
@@ -35,16 +36,18 @@ class Property(models.Model):
 
 def property_dropdown_queryset():
     """Properties ordered for a grouped dropdown: General, then Associations,
-    Short-Term Rentals, Long-Term Rentals, Commercial — with each type's
-    general/non-specific placeholder sorted first within its group. Used
-    with {% regroup %} on get_property_type_display in templates."""
+    Short-Term Rentals, Long-Term Rentals, Snowbird Oversight, Commercial —
+    with each type's general/non-specific placeholder sorted first within
+    its group. Used with {% regroup %} on get_property_type_display in
+    templates."""
     type_order = Case(
         When(property_type=Property.Type.GENERAL, then=Value(0)),
         When(property_type=Property.Type.ASSOCIATION, then=Value(1)),
         When(property_type=Property.Type.SHORT_TERM_RENTAL, then=Value(2)),
         When(property_type=Property.Type.LONG_TERM_RENTAL, then=Value(3)),
-        When(property_type=Property.Type.COMMERCIAL, then=Value(4)),
-        default=Value(5), output_field=IntegerField(),
+        When(property_type=Property.Type.SNOWBIRD, then=Value(4)),
+        When(property_type=Property.Type.COMMERCIAL, then=Value(5)),
+        default=Value(6), output_field=IntegerField(),
     )
     return (
         Property.objects.filter(is_active=True)

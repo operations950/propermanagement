@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}Properties{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center my-3">
+    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon-lg"></i> Properties</h2>
+    <a href="{% url 'property_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New property</a>
+</div>
+
+<form method="get" class="row g-2 mb-3 align-items-center">
+    <div class="col-auto">
+        <input type="text" name="q" class="form-control" placeholder="Search name or address…" value="{{ q }}">
+    </div>
+    <div class="col-auto">
+        <select name="type" class="form-select" onchange="this.form.submit()">
+            <option value="">All types</option>
+            {% for value, label in type_choices %}
+                <option value="{{ value }}" {% if value == selected_type %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="show_inactive" value="1" id="showInactive" {% if show_inactive %}checked{% endif %} onchange="this.form.submit()">
+            <label class="form-check-label small" for="showInactive">Show inactive</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="search" class="icon"></i> Search</button>
+    </div>
+</form>
+
+<div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="table-responsive">
+<table class="table bg-white align-middle mb-0">
+    <thead><tr><th>Name</th><th>Type</th><th>Address</th><th></th></tr></thead>
+    <tbody>
+    {% for p in properties %}
+        <tr>
+            <td class="fw-medium">
+                <i data-lucide="{{ p.property_type|property_type_icon }}" class="icon" style="color: var(--brand-slate);"></i>
+                {{ p.name }}{% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+            </td>
+            <td>
+                <span class="badge rounded-pill bg-light text-dark border">{{ p.get_property_type_display }}</span>
+                {% if p.is_general %}<span class="badge rounded-pill bg-light text-dark border">General</span>{% endif %}
+            </td>
+            <td class="text-muted small">{{ p.address|default:'—' }}</td>
+            <td class="text-nowrap">
+                <a href="{% url 'property_edit' p.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+            </td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="4" class="text-center text-muted py-4"><i data-lucide="building-2" class="icon-lg d-block mx-auto mb-1"></i>No properties match.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+</div>
+{% endblock %}

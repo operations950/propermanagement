@@ -158,13 +158,15 @@ LOGOUT_REDIRECT_URL = 'login'
 
 
 # --- Email (follow-up messages) ---
-# Console backend in dev so follow-up emails are visible in the runserver log
-# without needing real SMTP credentials. Swap EMAIL_BACKEND for
-# 'django.core.mail.backends.smtp.EmailBackend' once EMAIL_HOST_* is set.
-if DEBUG and not os.environ.get('EMAIL_HOST'):
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-else:
+# Console backend whenever EMAIL_HOST isn't set — including in production —
+# so an unconfigured SMTP setup fails safely (logged, visible in FollowUpLog)
+# instead of the "Report Resolution" button erroring on a live site because
+# EMAIL_HOST_USER/PASSWORD were never filled in. Real sends need EMAIL_HOST
+# set explicitly, independent of DEBUG.
+if os.environ.get('EMAIL_HOST'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))

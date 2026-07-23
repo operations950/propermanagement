@@ -1,24 +1,24 @@
 {% extends 'base.html' %}
 {% block title %}Order list — {{ batch.property.name }}{% endblock %}
 {% block content %}
-<h2 class="my-3">Order list — {{ batch.property.name }} ({{ batch.date }})</h2>
+<h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="shopping-cart" class="icon-lg"></i> Order list — {{ batch.property.name }} <span class="text-muted small fw-normal">({{ batch.date }})</span></h2>
 
 <div class="card mb-3">
-    <div class="card-body">
-        <h6 class="card-title">Copy/paste list</h6>
+    <div class="card-body p-4">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="copy" class="icon"></i> Copy/paste list</h6>
         <textarea class="form-control" rows="{{ amazon_links|length|add:1 }}" readonly onclick="this.select()">{{ export_text }}</textarea>
     </div>
 </div>
 
 <div class="card">
-    <div class="card-body">
-        <h6 class="card-title">Amazon search links (open each, add to cart manually)</h6>
-        <ul>
+    <div class="card-body p-4">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="external-link" class="icon"></i> Amazon search links (open each, add to cart manually)</h6>
+        <ul class="list-unstyled">
         {% for r, link in amazon_links %}
-            <li><a href="{{ link }}" target="_blank" rel="noopener">{{ r.item_guess|default:r.raw_text }}</a> {% if r.quantity_guess %}<span class="text-muted">({{ r.quantity_guess }})</span>{% endif %}</li>
+            <li class="mb-1"><a href="{{ link }}" target="_blank" rel="noopener" class="d-inline-flex align-items-center gap-1">{{ r.item_guess|default:r.raw_text }} <i data-lucide="arrow-up-right" class="icon" style="width: 0.85em; height: 0.85em;"></i></a> {% if r.quantity_guess %}<span class="text-muted">({{ r.quantity_guess }})</span>{% endif %}</li>
         {% endfor %}
         </ul>
-        <p class="text-muted small">Checkout is a manual step — this app only builds the list, it doesn't place orders.</p>
+        <p class="text-muted small mb-0">Checkout is a manual step — this app only builds the list, it doesn't place orders.</p>
     </div>
 </div>
 {% endblock %}

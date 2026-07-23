@@ -4,9 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Proper Management{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <style>
         :root {
             /* Proper Realty brand palette — sampled from proper-realty.com
@@ -16,18 +19,23 @@
             --brand-primary-light: #93b2c6;
             --brand-slate:     #64768a;  /* palm-icon dark accent */
             --brand-surface:   #efedf3;  /* site background lavender-gray */
-            --brand-ink:       #404040;  /* site body text */
+            --brand-ink:       #2b2b2e;  /* deepened slightly from #404040 for crisper contrast */
 
-            /* Validated categorical palette (dataviz skill reference instance) —
-               fixed role->color assignment, never reassigned per-render. Kept
-               distinct from the brand palette since these encode 6 different
-               teams, not brand identity. */
-            --role-property_manager: #2a78d6;  /* blue */
-            --role-admin:            #4a3aa7;  /* violet */
-            --role-cleaner:          #1baf7a;  /* aqua */
-            --role-maintenance:      #eb6834;  /* orange */
-            --role-accounting:       #008300;  /* green */
-            --role-contractor:       #eda100;  /* yellow */
+            /* Department identity colors — a single tonal ramp within the
+               brand's own steel-blue/slate family (dark to light), not a
+               rainbow categorical palette. Half the steps are the exact
+               brand tokens above (slate/primary/primary-light); the other
+               three extend the same hue darker/lighter to complete a
+               6-step ramp. Fixed role->step assignment, never reassigned
+               per-render. Departments are never color-only — the label text
+               is always shown alongside, so a muted/low-contrast-between-
+               neighbors ramp doesn't cost legibility. */
+            --role-property_manager: #2c4a61;  /* deepest steel blue */
+            --role-admin:            #3d6178;  /* dark steel blue */
+            --role-cleaner:          #4e7690;  /* medium-dark steel blue */
+            --role-maintenance:      #64768a;  /* brand slate */
+            --role-accounting:       #6e95b2;  /* brand primary */
+            --role-contractor:       #93b2c6;  /* brand primary-light */
 
             --status-critical: #d03b3b;
             --status-warning:  #fab219;
@@ -38,20 +46,43 @@
             --ink-primary:    var(--brand-ink);
             --ink-secondary:  #6b6b6b;
             --ink-muted:      #92908c;
-            --border-hairline: rgba(64, 64, 64, 0.12);
+            --border-hairline: rgba(43, 43, 46, 0.10);
+
+            /* Shape/type system — borrowed from Railway's app (soft rounded
+               cards, generous radii, a quiet display serif reserved for page
+               titles against an otherwise plain, geometric UI face), applied
+               on top of our own brand colors rather than their purple/dark
+               theme. */
+            --font-ui: 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
+            --font-display: 'IBM Plex Serif', Georgia, Cambria, serif;
+            --shadow-card: 0 1px 2px rgba(43, 43, 46, 0.04), 0 6px 20px rgba(43, 43, 46, 0.06);
+            --shadow-card-hover: 0 2px 4px rgba(43, 43, 46, 0.06), 0 10px 28px rgba(43, 43, 46, 0.10);
+
+            --bs-border-radius-sm: 8px;
+            --bs-border-radius: 12px;
+            --bs-border-radius-lg: 18px;
+            --bs-border-radius-xl: 22px;
+            --bs-border-radius-2xl: 28px;
         }
 
         body {
             background: var(--surface-page);
             color: var(--ink-primary);
-            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            font-family: var(--font-ui);
         }
 
         .tabular-nums { font-variant-numeric: tabular-nums; }
 
+        .page-title {
+            font-family: var(--font-display);
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
         a { color: var(--brand-primary); }
         a:hover { color: var(--brand-slate); }
 
+        .btn { font-weight: 500; }
         .btn-primary {
             background-color: var(--brand-primary);
             border-color: var(--brand-primary);
@@ -60,6 +91,17 @@
             background-color: var(--brand-slate);
             border-color: var(--brand-slate);
         }
+        .btn-outline-secondary {
+            color: var(--ink-secondary);
+            border-color: var(--border-hairline);
+        }
+        .btn-outline-secondary:hover {
+            background-color: var(--ink-primary);
+            border-color: var(--ink-primary);
+        }
+
+        .icon { width: 1em; height: 1em; stroke-width: 2; vertical-align: -0.15em; }
+        .icon-lg { width: 1.4em; height: 1.4em; stroke-width: 1.75; }
 
         .brand-bar {
             background: #ffffff;
@@ -67,19 +109,46 @@
         }
         .brand-bar .nav-link {
             color: var(--ink-secondary) !important;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-weight: 500;
+            border-radius: var(--bs-border-radius-sm);
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
+            transition: background-color 0.15s ease, color 0.15s ease;
         }
         .brand-bar .nav-link:hover {
             color: var(--brand-primary) !important;
+            background: var(--surface-page);
+        }
+        .brand-bar .nav-link.active {
+            color: var(--brand-primary) !important;
+            background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
         }
         .brand-logo { height: 32px; width: auto; }
 
-        .card { border: 1px solid var(--border-hairline); background: var(--surface-card); }
+        .card {
+            border: 1px solid var(--border-hairline);
+            background: var(--surface-card);
+            box-shadow: var(--shadow-card);
+            transition: box-shadow 0.15s ease;
+        }
+        .list-group-item-action:hover { background: var(--surface-page); }
+
+        .badge { font-weight: 500; }
+
+        .btn { transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease; }
+        .btn:active { transform: translateY(1px); }
+
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-thumb { background: var(--border-hairline); border-radius: 999px; }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
     {% if user.is_authenticated %}
-    <nav class="navbar navbar-expand-lg brand-bar mb-4">
+    <nav class="navbar navbar-expand-lg brand-bar mb-4 sticky-top">
         <div class="container-fluid">
             <a class="navbar-brand" href="{% url 'dashboard' %}">
                 <img src="{% static 'img/proper-realty-logo.png' %}" alt="Proper Realty" class="brand-logo">
@@ -88,15 +157,27 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navMain">
-                <div class="navbar-nav ms-auto">
-                    <a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a>
-                    <a class="nav-link" href="{% url 'ticket_list' %}">Tickets</a>
-                    <a class="nav-link" href="{% url 'ticket_pending' %}">Pending</a>
-                    <a class="nav-link" href="{% url 'supplies:digest' %}">Supplies</a>
-                    <a class="nav-link" href="/admin/">Admin</a>
+                <div class="navbar-nav ms-auto align-items-lg-center">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'ticket_list' %}active{% endif %}" href="{% url 'ticket_list' %}"><i data-lucide="ticket" class="icon"></i> Tickets</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'ticket_pending' %}active{% endif %}" href="{% url 'ticket_pending' %}"><i data-lucide="inbox" class="icon"></i> Pending</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties</a>
+                    <a class="nav-link" href="{% url 'supplies:digest' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
+                    <a class="nav-link" href="/admin/"><i data-lucide="shield" class="icon"></i> Admin</a>
+
+                    <div class="dropdown mx-lg-2 my-2 my-lg-0">
+                        <button class="btn btn-primary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i data-lucide="plus" class="icon"></i> Quick add
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: var(--bs-border-radius);">
+                            <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'ticket_create' %}"><i data-lucide="ticket" class="icon"></i> New ticket</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'property_create' %}"><i data-lucide="building-2" class="icon"></i> New property</a></li>
+                        </ul>
+                    </div>
+
                     <form method="post" action="{% url 'logout' %}" class="d-inline">
                         {% csrf_token %}
-                        <button class="btn btn-link nav-link" type="submit">Log out ({{ user.username }})</button>
+                        <button class="btn btn-link nav-link" type="submit"><i data-lucide="log-out" class="icon"></i> Log out ({{ user.username }})</button>
                     </form>
                 </div>
             </div>
@@ -111,5 +192,6 @@
         {% endif %}
         {% block content %}{% endblock %}
     </div>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

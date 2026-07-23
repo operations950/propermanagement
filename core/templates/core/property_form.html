@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}{% if is_new %}New property{% else %}Edit {{ property.name }}{% endif %}{% endblock %}
+{% block content %}
+<a href="{% url 'property_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Properties</a>
+<h2 class="page-title mb-3">{% if is_new %}New property{% else %}Edit {{ property.name }}{% endif %}</h2>
+<div class="card" style="max-width: 640px; border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-4">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button class="btn btn-primary" type="submit">
+                <i data-lucide="{% if is_new %}plus{% else %}check{% endif %}" class="icon"></i>
+                {% if is_new %}Create property{% else %}Save changes{% endif %}
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

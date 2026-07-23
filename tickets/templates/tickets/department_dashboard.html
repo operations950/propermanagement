@@ -4,24 +4,26 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center my-3">
     <div>
-        <a href="{% url 'dashboard' %}" class="text-decoration-none small" style="color: var(--ink-muted);">← Main dashboard</a>
-        <h2 class="mb-0" style="color: var(--role-{{ role }});">{{ role_label }}</h2>
+        <a href="{% url 'dashboard' %}" class="text-decoration-none small d-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Main dashboard</a>
+        <h2 class="page-title mb-0 d-flex align-items-center gap-2" style="color: var(--role-{{ role }});">
+            <i data-lucide="{{ role|department_icon }}" class="icon-lg"></i> {{ role_label }}
+        </h2>
     </div>
-    <a href="{% url 'ticket_list' %}?role={{ role }}" class="btn btn-outline-secondary btn-sm">Full ticket list →</a>
+    <a href="{% url 'ticket_list' %}?role={{ role }}" class="btn btn-outline-secondary btn-sm">Full ticket list <i data-lucide="arrow-right" class="icon"></i></a>
 </div>
 
 {% comment %}Desktop/tablet: three columns side by side — Tickets, Recurring Tasks, Calendar.{% endcomment %}
 <div class="row g-4 d-none d-md-flex">
     <div class="col-md-4">
-        <h5 class="mb-3">Tickets {% if ticket_total %}<span class="badge rounded-pill bg-light text-dark border">{{ ticket_total }}</span>{% endif %}</h5>
-        {% include 'tickets/_dashboard_column.html' with today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=role_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
+        <h5 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="ticket" class="icon"></i> Tickets {% if ticket_total %}<span class="badge rounded-pill bg-light text-dark border">{{ ticket_total }}</span>{% endif %}</h5>
+        {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tickets today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=role_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
     </div>
     <div class="col-md-4">
-        <h5 class="mb-3">Recurring Tasks {% if task_total %}<span class="badge rounded-pill bg-light text-dark border">{{ task_total }}</span>{% endif %}</h5>
-        {% include 'tickets/_dashboard_column.html' with today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=role_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
+        <h5 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="repeat" class="icon"></i> Recurring Tasks {% if task_total %}<span class="badge rounded-pill bg-light text-dark border">{{ task_total }}</span>{% endif %}</h5>
+        {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tasks today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=role_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
     </div>
     <div class="col-md-4">
-        <h5 class="mb-3">Calendar</h5>
+        <h5 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Calendar</h5>
         {% include 'tickets/_dashboard_calendar.html' %}
     </div>
 </div>
@@ -30,32 +32,32 @@
 <div class="d-md-none accordion" id="deptAccordion">
     <div class="accordion-item">
         <h2 class="accordion-header">
-            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#accTickets">
-                Tickets {% if ticket_total %}<span class="badge rounded-pill bg-light text-dark border ms-2">{{ ticket_total }}</span>{% endif %}
+            <button class="accordion-button d-flex align-items-center gap-2" type="button" data-bs-toggle="collapse" data-bs-target="#accTickets">
+                <i data-lucide="ticket" class="icon"></i> Tickets {% if ticket_total %}<span class="badge rounded-pill bg-light text-dark border ms-2">{{ ticket_total }}</span>{% endif %}
             </button>
         </h2>
         <div id="accTickets" class="accordion-collapse collapse show" data-bs-parent="#deptAccordion">
             <div class="accordion-body">
-                {% include 'tickets/_dashboard_column.html' with today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=role_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
+                {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tickets today_items=today_tickets soon_items=soon_tickets later_count=later_ticket_count later_url=role_list_url empty_today_text='Nothing due today.' empty_soon_text='Nothing on the horizon.' %}
             </div>
         </div>
     </div>
     <div class="accordion-item">
         <h2 class="accordion-header">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accTasks">
-                Recurring Tasks {% if task_total %}<span class="badge rounded-pill bg-light text-dark border ms-2">{{ task_total }}</span>{% endif %}
+            <button class="accordion-button collapsed d-flex align-items-center gap-2" type="button" data-bs-toggle="collapse" data-bs-target="#accTasks">
+                <i data-lucide="repeat" class="icon"></i> Recurring Tasks {% if task_total %}<span class="badge rounded-pill bg-light text-dark border ms-2">{{ task_total }}</span>{% endif %}
             </button>
         </h2>
         <div id="accTasks" class="accordion-collapse collapse" data-bs-parent="#deptAccordion">
             <div class="accordion-body">
-                {% include 'tickets/_dashboard_column.html' with today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=role_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
+                {% include 'tickets/_dashboard_column.html' with needs_date_items=needs_date_tasks today_items=today_tasks soon_items=soon_tasks later_count=later_task_count later_url=role_list_url empty_today_text='No recurring tasks due today.' empty_soon_text='Nothing scheduled soon.' %}
             </div>
         </div>
     </div>
     <div class="accordion-item">
         <h2 class="accordion-header">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accCalendar">
-                Calendar
+            <button class="accordion-button collapsed d-flex align-items-center gap-2" type="button" data-bs-toggle="collapse" data-bs-target="#accCalendar">
+                <i data-lucide="calendar-days" class="icon"></i> Calendar
             </button>
         </h2>
         <div id="accCalendar" class="accordion-collapse collapse" data-bs-parent="#deptAccordion">

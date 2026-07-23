@@ -1,14 +1,30 @@
 {% load ticket_extras %}
-<a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-start gap-2">
-    <div class="min-width-0">
-        <div class="fw-medium">
-            {{ t.title|truncatechars:60 }}
-            {% if t.due_date and t.due_date < now %}<span class="badge bg-danger ms-1">Overdue</span>{% endif %}
+<div class="list-group-item">
+    <div class="d-flex justify-content-between align-items-start gap-2">
+        <div style="min-width: 0; overflow: hidden;">
+            <a href="{% url 'ticket_detail' t.pk %}" class="fw-medium {% if t.status == 'completed' %}text-muted{% else %}text-decoration-none text-body{% endif %}"
+               style="{% if t.status == 'completed' %}text-decoration: line-through;{% endif %}">
+                {{ t.title|truncatechars:60 }}
+            </a>
+            {% if t.due_date and t.due_date.date < now.date and t.status != 'completed' %}<span class="badge bg-danger ms-1">Overdue</span>{% endif %}
             {% if t.recurrence_label %}<span class="badge bg-light text-dark border ms-1">{{ t.recurrence_label }}</span>{% endif %}
+            <div class="small" style="color: var(--ink-muted);">{{ t.property.name|default:'—' }} &middot; {{ t.assignee_label }}</div>
         </div>
-        <div class="small" style="color: var(--ink-muted);">{{ t.property.name|default:'—' }} &middot; {{ t.assignee_label }}</div>
+        <div class="text-nowrap small text-end" style="color: var(--ink-muted);">
+            {% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}no due date{% endif %}
+        </div>
     </div>
-    <div class="text-nowrap small text-end" style="color: var(--ink-muted);">
-        {% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}no due date{% endif %}
-    </div>
-</a>
+    {% if t.status == 'completed' %}
+        <div class="small mt-1 d-flex align-items-center gap-1" style="color: var(--status-good);">
+            <i data-lucide="check" class="icon"></i> Closed — no follow-up needed
+        </div>
+    {% else %}
+        <div class="d-flex gap-2 mt-2">
+            <form method="post" action="{% url 'ticket_close_no_followup' t.pk %}" onsubmit="return confirm('Close this ticket without following up with the reporter?');">
+                {% csrf_token %}
+                <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Close No Follow-Up</button>
+            </form>
+            <a href="{% url 'ticket_detail' t.pk %}" class="btn btn-primary btn-sm"><i data-lucide="send" class="icon"></i> Follow Up</a>
+        </div>
+    {% endif %}
+</div>

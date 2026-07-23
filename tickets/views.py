@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -41,10 +42,20 @@ BOX_PREVIEW_SIZE = 5
 
 
 def _ticket_urgency_key(ticket, now):
-    overdue_first = 0 if (ticket.due_date and ticket.due_date < now) else 1
+    is_overdue = ticket.due_date and timezone.localtime(ticket.due_date).date() < timezone.localtime(now).date()
+    overdue_first = 0 if is_overdue else 1
     priority_rank = PRIORITY_RANK.get(ticket.priority, 2)
     due = ticket.due_date or datetime.max.replace(tzinfo=timezone.get_current_timezone())
     return (overdue_first, priority_rank, due)
+
+
+def _daily_checklist_key(ticket, now):
+    """Sort key for a department dashboard's Today list: anything just
+    closed via "Close No Follow-Up" today sinks to the bottom (with
+    strikethrough — see _dashboard_item.html) instead of competing with
+    still-open work on urgency."""
+    closed = 1 if ticket.status == Ticket.Status.COMPLETED else 0
+    return (closed,) + _ticket_urgency_key(ticket, now)
 
 
 @login_required
@@ -66,7 +77,10 @@ def dashboard(request):
             'label': dict(StaffProfile.Role.choices)[role],
             'top': role_tickets[:BOX_PREVIEW_SIZE],
             'total': len(role_tickets),
-            'overdue_count': sum(1 for t in role_tickets if t.due_date and t.due_date < now),
+            'overdue_count': sum(
+                1 for t in role_tickets
+                if t.due_date and timezone.localtime(t.due_date).date() < timezone.localtime(now).date()
+            ),
         })
 
     pending_property_count = (
@@ -115,10 +129,18 @@ def department_dashboard(request, role):
     (source == recurring — otherwise identical Ticket rows), and the
     logged-in viewer's own Google Calendar (about their day, not the
     team's, so it's the same regardless of which department they're
-    looking at). Each of Tickets/Tasks is further split into what's due
-    today (including anything with no due date yet — untriaged isn't
-    "safely later"), what's coming in the next couple days, and a
-    collapsed count of everything further out.
+    looking at).
+
+    Each of Tickets/Tasks is split into three groups:
+    - Needs a due date: nobody's triaged these yet, so they're not
+      "Today's" work until someone assigns one — shown first, as a
+      to-do, not folded into Today where they'd get lost among real
+      due-today items.
+    - Today: due today or overdue, PLUS anything closed today via
+      "Close No Follow-Up" (kept visible with strikethrough, sorted to
+      the bottom, as same-day done-confirmation — see
+      _daily_checklist_key/_dashboard_item.html).
+    - Next 2 days, and a collapsed count of everything further out.
     """
     if role not in StaffProfile.Role.values:
         raise Http404
@@ -127,10 +149,12 @@ def department_dashboard(request, role):
     soon_cutoff = today + timedelta(days=2)
 
     qs = (
-        Ticket.objects.filter(assigned_role=role, status__in=OPEN_STATUSES, property__isnull=False)
+        Ticket.objects.filter(assigned_role=role, property__isnull=False)
+        .filter(Q(status__in=OPEN_STATUSES) | Q(status=Ticket.Status.COMPLETED, completed_at__date=today))
         .select_related('property', 'assigned_staff__user', 'assigned_contact', 'created_from_template')
     )
 
+    needs_date_tickets, needs_date_tasks = [], []
     today_tickets, soon_tickets = [], []
     today_tasks, soon_tasks = [], []
     later_ticket_count = later_task_count = 0
@@ -138,8 +162,13 @@ def department_dashboard(request, role):
         is_task = t.source == Ticket.Source.RECURRING
         today_bucket = today_tasks if is_task else today_tickets
         soon_bucket = soon_tasks if is_task else soon_tickets
+        needs_date_bucket = needs_date_tasks if is_task else needs_date_tickets
 
-        if t.due_date:
+        if t.status == Ticket.Status.COMPLETED:
+            # Closed today via "Close No Follow-Up" — stays on today's
+            # list (struck through, sorted last) rather than vanishing.
+            today_bucket.append(t)
+        elif t.due_date:
             d = timezone.localtime(t.due_date).date()
             if d <= today:
                 today_bucket.append(t)
@@ -150,12 +179,14 @@ def department_dashboard(request, role):
             else:
                 later_ticket_count += 1
         else:
-            # No due date yet isn't "safely later" — it means nobody's
-            # triaged it, which belongs on today's radar, not buried.
-            today_bucket.append(t)
+            needs_date_bucket.append(t)
 
-    for bucket in (today_tickets, soon_tickets, today_tasks, soon_tasks):
+    for bucket in (today_tickets, today_tasks):
+        bucket.sort(key=lambda t: _daily_checklist_key(t, now))
+    for bucket in (soon_tickets, soon_tasks):
         bucket.sort(key=lambda t: _ticket_urgency_key(t, now))
+    for bucket in (needs_date_tickets, needs_date_tasks):
+        bucket.sort(key=lambda t: (PRIORITY_RANK.get(t.priority, 2), t.title))
 
     staff_profile = getattr(request.user, 'staff_profile', None)
     calendar_token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
@@ -164,14 +195,16 @@ def department_dashboard(request, role):
     return render(request, 'tickets/department_dashboard.html', {
         'role': role,
         'role_label': dict(StaffProfile.Role.choices).get(role),
+        'needs_date_tickets': needs_date_tickets,
+        'needs_date_tasks': needs_date_tasks,
         'today_tickets': today_tickets,
         'soon_tickets': soon_tickets,
         'later_ticket_count': later_ticket_count,
-        'ticket_total': len(today_tickets) + len(soon_tickets) + later_ticket_count,
+        'ticket_total': len(needs_date_tickets) + len(today_tickets) + len(soon_tickets) + later_ticket_count,
         'today_tasks': today_tasks,
         'soon_tasks': soon_tasks,
         'later_task_count': later_task_count,
-        'task_total': len(today_tasks) + len(soon_tasks) + later_task_count,
+        'task_total': len(needs_date_tasks) + len(today_tasks) + len(soon_tasks) + later_task_count,
         'role_list_url': f"{reverse('ticket_list')}?role={role}",
         'now': now,
         'calendar_configured': calendar_is_configured(),
@@ -265,6 +298,7 @@ def ticket_list(request):
         'selected_role_label': dict(StaffProfile.Role.choices).get(role) if role else None,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
+        'properties': property_dropdown_queryset(),
     })
 
 
@@ -313,7 +347,9 @@ def ticket_set_assignee(request, pk):
 
 @login_required
 def ticket_set_due_date(request, pk):
-    """Inline due-date edit from the tickets list."""
+    """Inline due-date edit — from the tickets list (next_qs present) or
+    from a department dashboard's "needs a due date" box (next_role
+    present, since that's not a ticket_list request at all)."""
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
         raw = request.POST.get('due_date', '')
@@ -324,7 +360,12 @@ def ticket_set_due_date(request, pk):
         else:
             ticket.due_date = None
         ticket.save(update_fields=['due_date'])
-    return _list_redirect(request)
+    if 'next_qs' in request.POST:
+        return _list_redirect(request)
+    next_role = request.POST.get('next_role')
+    if next_role in StaffProfile.Role.values:
+        return redirect('department_dashboard', role=next_role)
+    return redirect('dashboard')
 
 
 @login_required
@@ -422,6 +463,10 @@ def ticket_reassign(request, pk):
 
 @login_required
 def ticket_set_property(request, pk):
+    """Also used as the tickets list's inline Property edit (next_qs
+    present) — see _list_redirect. Allows clearing the property back to
+    none (moves it back into the pending-triage screen), not just setting
+    one, since that's a real inline action once a select is on the list."""
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
         property_id = request.POST.get('property_id')
@@ -429,9 +474,26 @@ def ticket_set_property(request, pk):
             ticket.property_id = property_id
             ticket.save(update_fields=['property'])
             messages.success(request, f'Property set to {ticket.property.name} — moved into the {ticket.get_assigned_role_display() if ticket.assigned_role else "unassigned"} queue.')
+        elif 'next_qs' in request.POST:
+            ticket.property = None
+            ticket.save(update_fields=['property'])
+    if 'next_qs' in request.POST:
+        return _list_redirect(request)
     if request.POST.get('next') == 'pending':
         return redirect('ticket_pending')
     return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_set_title(request, pk):
+    """Inline title edit from the tickets list."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        if title:
+            ticket.title = title
+            ticket.save(update_fields=['title'])
+    return _list_redirect(request)
 
 
 @login_required
@@ -454,6 +516,23 @@ def ticket_set_status(request, pk):
     if 'next_qs' in request.POST:
         return _list_redirect(request)
     return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_close_no_followup(request, pk):
+    """The department dashboard's daily-checklist "Close No Follow-Up"
+    action — completes a ticket without messaging the reporter. Stays
+    visible (struck through, sorted last) in today's list for the rest of
+    the day as a done-confirmation — see department_dashboard's query,
+    which includes anything completed today regardless of status filter."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        ticket.status = Ticket.Status.COMPLETED
+        ticket.completed_at = timezone.now()
+        ticket.save()
+    if ticket.assigned_role in StaffProfile.Role.values:
+        return redirect('department_dashboard', role=ticket.assigned_role)
+    return redirect('dashboard')
 
 
 @login_required

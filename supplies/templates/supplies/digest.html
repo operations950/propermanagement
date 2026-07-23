@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}Supply digest{% endblock %}
 {% block content %}
-<h2 class="my-3">Supply requests by property</h2>
+<h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="package" class="icon-lg"></i> Supply requests by property</h2>
 <p class="text-muted">Pending shortage reports, grouped by property. Select the ones to build into today's Amazon order list.</p>
 
 {% if unassigned %}
 <div class="card mb-3 border-warning">
-    <div class="card-body">
-        <h5 class="card-title">⚠ Needs a property ({{ unassigned|length }})</h5>
+    <div class="card-body p-4">
+        <h5 class="card-title d-flex align-items-center gap-2"><i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i> Needs a property ({{ unassigned|length }})</h5>
         <p class="text-muted small">The source that reported these couldn't tell which property they're for — assign one to move them into a batch below.</p>
         <ul class="list-group">
         {% for r in unassigned %}
@@ -30,8 +30,8 @@
 
 {% for property, requests in by_property.items %}
 <div class="card mb-3">
-    <div class="card-body">
-        <h5 class="card-title">{{ property.name }}</h5>
+    <div class="card-body p-4">
+        <h5 class="card-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon"></i> {{ property.name }}</h5>
         <form method="post">
             {% csrf_token %}
             <input type="hidden" name="property_id" value="{{ property.pk }}">
@@ -43,13 +43,18 @@
                 </li>
             {% endfor %}
             </ul>
-            <button class="btn btn-primary btn-sm" type="submit">Build order list for {{ property.name }}</button>
+            <button class="btn btn-primary btn-sm" type="submit"><i data-lucide="shopping-cart" class="icon"></i> Build order list for {{ property.name }}</button>
         </form>
     </div>
 </div>
 {% endfor %}
 
 {% if not unassigned and not by_property %}
-<p class="text-muted">No pending supply requests.</p>
+<div class="card">
+    <div class="card-body text-center py-5" style="color: var(--ink-muted);">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+        No pending supply requests.
+    </div>
+</div>
 {% endif %}
 {% endblock %}

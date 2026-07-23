@@ -1,7 +1,11 @@
 {% extends 'vendorportal/base.html' %}
 {% block title %}Link expired{% endblock %}
 {% block content %}
-<div class="alert alert-warning my-5">
-    This link has expired or is no longer valid. Please contact the property manager for a new link.
+<div class="card my-5">
+    <div class="card-body p-4 text-center">
+        <i data-lucide="link-2-off" class="icon-lg d-block mx-auto mb-3" style="width: 2.5em; height: 2.5em; color: var(--brand-slate);"></i>
+        <h5 class="page-title mb-2">This link has expired</h5>
+        <p class="text-muted mb-0">It's no longer valid — please contact the property manager for a new link.</p>
+    </div>
 </div>
 {% endblock %}

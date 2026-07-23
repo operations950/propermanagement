@@ -4,14 +4,15 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-start my-3">
     <div>
-        <h2>{{ ticket.title }}</h2>
+        <a href="{% url 'ticket_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> All tickets</a>
+        <h2 class="page-title">{{ ticket.title }}</h2>
         <p class="text-muted mb-0">
             <span class="badge" style="{{ ticket.assigned_role|department_badge_style }}">{{ ticket.get_assigned_role_display|default:'Unassigned' }}</span>
             {{ ticket.property.name|default:'No property assigned' }} &middot;
             source: {{ ticket.get_source_display }}
         </p>
     </div>
-    <span class="badge bg-{% if ticket.status == 'cancelled' %}secondary{% elif ticket.status == 'completed' or ticket.status == 'verified' %}success{% elif ticket.priority == 'urgent' %}danger{% else %}primary{% endif %} fs-6">
+    <span class="badge rounded-pill bg-{% if ticket.status == 'cancelled' %}secondary{% elif ticket.status == 'completed' or ticket.status == 'verified' %}success{% elif ticket.priority == 'urgent' %}danger{% else %}primary{% endif %} fs-6 px-3 py-2">
         {{ ticket.get_status_display }}
     </span>
 </div>
@@ -52,7 +53,7 @@
         {% if ticket.raw_context %}
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title text-muted">Original source text</h6>
+                <h6 class="card-title text-muted d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Original source text</h6>
                 <p class="small text-muted" style="white-space: pre-wrap;">{{ ticket.raw_context }}</p>
             </div>
         </div>
@@ -61,7 +62,7 @@
         {% if vendor_link %}
         <div class="card mb-3 border-info">
             <div class="card-body">
-                <h6 class="card-title">Vendor completion link</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="link" class="icon"></i> Vendor completion link</h6>
                 <p class="mb-1 text-muted">Share this with {{ ticket.assigned_contact }} — no login needed. They can mark the job complete and upload photos.</p>
                 <input type="text" class="form-control" readonly value="{{ vendor_link }}" onclick="this.select()">
             </div>
@@ -71,7 +72,7 @@
         {% if attachments %}
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title">Attachments / photos</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="paperclip" class="icon"></i> Attachments / photos</h6>
                 <div class="row">
                 {% for a in attachments %}
                     <div class="col-md-4 mb-2">
@@ -90,7 +91,7 @@
 
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title">Related contacts</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="contact" class="icon"></i> Related contacts</h6>
                 <ul class="list-unstyled mb-0">
                 {% for tc in ticket_contacts %}
                     <li>{{ tc.contact }} — <span class="text-muted">{{ tc.get_role_display }}</span></li>
@@ -103,7 +104,7 @@
     <div class="col-md-5">
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title">Update status</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Update status</h6>
                 <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
                     {% csrf_token %}
                     <select name="status" class="form-select mb-2">
@@ -119,7 +120,7 @@
 
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title">Reassign</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="user-round-cog" class="icon"></i> Reassign</h6>
                 <form method="post" action="{% url 'ticket_reassign' ticket.pk %}">
                     {% csrf_token %}
                     {{ reassign_form.as_p }}
@@ -130,12 +131,19 @@
 
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title">Report resolution to reporter</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="send" class="icon"></i> Report resolution to reporter</h6>
                 <form method="post" action="{% url 'ticket_followup' ticket.pk %}">
                     {% csrf_token %}
                     {{ followup_form.as_p }}
                     <button class="btn btn-success btn-sm" type="submit">Send follow-up</button>
                 </form>
+                {% if ticket.status != 'completed' and ticket.status != 'verified' and ticket.status != 'cancelled' %}
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" class="mt-2" onsubmit="return confirm('Mark this ticket complete?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="completed">
+                    <button class="btn btn-outline-success btn-sm w-100" type="submit"><i data-lucide="circle-check-big" class="icon"></i> Mark Complete</button>
+                </form>
+                {% endif %}
                 {% if followups %}
                 <hr>
                 <small class="text-muted">Recent follow-ups:</small>
@@ -151,7 +159,7 @@
         {% if assignment_logs %}
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title">Assignment history</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="history" class="icon"></i> Assignment history</h6>
                 <ul class="list-unstyled small mb-0">
                 {% for log in assignment_logs %}
                     <li>{{ log.changed_at }} — {% if log.to_staff %}{{ log.to_staff }}{% elif log.to_contact %}{{ log.to_contact }}{% else %}unassigned{% endif %}</li>
