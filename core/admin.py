@@ -13,8 +13,8 @@ class PropertyAttributeAssignmentInline(admin.TabularInline):
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
-    list_display = ['name', 'property_type', 'is_general', 'address', 'is_active', 'created_at']
-    list_filter = ['property_type', 'is_general', 'is_active']
+    list_display = ['name', 'property_type', 'is_general', 'address', 'address_verified', 'is_active', 'created_at']
+    list_filter = ['property_type', 'is_general', 'address_verified', 'is_active']
     search_fields = ['name', 'address']
     inlines = [PropertyAttributeAssignmentInline]
 

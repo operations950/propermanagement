@@ -13,11 +13,23 @@ class Property(models.Model):
         COMMERCIAL = 'commercial', 'Commercial'
 
     name = models.CharField(max_length=200)
+    # Auto-derived from street/city/state/zip_code in save() once all four are
+    # present — not directly edited via PropertyForm anymore (see core/forms.py).
+    # Existing properties predating the structured address fields keep whatever
+    # free text they already had until someone re-verifies them through the
+    # property form's address picker.
     address = models.CharField(max_length=300, blank=True)
+    street = models.CharField(max_length=200, blank=True)
     city = models.CharField(
         max_length=100, blank=True,
-        help_text='Only needed once a property type has enough properties that the New Ticket bubble '
-                   'picker groups them by city — safe to leave blank until then.',
+        help_text='Also used by the New Ticket bubble picker to group properties by city once a '
+                   'type has more than 50 of them.',
+    )
+    state = models.CharField(max_length=2, blank=True)
+    zip_code = models.CharField(max_length=10, blank=True)
+    address_verified = models.BooleanField(
+        default=False,
+        help_text='Set automatically when USPS confirms this address on save — see core/usps.py.',
     )
     property_type = models.CharField(max_length=20, choices=Type.choices, default=Type.GENERAL)
     is_general = models.BooleanField(
@@ -37,6 +49,11 @@ class Property(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if self.street and self.city and self.state and self.zip_code:
+            self.address = f'{self.street}, {self.city}, {self.state} {self.zip_code}'
+        super().save(*args, **kwargs)
 
 
 def property_dropdown_queryset():

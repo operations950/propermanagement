@@ -222,6 +222,14 @@ VRBO_API_KEY = os.environ.get('VRBO_API_KEY', '')
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
 GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
 
+# Property address picker (core/places.py, core/usps.py) — separate from
+# GOOGLE_OAUTH_CLIENT_ID/SECRET above (a Places API key, not an OAuth
+# client). Blank = the property form falls back to plain manual address
+# entry with no live suggestions and no USPS verification badge.
+GOOGLE_PLACES_API_KEY = os.environ.get('GOOGLE_PLACES_API_KEY', '')
+USPS_CLIENT_ID = os.environ.get('USPS_CLIENT_ID', '')
+USPS_CLIENT_SECRET = os.environ.get('USPS_CLIENT_SECRET', '')
+
 # Used by intake/thread_classifier.py to read a full Quo conversation thread
 # before deciding whether it's actionable. Blank = classification no-ops.
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')

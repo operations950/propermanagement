@@ -3,6 +3,7 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -10,7 +11,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from tickets.models import Frequency, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate, TicketTemplate
 from tickets.services import applicability
 
-from . import google_calendar
+from . import google_calendar, places, usps
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
     Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
@@ -119,17 +120,42 @@ def property_list(request):
     })
 
 
+def _standardize_property_address(request, prop):
+    """Runs USPS standardization on a just-validated (not yet saved)
+    Property instance — overwrites street/city/state/zip_code with USPS's
+    standardized values and sets address_verified on a confirmed match;
+    otherwise leaves the submitted values as-is with address_verified
+    False and a warning message. Never blocks the save either way. No-op
+    (silently) for general placeholders, which have no real address."""
+    if prop.is_general:
+        return
+    result = usps.standardize(prop.street, prop.city, prop.state, prop.zip_code)
+    if result['verified']:
+        prop.street = result['street']
+        prop.city = result['city']
+        prop.state = result['state']
+        prop.zip_code = result['zip_code']
+        prop.address_verified = True
+    else:
+        prop.address_verified = False
+        messages.warning(request, f"Saved, but USPS couldn't verify this address — showing it as entered. ({result['error']})")
+
+
 @login_required
 def property_create(request):
     if request.method == 'POST':
         form = PropertyForm(request.POST)
         if form.is_valid():
-            prop = form.save()
+            prop = form.save(commit=False)
+            _standardize_property_address(request, prop)
+            prop.save()
             messages.success(request, f'Property "{prop.name}" created — review its recurring tasks below.')
             return redirect('property_recurring_tasks', pk=prop.pk)
     else:
         form = PropertyForm(initial={'property_type': Property.Type.SHORT_TERM_RENTAL})
-    return render(request, 'core/property_form.html', {'form': form, 'is_new': True})
+    return render(request, 'core/property_form.html', {
+        'form': form, 'is_new': True, 'places_configured': places.is_configured(),
+    })
 
 
 @login_required
@@ -138,14 +164,27 @@ def property_edit(request, pk):
     if request.method == 'POST':
         form = PropertyForm(request.POST, instance=prop)
         if form.is_valid():
-            form.save()
+            prop = form.save(commit=False)
+            _standardize_property_address(request, prop)
+            prop.save()
             messages.success(request, f'Property "{prop.name}" updated.')
             return redirect('property_list')
     else:
         form = PropertyForm(instance=prop)
     return render(request, 'core/property_form.html', {
         'form': form, 'is_new': False, 'property': prop, 'property_contacts': prop.contacts.all(),
+        'places_configured': places.is_configured(),
     })
+
+
+@login_required
+def property_address_autocomplete(request):
+    return JsonResponse({'suggestions': places.autocomplete(request.GET.get('q', ''))})
+
+
+@login_required
+def property_address_lookup(request, place_id):
+    return JsonResponse(places.place_details(place_id) or {})
 
 
 @login_required
