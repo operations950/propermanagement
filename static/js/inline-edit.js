@@ -48,6 +48,16 @@
       closeOthers(picker);
       picker.hidden = !opening;
       if (display) display.hidden = opening;
+      // The popover normally hangs off the left edge of the trigger — for
+      // a trigger near the right edge of the page/table (e.g. ticket_list's
+      // rightmost Assignee column), that pushes it off-screen, so flip it
+      // to hang off the right edge instead whenever it would overflow.
+      if (opening) {
+        picker.classList.remove('inline-edit-picker-align-right');
+        if (picker.getBoundingClientRect().right > window.innerWidth) {
+          picker.classList.add('inline-edit-picker-align-right');
+        }
+      }
     });
 
     function collapseWithLabel(label) {

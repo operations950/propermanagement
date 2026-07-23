@@ -94,6 +94,41 @@
   margin-left: 0.15rem;
 }
 
+/* Click-to-reveal inline edit (dense tables: ticket_list.html,
+   property_recurring_tasks.html per-row overrides) — the picker floats
+   as a popover instead of expanding in place, so a narrow table
+   column/card doesn't squeeze its bubbles into an ugly wrapped column. */
+
+[data-inline-edit] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+[data-inline-edit-picker] {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--bs-border-radius-lg);
+  box-shadow: var(--shadow-card-hover);
+  padding: 0.85rem;
+  min-width: 280px;
+  max-width: min(480px, 90vw);
+}
+
+[data-inline-edit-picker][hidden] {
+  display: none;
+}
+
+[data-inline-edit-picker].inline-edit-picker-align-right {
+  left: auto;
+  right: 0;
+}
+
 /* Ghost-text contact filter */
 
 .contact-filter {
