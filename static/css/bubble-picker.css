@@ -58,8 +58,14 @@
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
+  text-decoration: none;
   transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
   line-height: 1.2;
+}
+
+.bubble:hover {
+  color: var(--ink-primary);
+  text-decoration: none;
 }
 
 .bubble:hover {

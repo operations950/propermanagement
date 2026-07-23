@@ -45,8 +45,6 @@
     </div>
 </form>
 
-{% regroup properties by get_property_type_display as property_groups %}
-
 {% comment %}
 Desktop/tablet: a real table. table-responsive lets it scroll sideways
 rather than squeezing every column down to an unreadable sliver.
@@ -58,33 +56,8 @@ rather than squeezing every column down to an unreadable sliver.
     <tbody>
     {% for t in tickets %}
         <tr>
-            <td>
-                <form method="post" action="{% url 'ticket_set_department' t.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <select name="assigned_role" class="form-select form-select-sm" onchange="this.form.submit()"
-                            style="min-width: 150px; {{ t.assigned_role|department_badge_style }}">
-                        <option value="" {% if not t.assigned_role %}selected{% endif %}>Unassigned</option>
-                        {% for value, label in role_choices %}
-                            <option value="{{ value }}" {% if value == t.assigned_role %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </form>
-            </td>
-            <td>
-                <form method="post" action="{% url 'ticket_set_property' t.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <select name="property_id" class="form-select form-select-sm" style="min-width: 170px;" onchange="this.form.submit()">
-                        <option value="" {% if not t.property_id %}selected{% endif %}>⚠ none</option>
-                        {% for group in property_groups %}
-                        <optgroup label="{{ group.grouper }}">
-                            {% for p in group.list %}<option value="{{ p.pk }}" {% if t.property_id == p.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
-                        </optgroup>
-                        {% endfor %}
-                    </select>
-                </form>
-            </td>
+            <td>{% include 'tickets/_inline_department.html' with t=t %}</td>
+            <td>{% include 'tickets/_inline_property.html' with t=t %}</td>
             <td class="w-100">
                 <form method="post" action="{% url 'ticket_set_title' t.pk %}" class="d-flex align-items-center gap-2">
                     {% csrf_token %}
@@ -101,36 +74,8 @@ rather than squeezing every column down to an unreadable sliver.
                            style="min-width: 145px;" value="{{ t.due_date|date:'Y-m-d' }}" onchange="this.form.submit()">
                 </form>
             </td>
-            <td>
-                <form method="post" action="{% url 'ticket_set_status' t.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <select name="status" class="form-select form-select-sm" style="min-width: 140px;" onchange="this.form.submit()">
-                        {% for value, label in status_choices %}
-                            <option value="{{ value }}" {% if value == t.status %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
-                </form>
-            </td>
-            <td>
-                <form method="post" action="{% url 'ticket_set_assignee' t.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <select name="assignee" class="form-select form-select-sm" style="min-width: 170px;" onchange="this.form.submit()">
-                        <option value="" {% if not t.assigned_staff_id and not t.assigned_contact_id %}selected{% endif %}>Unassigned</option>
-                        <optgroup label="Staff">
-                            {% for s in staff_list %}
-                                <option value="staff-{{ s.pk }}" {% if t.assigned_staff_id == s.pk %}selected{% endif %}>{{ s }}</option>
-                            {% endfor %}
-                        </optgroup>
-                        <optgroup label="Vendors">
-                            {% for v in vendor_list %}
-                                <option value="contact-{{ v.pk }}" {% if t.assigned_contact_id == v.pk %}selected{% endif %}>{{ v.name }}</option>
-                            {% endfor %}
-                        </optgroup>
-                    </select>
-                </form>
-            </td>
+            <td>{% include 'tickets/_inline_status.html' with t=t %}</td>
+            <td>{% include 'tickets/_inline_assignee.html' with t=t %}</td>
             <td class="text-nowrap">
                 <form method="post" action="{% url 'ticket_delete' t.pk %}"
                       onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
@@ -161,45 +106,16 @@ just laid out top-to-bottom rather than in cells.
                 <input type="text" name="title" value="{{ t.title }}" class="form-control form-control-sm fw-semibold flex-grow-1" onchange="this.form.submit()">
                 <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-nowrap flex-shrink-0" title="Open ticket"><i data-lucide="square-arrow-out-up-right" class="icon"></i></a>
             </form>
-            <form method="post" action="{% url 'ticket_set_property' t.pk %}" class="mb-2">
-                {% csrf_token %}
-                <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                <select name="property_id" class="form-select form-select-sm" onchange="this.form.submit()">
-                    <option value="" {% if not t.property_id %}selected{% endif %}>⚠ no property</option>
-                    {% for group in property_groups %}
-                    <optgroup label="{{ group.grouper }}">
-                        {% for p in group.list %}<option value="{{ p.pk }}" {% if t.property_id == p.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
-                    </optgroup>
-                    {% endfor %}
-                </select>
-            </form>
+            <div class="mb-2">{% include 'tickets/_inline_property.html' with t=t %}</div>
 
             <div class="row g-2">
                 <div class="col-6">
                     <label class="form-label small text-muted mb-1">Department</label>
-                    <form method="post" action="{% url 'ticket_set_department' t.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                        <select name="assigned_role" class="form-select form-select-sm" onchange="this.form.submit()"
-                                style="{{ t.assigned_role|department_badge_style }}">
-                            <option value="" {% if not t.assigned_role %}selected{% endif %}>Unassigned</option>
-                            {% for value, label in role_choices %}
-                                <option value="{{ value }}" {% if value == t.assigned_role %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </form>
+                    {% include 'tickets/_inline_department.html' with t=t %}
                 </div>
                 <div class="col-6">
                     <label class="form-label small text-muted mb-1">Status</label>
-                    <form method="post" action="{% url 'ticket_set_status' t.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                        <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
-                            {% for value, label in status_choices %}
-                                <option value="{{ value }}" {% if value == t.status %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </form>
+                    {% include 'tickets/_inline_status.html' with t=t %}
                 </div>
                 <div class="col-6">
                     <label class="form-label small text-muted mb-1">Due</label>
@@ -212,23 +128,7 @@ just laid out top-to-bottom rather than in cells.
                 </div>
                 <div class="col-6">
                     <label class="form-label small text-muted mb-1">Assignee</label>
-                    <form method="post" action="{% url 'ticket_set_assignee' t.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                        <select name="assignee" class="form-select form-select-sm" onchange="this.form.submit()">
-                            <option value="" {% if not t.assigned_staff_id and not t.assigned_contact_id %}selected{% endif %}>Unassigned</option>
-                            <optgroup label="Staff">
-                                {% for s in staff_list %}
-                                    <option value="staff-{{ s.pk }}" {% if t.assigned_staff_id == s.pk %}selected{% endif %}>{{ s }}</option>
-                                {% endfor %}
-                            </optgroup>
-                            <optgroup label="Vendors">
-                                {% for v in vendor_list %}
-                                    <option value="contact-{{ v.pk }}" {% if t.assigned_contact_id == v.pk %}selected{% endif %}>{{ v.name }}</option>
-                                {% endfor %}
-                            </optgroup>
-                        </select>
-                    </form>
+                    {% include 'tickets/_inline_assignee.html' with t=t %}
                 </div>
             </div>
 

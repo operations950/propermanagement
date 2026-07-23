@@ -5,9 +5,61 @@
 <h2 class="page-title mb-3">{% if is_new %}New contact{% else %}Edit {{ contact.name }}{% endif %}</h2>
 <div class="card" style="max-width: 640px; border-radius: var(--bs-border-radius-lg);">
     <div class="card-body p-4">
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
         <form method="post">
             {% csrf_token %}
-            {{ form.as_p }}
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_name">Name</label>
+                <input type="text" name="name" id="id_name" class="form-control {% if form.name.errors %}is-invalid{% endif %}" value="{{ form.name.value|default:'' }}" required>
+                {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors|join:', ' }}</div>{% endif %}
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Type</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="contact_type">
+                    <input type="hidden" name="contact_type" data-bubble-input value="{{ form.contact_type.value|default:'other' }}">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a type"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for value, label in form.fields.contact_type.choices %}
+                            {% if value %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>{% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_trade">Trade <span class="fw-normal" style="color: var(--ink-muted);">(for vendors — e.g. plumbing, HVAC, cleaning)</span></label>
+                <input type="text" name="trade" id="id_trade" class="form-control" value="{{ form.trade.value|default:'' }}">
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_phone">Phone</label>
+                <input type="text" name="phone" id="id_phone" class="form-control" value="{{ form.phone.value|default:'' }}">
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_email">Email</label>
+                <input type="email" name="email" id="id_email" class="form-control" value="{{ form.email.value|default:'' }}">
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Properties <span class="fw-normal" style="color: var(--ink-muted);">(optional — a contact can be on more than one, e.g. a board member)</span></label>
+                <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="properties" data-initial-values="{{ selected_property_ids }}">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="No properties selected"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for p in properties %}
+                        <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_notes">Notes</label>
+                <textarea name="notes" id="id_notes" class="form-control" rows="3">{{ form.notes.value|default:'' }}</textarea>
+            </div>
+
             <button class="btn btn-primary" type="submit">
                 <i data-lucide="{% if is_new %}plus{% else %}check{% endif %}" class="icon"></i>
                 {% if is_new %}Create contact{% else %}Save changes{% endif %}

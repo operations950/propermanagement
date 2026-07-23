@@ -11,14 +11,7 @@
     <div class="col-auto">
         <input type="text" name="q" class="form-control" placeholder="Search name or address…" value="{{ q }}">
     </div>
-    <div class="col-auto">
-        <select name="type" class="form-select" onchange="this.form.submit()">
-            <option value="">All types</option>
-            {% for value, label in type_choices %}
-                <option value="{{ value }}" {% if value == selected_type %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-    </div>
+    <input type="hidden" name="type" value="{{ selected_type }}">
     <div class="col-auto">
         <div class="form-check">
             <input class="form-check-input" type="checkbox" name="show_inactive" value="1" id="showInactive" {% if show_inactive %}checked{% endif %} onchange="this.form.submit()">
@@ -29,6 +22,13 @@
         <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="search" class="icon"></i> Search</button>
     </div>
 </form>
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <a href="?{% if q %}q={{ q|urlencode }}&{% endif %}{% if show_inactive %}show_inactive=1{% endif %}" class="bubble{% if not selected_type %} bubble-locked{% endif %}">All types</a>
+    {% for value, label in type_choices %}
+        <a href="?type={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if show_inactive %}&show_inactive=1{% endif %}" class="bubble{% if value == selected_type %} bubble-locked{% endif %}">{{ label }}</a>
+    {% endfor %}
+</div>
 
 <div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
 <div class="table-responsive">

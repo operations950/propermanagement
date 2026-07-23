@@ -40,9 +40,10 @@ class Command(BaseCommand):
             email='tenant.demo@example.com',
             defaults={
                 'name': 'Taylor Tenant', 'contact_type': Contact.ContactType.TENANT,
-                'phone': '555-0110', 'property': properties['Downtown Loft'],
+                'phone': '555-0110',
             },
         )
+        contacts['tenant'].properties.add(properties['Downtown Loft'])
         contacts['vendor'], _ = Contact.objects.get_or_create(
             email='handyman.demo@example.com',
             defaults={
@@ -54,9 +55,10 @@ class Command(BaseCommand):
             email='guest.demo@example.com',
             defaults={
                 'name': 'Gabby Guest', 'contact_type': Contact.ContactType.GUEST,
-                'phone': '555-0130', 'property': properties['Sunset Villa'],
+                'phone': '555-0130',
             },
         )
+        contacts['guest'].properties.add(properties['Sunset Villa'])
         self.stdout.write(f'  {len(contacts)} contacts')
         return contacts
 

@@ -12,38 +12,75 @@
             <span class="text-muted small">{{ c.created_at|date:"M j, Y" }}</span>
         </div>
         {% if c.raw_context %}<p class="text-muted small mb-2">{{ c.raw_context }}</p>{% endif %}
-        <form method="post" action="{% url 'contact_review_approve' c.pk %}" class="row g-2 align-items-end">
+        <form method="post" action="{% url 'contact_review_approve' c.pk %}">
             {% csrf_token %}
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">Name</label>
-                <input type="text" name="name" class="form-control" value="{{ c.name }}">
+            <div class="row g-2 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1">Name</label>
+                    <input type="text" name="name" class="form-control" value="{{ c.name }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1">Phone</label>
+                    <input type="text" name="phone" class="form-control" value="{{ c.phone }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1">Email</label>
+                    <input type="email" name="email" class="form-control" value="{{ c.email }}">
+                </div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">Phone</label>
-                <input type="text" name="phone" class="form-control" value="{{ c.phone }}">
+
+            <div class="mb-3">
+                <label class="form-label small text-muted mb-1 d-block">Type</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="contact_type">
+                    <input type="hidden" name="contact_type" data-bubble-input value="{{ c.suggested_contact_type }}">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a type"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for value, label in type_choices %}
+                            <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">Email</label>
-                <input type="email" name="email" class="form-control" value="{{ c.email }}">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">Type</label>
-                <select name="contact_type" class="form-select">
-                    {% for value, label in type_choices %}
-                        <option value="{{ value }}" {% if value == c.suggested_contact_type %}selected{% endif %}>{{ label }}</option>
+
+            <div class="mb-3">
+                <label class="form-label small text-muted mb-1 d-block">Property (optional)</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property_id">
+                    <input type="hidden" name="property_id" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="No property"></div>
+                    <div class="bubble-pool" data-bubble-pool data-tier="1">
+                        {% for entry in properties_by_type %}
+                            <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                        {% endfor %}
+                    </div>
+                    {% for entry in properties_by_type %}
+                        {% if entry.needs_city_tier %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                                {% for city_entry in entry.cities %}
+                                    <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                                {% endfor %}
+                            </div>
+                            {% for city_entry in entry.cities %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                                {% if city_entry.needs_filter %}
+                                    <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                                {% endif %}
+                                {% for p in city_entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                                {% for p in entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
                     {% endfor %}
-                </select>
+                </div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">Property (optional)</label>
-                <select name="property_id" class="form-select">
-                    <option value="">—</option>
-                    {% for p in properties %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2 d-flex gap-2">
-                <button class="btn btn-success flex-grow-1" type="submit"><i data-lucide="check" class="icon"></i> Approve</button>
-            </div>
+
+            <button class="btn btn-success" type="submit"><i data-lucide="check" class="icon"></i> Approve</button>
         </form>
         <form method="post" action="{% url 'contact_review_reject' c.pk %}" class="mt-2" onsubmit="return confirm('Reject this candidate? It won\'t become a Contact.');">
             {% csrf_token %}

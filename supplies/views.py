@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from core.models import Property
+from core.models import Property, properties_by_type
 
 from .models import SupplyOrderBatch, SupplyRequest
 
@@ -34,7 +34,7 @@ def digest(request):
             return redirect('supplies:batch_detail', pk=batch.pk)
 
     return render(request, 'supplies/digest.html', {
-        'by_property': by_property, 'unassigned': unassigned, 'properties': Property.objects.filter(is_active=True),
+        'by_property': by_property, 'unassigned': unassigned, 'properties_by_type': properties_by_type(),
     })
 
 

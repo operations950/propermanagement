@@ -34,19 +34,47 @@
 {% endif %}
 
 {% if not ticket.property %}
-{% regroup properties by get_property_type_display as property_groups %}
-<div class="alert alert-warning d-flex justify-content-between align-items-center gap-3">
-    <div>No property assigned yet. If it's not about one specific address, choose the general option for its business line, or "No specific property" if it's company-wide.</div>
-    <form method="post" action="{% url 'ticket_set_property' ticket.pk %}" class="d-flex gap-2 flex-shrink-0">
+<div class="alert alert-warning">
+    <div class="mb-2">No property assigned yet. If it's not about one specific address, choose the general option for its business line, or "No specific property" if it's company-wide.</div>
+    <form method="post" action="{% url 'ticket_set_property' ticket.pk %}">
         {% csrf_token %}
-        <select name="property_id" class="form-select form-select-lg flex-grow-1" style="min-width: 260px;" required>
-            <option value="">Choose a property…</option>
-            {% for group in property_groups %}
-            <optgroup label="{{ group.grouper }}">
-                {% for p in group.list %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
-            </optgroup>
+        <div class="bubble-picker mb-2" data-bubble-picker data-mode="drilldown" data-name="property_id">
+            <input type="hidden" name="property_id" data-bubble-input value="">
+            <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property…"></div>
+            <div class="bubble-pool" data-bubble-pool data-tier="1">
+                {% for entry in properties_by_type %}
+                    <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                {% endfor %}
+            </div>
+            {% for entry in properties_by_type %}
+                {% if entry.needs_city_tier %}
+                    <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                        {% for city_entry in entry.cities %}
+                            <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                        {% endfor %}
+                    </div>
+                    {% for city_entry in entry.cities %}
+                    <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                        {% if city_entry.needs_filter %}
+                            <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                        {% endif %}
+                        {% for p in city_entry.properties %}
+                            <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                        {% for p in entry.properties %}
+                            <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                        {% endfor %}
+                        {% if not entry.properties %}
+                            <span class="small" style="color: var(--ink-muted);">No properties in this type yet.</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
             {% endfor %}
-        </select>
+        </div>
         <button class="btn btn-warning text-nowrap" type="submit">Assign</button>
     </form>
 </div>
@@ -165,11 +193,16 @@
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Update status</h6>
                 <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
                     {% csrf_token %}
-                    <select name="status" class="form-select mb-2">
-                        {% for value, label in status_choices %}
-                            <option value="{{ value }}" {% if value == ticket.status %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="form-label small fw-medium d-block">Status</label>
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="status">
+                        <input type="hidden" name="status" data-bubble-input value="{{ ticket.status }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a status"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in status_choices %}
+                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
                     <textarea name="resolution_notes" class="form-control mb-2" rows="2" placeholder="Resolution notes (optional)"></textarea>
                     <textarea name="status_reason" class="form-control mb-2" rows="2" placeholder="Reason (required for Skipped / Not applicable / Deferred)"></textarea>
                     <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
@@ -217,9 +250,61 @@
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="user-round-cog" class="icon"></i> Reassign</h6>
                 <form method="post" action="{% url 'ticket_reassign' ticket.pk %}">
                     {% csrf_token %}
-                    {{ reassign_form.as_p }}
+
+                    <label class="form-label small fw-medium d-block">Department</label>
+                    <div class="bubble-picker mb-3" data-bubble-picker data-mode="single" data-name="assigned_role">
+                        <input type="hidden" name="assigned_role" data-bubble-input value="{{ reassign_form.assigned_role.value|default:'' }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a department"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in reassign_form.fields.assigned_role.choices %}
+                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});">
+                                    <i data-lucide="{{ value|department_icon }}" class="icon"></i> {{ label }}
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <label class="form-label small fw-medium d-block">Specific person <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+                    <div class="bubble-picker mb-3" data-bubble-picker data-mode="single" data-name="assigned_staff" id="reassign-staff-picker">
+                        <input type="hidden" name="assigned_staff" data-bubble-input value="{{ reassign_form.assigned_staff.value|default:'' }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Unassigned"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for staff in reassign_form.fields.assigned_staff.queryset %}
+                                <button type="button" class="bubble" data-value="{{ staff.pk }}" data-label="{{ staff }}">{{ staff }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-text mb-2">A ticket can go to Staff or a Contractor below, not both.</div>
+
+                    <label class="form-label small fw-medium d-block">Vendor / contractor <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+                    <div class="contact-filter mb-3" data-contact-filter id="reassign-contractor-filter">
+                        <input type="hidden" name="assigned_contact" data-contact-filter-input value="{{ reassign_form.assigned_contact.value|default:'' }}">
+                        <input type="text" class="form-control" placeholder="start typing…" data-contact-filter-text autocomplete="off" value="{{ selected_contractor_label|default:'' }}">
+                        <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                        <script type="application/json" data-contact-filter-source>{{ vendor_contacts_json|safe }}</script>
+                        <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                            <input type="text" name="new_contact__name__contractor" class="form-control form-control-sm" placeholder="Name">
+                            <input type="text" name="new_contact__phone__contractor" class="form-control form-control-sm" placeholder="Phone">
+                            <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
+                            <input type="text" name="new_contact__trade__contractor" class="form-control form-control-sm" placeholder="Trade (e.g. plumbing)">
+                        </div>
+                    </div>
+
+                    <label class="form-label small fw-medium" for="id_reassign_note">Note</label>
+                    <input type="text" name="note" id="id_reassign_note" class="form-control mb-3" placeholder="Optional note">
+
                     <button class="btn btn-outline-secondary btn-sm" type="submit">Reassign</button>
                 </form>
+                <script>
+                (function () {
+                    var staffPicker = document.getElementById('reassign-staff-picker');
+                    var contractorFilter = document.getElementById('reassign-contractor-filter');
+                    if (staffPicker && contractorFilter) {
+                        staffPicker.addEventListener('bubble:lock', function () { window.ContactFilter.clear(contractorFilter); });
+                        contractorFilter.addEventListener('contact:choose', function () { window.BubblePicker.unlock(staffPicker); });
+                    }
+                })();
+                </script>
             </div>
         </div>
 

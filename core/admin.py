@@ -29,9 +29,13 @@ class PropertyAttributeAdmin(admin.ModelAdmin):
 
 @admin.register(Contact)
 class ContactAdmin(admin.ModelAdmin):
-    list_display = ['name', 'contact_type', 'trade', 'phone', 'email', 'property', 'source']
+    list_display = ['name', 'contact_type', 'trade', 'phone', 'email', 'properties_display', 'source']
     list_filter = ['contact_type', 'source']
     search_fields = ['name', 'phone', 'email']
+
+    @admin.display(description='Properties')
+    def properties_display(self, obj):
+        return ', '.join(p.name for p in obj.properties.all()) or '—'
 
 
 @admin.register(ContactImportCandidate)

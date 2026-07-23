@@ -78,10 +78,49 @@ def property_dropdown_queryset():
     )
 
 
+def properties_by_type():
+    """Property drilldown-bubble-picker data, grouped by type in the same
+    order as property_dropdown_queryset(). Each type also carries a city
+    breakdown for the (currently dormant, given real property counts all
+    well under 50) capacity-aware drill-down: a type's properties only get
+    grouped by city once there are more than 50 of them, and a city only
+    gets a text filter once IT has more than 50. Shared by every bubble
+    property picker across the site (New Ticket, Pending, ticket detail's
+    assign banner, the Contact review queue, ...) — one grouping helper,
+    reused wherever the drilldown markup contract is used."""
+    buckets = {}
+    for p in property_dropdown_queryset():
+        buckets.setdefault(p.property_type, []).append(p)
+
+    result = []
+    for value, label in Property.Type.choices:
+        props = buckets.get(value, [])
+        entry = {'type_key': value, 'type_label': label, 'needs_city_tier': len(props) > 50}
+        if entry['needs_city_tier']:
+            city_buckets = {}
+            for p in props:
+                city_buckets.setdefault(p.city or 'Unspecified', []).append(p)
+            entry['cities'] = [
+                {
+                    'city': city,
+                    'properties': [{'id': p.id, 'name': p.name} for p in city_props],
+                    'needs_filter': len(city_props) > 50,
+                }
+                for city, city_props in sorted(city_buckets.items())
+            ]
+        else:
+            entry['properties'] = [{'id': p.id, 'name': p.name} for p in props]
+        result.append(entry)
+    return result
+
+
 class Contact(models.Model):
     class ContactType(models.TextChoices):
         GUEST = 'guest', 'Guest'
         TENANT = 'tenant', 'Tenant'
+        OWNER = 'owner', 'Owner'
+        BOARD_MEMBER = 'board_member', 'Board Member'
+        ASSOCIATION_MEMBER = 'association_member', 'Association Member'
         VENDOR = 'vendor', 'Vendor / Contractor'
         STAFF_ADJACENT = 'staff_adjacent', 'Staff-adjacent'
         OTHER = 'other', 'Other'
@@ -99,9 +138,10 @@ class Contact(models.Model):
     )
     phone = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
-    property = models.ForeignKey(
-        Property, on_delete=models.SET_NULL, null=True, blank=True, related_name='contacts',
-        help_text='Optional: the property this contact is primarily associated with (e.g. a tenant or a guest).',
+    properties = models.ManyToManyField(
+        Property, blank=True, related_name='contacts',
+        help_text='The propert(y/ies) this contact is associated with — e.g. a tenant, an owner, or a '
+                   'board member who may sit on more than one board.',
     )
     source = models.CharField(
         max_length=20, choices=Source.choices, default=Source.MANUAL,

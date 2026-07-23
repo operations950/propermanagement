@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
-from core.models import Contact, Property, StaffProfile, property_dropdown_queryset
+from core.models import Contact, Property, StaffProfile, properties_by_type, property_dropdown_queryset
 from messaging.services import send_followup_bulk
 
 from .forms import ReassignForm, TicketForm
@@ -231,7 +231,7 @@ def ticket_pending(request):
         .select_related('assigned_staff__user', 'assigned_contact').order_by('-created_at')
     )
     return render(request, 'tickets/pending.html', {
-        'tickets': tickets, 'properties_by_type': _properties_by_type(), 'now': timezone.now(),
+        'tickets': tickets, 'properties_by_type': properties_by_type(), 'now': timezone.now(),
     })
 
 
@@ -319,7 +319,7 @@ def ticket_list(request):
         'selected_source': source,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
-        'properties': property_dropdown_queryset(),
+        'properties_by_type': properties_by_type(),
     })
 
 
@@ -505,7 +505,11 @@ def ticket_detail(request, pk):
             f'/vendor/t/{ticket.completion_token}/'
         ) if ticket.assigned_contact_id else None,
         'status_choices': Ticket.Status.choices,
-        'properties': property_dropdown_queryset(),
+        'properties_by_type': properties_by_type(),
+        'vendor_contacts_json': json.dumps([
+            {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
+        ]),
+        'selected_contractor_label': str(ticket.assigned_contact) if ticket.assigned_contact_id else '',
         'now': timezone.now(),
     })
 
@@ -519,39 +523,6 @@ def _due_date_presets(today):
     presets += [(f'{n} days', n) for n in (3, 4, 5, 6)]
     presets += [('1 week', 7), ('2 weeks', 14), ('1 month', 30)]
     return [{'label': label, 'value': (today + timedelta(days=n)).isoformat()} for label, n in presets]
-
-
-def _properties_by_type():
-    """Property picker data for the New Ticket bubble UI, grouped by type in
-    the same order as property_dropdown_queryset(). Each type also carries a
-    city breakdown for the (currently dormant, given real property counts
-    all being well under 50) capacity-aware drill-down: a type's properties
-    only get grouped by city once there are more than 50 of them, and a
-    city only gets a text filter once IT has more than 50."""
-    buckets = {}
-    for p in property_dropdown_queryset():
-        buckets.setdefault(p.property_type, []).append(p)
-
-    result = []
-    for value, label in Property.Type.choices:
-        props = buckets.get(value, [])
-        entry = {'type_key': value, 'type_label': label, 'needs_city_tier': len(props) > 50}
-        if entry['needs_city_tier']:
-            city_buckets = {}
-            for p in props:
-                city_buckets.setdefault(p.city or 'Unspecified', []).append(p)
-            entry['cities'] = [
-                {
-                    'city': city,
-                    'properties': [{'id': p.id, 'name': p.name} for p in city_props],
-                    'needs_filter': len(city_props) > 50,
-                }
-                for city, city_props in sorted(city_buckets.items())
-            ]
-        else:
-            entry['properties'] = [{'id': p.id, 'name': p.name} for p in props]
-        result.append(entry)
-    return result
 
 
 @login_required
@@ -626,7 +597,7 @@ def ticket_create(request):
         'form': form,
         'today': today.isoformat(),
         'due_date_presets': _due_date_presets(today),
-        'properties_by_type': _properties_by_type(),
+        'properties_by_type': properties_by_type(),
         'vendor_contacts_json': json.dumps(vendor_contacts),
         'all_contacts_json': json.dumps(all_contacts),
         'selected_contractor_label': contact_label('assigned_contact'),
@@ -638,7 +609,24 @@ def ticket_create(request):
 def ticket_reassign(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
-        form = ReassignForm(request.POST)
+        data = request.POST.copy()
+        # Same inline add-new-contact pattern as ticket_create's contractor
+        # field — the Reassign form's ghost-text contact filter shares the
+        # exact same markup/JS, which unconditionally renders an "add new"
+        # row, so this needs to actually work rather than silently no-op.
+        name = data.get('new_contact__name__contractor', '').strip()
+        if name:
+            contact, _ = Contact.objects.get_or_create(
+                name=name,
+                phone=data.get('new_contact__phone__contractor', '').strip(),
+                email=data.get('new_contact__email__contractor', '').strip(),
+                defaults={
+                    'contact_type': Contact.ContactType.VENDOR,
+                    'trade': data.get('new_contact__trade__contractor', '').strip(),
+                },
+            )
+            data['assigned_contact'] = str(contact.pk)
+        form = ReassignForm(data)
         if form.is_valid():
             TicketAssignmentLog.objects.create(
                 ticket=ticket,

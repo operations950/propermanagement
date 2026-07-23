@@ -67,8 +67,8 @@ class PropertyForm(forms.ModelForm):
 class ContactForm(forms.ModelForm):
     class Meta:
         model = Contact
-        fields = ['name', 'contact_type', 'trade', 'phone', 'email', 'property', 'notes']
-        labels = {'name': 'Name', 'contact_type': 'Type', 'property': 'Property (optional)'}
+        fields = ['name', 'contact_type', 'trade', 'phone', 'email', 'properties', 'notes']
+        labels = {'name': 'Name', 'contact_type': 'Type', 'properties': 'Properties (optional)'}
         widgets = {
             'notes': forms.Textarea(attrs={'rows': 3}),
         }

@@ -15,7 +15,7 @@ from . import google_calendar, places, usps
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
     Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
-    PropertyAttributeAssignment, StaffProfile,
+    PropertyAttributeAssignment, StaffProfile, properties_by_type, property_dropdown_queryset,
 )
 
 logger = logging.getLogger(__name__)
@@ -189,7 +189,7 @@ def property_address_lookup(request, place_id):
 
 @login_required
 def contact_list(request):
-    qs = Contact.objects.select_related('property')
+    qs = Contact.objects.prefetch_related('properties')
     q = request.GET.get('q', '').strip()
     if q:
         qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(email__icontains=q))
@@ -209,12 +209,20 @@ def contact_list(request):
     })
 
 
+def _contact_form_context(form, **extra):
+    selected_ids = [str(v.pk if hasattr(v, 'pk') else v) for v in (form['properties'].value() or [])]
+    return {
+        'form': form, 'properties': property_dropdown_queryset(),
+        'selected_property_ids': ','.join(selected_ids), **extra,
+    }
+
+
 @login_required
 def contact_create(request):
     initial = {}
     property_id = request.GET.get('property')
     if property_id:
-        initial['property'] = property_id
+        initial['properties'] = [property_id]
     if request.method == 'POST':
         form = ContactForm(request.POST)
         if form.is_valid():
@@ -225,7 +233,7 @@ def contact_create(request):
             return redirect('contact_list')
     else:
         form = ContactForm(initial=initial)
-    return render(request, 'core/contact_form.html', {'form': form, 'is_new': True})
+    return render(request, 'core/contact_form.html', _contact_form_context(form, is_new=True))
 
 
 @login_required
@@ -239,7 +247,7 @@ def contact_edit(request, pk):
             return redirect('contact_list')
     else:
         form = ContactForm(instance=contact)
-    return render(request, 'core/contact_form.html', {'form': form, 'is_new': False, 'contact': contact})
+    return render(request, 'core/contact_form.html', _contact_form_context(form, is_new=False, contact=contact))
 
 
 @login_required
@@ -248,7 +256,7 @@ def contact_review(request):
     return render(request, 'core/contact_review.html', {
         'candidates': candidates,
         'type_choices': Contact.ContactType.choices,
-        'properties': Property.objects.filter(is_active=True).order_by('name'),
+        'properties_by_type': properties_by_type(),
     })
 
 
@@ -284,8 +292,10 @@ def contact_review_approve(request, pk):
         else:
             contact = Contact.objects.create(
                 name=name, phone=phone, email=email, contact_type=contact_type, trade=trade,
-                property_id=property_id, source=candidate.source,
+                source=candidate.source,
             )
+            if property_id:
+                contact.properties.add(property_id)
         candidate.status = ContactImportCandidate.Status.APPROVED
         candidate.resolved_at = timezone.now()
         candidate.resolved_by = request.user

@@ -172,6 +172,19 @@
     });
 
     root._bubbleApi = { lock: lock, unlock: unlock };
+
+    // Rehydration: data-initial-values is a comma-separated list of
+    // already-selected values (e.g. a Contact's current property ids on
+    // the edit form) — every matching bubble locks instantly on load. The
+    // Follow-Up modal never sets this attribute (it always starts empty),
+    // so this is a no-op there.
+    const initialValues = (root.dataset.initialValues || '').split(',').map(function (v) { return v.trim(); }).filter(Boolean);
+    initialValues.forEach(function (value) {
+      const match = pools.reduce(function (found, pool) {
+        return found || pool.querySelector('.bubble[data-value="' + cssEscape(value) + '"]');
+      }, null);
+      if (match) lock(match, 0);
+    });
   }
 
   // ---- Drilldown picker (Property: type -> [city ->] property) --------

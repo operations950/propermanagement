@@ -11,14 +11,46 @@
         <p class="text-muted small">The source that reported these couldn't tell which property they're for — assign one to move them into a batch below.</p>
         <ul class="list-group">
         {% for r in unassigned %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>{{ r.item_guess|default:r.raw_text }} {% if r.quantity_guess %}<span class="text-muted">({{ r.quantity_guess }})</span>{% endif %}</span>
-                <form method="post" action="{% url 'supplies:supply_request_set_property' r.pk %}" class="d-flex gap-2">
+            <li class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>{{ r.item_guess|default:r.raw_text }} {% if r.quantity_guess %}<span class="text-muted">({{ r.quantity_guess }})</span>{% endif %}</span>
+                </div>
+                <form method="post" action="{% url 'supplies:supply_request_set_property' r.pk %}">
                     {% csrf_token %}
-                    <select name="property_id" class="form-select form-select-sm" required>
-                        <option value="">Choose a property…</option>
-                        {% for p in properties %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
-                    </select>
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="drilldown" data-name="property_id">
+                        <input type="hidden" name="property_id" data-bubble-input value="">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property…"></div>
+                        <div class="bubble-pool" data-bubble-pool data-tier="1">
+                            {% for entry in properties_by_type %}
+                                <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                            {% endfor %}
+                        </div>
+                        {% for entry in properties_by_type %}
+                            {% if entry.needs_city_tier %}
+                                <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                                    {% for city_entry in entry.cities %}
+                                        <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                                    {% endfor %}
+                                </div>
+                                {% for city_entry in entry.cities %}
+                                <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                                    {% if city_entry.needs_filter %}
+                                        <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                                    {% endif %}
+                                    {% for p in city_entry.properties %}
+                                        <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                    {% endfor %}
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                                    {% for p in entry.properties %}
+                                        <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
                     <button class="btn btn-warning btn-sm text-nowrap" type="submit">Assign</button>
                 </form>
             </li>

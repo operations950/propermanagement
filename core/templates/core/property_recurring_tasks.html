@@ -93,35 +93,62 @@
                 <input type="hidden" name="action" value="adjust">
                 <input type="hidden" name="template_id" value="{{ row.template.pk }}">
                 <div class="col-auto">
-                    <label class="form-label small text-muted mb-1">Frequency override</label>
-                    <select name="frequency" class="form-select form-select-sm">
-                        <option value="">Use default</option>
-                        {% for value, label in frequency_choices %}
-                            <option value="{{ value }}" {% if row.override.frequency == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="form-label small text-muted mb-1 d-block">Frequency override</label>
+                    <span data-inline-edit data-inline-edit-no-autosubmit>
+                        <span data-inline-edit-display>{% if row.override.frequency %}{{ row.override.get_frequency_display }}{% else %}Use default{% endif %}</span>
+                        <button type="button" data-inline-edit-toggle class="btn btn-link btn-sm p-0 ms-1"><i data-lucide="pencil" class="icon"></i></button>
+                        <div data-inline-edit-picker hidden>
+                            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="frequency">
+                                <input type="hidden" name="frequency" data-bubble-input value="{{ row.override.frequency|default:'' }}">
+                                <div class="bubble-slot" data-bubble-slot data-empty-text="Use default"></div>
+                                <div class="bubble-pool" data-bubble-pool>
+                                    {% for value, label in frequency_choices %}
+                                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </span>
                 </div>
                 <div class="col-auto">
                     <label class="form-label small text-muted mb-1">Workday override</label>
                     <input type="number" name="workday_of_month" min="1" max="31" class="form-control form-control-sm" style="width: 90px;" value="{{ row.override.workday_of_month|default_if_none:'' }}">
                 </div>
                 <div class="col-auto">
-                    <label class="form-label small text-muted mb-1">Department override</label>
-                    <select name="assigned_role" class="form-select form-select-sm">
-                        <option value="">Use default</option>
-                        {% for value, label in role_choices %}
-                            <option value="{{ value }}" {% if row.override.assigned_role == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="form-label small text-muted mb-1 d-block">Department override</label>
+                    <span data-inline-edit data-inline-edit-no-autosubmit>
+                        <span data-inline-edit-display>{% if row.override.assigned_role %}{{ row.override.get_assigned_role_display }}{% else %}Use default{% endif %}</span>
+                        <button type="button" data-inline-edit-toggle class="btn btn-link btn-sm p-0 ms-1"><i data-lucide="pencil" class="icon"></i></button>
+                        <div data-inline-edit-picker hidden>
+                            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assigned_role">
+                                <input type="hidden" name="assigned_role" data-bubble-input value="{{ row.override.assigned_role|default:'' }}">
+                                <div class="bubble-slot" data-bubble-slot data-empty-text="Use default"></div>
+                                <div class="bubble-pool" data-bubble-pool>
+                                    {% for value, label in role_choices %}
+                                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});">{{ label }}</button>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </span>
                 </div>
                 <div class="col-auto">
-                    <label class="form-label small text-muted mb-1">Assignee override</label>
-                    <select name="assigned_staff" class="form-select form-select-sm">
-                        <option value="">Use default</option>
-                        {% for s in staff_list %}
-                            <option value="{{ s.pk }}" {% if row.override.assigned_staff_id == s.pk %}selected{% endif %}>{{ s }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="form-label small text-muted mb-1 d-block">Assignee override</label>
+                    <span data-inline-edit data-inline-edit-no-autosubmit>
+                        <span data-inline-edit-display>{% if row.override.assigned_staff %}{{ row.override.assigned_staff }}{% else %}Use default{% endif %}</span>
+                        <button type="button" data-inline-edit-toggle class="btn btn-link btn-sm p-0 ms-1"><i data-lucide="pencil" class="icon"></i></button>
+                        <div data-inline-edit-picker hidden>
+                            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assigned_staff">
+                                <input type="hidden" name="assigned_staff" data-bubble-input value="{{ row.override.assigned_staff_id|default:'' }}">
+                                <div class="bubble-slot" data-bubble-slot data-empty-text="Use default"></div>
+                                <div class="bubble-pool" data-bubble-pool>
+                                    {% for s in staff_list %}
+                                        <button type="button" class="bubble" data-value="{{ s.pk }}" data-label="{{ s }}">{{ s }}</button>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </span>
                 </div>
                 <div class="col-auto">
                     <button class="btn btn-outline-primary btn-sm" type="submit">Save adjustment</button>
@@ -138,15 +165,18 @@
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="plus" class="icon"></i> Add a one-off template</h6>
         <p class="small text-muted">Force-include a template that wouldn't otherwise apply here.</p>
-        <form method="post" class="d-flex gap-2">
+        <form method="post">
             {% csrf_token %}
             <input type="hidden" name="action" value="add_one_off">
-            <select name="template_id" class="form-select flex-grow-1" style="max-width: 400px;" required>
-                <option value="">Choose a template…</option>
-                {% for t in addable_templates %}
-                    <option value="{{ t.pk }}">{{ t.title }}</option>
-                {% endfor %}
-            </select>
+            <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="template_id" style="max-width: 500px;">
+                <input type="hidden" name="template_id" data-bubble-input value="">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a template…"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for t in addable_templates %}
+                        <button type="button" class="bubble" data-value="{{ t.pk }}" data-label="{{ t.title }}">{{ t.title }}</button>
+                    {% endfor %}
+                </div>
+            </div>
             <button class="btn btn-primary" type="submit">Add</button>
         </form>
     </div>
