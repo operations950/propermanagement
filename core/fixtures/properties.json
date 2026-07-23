@@ -1,0 +1,572 @@
+[
+{
+  "model": "core.property",
+  "pk": 22,
+  "fields": {
+    "name": "La Pensee",
+    "address": "",
+    "city": "",
+    "property_type": "association",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.944Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 23,
+  "fields": {
+    "name": "St Andrews Grand",
+    "address": "",
+    "city": "",
+    "property_type": "association",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.946Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 24,
+  "fields": {
+    "name": "Lakeside Point 2",
+    "address": "",
+    "city": "",
+    "property_type": "association",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.950Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 25,
+  "fields": {
+    "name": "Lakeside Point 8",
+    "address": "",
+    "city": "",
+    "property_type": "association",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.950Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 26,
+  "fields": {
+    "name": "St Andrews Glen",
+    "address": "",
+    "city": "",
+    "property_type": "association",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.950Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 27,
+  "fields": {
+    "name": "Linton Woods",
+    "address": "",
+    "city": "",
+    "property_type": "association",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.952Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 28,
+  "fields": {
+    "name": "324 Lofts",
+    "address": "324 NE 3rd, 33444",
+    "city": "",
+    "property_type": "commercial",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.952Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 29,
+  "fields": {
+    "name": "Del Park LLC",
+    "address": "325 NE 3rd, 33444",
+    "city": "",
+    "property_type": "commercial",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.952Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 30,
+  "fields": {
+    "name": "Red Barn 381",
+    "address": "381 NE 3rd, 33444",
+    "city": "",
+    "property_type": "commercial",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.954Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 31,
+  "fields": {
+    "name": "712 NE 8th (Modern)",
+    "address": "712 NE 8th (Modern)",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Modern",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.954Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 32,
+  "fields": {
+    "name": "706 NE 7th Ct (Seashell)",
+    "address": "706 NE 7th Ct (Seashell)",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Seashell",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.954Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 33,
+  "fields": {
+    "name": "710 NE 7th Ct (Blue Ocean)",
+    "address": "710 NE 7th Ct (Blue Ocean)",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Blue Ocean",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.956Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 34,
+  "fields": {
+    "name": "712 NE 8th (Stylish)",
+    "address": "712 NE 8th (Stylish)",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Stylish",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.956Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 35,
+  "fields": {
+    "name": "708 NE 7th Ct (Pearl)",
+    "address": "708 NE 7th Ct (Pearl)",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Pearl",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.956Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 36,
+  "fields": {
+    "name": "712 NE 8th (Bamboo)",
+    "address": "712 NE 8th (Bamboo)",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Bamboo House",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.956Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 37,
+  "fields": {
+    "name": "803 NE 7th Ave",
+    "address": "803 NE 7th Ave",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Blue Beach Cottage",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.958Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 38,
+  "fields": {
+    "name": "716 Kittyhawk",
+    "address": "716 Kittyhawk",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Boat + Pool: Aqua Escape",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.958Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 39,
+  "fields": {
+    "name": "100 Neptune",
+    "address": "100 Neptune",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Mannatee Way",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.958Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 40,
+  "fields": {
+    "name": "4606 Brady",
+    "address": "4606 Brady",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Green Palms Getaway",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.958Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 41,
+  "fields": {
+    "name": "111 NW 1st Ave",
+    "address": "111 NW 1st Ave",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: 111 NW 1st Ave",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.960Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 42,
+  "fields": {
+    "name": "800 Tropic",
+    "address": "800 Tropic",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: 800 Tropic",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.960Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 43,
+  "fields": {
+    "name": "323/325 Decarie",
+    "address": "323/325 Decarie",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: De Carie",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.960Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 44,
+  "fields": {
+    "name": "224 NW 4th Ave",
+    "address": "224 NW 4th Ave",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Big Blue",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.962Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 45,
+  "fields": {
+    "name": "702 NW 1st St",
+    "address": "702 NW 1st St",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Kelvin's",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.962Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 46,
+  "fields": {
+    "name": "2919 Cormorant Rd",
+    "address": "2919 Cormorant Rd",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Canal",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.964Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 47,
+  "fields": {
+    "name": "2821 Frederick",
+    "address": "2821 Frederick",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Frederick",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.964Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 48,
+  "fields": {
+    "name": "300 Ross",
+    "address": "300 Ross",
+    "city": "",
+    "property_type": "ltr",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Jungle Paradise",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.964Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 49,
+  "fields": {
+    "name": "2036 Alta Meadows",
+    "address": "2036 Alta Meadows",
+    "city": "",
+    "property_type": "ltr",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Alta Medows",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.964Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 50,
+  "fields": {
+    "name": "1038 E Heritage",
+    "address": "1038 E Heritage",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: Terry Hunter",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.964Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 51,
+  "fields": {
+    "name": "324 Harmon Ct",
+    "address": "324 Harmon Ct",
+    "city": "",
+    "property_type": "str",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: 324 Harmon Court",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.964Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 52,
+  "fields": {
+    "name": "1291 Laing St",
+    "address": "1291 Laing St",
+    "city": "",
+    "property_type": "snowbird",
+    "is_general": false,
+    "timezone": "America/Chicago",
+    "notes": "Airbnb listing: 1291 Laing St",
+    "is_active": true,
+    "created_at": "2026-07-20T22:38:48.964Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 53,
+  "fields": {
+    "name": "No specific property",
+    "address": "",
+    "city": "",
+    "property_type": "general",
+    "is_general": true,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-21T14:01:51.244Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 54,
+  "fields": {
+    "name": "Associations (general)",
+    "address": "",
+    "city": "",
+    "property_type": "association",
+    "is_general": true,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-21T14:01:51.261Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 55,
+  "fields": {
+    "name": "Short-Term Rentals (general)",
+    "address": "",
+    "city": "",
+    "property_type": "str",
+    "is_general": true,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-21T14:01:51.261Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 56,
+  "fields": {
+    "name": "Long-Term Rentals (general)",
+    "address": "",
+    "city": "",
+    "property_type": "ltr",
+    "is_general": true,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-21T14:01:51.278Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 57,
+  "fields": {
+    "name": "Commercial (general)",
+    "address": "",
+    "city": "",
+    "property_type": "commercial",
+    "is_general": true,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-21T14:01:51.287Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 59,
+  "fields": {
+    "name": "1745 Palm Cove",
+    "address": "1745 Palm Cove Blvd, Unit 3-307, Delray Beach, FL 33445",
+    "city": "",
+    "property_type": "ltr",
+    "is_general": false,
+    "timezone": "new york",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-22T16:58:30.924Z"
+  }
+},
+{
+  "model": "core.property",
+  "pk": 60,
+  "fields": {
+    "name": "Snowbird Oversight (general)",
+    "address": "",
+    "city": "",
+    "property_type": "snowbird",
+    "is_general": true,
+    "timezone": "America/Chicago",
+    "notes": "",
+    "is_active": true,
+    "created_at": "2026-07-22T17:20:48.936Z"
+  }
+}
+]
