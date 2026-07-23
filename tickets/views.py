@@ -4,6 +4,7 @@ from itertools import groupby
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.management import call_command
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -340,23 +341,37 @@ def _list_redirect(request):
 
 
 @login_required
-def ticket_set_department(request, pk):
-    """Inline department edit from the tickets list."""
+def ticket_quick_edit(request, pk):
+    """The tickets list's single-pencil, whole-row editor — one combined
+    save for title/property/due date/department/status/assignee at once,
+    replacing the old one-endpoint-per-field inline-edit pencils (which
+    are now dead: ticket_set_title/_department/_assignee are gone, this
+    is their sole successor). ticket_set_property/_status/_due_date stay
+    — they're also used by ticket_detail.html and the department
+    dashboard respectively."""
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        if title:
+            ticket.title = title
+
+        property_id = request.POST.get('property_id')
+        ticket.property_id = property_id or None
+
+        raw_due = request.POST.get('due_date', '').strip()
+        parsed_due = parse_date(raw_due) if raw_due else None
+        ticket.due_date = (
+            timezone.make_aware(datetime.combine(parsed_due, datetime.min.time())) if parsed_due else None
+        )
+
         role = request.POST.get('assigned_role', '')
         if role == '' or role in StaffProfile.Role.values:
             ticket.assigned_role = role
-            ticket.save(update_fields=['assigned_role'])
-    return _list_redirect(request)
 
+        status = request.POST.get('status')
+        if status in Ticket.Status.values and status != Ticket.Status.COMPLETED:
+            ticket.status = status
 
-@login_required
-def ticket_set_assignee(request, pk):
-    """Inline assignee edit from the tickets list — a single dropdown mixing
-    staff and vendor contacts, submitted as e.g. 'staff-3' / 'contact-7'."""
-    ticket = get_object_or_404(Ticket, pk=pk)
-    if request.method == 'POST':
         kind, _, raw_id = request.POST.get('assignee', '').partition('-')
         if kind == 'staff' and raw_id.isdigit():
             ticket.assigned_staff_id = int(raw_id)
@@ -369,7 +384,10 @@ def ticket_set_assignee(request, pk):
             ticket.assigned_contact = None
         if ticket.status == Ticket.Status.OPEN and (ticket.assigned_staff_id or ticket.assigned_contact_id):
             ticket.status = Ticket.Status.ASSIGNED
+
+        ticket.full_clean()
         ticket.save()
+        messages.success(request, 'Ticket updated.')
     return _list_redirect(request)
 
 
@@ -687,6 +705,13 @@ def ticket_template_create(request):
         form = TicketTemplateForm(request.POST)
         if form.is_valid():
             template = form.save()
+            # The scheduler only runs generate_recurring_tickets every
+            # RECURRING_TICKET_INTERVAL_MINUTES (default 30) — without this,
+            # a template due today wouldn't produce a visible ticket for up
+            # to half an hour. Idempotent (get_or_create per occurrence), so
+            # running it here doesn't risk double-generating anything, for
+            # this template or any other.
+            call_command('generate_recurring_tickets')
             messages.success(request, f'Recurring task template "{template.title}" created.')
             return redirect(f"{reverse('ticket_list')}?source=recurring")
     else:
@@ -802,18 +827,6 @@ def ticket_set_contacts(request, pk):
                     ticket=ticket, contact_id=contact_id, defaults={'role': TicketContact.Role.OTHER},
                 )
     return redirect('ticket_detail', pk=ticket.pk)
-
-
-@login_required
-def ticket_set_title(request, pk):
-    """Inline title edit from the tickets list."""
-    ticket = get_object_or_404(Ticket, pk=pk)
-    if request.method == 'POST':
-        title = request.POST.get('title', '').strip()
-        if title:
-            ticket.title = title
-            ticket.save(update_fields=['title'])
-    return _list_redirect(request)
 
 
 @login_required

@@ -53,40 +53,33 @@ rather than squeezing every column down to an unreadable sliver.
 <div class="table-responsive">
 <table class="table bg-white align-middle mb-0">
     <thead><tr><th>Department</th><th>Property</th><th>Issue</th><th>Due</th><th>Status</th><th>Assignee</th><th></th></tr></thead>
-    <tbody>
     {% for t in tickets %}
-        <tr>
-            <td>{% include 'tickets/_inline_department.html' with t=t %}</td>
-            <td>{% include 'tickets/_inline_property.html' with t=t %}</td>
-            <td class="w-100">
-                <form method="post" action="{% url 'ticket_set_title' t.pk %}" class="d-flex align-items-center gap-2">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <input type="text" name="title" value="{{ t.title }}" class="form-control form-control-sm flex-grow-1" style="min-width: 220px;" onchange="this.form.submit()">
-                    <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-nowrap flex-shrink-0" title="Open ticket"><i data-lucide="square-arrow-out-up-right" class="icon"></i></a>
-                </form>
-            </td>
-            <td>
-                <form method="post" action="{% url 'ticket_set_due_date' t.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <input type="date" name="due_date" class="form-control form-control-sm {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}"
-                           style="min-width: 145px;" value="{{ t.due_date|date:'Y-m-d' }}" onchange="this.form.submit()">
-                </form>
-            </td>
-            <td>{% include 'tickets/_inline_status.html' with t=t %}</td>
-            <td>{% include 'tickets/_inline_assignee.html' with t=t %}</td>
-            <td class="text-nowrap">
-                <form method="post" action="{% url 'ticket_delete' t.pk %}"
-                      onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <button class="btn btn-link btn-sm text-danger p-0 d-inline-flex align-items-center gap-1" type="submit"><i data-lucide="trash-2" class="icon"></i> Delete</button>
-                </form>
-            </td>
-        </tr>
-    {% empty %}<tr><td colspan="7" class="text-muted text-center py-4"><i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>No tickets.</td></tr>{% endfor %}
-    </tbody>
+        <tbody data-row-edit>
+            <tr>
+                <td><span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span></td>
+                <td>{% if t.property %}{{ t.property.name }}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</td>
+                <td class="w-100">
+                    {{ t.title }}
+                    <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none ms-1" title="Open ticket"><i data-lucide="square-arrow-out-up-right" class="icon"></i></a>
+                </td>
+                <td class="text-nowrap {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}">{{ t.due_date|date:'M j, Y'|default:'—' }}</td>
+                <td><span class="badge rounded-pill bg-{% if t.status == 'cancelled' %}secondary{% elif t.status == 'completed' or t.status == 'verified' %}success{% elif t.priority == 'urgent' %}danger{% else %}primary{% endif %}">{{ t.get_status_display }}</span></td>
+                <td>{{ t.assignee_label }}</td>
+                <td class="text-nowrap">
+                    <button type="button" class="btn btn-link btn-sm p-0 me-2" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
+                    <form method="post" action="{% url 'ticket_delete' t.pk %}" class="d-inline"
+                          onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                        <button class="btn btn-link btn-sm text-danger p-0" type="submit" title="Delete"><i data-lucide="trash-2" class="icon"></i></button>
+                    </form>
+                </td>
+            </tr>
+            <tr data-row-edit-panel hidden>
+                <td colspan="7">{% include 'tickets/_ticket_row_edit_fields.html' with t=t %}</td>
+            </tr>
+        </tbody>
+    {% empty %}<tbody><tr><td colspan="7" class="text-muted text-center py-4"><i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>No tickets.</td></tr></tbody>{% endfor %}
 </table>
 </div>
 </div>
@@ -98,38 +91,27 @@ just laid out top-to-bottom rather than in cells.
 {% endcomment %}
 <div class="d-md-none">
 {% for t in tickets %}
-    <div class="card mb-2">
+    <div class="card mb-2" data-row-edit>
         <div class="card-body p-3">
-            <form method="post" action="{% url 'ticket_set_title' t.pk %}" class="d-flex align-items-center gap-2 mb-2">
-                {% csrf_token %}
-                <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                <input type="text" name="title" value="{{ t.title }}" class="form-control form-control-sm fw-semibold flex-grow-1" onchange="this.form.submit()">
-                <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-nowrap flex-shrink-0" title="Open ticket"><i data-lucide="square-arrow-out-up-right" class="icon"></i></a>
-            </form>
-            <div class="mb-2">{% include 'tickets/_inline_property.html' with t=t %}</div>
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                    <div class="fw-semibold">{{ t.title }} <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none" title="Open ticket"><i data-lucide="square-arrow-out-up-right" class="icon"></i></a></div>
+                    <div class="small text-muted">{% if t.property %}{{ t.property.name }}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</div>
+                </div>
+                <button type="button" class="btn btn-link btn-sm p-0 flex-shrink-0" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
+            </div>
 
-            <div class="row g-2">
-                <div class="col-6">
-                    <label class="form-label small text-muted mb-1">Department</label>
-                    {% include 'tickets/_inline_department.html' with t=t %}
-                </div>
-                <div class="col-6">
-                    <label class="form-label small text-muted mb-1">Status</label>
-                    {% include 'tickets/_inline_status.html' with t=t %}
-                </div>
-                <div class="col-6">
-                    <label class="form-label small text-muted mb-1">Due</label>
-                    <form method="post" action="{% url 'ticket_set_due_date' t.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                        <input type="date" name="due_date" class="form-control form-control-sm {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}"
-                               value="{{ t.due_date|date:'Y-m-d' }}" onchange="this.form.submit()">
-                    </form>
-                </div>
-                <div class="col-6">
-                    <label class="form-label small text-muted mb-1">Assignee</label>
-                    {% include 'tickets/_inline_assignee.html' with t=t %}
-                </div>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span>
+                <span class="badge rounded-pill bg-{% if t.status == 'cancelled' %}secondary{% elif t.status == 'completed' or t.status == 'verified' %}success{% elif t.priority == 'urgent' %}danger{% else %}primary{% endif %}">{{ t.get_status_display }}</span>
+            </div>
+            <div class="small text-muted mb-2">
+                Due {{ t.due_date|date:'M j, Y'|default:'—' }}{% if t|is_overdue:now %} <span class="text-danger fw-semibold">(overdue)</span>{% endif %}
+                &middot; {{ t.assignee_label }}
+            </div>
+
+            <div data-row-edit-panel hidden class="mt-2">
+                {% include 'tickets/_ticket_row_edit_fields.html' with t=t %}
             </div>
 
             <form method="post" action="{% url 'ticket_delete' t.pk %}" class="mt-2"

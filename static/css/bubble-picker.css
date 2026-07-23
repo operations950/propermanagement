@@ -106,10 +106,10 @@
   margin-left: 0.15rem;
 }
 
-/* Click-to-reveal inline edit (dense tables: ticket_list.html,
-   property_recurring_tasks.html per-row overrides) — the picker floats
-   as a popover instead of expanding in place, so a narrow table
-   column/card doesn't squeeze its bubbles into an ugly wrapped column. */
+/* Click-to-reveal inline edit (property_recurring_tasks.html's per-row
+   overrides) — the picker floats as a popover instead of expanding in
+   place, so a narrow table column/card doesn't squeeze its bubbles into
+   an ugly wrapped column. */
 
 [data-inline-edit] {
   position: relative;
@@ -139,6 +139,21 @@
 [data-inline-edit-picker].inline-edit-picker-align-right {
   left: auto;
   right: 0;
+}
+
+/* Whole-row click-to-edit (ticket_list.html) — unlike inline-edit's
+   per-field popover, this expands in-flow (a table row growing taller,
+   or a card panel appearing below its summary) since it holds several
+   fields plus one shared Save button, not a single quick-pick bubble. */
+
+[data-row-edit-panel] {
+  background: var(--surface-page);
+  border-top: 1px solid var(--border-hairline);
+  padding: 1rem;
+}
+
+[data-row-edit-panel][hidden] {
+  display: none;
 }
 
 /* Ghost-text contact filter */
