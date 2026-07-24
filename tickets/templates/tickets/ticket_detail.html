@@ -413,7 +413,7 @@
                 <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
                     {% csrf_token %}
                     <label class="form-label small fw-medium d-block">Status</label>
-                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="status">
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="status" id="status-picker">
                         <input type="hidden" name="status" data-bubble-input value="{{ ticket.status }}">
                         <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a status"></div>
                         <div class="bubble-pool" data-bubble-pool>
@@ -422,11 +422,37 @@
                             {% endfor %}
                         </div>
                     </div>
+                    <div id="status-deferred-date" class="mb-2"{% if ticket.status != 'deferred' %} hidden{% endif %}>
+                        <label class="form-label small fw-medium d-block">New due date</label>
+                        <input type="date" name="new_due_date" class="form-control form-control-sm" value="{{ ticket.due_date|date:'Y-m-d' }}">
+                    </div>
                     <p class="small mb-2" style="color: var(--ink-muted);">To mark this ticket done, use <strong>Mark Complete</strong> below instead.</p>
                     <textarea name="resolution_notes" class="form-control mb-2" rows="2" placeholder="Resolution notes (optional)"></textarea>
-                    <textarea name="status_reason" class="form-control mb-2" rows="2" placeholder="Reason (required for Skipped / Not applicable / Deferred)"></textarea>
+                    <textarea name="status_reason" id="status-reason-input" class="form-control mb-1" rows="2" placeholder="Reason"
+                        {% if ticket.status in reason_required_statuses %}style="border-color: var(--status-warning); background: color-mix(in srgb, var(--status-warning) 8%, white);"{% endif %}></textarea>
+                    <p id="status-reason-hint" class="small mb-2" style="color: var(--status-warning);"{% if ticket.status not in reason_required_statuses %} hidden{% endif %}>A reason is required for this status.</p>
                     <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
                 </form>
+                <script>
+                (function () {
+                    var picker = document.getElementById('status-picker');
+                    var reasonInput = document.getElementById('status-reason-input');
+                    var reasonHint = document.getElementById('status-reason-hint');
+                    var deferredBox = document.getElementById('status-deferred-date');
+                    var reasonRequired = {{ reason_required_statuses|safe }};
+
+                    function applyState(value) {
+                        var needsReason = reasonRequired.indexOf(value) !== -1;
+                        reasonInput.style.borderColor = needsReason ? 'var(--status-warning)' : '';
+                        reasonInput.style.background = needsReason ? 'color-mix(in srgb, var(--status-warning) 8%, white)' : '';
+                        reasonHint.hidden = !needsReason;
+                        deferredBox.hidden = value !== 'deferred';
+                    }
+
+                    picker.addEventListener('bubble:lock', function (e) { applyState(e.detail.value); });
+                    picker.addEventListener('bubble:unlock', function () { applyState(''); });
+                })();
+                </script>
             </div>
         </div>
 

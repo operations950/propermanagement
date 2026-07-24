@@ -495,7 +495,13 @@ def _related_contact_pools(ticket, linked_ticket_contacts):
             pool[c.pk] = c
         return sorted(pool.values(), key=lambda c: c.name)
 
-    owner_contacts = _column(Q(contact_type=Contact.ContactType.OWNER), TicketContact.Role.OWNER)
+    owner_contacts = _column(
+        Q(contact_type__in=[
+            Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER,
+            Contact.ContactType.ASSOCIATION_MEMBER, Contact.ContactType.TENANT,
+        ]),
+        TicketContact.Role.OWNER,
+    )
     contractor_contacts = _column(
         Q(contact_type=Contact.ContactType.VENDOR), TicketContact.Role.CONTRACTOR, also_unlinked=True,
     )
@@ -609,7 +615,10 @@ def ticket_detail(request, pk):
         'additional_contacts': contact_pools['additional_contacts'],
         'additional_ids': contact_pools['additional_ids'],
         'owner_contacts_json': json.dumps([
-            {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.OWNER)
+            {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type__in=[
+                Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER,
+                Contact.ContactType.ASSOCIATION_MEMBER, Contact.ContactType.TENANT,
+            ])
         ]),
         'contractor_search_json': json.dumps([
             {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
@@ -629,6 +638,7 @@ def ticket_detail(request, pk):
             f'/vendor/t/{ticket.completion_token}/'
         ) if ticket.assigned_contact_id else None,
         'status_choices': Ticket.Status.choices,
+        'reason_required_statuses': Ticket.REASON_REQUIRED_STATUSES,
         # Completed is a hard status, deliberately excluded from the casual
         # bubble picker — the "Mark Complete" button below is the one path
         # to it. Still included when the ticket is *already* completed, so
@@ -1028,6 +1038,17 @@ def ticket_set_status(request, pk):
                     return _list_redirect(request)
                 return redirect('ticket_detail', pk=ticket.pk)
 
+            new_due_date = None
+            if new_status == Ticket.Status.DEFERRED:
+                raw_due_date = request.POST.get('new_due_date', '').strip()
+                parsed_due_date = parse_date(raw_due_date) if raw_due_date else None
+                if not parsed_due_date:
+                    messages.error(request, 'Deferred needs a new due date — nothing was changed.')
+                    if 'next_qs' in request.POST:
+                        return _list_redirect(request)
+                    return redirect('ticket_detail', pk=ticket.pk)
+                new_due_date = timezone.make_aware(datetime.combine(parsed_due_date, datetime.min.time()))
+
             template = ticket.created_from_template
             if new_status == Ticket.Status.VERIFIED and template and template.requires_approval:
                 user_role = getattr(getattr(request.user, 'staff_profile', None), 'role', None)
@@ -1043,6 +1064,8 @@ def ticket_set_status(request, pk):
 
             ticket.status = new_status
             ticket.status_reason = status_reason
+            if new_status == Ticket.Status.DEFERRED:
+                ticket.due_date = new_due_date
             if new_status == Ticket.Status.COMPLETED:
                 ticket.completed_at = timezone.now()
             if new_status == Ticket.Status.CANCELLED:

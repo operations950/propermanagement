@@ -273,8 +273,9 @@ class Ticket(models.Model):
         CANCELLED = 'cancelled', 'Cancelled'
 
     # Statuses that require a stated reason at the form/view layer (not DB-enforced, matching the
-    # existing cancelled_reason convention which also isn't DB-enforced).
-    REASON_REQUIRED_STATUSES = ['skipped', 'not_applicable', 'deferred']
+    # existing cancelled_reason convention which also isn't DB-enforced). Deferred is deliberately
+    # NOT here — it's a due-date change, not a reason, see ticket_set_status's new_due_date handling.
+    REASON_REQUIRED_STATUSES = ['blocked', 'skipped', 'not_applicable']
 
     # Statuses a package step must reach before dependents blocked on it are released — see
     # tickets.services.package_engine.unblock_dependents.
@@ -357,7 +358,7 @@ class Ticket(models.Model):
     cancelled_reason = models.CharField(max_length=300, blank=True)
     status_reason = models.CharField(
         max_length=300, blank=True,
-        help_text='Why this was Skipped / Not applicable / Deferred — see REASON_REQUIRED_STATUSES.',
+        help_text='Why this was Blocked / Skipped / Not applicable — see REASON_REQUIRED_STATUSES.',
     )
 
     followup_done = models.BooleanField(
