@@ -78,10 +78,10 @@ class TemplateChecklistItemInline(admin.TabularInline):
 class TicketTemplateAdmin(admin.ModelAdmin):
     form = TicketTemplateAdminForm
     list_display = [
-        'title', 'property', 'default_assigned_role', 'frequency', 'workday_of_month', 'next_run_date',
-        'requires_approval', 'is_active',
+        'title', 'target_type', 'property', 'default_assigned_role', 'frequency', 'workday_of_month',
+        'next_run_date', 'requires_approval', 'is_active',
     ]
-    list_filter = ['frequency', 'is_active', 'default_assigned_role', 'requires_approval']
+    list_filter = ['target_type', 'frequency', 'is_active', 'default_assigned_role', 'requires_approval']
     filter_horizontal = ['required_attributes']
     inlines = [TemplateChecklistItemInline]
 

@@ -41,7 +41,7 @@ class TicketTemplate(models.Model):
     description = models.TextField(blank=True)
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, null=True, blank=True, related_name='ticket_templates',
-        help_text='Leave blank to generate this task for every active property.',
+        help_text='Only used when Target type is "Specific property".',
     )
     kind = models.CharField(max_length=20, default='generic')
     frequency = models.CharField(max_length=20, choices=Frequency.choices)
@@ -68,17 +68,40 @@ class TicketTemplate(models.Model):
     )
 
     # --- Applicability rules (see tickets.services.applicability) ---
-    # `property` above stays highest-precedence: if set, this template applies
-    # to that one property only, regardless of everything below. These layers
-    # only matter when `property` is blank.
+    # `target_type` is the authoritative dispatch key for which of the fields
+    # below matter — see template_applies_to_property. `property`/
+    # `property_types`/`required_attributes`/`contact` are the payload for
+    # whichever target_type is selected; changing target_type does not clear
+    # the others (so switching back doesn't lose what was entered).
+    class TargetType(models.TextChoices):
+        EVERY_PROPERTY = 'every_property', 'Every property'
+        PROPERTY_CATEGORY = 'property_category', 'Property category'
+        PROPERTY = 'property', 'Specific property'
+        CONTACT = 'contact', 'Contact'
+        COMPANY = 'company', 'Company-wide (no property)'
+        # DEPARTMENT: a documented future value — no "which properties does a
+        # department own" relationship exists in the schema yet to resolve it
+        # against, so it's not implemented until a real use case defines one.
+
+    target_type = models.CharField(
+        max_length=20, choices=TargetType.choices, default=TargetType.EVERY_PROPERTY,
+        help_text='What this rule applies to.',
+    )
     property_types = models.JSONField(
         default=list, blank=True,
-        help_text='Property.Type codes this applies to (e.g. ["str", "commercial"]). Empty = every '
-                   'type. JSONField (not ArrayField) so this works on SQLite dev and Postgres prod alike.',
+        help_text='Only used when Target type is "Property category" — Property.Type codes this '
+                   'applies to (e.g. ["str", "commercial"]). JSONField (not ArrayField) so this works '
+                   'on SQLite dev and Postgres prod alike.',
     )
     required_attributes = models.ManyToManyField(
         PropertyAttribute, blank=True, related_name='required_by_templates',
-        help_text='Property must have ALL of these tags for this template to auto-apply. Empty = no constraint.',
+        help_text='Property must have ALL of these tags for this template to auto-apply. Empty = no '
+                   'constraint. Layered on top of "Every property" or "Property category" targeting.',
+    )
+    contact = models.ForeignKey(
+        Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='targeted_by_templates',
+        help_text='Only used when Target type is "Contact" — generates this task for every property '
+                   'currently linked to this contact (Contact.properties).',
     )
     lead_time_days = models.PositiveSmallIntegerField(
         default=0, help_text='Generate the instance this many days before it\'s due, in status Upcoming.',
@@ -356,6 +379,14 @@ class Ticket(models.Model):
                 name='uniq_active_ticket_source_ref_kind',
             ),
             models.UniqueConstraint(
+                # NULL != NULL in a unique index, so this doesn't actually
+                # protect COMPANY-target templates (property always NULL)
+                # against duplicate generation the way it protects
+                # real-property rows — idempotency for those rests entirely
+                # on generate_recurring_tickets' get_or_create call inside
+                # its own transaction.atomic() block. Same class of
+                # single-process-only risk the app already accepts
+                # elsewhere; not a practical concern at this scale.
                 fields=['created_from_template', 'scheduled_for', 'property'],
                 condition=models.Q(created_from_template__isnull=False),
                 name='uniq_template_scheduled_for_property',

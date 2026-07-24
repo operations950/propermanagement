@@ -14,9 +14,8 @@ after that.
 
 Working Day 14 had no tasks listed and is intentionally skipped. These are
 company-wide bookkeeping/ops tasks (not tied to one specific address), so
-they're scheduled against the "No specific property" general placeholder —
-using a blank `property` on the template would instead fan out into one
-duplicate ticket per active property, which is not what's wanted here.
+they're created with target_type=COMPANY — a single occurrence per period,
+not fanned out to every active property.
 
 Idempotent — safe to re-run, keyed by title (get_or_create) so it won't
 duplicate. Only sets next_run_date/skip_missed on first creation — re-running
@@ -25,7 +24,7 @@ this after templates already exist won't rewind their schedule.
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from core.models import Property, StaffProfile
+from core.models import StaffProfile
 from tickets.management.commands.generate_recurring_tickets import nth_business_day
 from tickets.models import Frequency, Priority, TicketTemplate
 
@@ -165,14 +164,6 @@ class Command(BaseCommand):
     help = 'Import the real property-manager monthly working-day task checklist as TicketTemplates.'
 
     def handle(self, *args, **options):
-        try:
-            general_property = Property.objects.get(name='No specific property')
-        except Property.DoesNotExist:
-            raise CommandError(
-                'Expected a "No specific property" general placeholder Property row — run '
-                'seed_property_types first.'
-            )
-
         today = timezone.localdate()
         created = 0
         for workday, title, description in TASKS:
@@ -183,7 +174,7 @@ class Command(BaseCommand):
                 title=title,
                 defaults={
                     'description': description,
-                    'property': general_property,
+                    'target_type': TicketTemplate.TargetType.COMPANY,
                     'frequency': Frequency.MONTHLY_WORKDAY,
                     'workday_of_month': workday,
                     'next_run_date': due,

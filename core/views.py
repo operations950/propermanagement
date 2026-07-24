@@ -326,13 +326,17 @@ def contact_review_reject(request, pk):
 
 def _template_source_label(template, prop, override, assigned_attribute_ids):
     """Human-readable reason a template shows up in this property's
-    effective set — purely explanatory, not used for any logic."""
+    effective set — purely explanatory, not used for any logic. A short
+    caption shown alongside the row's Inherited/Added/Excluded/Modified
+    state (see _row_state) — this is the "why", that's the "what"."""
     if override and override.action == PropertyTemplateOverride.Action.INCLUDE:
         if override.frequency or override.assigned_role or override.assigned_staff_id:
             return 'Manual override'
         return 'Manual add'
-    if template.property_id:
+    if template.target_type == TicketTemplate.TargetType.PROPERTY:
         return 'Auto — direct assignment'
+    if template.target_type == TicketTemplate.TargetType.CONTACT:
+        return f'Auto — linked to {template.contact}' if template.contact_id else 'Auto — contact match'
     package_step = TaskPackageTemplate.objects.filter(
         template=template, package__is_active=True, package__property_assignments__property=prop,
     ).select_related('package').first()
@@ -344,6 +348,46 @@ def _template_source_label(template, prop, override, assigned_attribute_ids):
     if template.property_types:
         return 'Auto — type match'
     return 'Auto — every type'
+
+
+class RowState:
+    """The 4 explicit states a Task Rule row can show for one property —
+    deliberately not a stored field: it's always derived fresh from
+    (override, base_match) so it can never drift from what the applicability
+    engine would actually do."""
+    INHERITED = 'inherited'
+    ADDED = 'added'
+    EXCLUDED = 'excluded'
+    MODIFIED = 'modified'
+
+
+ROW_STATE_LABELS = {
+    RowState.INHERITED: 'Inherited',
+    RowState.ADDED: 'Added directly',
+    RowState.EXCLUDED: 'Excluded locally',
+    RowState.MODIFIED: 'Modified locally',
+}
+
+
+def _row_state(override, base_match):
+    """Classifies one (template, property) pairing. Returns None when the
+    rule neither applies nor has any override at all — those don't get a
+    row. An EXCLUDE override always shows (even if the rule no longer
+    matches at all — e.g. its property_types changed since — surfaced for
+    transparency rather than silently pruned). An INCLUDE override that
+    changes nothing on a rule that already matches is treated as Inherited
+    (the override is a redundant no-op)."""
+    if override and override.action == PropertyTemplateOverride.Action.EXCLUDE:
+        return RowState.EXCLUDED
+    if override and override.action == PropertyTemplateOverride.Action.INCLUDE:
+        if not base_match:
+            return RowState.ADDED
+        field_changed = bool(
+            override.frequency or override.assigned_role or override.assigned_staff_id
+            or override.workday_of_month is not None
+        )
+        return RowState.MODIFIED if field_changed else RowState.INHERITED
+    return RowState.INHERITED if base_match else None
 
 
 @login_required
@@ -413,22 +457,39 @@ def property_recurring_tasks(request, pk):
                 messages.success(request, 'Attribute added.')
         return redirect('property_recurring_tasks', pk=prop.pk)
 
-    effective_templates = applicability.effective_templates_for_property(prop)
     overrides = {o.template_id: o for o in PropertyTemplateOverride.objects.filter(property=prop)}
     assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
     assigned_package_ids = set(prop.packages.values_list('package_id', flat=True))
 
+    # Every active, property-scopable template is a candidate row — not just
+    # the ones that currently apply — so an EXCLUDE override on a rule that
+    # WOULD otherwise match still shows up (as Excluded locally) instead of
+    # silently disappearing. COMPANY-target rules never scope to one
+    # property, so they're never candidates here at all.
+    candidates = (
+        TicketTemplate.objects.filter(is_active=True)
+        .exclude(target_type=TicketTemplate.TargetType.COMPANY)
+        .prefetch_related('required_attributes')
+    )
+
     frequency_labels = dict(Frequency.choices)
     role_labels = dict(StaffProfile.Role.choices)
     rows = []
-    for t in effective_templates:
+    for t in candidates:
         override = overrides.get(t.pk)
+        base_match = applicability.template_applies_to_property(t, prop, respect_overrides=False)
+        state = _row_state(override, base_match)
+        if state is None:
+            continue
         effective = applicability.effective_settings(t, prop, override=override)
         effective['frequency_display'] = frequency_labels.get(effective['frequency'], effective['frequency'])
         effective['assigned_role_display'] = role_labels.get(effective['assigned_role'], 'Unassigned')
         rows.append({
             'template': t,
             'override': override,
+            'state': state,
+            'state_label': ROW_STATE_LABELS[state],
+            'base_match': base_match,
             'effective': effective,
             'source': _template_source_label(t, prop, override, assigned_attribute_ids),
         })
@@ -443,7 +504,8 @@ def property_recurring_tasks(request, pk):
         'assigned_attribute_ids': assigned_attribute_ids,
         'addable_templates': (
             TicketTemplate.objects.filter(is_active=True)
-            .exclude(pk__in=[t.pk for t in effective_templates])
+            .exclude(target_type=TicketTemplate.TargetType.COMPANY)
+            .exclude(pk__in=[r['template'].pk for r in rows])
             .order_by('title')
         ),
         'frequency_choices': Frequency.choices,

@@ -168,6 +168,19 @@ class Command(BaseCommand):
         created_count = [0]
 
         for template in TicketTemplate.objects.filter(is_active=True).prefetch_related('checklist_items'):
+            if template.target_type == TicketTemplate.TargetType.COMPANY:
+                # A single company-wide occurrence per period, not fanned out
+                # to any property — [None] flows through the exact same
+                # cursor/occurrence/ticket machinery every other template
+                # uses (effective_settings and _package_step_and_run both
+                # already handle property=None).
+                with transaction.atomic():
+                    _run_cursor_group(
+                        template, [None], template.frequency, template.workday_of_month,
+                        template, today, created_count,
+                    )
+                continue
+
             effective_properties = applicability.effective_properties_for_template(template)
             if not effective_properties:
                 continue

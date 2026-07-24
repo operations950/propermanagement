@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}Recurring task rules{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
+    <div>
+        <h2 class="page-title mb-1">Recurring task rules</h2>
+        <p class="text-muted mb-0">The recurring instructions that generate tasks — grouped by what each one applies to.</p>
+    </div>
+    <a href="{% url 'ticket_template_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New recurring task rule</a>
+</div>
+
+{% for group in groups %}
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2">
+            <i data-lucide="{% if group.target_type == 'company' %}building{% elif group.target_type == 'every_property' %}globe{% elif group.target_type == 'property_category' %}layers{% elif group.target_type == 'contact' %}contact{% else %}building-2{% endif %}" class="icon"></i>
+            {{ group.label }}
+            <span class="badge rounded-pill bg-light text-dark border">{{ group.templates|length }}</span>
+        </h6>
+        <div class="list-group list-group-flush">
+            {% for t in group.templates %}
+            <a href="{% url 'ticket_template_detail' t.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 {% if not t.is_active %}opacity-50{% endif %}">
+                <div>
+                    <div class="fw-medium">{{ t.title }}</div>
+                    <div class="small text-muted">
+                        {{ t.target_summary }} &middot;
+                        {{ t.get_frequency_display }}{% if t.workday_of_month %} · Workday {{ t.workday_of_month }}{% endif %} &middot;
+                        <span class="badge" style="{{ t.default_assigned_role|department_badge_style }}">{{ t.get_default_assigned_role_display }}</span>
+                    </div>
+                </div>
+                <div class="flex-shrink-0 text-end">
+                    {% if not t.is_active %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+                    <i data-lucide="chevron-right" class="icon text-muted"></i>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="card">
+    <div class="card-body text-center text-muted py-5">
+        No recurring task rules yet.
+        <a href="{% url 'ticket_template_create' %}">Create one</a> to get started.
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -6,11 +6,11 @@ invalidation on every template/attribute/property-attribute/package/
 override edit for no measurable win at this scale. If real usage grows by
 a couple of orders of magnitude, revisit.
 
-`TicketTemplate.property` (a single FK) stays highest-precedence: if set,
-the template applies to that one property only, full stop — this is what
-keeps every existing template's behavior unchanged. The layered rules
-below (property_types / required_attributes / package assignment) only
-ever apply when `property` is blank.
+`TicketTemplate.target_type` is the authoritative dispatch key for what a
+template applies to — see template_applies_to_property. A COMPANY-target
+template never resolves against a real property at all (see
+tickets.management.commands.generate_recurring_tickets for its dedicated
+property=None generation path).
 """
 from core.models import Property
 
@@ -28,11 +28,17 @@ def _override_for(template, property):
 def template_applies_to_property(template, property, *, respect_overrides=True, override=None):
     """Pure predicate, no DB writes.
 
-    Precedence: an EXCLUDE override always wins. Otherwise: template.property
-    (exact match only) if set; else (property_type constraint AND required
-    attributes) OR active package assignment. An INCLUDE override then
-    force-includes regardless of the base match.
+    Dispatches on target_type: COMPANY never matches a real property (no
+    per-property override scope exists for it either — see below). Otherwise
+    an EXCLUDE override always wins; then PROPERTY (exact match) / CONTACT
+    (property is in template.contact.properties) / EVERY_PROPERTY &
+    PROPERTY_CATEGORY (type constraint AND required attributes, OR active
+    package assignment). An INCLUDE override then force-includes regardless
+    of the base match.
     """
+    if template.target_type == TicketTemplate.TargetType.COMPANY:
+        return False
+
     if respect_overrides:
         if override is None:
             override = _override_for(template, property)
@@ -41,9 +47,11 @@ def template_applies_to_property(template, property, *, respect_overrides=True, 
     else:
         override = None
 
-    if template.property_id:
+    if template.target_type == TicketTemplate.TargetType.PROPERTY:
         base_match = template.property_id == property.id
-    else:
+    elif template.target_type == TicketTemplate.TargetType.CONTACT:
+        base_match = bool(template.contact_id) and template.contact.properties.filter(pk=property.pk).exists()
+    else:  # EVERY_PROPERTY / PROPERTY_CATEGORY
         package_match = TaskPackageTemplate.objects.filter(
             template=template, package__is_active=True,
             package__property_assignments__property=property,
@@ -103,8 +111,12 @@ def effective_settings(template, property, override=None):
     """Effective frequency/workday_of_month/assigned_role/assigned_staff/
     priority for this template+property pair — override value if set, else
     the template default. Shared by generation (to apply) and the review
-    screen (to display)."""
-    if override is None:
+    screen (to display). `property=None` (a COMPANY-target template) always
+    uses template defaults — PropertyTemplateOverride.property is a required
+    FK, so no override can ever exist for it."""
+    if property is None:
+        override = None
+    elif override is None:
         override = _override_for(template, property)
     return {
         'frequency': override.frequency if override and override.frequency else template.frequency,

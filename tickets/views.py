@@ -5,7 +5,7 @@ from itertools import groupby
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -316,6 +316,16 @@ def ticket_list(request):
     elif source == 'recurring':
         qs = qs.filter(source=Ticket.Source.RECURRING)
 
+    template_id = request.GET.get('template')
+    selected_template = None
+    if template_id:
+        qs = qs.filter(created_from_template_id=template_id)
+        selected_template = TicketTemplate.objects.filter(pk=template_id).first()
+
+    scheduled_for = parse_date(request.GET.get('scheduled_for', '') or '')
+    if scheduled_for:
+        qs = qs.filter(scheduled_for=scheduled_for)
+
     return render(request, 'tickets/ticket_list.html', {
         'tickets': qs,
         'now': timezone.now(),
@@ -325,6 +335,9 @@ def ticket_list(request):
         'selected_role': role,
         'selected_role_label': dict(StaffProfile.Role.choices).get(role) if role else None,
         'selected_source': source,
+        'selected_template_id': template_id,
+        'selected_template': selected_template,
+        'selected_scheduled_for': scheduled_for,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
         'properties_by_type': properties_by_type(),
@@ -762,6 +775,28 @@ def _attributes_by_category():
     ]
 
 
+def _rule_target_contacts_json():
+    return json.dumps([
+        {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(
+            contact_type__in=[
+                Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER, Contact.ContactType.ASSOCIATION_MEMBER,
+            ],
+        )
+    ])
+
+
+def _ticket_template_form_context(form, today):
+    return {
+        'form': form,
+        'today': today.isoformat(),
+        'due_date_presets': _due_date_presets(today),
+        'properties_by_type': properties_by_type(),
+        'attributes_by_category': _attributes_by_category(),
+        'target_type_choices': TicketTemplate.TargetType.choices,
+        'rule_target_contacts_json': _rule_target_contacts_json(),
+    }
+
+
 @login_required
 def ticket_template_create(request):
     today = timezone.localdate()
@@ -776,8 +811,8 @@ def ticket_template_create(request):
             # running it here doesn't risk double-generating anything, for
             # this template or any other.
             call_command('generate_recurring_tickets')
-            messages.success(request, f'Recurring task template "{template.title}" created.')
-            return redirect(f"{reverse('ticket_list')}?source=recurring")
+            messages.success(request, f'Recurring task rule "{template.title}" created.')
+            return redirect('ticket_template_detail', pk=template.pk)
     else:
         # A plain ISO string, not a date object — {{ }} auto-formats a raw
         # date/datetime object into a locale-formatted string ("July 23,
@@ -785,12 +820,86 @@ def ticket_template_create(request):
         # value match against the ISO-stringed date_presets below.
         form = TicketTemplateForm(initial={'next_run_date': today.isoformat()})
 
-    return render(request, 'tickets/ticket_template_form.html', {
-        'form': form,
-        'today': today.isoformat(),
-        'due_date_presets': _due_date_presets(today),
-        'properties_by_type': properties_by_type(),
-        'attributes_by_category': _attributes_by_category(),
+    return render(request, 'tickets/ticket_template_form.html', _ticket_template_form_context(form, today))
+
+
+@login_required
+def ticket_template_edit(request, pk):
+    template = get_object_or_404(TicketTemplate, pk=pk)
+    today = timezone.localdate()
+    if request.method == 'POST':
+        form = TicketTemplateForm(request.POST, instance=template)
+        if form.is_valid():
+            template = form.save()
+            call_command('generate_recurring_tickets')
+            messages.success(request, f'Recurring task rule "{template.title}" saved.')
+            return redirect('ticket_template_detail', pk=template.pk)
+    else:
+        form = TicketTemplateForm(instance=template, initial={'next_run_date': template.next_run_date.isoformat()})
+
+    context = _ticket_template_form_context(form, today)
+    context['template'] = template
+    return render(request, 'tickets/ticket_template_form.html', context)
+
+
+_TARGET_TYPE_ORDER = ['company', 'every_property', 'property_category', 'contact', 'property']
+
+
+def _target_summary(template):
+    """One-line "applies to" description for a Task Rule row — the display
+    counterpart to TicketTemplate.TargetType dispatch in applicability.py."""
+    if template.target_type == TicketTemplate.TargetType.COMPANY:
+        return 'Company-wide'
+    if template.target_type == TicketTemplate.TargetType.PROPERTY:
+        return template.property.name if template.property_id else 'No property set'
+    if template.target_type == TicketTemplate.TargetType.CONTACT:
+        return f'Properties linked to {template.contact}' if template.contact_id else 'No contact set'
+    if template.target_type == TicketTemplate.TargetType.PROPERTY_CATEGORY:
+        type_labels = dict(Property.Type.choices)
+        labels = [type_labels.get(t, t) for t in template.property_types]
+        return ', '.join(labels) if labels else 'Every property'
+    return 'Every property'
+
+
+@login_required
+def ticket_template_list(request):
+    """The main-nav "Recurring Tasks" landing page — every active/inactive
+    Task Rule, grouped by target_type (broadest-impact rules first, since
+    those are the ones worth double-checking at a glance), each linking
+    through to the Tasks/Task Groups it has generated."""
+    templates = list(
+        TicketTemplate.objects.select_related('property', 'contact', 'default_assigned_staff')
+        .prefetch_related('required_attributes').order_by('title')
+    )
+    for t in templates:
+        t.target_summary = _target_summary(t)
+    target_labels = dict(TicketTemplate.TargetType.choices)
+    groups = []
+    for target_type in _TARGET_TYPE_ORDER:
+        group_templates = [t for t in templates if t.target_type == target_type]
+        if group_templates:
+            groups.append({
+                'target_type': target_type, 'label': target_labels[target_type], 'templates': group_templates,
+            })
+    return render(request, 'tickets/ticket_template_list.html', {'groups': groups})
+
+
+@login_required
+def ticket_template_detail(request, pk):
+    template = get_object_or_404(
+        TicketTemplate.objects.select_related('property', 'contact', 'default_assigned_staff'), pk=pk,
+    )
+    template.target_summary = _target_summary(template)
+    occurrences = (
+        template.occurrences.order_by('-scheduled_for')
+        .annotate(ticket_count=Count('tickets'), done_count=Count('tickets', filter=Q(
+            tickets__status__in=Ticket.DEPENDENCY_SATISFYING_STATUSES,
+        )))[:26]
+    )
+    return render(request, 'tickets/ticket_template_detail.html', {
+        'template': template,
+        'occurrences': occurrences,
+        'all_tasks_url': f"{reverse('ticket_list')}?source=recurring&template={template.pk}",
     })
 
 

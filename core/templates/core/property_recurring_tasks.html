@@ -63,31 +63,43 @@
         <div class="border-top pt-3 mt-3 {% if forloop.first %}border-top-0 pt-0 mt-0{% endif %}">
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 <div>
-                    <div class="fw-medium">{{ row.template.title }}</div>
+                    <div class="fw-medium d-flex align-items-center gap-2">
+                        {{ row.template.title }}
+                        <span class="badge rounded-pill border small fw-normal"
+                              style="{% if row.state == 'excluded' %}color: var(--status-critical); border-color: var(--status-critical) !important;{% elif row.state == 'modified' %}color: var(--status-warning); border-color: var(--status-warning) !important;{% elif row.state == 'added' %}color: var(--brand-primary); border-color: var(--brand-primary) !important;{% else %}color: var(--ink-muted);{% endif %}">
+                            {{ row.state_label }}
+                        </span>
+                    </div>
                     <div class="small text-muted">
-                        {{ row.source }} &middot;
+                        {{ row.source }}
+                        {% if row.state != 'excluded' %}
+                        &middot;
                         {{ row.effective.frequency_display }}{% if row.effective.workday_of_month %} · Workday {{ row.effective.workday_of_month }}{% endif %} &middot;
                         <span class="badge" style="{{ row.effective.assigned_role|department_badge_style }}">{{ row.effective.assigned_role_display }}</span>
                         {% if row.effective.assigned_staff %}&middot; {{ row.effective.assigned_staff }}{% endif %}
+                        {% endif %}
                     </div>
                 </div>
                 <div class="d-flex gap-2 flex-shrink-0">
                     {% if row.override %}
-                    <form method="post" onsubmit="return confirm('Reset this template back to its default rules for this property?');">
+                    <form method="post" onsubmit="return confirm('{% if row.base_match %}Restore this rule to its inherited default for this property?{% else %}Remove this one-off addition from this property?{% endif %}');">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="reset">
                         <input type="hidden" name="template_id" value="{{ row.template.pk }}">
-                        <button class="btn btn-outline-secondary btn-sm" type="submit">Reset to default</button>
+                        <button class="btn btn-outline-secondary btn-sm" type="submit">{% if row.base_match %}Restore inheritance{% else %}Remove{% endif %}</button>
                     </form>
                     {% endif %}
+                    {% if row.state == 'inherited' %}
                     <form method="post" onsubmit="return confirm('Exclude &quot;{{ row.template.title|escapejs }}&quot; from this property?');">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="exclude">
                         <input type="hidden" name="template_id" value="{{ row.template.pk }}">
-                        <button class="btn btn-outline-danger btn-sm" type="submit">Exclude</button>
+                        <button class="btn btn-outline-danger btn-sm" type="submit">Exclude for this property</button>
                     </form>
+                    {% endif %}
                 </div>
             </div>
+            {% if row.state != 'excluded' %}
             <form method="post" class="row g-2 align-items-end">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="adjust">
@@ -154,9 +166,10 @@
                     <button class="btn btn-outline-primary btn-sm" type="submit">Save adjustment</button>
                 </div>
             </form>
+            {% endif %}
         </div>
         {% empty %}
-        <p class="text-muted mb-0">No recurring tasks currently apply to this property.</p>
+        <p class="text-muted mb-0">No recurring tasks apply to this property.</p>
         {% endfor %}
     </div>
 </div>

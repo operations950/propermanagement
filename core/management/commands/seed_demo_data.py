@@ -89,19 +89,19 @@ class Command(BaseCommand):
         templates = [
             dict(
                 title='Walk property grounds check', frequency=Frequency.DAILY, property=properties['Sunset Villa'],
-                role=StaffProfile.Role.MAINTENANCE,
+                role=StaffProfile.Role.MAINTENANCE, target_type=TicketTemplate.TargetType.PROPERTY,
             ),
             dict(
                 title='Pool chemical check', frequency=Frequency.WEEKLY, property=properties['Lakeside Cabin'],
-                role=StaffProfile.Role.MAINTENANCE,
+                role=StaffProfile.Role.MAINTENANCE, target_type=TicketTemplate.TargetType.PROPERTY,
             ),
             dict(
                 title='Deep clean common areas', frequency=Frequency.QUARTERLY, property=properties['Downtown Loft'],
-                role=StaffProfile.Role.CLEANER,
+                role=StaffProfile.Role.CLEANER, target_type=TicketTemplate.TargetType.PROPERTY,
             ),
             dict(
                 title='Fire extinguisher inspection', frequency=Frequency.YEARLY, property=None,
-                role=StaffProfile.Role.MAINTENANCE,
+                role=StaffProfile.Role.MAINTENANCE, target_type=TicketTemplate.TargetType.EVERY_PROPERTY,
             ),
         ]
         count = 0
@@ -111,6 +111,7 @@ class Command(BaseCommand):
                 defaults={
                     'frequency': spec['frequency'],
                     'property': spec['property'],
+                    'target_type': spec['target_type'],
                     'next_run_date': today,
                     'default_assigned_role': spec['role'],
                     'default_assigned_staff': staff,

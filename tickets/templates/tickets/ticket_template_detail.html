@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}{{ template.title }}{% endblock %}
+{% block content %}
+<a href="{% url 'ticket_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Recurring task rules</a>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title mb-1">{{ template.title }}{% if not template.is_active %} <span class="badge bg-secondary align-middle">Inactive</span>{% endif %}</h2>
+        {% if template.description %}<p class="text-muted mb-0">{{ template.description }}</p>{% endif %}
+    </div>
+    <a href="{% url 'ticket_template_edit' template.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="settings-2" class="icon"></i> Rule summary</h6>
+        <dl class="row mb-0 small">
+            <dt class="col-sm-3 text-muted fw-normal">Applies to</dt>
+            <dd class="col-sm-9">{{ template.target_summary }}</dd>
+            <dt class="col-sm-3 text-muted fw-normal">Frequency</dt>
+            <dd class="col-sm-9">{{ template.get_frequency_display }}{% if template.workday_of_month %} · Workday {{ template.workday_of_month }}{% endif %}</dd>
+            <dt class="col-sm-3 text-muted fw-normal">Department</dt>
+            <dd class="col-sm-9"><span class="badge" style="{{ template.default_assigned_role|department_badge_style }}">{{ template.get_default_assigned_role_display }}</span>{% if template.default_assigned_staff %} &middot; {{ template.default_assigned_staff }}{% endif %}</dd>
+            <dt class="col-sm-3 text-muted fw-normal">Priority</dt>
+            <dd class="col-sm-9">{{ template.get_default_priority_display }}</dd>
+            <dt class="col-sm-3 text-muted fw-normal">Next run</dt>
+            <dd class="col-sm-9">{{ template.next_run_date }}</dd>
+            {% if template.requires_approval %}
+            <dt class="col-sm-3 text-muted fw-normal">Requires approval</dt>
+            <dd class="col-sm-9">{{ template.get_approval_role_display }}</dd>
+            {% endif %}
+            {% if template.escalation_threshold_days %}
+            <dt class="col-sm-3 text-muted fw-normal">Escalates after</dt>
+            <dd class="col-sm-9">{{ template.escalation_threshold_days }} day{{ template.escalation_threshold_days|pluralize }} overdue</dd>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="layers" class="icon"></i> Task groups</h6>
+        <p class="small text-muted">Each occurrence of this rule, across every property it fanned out to.</p>
+        {% for occ in occurrences %}
+        <a href="{% url 'ticket_list' %}?source=recurring&template={{ template.pk }}&scheduled_for={{ occ.scheduled_for|date:'Y-m-d' }}" class="d-flex justify-content-between align-items-center py-2 border-top text-decoration-none {% if forloop.first %}border-top-0{% endif %}">
+            <span>{{ template.title }} — {{ occ.scheduled_for }}</span>
+            <span class="badge rounded-pill bg-light text-dark border">{{ occ.done_count }}/{{ occ.ticket_count }} complete</span>
+        </a>
+        {% empty %}
+        <p class="text-muted mb-0">No tasks have been generated from this rule yet.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<a href="{{ all_tasks_url }}" class="btn btn-outline-primary"><i data-lucide="list" class="icon"></i> View all tasks from this rule</a>
+{% endblock %}

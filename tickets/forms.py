@@ -61,10 +61,14 @@ class TicketForm(forms.ModelForm):
 
 
 class TicketTemplateForm(forms.ModelForm):
+    target_type = forms.ChoiceField(
+        choices=TicketTemplate.TargetType.choices, label='Target type',
+        help_text='What this rule applies to — drives which of the fields below matter.',
+    )
     property_types = forms.MultipleChoiceField(
         choices=Property.Type.choices, required=False,
         label='Restrict to property types (optional)',
-        help_text='Leave every box unchecked for every type. Ignored if a specific property is chosen above.',
+        help_text='Only used when Target type is "Property category".',
     )
     default_assigned_role = forms.ChoiceField(
         choices=StaffProfile.Role.choices, label='Department',
@@ -78,15 +82,16 @@ class TicketTemplateForm(forms.ModelForm):
     class Meta:
         model = TicketTemplate
         fields = [
-            'title', 'description', 'property', 'property_types', 'required_attributes',
-            'frequency', 'workday_of_month', 'next_run_date',
+            'title', 'description', 'target_type', 'property', 'property_types', 'contact',
+            'required_attributes', 'frequency', 'workday_of_month', 'next_run_date',
             'default_assigned_role', 'default_assigned_staff', 'default_priority',
             'lead_time_days', 'requires_approval', 'approval_role', 'escalation_threshold_days',
             'is_active', 'skip_missed',
         ]
         labels = {
             'title': 'Title',
-            'property': 'Specific property (optional)',
+            'property': 'Specific property',
+            'contact': 'Contact',
             'required_attributes': 'Requires these attributes (optional)',
             'default_assigned_staff': 'Specific person (optional)',
             'default_priority': 'Priority',
@@ -98,8 +103,9 @@ class TicketTemplateForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'rows': 3}),
         }
         help_texts = {
-            'property': 'Leave blank to generate this for every property matching the type/attribute '
-                         'filters below — pick one to scope it to a single address instead.',
+            'property': 'Only used when Target type is "Specific property".',
+            'contact': 'Only used when Target type is "Contact" — applies to every property currently '
+                       'linked to this contact.',
             'workday_of_month': 'Only used when frequency is "Monthly (by working day)".',
             'requires_approval': 'Completed instances need sign-off from the department below before counting as done.',
             'escalation_threshold_days': 'Flags (doesn\'t reassign) an overdue instance for visibility.',
@@ -109,6 +115,14 @@ class TicketTemplateForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['property'].queryset = property_dropdown_queryset()
         self.fields['required_attributes'].queryset = PropertyAttribute.objects.filter(is_active=True)
+        # Only contact types that plausibly anchor a recurring operational
+        # rule — vendors/guests/tenants/staff-adjacent don't.
+        self.fields['contact'].queryset = Contact.objects.filter(
+            contact_type__in=[
+                Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER, Contact.ContactType.ASSOCIATION_MEMBER,
+            ],
+        )
+        self.fields['contact'].required = False
         if self.instance and self.instance.pk:
             self.initial['property_types'] = self.instance.property_types
 
@@ -121,6 +135,10 @@ class TicketTemplateForm(forms.ModelForm):
             self.add_error('workday_of_month', 'Required for "Monthly (by working day)" frequency.')
         if cleaned.get('requires_approval') and not cleaned.get('approval_role'):
             self.add_error('approval_role', 'Required when approval is needed.')
+        if cleaned.get('target_type') == TicketTemplate.TargetType.PROPERTY and not cleaned.get('property'):
+            self.add_error('property', 'Required when Target type is "Specific property".')
+        if cleaned.get('target_type') == TicketTemplate.TargetType.CONTACT and not cleaned.get('contact'):
+            self.add_error('contact', 'Required when Target type is "Contact".')
         return cleaned
 
 
