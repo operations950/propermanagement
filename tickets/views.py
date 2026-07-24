@@ -103,12 +103,18 @@ def dashboard(request):
     no_role_count = sum(1 for t in open_tickets if not t.assigned_role)
     awaiting_verification = Ticket.objects.filter(status=Ticket.Status.COMPLETED).select_related('property')
 
+    gmail_inbox_token = None
+    if request.user.is_superuser:
+        from intake.models import GmailInboxToken
+        gmail_inbox_token = GmailInboxToken.objects.first()
+
     return render(request, 'tickets/dashboard.html', {
         'boxes': boxes,
         'now': now,
         'pending_property_count': pending_property_count,
         'no_role_count': no_role_count,
         'awaiting_verification': awaiting_verification,
+        'gmail_inbox_token': gmail_inbox_token,
     })
 
 

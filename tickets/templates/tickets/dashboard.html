@@ -10,6 +10,27 @@
     <a href="{% url 'ticket_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New ticket</a>
 </div>
 
+{% if request.user.is_superuser %}
+<div class="d-flex align-items-center justify-content-between gap-3 mb-3 px-3 py-2 rounded" style="background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); font-size: 0.9rem;">
+    <span class="d-flex align-items-center gap-2">
+        <i data-lucide="mail" class="icon" style="color: {% if gmail_inbox_token %}var(--status-good){% else %}var(--status-warning){% endif %};"></i>
+        {% if gmail_inbox_token %}
+            Gmail inbox monitoring: <strong>{{ gmail_inbox_token.mailbox_email }}</strong>
+        {% else %}
+            Gmail inbox not connected — inbound email won't be turned into tickets yet.
+        {% endif %}
+    </span>
+    {% if gmail_inbox_token %}
+    <form method="post" action="{% url 'gmail_disconnect' %}" onsubmit="return confirm('Disconnect {{ gmail_inbox_token.mailbox_email }}? Inbound email stops being monitored until reconnected.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-secondary btn-sm">Disconnect</button>
+    </form>
+    {% else %}
+    <a href="{% url 'gmail_connect' %}" class="btn btn-outline-primary btn-sm">Connect Gmail</a>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if pending_property_count or no_role_count %}
 <div class="d-flex align-items-center gap-3 mb-4 px-3 py-2 rounded" style="background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); font-size: 0.9rem;">
     {% if pending_property_count %}
