@@ -448,8 +448,9 @@ class TicketChecklistItem(models.Model):
 class TicketContact(models.Model):
     class Role(models.TextChoices):
         REPORTER = 'reporter', 'Reporter (follow up here)'
-        CC = 'cc', 'CC'
-        OTHER = 'other', 'Other'
+        OWNER = 'owner', 'Owner'
+        CONTRACTOR = 'contractor', 'Contractor'
+        OTHER = 'other', 'Additional contact'
 
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='ticket_contacts')
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='ticket_links')

@@ -178,39 +178,135 @@
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="contact" class="icon"></i> Related contacts</h6>
-                <p class="small text-muted mb-2">Suggested from this ticket's reporter, our staff, and contacts tied to{% if ticket.property %} {{ ticket.property.name }}{% else %} its property{% endif %}.</p>
-                <form method="post" action="{% url 'ticket_set_contacts' ticket.pk %}">
+                <p class="small text-muted mb-3">Suggested from contacts tied to{% if ticket.property %} {{ ticket.property.name }}{% else %} this property{% endif %}. Search to find anyone else, or add someone new — every pick saves instantly.</p>
+                <form method="post" action="{% url 'ticket_set_contacts' ticket.pk %}" id="related-contacts-form">
                     {% csrf_token %}
-                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="contact_ids" data-initial-values="{{ linked_contact_ids }}">
-                        <div class="bubble-slot" data-bubble-slot data-empty-text="No related contacts yet"></div>
-                        {% if reporter_contact %}
-                        <div class="small text-muted mb-1">Reporter</div>
-                        <div class="bubble-pool mb-2" data-bubble-pool>
-                            <button type="button" class="bubble" data-value="{{ reporter_contact.pk }}" data-label="{{ reporter_contact.name }}">{{ reporter_contact.name }}</button>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-medium mb-1 d-block">Owner</label>
+                            <div class="contact-filter mb-2" data-contact-filter id="owner-filter">
+                                <input type="hidden" data-contact-filter-input>
+                                <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
+                                <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                                <script type="application/json" data-contact-filter-source>{{ owner_contacts_json|safe }}</script>
+                                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                                    <input type="text" name="new_contact__name__owner" class="form-control form-control-sm" placeholder="Name">
+                                    <input type="tel" name="new_contact__phone__owner" class="form-control form-control-sm" placeholder="555-123-4567">
+                                    <input type="email" name="new_contact__email__owner" class="form-control form-control-sm" placeholder="Email">
+                                    <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
+                                </div>
+                            </div>
+                            <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="owner_contact_ids" data-initial-values="{{ owner_ids }}">
+                                <div class="bubble-slot" data-bubble-slot data-empty-text="No owner set"></div>
+                                <div class="bubble-pool" data-bubble-pool>
+                                    {% for c in owner_contacts %}
+                                        <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         </div>
-                        {% endif %}
-                        {% if staff_contacts %}
-                        <div class="small text-muted mb-1">Staff</div>
-                        <div class="bubble-pool mb-2" data-bubble-pool>
-                            {% for c in staff_contacts %}
-                                <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
-                            {% endfor %}
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-medium mb-1 d-block">Contractor</label>
+                            <div class="contact-filter mb-2" data-contact-filter id="contractor-filter-related">
+                                <input type="hidden" data-contact-filter-input>
+                                <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
+                                <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                                <script type="application/json" data-contact-filter-source>{{ contractor_search_json|safe }}</script>
+                                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                                    <input type="text" name="new_contact__name__contractor" class="form-control form-control-sm" placeholder="Name">
+                                    <input type="tel" name="new_contact__phone__contractor" class="form-control form-control-sm" placeholder="555-123-4567">
+                                    <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
+                                    <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
+                                </div>
+                            </div>
+                            <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="contractor_contact_ids" data-initial-values="{{ contractor_ids }}">
+                                <div class="bubble-slot" data-bubble-slot data-empty-text="No contractor set"></div>
+                                <div class="bubble-pool" data-bubble-pool>
+                                    {% for c in contractor_contacts %}
+                                        <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         </div>
-                        {% endif %}
-                        {% if property_contacts %}
-                        <div class="small text-muted mb-1">{{ ticket.property.name|default:'Property' }} contacts</div>
-                        <div class="bubble-pool" data-bubble-pool>
-                            {% for c in property_contacts %}
-                                <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
-                            {% endfor %}
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-medium mb-1 d-block">Additional contacts</label>
+                            <div class="contact-filter mb-2" data-contact-filter id="additional-filter">
+                                <input type="hidden" data-contact-filter-input>
+                                <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
+                                <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                                <script type="application/json" data-contact-filter-source>{{ additional_contacts_json|safe }}</script>
+                                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                                    <input type="text" name="new_contact__name__additional" class="form-control form-control-sm" placeholder="Name">
+                                    <input type="tel" name="new_contact__phone__additional" class="form-control form-control-sm" placeholder="555-123-4567">
+                                    <input type="email" name="new_contact__email__additional" class="form-control form-control-sm" placeholder="Email">
+                                    <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
+                                </div>
+                            </div>
+                            <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="additional_contact_ids" data-initial-values="{{ additional_ids }}">
+                                <div class="bubble-slot" data-bubble-slot data-empty-text="None yet"></div>
+                                <div class="bubble-pool" data-bubble-pool>
+                                    {% for c in additional_contacts %}
+                                        <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         </div>
-                        {% endif %}
-                        {% if not reporter_contact and not staff_contacts and not property_contacts %}
-                        <p class="text-muted small mb-0">No suggested contacts yet — set a property or link a reporter to see suggestions here.</p>
-                        {% endif %}
                     </div>
-                    <button class="btn btn-outline-primary btn-sm" type="submit">Save contacts</button>
                 </form>
+                <script>
+                (function () {
+                    var form = document.getElementById('related-contacts-form');
+                    if (!form) return;
+
+                    // Every bubble-picker on the page instantly locks whatever
+                    // matches its current value on load (rehydration), which
+                    // dispatches the exact same bubble:lock event a real click
+                    // does — so autosave has to ignore that first wave, or every
+                    // page load would immediately re-submit itself, forever.
+                    // window's load event (unlike DOMContentLoaded) is
+                    // guaranteed to fire after every script's own on-load work
+                    // has already run, regardless of tag order, so gating on it
+                    // is reliable in a way registering-order tricks aren't.
+                    var ready = false;
+                    window.addEventListener('load', function () { ready = true; });
+
+                    function autosave() {
+                        if (!ready) return;
+                        form.requestSubmit ? form.requestSubmit() : form.submit();
+                    }
+
+                    // Every bubble lock/unlock in any of the 3 columns saves
+                    // immediately — no Save button. Add-new (below) is the one
+                    // action that keeps an explicit trigger, since typed text
+                    // has no bubble to click.
+                    form.querySelectorAll('[data-bubble-picker]').forEach(function (picker) {
+                        picker.addEventListener('bubble:lock', autosave);
+                        picker.addEventListener('bubble:unlock', autosave);
+                    });
+
+                    [
+                        ['owner-filter', 'owner_contact_ids'],
+                        ['contractor-filter-related', 'contractor_contact_ids'],
+                        ['additional-filter', 'additional_contact_ids'],
+                    ].forEach(function (pair) {
+                        var filterRoot = document.getElementById(pair[0]);
+                        var picker = form.querySelector('[data-bubble-picker][data-name="' + pair[1] + '"]');
+                        if (!filterRoot || !picker) return;
+                        filterRoot.addEventListener('contact:choose', function (e) {
+                            picker._bubbleApi.lockValue(String(e.detail.id), e.detail.label);
+                        });
+                    });
+
+                    form.querySelectorAll('[data-related-contact-add]').forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            var nameInput = btn.closest('[data-contact-filter-addnew]').querySelector('input[name^="new_contact__name__"]');
+                            if (nameInput && nameInput.value.trim()) autosave();
+                        });
+                    });
+                })();
+                </script>
             </div>
         </div>
     </div>
@@ -336,6 +432,38 @@
                 </script>
             </div>
         </div>
+
+        {% if contractor_thread %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
+                <p class="small text-muted mb-2">{{ ticket.assigned_contact.name }}{% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}</p>
+
+                {% if contractor_thread.entries %}
+                <div class="imessage-thread">
+                    {% for entry in contractor_thread.entries %}
+                        <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
+                    {% endfor %}
+                </div>
+                {% elif contractor_thread.has_quo_thread %}
+                <p class="text-muted small text-center py-3 mb-0">No messages yet.</p>
+                {% else %}
+                <p class="text-muted small text-center py-3 mb-0">No Quo conversation linked yet for this contact.</p>
+                {% endif %}
+
+                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" class="d-flex gap-2 mt-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="contact_ids" value="{{ ticket.assigned_contact.pk }}">
+                    <input type="text" name="body" class="form-control form-control-sm" placeholder="Message {{ ticket.assigned_contact.name }}…" required>
+                    <button class="btn btn-primary btn-sm flex-shrink-0" type="submit"><i data-lucide="send" class="icon"></i></button>
+                </form>
+                {% if not ticket.assigned_contact.phone %}
+                <p class="text-danger small mt-1 mb-0">No phone number on file — this contact can't be texted.</p>
+                {% endif %}
+                <p class="text-muted mt-1 mb-0" style="font-size: 0.7rem;">Development mode: sends are logged, not actually delivered (SMS_PROVIDER=log).</p>
+            </div>
+        </div>
+        {% endif %}
 
         <div class="card mb-3">
             <div class="card-body">

@@ -1,0 +1,53 @@
+/*
+ * Contractor Communication card (ticket_detail.html) — an iMessage-style
+ * two-way thread, built from the same design tokens as everything else
+ * (templates/base.html's :root) rather than literal iMessage blue/gray.
+ */
+
+.imessage-thread {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 0.5rem 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.imessage-bubble {
+  max-width: 78%;
+  padding: 0.55rem 0.9rem;
+  border-radius: var(--bs-border-radius-xl);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.imessage-out {
+  align-self: flex-end;
+  background: var(--brand-primary);
+  color: #fff;
+  border-bottom-right-radius: 6px;
+}
+
+.imessage-in {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--ink-muted) 16%, white);
+  color: var(--ink-primary);
+  border-bottom-left-radius: 6px;
+}
+
+.imessage-bubble-time {
+  display: block;
+  font-size: 0.7rem;
+  margin-top: 0.2rem;
+  opacity: 0.75;
+}
+
+.imessage-out .imessage-bubble-time {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.imessage-in .imessage-bubble-time {
+  color: var(--ink-muted);
+}

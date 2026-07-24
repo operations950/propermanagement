@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 
 from django.conf import settings
@@ -7,6 +8,71 @@ from django.core.mail import send_mail
 from tickets.models import FollowUpLog
 
 logger = logging.getLogger(__name__)
+
+
+def _to_e164(phone):
+    """Best-effort US E.164 normalization, tolerant of the several shapes
+    Contact.phone data is actually in — some already E.164 (contacts
+    created straight from Quo's own caller-id lookup), some XXX-XXX-XXXX
+    per core.models.phone_validator, some raw digits or short/malformed
+    strings that predate either. Returns '' when it can't confidently
+    normalize (e.g. a placeholder like "555-0120") rather than guessing."""
+    if not phone:
+        return ''
+    if phone.startswith('+'):
+        return phone
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) == 10:
+        return f'+1{digits}'
+    if len(digits) == 11 and digits.startswith('1'):
+        return f'+{digits}'
+    return ''
+
+
+def fetch_quo_conversation(contact):
+    """Recent Quo messages with this contact, live from Quo's API — or
+    None if no Quo conversation has ever been linked to their phone number
+    (they've never texted the shared Quo line, or it hasn't been polled
+    yet). Read-only: only calls QuoAdapter._list_messages (a fetch, not
+    part of the poll loop) and never touches PollCursor/QuoThreadState, so
+    it can't interfere with the scheduled poller. Returns a list of
+    {'direction': 'out'|'in', 'body': str, 'at': iso datetime str} dicts,
+    chronological — structured, not the flattened transcript text
+    Ticket.raw_context stores, so the caller can render separate bubbles
+    by direction."""
+    if not contact or not contact.phone:
+        return None
+    participant = _to_e164(contact.phone)
+    if not participant:
+        return None
+
+    from intake.models import QuoThreadState
+
+    thread = QuoThreadState.objects.filter(participant=participant).order_by('-updated_at').first()
+    if not thread:
+        return None
+
+    from intake.adapters.quo import QuoAdapter, QuoAPIError
+    import requests
+
+    try:
+        # _list_messages is "private" only by naming convention — it's the
+        # adapter's own paginated-fetch-plus-sort logic, reused here rather
+        # than duplicated so a live re-fetch can't drift from what the
+        # poller itself does.
+        messages = QuoAdapter()._list_messages(thread.phone_number_id, thread.participant)
+    except (requests.RequestException, QuoAPIError):
+        logger.exception('Quo: live message fetch failed for contact %s', contact.pk)
+        return None
+
+    return [
+        {
+            'direction': 'out' if m.get('direction') == 'outgoing' else 'in',
+            'body': m.get('text', ''),
+            'at': m.get('createdAt', ''),
+        }
+        for m in messages
+    ]
 
 
 class LogSMSBackend:

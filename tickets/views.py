@@ -17,7 +17,7 @@ from core.models import (
     Contact, Property, PropertyAttribute, StaffProfile, is_valid_phone, properties_by_type,
     property_dropdown_queryset,
 )
-from messaging.services import send_followup_bulk
+from messaging.services import fetch_quo_conversation, send_followup_bulk
 
 from .forms import ReassignForm, TicketForm, TicketTemplateForm
 from .models import (
@@ -441,36 +441,87 @@ def _followup_parties(ticket):
 
 
 def _related_contact_pools(ticket, linked_ticket_contacts):
-    """Scoped suggestions for the Related contacts bubble picker — not
-    every Contact site-wide, just the reporter (if one's linked), our own
-    staff-adjacent contacts, and anyone else tied to this ticket's
-    property, so a few clicks covers the realistic set. Deduped so a
-    contact who fits more than one bucket (e.g. the reporter is also
-    property-linked) only shows up once, in its highest-priority bucket."""
-    seen_ids = set()
-    reporter_tc = next((tc for tc in linked_ticket_contacts if tc.role == TicketContact.Role.REPORTER), None)
-    reporter_contact = reporter_tc.contact if reporter_tc else None
-    if reporter_contact:
-        seen_ids.add(reporter_contact.pk)
+    """Per-column suggested bubbles for Related contacts' Owner /
+    Contractor / Additional columns — contacts of the matching type
+    already linked to this ticket's property, or to any property of the
+    same type (Contractors also include vendors with no property link at
+    all, since most serve many properties rather than being tied to one).
+    Whatever's already linked under that role is folded in too even if it
+    wouldn't otherwise qualify, so the bubble picker always has something
+    to find-and-lock on load — see bubble-picker.js's rehydration."""
+    linked_by_role = {}
+    for tc in linked_ticket_contacts:
+        linked_by_role.setdefault(tc.role, []).append(tc.contact)
 
-    staff_contacts = []
-    for c in Contact.objects.filter(contact_type=Contact.ContactType.STAFF_ADJACENT):
-        if c.pk not in seen_ids:
-            staff_contacts.append(c)
-            seen_ids.add(c.pk)
-
-    property_contacts = []
     if ticket.property_id:
-        for c in ticket.property.contacts.all():
-            if c.pk not in seen_ids:
-                property_contacts.append(c)
-                seen_ids.add(c.pk)
+        same_type_ids = Property.objects.filter(
+            property_type=ticket.property.property_type,
+        ).values_list('pk', flat=True)
+        property_filter = Q(properties__in=same_type_ids)
+    else:
+        property_filter = Q(pk__in=[])  # no property context — suggest nothing, search still works
+
+    def _column(type_filter, role, also_unlinked=False):
+        filt = property_filter | Q(properties__isnull=True) if also_unlinked else property_filter
+        pool = {c.pk: c for c in Contact.objects.filter(type_filter).filter(filt).distinct()}
+        for c in linked_by_role.get(role, []):
+            pool[c.pk] = c
+        return sorted(pool.values(), key=lambda c: c.name)
+
+    owner_contacts = _column(Q(contact_type=Contact.ContactType.OWNER), TicketContact.Role.OWNER)
+    contractor_contacts = _column(
+        Q(contact_type=Contact.ContactType.VENDOR), TicketContact.Role.CONTRACTOR, also_unlinked=True,
+    )
+    # Whoever's assigned via Reassign is clearly the contractor on this job
+    # — surface them here too (one click to also track them as a related
+    # contact) even if they wouldn't otherwise match the type/property rule.
+    if ticket.assigned_contact_id and ticket.assigned_contact_id not in {c.pk for c in contractor_contacts}:
+        contractor_contacts = sorted(contractor_contacts + [ticket.assigned_contact], key=lambda c: c.name)
+    additional_contacts = _column(
+        ~Q(contact_type__in=[Contact.ContactType.OWNER, Contact.ContactType.VENDOR]), TicketContact.Role.OTHER,
+    )
+
+    def _ids(role):
+        return ','.join(str(c.pk) for c in linked_by_role.get(role, []))
 
     return {
-        'reporter_contact': reporter_contact,
-        'staff_contacts': staff_contacts,
-        'property_contacts': property_contacts,
+        'owner_contacts': owner_contacts, 'owner_ids': _ids(TicketContact.Role.OWNER),
+        'contractor_contacts': contractor_contacts, 'contractor_ids': _ids(TicketContact.Role.CONTRACTOR),
+        'additional_contacts': additional_contacts, 'additional_ids': _ids(TicketContact.Role.OTHER),
     }
+
+
+def _parse_quo_timestamp(iso_str):
+    try:
+        dt = datetime.fromisoformat(iso_str.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        return None
+    return timezone.localtime(dt) if timezone.is_aware(dt) else timezone.make_aware(dt)
+
+
+def _contractor_thread(ticket):
+    """Chronological, merged view of live Quo messages with this ticket's
+    assigned contact plus this app's own logged SMS sends to them, for the
+    Contractor Communication card. None if no contact is assigned (the
+    card doesn't render at all then). has_quo_thread distinguishes "no
+    Quo conversation has ever been linked to this contact's phone" from
+    "linked, but no messages yet" — different empty-state copy."""
+    contact = ticket.assigned_contact
+    if not contact:
+        return None
+
+    quo_messages = fetch_quo_conversation(contact)
+    entries = []
+    for m in (quo_messages or []):
+        at = _parse_quo_timestamp(m.get('at', ''))
+        if at:
+            entries.append({'direction': m['direction'], 'body': m['body'], 'at': at})
+
+    for log in ticket.followups.filter(contact=contact, channel=FollowUpLog.Channel.SMS):
+        entries.append({'direction': 'out', 'body': log.body, 'at': timezone.localtime(log.sent_at)})
+
+    entries.sort(key=lambda e: e['at'])
+    return {'entries': entries, 'has_quo_thread': quo_messages is not None}
 
 
 def _group_followups(followups):
@@ -554,10 +605,22 @@ def ticket_detail(request, pk):
         'followup_email_parties': [c for c in followup_parties if c.email],
         'attachments': ticket.attachments.all().order_by('-created_at'),
         'ticket_contacts': linked_ticket_contacts,
-        'reporter_contact': contact_pools['reporter_contact'],
-        'staff_contacts': contact_pools['staff_contacts'],
-        'property_contacts': contact_pools['property_contacts'],
-        'linked_contact_ids': ','.join(str(tc.contact_id) for tc in linked_ticket_contacts),
+        'owner_contacts': contact_pools['owner_contacts'],
+        'owner_ids': contact_pools['owner_ids'],
+        'contractor_contacts': contact_pools['contractor_contacts'],
+        'contractor_ids': contact_pools['contractor_ids'],
+        'additional_contacts': contact_pools['additional_contacts'],
+        'additional_ids': contact_pools['additional_ids'],
+        'owner_contacts_json': json.dumps([
+            {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.OWNER)
+        ]),
+        'contractor_search_json': json.dumps([
+            {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
+        ]),
+        'additional_contacts_json': json.dumps([
+            {'id': c.id, 'label': str(c)}
+            for c in Contact.objects.exclude(contact_type__in=[Contact.ContactType.OWNER, Contact.ContactType.VENDOR])
+        ]),
         'assignment_logs': ticket.assignment_logs.all()[:10],
         'followup_batches': _group_followups(ticket.followups.select_related('contact')[:30]),
         'checklist_items': ticket.checklist_items.all(),
@@ -583,6 +646,7 @@ def ticket_detail(request, pk):
             {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
         ]),
         'selected_contractor_label': str(ticket.assigned_contact) if ticket.assigned_contact_id else '',
+        'contractor_thread': _contractor_thread(ticket),
         'now': timezone.now(),
     })
 
@@ -808,24 +872,49 @@ def ticket_set_property(request, pk):
 
 @login_required
 def ticket_set_contacts(request, pk):
-    """Syncs this ticket's TicketContact links to whatever's locked in the
-    Related contacts bubble picker — new ids get linked (role=OTHER, unless
-    one was already the reporter, which is left untouched below since it's
-    simply not re-created), ids that dropped out of the submitted set get
-    unlinked. Mirrors Contact.properties' lock-to-add/unlock-to-remove
-    bubble convention rather than a plain additive picker."""
+    """The 3-column Related contacts picker's auto-save — every bubble
+    lock/unlock in any of the Owner/Contractor/Additional columns submits
+    this form immediately (see the page-local script in ticket_detail.html),
+    so there's no separate Save button. Each column is synced independently
+    to TicketContact links under its own role (add missing, remove absent
+    — Contact.properties' lock-to-add/unlock-to-remove convention, just
+    three of them side by side), and each column's inline add-new-contact
+    sub-form is handled the same way ticket_create's contractor/reporter
+    fields are."""
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
-        contact_ids = {int(v) for v in request.POST.getlist('contact_ids') if v.isdigit()}
-        existing = {tc.contact_id: tc for tc in ticket.ticket_contacts.all()}
-        for contact_id, tc in existing.items():
-            if contact_id not in contact_ids:
-                tc.delete()
-        for contact_id in contact_ids:
-            if contact_id not in existing:
-                TicketContact.objects.get_or_create(
-                    ticket=ticket, contact_id=contact_id, defaults={'role': TicketContact.Role.OTHER},
+        data = request.POST.copy()
+        columns = (
+            ('owner', TicketContact.Role.OWNER, Contact.ContactType.OWNER),
+            ('contractor', TicketContact.Role.CONTRACTOR, Contact.ContactType.VENDOR),
+            ('additional', TicketContact.Role.OTHER, Contact.ContactType.OTHER),
+        )
+        phone_error = False
+        for prefix, role, default_type in columns:
+            name = data.get(f'new_contact__name__{prefix}', '').strip()
+            if name:
+                phone = data.get(f'new_contact__phone__{prefix}', '').strip()
+                if not is_valid_phone(phone):
+                    messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was saved.')
+                    phone_error = True
+                    continue
+                contact, _ = Contact.objects.get_or_create(
+                    name=name, phone=phone,
+                    email=data.get(f'new_contact__email__{prefix}', '').strip(),
+                    defaults={'contact_type': default_type},
                 )
+                data.setlist(f'{prefix}_contact_ids', data.getlist(f'{prefix}_contact_ids') + [str(contact.pk)])
+
+        if not phone_error:
+            for prefix, role, _default_type in columns:
+                contact_ids = {int(v) for v in data.getlist(f'{prefix}_contact_ids') if v.isdigit()}
+                existing = {tc.contact_id: tc for tc in ticket.ticket_contacts.filter(role=role)}
+                for contact_id, tc in existing.items():
+                    if contact_id not in contact_ids:
+                        tc.delete()
+                for contact_id in contact_ids:
+                    if contact_id not in existing:
+                        TicketContact.objects.get_or_create(ticket=ticket, contact_id=contact_id, role=role)
     return redirect('ticket_detail', pk=ticket.pk)
 
 

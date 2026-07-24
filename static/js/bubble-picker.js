@@ -171,7 +171,30 @@
       if (bubble) unlock(bubble);
     });
 
-    root._bubbleApi = { lock: lock, unlock: unlock };
+    root._bubbleApi = {
+      lock: lock,
+      unlock: unlock,
+      // Finds-or-creates a bubble for a value not necessarily pre-rendered
+      // in any pool (e.g. a contact found via a ghost-text search box
+      // rather than one of the suggested bubbles) and locks it. Synthesized
+      // bubbles go in the first pool so they have a "home" to fly back to
+      // if unlocked.
+      lockValue: function (value, label) {
+        let bubble = pools.reduce(function (found, pool) {
+          return found || pool.querySelector('.bubble[data-value="' + cssEscape(value) + '"]');
+        }, null);
+        if (!bubble) {
+          bubble = document.createElement('button');
+          bubble.type = 'button';
+          bubble.className = 'bubble';
+          bubble.dataset.value = value;
+          bubble.dataset.label = label;
+          bubble.textContent = label;
+          pools[0].appendChild(bubble);
+        }
+        if (!bubble.classList.contains('bubble-locked')) lock(bubble);
+      },
+    };
 
     // Rehydration: data-initial-values is a comma-separated list of
     // already-selected values (e.g. a Contact's current property ids on
