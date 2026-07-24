@@ -119,28 +119,132 @@ def dashboard(request):
     })
 
 
-def _format_calendar_events(events):
-    """Google Calendar API event dicts -> simple display-ready rows."""
+TIMELINE_PX_PER_HOUR = 40
+
+
+def _hour_label(hour):
+    hour = hour % 24
+    hour12 = hour % 12 or 12
+    return f"{hour12} {'AM' if hour < 12 else 'PM'}"
+
+
+def _layout_timeline(timed_events):
+    """Positions a day's timed events on a Google-Calendar-day-view-style
+    hour grid: top/height as percentages of the visible hour range,
+    side-by-side columns for events that overlap in time (a simple
+    greedy column-packing sweep — good enough for a personal calendar's
+    handful of same-day meetings, not trying to match Google's own
+    optimal-width algorithm). Returns (events_with_position, hours,
+    height_px, now_top_pct)."""
+    if not timed_events:
+        range_start, range_end = 8, 18
+    else:
+        earliest = min(t['start'].hour for t in timed_events)
+        latest = max(t['end'].hour + (1 if t['end'].minute else 0) for t in timed_events)
+        range_start = min(8, earliest)
+        range_end = max(18, latest)
+    range_start = max(0, range_start)
+    range_end = min(24, max(range_end, range_start + 1))
+    total_minutes = (range_end - range_start) * 60
+
+    columns = []
+    for ev in timed_events:
+        placed = False
+        for col in columns:
+            if col[-1]['end'] <= ev['start']:
+                col.append(ev)
+                ev['_col'] = columns.index(col)
+                placed = True
+                break
+        if not placed:
+            ev['_col'] = len(columns)
+            columns.append([ev])
+    total_cols = len(columns) or 1
+
+    for ev in timed_events:
+        start_min = max(0, (ev['start'].hour * 60 + ev['start'].minute) - range_start * 60)
+        end_min = (ev['end'].hour * 60 + ev['end'].minute) - range_start * 60
+        end_min = max(end_min, start_min + 20)  # minimum visible height for very short events
+        ev['top_pct'] = round(start_min / total_minutes * 100, 2)
+        ev['height_pct'] = round(min(total_minutes, end_min - start_min) / total_minutes * 100, 2)
+        ev['left_pct'] = round(ev['_col'] / total_cols * 100, 2)
+        ev['width_pct'] = round(100 / total_cols - 1, 2)
+
+    hours = [
+        {'label': _hour_label(h), 'top_pct': round((h - range_start) * 60 / total_minutes * 100, 2)}
+        for h in range(range_start, range_end + 1)
+    ]
+
+    now = timezone.localtime(timezone.now())
+    now_min = now.hour * 60 + now.minute - range_start * 60
+    now_top_pct = round(now_min / total_minutes * 100, 2) if 0 <= now_min <= total_minutes else None
+
+    return timed_events, hours, (range_end - range_start) * TIMELINE_PX_PER_HOUR, now_top_pct
+
+
+def _format_calendar_events(events, days_ahead=2):
+    """Google Calendar API event dicts -> one box per day (today plus
+    `days_ahead` more), each split into all-day events (shown first,
+    every day) and timed events. Today additionally gets a Google-
+    Calendar-day-view-style hour timeline (see _layout_timeline); the
+    other days are just a simple chronological list — see
+    _dashboard_calendar.html."""
     today = timezone.localdate()
-    rows = []
+    days = [today + timedelta(days=i) for i in range(days_ahead + 1)]
+    by_day = {d: {'all_day': [], 'timed': []} for d in days}
+
     for e in events:
+        title = e.get('summary') or '(no title)'
         start = e.get('start', {})
-        if 'dateTime' in start:
-            dt = parse_datetime(start['dateTime'])
-            if dt and timezone.is_naive(dt):
-                dt = timezone.make_aware(dt)
-            day = timezone.localtime(dt).date() if dt else None
-            label = timezone.localtime(dt).strftime('%I:%M %p').lstrip('0') if dt else ''
-        else:
-            day = date.fromisoformat(start['date']) if start.get('date') else None
-            label = 'All day'
-        rows.append({
-            'title': e.get('summary') or '(no title)',
-            'label': label,
-            'day': day,
-            'is_today': day == today,
+        end = e.get('end', {})
+        if 'date' in start:
+            start_date = date.fromisoformat(start['date'])
+            end_date = date.fromisoformat(end['date']) if end.get('date') else start_date
+            for d in days:
+                if start_date <= d < end_date:
+                    by_day[d]['all_day'].append({'title': title})
+            continue
+
+        start_dt = parse_datetime(start.get('dateTime', ''))
+        if not start_dt:
+            continue
+        if timezone.is_naive(start_dt):
+            start_dt = timezone.make_aware(start_dt)
+        start_dt = timezone.localtime(start_dt)
+
+        end_dt = parse_datetime(end.get('dateTime', '')) or start_dt
+        if timezone.is_naive(end_dt):
+            end_dt = timezone.make_aware(end_dt)
+        end_dt = timezone.localtime(end_dt)
+
+        d = start_dt.date()
+        if d not in by_day:
+            continue
+        by_day[d]['timed'].append({
+            'title': title, 'start': start_dt, 'end': end_dt,
+            'start_label': start_dt.strftime('%I:%M %p').lstrip('0'),
+            'end_label': end_dt.strftime('%I:%M %p').lstrip('0'),
         })
-    return rows
+
+    day_boxes = []
+    for i, d in enumerate(days):
+        timed = sorted(by_day[d]['timed'], key=lambda t: t['start'])
+        if i == 0:
+            timed, hours, height_px, now_top_pct = _layout_timeline(timed)
+        else:
+            hours, height_px, now_top_pct = None, None, None
+        day_boxes.append({
+            'date': d,
+            'label': 'Today' if i == 0 else ('Tomorrow' if i == 1 else d.strftime('%A')),
+            'date_label': f'{d.strftime("%b")} {d.day}',
+            'is_today': i == 0,
+            'all_day': by_day[d]['all_day'],
+            'timed': timed,
+            'timeline_hours': hours,
+            'timeline_height_px': height_px,
+            'now_top_pct': now_top_pct,
+        })
+    return day_boxes
 
 
 @login_required
@@ -212,7 +316,7 @@ def department_dashboard(request, role):
 
     staff_profile = getattr(request.user, 'staff_profile', None)
     calendar_token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
-    calendar_events = _format_calendar_events(get_upcoming_events(calendar_token)) if calendar_token else []
+    calendar_days = _format_calendar_events(get_upcoming_events(calendar_token)) if calendar_token else []
 
     return render(request, 'tickets/department_dashboard.html', {
         'role': role,
@@ -232,7 +336,7 @@ def department_dashboard(request, role):
         'now': now,
         'calendar_configured': calendar_is_configured(),
         'calendar_token': calendar_token,
-        'calendar_events': calendar_events,
+        'calendar_days': calendar_days,
     })
 
 

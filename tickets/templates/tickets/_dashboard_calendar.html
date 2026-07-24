@@ -1,4 +1,4 @@
-{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion.{% endcomment %}
+{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion. One box per day: today gets a full Google-Calendar-day-view-style hour timeline, the next two days are a simple chronological list — see _layout_timeline in tickets/views.py.{% endcomment %}
 <div class="d-flex justify-content-between align-items-center mb-2">
     {% if calendar_token and calendar_token.google_email %}
         <span class="small text-muted">{{ calendar_token.google_email }}</span>
@@ -14,16 +14,67 @@
     {% endif %}
 </div>
 {% if calendar_token %}
-    <ul class="list-unstyled mb-0">
-    {% for e in calendar_events %}
-        <li class="mb-2 pb-2 border-bottom">
-            <div class="fw-medium small">{{ e.title }}</div>
-            <div class="small text-muted">{% if e.is_today %}Today{% elif e.day %}{{ e.day|date:"D M j" }}{% endif %} &middot; {{ e.label }}</div>
-        </li>
-    {% empty %}
-        <li class="text-muted small">Nothing on your calendar the next couple days.</li>
+    {% for day in calendar_days %}
+    <div class="card mb-2">
+        <div class="card-body p-2">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0 small fw-bold text-uppercase" style="letter-spacing: 0.04em; color: var(--ink-muted);">{{ day.label }}</h6>
+                <span class="small" style="color: var(--ink-muted);">{{ day.date_label }}</span>
+            </div>
+
+            {% if day.all_day %}
+            <div class="mb-2">
+                {% for a in day.all_day %}
+                <div class="small rounded px-2 py-1 mb-1" style="background: color-mix(in srgb, var(--role-{{ role }}) 14%, white); color: var(--ink-secondary);">{{ a.title }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if day.is_today %}
+                {% if day.timeline_hours %}
+                <div class="position-relative" style="height: {{ day.timeline_height_px }}px; margin-left: 44px;">
+                    {% for h in day.timeline_hours %}
+                    <div class="position-absolute w-100" style="top: {{ h.top_pct }}%; border-top: 1px solid var(--bs-border-color, #e5e5e5);">
+                        <span class="position-absolute small" style="left: -44px; top: -7px; width: 40px; color: var(--ink-muted); font-size: 0.7rem;">{{ h.label }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if day.now_top_pct != None %}
+                    <div class="position-absolute w-100" style="top: {{ day.now_top_pct }}%; border-top: 2px solid var(--status-critical, #dc3545); z-index: 3;">
+                        <span class="position-absolute rounded-circle" style="left: -4px; top: -4px; width: 8px; height: 8px; background: var(--status-critical, #dc3545);"></span>
+                    </div>
+                    {% endif %}
+                    {% for e in day.timed %}
+                    <div class="position-absolute rounded px-1 overflow-hidden" style="
+                        top: {{ e.top_pct }}%; height: {{ e.height_pct }}%;
+                        left: {{ e.left_pct }}%; width: {{ e.width_pct }}%;
+                        background: color-mix(in srgb, var(--role-{{ role }}) 85%, black);
+                        color: #fff; font-size: 0.72rem; line-height: 1.15; z-index: 2;
+                    ">
+                        <div class="fw-medium text-truncate">{{ e.title }}</div>
+                        <div class="text-truncate" style="opacity: 0.85;">{{ e.start_label }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted small mb-0">Nothing on your calendar today.</p>
+                {% endif %}
+            {% else %}
+                {% if day.timed %}
+                <ul class="list-unstyled mb-0">
+                    {% for e in day.timed %}
+                    <li class="small mb-1 d-flex justify-content-between gap-2">
+                        <span class="text-truncate">{{ e.title }}</span>
+                        <span class="text-nowrap" style="color: var(--ink-muted);">{{ e.start_label }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% elif not day.all_day %}
+                <p class="text-muted small mb-0">Nothing scheduled.</p>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
     {% endfor %}
-    </ul>
 {% elif calendar_configured %}
     <p class="text-muted small">Connect your Google Calendar to see your day alongside your tickets.</p>
     <a href="{% url 'calendar_connect' %}?next={{ request.path|urlencode }}" class="btn btn-outline-primary btn-sm">Connect Google Calendar</a>

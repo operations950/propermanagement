@@ -77,8 +77,10 @@ def credentials_for(token):
 
 
 def get_upcoming_events(token, days_ahead=2):
-    """Today's remaining events plus the next `days_ahead` days, for display
-    on the owning staff member's dashboard. Returns [] (logged) on any
+    """Today's remaining events plus the next `days_ahead` days, merged
+    across every calendar the staff member has visible in their own Google
+    Calendar (not just "primary") — matches what they'd actually see if
+    they opened Google Calendar themselves. Returns [] (logged) on any
     failure — a broken calendar connection shouldn't break the dashboard."""
     from datetime import timedelta
 
@@ -91,11 +93,20 @@ def get_upcoming_events(token, days_ahead=2):
         time_max = timezone.make_aware(
             timezone.datetime.combine(timezone.localdate() + timedelta(days=days_ahead), timezone.datetime.max.time())
         )
-        result = service.events().list(
-            calendarId='primary', timeMin=now.isoformat(), timeMax=time_max.isoformat(),
-            singleEvents=True, orderBy='startTime', maxResults=25,
-        ).execute()
-        return result.get('items', [])
+
+        calendar_list = service.calendarList().list().execute().get('items', [])
+        calendar_ids = [c['id'] for c in calendar_list if not c.get('hidden') and c.get('selected', True)]
+        if not calendar_ids:
+            calendar_ids = ['primary']
+
+        events = []
+        for calendar_id in calendar_ids:
+            result = service.events().list(
+                calendarId=calendar_id, timeMin=now.isoformat(), timeMax=time_max.isoformat(),
+                singleEvents=True, orderBy='startTime', maxResults=50,
+            ).execute()
+            events.extend(result.get('items', []))
+        return events
     except Exception:
         logger.exception('Google Calendar: failed to fetch events for %s', token.staff)
         return []
