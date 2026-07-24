@@ -227,6 +227,16 @@ VRBO_API_KEY = os.environ.get('VRBO_API_KEY', '')
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
 GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
 
+# oauthlib raises a Warning (caught as a token-exchange failure) if Google's
+# token response echoes back scopes in a different order/form than requested
+# (e.g. "email" -> "https://www.googleapis.com/auth/userinfo.email") — a
+# known google-auth-oauthlib quirk, not an actual problem. Must be set
+# before google_auth_oauthlib.flow.Flow is ever imported (core/google_calendar.py,
+# intake/gmail_auth.py both do that lazily inside build_flow(), well after
+# this module has already loaded), so this env var is the only fix that
+# reliably lands before that first import.
+os.environ.setdefault('OAUTHLIB_RELAX_TOKEN_SCOPE', '1')
+
 # Property address picker (core/places.py, core/usps.py) — separate from
 # GOOGLE_OAUTH_CLIENT_ID/SECRET above (a Places API key, not an OAuth
 # client). Blank = the property form falls back to plain manual address
