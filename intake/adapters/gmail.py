@@ -56,6 +56,12 @@ class GmailAdapter(IntakeAdapter):
             if page_token:
                 params['pageToken'] = page_token
             resp = service.users().threads().list(**params).execute()
+            # TEMPORARY diagnostic — remove once root-caused, see quo.py's
+            # matching diagnostic for why.
+            logger.info(
+                'Gmail: DIAG threads.list params=%r resultSizeEstimate=%r returned=%d',
+                params, resp.get('resultSizeEstimate'), len(resp.get('threads', [])),
+            )
             threads.extend(resp.get('threads', []))
             page_token = resp.get('nextPageToken')
             if not page_token:

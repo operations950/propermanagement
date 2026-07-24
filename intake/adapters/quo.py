@@ -72,7 +72,20 @@ class QuoAdapter(IntakeAdapter):
         if resp.status_code == 429:
             raise QuoAPIError('Rate limited by Quo API (429) — will retry next poll.')
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        if path == '/v1/conversations':
+            # TEMPORARY diagnostic — production reports 0 results for a
+            # window independently confirmed (via the same key, same
+            # params) to contain real conversations. Logging the literal
+            # outbound URL/response to see what production's own network
+            # path actually sends/receives, since the request library, key,
+            # and code are all otherwise confirmed identical. Remove once
+            # root-caused.
+            logger.info(
+                'Quo: DIAG raw request url=%s status=%d data_len=%d nextPageToken=%r',
+                resp.url, resp.status_code, len(data.get('data', [])), data.get('nextPageToken'),
+            )
+        return data
 
     def _list_conversations(self, updated_after=None):
         conversations = []
