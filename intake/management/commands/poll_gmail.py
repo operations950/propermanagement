@@ -23,9 +23,13 @@ class Command(BaseCommand):
             try:
                 process_event(event)
                 processed += 1
-            except Exception:
+            except Exception as exc:
                 # Don't let one bad event abort the whole batch — see
                 # poll_quo.py for the identical rationale (retry-bucket
                 # logic in the classifier already covers re-offering it).
-                logger.exception('Gmail: failed to process event for %s', event.external_id)
+                # Exception type/message embedded directly in this line —
+                # see poll_quo.py's matching change for why.
+                logger.exception(
+                    'Gmail: failed to process event for %s (%s: %s)', event.external_id, type(exc).__name__, exc,
+                )
         self.stdout.write(self.style.SUCCESS(f'Processed {processed}/{len(events)} event(s).'))
