@@ -311,29 +311,30 @@
         </div>
 
         {% if contractor_thread %}
-        <div class="card mb-3">
+        <div class="card mb-3" id="contractor-communication-card">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
                 <p class="small text-muted mb-2">{{ ticket.assigned_contact.name }}{% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}</p>
 
-                {% if contractor_thread.entries %}
-                <div class="imessage-thread">
+                <div class="imessage-thread" id="contractor-thread">
                     {% for entry in contractor_thread.entries %}
                         <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
+                    {% empty %}
+                        {% if contractor_thread.has_quo_thread %}
+                        <p class="text-muted small text-center py-3 mb-0" data-empty-placeholder>No messages yet.</p>
+                        {% else %}
+                        <p class="text-muted small text-center py-3 mb-0" data-empty-placeholder>No Quo conversation linked yet for this contact.</p>
+                        {% endif %}
                     {% endfor %}
                 </div>
-                {% elif contractor_thread.has_quo_thread %}
-                <p class="text-muted small text-center py-3 mb-0">No messages yet.</p>
-                {% else %}
-                <p class="text-muted small text-center py-3 mb-0">No Quo conversation linked yet for this contact.</p>
-                {% endif %}
 
-                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" class="d-flex gap-2 mt-2">
+                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" class="d-flex gap-2 mt-2" id="contractor-send-form">
                     {% csrf_token %}
                     <input type="hidden" name="contact_ids" value="{{ ticket.assigned_contact.pk }}">
-                    <input type="text" name="body" class="form-control form-control-sm" placeholder="Message {{ ticket.assigned_contact.name }}…" required>
+                    <input type="text" name="body" class="form-control form-control-sm" placeholder="Message {{ ticket.assigned_contact.name }}…" required autocomplete="off">
                     <button class="btn btn-primary btn-sm flex-shrink-0" type="submit"><i data-lucide="send" class="icon"></i></button>
                 </form>
+                <p class="text-danger small mt-1 mb-0" id="contractor-send-error" hidden></p>
                 {% if not ticket.assigned_contact.phone %}
                 <p class="text-danger small mt-1 mb-0">No phone number on file — this contact can't be texted.</p>
                 {% elif not contractor_thread.has_quo_thread %}
@@ -341,6 +342,67 @@
                 {% endif %}
             </div>
         </div>
+        <script>
+        (function () {
+            var form = document.getElementById('contractor-send-form');
+            if (!form) return;
+            var thread = document.getElementById('contractor-thread');
+            var errorEl = document.getElementById('contractor-send-error');
+            var input = form.querySelector('input[name="body"]');
+            var button = form.querySelector('button[type="submit"]');
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var body = input.value.trim();
+                if (!body) return;
+
+                // Captured before disabling the input — a disabled field is
+                // excluded from FormData entirely, which would otherwise
+                // send an empty body and always fail with "Write a message
+                // first."
+                var formData = new FormData(form);
+
+                input.disabled = true;
+                button.disabled = true;
+                errorEl.hidden = true;
+
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            var placeholder = thread.querySelector('[data-empty-placeholder]');
+                            if (placeholder) placeholder.remove();
+                            var bubble = document.createElement('div');
+                            bubble.className = 'imessage-bubble imessage-out';
+                            bubble.textContent = body;
+                            var time = document.createElement('span');
+                            time.className = 'imessage-bubble-time';
+                            time.textContent = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                            bubble.appendChild(time);
+                            thread.appendChild(bubble);
+                            thread.scrollTop = thread.scrollHeight;
+                            input.value = '';
+                        } else {
+                            errorEl.textContent = data.error || 'Send failed.';
+                            errorEl.hidden = false;
+                        }
+                    })
+                    .catch(function () {
+                        errorEl.textContent = 'Send failed — check your connection and try again.';
+                        errorEl.hidden = false;
+                    })
+                    .finally(function () {
+                        input.disabled = false;
+                        button.disabled = false;
+                        input.focus();
+                    });
+            });
+        })();
+        </script>
         {% endif %}
     </div>
 

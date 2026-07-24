@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
 from django.db.models import Count, Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -1121,6 +1121,7 @@ def _followup_result_message(request, logs, recipient_noun):
 @login_required
 def ticket_followup_sms(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if request.method == 'POST':
         contact_ids = request.POST.getlist('contact_ids')
         body = request.POST.get('body', '').strip()
@@ -1128,7 +1129,20 @@ def ticket_followup_sms(request, pk):
             logs = send_followup_bulk(
                 ticket, FollowUpLog.Channel.SMS, contact_ids, body, user=request.user,
             )
+            if is_ajax:
+                # Contractor Communication's compose box: the new bubble in
+                # the thread is itself the confirmation the user asked for —
+                # no page reload, no top banner. Errors still need to reach
+                # the caller, just as JSON instead of a messages-framework
+                # banner.
+                ok = any(log.success for log in logs)
+                return JsonResponse({
+                    'success': ok,
+                    'error': '' if ok else 'Send failed — check the recipient\'s phone number.',
+                })
             _followup_result_message(request, logs, 'recipient(s) by text')
+        elif is_ajax:
+            return JsonResponse({'success': False, 'error': 'Write a message first.'})
         else:
             messages.error(request, 'Choose at least one recipient and write a message first.')
     return redirect('ticket_detail', pk=ticket.pk)
