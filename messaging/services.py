@@ -101,17 +101,18 @@ def _quo_from_number(thread):
 
 
 def send_via_quo(to_number, body):
-    """Send `body` to `to_number` through whichever Quo line is already
-    talking to them, so the reply lands in the same thread
-    fetch_quo_conversation reads from (real two-way texting, not a stub).
+    """Send `body` to `to_number` through Quo — whichever line is already
+    talking to them if a thread exists (so the reply lands in the same
+    thread fetch_quo_conversation reads from), or settings.QUO_DEFAULT_FROM_NUMBER
+    if this is the first message to them (initiating, not replying — Quo's
+    own poller picks up the new thread afterward same as any inbound one).
 
-    Returns False if `to_number` has no known Quo thread yet — the caller
-    should fall back to get_sms_backend() in that case, since we have no
-    way to know which of our several Quo lines a brand-new contact should
-    be texted from. Raises on an actual Quo API failure (a thread DID
-    exist, we DID try, Quo rejected it) — that must surface as a real
-    failure to the caller's audit trail, not be swallowed into a fake
-    stub "success"."""
+    Returns False only if `to_number` doesn't normalize to a real phone
+    number, or no default line is configured for a first-contact send —
+    the caller should fall back to get_sms_backend() in that case. Raises
+    on an actual Quo API failure (we did try to send, Quo rejected it) —
+    that must surface as a real failure to the caller's audit trail, not
+    be swallowed into a fake stub "success"."""
     participant = _to_e164(to_number)
     if not participant:
         return False
@@ -119,10 +120,11 @@ def send_via_quo(to_number, body):
     from intake.models import QuoThreadState
 
     thread = QuoThreadState.objects.filter(participant=participant).order_by('-updated_at').first()
-    if not thread:
-        return False
+    if thread:
+        from_number = _quo_from_number(thread)
+    else:
+        from_number = settings.QUO_DEFAULT_FROM_NUMBER
 
-    from_number = _quo_from_number(thread)
     if not from_number:
         return False
 

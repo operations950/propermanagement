@@ -212,6 +212,11 @@ QUO_INITIAL_SYNC_DAYS = int(os.environ.get('QUO_INITIAL_SYNC_DAYS', '7'))
 # Quo is a live customer-facing SMS line, so it deserves its own cadence
 # rather than piggybacking on FAKE_POLL_INTERVAL_MINUTES.
 QUO_POLL_INTERVAL_MINUTES = int(os.environ.get('QUO_POLL_INTERVAL_MINUTES', '5'))
+# The Quo line to send a contact's very first message from, when they have no
+# existing thread yet (see messaging.services.send_via_quo) — an established
+# thread still always sends from whichever line that contact already talks
+# to, this is only the "we're initiating, not replying" fallback.
+QUO_DEFAULT_FROM_NUMBER = os.environ.get('QUO_DEFAULT_FROM_NUMBER', '+15615996300')
 GOOGLE_CALENDAR_CREDENTIALS_PATH = os.environ.get('GOOGLE_CALENDAR_CREDENTIALS_PATH', '')
 AIRBNB_API_KEY = os.environ.get('AIRBNB_API_KEY', '')
 VRBO_API_KEY = os.environ.get('VRBO_API_KEY', '')

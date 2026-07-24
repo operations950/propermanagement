@@ -2,6 +2,7 @@ import json
 from datetime import date, datetime, timedelta
 from itertools import groupby
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
@@ -666,6 +667,7 @@ def ticket_detail(request, pk):
         ]),
         'selected_contractor_label': str(ticket.assigned_contact) if ticket.assigned_contact_id else '',
         'contractor_thread': _contractor_thread(ticket),
+        'quo_default_from_number': settings.QUO_DEFAULT_FROM_NUMBER,
         'now': timezone.now(),
     })
 
