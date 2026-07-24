@@ -8,14 +8,19 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from tickets.models import Frequency, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate, TicketTemplate
+from messaging.services import _followup_result_message, _group_followups, _to_e164, fetch_quo_conversation, send_followup_bulk
+from tickets.models import (
+    Frequency, FollowUpLog, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate,
+    Ticket, TicketTemplate,
+)
 from tickets.services import applicability
+from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
 from . import google_calendar, places, usps
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
     Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
-    PropertyAttributeAssignment, StaffProfile, is_valid_phone, properties_by_type,
+    PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,8 +154,8 @@ def property_create(request):
             prop = form.save(commit=False)
             _standardize_property_address(request, prop)
             prop.save()
-            messages.success(request, f'Property "{prop.name}" created — review its recurring tasks below.')
-            return redirect('property_recurring_tasks', pk=prop.pk)
+            messages.success(request, f'Property "{prop.name}" created.')
+            return redirect('property_detail', pk=prop.pk)
     else:
         form = PropertyForm(initial={'property_type': Property.Type.SHORT_TERM_RENTAL})
     return render(request, 'core/property_form.html', {
@@ -168,7 +173,7 @@ def property_edit(request, pk):
             _standardize_property_address(request, prop)
             prop.save()
             messages.success(request, f'Property "{prop.name}" updated.')
-            return redirect('property_list')
+            return redirect('property_detail', pk=prop.pk)
     else:
         form = PropertyForm(instance=prop)
     return render(request, 'core/property_form.html', {
@@ -185,6 +190,165 @@ def property_address_autocomplete(request):
 @login_required
 def property_address_lookup(request, place_id):
     return JsonResponse(places.place_details(place_id) or {})
+
+
+@login_required
+def property_detail(request, pk):
+    """Everything-about-this-property dashboard: facts, access/system info,
+    amenities, contacts (with an on-demand live Quo thread per contact —
+    see property_contact_thread for why that's on-demand rather than
+    preloaded), a bubble-lock Communication card reusing the exact
+    send_followup_bulk/_group_followups machinery the ticket detail screen's
+    Follow-Up card uses, and this property's open tickets/tasks."""
+    prop = get_object_or_404(Property, pk=pk)
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'save_access_info':
+            for field in ['gate_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password', 'access_notes']:
+                setattr(prop, field, request.POST.get(field, '').strip())
+            prop.save(update_fields=['gate_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password', 'access_notes'])
+            messages.success(request, 'Access info saved.')
+        elif action == 'add_system_location':
+            system_name = request.POST.get('system_name', '').strip()
+            location = request.POST.get('location', '').strip()
+            if system_name and location:
+                PropertySystemLocation.objects.create(
+                    property=prop, system_name=system_name, location=location,
+                    notes=request.POST.get('notes', '').strip(),
+                )
+                messages.success(request, 'Added.')
+            else:
+                messages.error(request, 'System name and location are both required.')
+        elif action == 'delete_system_location':
+            PropertySystemLocation.objects.filter(pk=request.POST.get('system_location_id'), property=prop).delete()
+            messages.success(request, 'Removed.')
+        elif action == 'toggle_attribute':
+            attribute_id = request.POST.get('attribute_id')
+            existing = PropertyAttributeAssignment.objects.filter(property=prop, attribute_id=attribute_id)
+            if existing.exists():
+                existing.delete()
+                messages.success(request, 'Attribute removed.')
+            else:
+                PropertyAttributeAssignment.objects.create(property=prop, attribute_id=attribute_id)
+                messages.success(request, 'Attribute added.')
+        return redirect('property_detail', pk=prop.pk)
+
+    contacts = list(prop.contacts.all())
+    contacts_by_type = {}
+    for c in contacts:
+        contacts_by_type.setdefault(c.contact_type, []).append(c)
+    contact_type_labels = dict(Contact.ContactType.choices)
+    contact_groups = [
+        {'type_value': value, 'type_label': contact_type_labels[value], 'contacts': contacts_by_type[value]}
+        for value in contacts_by_type
+    ]
+    contact_groups.sort(key=lambda g: g['type_label'])
+
+    # Cheap bulk existence check — zero live API calls — vs. the expensive
+    # per-contact live fetch (property_contact_thread), which only ever
+    # runs on-demand for one contact at a time. See the plan's reasoning:
+    # fetch_quo_conversation is a real synchronous HTTP round-trip with no
+    # batching, so pre-fetching it for every contact on this property (could
+    # be a dozen+) on every page load would be a real latency/reliability
+    # problem.
+    from intake.models import QuoThreadState
+    contact_participants = {c.pk: _to_e164(c.phone) for c in contacts if c.phone}
+    threaded_participants = set(
+        QuoThreadState.objects.filter(participant__in=[p for p in contact_participants.values() if p])
+        .values_list('participant', flat=True)
+    )
+    contacts_with_thread_ids = {
+        pk for pk, participant in contact_participants.items() if participant and participant in threaded_participants
+    }
+
+    open_tickets = (
+        Ticket.objects.filter(property=prop, status__in=OPEN_STATUSES)
+        .select_related('assigned_staff__user', 'assigned_contact')
+        .order_by('due_date')
+    )
+
+    assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
+
+    return render(request, 'core/property_detail.html', {
+        'property': prop,
+        'contact_groups': contact_groups,
+        'contacts_with_thread_ids': contacts_with_thread_ids,
+        'text_contacts': [c for c in contacts if c.phone],
+        'email_contacts': [c for c in contacts if c.email],
+        'open_tickets': open_tickets,
+        'system_locations': prop.system_locations.all(),
+        'attributes': PropertyAttribute.objects.filter(is_active=True),
+        'assigned_attribute_ids': assigned_attribute_ids,
+        'followup_batches': _group_followups(prop.followups.select_related('contact')[:30]),
+        'now': timezone.now(),
+    })
+
+
+@login_required
+def property_followup_sms(request, pk):
+    prop = get_object_or_404(Property, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    if request.method == 'POST':
+        contact_ids = request.POST.getlist('contact_ids')
+        body = request.POST.get('body', '').strip()
+        if contact_ids and body:
+            logs = send_followup_bulk(FollowUpLog.Channel.SMS, contact_ids, body, property=prop, user=request.user)
+            if is_ajax:
+                ok = any(log.success for log in logs)
+                return JsonResponse({
+                    'success': ok,
+                    'error': '' if ok else "Send failed — check the recipient's phone number.",
+                })
+            _followup_result_message(request, logs, 'recipient(s) by text')
+        elif is_ajax:
+            return JsonResponse({'success': False, 'error': 'Write a message first.'})
+        else:
+            messages.error(request, 'Choose at least one recipient and write a message first.')
+    return redirect('property_detail', pk=prop.pk)
+
+
+@login_required
+def property_followup_email(request, pk):
+    prop = get_object_or_404(Property, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    if request.method == 'POST':
+        contact_ids = request.POST.getlist('contact_ids')
+        subject = request.POST.get('subject', '').strip()
+        body = request.POST.get('body', '').strip()
+        group = request.POST.get('group') == '1'
+        if contact_ids and body:
+            logs = send_followup_bulk(
+                FollowUpLog.Channel.EMAIL, contact_ids, body, property=prop, subject=subject,
+                group=group, user=request.user,
+            )
+            if is_ajax:
+                ok = any(log.success for log in logs)
+                return JsonResponse({'success': ok, 'error': '' if ok else 'Send failed.'})
+            _followup_result_message(request, logs, 'recipient(s) by email')
+        elif is_ajax:
+            return JsonResponse({'success': False, 'error': 'Write a message first.'})
+        else:
+            messages.error(request, 'Choose at least one recipient and write a message first.')
+    return redirect('property_detail', pk=prop.pk)
+
+
+@login_required
+def property_contact_thread(request, pk, contact_pk):
+    """On-demand only — fetched by the property dashboard's "view
+    conversation" expand, once per click, never preloaded for every
+    contact on the property (see property_detail's docstring)."""
+    contact = get_object_or_404(Contact, pk=contact_pk, properties__pk=pk)
+    quo_messages = fetch_quo_conversation(contact)
+    entries = []
+    for m in (quo_messages or []):
+        at = _parse_quo_timestamp(m.get('at', ''))
+        if at:
+            entries.append({'direction': m['direction'], 'body': m['body'], 'at': at})
+    entries.sort(key=lambda e: e['at'])
+    return render(request, 'core/_property_contact_thread.html', {
+        'entries': entries, 'has_quo_thread': quo_messages is not None, 'contact': contact,
+    })
 
 
 @login_required

@@ -18,7 +18,7 @@ from core.models import (
     Contact, Property, PropertyAttribute, StaffProfile, is_valid_phone, properties_by_type,
     property_dropdown_queryset,
 )
-from messaging.services import fetch_quo_conversation, send_followup_bulk
+from messaging.services import _followup_result_message, _group_followups, fetch_quo_conversation, send_followup_bulk
 
 from .forms import ReassignForm, TicketForm, TicketTemplateForm
 from .models import (
@@ -333,6 +333,12 @@ def ticket_list(request):
     if scheduled_for:
         qs = qs.filter(scheduled_for=scheduled_for)
 
+    property_id = request.GET.get('property')
+    selected_property = None
+    if property_id:
+        qs = qs.filter(property_id=property_id)
+        selected_property = Property.objects.filter(pk=property_id).first()
+
     return render(request, 'tickets/ticket_list.html', {
         'tickets': qs,
         'now': timezone.now(),
@@ -345,6 +351,7 @@ def ticket_list(request):
         'selected_template_id': template_id,
         'selected_template': selected_template,
         'selected_scheduled_for': scheduled_for,
+        'selected_property': selected_property,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
         'properties_by_type': properties_by_type(),
@@ -542,36 +549,6 @@ def _contractor_thread(ticket):
 
     entries.sort(key=lambda e: e['at'])
     return {'entries': entries, 'has_quo_thread': quo_messages is not None}
-
-
-def _group_followups(followups):
-    """One entry per batch_id (everything created by a single Follow-Up
-    "Send" click) — followups is already ordered -sent_at, and every row
-    in one batch is created back-to-back in the same request, so rows for
-    a batch are always contiguous in that ordering."""
-    batches, order = {}, []
-    for log in followups:
-        if log.batch_id not in batches:
-            batches[log.batch_id] = []
-            order.append(log.batch_id)
-        batches[log.batch_id].append(log)
-    result = []
-    for batch_id in order:
-        logs = batches[batch_id]
-        first = logs[0]
-        result.append({
-            'logs': logs,
-            'channel': first.channel,
-            'sent_at': first.sent_at,
-            'sent_by': first.sent_by,
-            'subject': first.subject,
-            'body': first.body,
-            'is_group': first.is_group,
-            'recipients': [log.contact.name if log.contact else log.sent_to for log in logs],
-            'all_success': all(log.success for log in logs),
-            'any_success': any(log.success for log in logs),
-        })
-    return result
 
 
 @login_required
@@ -1113,19 +1090,6 @@ def ticket_close_no_followup(request, pk):
     return redirect('dashboard')
 
 
-def _followup_result_message(request, logs, recipient_noun):
-    succeeded = sum(1 for log in logs if log.success)
-    failed = len(logs) - succeeded
-    if not logs:
-        messages.error(request, 'Nothing sent — no eligible recipient was selected.')
-    elif failed == 0:
-        messages.success(request, f'Sent to {succeeded} {recipient_noun}.')
-    elif succeeded == 0:
-        messages.error(request, f'Failed to send to all {failed} {recipient_noun}.')
-    else:
-        messages.warning(request, f'Sent to {succeeded} {recipient_noun}, failed for {failed}.')
-
-
 @login_required
 def ticket_followup_sms(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
@@ -1135,7 +1099,7 @@ def ticket_followup_sms(request, pk):
         body = request.POST.get('body', '').strip()
         if contact_ids and body:
             logs = send_followup_bulk(
-                ticket, FollowUpLog.Channel.SMS, contact_ids, body, user=request.user,
+                FollowUpLog.Channel.SMS, contact_ids, body, ticket=ticket, user=request.user,
             )
             if is_ajax:
                 # Contractor Communication's compose box: the new bubble in
@@ -1166,7 +1130,7 @@ def ticket_followup_email(request, pk):
         group = request.POST.get('group') == '1'
         if contact_ids and body:
             logs = send_followup_bulk(
-                ticket, FollowUpLog.Channel.EMAIL, contact_ids, body, subject=subject,
+                FollowUpLog.Channel.EMAIL, contact_ids, body, ticket=ticket, subject=subject,
                 group=group, user=request.user,
             )
             _followup_result_message(request, logs, 'recipient(s) by email')

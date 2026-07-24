@@ -213,13 +213,23 @@ def send_followup(ticket, channel, to_override=None, user=None, custom_body=None
     return log
 
 
-def send_followup_bulk(ticket, channel, contact_ids, body, subject='', group=False, user=None):
-    """The Follow-Up modal's send action — any number of recipients, one
-    FollowUpLog row per contact (even for a combined group email) so "who
-    did I message and when" stays per-contact, all sharing one batch_id so
-    the audit trail can render one line per Send click. Recipients missing
-    the relevant channel's field are silently dropped (defensive — the UI
-    only ever offers eligible bubbles to begin with)."""
+def send_followup_bulk(channel, contact_ids, body, ticket=None, property=None, subject='', group=False, user=None):
+    """The Follow-Up modal's send action — and the property dashboard's
+    Communication card — any number of recipients, one FollowUpLog row per
+    contact (even for a combined group email) so "who did I message and
+    when" stays per-contact, all sharing one batch_id so the audit trail
+    can render one line per Send click. Recipients missing the relevant
+    channel's field are silently dropped (defensive — the UI only ever
+    offers eligible bubbles to begin with).
+
+    Exactly one of `ticket`/`property` must be set — matches
+    FollowUpLog's own CheckConstraint, this is just where that invariant
+    first gets enforced rather than failing at .save()."""
+    if bool(ticket) == bool(property):
+        raise ValueError('send_followup_bulk requires exactly one of ticket or property.')
+    context = ticket or property
+    context_kwargs = {'ticket': ticket, 'property': property}
+
     from core.models import Contact
 
     contacts = list(Contact.objects.filter(pk__in=contact_ids))
@@ -239,10 +249,10 @@ def send_followup_bulk(ticket, channel, contact_ids, body, subject='', group=Fal
             success, error = True, ''
         except Exception as exc:
             success, error = False, str(exc)[:300]
-            logger.exception('Follow-up group email failed for ticket %s', ticket.pk)
+            logger.exception('Follow-up group email failed for %s', context)
         for contact in contacts:
             logs.append(FollowUpLog(
-                ticket=ticket, contact=contact, channel=channel, sent_to=contact.email,
+                **context_kwargs, contact=contact, channel=channel, sent_to=contact.email,
                 subject=subject, body=body, batch_id=batch_id, is_group=True,
                 sent_by=user, success=success, error_message=error,
             ))
@@ -259,9 +269,9 @@ def send_followup_bulk(ticket, channel, contact_ids, body, subject='', group=Fal
                     send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [sent_to])
             except Exception as exc:
                 success, error = False, str(exc)[:300]
-                logger.exception('Follow-up send failed for ticket %s contact %s', ticket.pk, contact.pk)
+                logger.exception('Follow-up send failed for %s contact %s', context, contact.pk)
             logs.append(FollowUpLog(
-                ticket=ticket, contact=contact, channel=channel, sent_to=sent_to,
+                **context_kwargs, contact=contact, channel=channel, sent_to=sent_to,
                 subject=subject, body=body, batch_id=batch_id, is_group=False,
                 sent_by=user, success=success, error_message=error,
             ))
@@ -269,8 +279,54 @@ def send_followup_bulk(ticket, channel, contact_ids, body, subject='', group=Fal
     for log in logs:
         log.save()
 
-    if any(log.success for log in logs) and not ticket.followup_done:
+    if ticket and any(log.success for log in logs) and not ticket.followup_done:
         ticket.followup_done = True
         ticket.save(update_fields=['followup_done'])
 
     return logs
+
+
+def _followup_result_message(request, logs, recipient_noun):
+    from django.contrib import messages
+
+    succeeded = sum(1 for log in logs if log.success)
+    failed = len(logs) - succeeded
+    if not logs:
+        messages.error(request, 'Nothing sent — no eligible recipient was selected.')
+    elif failed == 0:
+        messages.success(request, f'Sent to {succeeded} {recipient_noun}.')
+    elif succeeded == 0:
+        messages.error(request, f'Failed to send to all {failed} {recipient_noun}.')
+    else:
+        messages.warning(request, f'Sent to {succeeded} {recipient_noun}, failed for {failed}.')
+
+
+def _group_followups(followups):
+    """One entry per batch_id (everything created by a single Send click,
+    whether from a ticket's Follow-Up modal or a property's Communication
+    card) — followups is already ordered -sent_at, and every row in one
+    batch is created back-to-back in the same request, so rows for a batch
+    are always contiguous in that ordering."""
+    batches, order = {}, []
+    for log in followups:
+        if log.batch_id not in batches:
+            batches[log.batch_id] = []
+            order.append(log.batch_id)
+        batches[log.batch_id].append(log)
+    result = []
+    for batch_id in order:
+        logs = batches[batch_id]
+        first = logs[0]
+        result.append({
+            'logs': logs,
+            'channel': first.channel,
+            'sent_at': first.sent_at,
+            'sent_by': first.sent_by,
+            'subject': first.subject,
+            'body': first.body,
+            'is_group': first.is_group,
+            'recipients': [log.contact.name if log.contact else log.sent_to for log in logs],
+            'all_success': all(log.success for log in logs),
+            'any_success': any(log.success for log in logs),
+        })
+    return result

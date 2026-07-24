@@ -534,7 +534,18 @@ class FollowUpLog(models.Model):
         EMAIL = 'email', 'Email'
         SMS = 'sms', 'Text message'
 
-    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='followups')
+    # Exactly one of ticket/property is set (see the CheckConstraint below) —
+    # a communication is logged against whichever screen it was sent from,
+    # the ticket detail Follow-Up/Contractor Communication cards or the
+    # property dashboard's Communication card. Both nullable so one model
+    # and one _group_followups()-powered history UI (messaging/services.py)
+    # serves both contexts instead of two parallel log models.
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, null=True, blank=True, related_name='followups',
+    )
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, null=True, blank=True, related_name='followups',
+    )
     contact = models.ForeignKey(
         Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
         help_text='Who this specific row was sent to — null on rows predating this field.',
@@ -562,6 +573,15 @@ class FollowUpLog(models.Model):
 
     class Meta:
         ordering = ['-sent_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(ticket__isnull=False, property__isnull=True)
+                    | models.Q(ticket__isnull=True, property__isnull=False)
+                ),
+                name='followuplog_exactly_one_of_ticket_or_property',
+            ),
+        ]
 
     def __str__(self):
-        return f'{self.get_channel_display()} to {self.sent_to} re: {self.ticket}'
+        return f'{self.get_channel_display()} to {self.sent_to} re: {self.ticket or self.property}'

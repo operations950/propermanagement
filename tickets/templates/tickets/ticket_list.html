@@ -24,6 +24,13 @@
 </div>
 {% endif %}
 
+{% if selected_property %}
+<div class="alert alert-info d-flex justify-content-between align-items-center py-2">
+    <span>Showing tickets & tasks for: <strong>{{ selected_property.name }}</strong></span>
+    <a href="{% url 'property_detail' selected_property.pk %}" class="small">View property</a>
+</div>
+{% endif %}
+
 <form method="get" class="row g-2 mb-3">
     <div class="col-auto">
         <select name="status" class="form-select" onchange="this.form.submit()">

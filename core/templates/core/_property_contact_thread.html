@@ -1,0 +1,9 @@
+{% if entries %}
+    {% for entry in entries %}
+        <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
+    {% endfor %}
+{% elif has_quo_thread %}
+    <p class="text-muted small text-center py-3 mb-0">No messages yet.</p>
+{% else %}
+    <p class="text-muted small text-center py-3 mb-0">No Quo conversation linked yet for {{ contact.name }}.</p>
+{% endif %}

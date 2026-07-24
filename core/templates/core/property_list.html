@@ -30,7 +30,7 @@
     {% endfor %}
 </div>
 
-<div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
 <div class="table-responsive">
 <table class="table bg-white align-middle mb-0">
     <thead><tr><th>Name</th><th>Type</th><th>Address</th><th></th></tr></thead>
@@ -39,7 +39,7 @@
         <tr>
             <td class="fw-medium">
                 <i data-lucide="{{ p.property_type|property_type_icon }}" class="icon" style="color: var(--brand-slate);"></i>
-                {{ p.name }}{% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+                <a href="{% url 'property_detail' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
             </td>
             <td>
                 <span class="badge rounded-pill bg-light text-dark border">{{ p.get_property_type_display }}</span>
@@ -57,5 +57,32 @@
     </tbody>
 </table>
 </div>
+</div>
+
+<div class="d-md-none">
+{% for p in properties %}
+    <div class="card mb-2">
+        <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                    <div class="fw-semibold">
+                        <i data-lucide="{{ p.property_type|property_type_icon }}" class="icon" style="color: var(--brand-slate);"></i>
+                        <a href="{% url 'property_detail' p.pk %}" class="text-decoration-none">{{ p.name }}</a>
+                        {% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+                    </div>
+                    <div class="small text-muted">{{ p.address|default:'—' }}</div>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge rounded-pill bg-light text-dark border">{{ p.get_property_type_display }}</span>
+                {% if p.is_general %}<span class="badge rounded-pill bg-light text-dark border">General</span>{% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'property_recurring_tasks' p.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> Recurring tasks</a>
+                <a href="{% url 'property_edit' p.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+            </div>
+        </div>
+    </div>
+{% empty %}<p class="text-muted text-center py-4"><i data-lucide="building-2" class="icon-lg d-block mx-auto mb-1"></i>No properties match.</p>{% endfor %}
 </div>
 {% endblock %}

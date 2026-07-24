@@ -58,6 +58,19 @@ class Property(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # --- Access info — edited from the Property Detail dashboard, not the
+    # create/edit form (see core/views.py::property_detail). Always
+    # single-valued per property, unlike system locations below, which are a
+    # variable-length list — hence plain fields here rather than a side table.
+    gate_code = models.CharField(max_length=50, blank=True)
+    lockbox_code = models.CharField(max_length=50, blank=True)
+    alarm_code = models.CharField(max_length=50, blank=True)
+    wifi_network = models.CharField(max_length=100, blank=True)
+    wifi_password = models.CharField(max_length=100, blank=True)
+    access_notes = models.TextField(
+        blank=True, help_text='Anything else staff need to get in or navigate the property.',
+    )
+
     class Meta:
         verbose_name_plural = 'properties'
         ordering = ['name']
@@ -69,6 +82,24 @@ class Property(models.Model):
         if self.street and self.city and self.state and self.zip_code:
             self.address = f'{self.street}, {self.city}, {self.state} {self.zip_code}'
         super().save(*args, **kwargs)
+
+
+class PropertySystemLocation(models.Model):
+    """Where to find something on-site (water shutoff, electrical panel,
+    sprinkler timer, ...) — an open-ended list since which systems exist
+    varies per property, unlike the fixed access-code fields on Property
+    itself."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='system_locations')
+    system_name = models.CharField(max_length=120, help_text='e.g. "Water shutoff", "Electrical panel", "Sprinkler timer"')
+    location = models.CharField(max_length=300)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['system_name']
+
+    def __str__(self):
+        return f'{self.system_name} — {self.property}'
 
 
 def property_dropdown_queryset():
@@ -136,6 +167,7 @@ class Contact(models.Model):
         OWNER = 'owner', 'Owner'
         BOARD_MEMBER = 'board_member', 'Board Member'
         ASSOCIATION_MEMBER = 'association_member', 'Association Member'
+        ON_SITE_STAFF = 'on_site_staff', 'On-site Staff'
         VENDOR = 'vendor', 'Vendor / Contractor'
         STAFF_ADJACENT = 'staff_adjacent', 'Staff-adjacent'
         OTHER = 'other', 'Other'

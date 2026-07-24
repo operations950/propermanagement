@@ -16,12 +16,12 @@ empty_today_text, empty_soon_text, now, role (all passed in via
     </h6>
     <div class="list-group list-group-flush">
     {% for t in needs_date_items %}
-        <div class="list-group-item bg-transparent d-flex justify-content-between align-items-center gap-2 px-0 py-2">
+        <div class="list-group-item bg-transparent d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 px-0 py-2">
             <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body small fw-medium text-truncate" style="min-width: 0;">{{ t.title|truncatechars:45 }}</a>
             <form method="post" action="{% url 'ticket_set_due_date' t.pk %}" class="d-flex align-items-center gap-1 flex-shrink-0">
                 {% csrf_token %}
                 <input type="hidden" name="next_role" value="{{ role }}">
-                <input type="date" name="due_date" class="form-control form-control-sm" style="width: 150px;" onchange="this.form.submit()">
+                <input type="date" name="due_date" class="form-control form-control-sm" style="max-width: 150px;" onchange="this.form.submit()">
             </form>
         </div>
     {% endfor %}

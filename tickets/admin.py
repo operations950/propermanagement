@@ -136,5 +136,5 @@ class TicketAssignmentLogAdmin(admin.ModelAdmin):
 
 @admin.register(FollowUpLog)
 class FollowUpLogAdmin(admin.ModelAdmin):
-    list_display = ['ticket', 'channel', 'sent_to', 'sent_at', 'success']
+    list_display = ['ticket', 'property', 'channel', 'sent_to', 'sent_at', 'success']
     readonly_fields = [f.name for f in FollowUpLog._meta.fields]

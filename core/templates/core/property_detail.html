@@ -1,0 +1,330 @@
+{% extends 'base.html' %}
+{% load core_extras ticket_extras %}
+{% block title %}{{ property.name }}{% endblock %}
+{% block content %}
+<div class="my-3">
+    <a href="{% url 'property_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Properties</a>
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+            <h2 class="page-title mb-1 d-flex align-items-center gap-2">
+                <i data-lucide="{{ property.property_type|property_type_icon }}" class="icon-lg" style="color: var(--brand-slate);"></i>
+                {{ property.name }}
+                {% if not property.is_active %}<span class="badge bg-secondary align-middle">Inactive</span>{% endif %}
+            </h2>
+            <p class="text-muted mb-0">
+                {{ property.get_property_type_display }}{% if property.address %} &middot; {{ property.address }}{% endif %}
+                {% if property.address_verified %}<span class="badge rounded-pill border ms-1" style="color: var(--status-good); border-color: var(--status-good) !important;">USPS verified</span>{% endif %}
+            </p>
+        </div>
+        <div class="d-flex gap-2 flex-shrink-0">
+            <a href="{% url 'property_recurring_tasks' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> Recurring tasks</a>
+            <a href="{% url 'property_edit' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+        </div>
+    </div>
+</div>
+
+{% if property.notes %}
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sticky-note" class="icon"></i> Notes</h6>
+        <p class="mb-0" style="white-space: pre-wrap;">{{ property.notes }}</p>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="ticket" class="icon"></i> Open tickets & tasks <span class="badge rounded-pill bg-light text-dark border">{{ open_tickets|length }}</span></h6>
+        {% for t in open_tickets %}
+        <a href="{% url 'ticket_detail' t.pk %}" class="d-flex justify-content-between align-items-start gap-2 py-2 border-top text-decoration-none {% if forloop.first %}border-top-0{% endif %}">
+            <div style="min-width: 0;">
+                <div class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ t.title }}</div>
+                <div class="small d-flex flex-wrap align-items-center gap-2 mt-1">
+                    <span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span>
+                    <span class="badge rounded-pill bg-{% if t.priority == 'urgent' %}danger{% else %}light text-dark border{% endif %}">{{ t.get_status_display }}</span>
+                </div>
+            </div>
+            <div class="text-nowrap text-end tabular-nums small flex-shrink-0">
+                {% if t.due_date %}
+                    <span {% if t|is_overdue:now %}style="color: var(--status-critical); font-weight: 600;"{% else %}style="color: var(--ink-muted);"{% endif %}>{{ t.due_date|date:"M j" }}</span>
+                {% else %}
+                    <span style="color: var(--border-hairline);">—</span>
+                {% endif %}
+            </div>
+        </a>
+        {% empty %}
+        <p class="text-muted mb-0">No open tickets or tasks for this property.</p>
+        {% endfor %}
+        {% if open_tickets %}
+        <a href="{% url 'ticket_list' %}?property={{ property.pk }}&status=all" class="d-block text-center pt-2 mt-2 border-top small text-decoration-none">View all tickets & tasks for this property →</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="contact" class="icon"></i> Contacts</h6>
+        {% for group in contact_groups %}
+        <div class="{% if not forloop.first %}mt-3{% endif %}">
+            <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">{{ group.type_label }}</div>
+            {% for c in group.contacts %}
+            <div class="d-flex justify-content-between align-items-center py-1 border-top">
+                <div>
+                    <a href="{% url 'contact_edit' c.pk %}" class="text-decoration-none">{{ c.name }}</a>
+                    <span class="text-muted small ms-1">{{ c.phone }}{% if c.phone and c.email %} &middot; {% endif %}{{ c.email }}</span>
+                </div>
+                {% if c.pk in contacts_with_thread_ids %}
+                <button type="button" class="btn btn-link btn-sm p-0 flex-shrink-0" data-thread-toggle
+                        data-contact-pk="{{ c.pk }}" data-loaded="0"
+                        data-thread-url="{% url 'property_contact_thread' property.pk c.pk %}">
+                    <i data-lucide="message-circle" class="icon"></i> View conversation
+                </button>
+                {% endif %}
+            </div>
+            <div class="imessage-thread mt-2 mb-2" data-thread-container="{{ c.pk }}" hidden></div>
+            {% endfor %}
+        </div>
+        {% empty %}
+        <p class="text-muted mb-0">No contacts linked to this property yet — add one from <a href="{% url 'contact_create' %}?property={{ property.pk }}">Contacts</a>.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="send" class="icon"></i> Communication</h6>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <h6 class="small fw-bold text-uppercase" style="color: var(--ink-muted); letter-spacing: 0.05em;"><i data-lucide="message-circle" class="icon"></i> Text</h6>
+                {% if text_contacts %}
+                <form id="property-sms-form" action="{% url 'property_followup_sms' property.pk %}">
+                    {% csrf_token %}
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="contact_ids">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="No one selected"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for c in text_contacts %}<button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>{% endfor %}
+                        </div>
+                    </div>
+                    <textarea name="body" class="form-control mb-2" rows="3" placeholder="Message…" required></textarea>
+                    <button class="btn btn-primary btn-sm w-100" type="submit">Send Text</button>
+                    <p class="text-danger small mt-1 mb-0" data-send-error hidden></p>
+                </form>
+                {% else %}
+                <p class="text-muted small">No contact on this property has a phone number.</p>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <h6 class="small fw-bold text-uppercase" style="color: var(--ink-muted); letter-spacing: 0.05em;"><i data-lucide="mail" class="icon"></i> Email</h6>
+                {% if email_contacts %}
+                <form id="property-email-form" action="{% url 'property_followup_email' property.pk %}">
+                    {% csrf_token %}
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="contact_ids">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="No one selected"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for c in email_contacts %}<button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>{% endfor %}
+                        </div>
+                    </div>
+                    <input type="text" name="subject" class="form-control mb-2" placeholder="Subject" required>
+                    <textarea name="body" class="form-control mb-2" rows="3" placeholder="Message…" required></textarea>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="group" value="1" id="property-email-group-check">
+                        <label class="form-check-label small" for="property-email-group-check">Send as one group email (recipients will see each other)</label>
+                    </div>
+                    <button class="btn btn-primary btn-sm w-100" type="submit">Send Email</button>
+                    <p class="text-danger small mt-1 mb-0" data-send-error hidden></p>
+                </form>
+                {% else %}
+                <p class="text-muted small">No contact on this property has an email address.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if followup_batches %}
+        <hr>
+        <small class="text-muted">Recent communication:</small>
+        <ul class="list-unstyled small mb-0" id="property-followup-history">
+        {% for batch in followup_batches %}
+            <li class="mb-2">
+                <a class="text-decoration-none d-flex justify-content-between align-items-center gap-2" data-bs-toggle="collapse" href="#property-followup-batch-{{ forloop.counter }}" role="button">
+                    <span>
+                        <i data-lucide="{% if batch.channel == 'sms' %}message-circle{% else %}mail{% endif %}" class="icon"></i>
+                        {{ batch.sent_at|date:"M j, g:i A" }} — {{ batch.recipients|join:", " }}
+                        {% if not batch.all_success %}<span class="text-danger">({% if batch.any_success %}partial failure{% else %}failed{% endif %})</span>{% endif %}
+                    </span>
+                    <i data-lucide="chevron-down" class="icon flex-shrink-0"></i>
+                </a>
+                <div class="collapse" id="property-followup-batch-{{ forloop.counter }}">
+                    <div class="p-2 mt-1 rounded" style="background: var(--surface-page);">
+                        {% if batch.subject %}<p class="mb-1"><strong>Subject:</strong> {{ batch.subject }}</p>{% endif %}
+                        <p class="mb-0" style="white-space: pre-wrap;">{{ batch.body }}</p>
+                    </div>
+                </div>
+            </li>
+        {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon"></i> Access & systems</h6>
+                <form method="post" class="mb-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="save_access_info">
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Gate code</label>
+                            <input type="text" name="gate_code" class="form-control form-control-sm" value="{{ property.gate_code }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Lockbox code</label>
+                            <input type="text" name="lockbox_code" class="form-control form-control-sm" value="{{ property.lockbox_code }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Alarm code</label>
+                            <input type="text" name="alarm_code" class="form-control form-control-sm" value="{{ property.alarm_code }}">
+                        </div>
+                        <div class="col-6"></div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">WiFi network</label>
+                            <input type="text" name="wifi_network" class="form-control form-control-sm" value="{{ property.wifi_network }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">WiFi password</label>
+                            <input type="text" name="wifi_password" class="form-control form-control-sm" value="{{ property.wifi_password }}">
+                        </div>
+                    </div>
+                    <label class="form-label small text-muted mb-1">Access notes</label>
+                    <textarea name="access_notes" class="form-control form-control-sm mb-2" rows="2" placeholder="Anything else staff need to get in or navigate the property.">{{ property.access_notes }}</textarea>
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Save access info</button>
+                </form>
+
+                <hr>
+                <div class="small fw-bold text-uppercase mb-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">System locations</div>
+                {% for loc in system_locations %}
+                <div class="d-flex justify-content-between align-items-start py-1 border-top">
+                    <div>
+                        <div class="fw-medium small">{{ loc.system_name }}</div>
+                        <div class="small text-muted">{{ loc.location }}{% if loc.notes %} — {{ loc.notes }}{% endif %}</div>
+                    </div>
+                    <form method="post" onsubmit="return confirm('Remove &quot;{{ loc.system_name|escapejs }}&quot;?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_system_location">
+                        <input type="hidden" name="system_location_id" value="{{ loc.pk }}">
+                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
+                    </form>
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-2">No system locations recorded yet.</p>
+                {% endfor %}
+                <form method="post" class="row g-2 mt-1 align-items-end">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_system_location">
+                    <div class="col-12 col-sm-4">
+                        <input type="text" name="system_name" class="form-control form-control-sm" placeholder="e.g. Water shutoff">
+                    </div>
+                    <div class="col-12 col-sm-4">
+                        <input type="text" name="location" class="form-control form-control-sm" placeholder="Where is it?">
+                    </div>
+                    <div class="col-12 col-sm-3">
+                        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)">
+                    </div>
+                    <div class="col-12 col-sm-1">
+                        <button class="btn btn-outline-secondary btn-sm w-100" type="submit"><i data-lucide="plus" class="icon"></i></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Amenities</h6>
+                <p class="small text-muted">Services, physical features, and compliance tags — also used by recurring task rules to auto-apply.</p>
+                {% for attr in attributes %}
+                <form method="post" class="form-check">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="toggle_attribute">
+                    <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
+                    <input class="form-check-input" type="checkbox" id="amenity-{{ attr.pk }}"
+                           {% if attr.pk in assigned_attribute_ids %}checked{% endif %} onchange="this.form.submit()">
+                    <label class="form-check-label small" for="amenity-{{ attr.pk }}">{{ attr.label }} <span class="text-muted">({{ attr.get_category_display }})</span></label>
+                </form>
+                {% empty %}
+                <p class="text-muted small mb-0">No amenity tags defined yet — add some in Admin.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    // Communication card: submit via fetch so a send doesn't reload the
+    // whole dashboard — same pattern as ticket_detail.html's Contractor
+    // Communication compose box (FormData built before disabling inputs,
+    // since a disabled field drops out of FormData entirely).
+    function wireSendForm(formId) {
+        var form = document.getElementById(formId);
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var errorEl = form.querySelector('[data-send-error]');
+            var formData = new FormData(form);
+            var inputs = form.querySelectorAll('input, textarea, button');
+            inputs.forEach(function (el) { el.disabled = true; });
+            errorEl.hidden = true;
+
+            fetch(form.action, {
+                method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            })
+                .then(function (resp) { return resp.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        errorEl.textContent = data.error || 'Send failed.';
+                        errorEl.hidden = false;
+                    }
+                })
+                .catch(function () {
+                    errorEl.textContent = 'Send failed — check your connection and try again.';
+                    errorEl.hidden = false;
+                })
+                .finally(function () {
+                    inputs.forEach(function (el) { el.disabled = false; });
+                });
+        });
+    }
+    wireSendForm('property-sms-form');
+    wireSendForm('property-email-form');
+
+    // Contact "view conversation" — fetched once per contact on first
+    // click only (fetch_quo_conversation is a live API call; see
+    // property_detail's docstring for why this must never be preloaded).
+    document.querySelectorAll('[data-thread-toggle]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var contactPk = btn.dataset.contactPk;
+            var container = document.querySelector('[data-thread-container="' + contactPk + '"]');
+            if (btn.dataset.loaded === '1') {
+                container.hidden = !container.hidden;
+                return;
+            }
+            btn.disabled = true;
+            fetch(btn.dataset.threadUrl)
+                .then(function (resp) { return resp.text(); })
+                .then(function (html) {
+                    container.innerHTML = html;
+                    container.hidden = false;
+                    btn.dataset.loaded = '1';
+                })
+                .finally(function () { btn.disabled = false; });
+        });
+    });
+})();
+</script>
+{% endblock %}
