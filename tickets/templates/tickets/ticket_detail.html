@@ -309,6 +309,38 @@
                 </script>
             </div>
         </div>
+
+        {% if contractor_thread %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
+                <p class="small text-muted mb-2">{{ ticket.assigned_contact.name }}{% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}</p>
+
+                {% if contractor_thread.entries %}
+                <div class="imessage-thread">
+                    {% for entry in contractor_thread.entries %}
+                        <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
+                    {% endfor %}
+                </div>
+                {% elif contractor_thread.has_quo_thread %}
+                <p class="text-muted small text-center py-3 mb-0">No messages yet.</p>
+                {% else %}
+                <p class="text-muted small text-center py-3 mb-0">No Quo conversation linked yet for this contact.</p>
+                {% endif %}
+
+                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" class="d-flex gap-2 mt-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="contact_ids" value="{{ ticket.assigned_contact.pk }}">
+                    <input type="text" name="body" class="form-control form-control-sm" placeholder="Message {{ ticket.assigned_contact.name }}…" required>
+                    <button class="btn btn-primary btn-sm flex-shrink-0" type="submit"><i data-lucide="send" class="icon"></i></button>
+                </form>
+                {% if not ticket.assigned_contact.phone %}
+                <p class="text-danger small mt-1 mb-0">No phone number on file — this contact can't be texted.</p>
+                {% endif %}
+                <p class="text-muted mt-1 mb-0" style="font-size: 0.7rem;">Development mode: sends are logged, not actually delivered (SMS_PROVIDER=log).</p>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <div class="col-md-5">
@@ -432,38 +464,6 @@
                 </script>
             </div>
         </div>
-
-        {% if contractor_thread %}
-        <div class="card mb-3">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
-                <p class="small text-muted mb-2">{{ ticket.assigned_contact.name }}{% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}</p>
-
-                {% if contractor_thread.entries %}
-                <div class="imessage-thread">
-                    {% for entry in contractor_thread.entries %}
-                        <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
-                    {% endfor %}
-                </div>
-                {% elif contractor_thread.has_quo_thread %}
-                <p class="text-muted small text-center py-3 mb-0">No messages yet.</p>
-                {% else %}
-                <p class="text-muted small text-center py-3 mb-0">No Quo conversation linked yet for this contact.</p>
-                {% endif %}
-
-                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" class="d-flex gap-2 mt-2">
-                    {% csrf_token %}
-                    <input type="hidden" name="contact_ids" value="{{ ticket.assigned_contact.pk }}">
-                    <input type="text" name="body" class="form-control form-control-sm" placeholder="Message {{ ticket.assigned_contact.name }}…" required>
-                    <button class="btn btn-primary btn-sm flex-shrink-0" type="submit"><i data-lucide="send" class="icon"></i></button>
-                </form>
-                {% if not ticket.assigned_contact.phone %}
-                <p class="text-danger small mt-1 mb-0">No phone number on file — this contact can't be texted.</p>
-                {% endif %}
-                <p class="text-muted mt-1 mb-0" style="font-size: 0.7rem;">Development mode: sends are logged, not actually delivered (SMS_PROVIDER=log).</p>
-            </div>
-        </div>
-        {% endif %}
 
         <div class="card mb-3">
             <div class="card-body">
