@@ -336,8 +336,9 @@
                 </form>
                 {% if not ticket.assigned_contact.phone %}
                 <p class="text-danger small mt-1 mb-0">No phone number on file — this contact can't be texted.</p>
+                {% elif not contractor_thread.has_quo_thread %}
+                <p class="text-muted mt-1 mb-0" style="font-size: 0.7rem;">No Quo conversation linked to this contact yet, so this send will only be logged, not delivered — reply to them from Quo directly at least once to link one.</p>
                 {% endif %}
-                <p class="text-muted mt-1 mb-0" style="font-size: 0.7rem;">Development mode: sends are logged, not actually delivered (SMS_PROVIDER=log).</p>
             </div>
         </div>
         {% endif %}

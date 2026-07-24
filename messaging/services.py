@@ -75,6 +75,70 @@ def fetch_quo_conversation(contact):
     ]
 
 
+def _quo_from_number(thread):
+    """The E.164 number our own shared line uses in this thread. Quo's
+    conversation/message-list endpoints only give an opaque phoneNumberId,
+    never the line's own E.164 number directly — so this derives it from
+    the thread's own message history instead (an outgoing message's `from`,
+    or an incoming message's `to`), which is already fetched data, not a
+    guess. None if the thread has no messages to derive it from."""
+    from intake.adapters.quo import QuoAdapter, QuoAPIError
+    import requests
+
+    try:
+        messages = QuoAdapter()._list_messages(thread.phone_number_id, thread.participant)
+    except (requests.RequestException, QuoAPIError):
+        logger.exception('Quo: could not resolve our own number for thread %s', thread.pk)
+        return None
+    for m in reversed(messages):
+        if m.get('direction') == 'outgoing' and m.get('from'):
+            return m['from']
+        if m.get('direction') == 'incoming':
+            to = m.get('to') or []
+            if to:
+                return to[0]
+    return None
+
+
+def send_via_quo(to_number, body):
+    """Send `body` to `to_number` through whichever Quo line is already
+    talking to them, so the reply lands in the same thread
+    fetch_quo_conversation reads from (real two-way texting, not a stub).
+
+    Returns False if `to_number` has no known Quo thread yet — the caller
+    should fall back to get_sms_backend() in that case, since we have no
+    way to know which of our several Quo lines a brand-new contact should
+    be texted from. Raises on an actual Quo API failure (a thread DID
+    exist, we DID try, Quo rejected it) — that must surface as a real
+    failure to the caller's audit trail, not be swallowed into a fake
+    stub "success"."""
+    participant = _to_e164(to_number)
+    if not participant:
+        return False
+
+    from intake.models import QuoThreadState
+
+    thread = QuoThreadState.objects.filter(participant=participant).order_by('-updated_at').first()
+    if not thread:
+        return False
+
+    from_number = _quo_from_number(thread)
+    if not from_number:
+        return False
+
+    from intake.adapters.quo import QUO_API_BASE
+    import requests
+
+    resp = requests.post(
+        f'{QUO_API_BASE}/v1/messages',
+        headers={'Authorization': settings.QUO_API_KEY, 'Content-Type': 'application/json'},
+        json={'content': body, 'from': from_number, 'to': [participant]},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return True
+
+
 class LogSMSBackend:
     """Stub backend: logs the message instead of sending it for real.
     Swap in a real provider (e.g. Twilio) once credentials exist — same
@@ -131,7 +195,8 @@ def send_followup(ticket, channel, to_override=None, user=None, custom_body=None
             to_number = to_override or (reporter.phone if reporter else '')
             if not to_number:
                 raise ValueError("No phone number available for this ticket's reporter.")
-            get_sms_backend().send(to_number, body)
+            if not send_via_quo(to_number, body):
+                get_sms_backend().send(to_number, body)
             log.sent_to = to_number
         else:
             raise ValueError(f'Unknown channel: {channel}')
@@ -185,7 +250,8 @@ def send_followup_bulk(ticket, channel, contact_ids, body, subject='', group=Fal
             try:
                 if channel == FollowUpLog.Channel.SMS:
                     sent_to = contact.phone
-                    get_sms_backend().send(sent_to, body)
+                    if not send_via_quo(sent_to, body):
+                        get_sms_backend().send(sent_to, body)
                 else:
                     sent_to = contact.email
                     send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [sent_to])
