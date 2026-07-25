@@ -160,7 +160,11 @@ def classify_thread(
                 ),
             }],
         )
-    except anthropic.APIError:
+    except Exception:
+        # Broad on purpose — see intake/contact_classifier.py's identical comment. A malformed
+        # request never reaches the network and isn't an anthropic.APIError, so narrowly
+        # catching that alone lets it propagate and crash the caller (classify_quo_conversations
+        # would lose every remaining conversation in the batch after the bad one).
         logger.exception('Claude API call failed during thread classification')
         return None
 

@@ -96,7 +96,11 @@ def classify_message_relevance(ticket, messages):
                 ),
             }],
         )
-    except anthropic.APIError:
+    except Exception:
+        # Broad on purpose — see intake/contact_classifier.py's identical comment. A malformed
+        # request (e.g. odd characters somewhere in the transcript breaking header encoding)
+        # never reaches the network and isn't an anthropic.APIError, but must still fail open
+        # (show every message normally) rather than crash the ticket_detail page.
         logger.exception('Claude API call failed during message relevance classification')
         return None
 

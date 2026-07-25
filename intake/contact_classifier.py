@@ -101,7 +101,13 @@ def classify_contact(transcript, contact_info='', property_names=None):
                 ),
             }],
         )
-    except anthropic.APIError:
+    except Exception:
+        # Broad on purpose: anthropic.APIError only covers errors the API itself returns — a
+        # malformed request never even reaches the network (e.g. a UnicodeEncodeError building
+        # headers from odd characters in imported data) and would otherwise propagate up and
+        # kill the entire classify_pending_contacts batch instead of just skipping this one
+        # contact. A bad guess is just a blank suggestion; a crashed batch loses every
+        # candidate after the bad one.
         logger.exception('Claude API call failed during contact classification')
         return None
 
