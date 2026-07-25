@@ -9,5 +9,6 @@ urlpatterns = [
     path('webhooks/quo/log/', views.quo_webhook_log, name='quo_webhook_log'),
     path('webhooks/quo/log/backfill/', views.quo_backfill_trigger, name='quo_backfill_trigger'),
     path('webhooks/quo/log/classify/', views.quo_classify_trigger, name='quo_classify_trigger'),
+    path('webhooks/quo/log/classify-contacts/', views.quo_classify_contacts_trigger, name='quo_classify_contacts_trigger'),
     path('webhooks/quo/<str:token>/', views.quo_webhook, name='quo_webhook'),
 ]

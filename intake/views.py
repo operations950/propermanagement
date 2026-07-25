@@ -270,3 +270,15 @@ def quo_classify_trigger(request):
         _run_command_in_background('classify_quo_conversations')
         messages.success(request, 'Quo classification pass started in the background — check Railway logs for progress.')
     return redirect('quo_webhook_log')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_classify_contacts_trigger(request):
+    """Admin-only: runs classify_pending_contacts (AI contact_type/property
+    suggestions from each pending contact's captured message history) in the
+    background — same no-shell-access workaround as the other triggers."""
+    if request.method == 'POST':
+        _run_command_in_background('classify_pending_contacts')
+        messages.success(request, 'Contact classification pass started in the background — check Railway logs for progress.')
+    return redirect('quo_webhook_log')

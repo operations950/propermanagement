@@ -12,6 +12,10 @@
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-primary btn-sm">Force classify pass now</button>
         </form>
+        <form method="post" action="{% url 'quo_classify_contacts_trigger' %}" onsubmit="return confirm('Classify all pending contacts from their Quo message history? This runs in the background and calls Claude once per contact with history.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary btn-sm">Classify pending contacts</button>
+        </form>
     </div>
 </div>
 <p class="small mb-3" style="color: var(--ink-muted);">
