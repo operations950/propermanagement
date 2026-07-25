@@ -49,6 +49,15 @@ class Command(BaseCommand):
             '--count-only', action='store_true',
             help='Report how many contacts qualify without fetching their message history or calling Claude.',
         )
+        parser.add_argument(
+            '--include-staged', action='store_true',
+            help=(
+                'One-time override: also reconsider contacts that already have a PENDING '
+                'ContactImportCandidate (e.g. re-staged by the daily sync since a review-queue '
+                'clear). Existing candidates get upgraded in place with the AI classification '
+                'rather than duplicated. Approved/rejected Contacts are still always excluded.'
+            ),
+        )
 
     def handle(self, *args, **options):
         if not settings.QUO_API_KEY:
@@ -56,6 +65,7 @@ class Command(BaseCommand):
             return
 
         count_only = options['count_only']
+        include_staged = options['include_staged']
         cutoff = timezone.now() - timedelta(days=WINDOW_DAYS)
 
         existing_ext_ids = set(
@@ -66,17 +76,21 @@ class Command(BaseCommand):
         }
         existing_phones.discard('')
         existing_emails = {e.lower() for e in Contact.objects.exclude(email='').values_list('email', flat=True)}
-        pending_ext_ids = set(
-            ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
-            .exclude(external_id='').values_list('external_id', flat=True)
-        )
+        pending_candidates_by_ext_id = {
+            cand.external_id: cand
+            for cand in ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
+            .exclude(external_id='')
+        }
+        pending_ext_ids = set(pending_candidates_by_ext_id)
 
         contacts = QuoAdapter()._list_contacts()
 
         qualifying = []
         for c in contacts:
             external_id = c.get('id') or ''
-            if not external_id or external_id in existing_ext_ids or external_id in pending_ext_ids:
+            if not external_id or external_id in existing_ext_ids:
+                continue
+            if external_id in pending_ext_ids and not include_staged:
                 continue
             fields = c.get('defaultFields') or {}
             name = ' '.join(filter(None, [fields.get('firstName'), fields.get('lastName')])).strip()
@@ -99,9 +113,14 @@ class Command(BaseCommand):
             })
 
         if count_only:
-            self.stdout.write(self.style.SUCCESS(
-                f'{len(qualifying)} Quo-saved contact(s) have message activity in the last 12 months and '
+            suffix = (
+                'no existing Contact record — would be analyzed on a real run (including '
+                'already-staged pending candidates, per --include-staged).'
+                if include_staged else
                 'no existing Contact or pending-candidate record — would be analyzed on a real run.'
+            )
+            self.stdout.write(self.style.SUCCESS(
+                f'{len(qualifying)} Quo-saved contact(s) have message activity in the last 12 months and {suffix}'
             ))
             return
 
@@ -113,7 +132,7 @@ class Command(BaseCommand):
             return
 
         property_names = list(Property.objects.filter(is_active=True).values_list('name', flat=True))
-        created = skipped_no_messages = 0
+        created = upgraded = skipped_no_messages = 0
         for entry in qualifying:
             messages = list(
                 QuoMessage.objects.filter(
@@ -133,8 +152,7 @@ class Command(BaseCommand):
 
             verdict = classify_contact(transcript, contact_info=contact_info, property_names=property_names)
 
-            candidate = ContactImportCandidate.objects.create(
-                source=Contact.Source.QUO, external_id=entry['external_id'],
+            field_values = dict(
                 name=entry['name'] or entry['company'], phone=_to_dash_format(entry['phone']),
                 email=entry['email'],
                 suggested_contact_type=verdict.contact_type if verdict else (
@@ -153,15 +171,28 @@ class Command(BaseCommand):
                     )
                 ),
             )
-            created += 1
+
+            existing_pending = pending_candidates_by_ext_id.get(entry['external_id'])
+            if existing_pending is not None:
+                for field, value in field_values.items():
+                    setattr(existing_pending, field, value)
+                existing_pending.save(update_fields=list(field_values))
+                candidate = existing_pending
+                upgraded += 1
+            else:
+                candidate = ContactImportCandidate.objects.create(
+                    source=Contact.Source.QUO, external_id=entry['external_id'], **field_values,
+                )
+                created += 1
             self.stdout.write(
                 f'{candidate.name}: {candidate.suggested_contact_type} / '
                 f'{candidate.suggested_property.name if candidate.suggested_property else "no property"}'
             )
 
         self.stdout.write(self.style.SUCCESS(
-            f'Created {created} contact candidate(s) for review, skipped {skipped_no_messages} with no '
-            'messages found in the 12-month window.'
+            f'Created {created} new contact candidate(s), upgraded {upgraded} already-staged candidate(s) '
+            f'with AI classification, skipped {skipped_no_messages} with no messages found in the 12-month '
+            'window.'
         ))
 
     def _format_transcript(self, messages, total_count):

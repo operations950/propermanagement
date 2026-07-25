@@ -10,8 +10,8 @@
             with in the last 12 months (and don't already have as a Contact) and AI-classify them from
             their full 12-month history. Preview the count first — it's free and instant.
         </p>
-        <div class="d-flex flex-wrap gap-2">
-            <form method="post" action="{% url 'quo_analyze_contacts_count' %}" class="d-inline">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <form method="post" action="{% url 'quo_analyze_contacts_count' %}" class="d-inline d-flex align-items-center gap-2">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-outline-secondary btn-sm">Preview count (no changes)</button>
             </form>
@@ -26,8 +26,30 @@
                 <button type="submit" class="btn btn-outline-danger btn-sm">Clear all pending ({{ candidates|length }})</button>
             </form>
         </div>
+        <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" value="1" id="includeStagedCheck">
+            <label class="form-check-label small text-muted" for="includeStagedCheck">
+                One-time override: also reconsider contacts already sitting in the pending queue above
+                (e.g. re-staged by the daily sync right after a clear). Check this, then click Preview
+                count or Run analysis pass.
+            </label>
+        </div>
     </div>
 </div>
+<script>
+document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action$="/analyze-contacts/run/"]').forEach(function (form) {
+    form.addEventListener('submit', function () {
+        var checked = document.getElementById('includeStagedCheck').checked;
+        if (checked) {
+            var hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'include_staged';
+            hidden.value = '1';
+            form.appendChild(hidden);
+        }
+    });
+});
+</script>
 {% endif %}
 
 <form id="review-bulk-form">

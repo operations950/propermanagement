@@ -332,15 +332,23 @@ def quo_analyze_contacts_count(request):
     (no Quo message fetch or Claude calls, just a handful of DB/API-list
     queries — fast enough to answer inline) and surfaces the result as a
     message instead of making the admin dig through Railway logs for a
-    single number. See the command's own docstring for what "qualifies"."""
+    single number. See the command's own docstring for what "qualifies".
+
+    The include_staged checkbox passes --include-staged through, for the
+    one-time case where a review-queue clear was immediately followed by the
+    daily sync re-staging the same contacts before this pass ran."""
     if request.method == 'POST':
         import io
 
         from django.core.management import call_command
 
+        args = ['--count-only']
+        if request.POST.get('include_staged'):
+            args.append('--include-staged')
+
         buf = io.StringIO()
         try:
-            call_command('analyze_recent_quo_contacts', '--count-only', stdout=buf)
+            call_command('analyze_recent_quo_contacts', *args, stdout=buf)
             messages.success(request, buf.getvalue().strip() or 'Done — no output.')
         except Exception:
             logger.exception('analyze_recent_quo_contacts --count-only failed')
@@ -355,9 +363,17 @@ def quo_analyze_contacts_trigger(request):
     for real (creating ContactImportCandidate rows) in the background — one
     Claude API call per qualifying contact, so this can take a while for a
     large batch. Check Railway logs for progress; new candidates show up at
-    /contacts/review/ as they're created."""
+    /contacts/review/ as they're created.
+
+    The include_staged checkbox passes --include-staged through: contacts
+    already sitting in the pending queue (e.g. re-staged by the daily sync
+    right after a review-queue clear) get their existing candidate upgraded
+    in place with the AI classification instead of being skipped."""
     if request.method == 'POST':
-        _run_command_in_background('analyze_recent_quo_contacts')
+        args = []
+        if request.POST.get('include_staged'):
+            args.append('--include-staged')
+        _run_command_in_background('analyze_recent_quo_contacts', *args)
         messages.success(
             request,
             'Started analyzing recent Quo contacts in the background — check Railway logs for progress. '
