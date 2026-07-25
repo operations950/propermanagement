@@ -85,7 +85,6 @@
         <div class="card mb-3">
             <div class="card-body">
                 <p style="white-space: pre-wrap;">{{ ticket.description|default:'No description.' }}</p>
-                <p class="mb-1"><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
                 <div class="mb-1 d-flex align-items-center gap-2 flex-wrap" data-due-date-field>
                     <strong>Due:</strong>
                     {% if ticket.delayed and ticket.previous_due_date %}
@@ -115,7 +114,8 @@
                         });
                     })();
                 </script>
-                <p class="mb-1"><strong>Assigned to:</strong> {{ ticket.assignee_label }}</p>
+                <p class="mb-1"><strong>Assigned Staff:</strong> {{ ticket.assigned_staff|default:'—' }}</p>
+                <p class="mb-1"><strong>Assigned Contractor:</strong> {{ ticket.assigned_contact|default:'—' }}</p>
                 {% if ticket.resolution_notes %}
                     <p class="mb-1"><strong>Resolution notes:</strong> {{ ticket.resolution_notes }}</p>
                 {% endif %}
@@ -124,7 +124,10 @@
 
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Update status</h6>
+                <h6 class="card-title d-flex align-items-center justify-content-between gap-2">
+                    <span class="d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Update status</span>
+                    <span class="badge rounded-pill{% if ticket.priority == 'urgent' %}{% else %} bg-light text-dark border{% endif %}" {% if ticket.priority == 'urgent' %}style="background: var(--priority-urgent); color: #fff;"{% endif %}>{{ ticket.get_priority_display }}</span>
+                </h6>
                 <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
                     {% csrf_token %}
                     <input type="hidden" name="back_url" value="{{ back_url }}">
@@ -142,7 +145,9 @@
                         <label class="form-label small fw-medium d-block">New due date</label>
                         <input type="date" name="new_due_date" class="form-control form-control-sm" value="{{ ticket.due_date|date:'Y-m-d' }}">
                     </div>
-                    <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-primary btn-sm" type="submit">Update</button>
+                    </div>
                 </form>
                 <script>
                 (function () {
