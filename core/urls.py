@@ -6,6 +6,7 @@ urlpatterns = [
     path('calendar/connect/', views.calendar_connect, name='calendar_connect'),
     path('calendar/callback/', views.calendar_callback, name='calendar_callback'),
     path('calendar/disconnect/', views.calendar_disconnect, name='calendar_disconnect'),
+    path('calendar/select/', views.calendar_select, name='calendar_select'),
     path('properties/', views.property_list, name='property_list'),
     path('properties/new/', views.property_create, name='property_create'),
     path('properties/<int:pk>/', views.property_detail, name='property_detail'),

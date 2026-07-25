@@ -43,6 +43,16 @@
             --status-warning:  #fab219;
             --status-good:     #0ca30c;
 
+            /* Everything above is a shade of blue/slate/gray (brand + role
+               ramp) or a reserved status meaning (red/amber/green) — none of
+               them are safe to reach for when something just needs to look
+               genuinely DIFFERENT rather than mean "error"/"warning"/"done".
+               This is that one color: a plum/berry hue with no other hue
+               anywhere else in the palette, free for anything needing real
+               visual contrast (e.g. telling apart multiple pulled-in Google
+               calendars — see tickets/views.py's _calendar_color). */
+            --accent-contrast: #8c4570;
+
             --surface-page:   var(--brand-surface);
             --surface-card:   #ffffff;
             --ink-primary:    var(--brand-ink);

@@ -103,6 +103,23 @@ def calendar_disconnect(request):
 
 
 @login_required
+def calendar_select(request):
+    """Bubble-lock picker on the dashboard (see _dashboard_calendar.html) —
+    which of the staff member's own Google calendars to pull events from.
+    An empty selection isn't allowed (falls back to the primary calendar in
+    get_upcoming_events), so there's nothing to validate here beyond just
+    saving whatever bubbles are locked."""
+    next_url = _safe_next(request)
+    if request.method == 'POST' and hasattr(request.user, 'staff_profile'):
+        token = GoogleCalendarToken.objects.filter(staff=request.user.staff_profile).first()
+        if token:
+            token.enabled_calendar_ids = request.POST.getlist('calendar_ids')
+            token.save(update_fields=['enabled_calendar_ids'])
+            messages.success(request, 'Calendars updated.')
+    return redirect(next_url)
+
+
+@login_required
 def property_list(request):
     qs = Property.objects.all()
     q = request.GET.get('q', '').strip()

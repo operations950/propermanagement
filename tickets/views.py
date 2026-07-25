@@ -1,4 +1,5 @@
 import json
+import zlib
 from datetime import date, datetime, timedelta
 from itertools import groupby
 
@@ -121,6 +122,28 @@ def dashboard(request):
 
 TIMELINE_PX_PER_HOUR = 40
 
+# Per-calendar dashboard shading (see _calendar_color) — deliberately mixes
+# the brand's blue/slate ramp with --accent-contrast (the one non-blue/gray
+# hue in the palette, added specifically so multiple pulled-in calendars
+# can look genuinely different from each other, not just lighter/darker
+# versions of the same blue) plus light/dark color-mix variants of both, so
+# a handful of calendars each get a visually distinct shade.
+CALENDAR_COLOR_ROTATION = [
+    'var(--brand-primary)',
+    'var(--accent-contrast)',
+    'var(--brand-slate)',
+    'color-mix(in srgb, var(--accent-contrast) 55%, white)',
+    'color-mix(in srgb, var(--brand-primary) 55%, black)',
+    'color-mix(in srgb, var(--accent-contrast) 55%, black)',
+]
+
+
+def _calendar_color(calendar_id):
+    """Stable (same calendar always gets the same shade across page loads)
+    but otherwise arbitrary assignment from CALENDAR_COLOR_ROTATION."""
+    idx = zlib.crc32((calendar_id or '').encode()) % len(CALENDAR_COLOR_ROTATION)
+    return CALENDAR_COLOR_ROTATION[idx]
+
 
 def _hour_label(hour):
     hour = hour % 24
@@ -195,6 +218,7 @@ def _format_calendar_events(events, days_ahead=2):
 
     for e in events:
         title = e.get('summary') or '(no title)'
+        color = _calendar_color(e.get('_calendar_id'))
         start = e.get('start', {})
         end = e.get('end', {})
         if 'date' in start:
@@ -202,7 +226,7 @@ def _format_calendar_events(events, days_ahead=2):
             end_date = date.fromisoformat(end['date']) if end.get('date') else start_date
             for d in days:
                 if start_date <= d < end_date:
-                    by_day[d]['all_day'].append({'title': title})
+                    by_day[d]['all_day'].append({'title': title, 'color': color})
             continue
 
         start_dt = parse_datetime(start.get('dateTime', ''))
@@ -221,7 +245,7 @@ def _format_calendar_events(events, days_ahead=2):
         if d not in by_day:
             continue
         by_day[d]['timed'].append({
-            'title': title, 'start': start_dt, 'end': end_dt,
+            'title': title, 'start': start_dt, 'end': end_dt, 'color': color,
             'start_label': start_dt.strftime('%I:%M %p').lstrip('0'),
             'end_label': end_dt.strftime('%I:%M %p').lstrip('0'),
         })
@@ -316,7 +340,17 @@ def department_dashboard(request, role):
 
     staff_profile = getattr(request.user, 'staff_profile', None)
     calendar_token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
-    calendar_days = _format_calendar_events(get_upcoming_events(calendar_token)) if calendar_token else []
+    calendar_days = []
+    available_calendars = []
+    enabled_calendar_ids = ''
+    if calendar_token:
+        raw_events, available_calendars = get_upcoming_events(calendar_token)
+        calendar_days = _format_calendar_events(raw_events)
+        primary_id = next((c['id'] for c in available_calendars if c['is_primary']), 'primary')
+        enabled_ids = [c for c in (calendar_token.enabled_calendar_ids or [primary_id])]
+        for c in available_calendars:
+            c['color'] = _calendar_color(c['id'])
+        enabled_calendar_ids = ','.join(enabled_ids)
 
     return render(request, 'tickets/department_dashboard.html', {
         'role': role,
@@ -337,6 +371,8 @@ def department_dashboard(request, role):
         'calendar_configured': calendar_is_configured(),
         'calendar_token': calendar_token,
         'calendar_days': calendar_days,
+        'available_calendars': available_calendars,
+        'enabled_calendar_ids': enabled_calendar_ids,
     })
 
 

@@ -323,6 +323,11 @@ class GoogleCalendarToken(models.Model):
     access_token_expires_at = models.DateTimeField(null=True, blank=True)
     connected_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    enabled_calendar_ids = models.JSONField(
+        default=list, blank=True,
+        help_text='Which of this Google account\'s calendars to pull onto the dashboard — empty means '
+                   '"just the primary calendar" (the default before anyone has touched the picker).',
+    )
 
     def __str__(self):
         return f'{self.staff} — {self.google_email or "Google Calendar"}'

@@ -77,11 +77,17 @@ def credentials_for(token):
 
 
 def get_upcoming_events(token, days_ahead=2):
-    """Today's remaining events plus the next `days_ahead` days, merged
-    across every calendar the staff member has visible in their own Google
-    Calendar (not just "primary") — matches what they'd actually see if
-    they opened Google Calendar themselves. Returns [] (logged) on any
-    failure — a broken calendar connection shouldn't break the dashboard."""
+    """Today's remaining events plus the next `days_ahead` days, from
+    whichever of the staff member's own Google calendars they've chosen to
+    pull in (token.enabled_calendar_ids — empty means "just the primary
+    calendar", the default before anyone's touched the picker on the
+    dashboard). Returns (events, available_calendars) — the second list is
+    every calendar the account has access to regardless of what's enabled,
+    for the dashboard's calendar-picker bubble pool. Each event dict gets a
+    `_calendar_id` key so the caller can tell which calendar it came from
+    (see tickets/views.py's _format_calendar_events / _calendar_color).
+    Returns ([], []) (logged) on any failure — a broken calendar connection
+    shouldn't break the dashboard."""
     from datetime import timedelta
 
     from googleapiclient.discovery import build
@@ -95,18 +101,31 @@ def get_upcoming_events(token, days_ahead=2):
         )
 
         calendar_list = service.calendarList().list().execute().get('items', [])
-        calendar_ids = [c['id'] for c in calendar_list if not c.get('hidden') and c.get('selected', True)]
-        if not calendar_ids:
-            calendar_ids = ['primary']
+        available_calendars = [
+            {
+                'id': c['id'],
+                'summary': c.get('summaryOverride') or c.get('summary') or c['id'],
+                'is_primary': bool(c.get('primary')),
+            }
+            for c in calendar_list
+        ]
+
+        primary_id = next((c['id'] for c in available_calendars if c['is_primary']), 'primary')
+        valid_ids = {c['id'] for c in available_calendars}
+        enabled_ids = [cid for cid in (token.enabled_calendar_ids or [primary_id]) if cid in valid_ids]
+        if not enabled_ids:
+            enabled_ids = [primary_id]
 
         events = []
-        for calendar_id in calendar_ids:
+        for calendar_id in enabled_ids:
             result = service.events().list(
                 calendarId=calendar_id, timeMin=now.isoformat(), timeMax=time_max.isoformat(),
                 singleEvents=True, orderBy='startTime', maxResults=50,
             ).execute()
+            for item in result.get('items', []):
+                item['_calendar_id'] = calendar_id
             events.extend(result.get('items', []))
-        return events
+        return events, available_calendars
     except Exception:
         logger.exception('Google Calendar: failed to fetch events for %s', token.staff)
-        return []
+        return [], []

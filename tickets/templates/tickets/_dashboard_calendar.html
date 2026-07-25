@@ -1,4 +1,4 @@
-{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion. One box per day: today gets a full Google-Calendar-day-view-style hour timeline, the next two days are a simple chronological list — see _layout_timeline in tickets/views.py.{% endcomment %}
+{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion. One box per day: today gets a full Google-Calendar-day-view-style hour timeline, the next two days are a simple chronological list — see _layout_timeline in tickets/views.py. Each event is shaded by which of the staff member's calendars it came from (see _calendar_color) — pick which calendars pull in via the "Calendars" bubble-lock picker below.{% endcomment %}
 <div class="d-flex justify-content-between align-items-center mb-2">
     {% if calendar_token and calendar_token.google_email %}
         <span class="small text-muted">{{ calendar_token.google_email }}</span>
@@ -6,13 +6,38 @@
         <span></span>
     {% endif %}
     {% if calendar_token %}
-    <form method="post" action="{% url 'calendar_disconnect' %}" class="d-inline" onsubmit="return confirm('Disconnect Google Calendar?');">
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.path }}">
-        <button type="submit" class="btn btn-link btn-sm text-danger p-0">Disconnect</button>
-    </form>
+    <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#calendarPicker">Calendars</button>
+        <form method="post" action="{% url 'calendar_disconnect' %}" class="d-inline" onsubmit="return confirm('Disconnect Google Calendar?');">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn btn-link btn-sm text-danger p-0">Disconnect</button>
+        </form>
+    </div>
     {% endif %}
 </div>
+
+{% if calendar_token %}
+<div class="collapse mb-2" id="calendarPicker">
+    <div class="card card-body p-2">
+        <form method="post" action="{% url 'calendar_select' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <p class="small mb-2" style="color: var(--ink-muted);">Which of your Google calendars should show here?</p>
+            <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="calendar_ids" data-initial-values="{{ enabled_calendar_ids }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="No calendars selected"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for c in available_calendars %}
+                    <button type="button" class="bubble" data-value="{{ c.id }}" data-label="{{ c.summary }}" style="border-color: {{ c.color }}; color: {{ c.color }};">{{ c.summary }}{% if c.is_primary %} (primary){% endif %}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 {% if calendar_token %}
     {% for day in calendar_days %}
     <div class="card mb-2">
@@ -25,7 +50,10 @@
             {% if day.all_day %}
             <div class="mb-2">
                 {% for a in day.all_day %}
-                <div class="small rounded px-2 py-1 mb-1" style="background: color-mix(in srgb, var(--role-{{ role }}) 14%, white); color: var(--ink-secondary);">{{ a.title }}</div>
+                <div class="small rounded px-2 py-1 mb-1 d-flex align-items-center gap-2" style="background: color-mix(in srgb, {{ a.color }} 14%, white); color: var(--ink-secondary);">
+                    <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ a.color }};"></span>
+                    {{ a.title }}
+                </div>
                 {% endfor %}
             </div>
             {% endif %}
@@ -47,7 +75,7 @@
                     <div class="position-absolute rounded px-1 overflow-hidden" style="
                         top: {{ e.top_pct }}%; height: {{ e.height_pct }}%;
                         left: {{ e.left_pct }}%; width: {{ e.width_pct }}%;
-                        background: color-mix(in srgb, var(--role-{{ role }}) 85%, black);
+                        background: color-mix(in srgb, {{ e.color }} 85%, black);
                         color: #fff; font-size: 0.72rem; line-height: 1.15; z-index: 2;
                     ">
                         <div class="fw-medium text-truncate">{{ e.title }}</div>
@@ -62,8 +90,11 @@
                 {% if day.timed %}
                 <ul class="list-unstyled mb-0">
                     {% for e in day.timed %}
-                    <li class="small mb-1 d-flex justify-content-between gap-2">
-                        <span class="text-truncate">{{ e.title }}</span>
+                    <li class="small mb-1 d-flex justify-content-between align-items-center gap-2">
+                        <span class="d-flex align-items-center gap-2 text-truncate">
+                            <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ e.color }};"></span>
+                            <span class="text-truncate">{{ e.title }}</span>
+                        </span>
                         <span class="text-nowrap" style="color: var(--ink-muted);">{{ e.start_label }}</span>
                     </li>
                     {% endfor %}
