@@ -1,5 +1,6 @@
 import json
 import zlib
+from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta
 from itertools import groupby
 
@@ -12,6 +13,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
@@ -767,6 +769,25 @@ def ticket_contractor_thread_refresh(request, pk):
 
 
 @login_required
+def _safe_back_url(request, exclude_path=None, fallback_view='ticket_list'):
+    """Wherever the browser actually navigated from (dashboard, a filtered
+    ticket list, a property page, the pending screen, ...), so the ticket
+    detail's back button returns to the real point of entry instead of a
+    fixed destination that loses whatever filter/scroll position the user
+    had. Falls back to fallback_view if there's no referrer, it points
+    off-site (open-redirect guard, same check Django's login view uses),
+    or it's the ticket detail page's own URL — every in-page action here
+    (status change, reassign, ...) POSTs to its own endpoint and redirects
+    right back to this page, so a same-day-old referrer would otherwise
+    make "back" a no-op loop."""
+    referer = request.META.get('HTTP_REFERER', '')
+    if not referer or not url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}):
+        return reverse(fallback_view)
+    if exclude_path and urlsplit(referer).path == exclude_path:
+        return reverse(fallback_view)
+    return referer
+
+
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
         Ticket.objects.select_related(
@@ -812,6 +833,7 @@ def ticket_detail(request, pk):
 
     return render(request, 'tickets/ticket_detail.html', {
         'ticket': ticket,
+        'back_url': _safe_back_url(request, exclude_path=request.path),
         'reassign_form': reassign_form,
         'followup_text_parties': [c for c in followup_parties if c.phone],
         'followup_email_parties': [c for c in followup_parties if c.email],

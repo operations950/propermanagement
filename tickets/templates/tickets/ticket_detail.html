@@ -4,7 +4,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-start my-3">
     <div>
-        <a href="{% url 'ticket_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> All tickets</a>
+        <a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Back</a>
         <h2 class="page-title">{{ ticket.title }}</h2>
         <p class="text-muted mb-0">
             <span class="badge" style="{{ ticket.assigned_role|department_badge_style }}">{{ ticket.get_assigned_role_display|default:'Unassigned' }}</span>
