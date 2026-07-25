@@ -262,6 +262,19 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
         return existing
 
     reporter = _get_reporter_contact(event)
+    if prop is None and reporter:
+        # Claude's per-conversation guess is the primary signal (it's reading
+        # THIS specific thread), but if it couldn't tell, an already-approved
+        # contact's own property association (set by a human during contact
+        # review — see core/models.py's ContactImportCandidate.suggested_property
+        # and intake/contact_classifier.py) is a reasonable prefill. Only
+        # applied when unambiguous — a contact tied to several properties
+        # (e.g. a vendor who serves the whole portfolio) gives no single
+        # right answer, so it's left for staff to set instead of guessing.
+        contact_properties = list(reporter.properties.all())
+        if len(contact_properties) == 1:
+            prop = contact_properties[0]
+
     ticket = Ticket.objects.create(
         source=event.source, source_reference=conversation_id, kind=kind,
         title=verdict.title, description=verdict.summary, raw_context=event.body,

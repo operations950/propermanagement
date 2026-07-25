@@ -45,7 +45,7 @@
             <div class="mb-3">
                 <label class="form-label small text-muted mb-1 d-block">Property (optional)</label>
                 <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property_id">
-                    <input type="hidden" name="property_id" data-bubble-input value="">
+                    <input type="hidden" name="property_id" data-bubble-input value="{{ c.suggested_property_id|default:'' }}">
                     <div class="bubble-slot" data-bubble-slot data-empty-text="No property"></div>
                     <div class="bubble-pool" data-bubble-pool data-tier="1">
                         {% for entry in properties_by_type %}

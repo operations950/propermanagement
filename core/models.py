@@ -229,6 +229,12 @@ class ContactImportCandidate(models.Model):
     suggested_contact_type = models.CharField(
         max_length=20, choices=Contact.ContactType.choices, default=Contact.ContactType.OTHER,
     )
+    suggested_property = models.ForeignKey(
+        Property, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='Best-guess property from AI classification of this contact\'s Quo message history '
+                   '(see intake/contact_classifier.py) — pre-fills the review queue\'s property picker, '
+                   'staff still confirms or changes it on approval.',
+    )
     raw_context = models.TextField(
         blank=True, help_text='Evidence for the reviewer — e.g. the Quo company field or a Gmail subject line.',
     )
