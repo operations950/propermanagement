@@ -1,13 +1,24 @@
+import json
 import logging
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.shortcuts import redirect
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.shortcuts import redirect, render
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from . import gmail_auth
-from .models import GmailInboxToken
+from .models import GmailInboxToken, QuoWebhookLog
 
 logger = logging.getLogger(__name__)
+
+# Temporary, hardcoded shared secret for the test Quo webhook — Quo's docs
+# don't document any request-signing mechanism, so this URL-embedded token
+# is the only thing standing between this endpoint and the public internet.
+# Fine for the discovery phase (see QuoWebhookLog's docstring); revisit if
+# this becomes the permanent ingestion path.
+QUO_WEBHOOK_TOKEN = 'lzCh81OzYOhib5o7bB014g7feykYB25q'
 
 
 def _is_admin(user):
@@ -84,3 +95,36 @@ def gmail_disconnect(request):
         GmailInboxToken.objects.all().delete()
         messages.success(request, 'Gmail disconnected.')
     return redirect('dashboard')
+
+
+@csrf_exempt
+@require_POST
+def quo_webhook(request, token):
+    """Discovery-phase Quo webhook receiver — see QuoWebhookLog's
+    docstring. Just captures the raw payload for inspection; no event
+    processing yet, since we don't know the real shape until one lands."""
+    if token != QUO_WEBHOOK_TOKEN:
+        return HttpResponseForbidden()
+
+    body = request.body.decode('utf-8', errors='replace')
+    try:
+        parsed = json.loads(body) if body else None
+    except ValueError:
+        parsed = None
+
+    QuoWebhookLog.objects.create(
+        raw_body=body,
+        parsed=parsed,
+        headers={k: v for k, v in request.headers.items() if k.lower() not in ('cookie', 'authorization')},
+    )
+    logger.info('Quo webhook received: %s', body[:2000])
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_webhook_log(request):
+    """Admin-only viewer for captured test-webhook payloads — avoids
+    hunting through Railway's log UI for a JSON body Quo POSTed us."""
+    logs = QuoWebhookLog.objects.all()[:50]
+    return render(request, 'intake/quo_webhook_log.html', {'logs': logs})

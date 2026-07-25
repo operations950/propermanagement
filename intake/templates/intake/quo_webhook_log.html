@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Quo Webhook Log{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center my-3">
+    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="webhook" class="icon-lg"></i> Quo Webhook Log</h2>
+</div>
+<p class="small mb-3" style="color: var(--ink-muted);">
+    Temporary discovery view — every raw payload Quo has POSTed to the test webhook, newest first.
+    Once we know the real shape a proper handler replaces this.
+</p>
+
+{% for log in logs %}
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title small" style="color: var(--ink-muted);">{{ log.received_at }}</h6>
+        <pre class="small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ log.parsed|default:log.raw_body|pprint }}</pre>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted">No webhook events received yet.</p>
+{% endfor %}
+{% endblock %}

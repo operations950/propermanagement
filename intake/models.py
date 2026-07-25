@@ -92,3 +92,22 @@ class GmailThreadState(models.Model):
 
     def __str__(self):
         return f'Gmail thread {self.thread_id}'
+
+
+class QuoWebhookLog(models.Model):
+    """Raw capture of every inbound Quo webhook POST — TEMPORARY, purely to
+    discover what payload shape Quo actually sends (their docs specify how
+    to register a webhook but not what it delivers). Once the real shape is
+    known and a proper handler is built to act on these events, this table
+    stops being the point and can be trimmed/retired."""
+
+    received_at = models.DateTimeField(auto_now_add=True)
+    raw_body = models.TextField(blank=True)
+    parsed = models.JSONField(null=True, blank=True)
+    headers = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f'Quo webhook @ {self.received_at}'
