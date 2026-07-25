@@ -23,7 +23,7 @@ from core.models import (
 )
 from messaging.services import _followup_result_message, _group_followups, fetch_quo_conversation, send_followup_bulk
 
-from .forms import ReassignForm, TicketForm, TicketTemplateForm
+from .forms import AssignContractorForm, ReassignForm, TicketForm, TicketTemplateForm
 from .models import (
     FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact,
     TicketTemplate, TicketView,
@@ -879,8 +879,8 @@ def ticket_detail(request, pk):
     reassign_form = ReassignForm(initial={
         'assigned_role': ticket.assigned_role,
         'assigned_staff': ticket.assigned_staff_id,
-        'assigned_contact': ticket.assigned_contact_id,
     })
+    assign_contractor_form = AssignContractorForm(initial={'assigned_contact': ticket.assigned_contact_id})
     followup_parties = _followup_parties(ticket)
     linked_ticket_contacts = list(ticket.ticket_contacts.select_related('contact').all())
     contact_pools = _related_contact_pools(ticket, linked_ticket_contacts)
@@ -915,6 +915,8 @@ def ticket_detail(request, pk):
         'ticket': ticket,
         'back_url': _safe_back_url(request, exclude_path=request.path),
         'reassign_form': reassign_form,
+        'assign_contractor_form': assign_contractor_form,
+        'assignment_logs': ticket.assignment_logs.select_related('from_staff__user', 'to_staff__user', 'from_contact', 'to_contact')[:10],
         'followup_text_parties': [c for c in followup_parties if c.phone],
         'followup_email_parties': [c for c in followup_parties if c.email],
         'attachments': ticket.attachments.all().order_by('-created_at'),
@@ -1224,19 +1226,60 @@ def ticket_template_detail(request, pk):
 
 @login_required
 def ticket_reassign(request, pk):
+    """Internal Reassign — department/staff only. Setting a specific staff
+    member clears any assigned contractor (a ticket goes to Staff or a
+    Contractor, not both — see AssignContractorForm/ticket_assign_contractor
+    for the reverse direction)."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        form = ReassignForm(request.POST)
+        if form.is_valid():
+            new_staff = form.cleaned_data.get('assigned_staff')
+            TicketAssignmentLog.objects.create(
+                ticket=ticket,
+                from_staff=ticket.assigned_staff, from_contact=ticket.assigned_contact,
+                to_staff=new_staff,
+                to_contact=None if new_staff else ticket.assigned_contact,
+                changed_by=request.user,
+            )
+            ticket.assigned_staff = new_staff
+            if new_staff:
+                ticket.assigned_contact = None
+            ticket.assigned_role = form.cleaned_data['assigned_role']
+            if ticket.status == Ticket.Status.OPEN:
+                ticket.status = Ticket.Status.ASSIGNED
+            ticket.full_clean()
+            ticket.save()
+            messages.success(request, 'Ticket reassigned.')
+        else:
+            messages.error(request, 'Could not reassign: check the form.')
+    return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_assign_contractor(request, pk):
+    """Assign/change the ticket's single contractor (Ticket.assigned_contact
+    — drives the vendor portal link and the Contractor Communication card).
+    Separate from Internal Reassign per the same staff-XOR-contractor rule,
+    just from the other direction: assigning a contractor clears any
+    assigned staff member.
+
+    Changing to a different contractor resets Ticket.source_reference (the
+    bound Quo conversation) rather than leaving it pointed at the OLD
+    contractor's thread — Quo conversations are per phone number, not per
+    ticket, so without this the new contractor's card would silently show
+    the previous contractor's messages. The old conversation id is kept on
+    the TicketAssignmentLog entry (previous_conversation_id) so it's still
+    reachable from the audit trail instead of just disappearing."""
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
         data = request.POST.copy()
-        # Same inline add-new-contact pattern as ticket_create's contractor
-        # field — the Reassign form's ghost-text contact filter shares the
-        # exact same markup/JS, which unconditionally renders an "add new"
-        # row, so this needs to actually work rather than silently no-op.
         name = data.get('new_contact__name__contractor', '').strip()
         phone_error = False
         if name:
             phone = data.get('new_contact__phone__contractor', '').strip()
             if not is_valid_phone(phone):
-                messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was reassigned.')
+                messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was assigned.')
                 phone_error = True
             else:
                 contact, _ = Contact.objects.get_or_create(
@@ -1249,30 +1292,56 @@ def ticket_reassign(request, pk):
                     },
                 )
                 data['assigned_contact'] = str(contact.pk)
-        form = ReassignForm(data)
+        form = AssignContractorForm(data)
         if not phone_error and form.is_valid():
+            new_contact = form.cleaned_data.get('assigned_contact')
+            old_contact = ticket.assigned_contact
+            contact_changed = new_contact != old_contact
+            old_conversation_id = ''
+            if contact_changed and ticket.source_reference:
+                old_conversation_id = ticket.source_reference
+                ticket.source_reference = ''
             TicketAssignmentLog.objects.create(
                 ticket=ticket,
-                from_staff=ticket.assigned_staff, from_contact=ticket.assigned_contact,
-                to_staff=form.cleaned_data.get('assigned_staff'),
-                to_contact=form.cleaned_data.get('assigned_contact'),
+                from_staff=ticket.assigned_staff, from_contact=old_contact,
+                to_staff=None, to_contact=new_contact,
                 changed_by=request.user,
-                note=form.cleaned_data.get('note', ''),
+                previous_conversation_id=old_conversation_id,
             )
-            ticket.assigned_staff = form.cleaned_data.get('assigned_staff')
-            new_contact = form.cleaned_data.get('assigned_contact')
-            if new_contact and new_contact != ticket.assigned_contact:
+            if new_contact:
+                ticket.assigned_staff = None
+            if contact_changed:
                 ticket.rotate_completion_token()
             ticket.assigned_contact = new_contact
-            ticket.assigned_role = form.cleaned_data['assigned_role']
-            if ticket.status == Ticket.Status.OPEN:
+            if new_contact and ticket.status == Ticket.Status.OPEN:
                 ticket.status = Ticket.Status.ASSIGNED
             ticket.full_clean()
             ticket.save()
-            messages.success(request, 'Ticket reassigned.')
-        else:
-            messages.error(request, 'Could not reassign: check the form.')
+            messages.success(request, 'Contractor updated.')
+        elif not phone_error:
+            messages.error(request, 'Could not assign contractor: check the form.')
     return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_previous_conversation(request, pk, log_id):
+    """Read-only view of a conversation this ticket was bound to before a
+    contractor change reset Ticket.source_reference — see
+    ticket_assign_contractor's docstring. The messages themselves were
+    never deleted, this just gives the audit trail's "view previous
+    conversation" link somewhere to point."""
+    from intake.models import QuoMessage
+
+    ticket = get_object_or_404(Ticket, pk=pk)
+    log = get_object_or_404(TicketAssignmentLog, pk=log_id, ticket=ticket)
+    entries = []
+    if log.previous_conversation_id:
+        for m in QuoMessage.objects.filter(conversation_id=log.previous_conversation_id).order_by('quo_created_at'):
+            if m.quo_created_at:
+                entries.append({'direction': m.direction, 'body': m.body, 'at': timezone.localtime(m.quo_created_at)})
+    return render(request, 'tickets/_previous_conversation.html', {
+        'ticket': ticket, 'log': log, 'entries': entries,
+    })
 
 
 @login_required

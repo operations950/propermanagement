@@ -537,6 +537,12 @@ class TicketAssignmentLog(models.Model):
     )
     changed_at = models.DateTimeField(auto_now_add=True)
     note = models.CharField(max_length=300, blank=True)
+    previous_conversation_id = models.CharField(
+        max_length=100, blank=True,
+        help_text='Set when a contractor change resets Ticket.source_reference — the old Quo '
+                   'conversation this ticket was bound to, so its history stays reachable (see '
+                   'ticket_detail.html\'s audit trail) instead of just disappearing.',
+    )
 
     class Meta:
         ordering = ['-changed_at']

@@ -16,6 +16,11 @@ urlpatterns = [
     path('templates/<int:pk>/edit/', views.ticket_template_edit, name='ticket_template_edit'),
     path('tickets/<int:pk>/', views.ticket_detail, name='ticket_detail'),
     path('tickets/<int:pk>/reassign/', views.ticket_reassign, name='ticket_reassign'),
+    path('tickets/<int:pk>/assign-contractor/', views.ticket_assign_contractor, name='ticket_assign_contractor'),
+    path(
+        'tickets/<int:pk>/previous-conversation/<int:log_id>/', views.ticket_previous_conversation,
+        name='ticket_previous_conversation',
+    ),
     path('tickets/<int:pk>/property/', views.ticket_set_property, name='ticket_set_property'),
     path('tickets/<int:pk>/contacts/', views.ticket_set_contacts, name='ticket_set_contacts'),
     path('tickets/<int:pk>/status/', views.ticket_set_status, name='ticket_set_status'),

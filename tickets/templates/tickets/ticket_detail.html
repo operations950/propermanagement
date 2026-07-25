@@ -338,6 +338,48 @@
             </div>
         </div>
 
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="hard-hat" class="icon"></i> Assign Contractor</h6>
+                <form method="post" action="{% url 'ticket_assign_contractor' ticket.pk %}">
+                    {% csrf_token %}
+                    <div class="contact-filter mb-2" data-contact-filter id="assign-contractor-filter">
+                        <input type="hidden" name="assigned_contact" data-contact-filter-input value="{{ assign_contractor_form.assigned_contact.value|default:'' }}">
+                        <input type="text" class="form-control" placeholder="start typing…" data-contact-filter-text autocomplete="off" value="{{ selected_contractor_label|default:'' }}">
+                        <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                        <script type="application/json" data-contact-filter-source>{{ vendor_contacts_json|safe }}</script>
+                        <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                            <input type="text" name="new_contact__name__contractor" class="form-control form-control-sm" placeholder="Name">
+                            <input type="tel" name="new_contact__phone__contractor" class="form-control form-control-sm" placeholder="555-123-4567">
+                            <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
+                            <input type="text" name="new_contact__trade__contractor" class="form-control form-control-sm" placeholder="Trade (e.g. plumbing)">
+                        </div>
+                    </div>
+                    <div class="form-text mb-2">Assigning a contractor clears any internal staff assignment. Changing to a different contractor resets the Contractor Communication thread below — the previous conversation stays in the audit trail.</div>
+                    <button class="btn btn-outline-secondary btn-sm" type="submit">Save</button>
+                </form>
+                {% if assignment_logs %}
+                <hr>
+                <p class="small fw-medium mb-2" style="color: var(--ink-muted);">Assignment history</p>
+                <ul class="list-unstyled small mb-0">
+                {% for log in assignment_logs %}
+                    {% if log.from_contact or log.to_contact %}
+                    <li class="mb-1">
+                        <span style="color: var(--ink-muted);">{{ log.changed_at|date:"M j, g:i A" }}</span>
+                        — {% if log.from_contact %}{{ log.from_contact.name }}{% else %}unassigned{% endif %}
+                        <i data-lucide="arrow-right" class="icon" style="width: 0.7rem; height: 0.7rem;"></i>
+                        {% if log.to_contact %}{{ log.to_contact.name }}{% else %}unassigned{% endif %}
+                        {% if log.previous_conversation_id %}
+                            <a href="{% url 'ticket_previous_conversation' ticket.pk log.pk %}" class="text-decoration-none">(view previous conversation)</a>
+                        {% endif %}
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+
         {% if contractor_thread %}
         <div class="card mb-3" id="contractor-communication-card">
             <div class="card-body">
@@ -539,7 +581,7 @@
 
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="user-round-cog" class="icon"></i> Reassign</h6>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="user-round-cog" class="icon"></i> Internal Reassign</h6>
                 <form method="post" action="{% url 'ticket_reassign' ticket.pk %}">
                     {% csrf_token %}
 
@@ -557,7 +599,7 @@
                     </div>
 
                     <label class="form-label small fw-medium d-block">Specific person <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
-                    <div class="bubble-picker mb-3" data-bubble-picker data-mode="single" data-name="assigned_staff" id="reassign-staff-picker">
+                    <div class="bubble-picker mb-3" data-bubble-picker data-mode="single" data-name="assigned_staff">
                         <input type="hidden" name="assigned_staff" data-bubble-input value="{{ reassign_form.assigned_staff.value|default:'' }}">
                         <div class="bubble-slot" data-bubble-slot data-empty-text="Unassigned"></div>
                         <div class="bubble-pool" data-bubble-pool>
@@ -566,37 +608,10 @@
                             {% endfor %}
                         </div>
                     </div>
-                    <div class="form-text mb-2">A ticket can go to Staff or a Contractor below, not both.</div>
-
-                    <label class="form-label small fw-medium d-block">Vendor / contractor <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
-                    <div class="contact-filter mb-3" data-contact-filter id="reassign-contractor-filter">
-                        <input type="hidden" name="assigned_contact" data-contact-filter-input value="{{ reassign_form.assigned_contact.value|default:'' }}">
-                        <input type="text" class="form-control" placeholder="start typing…" data-contact-filter-text autocomplete="off" value="{{ selected_contractor_label|default:'' }}">
-                        <div class="contact-filter-list" data-contact-filter-list hidden></div>
-                        <script type="application/json" data-contact-filter-source>{{ vendor_contacts_json|safe }}</script>
-                        <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
-                            <input type="text" name="new_contact__name__contractor" class="form-control form-control-sm" placeholder="Name">
-                            <input type="tel" name="new_contact__phone__contractor" class="form-control form-control-sm" placeholder="555-123-4567">
-                            <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
-                            <input type="text" name="new_contact__trade__contractor" class="form-control form-control-sm" placeholder="Trade (e.g. plumbing)">
-                        </div>
-                    </div>
-
-                    <label class="form-label small fw-medium" for="id_reassign_note">Note</label>
-                    <input type="text" name="note" id="id_reassign_note" class="form-control mb-3" placeholder="Optional note">
+                    <div class="form-text mb-2">Setting a specific person here clears any assigned contractor — see Assign Contractor above, next to Related Contacts.</div>
 
                     <button class="btn btn-outline-secondary btn-sm" type="submit">Reassign</button>
                 </form>
-                <script>
-                (function () {
-                    var staffPicker = document.getElementById('reassign-staff-picker');
-                    var contractorFilter = document.getElementById('reassign-contractor-filter');
-                    if (staffPicker && contractorFilter) {
-                        staffPicker.addEventListener('bubble:lock', function () { window.ContactFilter.clear(contractorFilter); });
-                        contractorFilter.addEventListener('contact:choose', function () { window.BubblePicker.unlock(staffPicker); });
-                    }
-                })();
-                </script>
             </div>
         </div>
 

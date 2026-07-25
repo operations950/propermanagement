@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Previous conversation — {{ ticket.title }}{% endblock %}
+{% block content %}
+<a href="{% url 'ticket_detail' ticket.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 my-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Back to ticket</a>
+<h2 class="page-title mb-1">Previous conversation</h2>
+<p class="text-muted">
+    With {{ log.from_contact.name|default:"the previous contractor" }}, before the contractor changed to
+    {{ log.to_contact.name|default:"someone else" }} on {{ log.changed_at|date:"M j, Y g:i A" }}.
+</p>
+<div class="card">
+    <div class="card-body">
+        <div class="imessage-thread">
+            {% for entry in entries %}
+            <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
+            {% empty %}
+            <p class="text-muted small text-center py-3 mb-0">No messages found for this conversation.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -143,19 +143,18 @@ class TicketTemplateForm(forms.ModelForm):
 
 
 class ReassignForm(forms.Form):
+    """Internal Reassign — department/staff only. Assigning a contractor
+    is a separate action (see AssignContractorForm/ticket_assign_contractor)
+    surfaced next to Related Contacts instead of here."""
     assigned_role = forms.ChoiceField(choices=StaffProfile.Role.choices, label='Department')
     assigned_staff = forms.ModelChoiceField(
         queryset=StaffProfile.objects.all(), required=False,
         label='Specific person (optional)',
     )
+
+
+class AssignContractorForm(forms.Form):
     assigned_contact = forms.ModelChoiceField(
         queryset=Contact.objects.filter(contact_type=Contact.ContactType.VENDOR), required=False,
-        label='Vendor / contractor (optional)',
+        label='Vendor / contractor',
     )
-    note = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'Optional note'}))
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get('assigned_staff') and cleaned.get('assigned_contact'):
-            raise forms.ValidationError('Choose staff OR a vendor, not both — a role is required either way.')
-        return cleaned
