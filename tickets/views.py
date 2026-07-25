@@ -152,7 +152,10 @@ def dashboard(request):
     boxes = []
     for role in DASHBOARD_ROLE_ORDER:
         role_tickets = [t for t in open_tickets if t.assigned_role == role]
-        role_tickets.sort(key=lambda t: _ticket_urgency_key(t, now))
+        # Due-date-only ordering (nulls last) — pairs with the due_urgency_style
+        # fade in dashboard.html, so the most pressing items are both first
+        # in the list and least faded, trailing off together.
+        role_tickets.sort(key=lambda t: t.due_date or datetime.max.replace(tzinfo=timezone.get_current_timezone()))
         boxes.append({
             'role': role,
             'label': dict(StaffProfile.Role.choices)[role],

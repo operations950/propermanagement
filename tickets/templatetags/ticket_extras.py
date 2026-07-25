@@ -88,6 +88,27 @@ def is_due_today(ticket, now):
 
 
 @register.filter
+def due_urgency_style(ticket, now):
+    """Inline style for the main dashboard's due-date visual scale: overdue
+    is bold with no fade (it's already flagged red elsewhere — this just
+    keeps it from ever looking washed out), due today has no fade, and each
+    day out from tomorrow through +10 fades linearly to 0.4 opacity (60%
+    transparent), floored there for anything further out. Purely a density
+    cue so a glance at the list shows what's urgent vs. distant — not tied
+    to status, so a null due_date or a completed ticket just gets no
+    style."""
+    if not ticket.due_date:
+        return ''
+    if is_overdue(ticket, now):
+        return 'font-weight: 700;'
+    days_out = (timezone.localtime(ticket.due_date).date() - timezone.localtime(now).date()).days
+    if days_out <= 0:
+        return ''
+    opacity = max(0.4, 1 - min(days_out, 10) * 0.06)
+    return f'opacity: {opacity:.2f};'
+
+
+@register.filter
 def is_escalated(ticket, now):
     """Flag-only escalation (see the build plan): true once a ticket is
     overdue by at least its template's escalation_threshold_days. No
