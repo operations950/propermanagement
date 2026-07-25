@@ -558,6 +558,26 @@ class TicketAssignmentLog(models.Model):
         ordering = ['-changed_at']
 
 
+class TicketStatusNote(models.Model):
+    """A timestamped free-text update on a ticket's situation — the status
+    update thread on the Update Status card. Independent of status changes
+    (posting one doesn't require or trigger a status change, and changing
+    status doesn't require one) — this replaced the old one-shot
+    resolution_notes/status_reason fields with an ongoing, reviewable log."""
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='status_notes')
+    body = models.TextField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.ticket} — {self.created_at:%Y-%m-%d %H:%M}'
+
+
 class TicketView(models.Model):
     """When a given staff user last opened this ticket's detail page —
     per-user, not global, since a shared dashboard used by several staff

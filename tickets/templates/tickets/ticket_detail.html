@@ -122,6 +122,118 @@
             </div>
         </div>
 
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Update status</h6>
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="back_url" value="{{ back_url }}">
+                    <label class="form-label small fw-medium d-block">Status</label>
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="status" id="status-picker">
+                        <input type="hidden" name="status" data-bubble-input value="{{ ticket.status }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a status"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in status_bubble_choices %}
+                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div id="status-deferred-date" class="mb-2"{% if ticket.status != 'deferred' %} hidden{% endif %}>
+                        <label class="form-label small fw-medium d-block">New due date</label>
+                        <input type="date" name="new_due_date" class="form-control form-control-sm" value="{{ ticket.due_date|date:'Y-m-d' }}">
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
+                </form>
+                <script>
+                (function () {
+                    var picker = document.getElementById('status-picker');
+                    var deferredBox = document.getElementById('status-deferred-date');
+                    picker.addEventListener('bubble:lock', function (e) { deferredBox.hidden = e.detail.value !== 'deferred'; });
+                    picker.addEventListener('bubble:unlock', function () { deferredBox.hidden = true; });
+                })();
+                </script>
+
+                <hr>
+                <p class="small fw-medium mb-2" style="color: var(--ink-muted);">Status updates</p>
+                <div id="status-notes-thread" class="mb-2" style="max-height: 260px; overflow-y: auto;">
+                    {% for note in status_notes %}
+                    <div class="mb-2 small">
+                        <div style="color: var(--ink-muted); font-size: 0.75rem;">{{ note.created_at|date:"M j, g:i A" }}{% if note.created_by %} — {{ note.created_by.get_full_name|default:note.created_by.username }}{% endif %}</div>
+                        <div style="white-space: pre-wrap;">{{ note.body }}</div>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted small mb-0" data-status-notes-empty>No updates yet.</p>
+                    {% endfor %}
+                </div>
+                <form method="post" action="{% url 'ticket_add_status_note' ticket.pk %}" class="d-flex gap-2" id="status-note-form">
+                    {% csrf_token %}
+                    <input type="text" name="body" class="form-control form-control-sm" placeholder="Provide an update on the situation…" required autocomplete="off">
+                    <button class="btn btn-primary btn-sm flex-shrink-0" type="submit"><i data-lucide="send" class="icon"></i></button>
+                </form>
+                <p class="text-danger small mt-1 mb-0" id="status-note-error" hidden></p>
+                <script>
+                (function () {
+                    var form = document.getElementById('status-note-form');
+                    if (!form) return;
+                    var thread = document.getElementById('status-notes-thread');
+                    var errorEl = document.getElementById('status-note-error');
+                    var input = form.querySelector('input[name="body"]');
+                    var button = form.querySelector('button[type="submit"]');
+
+                    form.addEventListener('submit', function (e) {
+                        e.preventDefault();
+                        var body = input.value.trim();
+                        if (!body) return;
+                        var formData = new FormData(form);
+
+                        input.disabled = true;
+                        button.disabled = true;
+                        errorEl.hidden = true;
+
+                        fetch(form.action, {
+                            method: 'POST',
+                            body: formData,
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        })
+                            .then(function (resp) { return resp.json(); })
+                            .then(function (data) {
+                                if (data.success) {
+                                    var placeholder = thread.querySelector('[data-status-notes-empty]');
+                                    if (placeholder) placeholder.remove();
+                                    var entry = document.createElement('div');
+                                    entry.className = 'mb-2 small';
+                                    var meta = document.createElement('div');
+                                    meta.style.color = 'var(--ink-muted)';
+                                    meta.style.fontSize = '0.75rem';
+                                    meta.textContent = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' — you';
+                                    var bodyEl = document.createElement('div');
+                                    bodyEl.style.whiteSpace = 'pre-wrap';
+                                    bodyEl.textContent = body;
+                                    entry.appendChild(meta);
+                                    entry.appendChild(bodyEl);
+                                    thread.appendChild(entry);
+                                    thread.scrollTop = thread.scrollHeight;
+                                    input.value = '';
+                                } else {
+                                    errorEl.textContent = data.error || 'Could not post update.';
+                                    errorEl.hidden = false;
+                                }
+                            })
+                            .catch(function () {
+                                errorEl.textContent = 'Could not post update — check your connection and try again.';
+                                errorEl.hidden = false;
+                            })
+                            .finally(function () {
+                                input.disabled = false;
+                                button.disabled = false;
+                                input.focus();
+                            });
+                    });
+                })();
+                </script>
+            </div>
+        </div>
+
         {% if checklist_items %}
         <div class="card mb-3">
             <div class="card-body">
@@ -173,16 +285,6 @@
         </div>
         {% endif %}
 
-        {% if vendor_link %}
-        <div class="card mb-3 border-info">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="link" class="icon"></i> Vendor completion link</h6>
-                <p class="mb-1 text-muted">Share this with {{ ticket.assigned_contact }} — no login needed. They can mark the job complete and upload photos.</p>
-                <input type="text" class="form-control" readonly value="{{ vendor_link }}" onclick="this.select()">
-            </div>
-        </div>
-        {% endif %}
-
         {% if attachments %}
         <div class="card mb-3">
             <div class="card-body">
@@ -209,81 +311,103 @@
                 <p class="small text-muted mb-3">Suggested from contacts tied to{% if ticket.property %} {{ ticket.property.name }}{% else %} this property{% endif %}. Search to find anyone else, or add someone new — every pick saves instantly.</p>
                 <form method="post" action="{% url 'ticket_set_contacts' ticket.pk %}" id="related-contacts-form">
                     {% csrf_token %}
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label small fw-medium mb-1 d-block">Owner</label>
-                            <div class="contact-filter mb-2" data-contact-filter id="owner-filter">
-                                <input type="hidden" data-contact-filter-input>
-                                <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
-                                <div class="contact-filter-list" data-contact-filter-list hidden></div>
-                                <script type="application/json" data-contact-filter-source>{{ owner_contacts_json|safe }}</script>
-                                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
-                                    <input type="text" name="new_contact__name__owner" class="form-control form-control-sm" placeholder="Name">
-                                    <input type="tel" name="new_contact__phone__owner" class="form-control form-control-sm" placeholder="555-123-4567">
-                                    <input type="email" name="new_contact__email__owner" class="form-control form-control-sm" placeholder="Email">
-                                    <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
-                                </div>
-                                <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
-                            </div>
-                            <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="owner_contact_ids" data-initial-values="{{ owner_ids }}">
-                                <div class="bubble-slot" data-bubble-slot data-empty-text="No owner set"></div>
-                                <div class="bubble-pool" data-bubble-pool>
-                                    {% for c in owner_contacts %}
-                                        <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        </div>
 
-                        <div class="col-md-4">
-                            <label class="form-label small fw-medium mb-1 d-block">Contractor</label>
-                            <div class="contact-filter mb-2" data-contact-filter id="contractor-filter-related">
-                                <input type="hidden" data-contact-filter-input>
-                                <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
-                                <div class="contact-filter-list" data-contact-filter-list hidden></div>
-                                <script type="application/json" data-contact-filter-source>{{ contractor_search_json|safe }}</script>
-                                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
-                                    <input type="text" name="new_contact__name__contractor" class="form-control form-control-sm" placeholder="Name">
-                                    <input type="tel" name="new_contact__phone__contractor" class="form-control form-control-sm" placeholder="555-123-4567">
-                                    <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
-                                    <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
-                                </div>
-                                <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
+                    <div data-related-compact>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-medium mb-1 d-block">Owner</label>
+                                <div class="d-flex flex-wrap gap-1 mb-2" data-related-summary="owner"></div>
+                                <button type="button" class="bubble" data-related-expand="owner">+ Add Owner</button>
                             </div>
-                            <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="contractor_contact_ids" data-initial-values="{{ contractor_ids }}">
-                                <div class="bubble-slot" data-bubble-slot data-empty-text="No contractor set"></div>
-                                <div class="bubble-pool" data-bubble-pool>
-                                    {% for c in contractor_contacts %}
-                                        <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
-                                    {% endfor %}
-                                </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-medium mb-1 d-block">Contractor</label>
+                                <div class="d-flex flex-wrap gap-1 mb-2" data-related-summary="contractor"></div>
+                                <button type="button" class="bubble" data-related-expand="contractor">+ Add Contractor</button>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-medium mb-1 d-block">Additional contacts</label>
+                                <div class="d-flex flex-wrap gap-1 mb-2" data-related-summary="additional"></div>
+                                <button type="button" class="bubble" data-related-expand="additional">+ Add Contacts</button>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="col-md-4">
-                            <label class="form-label small fw-medium mb-1 d-block">Additional contacts</label>
-                            <div class="contact-filter mb-2" data-contact-filter id="additional-filter">
-                                <input type="hidden" data-contact-filter-input>
-                                <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
-                                <div class="contact-filter-list" data-contact-filter-list hidden></div>
-                                <script type="application/json" data-contact-filter-source>{{ additional_contacts_json|safe }}</script>
-                                <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
-                                    <input type="text" name="new_contact__name__additional" class="form-control form-control-sm" placeholder="Name">
-                                    <input type="tel" name="new_contact__phone__additional" class="form-control form-control-sm" placeholder="555-123-4567">
-                                    <input type="email" name="new_contact__email__additional" class="form-control form-control-sm" placeholder="Email">
-                                    <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
-                                </div>
-                                <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
+                    <div class="d-none" data-related-expanded="owner">
+                        <label class="form-label small fw-medium mb-1 d-block">Owner</label>
+                        <div class="contact-filter mb-2" data-contact-filter id="owner-filter">
+                            <input type="hidden" data-contact-filter-input>
+                            <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
+                            <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                            <script type="application/json" data-contact-filter-source>{{ owner_contacts_json|safe }}</script>
+                            <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                                <input type="text" name="new_contact__name__owner" class="form-control form-control-sm" placeholder="Name">
+                                <input type="tel" name="new_contact__phone__owner" class="form-control form-control-sm" placeholder="555-123-4567">
+                                <input type="email" name="new_contact__email__owner" class="form-control form-control-sm" placeholder="Email">
+                                <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
                             </div>
-                            <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="additional_contact_ids" data-initial-values="{{ additional_ids }}">
-                                <div class="bubble-slot" data-bubble-slot data-empty-text="None yet"></div>
-                                <div class="bubble-pool" data-bubble-pool>
-                                    {% for c in additional_contacts %}
-                                        <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
-                                    {% endfor %}
-                                </div>
+                            <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
+                        </div>
+                        <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="owner_contact_ids" data-initial-values="{{ owner_ids }}">
+                            <div class="bubble-slot" data-bubble-slot data-empty-text="No owner set"></div>
+                            <div class="bubble-pool" data-bubble-pool>
+                                {% for c in owner_contacts %}
+                                    <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                                {% endfor %}
                             </div>
                         </div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-related-done>Done</button>
+                    </div>
+
+                    <div class="d-none" data-related-expanded="contractor">
+                        <label class="form-label small fw-medium mb-1 d-block">Contractor</label>
+                        <div class="contact-filter mb-2" data-contact-filter id="contractor-filter-related">
+                            <input type="hidden" data-contact-filter-input>
+                            <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
+                            <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                            <script type="application/json" data-contact-filter-source>{{ contractor_search_json|safe }}</script>
+                            <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                                <input type="text" name="new_contact__name__contractor" class="form-control form-control-sm" placeholder="Name">
+                                <input type="tel" name="new_contact__phone__contractor" class="form-control form-control-sm" placeholder="555-123-4567">
+                                <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
+                                <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
+                            </div>
+                            <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
+                        </div>
+                        <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="contractor_contact_ids" data-initial-values="{{ contractor_ids }}">
+                            <div class="bubble-slot" data-bubble-slot data-empty-text="No contractor set"></div>
+                            <div class="bubble-pool" data-bubble-pool>
+                                {% for c in contractor_contacts %}
+                                    <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-related-done>Done</button>
+                    </div>
+
+                    <div class="d-none" data-related-expanded="additional">
+                        <label class="form-label small fw-medium mb-1 d-block">Additional contacts</label>
+                        <div class="contact-filter mb-2" data-contact-filter id="additional-filter">
+                            <input type="hidden" data-contact-filter-input>
+                            <input type="text" class="form-control form-control-sm" placeholder="Search or add…" data-contact-filter-text autocomplete="off">
+                            <div class="contact-filter-list" data-contact-filter-list hidden></div>
+                            <script type="application/json" data-contact-filter-source>{{ additional_contacts_json|safe }}</script>
+                            <div class="contact-filter-addnew" data-contact-filter-addnew hidden>
+                                <input type="text" name="new_contact__name__additional" class="form-control form-control-sm" placeholder="Name">
+                                <input type="tel" name="new_contact__phone__additional" class="form-control form-control-sm" placeholder="555-123-4567">
+                                <input type="email" name="new_contact__email__additional" class="form-control form-control-sm" placeholder="Email">
+                                <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
+                            </div>
+                            <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
+                        </div>
+                        <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="additional_contact_ids" data-initial-values="{{ additional_ids }}">
+                            <div class="bubble-slot" data-bubble-slot data-empty-text="None yet"></div>
+                            <div class="bubble-pool" data-bubble-pool>
+                                {% for c in additional_contacts %}
+                                    <button type="button" class="bubble" data-value="{{ c.pk }}" data-label="{{ c.name }}">{{ c.name }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-related-done>Done</button>
                     </div>
                 </form>
                 <script>
@@ -301,7 +425,63 @@
                     // has already run, regardless of tag order, so gating on it
                     // is reliable in a way registering-order tricks aren't.
                     var ready = false;
-                    window.addEventListener('load', function () { ready = true; });
+                    window.addEventListener('load', function () { ready = true; categoriesForSummary.forEach(renderSummary); });
+
+                    // Compact/expanded drilldown — the always-visible search +
+                    // full suggestion pool for all 3 columns at once was the
+                    // clutter; "+ Add X" now expands just one column to the
+                    // full panel width while the others (and their locked-
+                    // contact summary pills) hide, and Done reverts. Only ONE
+                    // bubble-picker instance exists per category — never
+                    // duplicated between compact/expanded — so there's nothing
+                    // to keep in sync beyond re-reading its current locked
+                    // bubbles into the compact view's summary pills.
+                    var compact = form.querySelector('[data-related-compact]');
+                    var expandedPanels = form.querySelectorAll('[data-related-expanded]');
+                    var categoriesForSummary = ['owner', 'contractor', 'additional'];
+
+                    function renderSummary(category) {
+                        var picker = form.querySelector('[data-bubble-picker][data-name="' + category + '_contact_ids"]');
+                        var summaryEl = form.querySelector('[data-related-summary="' + category + '"]');
+                        var locked = picker.querySelectorAll('.bubble-slot .bubble');
+                        summaryEl.innerHTML = '';
+                        if (!locked.length) {
+                            var empty = document.createElement('span');
+                            empty.className = 'small text-muted';
+                            empty.textContent = 'None yet';
+                            summaryEl.appendChild(empty);
+                            return;
+                        }
+                        locked.forEach(function (b) {
+                            var pill = document.createElement('span');
+                            pill.className = 'badge rounded-pill bg-light text-dark border';
+                            pill.textContent = b.dataset.label;
+                            summaryEl.appendChild(pill);
+                        });
+                    }
+
+                    categoriesForSummary.forEach(function (category) {
+                        var picker = form.querySelector('[data-bubble-picker][data-name="' + category + '_contact_ids"]');
+                        picker.addEventListener('bubble:lock', function () { renderSummary(category); });
+                        picker.addEventListener('bubble:unlock', function () { renderSummary(category); });
+                    });
+
+                    form.querySelectorAll('[data-related-expand]').forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            var category = btn.dataset.relatedExpand;
+                            compact.classList.add('d-none');
+                            expandedPanels.forEach(function (p) { p.classList.add('d-none'); });
+                            form.querySelector('[data-related-expanded="' + category + '"]').classList.remove('d-none');
+                        });
+                    });
+
+                    form.querySelectorAll('[data-related-done]').forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            expandedPanels.forEach(function (p) { p.classList.add('d-none'); });
+                            compact.classList.remove('d-none');
+                            categoriesForSummary.forEach(renderSummary);
+                        });
+                    });
 
                     // AJAX, not form.requestSubmit()/submit() — a real page
                     // navigation on every single bubble lock/unlock reset the
@@ -425,22 +605,26 @@
                 </form>
                 {% if assignment_logs %}
                 <hr>
-                <p class="small fw-medium mb-2" style="color: var(--ink-muted);">Assignment history</p>
-                <ul class="list-unstyled small mb-0">
-                {% for log in assignment_logs %}
-                    {% if log.from_contact or log.to_contact %}
-                    <li class="mb-1">
-                        <span style="color: var(--ink-muted);">{{ log.changed_at|date:"M j, g:i A" }}</span>
-                        — {% if log.from_contact %}{{ log.from_contact.name }}{% else %}unassigned{% endif %}
-                        <i data-lucide="arrow-right" class="icon" style="width: 0.7rem; height: 0.7rem;"></i>
-                        {% if log.to_contact %}{{ log.to_contact.name }}{% else %}unassigned{% endif %}
-                        {% if log.previous_conversation_id %}
-                            <a href="{% url 'ticket_previous_conversation' ticket.pk log.pk %}" class="text-decoration-none">(view previous conversation)</a>
+                <a class="small text-decoration-none d-inline-flex align-items-center gap-1" data-bs-toggle="collapse" href="#contractorHistoryCollapse" role="button" style="color: var(--ink-muted);">
+                    <i data-lucide="history" class="icon" style="width: 0.8rem; height: 0.8rem;"></i> Assignment history <i data-lucide="chevron-down" class="icon" style="width: 0.8rem; height: 0.8rem;"></i>
+                </a>
+                <div class="collapse mt-2" id="contractorHistoryCollapse">
+                    <ul class="list-unstyled small mb-0">
+                    {% for log in assignment_logs %}
+                        {% if log.from_contact or log.to_contact %}
+                        <li class="mb-1">
+                            <span style="color: var(--ink-muted);">{{ log.changed_at|date:"M j, g:i A" }}</span>
+                            — {% if log.from_contact %}{{ log.from_contact.name }}{% else %}unassigned{% endif %}
+                            <i data-lucide="arrow-right" class="icon" style="width: 0.7rem; height: 0.7rem;"></i>
+                            {% if log.to_contact %}{{ log.to_contact.name }}{% else %}unassigned{% endif %}
+                            {% if log.previous_conversation_id %}
+                                <a href="{% url 'ticket_previous_conversation' ticket.pk log.pk %}" class="text-decoration-none">(view previous conversation)</a>
+                            {% endif %}
+                        </li>
                         {% endif %}
-                    </li>
-                    {% endif %}
-                {% endfor %}
-                </ul>
+                    {% endfor %}
+                    </ul>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -612,54 +796,6 @@
     </div>
 
     <div class="col-md-5">
-        <div class="card mb-3">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Update status</h6>
-                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
-                    {% csrf_token %}
-                    <label class="form-label small fw-medium d-block">Status</label>
-                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="status" id="status-picker">
-                        <input type="hidden" name="status" data-bubble-input value="{{ ticket.status }}">
-                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a status"></div>
-                        <div class="bubble-pool" data-bubble-pool>
-                            {% for value, label in status_bubble_choices %}
-                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <div id="status-deferred-date" class="mb-2"{% if ticket.status != 'deferred' %} hidden{% endif %}>
-                        <label class="form-label small fw-medium d-block">New due date</label>
-                        <input type="date" name="new_due_date" class="form-control form-control-sm" value="{{ ticket.due_date|date:'Y-m-d' }}">
-                    </div>
-                    <p class="small mb-2" style="color: var(--ink-muted);">To mark this ticket done, use <strong>Mark Complete</strong> below instead.</p>
-                    <textarea name="resolution_notes" class="form-control mb-2" rows="2" placeholder="Resolution notes (optional)"></textarea>
-                    <textarea name="status_reason" id="status-reason-input" class="form-control mb-1" rows="2" placeholder="Reason"
-                        {% if ticket.status in reason_required_statuses %}style="border-color: var(--status-warning); background: color-mix(in srgb, var(--status-warning) 8%, white);"{% endif %}></textarea>
-                    <p id="status-reason-hint" class="small mb-2" style="color: var(--status-warning);"{% if ticket.status not in reason_required_statuses %} hidden{% endif %}>A reason is required for this status.</p>
-                    <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
-                </form>
-                <script>
-                (function () {
-                    var picker = document.getElementById('status-picker');
-                    var reasonInput = document.getElementById('status-reason-input');
-                    var reasonHint = document.getElementById('status-reason-hint');
-                    var deferredBox = document.getElementById('status-deferred-date');
-                    var reasonRequired = {{ reason_required_statuses|safe }};
-
-                    function applyState(value) {
-                        var needsReason = reasonRequired.indexOf(value) !== -1;
-                        reasonInput.style.borderColor = needsReason ? 'var(--status-warning)' : '';
-                        reasonInput.style.background = needsReason ? 'color-mix(in srgb, var(--status-warning) 8%, white)' : '';
-                        reasonHint.hidden = !needsReason;
-                        deferredBox.hidden = value !== 'deferred';
-                    }
-
-                    picker.addEventListener('bubble:lock', function (e) { applyState(e.detail.value); });
-                    picker.addEventListener('bubble:unlock', function () { applyState(''); });
-                })();
-                </script>
-            </div>
-        </div>
 
         {% if ticket.created_from_template.requires_approval and ticket.status == 'completed' %}
         <div class="card mb-3" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);">
@@ -729,6 +865,24 @@
 
                     <button class="btn btn-outline-secondary btn-sm" type="submit">Reassign</button>
                 </form>
+                {% if assignment_logs %}
+                <hr>
+                <a class="small text-decoration-none d-inline-flex align-items-center gap-1" data-bs-toggle="collapse" href="#reassignHistoryCollapse" role="button" style="color: var(--ink-muted);">
+                    <i data-lucide="history" class="icon" style="width: 0.8rem; height: 0.8rem;"></i> Assignment history <i data-lucide="chevron-down" class="icon" style="width: 0.8rem; height: 0.8rem;"></i>
+                </a>
+                <div class="collapse mt-2" id="reassignHistoryCollapse">
+                    <ul class="list-unstyled small mb-0">
+                    {% for log in assignment_logs %}
+                        {% if log.from_staff or log.to_staff %}
+                        <li class="mb-1">
+                            <span style="color: var(--ink-muted);">{{ log.changed_at|date:"M j, g:i A" }}</span>
+                            — {% if log.to_staff %}{{ log.to_staff }}{% else %}unassigned{% endif %}
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -772,18 +926,6 @@
             </div>
         </div>
 
-        {% if assignment_logs %}
-        <div class="card mb-3">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="history" class="icon"></i> Assignment history</h6>
-                <ul class="list-unstyled small mb-0">
-                {% for log in assignment_logs %}
-                    <li>{{ log.changed_at }} — {% if log.to_staff %}{{ log.to_staff }}{% elif log.to_contact %}{{ log.to_contact }}{% else %}unassigned{% endif %}</li>
-                {% endfor %}
-                </ul>
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 

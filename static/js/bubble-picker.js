@@ -452,7 +452,18 @@
       list.hidden = false;
     }
 
-    text.addEventListener('focus', function () { renderList(text.value); });
+    // Select-all on focus — a click into a field that already has a name in
+    // it (e.g. Assign Contractor showing the current contractor) is almost
+    // always "I want to replace this," not "I want to edit partway through
+    // it," so the whole value is pre-selected to type straight over it.
+    // The select() has to be deferred a tick: a real mouse click's own
+    // native "place the cursor where I clicked" behavior is applied via
+    // mouseup, *after* this focus handler runs, and would otherwise collapse
+    // the selection right back down to a single point.
+    text.addEventListener('focus', function () {
+      renderList(text.value);
+      setTimeout(function () { text.select(); }, 0);
+    });
     text.addEventListener('input', function () {
       hidden.value = '';
       addNewRow.hidden = true;

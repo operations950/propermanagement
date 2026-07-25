@@ -26,7 +26,7 @@ from messaging.services import _followup_result_message, _group_followups, fetch
 from .forms import AssignContractorForm, ReassignForm, TicketForm, TicketTemplateForm
 from .models import (
     FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact,
-    TicketTemplate, TicketView,
+    TicketStatusNote, TicketTemplate, TicketView,
 )
 from .services.package_engine import unblock_dependents
 
@@ -745,51 +745,78 @@ def _followup_parties(ticket):
 
 
 def _related_contact_pools(ticket, linked_ticket_contacts):
-    """Per-column suggested bubbles for Related contacts' Owner /
-    Contractor / Additional columns — contacts of the matching type
-    already linked to this ticket's property, or to any property of the
-    same type (Contractors also include vendors with no property link at
-    all, since most serve many properties rather than being tied to one).
-    Whatever's already linked under that role is folded in too even if it
-    wouldn't otherwise qualify, so the bubble picker always has something
-    to find-and-lock on load — see bubble-picker.js's rehydration."""
+    """Per-column suggested bubbles for Related contacts' Owner/Contractor/
+    Additional columns — scoped tightly to THIS property (not "same
+    property type," which used to surface every contact tied to any
+    property of the same type and made the suggestion pool unusably big):
+
+    - Owner: contacts of an owner-ish type directly linked to this
+      property (Contact.properties).
+    - Contractor: vendors who've actually worked this property before —
+      linked as a Related Contact (TicketContact) or set as Assign
+      Contractor's assigned_contact on ANY ticket for this property,
+      historically. That history is already fully captured by those two
+      existing relationships; this just reads it across every ticket for
+      the property instead of only this one, rather than needing a new
+      tracking model.
+    - Additional: no contact_type restriction at all — any contact
+      (including a vendor or owner already covered by the other two
+      columns) can be tracked as an "additional" related contact, scoped
+      to contacts already linked to this property.
+
+    Whatever's already linked to THIS ticket under a role is folded in
+    even if it wouldn't otherwise qualify, so the bubble picker always has
+    something to find-and-lock on load — see bubble-picker.js's
+    rehydration."""
     linked_by_role = {}
     for tc in linked_ticket_contacts:
         linked_by_role.setdefault(tc.role, []).append(tc.contact)
 
-    if ticket.property_id:
-        same_type_ids = Property.objects.filter(
-            property_type=ticket.property.property_type,
-        ).values_list('pk', flat=True)
-        property_filter = Q(properties__in=same_type_ids)
-    else:
-        property_filter = Q(pk__in=[])  # no property context — suggest nothing, search still works
-
-    def _column(type_filter, role, also_unlinked=False):
-        filt = property_filter | Q(properties__isnull=True) if also_unlinked else property_filter
-        pool = {c.pk: c for c in Contact.objects.filter(type_filter).filter(filt).distinct()}
+    def _pool(qs, role):
+        pool = {c.pk: c for c in qs}
         for c in linked_by_role.get(role, []):
             pool[c.pk] = c
         return sorted(pool.values(), key=lambda c: c.name)
 
-    owner_contacts = _column(
-        Q(contact_type__in=[
-            Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER,
-            Contact.ContactType.ASSOCIATION_MEMBER, Contact.ContactType.TENANT,
-        ]),
-        TicketContact.Role.OWNER,
-    )
-    contractor_contacts = _column(
-        Q(contact_type=Contact.ContactType.VENDOR), TicketContact.Role.CONTRACTOR, also_unlinked=True,
-    )
+    if ticket.property_id:
+        owner_contacts = _pool(
+            Contact.objects.filter(
+                contact_type__in=[
+                    Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER,
+                    Contact.ContactType.ASSOCIATION_MEMBER, Contact.ContactType.TENANT,
+                ],
+                properties=ticket.property_id,
+            ).distinct(),
+            TicketContact.Role.OWNER,
+        )
+
+        worked_here_ids = set(
+            TicketContact.objects.filter(
+                role=TicketContact.Role.CONTRACTOR, ticket__property_id=ticket.property_id,
+            ).values_list('contact_id', flat=True)
+        ) | set(
+            Ticket.objects.filter(property_id=ticket.property_id, assigned_contact__isnull=False)
+            .values_list('assigned_contact_id', flat=True)
+        )
+        contractor_contacts = _pool(
+            Contact.objects.filter(pk__in=worked_here_ids, contact_type=Contact.ContactType.VENDOR),
+            TicketContact.Role.CONTRACTOR,
+        )
+
+        additional_contacts = _pool(
+            Contact.objects.filter(properties=ticket.property_id).distinct(), TicketContact.Role.OTHER,
+        )
+    else:
+        # No property context yet — nothing to suggest, search still works.
+        owner_contacts = _pool(Contact.objects.none(), TicketContact.Role.OWNER)
+        contractor_contacts = _pool(Contact.objects.none(), TicketContact.Role.CONTRACTOR)
+        additional_contacts = _pool(Contact.objects.none(), TicketContact.Role.OTHER)
+
     # Whoever's assigned via Reassign is clearly the contractor on this job
     # — surface them here too (one click to also track them as a related
-    # contact) even if they wouldn't otherwise match the type/property rule.
+    # contact) even on the very first ticket for this property.
     if ticket.assigned_contact_id and ticket.assigned_contact_id not in {c.pk for c in contractor_contacts}:
         contractor_contacts = sorted(contractor_contacts + [ticket.assigned_contact], key=lambda c: c.name)
-    additional_contacts = _column(
-        ~Q(contact_type__in=[Contact.ContactType.OWNER, Contact.ContactType.VENDOR]), TicketContact.Role.OTHER,
-    )
 
     def _ids(role):
         return ','.join(str(c.pk) for c in linked_by_role.get(role, []))
@@ -982,12 +1009,16 @@ def ticket_detail(request, pk):
         if elapsed < timedelta(hours=24):
             vendor_link_cooldown_hours_left = max(1, round(24 - elapsed.total_seconds() / 3600))
 
+    back_url = _safe_back_url(request, exclude_path=request.path)
+
     return render(request, 'tickets/ticket_detail.html', {
         'ticket': ticket,
-        'back_url': _safe_back_url(request, exclude_path=request.path),
+        'back_url': back_url,
         'reassign_form': reassign_form,
         'assign_contractor_form': assign_contractor_form,
-        'assignment_logs': ticket.assignment_logs.select_related('from_staff__user', 'to_staff__user', 'from_contact', 'to_contact')[:10],
+        'assignment_logs': ticket.assignment_logs.select_related(
+            'from_staff__user', 'to_staff__user', 'from_contact', 'to_contact',
+        )[:10],
         'followup_text_parties': [c for c in followup_parties if c.phone],
         'followup_email_parties': [c for c in followup_parties if c.email],
         'attachments': ticket.attachments.all().order_by('-created_at'),
@@ -1007,22 +1038,17 @@ def ticket_detail(request, pk):
         'contractor_search_json': json.dumps([
             {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
         ]),
-        'additional_contacts_json': json.dumps([
-            {'id': c.id, 'label': str(c)}
-            for c in Contact.objects.exclude(contact_type__in=[Contact.ContactType.OWNER, Contact.ContactType.VENDOR])
-        ]),
-        'assignment_logs': ticket.assignment_logs.all()[:10],
+        # Additional contacts has no type restriction on who can be added —
+        # search finds anyone, including a vendor or owner also tracked
+        # elsewhere on the ticket.
+        'additional_contacts_json': json.dumps([{'id': c.id, 'label': str(c)} for c in Contact.objects.all()]),
         'followup_batches': _group_followups(ticket.followups.select_related('contact')[:30]),
         'checklist_items': ticket.checklist_items.all(),
         'package_siblings': package_siblings,
         'blocking_step_label': blocking_step_label,
         'occurrence_siblings': occurrence_siblings,
         'can_approve': can_approve,
-        'vendor_link': request.build_absolute_uri(
-            f'/vendor/t/{ticket.completion_token}/'
-        ) if ticket.assigned_contact_id else None,
         'status_choices': Ticket.Status.choices,
-        'reason_required_statuses': Ticket.REASON_REQUIRED_STATUSES,
         # Completed is a hard status, deliberately excluded from the casual
         # bubble picker — the "Mark Complete" button below is the one path
         # to it. Still included when the ticket is *already* completed, so
@@ -1040,6 +1066,7 @@ def ticket_detail(request, pk):
         'contractor_thread': _contractor_thread(ticket),
         'quo_default_from_number': settings.QUO_DEFAULT_FROM_NUMBER,
         'vendor_link_cooldown_hours_left': vendor_link_cooldown_hours_left,
+        'status_notes': ticket.status_notes.select_related('created_by'),
         'now': timezone.now(),
     })
 
@@ -1510,16 +1537,6 @@ def ticket_set_status(request, pk):
     if request.method == 'POST':
         new_status = request.POST.get('status')
         if new_status in Ticket.Status.values:
-            status_reason = request.POST.get('status_reason', '').strip()
-            if new_status in Ticket.REASON_REQUIRED_STATUSES and not status_reason:
-                messages.error(
-                    request,
-                    f'{dict(Ticket.Status.choices)[new_status]} needs a reason — nothing was changed.',
-                )
-                if 'next_qs' in request.POST:
-                    return _list_redirect(request)
-                return redirect('ticket_detail', pk=ticket.pk)
-
             new_due_date = None
             if new_status == Ticket.Status.DEFERRED:
                 raw_due_date = request.POST.get('new_due_date', '').strip()
@@ -1545,7 +1562,6 @@ def ticket_set_status(request, pk):
                     return redirect('ticket_detail', pk=ticket.pk)
 
             ticket.status = new_status
-            ticket.status_reason = status_reason
             if new_status == Ticket.Status.DEFERRED:
                 _apply_due_date_change(ticket, new_due_date)
             if new_status == Ticket.Status.COMPLETED:
@@ -1553,15 +1569,43 @@ def ticket_set_status(request, pk):
             if new_status == Ticket.Status.CANCELLED:
                 ticket.cancelled_at = timezone.now()
                 ticket.cancelled_reason = request.POST.get('cancelled_reason', '')
-            resolution_notes = request.POST.get('resolution_notes')
-            if resolution_notes:
-                ticket.resolution_notes = resolution_notes
             ticket.save()
             if new_status in Ticket.DEPENDENCY_SATISFYING_STATUSES:
                 unblock_dependents(ticket)
             messages.success(request, f'Status updated to {ticket.get_status_display()}.')
+
+            # Cancelling a ticket is usually "I'm done looking at this" —
+            # send them back to wherever they came from (the same back_url
+            # ticket_detail's own Back link/GET handler computes, passed
+            # through as a hidden field) instead of reloading this page.
+            if new_status == Ticket.Status.CANCELLED:
+                back_url = request.POST.get('back_url', '')
+                if back_url and url_has_allowed_host_and_scheme(back_url, allowed_hosts={request.get_host()}):
+                    return redirect(back_url)
+                return redirect('ticket_list')
     if 'next_qs' in request.POST:
         return _list_redirect(request)
+    return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_add_status_note(request, pk):
+    """The Update Status card's status-update thread — a timestamped,
+    reviewable log of free-text notes, independent of the status bubble
+    picker above it (posting one doesn't change status, and changing
+    status doesn't require one). Replaced the old one-shot resolution_notes/
+    status_reason fields, which were never visible as a history."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    if request.method == 'POST':
+        body = request.POST.get('body', '').strip()
+        if body:
+            TicketStatusNote.objects.create(ticket=ticket, body=body, created_by=request.user)
+            if is_ajax:
+                return JsonResponse({'success': True})
+            messages.success(request, 'Update posted.')
+        elif is_ajax:
+            return JsonResponse({'success': False, 'error': 'Write an update first.'})
     return redirect('ticket_detail', pk=ticket.pk)
 
 
