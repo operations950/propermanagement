@@ -1,4 +1,5 @@
-{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion. One box per day: today gets a full Google-Calendar-day-view-style hour timeline, the next two days are a simple chronological list — see _layout_timeline in tickets/views.py. Each event is shaded by which of the staff member's calendars it came from (see _calendar_color) — pick which calendars pull in via the "Calendars" bubble-lock picker below.{% endcomment %}
+{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion (both render into the DOM at once, one hidden via responsive classes — see department_dashboard.html), so New/Edit event panels are toggled by JS scoped to this .calendar-widget instance (bootstrap.Collapse on the element itself) rather than by id, which would resolve to whichever copy comes first in the DOM regardless of which one is visible. One box per day: today gets a full Google-Calendar-day-view-style hour timeline, the next two days are a simple chronological list — see _layout_timeline in tickets/views.py. Each event is shaded by which of the staff member's calendars it came from (see _calendar_color) — pick which calendars pull in via the "Calendars" bubble-lock picker below.{% endcomment %}
+<div class="calendar-widget">
 <div class="d-flex justify-content-between align-items-center mb-2">
     {% if calendar_token and calendar_token.google_email %}
         <span class="small text-muted">{{ calendar_token.google_email }}</span>
@@ -9,6 +10,7 @@
         <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#timezonePicker">Timezone</button>
         {% if calendar_token %}
         <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#calendarPicker">Calendars</button>
+        <button type="button" class="btn btn-link btn-sm p-0 calendar-new-event-btn">+ New event</button>
         <form method="post" action="{% url 'calendar_disconnect' %}" class="d-inline" onsubmit="return confirm('Disconnect Google Calendar?');">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.path }}">
@@ -57,6 +59,34 @@
         </form>
     </div>
 </div>
+
+<div class="collapse mb-2 calendar-new-event-panel">
+    <div class="card card-body p-2">
+        <form method="post" action="{% url 'calendar_event_create' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <p class="small mb-2" style="color: var(--ink-muted);">New event</p>
+            {% include 'tickets/_calendar_event_fields.html' %}
+            <button class="btn btn-outline-primary btn-sm mt-2" type="submit">Add event</button>
+        </form>
+    </div>
+</div>
+
+<div class="collapse mb-2 calendar-edit-event-panel">
+    <div class="card card-body p-2">
+        <form method="post" action="{% url 'calendar_event_update' %}" class="calendar-edit-event-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <input type="hidden" name="event_id" class="calendar-event-id-field">
+            <p class="small mb-2" style="color: var(--ink-muted);">Edit event</p>
+            {% include 'tickets/_calendar_event_fields.html' %}
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Save changes</button>
+                <button class="btn btn-outline-danger btn-sm" type="submit" formaction="{% url 'calendar_event_delete' %}" formnovalidate onclick="return confirm('Delete this event?');">Delete</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endif %}
 
 {% if calendar_token %}
@@ -71,7 +101,8 @@
             {% if day.all_day %}
             <div class="mb-2">
                 {% for a in day.all_day %}
-                <div class="small rounded px-2 py-1 mb-1 d-flex align-items-center gap-2" style="background: color-mix(in srgb, {{ a.color }} 14%, white); color: var(--ink-secondary);">
+                <div class="small rounded px-2 py-1 mb-1 d-flex align-items-center gap-2 calendar-event-clickable" style="background: color-mix(in srgb, {{ a.color }} 14%, white); color: var(--ink-secondary); cursor: pointer;"
+                     data-event-id="{{ a.event_id }}" data-calendar-id="{{ a.calendar_id }}" data-title="{{ a.title }}" data-date="{{ a.date|date:'Y-m-d' }}" data-all-day="1">
                     <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ a.color }};"></span>
                     {{ a.title }}
                 </div>
@@ -93,12 +124,14 @@
                     </div>
                     {% endif %}
                     {% for e in day.timed %}
-                    <div class="position-absolute rounded px-1 overflow-hidden" style="
+                    <div class="position-absolute rounded px-1 overflow-hidden calendar-event-clickable" style="
                         top: {{ e.top_pct }}%; height: {{ e.height_pct }}%;
                         left: {{ e.left_pct }}%; width: {{ e.width_pct }}%;
                         background: color-mix(in srgb, {{ e.color }} 85%, black);
-                        color: #fff; font-size: 0.72rem; line-height: 1.15; z-index: 2;
-                    ">
+                        color: #fff; font-size: 0.72rem; line-height: 1.15; z-index: 2; cursor: pointer;
+                    "
+                        data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
+                        data-all-day="0" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
                         <div class="fw-medium text-truncate">{{ e.title }}</div>
                         <div class="text-truncate" style="opacity: 0.85;">{{ e.start_label }}</div>
                     </div>
@@ -111,7 +144,9 @@
                 {% if day.timed %}
                 <ul class="list-unstyled mb-0">
                     {% for e in day.timed %}
-                    <li class="small mb-1 d-flex justify-content-between align-items-center gap-2">
+                    <li class="small mb-1 d-flex justify-content-between align-items-center gap-2 calendar-event-clickable" style="cursor: pointer;"
+                        data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
+                        data-all-day="0" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
                         <span class="d-flex align-items-center gap-2 text-truncate">
                             <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ e.color }};"></span>
                             <span class="text-truncate">{{ e.title }}</span>
@@ -133,3 +168,51 @@
 {% else %}
     <p class="text-muted small mb-0">Google Calendar isn't configured yet — ask an admin.</p>
 {% endif %}
+</div>
+
+<script>
+(function () {
+    // This partial (and this script tag with it) renders twice per page —
+    // once for the desktop column, once for the mobile accordion (see
+    // department_dashboard.html) — so guard each widget against being
+    // wired up twice, which would double-bind every listener below.
+    document.querySelectorAll('.calendar-widget').forEach(function (widget) {
+        if (widget.dataset.calendarWidgetInit) return;
+        widget.dataset.calendarWidgetInit = '1';
+
+        var newBtn = widget.querySelector('.calendar-new-event-btn');
+        var newPanel = widget.querySelector('.calendar-new-event-panel');
+        var editPanel = widget.querySelector('.calendar-edit-event-panel');
+        if (newBtn && newPanel) {
+            newBtn.addEventListener('click', function () {
+                var form = newPanel.querySelector('form');
+                form.querySelector('.calendar-event-title').value = '';
+                form.querySelector('.calendar-event-date').value = new Date().toISOString().slice(0, 10);
+                form.querySelector('.calendar-event-all-day').checked = false;
+                form.querySelector('.calendar-event-time-row').classList.remove('d-none');
+                bootstrap.Collapse.getOrCreateInstance(newPanel).toggle();
+            });
+        }
+        widget.querySelectorAll('.calendar-event-clickable').forEach(function (el) {
+            el.addEventListener('click', function () {
+                if (!editPanel) return;
+                var form = editPanel.querySelector('form');
+                form.querySelector('.calendar-event-id-field').value = el.dataset.eventId;
+                var bubbleRoot = form.querySelector('[data-bubble-picker]');
+                var matchingBubble = bubbleRoot && bubbleRoot.querySelector('.bubble[data-value="' + el.dataset.calendarId + '"]');
+                if (matchingBubble && bubbleRoot._bubbleApi) bubbleRoot._bubbleApi.lock(matchingBubble, 0);
+                form.querySelector('.calendar-event-title').value = el.dataset.title;
+                form.querySelector('.calendar-event-date').value = el.dataset.date;
+                var allDay = el.dataset.allDay === '1';
+                form.querySelector('.calendar-event-all-day').checked = allDay;
+                form.querySelector('.calendar-event-time-row').classList.toggle('d-none', allDay);
+                if (!allDay) {
+                    form.querySelector('.calendar-event-start-time').value = el.dataset.startTime || '';
+                    form.querySelector('.calendar-event-end-time').value = el.dataset.endTime || '';
+                }
+                bootstrap.Collapse.getOrCreateInstance(editPanel).show();
+            });
+        });
+    });
+})();
+</script>

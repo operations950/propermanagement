@@ -1,0 +1,38 @@
+{% comment %}
+Shared title/calendar/date/time fields for the New event and Edit event
+panels in _dashboard_calendar.html. Uses classes (not ids) so the same
+markup works whether this panel is the desktop or mobile copy of the
+calendar widget (both render into the DOM at once) — see the scoped JS
+at the bottom of that file, which reads/writes these via
+closest('.calendar-widget') + querySelector, not getElementById.
+{% endcomment %}
+<div class="mb-2">
+    <input type="text" name="title" class="form-control form-control-sm calendar-event-title" placeholder="Event title" required>
+</div>
+<div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="calendar_id">
+    <input type="hidden" name="calendar_id" data-bubble-input>
+    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a calendar"></div>
+    <div class="bubble-pool" data-bubble-pool>
+        {% for c in available_calendars %}
+        <button type="button" class="bubble" data-value="{{ c.id }}" data-label="{{ c.summary }}" style="border-color: {{ c.color }}; color: {{ c.color }};">{{ c.summary }}{% if c.is_primary %} (primary){% endif %}</button>
+        {% endfor %}
+    </div>
+</div>
+<div class="row g-2 align-items-center">
+    <div class="col-auto">
+        <input type="date" name="date" class="form-control form-control-sm calendar-event-date" required>
+    </div>
+    <div class="col-auto form-check">
+        <input type="checkbox" name="all_day" class="form-check-input calendar-event-all-day" onchange="this.closest('form').querySelector('.calendar-event-time-row').classList.toggle('d-none', this.checked);">
+        <label class="form-check-label small">All day</label>
+    </div>
+</div>
+<div class="row g-2 mt-1 calendar-event-time-row">
+    <div class="col-auto">
+        <input type="time" name="start_time" class="form-control form-control-sm calendar-event-start-time">
+    </div>
+    <div class="col-auto align-self-center small" style="color: var(--ink-muted);">to</div>
+    <div class="col-auto">
+        <input type="time" name="end_time" class="form-control form-control-sm calendar-event-end-time">
+    </div>
+</div>

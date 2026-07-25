@@ -1,13 +1,18 @@
-"""Per-staff Google Calendar OAuth + event lookup.
+"""Per-staff Google Calendar OAuth + event read/write.
 
 Each staff member connects their own Google account from their department
 sub-dashboard (see tickets/views.py's department_dashboard). This is
 deliberately separate from the shared-business-calendar concept stubbed in
 intake/adapters (GOOGLE_CALENDAR_CREDENTIALS_PATH) — that one (not yet
 wired live) would be a single shared calendar read for reactive intake;
-this one is many individual personal calendars, read-only, for display
-only on each person's own dashboard.
-"""
+this one is many individual personal calendars, for display and now
+create/edit/delete only on each person's own dashboard.
+
+SCOPES was calendar.readonly until #12 (two-way sync) — a staff member
+who connected before that change holds a read-only grant and needs to
+Disconnect/reconnect once to pick up write access; Google returns a 403
+on the write call in the meantime, surfaced as a "reconnect" message
+rather than a silent failure (see the callers in core/views.py)."""
 import logging
 
 from django.conf import settings
@@ -16,7 +21,7 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly', 'openid', 'email']
+SCOPES = ['https://www.googleapis.com/auth/calendar', 'openid', 'email']
 
 
 def is_configured():
@@ -129,3 +134,68 @@ def get_upcoming_events(token, days_ahead=2):
     except Exception:
         logger.exception('Google Calendar: failed to fetch events for %s', token.staff)
         return [], []
+
+
+class GoogleCalendarWriteError(Exception):
+    """Raised by create_event/update_event/delete_event on any failure —
+    callers show a message rather than letting a raw googleapiclient
+    HttpError reach the user. `needs_reconnect` is set when Google rejected
+    the request for insufficient scope (a token issued before #12 widened
+    SCOPES from calendar.readonly), so the view can point staff at
+    Disconnect + reconnect instead of a generic "try again"."""
+
+    def __init__(self, message, needs_reconnect=False):
+        super().__init__(message)
+        self.needs_reconnect = needs_reconnect
+
+
+def _event_body(summary, start, end, all_day):
+    if all_day:
+        return {'summary': summary, 'start': {'date': start.isoformat()}, 'end': {'date': end.isoformat()}}
+    tz_name = timezone.get_current_timezone_name()
+    return {
+        'summary': summary,
+        'start': {'dateTime': start.isoformat(), 'timeZone': tz_name},
+        'end': {'dateTime': end.isoformat(), 'timeZone': tz_name},
+    }
+
+
+def _service_for(token):
+    from googleapiclient.discovery import build
+
+    return build('calendar', 'v3', credentials=credentials_for(token), cache_discovery=False)
+
+
+def _run_write(token, action, *args):
+    from googleapiclient.errors import HttpError
+
+    try:
+        return action(_service_for(token), *args)
+    except HttpError as e:
+        logger.exception('Google Calendar: write failed for %s', token.staff)
+        if e.resp.status in (401, 403):
+            raise GoogleCalendarWriteError(
+                'Google rejected that (permission issue) — try disconnecting and reconnecting your calendar.',
+                needs_reconnect=True,
+            ) from e
+        raise GoogleCalendarWriteError('Google Calendar didn\'t accept that change — please try again.') from e
+    except Exception as e:
+        logger.exception('Google Calendar: write failed for %s', token.staff)
+        raise GoogleCalendarWriteError('Google Calendar didn\'t accept that change — please try again.') from e
+
+
+def create_event(token, calendar_id, summary, start, end, all_day=False):
+    body = _event_body(summary, start, end, all_day)
+    return _run_write(token, lambda service: service.events().insert(calendarId=calendar_id, body=body).execute())
+
+
+def update_event(token, calendar_id, event_id, summary, start, end, all_day=False):
+    body = _event_body(summary, start, end, all_day)
+    return _run_write(
+        token,
+        lambda service: service.events().patch(calendarId=calendar_id, eventId=event_id, body=body).execute(),
+    )
+
+
+def delete_event(token, calendar_id, event_id):
+    return _run_write(token, lambda service: service.events().delete(calendarId=calendar_id, eventId=event_id).execute())

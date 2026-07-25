@@ -292,7 +292,11 @@ def _format_calendar_events(events, days_ahead=2):
             end_date = date.fromisoformat(end['date']) if end.get('date') else start_date
             for d in days:
                 if start_date <= d < end_date:
-                    by_day[d]['all_day'].append({'title': title, 'color': color})
+                    by_day[d]['all_day'].append({
+                        'title': title, 'color': color, 'all_day': True,
+                        'event_id': e.get('id', ''), 'calendar_id': e.get('_calendar_id', ''),
+                        'date': start_date,
+                    })
             continue
 
         start_dt = parse_datetime(start.get('dateTime', ''))
@@ -311,9 +315,11 @@ def _format_calendar_events(events, days_ahead=2):
         if d not in by_day:
             continue
         by_day[d]['timed'].append({
-            'title': title, 'start': start_dt, 'end': end_dt, 'color': color,
+            'title': title, 'start': start_dt, 'end': end_dt, 'color': color, 'all_day': False,
             'start_label': start_dt.strftime('%I:%M %p').lstrip('0'),
             'end_label': end_dt.strftime('%I:%M %p').lstrip('0'),
+            'event_id': e.get('id', ''), 'calendar_id': e.get('_calendar_id', ''),
+            'date': start_dt.date(), 'start_time': start_dt.strftime('%H:%M'), 'end_time': end_dt.strftime('%H:%M'),
         })
 
     day_boxes = []

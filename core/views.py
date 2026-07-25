@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from django.conf import settings as django_settings
 from django.contrib import messages
@@ -10,6 +11,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from messaging.services import _followup_result_message, _group_followups, _to_e164, fetch_quo_conversation, send_followup_bulk
@@ -193,6 +195,90 @@ def calendar_select(request):
             token.enabled_calendar_ids = request.POST.getlist('calendar_ids')
             token.save(update_fields=['enabled_calendar_ids'])
             messages.success(request, 'Calendars updated.')
+    return redirect(next_url)
+
+
+def _parse_calendar_event_form(request):
+    """Shared POST parsing for calendar_event_create/update — raises
+    ValueError with a user-facing message on anything unusable, rather
+    than letting a bad date/time silently produce a wrong Google event."""
+    title = request.POST.get('title', '').strip()
+    if not title:
+        raise ValueError('Give the event a title.')
+    calendar_id = request.POST.get('calendar_id', '').strip()
+    if not calendar_id:
+        raise ValueError('Choose which calendar to use.')
+    event_date = parse_date(request.POST.get('date', ''))
+    if not event_date:
+        raise ValueError('Choose a date.')
+
+    if request.POST.get('all_day') == 'on':
+        return calendar_id, title, event_date, event_date + timedelta(days=1), True
+
+    start_dt = parse_datetime(f"{event_date}T{request.POST.get('start_time', '')}")
+    end_dt = parse_datetime(f"{event_date}T{request.POST.get('end_time', '')}")
+    if not start_dt or not end_dt:
+        raise ValueError('Enter a start and end time, or check All day.')
+    tz = timezone.get_current_timezone()
+    start_dt = timezone.make_aware(start_dt, tz)
+    end_dt = timezone.make_aware(end_dt, tz)
+    if end_dt <= start_dt:
+        raise ValueError('End time must be after the start time.')
+    return calendar_id, title, start_dt, end_dt, False
+
+
+@login_required
+def calendar_event_create(request):
+    next_url = _safe_next(request)
+    staff_profile = getattr(request.user, 'staff_profile', None)
+    token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
+    if request.method == 'POST' and token:
+        try:
+            calendar_id, title, start, end, all_day = _parse_calendar_event_form(request)
+            google_calendar.create_event(token, calendar_id, title, start, end, all_day)
+            messages.success(request, f'"{title}" added to your calendar.')
+        except ValueError as e:
+            messages.error(request, str(e))
+        except google_calendar.GoogleCalendarWriteError as e:
+            messages.error(request, str(e))
+    return redirect(next_url)
+
+
+@login_required
+def calendar_event_update(request):
+    next_url = _safe_next(request)
+    staff_profile = getattr(request.user, 'staff_profile', None)
+    token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
+    if request.method == 'POST' and token:
+        event_id = request.POST.get('event_id', '').strip()
+        if not event_id:
+            messages.error(request, 'No event selected to update.')
+            return redirect(next_url)
+        try:
+            calendar_id, title, start, end, all_day = _parse_calendar_event_form(request)
+            google_calendar.update_event(token, calendar_id, event_id, title, start, end, all_day)
+            messages.success(request, f'"{title}" updated.')
+        except ValueError as e:
+            messages.error(request, str(e))
+        except google_calendar.GoogleCalendarWriteError as e:
+            messages.error(request, str(e))
+    return redirect(next_url)
+
+
+@login_required
+def calendar_event_delete(request):
+    next_url = _safe_next(request)
+    staff_profile = getattr(request.user, 'staff_profile', None)
+    token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
+    if request.method == 'POST' and token:
+        calendar_id = request.POST.get('calendar_id', '').strip()
+        event_id = request.POST.get('event_id', '').strip()
+        if calendar_id and event_id:
+            try:
+                google_calendar.delete_event(token, calendar_id, event_id)
+                messages.success(request, 'Event deleted.')
+            except google_calendar.GoogleCalendarWriteError as e:
+                messages.error(request, str(e))
     return redirect(next_url)
 
 
