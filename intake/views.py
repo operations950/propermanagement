@@ -236,7 +236,16 @@ def _run_command_in_background(name, *args):
     immediately — for admin-triggered commands (backfill, force-classify)
     that can take longer than a request/proxy timeout tolerates. Progress
     is only visible via Railway logs (both commands write their own
-    progress lines via self.stdout.write), not this response."""
+    progress lines via self.stdout.write), not this response.
+
+    sys.stdout is block-buffered when it's not a real terminal (true of
+    both this dev server's log capture and Railway's process supervisor),
+    so self.stdout.write() calls from a long-running background command sit
+    in the buffer and never actually reach the log until the buffer fills
+    or the whole process exits — for a long-lived web server, that's
+    effectively "never." Explicitly flushing after the command finishes (or
+    on failure) is what actually gets the output out."""
+    import sys
     import threading
 
     from django.core.management import call_command
@@ -246,6 +255,9 @@ def _run_command_in_background(name, *args):
             call_command(name, *args)
         except Exception:
             logger.exception('%s (background, admin-triggered) failed', name)
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -328,31 +340,25 @@ def quo_reset_candidates_trigger(request):
 @login_required
 @user_passes_test(_is_admin)
 def quo_analyze_contacts_count(request):
-    """Admin-only: runs analyze_recent_quo_contacts --count-only synchronously
-    (no Quo message fetch or Claude calls, just a handful of DB/API-list
-    queries — fast enough to answer inline) and surfaces the result as a
-    message instead of making the admin dig through Railway logs for a
-    single number. See the command's own docstring for what "qualifies".
+    """Admin-only: runs analyze_recent_quo_contacts --count-only in the
+    background. No longer synchronous — determining "qualifies" now means
+    crawling Quo's full conversation history plus a /v1/calls check per
+    remaining contact (see quo_contact_activity.py), which a large backlog
+    could take well past a request timeout to finish. Check Railway logs
+    for the resulting count.
 
     The include_staged checkbox passes --include-staged through, for the
     one-time case where a review-queue clear was immediately followed by the
     daily sync re-staging the same contacts before this pass ran."""
     if request.method == 'POST':
-        import io
-
-        from django.core.management import call_command
-
         args = ['--count-only']
         if request.POST.get('include_staged'):
             args.append('--include-staged')
-
-        buf = io.StringIO()
-        try:
-            call_command('analyze_recent_quo_contacts', *args, stdout=buf)
-            messages.success(request, buf.getvalue().strip() or 'Done — no output.')
-        except Exception:
-            logger.exception('analyze_recent_quo_contacts --count-only failed')
-            messages.error(request, 'Count failed — check Railway logs.')
+        _run_command_in_background('analyze_recent_quo_contacts', *args)
+        messages.success(
+            request,
+            'Counting qualifying Quo contacts in the background — check Railway logs for the result.',
+        )
     return redirect('contact_review')
 
 

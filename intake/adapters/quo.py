@@ -118,6 +118,44 @@ class QuoAdapter(IntakeAdapter):
         messages.sort(key=lambda m: m.get('createdAt', ''))
         return messages
 
+    def _list_phone_numbers(self):
+        """Every phone line this Quo account owns — this business runs THREE
+        (Primary/Backup/Evolve), not the one shared line the rest of this
+        adapter's docstring assumes, which matters for anything that needs
+        to check every line a contact might have called/texted (see
+        analyze_recent_quo_contacts.py). No pagination in practice (a
+        handful of numbers), but handle nextPageToken defensively anyway."""
+        numbers = []
+        page_token = None
+        while True:
+            params = {}
+            if page_token:
+                params['pageToken'] = page_token
+            data = self._get('/v1/phone-numbers', params)
+            numbers.extend(data.get('data', []))
+            page_token = data.get('nextPageToken')
+            if not page_token:
+                break
+        return numbers
+
+    def _list_calls(self, phone_number_id, participant):
+        """Call history for one (phoneNumberId, participant) pair — same
+        shape/pagination as _list_messages, but /v1/calls requires BOTH
+        params (a bare list with neither returns 400), so unlike
+        _list_conversations there's no cheap global crawl for calls."""
+        calls = []
+        page_token = None
+        while True:
+            params = {'phoneNumberId': phone_number_id, 'participants': [participant], 'maxResults': 50}
+            if page_token:
+                params['pageToken'] = page_token
+            data = self._get('/v1/calls', params)
+            calls.extend(data.get('data', []))
+            page_token = data.get('nextPageToken')
+            if not page_token:
+                break
+        return calls
+
     def _list_contacts(self):
         contacts = []
         page_token = None

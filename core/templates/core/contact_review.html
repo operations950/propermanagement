@@ -6,9 +6,11 @@
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> One-time baseline pass</h6>
         <p class="small text-muted mb-2">
-            Clear this queue out, then pull every Quo-saved contact we've actually exchanged messages
-            with in the last 12 months (and don't already have as a Contact) and AI-classify them from
-            their full 12-month history. Preview the count first — it's free and instant.
+            Import Quo's saved contacts, drop anyone who already matches an existing Contact, then check
+            Quo's own conversation and call history for real activity in the last 12 months. Contacts
+            we've texted get their conversation read and AI-classified by Claude; contacts with only a
+            phone call on file get staged with whatever's available. Anyone with neither is left alone.
+            Preview the count first — it still reads Quo's history so it's not instant, but it's free.
         </p>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <form method="post" action="{% url 'quo_analyze_contacts_count' %}" class="d-inline d-flex align-items-center gap-2">
@@ -16,9 +18,9 @@
                 <button type="submit" class="btn btn-outline-secondary btn-sm">Preview count (no changes)</button>
             </form>
             <form method="post" action="{% url 'quo_analyze_contacts_trigger' %}" class="d-inline"
-                  onsubmit="return confirm('Run the full 12-month analysis pass? This calls Claude once per qualifying contact and runs in the background — check Railway logs for progress.');">
+                  onsubmit="return confirm('Run Analyze Quo for Contacts? This calls Claude once per qualifying contact and runs in the background — check Railway logs for progress.');">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-outline-primary btn-sm">Run analysis pass</button>
+                <button type="submit" class="btn btn-primary btn-sm">Analyze Quo for Contacts</button>
             </form>
             <form method="post" action="{% url 'contact_candidates_clear_all' %}" class="d-inline"
                   onsubmit="return confirm('Permanently delete all {{ candidates|length }} pending contact candidate(s) below? This cannot be undone.');">
