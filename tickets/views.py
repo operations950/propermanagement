@@ -693,6 +693,11 @@ def _contractor_thread(ticket):
 
     entries = []
     if ticket.source_reference:
+        # Every message sent/received once a ticket is bound already lands
+        # in QuoMessage (send_via_quo echoes our own sends immediately; the
+        # webhook writes replies) — the FollowUpLog SMS rows below would
+        # double-count our own sends (FollowUpLog is written unconditionally
+        # as the audit trail, same as QuoMessage), so skip them here.
         from intake.models import QuoMessage
 
         has_quo_thread = True
@@ -707,8 +712,10 @@ def _contractor_thread(ticket):
             if at:
                 entries.append({'direction': m['direction'], 'body': m['body'], 'at': at})
 
-    for log in ticket.followups.filter(contact=contact, channel=FollowUpLog.Channel.SMS):
-        entries.append({'direction': 'out', 'body': log.body, 'at': timezone.localtime(log.sent_at)})
+        # Not bound yet — QuoMessage has nothing for this contact, so the
+        # only record of our own sends is the FollowUpLog audit trail.
+        for log in ticket.followups.filter(contact=contact, channel=FollowUpLog.Channel.SMS):
+            entries.append({'direction': 'out', 'body': log.body, 'at': timezone.localtime(log.sent_at)})
 
     entries.sort(key=lambda e: e['at'])
     return {'entries': entries, 'has_quo_thread': has_quo_thread}
