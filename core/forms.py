@@ -1,8 +1,20 @@
 from django import forms
+from django.contrib.auth.forms import AuthenticationForm
 
 from tickets.models import PropertyTemplateOverride
 
 from .models import Contact, Property, StaffProfile
+
+
+class EmailOrUsernameAuthenticationForm(AuthenticationForm):
+    """Relabels the login form's identifier field as Email — new accounts
+    log in with their email (see core.auth_backends), a few legacy accounts
+    without one on file yet can still type their original username."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username'].label = 'Email'
+        self.fields['username'].widget.attrs.update({'autofocus': True, 'autocomplete': 'email'})
 
 
 class PropertyTemplateOverrideForm(forms.ModelForm):

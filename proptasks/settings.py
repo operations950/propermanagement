@@ -114,6 +114,15 @@ else:
     }
 
 
+# EmailOrUsernameModelBackend (core/auth_backends.py) lets the login form's
+# single field take either an email or a legacy username — see its
+# docstring. ModelBackend stays listed as a fallback (harmless, same lookup
+# django.contrib.auth otherwise does by default) rather than removing it.
+AUTHENTICATION_BACKENDS = [
+    'core.auth_backends.EmailOrUsernameModelBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},

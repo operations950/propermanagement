@@ -2,10 +2,13 @@ import logging
 
 from django.conf import settings as django_settings
 from django.contrib import messages
+from django.contrib.auth import get_user_model, login as auth_login
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
@@ -17,9 +20,9 @@ from tickets.models import (
 from tickets.services import applicability
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
-from . import app_settings, google_calendar, places, usps
+from . import app_settings, google_calendar, google_login, places, usps
 from .duplicates import find_duplicate_groups, merge_all_into
-from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
+from .forms import ContactForm, EmailOrUsernameAuthenticationForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
     Contact, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal, GoogleCalendarToken, Property,
     PropertyAttribute, PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, TRADE_CHOICES,
@@ -38,6 +41,73 @@ def _safe_next(request, default='dashboard'):
     if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         return next_url
     return redirect(default).url
+
+
+class StaffLoginView(auth_views.LoginView):
+    """Plain auth_views.LoginView, but google_signon_configured is computed
+    per-request rather than baked in at urls.py import time — the
+    GOOGLE_OAUTH_CLIENT_ID/SECRET pair can change at runtime via
+    /admin-tools/ (see core/app_settings.py), so a static extra_context
+    would go stale until the next deploy/restart."""
+    template_name = 'registration/login.html'
+    authentication_form = EmailOrUsernameAuthenticationForm
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['google_signon_configured'] = google_login.is_configured()
+        return context
+
+
+def google_login_start(request):
+    """Kicks off Sign in with Google from the login page — a fresh identity
+    check each time (no offline access needed), unlike calendar_connect's
+    flow which requests a refresh token to use later."""
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    if not google_login.is_configured():
+        messages.error(request, 'Google sign-on isn\'t configured yet — log in with your email and password instead.')
+        return redirect('login')
+
+    flow = google_login.build_flow(request)
+    auth_url, state = flow.authorization_url(access_type='online', prompt='select_account')
+    request.session['google_login_state'] = state
+    return redirect(auth_url)
+
+
+def google_login_callback(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+
+    state = request.session.pop('google_login_state', None)
+    if not state or request.GET.get('state') != state:
+        messages.error(request, 'Google sign-on failed (session expired) — try again.')
+        return redirect('login')
+    if request.GET.get('error'):
+        messages.info(request, 'Google sign-on cancelled.')
+        return redirect('login')
+
+    flow = google_login.build_flow(request)
+    try:
+        flow.fetch_token(authorization_response=request.build_absolute_uri())
+    except Exception:
+        logger.exception('Google sign-on: token exchange failed')
+        messages.error(request, 'Google sign-on failed — please try again.')
+        return redirect('login')
+
+    email = google_login.email_from_credentials(flow.credentials)
+    if not email:
+        messages.error(request, 'Google didn\'t return a verified email address — try again or use your password.')
+        return redirect('login')
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(email__iexact=email, is_active=True)
+    except User.DoesNotExist:
+        messages.error(request, f'No staff account found for {email} — ask an admin to add your email to your account.')
+        return redirect('login')
+
+    auth_login(request, user, backend='core.auth_backends.EmailOrUsernameModelBackend')
+    return redirect('dashboard')
 
 
 @login_required
@@ -182,7 +252,13 @@ def admin_tools(request):
         }
         for key, label in app_settings.SECRET_KEYS
     ]
-    return render(request, 'core/admin_tools.html', {'properties': properties, 'secrets': secrets})
+    google_redirect_uris = [
+        request.build_absolute_uri(reverse(name))
+        for name in ('google_login_callback', 'calendar_callback', 'gmail_callback')
+    ]
+    return render(request, 'core/admin_tools.html', {
+        'properties': properties, 'secrets': secrets, 'google_redirect_uris': google_redirect_uris,
+    })
 
 
 @login_required

@@ -21,6 +21,15 @@
             </div>
             <button class="btn btn-outline-primary btn-sm mt-3" type="submit">Save changes</button>
         </form>
+        {% if google_redirect_uris %}
+        <hr class="my-3">
+        <p class="text-muted small mb-1">Google OAuth client's <strong>Authorized redirect URIs</strong> must include all of these (staff sign-on, calendar connect, gmail connect share one client):</p>
+        <ul class="text-muted small mb-0">
+        {% for uri in google_redirect_uris %}
+            <li><code>{{ uri }}</code></li>
+        {% endfor %}
+        </ul>
+        {% endif %}
     </div>
 </div>
 
