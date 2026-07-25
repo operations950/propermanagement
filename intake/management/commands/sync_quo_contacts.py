@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 
 from core.models import Contact, ContactImportCandidate, ContactUpdateCandidate
 from intake.adapters.quo import QuoAdapter
-from messaging.services import _to_e164
+from messaging.services import _to_dash_format, _to_e164
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class Command(BaseCommand):
         }
         pending_emails = {e.lower() for e in pending.exclude(email='').values_list('email', flat=True)}
 
-        created = updates_flagged = backfilled = 0
+        created = updates_flagged = backfilled = skipped_nameless = 0
         for c in contacts:
             external_id = c.get('id') or ''
             if not external_id:
@@ -102,8 +102,8 @@ class Command(BaseCommand):
                     contact=contact, status=ContactUpdateCandidate.Status.PENDING,
                 ).exists():
                     ContactUpdateCandidate.objects.create(
-                        contact=contact, proposed_name=name or contact.name, proposed_phone=phone,
-                        proposed_email=email,
+                        contact=contact, proposed_name=name or contact.name,
+                        proposed_phone=_to_dash_format(phone), proposed_email=email,
                         raw_context=(
                             f'Quo contact changed as of {quo_updated_at.date() if quo_updated_at else "recently"} '
                             f'— was "{contact.name}" / {contact.phone or "no phone"} / {contact.email or "no email"}.'
@@ -120,9 +120,18 @@ class Command(BaseCommand):
             ):
                 continue
 
+            if not name and not company:
+                # No first/last name AND no company on file — just a bare phone number Quo
+                # auto-saved (e.g. someone who texted the line once), not what staff mean by
+                # "a saved contact." Never worth a review-queue slot; if this person matters,
+                # a real inbound message still creates a real Contact via the live ticket
+                # pipeline (intake/classifier.py) regardless of whether they're staged here.
+                skipped_nameless += 1
+                continue
+
             ContactImportCandidate.objects.create(
-                source=Contact.Source.QUO, external_id=external_id, name=name or phone or email,
-                phone=phone, email=email,
+                source=Contact.Source.QUO, external_id=external_id, name=name or company,
+                phone=_to_dash_format(phone), email=email,
                 suggested_contact_type=Contact.ContactType.VENDOR if company else Contact.ContactType.OTHER,
                 raw_context=f'Company on file (Quo): {company}' if company else 'Saved Quo contact, no company on file.',
             )
@@ -135,5 +144,6 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f'Staged {created} new contact candidate(s), flagged {updates_flagged} contact update(s) for '
-            f'review, linked {backfilled} pre-existing contact(s) to their Quo id.'
+            f'review, linked {backfilled} pre-existing contact(s) to their Quo id, skipped {skipped_nameless} '
+            f'nameless bare-phone contact(s).'
         ))

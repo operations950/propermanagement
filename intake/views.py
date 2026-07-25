@@ -306,3 +306,16 @@ def quo_reconcile_candidates_trigger(request):
         _run_command_in_background('reconcile_pending_quo_candidates')
         messages.success(request, 'Reconciling pending Quo candidates in the background — check Railway logs for progress.')
     return redirect('quo_webhook_log')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_reset_candidates_trigger(request):
+    """Admin-only, one-time: wipes the entire pending Quo review queue
+    outright (not a reject) so it can be repopulated cleanly by re-running
+    the sync now that phone formatting and nameless-contact filtering are
+    fixed. See reset_pending_quo_candidates's docstring."""
+    if request.method == 'POST':
+        _run_command_in_background('reset_pending_quo_candidates')
+        messages.success(request, 'Clearing the pending Quo review queue in the background — check Railway logs, then run the sync again.')
+    return redirect('quo_webhook_log')

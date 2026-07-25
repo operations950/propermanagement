@@ -15,5 +15,9 @@ urlpatterns = [
         'webhooks/quo/log/reconcile-contacts/', views.quo_reconcile_candidates_trigger,
         name='quo_reconcile_candidates_trigger',
     ),
+    path(
+        'webhooks/quo/log/reset-contacts/', views.quo_reset_candidates_trigger,
+        name='quo_reset_candidates_trigger',
+    ),
     path('webhooks/quo/<str:token>/', views.quo_webhook, name='quo_webhook'),
 ]

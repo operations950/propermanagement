@@ -24,6 +24,10 @@
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-warning btn-sm">Reconcile duplicate candidates</button>
         </form>
+        <form method="post" action="{% url 'quo_reset_candidates_trigger' %}" onsubmit="return confirm('This permanently deletes EVERY pending Quo contact candidate so the review queue can be rebuilt from scratch with the phone-format and nameless-contact fixes. Continue?');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">Reset Quo review queue</button>
+        </form>
     </div>
 </div>
 <p class="small mb-3" style="color: var(--ink-muted);">

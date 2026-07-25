@@ -29,6 +29,24 @@ def _to_e164(phone):
     return ''
 
 
+def _to_dash_format(phone):
+    """Best-effort conversion to core.models.phone_validator's XXX-XXX-XXXX
+    shape, tolerant of E.164 (Quo's API always returns this) or any other
+    digit-bearing shape. Returns '' when it can't confidently normalize —
+    used when STAGING a phone number (e.g. sync_quo_contacts) so the value
+    already matches what the review form's is_valid_phone check requires,
+    instead of leaving Quo's raw +1XXXXXXXXXX in place and having approval
+    silently fail until a human manually retypes it."""
+    if not phone:
+        return ''
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) == 11 and digits.startswith('1'):
+        digits = digits[1:]
+    if len(digits) != 10:
+        return ''
+    return f'{digits[0:3]}-{digits[3:6]}-{digits[6:10]}'
+
+
 def fetch_quo_conversation(contact):
     """Recent Quo messages with this contact, live from Quo's API — or
     None if no Quo conversation has ever been linked to their phone number
