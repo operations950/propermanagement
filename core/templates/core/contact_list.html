@@ -9,6 +9,11 @@
             <i data-lucide="circle-alert" class="icon"></i> {{ pending_review_count }} to review
         </a>
         {% endif %}
+        {% if duplicate_group_count %}
+        <a href="{% url 'contact_duplicates' %}" class="btn btn-outline-danger d-flex align-items-center gap-1">
+            <i data-lucide="copy" class="icon"></i> {{ duplicate_group_count }} possible duplicate{{ duplicate_group_count|pluralize }}
+        </a>
+        {% endif %}
         <a href="{% url 'contact_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New contact</a>
     </div>
 </div>

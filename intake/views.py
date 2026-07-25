@@ -282,3 +282,14 @@ def quo_classify_contacts_trigger(request):
         _run_command_in_background('classify_pending_contacts')
         messages.success(request, 'Contact classification pass started in the background — check Railway logs for progress.')
     return redirect('quo_webhook_log')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_sync_contacts_trigger(request):
+    """Admin-only: force an immediate sync_quo_contacts pass instead of
+    waiting for its daily schedule (settings.QUO_CONTACT_SYNC_INTERVAL_MINUTES)."""
+    if request.method == 'POST':
+        _run_command_in_background('sync_quo_contacts')
+        messages.success(request, 'Quo contact sync started in the background — check Railway logs for progress.')
+    return redirect('quo_webhook_log')

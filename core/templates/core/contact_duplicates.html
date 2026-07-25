@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Duplicate contacts{% endblock %}
+{% block content %}
+<h2 class="page-title my-3">Possible duplicate contacts ({{ groups|length }})</h2>
+<p class="text-muted">Contacts sharing the same phone or email. Pick which one to keep — the others' tickets, properties, and history move onto it and they're removed. If these are actually different people (e.g. a shared office line), mark them not duplicates instead.</p>
+
+{% for group in groups %}
+<div class="card mb-3">
+    <div class="card-body">
+        <span class="badge rounded-pill bg-light text-dark border mb-2">Same {{ group.key_type }}: {{ group.key }}</span>
+        <form method="post" action="{% url 'contact_duplicates_merge' %}">
+            {% csrf_token %}
+            <div class="table-responsive mb-2">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th></th><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Properties</th><th>Source</th><th>Created</th></tr></thead>
+                <tbody>
+                {% for c in group.contacts %}
+                <tr>
+                    <td><input type="radio" name="primary_id" value="{{ c.pk }}" {% if forloop.first %}checked{% endif %} required></td>
+                    <td class="fw-medium"><input type="hidden" name="contact_ids" value="{{ c.pk }}">{{ c.name }}</td>
+                    <td>{{ c.get_contact_type_display }}</td>
+                    <td>{{ c.phone|default:"—" }}</td>
+                    <td>{{ c.email|default:"—" }}</td>
+                    <td>{% for p in c.properties.all %}<span class="badge rounded-pill bg-light text-dark border">{{ p.name }}</span> {% empty %}—{% endfor %}</td>
+                    <td>{{ c.get_source_display }}</td>
+                    <td class="text-muted small">{{ c.created_at|date:"M j, Y" }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            <button class="btn btn-success btn-sm" type="submit" onclick="return confirm('Merge the other contact(s) into the one you picked? This can\'t be undone.');">
+                <i data-lucide="merge" class="icon"></i> Merge into selected
+            </button>
+        </form>
+        <form method="post" action="{% url 'contact_duplicates_dismiss' %}" class="d-inline">
+            {% csrf_token %}
+            {% for c in group.contacts %}<input type="hidden" name="contact_ids" value="{{ c.pk }}">{% endfor %}
+            <button class="btn btn-link btn-sm text-muted" type="submit"><i data-lucide="x" class="icon"></i> Not duplicates</button>
+        </form>
+    </div>
+</div>
+{% empty %}
+<div class="card">
+    <div class="card-body text-center py-5" style="color: var(--ink-muted);">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+        No duplicate contacts found.
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

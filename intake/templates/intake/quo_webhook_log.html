@@ -16,6 +16,10 @@
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-primary btn-sm">Classify pending contacts</button>
         </form>
+        <form method="post" action="{% url 'quo_sync_contacts_trigger' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Sync Quo contacts now</button>
+        </form>
     </div>
 </div>
 <p class="small mb-3" style="color: var(--ink-muted);">

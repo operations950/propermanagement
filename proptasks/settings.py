@@ -218,6 +218,11 @@ QUO_POLL_INTERVAL_MINUTES = int(os.environ.get('QUO_POLL_INTERVAL_MINUTES', '5')
 # slower/decoupled on purpose so a conversation gets a chance to develop
 # before being judged, and so Claude isn't re-run on every single message).
 QUO_CLASSIFY_INTERVAL_MINUTES = int(os.environ.get('QUO_CLASSIFY_INTERVAL_MINUTES', '120'))
+# How often sync_quo_contacts checks Quo's saved contact list for brand-new
+# contacts and edits to already-approved ones — a person's own info changes
+# far less often than conversation content, so this defaults to once a day
+# rather than riding the classify interval.
+QUO_CONTACT_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUO_CONTACT_SYNC_INTERVAL_MINUTES', '1440'))
 # The Quo line to send a contact's very first message from, when they have no
 # existing thread yet (see messaging.services.send_via_quo) — an established
 # thread still always sends from whichever line that contact already talks

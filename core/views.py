@@ -17,10 +17,12 @@ from tickets.services import applicability
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
 from . import google_calendar, places, usps
+from .duplicates import find_duplicate_groups, merge_all_into
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
-    Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
-    PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, is_valid_phone, properties_by_type,
+    Contact, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal, GoogleCalendarToken, Property,
+    PropertyAttribute, PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, is_valid_phone,
+    properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -384,9 +386,11 @@ def contact_list(request):
         'type_choices': Contact.ContactType.choices,
         'q': q,
         'selected_type': selected_type,
-        'pending_review_count': ContactImportCandidate.objects.filter(
-            status=ContactImportCandidate.Status.PENDING,
-        ).count(),
+        'pending_review_count': (
+            ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING).count()
+            + ContactUpdateCandidate.objects.filter(status=ContactUpdateCandidate.Status.PENDING).count()
+        ),
+        'duplicate_group_count': len(find_duplicate_groups()),
     })
 
 
@@ -434,8 +438,12 @@ def contact_edit(request, pk):
 @login_required
 def contact_review(request):
     candidates = ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
+    update_candidates = ContactUpdateCandidate.objects.filter(
+        status=ContactUpdateCandidate.Status.PENDING,
+    ).select_related('contact')
     return render(request, 'core/contact_review.html', {
         'candidates': candidates,
+        'update_candidates': update_candidates,
         'type_choices': Contact.ContactType.choices,
         'properties_by_type': properties_by_type(),
     })
@@ -503,6 +511,70 @@ def contact_review_reject(request, pk):
         candidate.save()
         messages.success(request, f'Rejected "{candidate.name}".')
     return redirect('contact_review')
+
+
+@login_required
+def contact_update_apply(request, pk):
+    update = get_object_or_404(
+        ContactUpdateCandidate, pk=pk, status=ContactUpdateCandidate.Status.PENDING,
+    )
+    if request.method == 'POST':
+        contact = update.contact
+        if update.proposed_name:
+            contact.name = update.proposed_name
+        if update.proposed_phone:
+            contact.phone = update.proposed_phone
+        if update.proposed_email:
+            contact.email = update.proposed_email
+        contact.save(update_fields=['name', 'phone', 'email'])
+        update.status = ContactUpdateCandidate.Status.APPLIED
+        update.resolved_at = timezone.now()
+        update.resolved_by = request.user
+        update.save()
+        messages.success(request, f'Updated "{contact.name}" from Quo.')
+    return redirect('contact_review')
+
+
+@login_required
+def contact_update_dismiss(request, pk):
+    update = get_object_or_404(
+        ContactUpdateCandidate, pk=pk, status=ContactUpdateCandidate.Status.PENDING,
+    )
+    if request.method == 'POST':
+        update.status = ContactUpdateCandidate.Status.DISMISSED
+        update.resolved_at = timezone.now()
+        update.resolved_by = request.user
+        update.save()
+        messages.success(request, f'Dismissed the proposed update for "{update.contact.name}".')
+    return redirect('contact_review')
+
+
+@login_required
+def contact_duplicates(request):
+    return render(request, 'core/contact_duplicates.html', {'groups': find_duplicate_groups()})
+
+
+@login_required
+def contact_duplicates_merge(request):
+    if request.method == 'POST':
+        primary_id = request.POST.get('primary_id')
+        contact_ids = request.POST.getlist('contact_ids')
+        if primary_id and len(contact_ids) > 1:
+            primary = merge_all_into(primary_id, contact_ids)
+            messages.success(request, f'Merged {len(contact_ids) - 1} duplicate(s) into "{primary.name}".')
+    return redirect('contact_duplicates')
+
+
+@login_required
+def contact_duplicates_dismiss(request):
+    if request.method == 'POST':
+        import itertools
+
+        contacts = list(Contact.objects.filter(pk__in=request.POST.getlist('contact_ids')))
+        for c1, c2 in itertools.combinations(contacts, 2):
+            DuplicateDismissal.record(c1, c2, user=request.user)
+        messages.success(request, 'Marked as not duplicates.')
+    return redirect('contact_duplicates')
 
 
 def _template_source_label(template, prop, override, assigned_attribute_ids):

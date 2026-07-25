@@ -672,6 +672,34 @@ def _parse_quo_timestamp(iso_str):
     return timezone.localtime(dt) if timezone.is_aware(dt) else timezone.make_aware(dt)
 
 
+def _relevant_message_ids(ticket, messages):
+    """Which of this bound conversation's QuoMessages Claude judges
+    on-topic for THIS ticket — a Quo conversation is per contact, not per
+    issue, so one contractor's thread can carry several concurrent or
+    long-past jobs mixed together (see intake/relevance_classifier.py).
+    Returns None (never hide anything) when there's too little history to
+    bother, the API key isn't configured, or the call fails. Cached per
+    (ticket, latest message id) so the 20s Contractor Communication poll
+    doesn't re-run Claude on every tick — only when a new message arrives."""
+    from intake.relevance_classifier import MIN_MESSAGES, classify_message_relevance
+
+    if len(messages) < MIN_MESSAGES:
+        return None
+
+    from django.core.cache import cache
+
+    cache_key = f'ticket_msg_relevance:{ticket.pk}:{messages[-1].pk}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    verdict = classify_message_relevance(ticket, messages)
+    if verdict is None:
+        return None
+    cache.set(cache_key, verdict.related_ids, 60 * 30)
+    return verdict.related_ids
+
+
 def _contractor_thread(ticket):
     """Chronological, merged view of Quo messages with this ticket's
     assigned contact plus this app's own logged SMS sends to them, for the
@@ -701,21 +729,28 @@ def _contractor_thread(ticket):
         from intake.models import QuoMessage
 
         has_quo_thread = True
-        for m in QuoMessage.objects.filter(conversation_id=ticket.source_reference):
+        messages_qs = list(
+            QuoMessage.objects.filter(conversation_id=ticket.source_reference).order_by('quo_created_at')
+        )
+        related_ids = _relevant_message_ids(ticket, messages_qs)
+        for m in messages_qs:
             if m.quo_created_at:
-                entries.append({'direction': m.direction, 'body': m.body, 'at': timezone.localtime(m.quo_created_at)})
+                entries.append({
+                    'direction': m.direction, 'body': m.body, 'at': timezone.localtime(m.quo_created_at),
+                    'related': True if related_ids is None else (m.pk in related_ids),
+                })
     else:
         quo_messages = fetch_quo_conversation(contact)
         has_quo_thread = quo_messages is not None
         for m in (quo_messages or []):
             at = _parse_quo_timestamp(m.get('at', ''))
             if at:
-                entries.append({'direction': m['direction'], 'body': m['body'], 'at': at})
+                entries.append({'direction': m['direction'], 'body': m['body'], 'at': at, 'related': True})
 
         # Not bound yet — QuoMessage has nothing for this contact, so the
         # only record of our own sends is the FollowUpLog audit trail.
         for log in ticket.followups.filter(contact=contact, channel=FollowUpLog.Channel.SMS):
-            entries.append({'direction': 'out', 'body': log.body, 'at': timezone.localtime(log.sent_at)})
+            entries.append({'direction': 'out', 'body': log.body, 'at': timezone.localtime(log.sent_at), 'related': True})
 
     entries.sort(key=lambda e: e['at'])
     return {'entries': entries, 'has_quo_thread': has_quo_thread}

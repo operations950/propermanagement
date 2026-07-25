@@ -176,6 +176,7 @@ class Contact(models.Model):
         MANUAL = 'manual', 'Manual'
         QUO = 'quo', 'Quo'
         GMAIL = 'gmail', 'Gmail'
+        YARDI = 'yardi', 'Yardi'
 
     name = models.CharField(max_length=200)
     contact_type = models.CharField(max_length=20, choices=ContactType.choices, default=ContactType.OTHER)
@@ -194,6 +195,18 @@ class Contact(models.Model):
         max_length=20, choices=Source.choices, default=Source.MANUAL,
         help_text='Where this contact came from — set automatically, kept for provenance/audit.',
     )
+    quo_external_id = models.CharField(
+        max_length=64, blank=True, db_index=True,
+        help_text="This contact's stable id in Quo's own Contacts API — lets sync_quo_contacts match "
+                   'this row on future runs even if name/phone/email later change in Quo, and detect '
+                   'when Quo\'s own record has been edited since (see quo_updated_at).',
+    )
+    quo_updated_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Quo's own updatedAt for this contact as of the last sync — a newer value on the next "
+                   'sync means something changed there, which stages a ContactUpdateCandidate for '
+                   'review rather than silently overwriting this row.',
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -210,7 +223,7 @@ class ContactImportCandidate(models.Model):
     gate by design: nothing from an import is usable anywhere in the app
     (ticket pickers, property pages, assignment) until it's promoted. See
     core/views.py's contact_review/_approve/_reject and the
-    import_quo_contacts/import_gmail_contacts management commands.
+    sync_quo_contacts/import_gmail_contacts management commands.
 
     Deliberately no unique constraint on phone/email — both are optional
     here, and dedup against existing Contacts/other pending candidates is
@@ -222,6 +235,12 @@ class ContactImportCandidate(models.Model):
         REJECTED = 'rejected', 'Rejected'
 
     source = models.CharField(max_length=20, choices=Contact.Source.choices)
+    external_id = models.CharField(
+        max_length=64, blank=True, db_index=True,
+        help_text="The source system's own stable id for this contact (Quo's contact id, currently) — "
+                   'lets sync_quo_contacts recognize "already staged, still pending" without relying on '
+                   'phone/email, which can change.',
+    )
     name = models.CharField(max_length=200, blank=True)
     phone = models.CharField(max_length=30, blank=True)
     email = models.EmailField(blank=True)
@@ -254,6 +273,66 @@ class ContactImportCandidate(models.Model):
 
     def __str__(self):
         return f'{self.name or self.phone or self.email} ({self.get_source_display()}, {self.get_status_display()})'
+
+
+class ContactUpdateCandidate(models.Model):
+    """A proposed edit to an already-approved, already-in-use Contact,
+    staged for review rather than applied automatically — see
+    sync_quo_contacts. Different from ContactImportCandidate (a brand new
+    person awaiting first approval): this Contact already exists and may
+    be linked to tickets/properties/follow-ups, so silently overwriting it
+    from an external source on a daily timer would be a real regression,
+    not a convenience. Staff see old vs. proposed side by side and choose
+    to apply or dismiss."""
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending review'
+        APPLIED = 'applied', 'Applied'
+        DISMISSED = 'dismissed', 'Dismissed'
+
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='pending_updates')
+    proposed_name = models.CharField(max_length=200, blank=True)
+    proposed_phone = models.CharField(max_length=30, blank=True)
+    proposed_email = models.EmailField(blank=True)
+    raw_context = models.TextField(blank=True, help_text='What changed in Quo, for the reviewer.')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Update for {self.contact.name} ({self.get_status_display()})'
+
+
+class DuplicateDismissal(models.Model):
+    """Staff said 'these two are not actually the same person' on the
+    duplicate-contacts screen — remembered so that pair stops being
+    flagged on every future scan. Stored as an unordered pair (always
+    saved with contact_a_id < contact_b_id) so a dismissal is found
+    regardless of which contact core.duplicates scans first."""
+    contact_a = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='+')
+    contact_b = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='+')
+    dismissed_at = models.DateTimeField(auto_now_add=True)
+    dismissed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        unique_together = [('contact_a', 'contact_b')]
+
+    @classmethod
+    def record(cls, contact_1, contact_2, user=None):
+        a, b = sorted([contact_1.pk, contact_2.pk])
+        cls.objects.get_or_create(contact_a_id=a, contact_b_id=b, defaults={'dismissed_by': user})
+
+    @classmethod
+    def is_dismissed(cls, contact_1, contact_2):
+        a, b = sorted([contact_1.pk, contact_2.pk])
+        return cls.objects.filter(contact_a_id=a, contact_b_id=b).exists()
 
 
 class StaffProfile(models.Model):

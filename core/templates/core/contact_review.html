@@ -1,6 +1,45 @@
 {% extends 'base.html' %}
 {% block title %}Contacts to review{% endblock %}
 {% block content %}
+{% if update_candidates %}
+<h2 class="page-title my-3">Contact updates ({{ update_candidates|length }})</h2>
+<p class="text-muted">These contacts already exist and are in use — their info changed in Quo since we last synced. Apply to update the real Contact, or dismiss to keep what's on file.</p>
+{% for u in update_candidates %}
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="badge rounded-pill bg-light text-dark border">Quo update</span>
+            <span class="text-muted small">{{ u.created_at|date:"M j, Y" }}</span>
+        </div>
+        <p class="text-muted small mb-2">{{ u.raw_context }}</p>
+        <div class="row g-2 mb-3">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Name</label>
+                <div class="form-control-plaintext py-0">{{ u.contact.name }} <i data-lucide="arrow-right" class="icon"></i> <strong>{{ u.proposed_name|default:u.contact.name }}</strong></div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Phone</label>
+                <div class="form-control-plaintext py-0">{{ u.contact.phone|default:"—" }} {% if u.proposed_phone and u.proposed_phone != u.contact.phone %}<i data-lucide="arrow-right" class="icon"></i> <strong>{{ u.proposed_phone }}</strong>{% endif %}</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Email</label>
+                <div class="form-control-plaintext py-0">{{ u.contact.email|default:"—" }} {% if u.proposed_email and u.proposed_email != u.contact.email %}<i data-lucide="arrow-right" class="icon"></i> <strong>{{ u.proposed_email }}</strong>{% endif %}</div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'contact_update_apply' u.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button class="btn btn-success btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Apply</button>
+        </form>
+        <form method="post" action="{% url 'contact_update_dismiss' u.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button class="btn btn-link btn-sm text-danger" type="submit"><i data-lucide="x" class="icon"></i> Dismiss</button>
+        </form>
+    </div>
+</div>
+{% endfor %}
+<hr class="my-4">
+{% endif %}
+
 <h2 class="page-title my-3">Contacts to review ({{ candidates|length }})</h2>
 <p class="text-muted">Imported from Quo/Gmail — not usable anywhere in the app (ticket pickers, property pages) until approved. Edit any field before approving if the import got something wrong.</p>
 
