@@ -67,6 +67,22 @@ def _ticket_urgency_key(ticket, now):
     return (overdue_first, priority_rank, due)
 
 
+def _apply_due_date_change(ticket, new_due_date):
+    """Sets ticket.due_date and updates the delayed/previous_due_date pair
+    to match — shared by ticket_set_due_date and the Deferred status
+    change (see ticket_set_status), since both are "the due date got
+    pushed" from the user's point of view and should flag the same way.
+    Does NOT save() — caller decides which fields to persist."""
+    old_due_date = ticket.due_date
+    ticket.due_date = new_due_date
+    if old_due_date and new_due_date and new_due_date > old_due_date:
+        ticket.delayed = True
+        ticket.previous_due_date = old_due_date
+    elif ticket.delayed and new_due_date and ticket.previous_due_date and new_due_date <= ticket.previous_due_date:
+        ticket.delayed = False
+        ticket.previous_due_date = None
+
+
 def _daily_checklist_key(ticket, now):
     """Sort key for a department dashboard's Today list — plain urgency
     order. A ticket closed via "Close No Follow-Up" is struck through in
@@ -100,6 +116,7 @@ def dashboard(request):
                 1 for t in role_tickets
                 if t.due_date and timezone.localtime(t.due_date).date() < timezone.localtime(now).date()
             ),
+            'delayed_count': sum(1 for t in role_tickets if t.delayed),
         })
 
     pending_property_count = (
@@ -608,21 +625,28 @@ def ticket_quick_edit(request, pk):
 
 @login_required
 def ticket_set_due_date(request, pk):
-    """Inline due-date edit — from the tickets list (next_qs present) or
-    from a department dashboard's "needs a due date" box (next_role
-    present, since that's not a ticket_list request at all)."""
+    """Inline due-date edit — from the tickets list (next_qs present), a
+    department dashboard's "needs a due date" box (next_role present), or
+    ticket detail's Edit Due Date bubble-lock control (next_ticket_detail
+    present). Pushing an already-set due_date later flags the ticket
+    delayed and keeps the old value in previous_due_date for the
+    translucent/struck-through display (see ticket_detail.html) — moving
+    it back to or before that value clears the flag. Assigning a first
+    due_date (old_due_date was None) is never itself a delay."""
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
         raw = request.POST.get('due_date', '')
+        new_due_date = None
         if raw:
             parsed = parse_date(raw)
             if parsed:
-                ticket.due_date = timezone.make_aware(datetime.combine(parsed, datetime.min.time()))
-        else:
-            ticket.due_date = None
-        ticket.save(update_fields=['due_date'])
+                new_due_date = timezone.make_aware(datetime.combine(parsed, datetime.min.time()))
+        _apply_due_date_change(ticket, new_due_date)
+        ticket.save(update_fields=['due_date', 'delayed', 'previous_due_date'])
     if 'next_qs' in request.POST:
         return _list_redirect(request)
+    if 'next_ticket_detail' in request.POST:
+        return redirect('ticket_detail', pk=pk)
     next_role = request.POST.get('next_role')
     if next_role in StaffProfile.Role.values:
         return redirect('department_dashboard', role=next_role)
@@ -1352,7 +1376,7 @@ def ticket_set_status(request, pk):
             ticket.status = new_status
             ticket.status_reason = status_reason
             if new_status == Ticket.Status.DEFERRED:
-                ticket.due_date = new_due_date
+                _apply_due_date_change(ticket, new_due_date)
             if new_status == Ticket.Status.COMPLETED:
                 ticket.completed_at = timezone.now()
             if new_status == Ticket.Status.CANCELLED:

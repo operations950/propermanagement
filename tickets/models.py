@@ -331,6 +331,18 @@ class Ticket(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
 
     due_date = models.DateTimeField(null=True, blank=True)
+    delayed = models.BooleanField(
+        default=False,
+        help_text='True once due_date has been pushed later via the Edit Due Date action — a lesser '
+                   'flag than Overdue, meant to surface "we said we\'d push through this by X and '
+                   'didn\'t" separately from genuinely missed work.',
+    )
+    previous_due_date = models.DateTimeField(
+        null=True, blank=True,
+        help_text='The due_date immediately before the most recent push-back — shown translucent/'
+                   'struck-through next to the new date. Cleared (along with delayed) if due_date is '
+                   'ever moved back to or before this value.',
+    )
 
     created_from_template = models.ForeignKey(
         TicketTemplate, on_delete=models.SET_NULL, null=True, blank=True, related_name='generated_tickets',

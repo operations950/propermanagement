@@ -86,7 +86,35 @@
             <div class="card-body">
                 <p style="white-space: pre-wrap;">{{ ticket.description|default:'No description.' }}</p>
                 <p class="mb-1"><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
-                <p class="mb-1"><strong>Due:</strong> {{ ticket.due_date|default:'—' }}</p>
+                <div class="mb-1 d-flex align-items-center gap-2 flex-wrap" data-due-date-field>
+                    <strong>Due:</strong>
+                    {% if ticket.delayed and ticket.previous_due_date %}
+                    <span style="text-decoration: line-through; opacity: 0.5;" title="Pushed back from this date">{{ ticket.previous_due_date|date:"M j, Y" }}</span>
+                    <i data-lucide="arrow-right" class="icon" style="width: 0.8rem; height: 0.8rem;"></i>
+                    {% endif %}
+                    <span data-due-date-display>{{ ticket.due_date|date:"M j, Y"|default:'—' }}</span>
+                    {% if ticket.delayed %}
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 18%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 40%, white);">Delayed</span>
+                    {% endif %}
+                    <button type="button" class="btn btn-link btn-sm p-0" data-due-date-toggle><i data-lucide="pencil" class="icon" style="width: 0.8rem; height: 0.8rem;"></i></button>
+                    <form method="post" action="{% url 'ticket_set_due_date' ticket.pk %}" class="d-none align-items-center gap-2" data-due-date-form>
+                        {% csrf_token %}
+                        <input type="hidden" name="next_ticket_detail" value="1">
+                        <input type="date" name="due_date" class="form-control form-control-sm" style="max-width: 160px;" value="{{ ticket.due_date|date:'Y-m-d' }}">
+                        <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+                    </form>
+                </div>
+                <script>
+                    (function () {
+                        var field = document.querySelector('[data-due-date-field]');
+                        var toggle = field.querySelector('[data-due-date-toggle]');
+                        var form = field.querySelector('[data-due-date-form]');
+                        toggle.addEventListener('click', function () {
+                            form.classList.toggle('d-none');
+                            form.classList.toggle('d-flex');
+                        });
+                    })();
+                </script>
                 <p class="mb-1"><strong>Assigned to:</strong> {{ ticket.assignee_label }}</p>
                 {% if ticket.resolution_notes %}
                     <p class="mb-1"><strong>Resolution notes:</strong> {{ ticket.resolution_notes }}</p>

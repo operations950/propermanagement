@@ -61,6 +61,9 @@
                     {% if box.overdue_count %}
                     <span class="fw-semibold" style="font-size: 0.8rem; color: var(--status-critical);">{{ box.overdue_count }} overdue</span>
                     {% endif %}
+                    {% if box.delayed_count %}
+                    <span class="fw-semibold" style="font-size: 0.8rem; color: color-mix(in srgb, var(--status-warning) 60%, black);">{{ box.delayed_count }} delayed</span>
+                    {% endif %}
                     <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ box.total }}</span>
                 </span>
             </a>
