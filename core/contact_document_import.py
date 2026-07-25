@@ -4,7 +4,7 @@ import logging
 
 from django.conf import settings
 
-from .models import Contact
+from .models import Contact, Property
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,17 @@ EXTRACT_CONTACTS_TOOL = {
                             'description': 'Only if contact_type is vendor: their trade (plumbing, HVAC, '
                                             'cleaning, handyman, landscaping, etc). Empty string otherwise.',
                         },
+                        'property_name': {
+                            'type': ['string', 'null'],
+                            'description': (
+                                'Best-guess property from the provided list this contact belongs to — e.g. '
+                                'the document is titled or grouped by one property/association, or a column '
+                                'names it directly. Null if the document covers many properties with no way '
+                                'to tell which one this specific contact belongs to, or names none at all.'
+                            ),
+                        },
                     },
-                    'required': ['name', 'phone', 'email', 'contact_type', 'trade'],
+                    'required': ['name', 'phone', 'email', 'contact_type', 'trade', 'property_name'],
                 },
             },
         },
@@ -60,7 +69,9 @@ Extract every contact (person or business) mentioned in the attached document, f
 management company importing them into its contact list. This might be a vendor list, a board \
 roster, a spreadsheet of tenants, a photo of a business card, or anything similar — pull out \
 everyone who has at least a name and either a phone number or an email address. Skip anything \
-that isn't actually a contact (page headers, notes, a bare address with no name attached).\
+that isn't actually a contact (page headers, notes, a bare address with no name attached).
+
+Known properties: {property_names}\
 """
 
 
@@ -120,14 +131,19 @@ def _file_to_content_blocks(data, content_type, filename):
 
 def extract_contacts_from_document(uploaded_file):
     """Sends an uploaded file to Claude and returns a list of extracted
-    contact dicts (name/phone/email/contact_type/trade). Nothing is saved
-    here — the caller shows these to the staff member to edit/exclude/
-    accept before anything becomes a real Contact."""
+    contact dicts (name/phone/email/contact_type/trade/property_id/
+    property_name). Nothing is saved here — the caller shows these to the
+    staff member to edit/exclude/accept before anything becomes a real
+    Contact."""
     if not settings.ANTHROPIC_API_KEY:
         raise DocumentImportError('ANTHROPIC_API_KEY is not configured — document import is unavailable.')
 
     data = uploaded_file.read()
     content_blocks = _file_to_content_blocks(data, uploaded_file.content_type, uploaded_file.name)
+
+    properties = list(Property.objects.filter(is_active=True).order_by('name'))
+    property_names = [p.name for p in properties]
+    properties_by_name = {p.name: p for p in properties}
 
     import anthropic
 
@@ -138,7 +154,13 @@ def extract_contacts_from_document(uploaded_file):
             max_tokens=4096,
             tools=[EXTRACT_CONTACTS_TOOL],
             tool_choice={'type': 'tool', 'name': 'extract_contacts'},
-            messages=[{'role': 'user', 'content': content_blocks + [{'type': 'text', 'text': PROMPT}]}],
+            messages=[{
+                'role': 'user',
+                'content': content_blocks + [{
+                    'type': 'text',
+                    'text': PROMPT.format(property_names=', '.join(property_names) or '(none configured)'),
+                }],
+            }],
         )
     except Exception:
         logger.exception('Claude API call failed during document contact import')
@@ -151,4 +173,9 @@ def extract_contacts_from_document(uploaded_file):
     contacts = tool_use.input.get('contacts') or []
     if not contacts:
         raise DocumentImportError('No contacts were found in this document.')
+
+    for c in contacts:
+        prop = properties_by_name.get(c.get('property_name') or '')
+        c['property_id'] = prop.pk if prop else None
+        c['property_name'] = prop.name if prop else ''
     return contacts

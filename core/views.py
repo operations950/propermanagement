@@ -356,7 +356,13 @@ def admin_settings_save(request):
         valid_keys = dict(app_settings.SECRET_KEYS)
         updated = 0
         for key in valid_keys:
-            value = request.POST.get(key, '')
+            # Strip whitespace and any non-ASCII character before saving — every one of these is a
+            # plain-ASCII API key/secret that ends up straight in an HTTP header (Authorization/
+            # x-api-key/etc.), and a stray character a browser paste can silently carry along (a
+            # trailing newline, a non-breaking space, a smart quote from a doc/webpage the key was
+            # copied out of) crashes every API call using it with a hard-to-diagnose
+            # UnicodeEncodeError deep in the HTTP client, not a validation error here.
+            value = request.POST.get(key, '').strip().encode('ascii', 'ignore').decode('ascii')
             if value:  # blank means "leave unchanged" — the field never shows the real value to re-submit
                 app_settings.set_secret(key, value, user=request.user)
                 updated += 1
@@ -638,6 +644,7 @@ def contact_list(request):
             + ContactUpdateCandidate.objects.filter(status=ContactUpdateCandidate.Status.PENDING).count()
         ),
         'duplicate_group_count': len(find_duplicate_groups()),
+        'active_properties': Property.objects.filter(is_active=True).order_by('name'),
     })
 
 
@@ -697,11 +704,14 @@ def contact_import_commit(request):
         if contact_type not in Contact.ContactType.values:
             contact_type = Contact.ContactType.OTHER
 
-        Contact.objects.create(
+        contact = Contact.objects.create(
             name=name, phone=phone, email=email, contact_type=contact_type,
             trade=(row.get('trade') or '').strip() if contact_type == Contact.ContactType.VENDOR else '',
             source=Contact.Source.DOCUMENT,
         )
+        property_id = row.get('property_id')
+        if property_id:
+            contact.properties.set(Property.objects.filter(pk=property_id))
         if phone_key:
             existing_phones.add(phone_key)
         if email:

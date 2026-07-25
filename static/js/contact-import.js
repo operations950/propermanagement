@@ -23,6 +23,7 @@
     var commitUrl = root.dataset.commitUrl;
     var csrfToken = root.querySelector('[name=csrfmiddlewaretoken]').value;
     var typeOptionsHtml = root.querySelector('[data-import-type-options]').innerHTML;
+    var propertyOptionsHtml = root.querySelector('[data-import-property-options]').innerHTML;
 
     var dropzone = root.querySelector('[data-import-dropzone]');
     var fileInput = root.querySelector('[data-import-file-input]');
@@ -62,6 +63,14 @@
       return match ? match.textContent : value;
     }
 
+    function propertyLabel(propertyId) {
+      if (!propertyId) return '';
+      var tmp = document.createElement('select');
+      tmp.innerHTML = propertyOptionsHtml;
+      var match = Array.prototype.find.call(tmp.options, function (o) { return o.value === String(propertyId); });
+      return match ? match.textContent : '';
+    }
+
     function renderRows() {
       countEl.textContent = String(contacts.length);
       if (!contacts.length) {
@@ -74,20 +83,23 @@
             '<div class="row g-2 align-items-center py-2 px-2' + (idx ? ' border-top' : '') + '" style="border-color: var(--border-hairline) !important;" data-import-row data-idx="' + idx + '">' +
             '<div class="col-3"><input type="text" class="form-control form-control-sm" data-field="name" value="' + escapeHtml(c.name) + '" placeholder="Name"></div>' +
             '<div class="col-2"><input type="text" class="form-control form-control-sm" data-field="phone" value="' + escapeHtml(c.phone) + '" placeholder="Phone"></div>' +
-            '<div class="col-3"><input type="email" class="form-control form-control-sm" data-field="email" value="' + escapeHtml(c.email) + '" placeholder="Email"></div>' +
-            '<div class="col-3"><select class="form-select form-select-sm" data-field="contact_type">' + typeOptionsHtml + '</select></div>' +
+            '<div class="col-2"><input type="email" class="form-control form-control-sm" data-field="email" value="' + escapeHtml(c.email) + '" placeholder="Email"></div>' +
+            '<div class="col-2"><select class="form-select form-select-sm" data-field="contact_type">' + typeOptionsHtml + '</select></div>' +
+            '<div class="col-2"><select class="form-select form-select-sm" data-field="property_id">' + propertyOptionsHtml + '</select></div>' +
             '<div class="col-1 text-end">' +
             '<button type="button" class="btn btn-link btn-sm p-0 me-1" data-import-toggle title="Done"><i data-lucide="check" class="icon"></i></button>' +
             '<button type="button" class="btn btn-link btn-sm p-0 text-danger" data-import-remove title="Exclude"><i data-lucide="x" class="icon"></i></button>' +
             '</div></div>'
           );
         }
+        var propLabel = propertyLabel(c.property_id);
         return (
           '<div class="d-flex align-items-center gap-2 py-2 px-2' + (idx ? ' border-top' : '') + '" style="border-color: var(--border-hairline) !important;" data-import-row data-idx="' + idx + '">' +
           '<div class="flex-grow-1 text-truncate fw-medium">' + (escapeHtml(c.name) || '<span class="text-muted">(no name)</span>') + '</div>' +
-          '<div class="text-truncate text-muted small" style="width: 120px;">' + (escapeHtml(c.phone) || '—') + '</div>' +
-          '<div class="text-truncate text-muted small" style="width: 170px;">' + (escapeHtml(c.email) || '—') + '</div>' +
+          '<div class="text-truncate text-muted small" style="width: 110px;">' + (escapeHtml(c.phone) || '—') + '</div>' +
+          '<div class="text-truncate text-muted small" style="width: 150px;">' + (escapeHtml(c.email) || '—') + '</div>' +
           '<span class="badge bg-light text-dark border flex-shrink-0">' + escapeHtml(typeLabel(c.contact_type)) + '</span>' +
+          '<div class="text-truncate text-muted small" style="width: 110px;">' + (escapeHtml(propLabel) || '—') + '</div>' +
           '<button type="button" class="btn btn-link btn-sm p-0 flex-shrink-0" data-import-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>' +
           '<button type="button" class="btn btn-link btn-sm p-0 text-danger flex-shrink-0" data-import-remove title="Exclude"><i data-lucide="x" class="icon"></i></button>' +
           '</div>'
@@ -95,8 +107,11 @@
       }).join('');
       if (window.lucide) lucide.createIcons();
       if (editingIdx !== null) {
-        var select = rowsBox.querySelector('[data-idx="' + editingIdx + '"] [data-field=contact_type]');
-        if (select) select.value = contacts[editingIdx].contact_type;
+        var row = rowsBox.querySelector('[data-idx="' + editingIdx + '"]');
+        var typeSelect = row.querySelector('[data-field=contact_type]');
+        if (typeSelect) typeSelect.value = contacts[editingIdx].contact_type;
+        var propSelect = row.querySelector('[data-field=property_id]');
+        if (propSelect) propSelect.value = contacts[editingIdx].property_id || '';
       }
     }
 
@@ -121,6 +136,7 @@
             return {
               name: c.name || '', phone: c.phone || '', email: c.email || '',
               contact_type: c.contact_type || 'other', trade: c.trade || '',
+              property_id: c.property_id || '', property_name: c.property_name || '',
             };
           });
           editingIdx = null;
