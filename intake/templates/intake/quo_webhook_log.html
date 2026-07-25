@@ -13,7 +13,11 @@
 <div class="card mb-3">
     <div class="card-body">
         <h6 class="card-title small" style="color: var(--ink-muted);">{{ log.received_at }}</h6>
-        <pre class="small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ log.parsed|default:log.raw_body|pprint }}</pre>
+        <pre class="small mb-2" style="white-space: pre-wrap; word-break: break-word;">{{ log.parsed|default:log.raw_body|pprint }}</pre>
+        <details>
+            <summary class="small" style="color: var(--ink-muted); cursor: pointer;">Headers</summary>
+            <pre class="small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ log.headers|pprint }}</pre>
+        </details>
     </div>
 </div>
 {% empty %}
