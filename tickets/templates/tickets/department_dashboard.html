@@ -67,4 +67,38 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.querySelectorAll('[data-ajax-close]').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var confirmMsg = form.dataset.confirm;
+            if (confirmMsg && !confirm(confirmMsg)) return;
+
+            var formData = new FormData(form);
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            })
+                .then(function (resp) { return resp.json(); })
+                .then(function (data) {
+                    if (!data.success) return;
+                    var item = form.closest('[data-dashboard-item]');
+                    var title = item.querySelector('[data-dashboard-item-title]');
+                    // .text-decoration-none is a Bootstrap !important utility class —
+                    // an inline style can't override it, so it has to come off before
+                    // the strikethrough (also !important, for the same reason) will show.
+                    title.classList.remove('text-decoration-none');
+                    title.classList.add('text-muted');
+                    title.style.setProperty('text-decoration', 'line-through', 'important');
+                    var actions = item.querySelector('[data-dashboard-item-actions]');
+                    actions.innerHTML = '<i data-lucide="check" class="icon"></i> Closed — no follow-up needed';
+                    actions.style.color = 'var(--status-good)';
+                    actions.classList.add('d-flex', 'align-items-center', 'gap-1');
+                    if (window.lucide) lucide.createIcons();
+                });
+        });
+    });
+</script>
 {% endblock %}

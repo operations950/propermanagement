@@ -1,9 +1,9 @@
 {% load ticket_extras %}
-<div class="list-group-item py-2 px-3" style="border-left: 3px solid var(--role-{{ role }});">
+<div class="list-group-item py-2 px-3" data-dashboard-item style="border-left: 3px solid var(--role-{{ role }});">
     <div class="d-flex justify-content-between align-items-start gap-2">
         <div class="flex-grow-1" style="min-width: 0; overflow: hidden;">
             <div class="d-flex align-items-center gap-1" style="min-width: 0;">
-                <a href="{% url 'ticket_detail' t.pk %}" class="fw-medium text-truncate {% if t.status == 'completed' %}text-muted{% else %}text-decoration-none text-body{% endif %}"
+                <a href="{% url 'ticket_detail' t.pk %}" data-dashboard-item-title class="fw-medium text-truncate {% if t.status == 'completed' %}text-muted{% else %}text-decoration-none text-body{% endif %}"
                    style="min-width: 0; {% if t.status == 'completed' %}text-decoration: line-through;{% endif %}">
                     {{ t.title|truncatechars:60 }}
                 </a>
@@ -26,19 +26,19 @@
         </div>
     </div>
     {% if t.status == 'completed' %}
-        <div class="d-flex align-items-center gap-1 mt-1" style="color: var(--status-good); font-size: 0.8rem;">
+        <div class="d-flex align-items-center gap-1 mt-1" data-dashboard-item-actions style="color: var(--status-good); font-size: 0.8rem;">
             <i data-lucide="check" class="icon"></i> Closed — no follow-up needed
         </div>
     {% elif t.source == 'recurring' %}
-        <div class="mt-1">
-            <form method="post" action="{% url 'ticket_close_no_followup' t.pk %}">
+        <div class="mt-1" data-dashboard-item-actions>
+            <form method="post" action="{% url 'ticket_close_no_followup' t.pk %}" data-ajax-close>
                 {% csrf_token %}
                 <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Close</button>
             </form>
         </div>
     {% else %}
-        <div class="d-flex gap-2 mt-1">
-            <form method="post" action="{% url 'ticket_close_no_followup' t.pk %}" onsubmit="return confirm('Close this ticket without following up with the reporter?');">
+        <div class="d-flex gap-2 mt-1" data-dashboard-item-actions>
+            <form method="post" action="{% url 'ticket_close_no_followup' t.pk %}" data-ajax-close data-confirm="Close this ticket without following up with the reporter?">
                 {% csrf_token %}
                 <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Close No Follow-Up</button>
             </form>

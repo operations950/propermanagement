@@ -66,12 +66,13 @@ def _ticket_urgency_key(ticket, now):
 
 
 def _daily_checklist_key(ticket, now):
-    """Sort key for a department dashboard's Today list: anything just
-    closed via "Close No Follow-Up" today sinks to the bottom (with
-    strikethrough — see _dashboard_item.html) instead of competing with
-    still-open work on urgency."""
-    closed = 1 if ticket.status == Ticket.Status.COMPLETED else 0
-    return (closed,) + _ticket_urgency_key(ticket, now)
+    """Sort key for a department dashboard's Today list — plain urgency
+    order. A ticket closed via "Close No Follow-Up" is struck through in
+    place (client-side, see _dashboard_item.html's fetch handler) without
+    moving or re-sorting; it drops out of every bucket entirely on the
+    next full page load since department_dashboard's query only ever
+    includes OPEN_STATUSES."""
+    return _ticket_urgency_key(ticket, now)
 
 
 @login_required
@@ -285,10 +286,10 @@ def department_dashboard(request, role):
       "Today's" work until someone assigns one — shown first, as a
       to-do, not folded into Today where they'd get lost among real
       due-today items.
-    - Today: due today or overdue, PLUS anything closed today via
-      "Close No Follow-Up" (kept visible with strikethrough, sorted to
-      the bottom, as same-day done-confirmation — see
-      _daily_checklist_key/_dashboard_item.html).
+    - Today: due today or overdue. Closing one via "Close No Follow-Up"
+      strikes it through in place client-side (see _dashboard_item.html)
+      for immediate confirmation, but it never reappears on a fresh load
+      of this page — the query only ever pulls OPEN_STATUSES.
     - Next 2 days, and a collapsed count of everything further out.
     """
     if role not in StaffProfile.Role.values:
@@ -298,8 +299,7 @@ def department_dashboard(request, role):
     soon_cutoff = today + timedelta(days=2)
 
     qs = (
-        Ticket.objects.filter(assigned_role=role, property__isnull=False)
-        .filter(Q(status__in=OPEN_STATUSES) | Q(status=Ticket.Status.COMPLETED, completed_at__date=today))
+        Ticket.objects.filter(assigned_role=role, property__isnull=False, status__in=OPEN_STATUSES)
         .select_related('property', 'assigned_staff__user', 'assigned_contact', 'created_from_template')
         .prefetch_related('checklist_items')
     )
@@ -314,11 +314,7 @@ def department_dashboard(request, role):
         soon_bucket = soon_tasks if is_task else soon_tickets
         needs_date_bucket = needs_date_tasks if is_task else needs_date_tickets
 
-        if t.status == Ticket.Status.COMPLETED:
-            # Closed today via "Close No Follow-Up" — stays on today's
-            # list (struck through, sorted last) rather than vanishing.
-            today_bucket.append(t)
-        elif t.due_date:
+        if t.due_date:
             d = timezone.localtime(t.due_date).date()
             if d <= today:
                 today_bucket.append(t)
@@ -1312,15 +1308,19 @@ def ticket_checklist_toggle(request, pk):
 @login_required
 def ticket_close_no_followup(request, pk):
     """The department dashboard's daily-checklist "Close No Follow-Up"
-    action — completes a ticket without messaging the reporter. Stays
-    visible (struck through, sorted last) in today's list for the rest of
-    the day as a done-confirmation — see department_dashboard's query,
-    which includes anything completed today regardless of status filter."""
+    action — completes a ticket without messaging the reporter. The
+    dashboard's fetch handler strikes the row through in place on success
+    (see _dashboard_item.html) rather than reloading — department_dashboard's
+    query only pulls OPEN_STATUSES, so a full page reload naturally drops
+    it instead of requiring special same-day-visibility handling."""
     ticket = get_object_or_404(Ticket, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if request.method == 'POST':
         ticket.status = Ticket.Status.COMPLETED
         ticket.completed_at = timezone.now()
         ticket.save()
+        if is_ajax:
+            return JsonResponse({'success': True})
     if ticket.assigned_role in StaffProfile.Role.values:
         return redirect('department_dashboard', role=ticket.assigned_role)
     return redirect('dashboard')
