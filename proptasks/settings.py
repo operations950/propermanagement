@@ -65,6 +65,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.TimezoneMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -122,7 +123,14 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'America/Chicago'
+
+# Was 'America/Chicago' — the business and every property are in South
+# Florida, so anything rendered via timezone.localtime() (ticket due
+# dates, calendar events, message timestamps — used throughout the app)
+# was showing an hour early against Eastern wall-clock time. A staff
+# member's own StaffProfile.timezone (see core.middleware.TimezoneMiddleware)
+# overrides this default per-request once they set one.
+TIME_ZONE = 'America/New_York'
 USE_I18N = True
 USE_TZ = True
 

@@ -5,16 +5,37 @@
     {% else %}
         <span></span>
     {% endif %}
-    {% if calendar_token %}
     <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#timezonePicker">Timezone</button>
+        {% if calendar_token %}
         <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#calendarPicker">Calendars</button>
         <form method="post" action="{% url 'calendar_disconnect' %}" class="d-inline" onsubmit="return confirm('Disconnect Google Calendar?');">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.path }}">
             <button type="submit" class="btn btn-link btn-sm text-danger p-0">Disconnect</button>
         </form>
+        {% endif %}
     </div>
-    {% endif %}
+</div>
+
+<div class="collapse mb-2" id="timezonePicker">
+    <div class="card card-body p-2">
+        <form method="post" action="{% url 'timezone_select' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <p class="small mb-2" style="color: var(--ink-muted);">Which timezone should your due dates and calendar show in?</p>
+            <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="timezone">
+                <input type="hidden" name="timezone" data-bubble-input value="{{ current_timezone }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a timezone"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in timezone_choices %}
+                    <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+        </form>
+    </div>
 </div>
 
 {% if calendar_token %}

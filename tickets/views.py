@@ -401,6 +401,8 @@ def department_dashboard(request, role):
         'role': role,
         'role_label': dict(StaffProfile.Role.choices).get(role),
         'updated_ticket_ids': updated_ticket_ids,
+        'timezone_choices': StaffProfile.Timezone.choices,
+        'current_timezone': getattr(staff_profile, 'timezone', ''),
         'needs_date_tickets': needs_date_tickets,
         'needs_date_tasks': needs_date_tasks,
         'today_tickets': today_tickets,

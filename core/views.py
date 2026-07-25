@@ -122,6 +122,22 @@ def calendar_select(request):
 
 
 @login_required
+def timezone_select(request):
+    """Bubble-lock picker (see _dashboard_calendar.html) for a staff
+    member's own StaffProfile.timezone — core.middleware.TimezoneMiddleware
+    activates it on every subsequent request, overriding settings.TIME_ZONE
+    for all of that user's due dates/calendar events/message timestamps."""
+    next_url = _safe_next(request)
+    if request.method == 'POST' and hasattr(request.user, 'staff_profile'):
+        tz = request.POST.get('timezone')
+        if tz in StaffProfile.Timezone.values:
+            request.user.staff_profile.timezone = tz
+            request.user.staff_profile.save(update_fields=['timezone'])
+            messages.success(request, 'Timezone updated.')
+    return redirect(next_url)
+
+
+@login_required
 def property_list(request):
     qs = Property.objects.all()
     q = request.GET.get('q', '').strip()

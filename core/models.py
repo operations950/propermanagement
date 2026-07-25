@@ -344,12 +344,25 @@ class StaffProfile(models.Model):
         CONTRACTOR = 'contractor', 'Contractor'
         ACCOUNTING = 'accounting', 'Accounting'
 
+    class Timezone(models.TextChoices):
+        EASTERN = 'America/New_York', 'Eastern'
+        CENTRAL = 'America/Chicago', 'Central'
+        MOUNTAIN = 'America/Denver', 'Mountain'
+        ARIZONA = 'America/Phoenix', 'Arizona (no DST)'
+        PACIFIC = 'America/Los_Angeles', 'Pacific'
+        ALASKA = 'America/Anchorage', 'Alaska'
+        HAWAII = 'Pacific/Honolulu', 'Hawaii'
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staff_profile')
     role = models.CharField(
         max_length=20, choices=Role.choices, blank=True,
         help_text='Which team this person is on — also used as the default queue reactive tickets route to.',
     )
     phone = models.CharField(max_length=30, blank=True, validators=[phone_validator])
+    timezone = models.CharField(
+        max_length=40, choices=Timezone.choices, default=Timezone.EASTERN,
+        help_text='Overrides settings.TIME_ZONE for everything this user sees — see core.middleware.TimezoneMiddleware.',
+    )
 
     def __str__(self):
         return self.user.get_full_name() or self.user.username
