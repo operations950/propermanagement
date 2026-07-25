@@ -160,6 +160,19 @@ def properties_by_type():
     return result
 
 
+# Trade options for the Contact form's bubble-lock picker (required once
+# contact_type is Vendor/Contractor — see core/forms.py::ContactForm.clean).
+# Contact.trade stays a plain CharField (not a TextChoices enum) since
+# "Other" needs to accept free text that isn't one of these — the bubble UI
+# is just a convenience over the same field, not a stricter schema.
+TRADE_CHOICES = [
+    'HVAC', 'Plumbing', 'Electrical', 'Handyman', 'Landscaping', 'Pool Service', 'Pest Control',
+    'Roofing', 'Painting', 'Locksmith', 'Appliance Repair', 'Cleaning', 'General Contractor',
+    'Flooring', 'Drywall', 'Fencing', 'Security / Alarm', 'Elevator', 'Waterproofing',
+    'Window / Glass', 'Concrete / Paving', 'Moving / Hauling', 'Insurance', 'Legal',
+]
+
+
 class Contact(models.Model):
     class ContactType(models.TextChoices):
         GUEST = 'guest', 'Guest'

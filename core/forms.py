@@ -73,3 +73,9 @@ class ContactForm(forms.ModelForm):
             'notes': forms.Textarea(attrs={'rows': 3}),
             'phone': forms.TextInput(attrs={'type': 'tel', 'placeholder': '555-123-4567'}),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('contact_type') == Contact.ContactType.VENDOR and not cleaned.get('trade'):
+            self.add_error('trade', 'Choose a trade for vendor/contractor contacts.')
+        return cleaned

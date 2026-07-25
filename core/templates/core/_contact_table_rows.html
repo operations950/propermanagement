@@ -1,0 +1,15 @@
+{% for c in contacts %}
+    <tr>
+        <td class="fw-medium">{{ c.name }}</td>
+        <td><span class="badge rounded-pill bg-light text-dark border">{{ c.get_contact_type_display }}</span>{% if c.trade %} <span class="text-muted small">{{ c.trade }}</span>{% endif %}</td>
+        <td class="text-muted small">{{ c.phone|default:'—' }}</td>
+        <td class="text-muted small">{{ c.email|default:'—' }}</td>
+        <td class="text-muted small">{% for p in c.properties.all %}<a href="{% url 'property_edit' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>
+        <td class="text-nowrap d-flex gap-1">
+            <a href="{% url 'ticket_create' %}?contact={{ c.pk }}" class="btn btn-outline-primary btn-sm" title="New ticket with {{ c.name }}"><i data-lucide="plus" class="icon"></i></a>
+            <a href="{% url 'contact_edit' c.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+        </td>
+    </tr>
+{% empty %}
+    <tr><td colspan="6" class="text-center text-muted py-4"><i data-lucide="contact" class="icon-lg d-block mx-auto mb-1"></i>No contacts match.</td></tr>
+{% endfor %}

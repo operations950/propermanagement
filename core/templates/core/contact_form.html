@@ -28,9 +28,21 @@
                 </div>
             </div>
 
-            <div class="mb-4">
-                <label class="form-label fw-medium" for="id_trade">Trade <span class="fw-normal" style="color: var(--ink-muted);">(for vendors — e.g. plumbing, HVAC, cleaning)</span></label>
-                <input type="text" name="trade" id="id_trade" class="form-control" value="{{ form.trade.value|default:'' }}">
+            <div class="mb-4" id="trade-field" hidden>
+                <label class="form-label fw-medium d-block">Trade <span id="trade-required-hint" class="fw-normal" style="color: var(--status-warning);">(required for vendors/contractors)</span></label>
+                {% if form.trade.errors %}<div class="text-danger small mb-1">{{ form.trade.errors|join:', ' }}</div>{% endif %}
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="trade" id="trade-picker">
+                    <input type="hidden" name="trade" id="id_trade" data-bubble-input value="{% if trade_is_other %}__other__{% else %}{{ form.trade.value|default:'' }}{% endif %}">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a trade"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for t in trade_choices %}
+                            <button type="button" class="bubble" data-value="{{ t }}" data-label="{{ t }}">{{ t }}</button>
+                        {% endfor %}
+                        <button type="button" class="bubble" data-value="__other__" data-label="Other">Other</button>
+                    </div>
+                </div>
+                <input type="text" id="trade-other-input" class="form-control mt-2" placeholder="Enter trade" {% if not trade_is_other %}hidden{% endif %}
+                       value="{% if trade_is_other %}{{ form.trade.value|default:'' }}{% endif %}">
             </div>
 
             <div class="mb-4">
@@ -97,4 +109,30 @@
         </form>
     </div>
 </div>
+<script>
+(function () {
+    var typePicker = document.querySelector('.bubble-picker[data-name="contact_type"]');
+    var tradeField = document.getElementById('trade-field');
+    var tradePicker = document.getElementById('trade-picker');
+    var tradeHidden = document.getElementById('id_trade');
+    var otherInput = document.getElementById('trade-other-input');
+
+    function applyType(value) {
+        tradeField.hidden = value !== 'vendor';
+    }
+    typePicker.addEventListener('bubble:lock', function (e) { applyType(e.detail.value); });
+    typePicker.addEventListener('bubble:unlock', function () { applyType(''); });
+    applyType(typePicker.querySelector('[data-bubble-input]').value);
+
+    tradePicker.addEventListener('bubble:lock', function (e) {
+        otherInput.hidden = e.detail.value !== '__other__';
+        if (e.detail.value === '__other__') {
+            tradeHidden.value = otherInput.value;
+            otherInput.focus();
+        }
+    });
+    tradePicker.addEventListener('bubble:unlock', function () { otherInput.hidden = true; });
+    otherInput.addEventListener('input', function () { tradeHidden.value = otherInput.value; });
+})();
+</script>
 {% endblock %}

@@ -21,8 +21,8 @@ from .duplicates import find_duplicate_groups, merge_all_into
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
     Contact, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal, GoogleCalendarToken, Property,
-    PropertyAttribute, PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, is_valid_phone,
-    properties_by_type,
+    PropertyAttribute, PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, TRADE_CHOICES,
+    is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -425,11 +425,17 @@ def contact_list(request):
     qs = Contact.objects.prefetch_related('properties')
     q = request.GET.get('q', '').strip()
     if q:
-        qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(email__icontains=q))
+        qs = qs.filter(
+            Q(name__icontains=q) | Q(phone__icontains=q) | Q(email__icontains=q) | Q(trade__icontains=q)
+            | Q(contact_type__icontains=q)
+        )
     selected_type = request.GET.get('type', '')
     if selected_type:
         qs = qs.filter(contact_type=selected_type)
     qs = qs.order_by('name')
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return render(request, 'core/_contact_table_rows.html', {'contacts': qs})
 
     return render(request, 'core/contact_list.html', {
         'contacts': qs,
@@ -446,9 +452,13 @@ def contact_list(request):
 
 def _contact_form_context(form, **extra):
     selected_ids = [str(v.pk if hasattr(v, 'pk') else v) for v in (form['properties'].value() or [])]
+    trade_value = form['trade'].value() or ''
     return {
         'form': form, 'properties_by_type': properties_by_type(),
-        'selected_property_ids': ','.join(selected_ids), **extra,
+        'selected_property_ids': ','.join(selected_ids),
+        'trade_choices': TRADE_CHOICES,
+        'trade_is_other': bool(trade_value) and trade_value not in TRADE_CHOICES,
+        **extra,
     }
 
 

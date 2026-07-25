@@ -1034,7 +1034,20 @@ def ticket_create(request):
             messages.success(request, 'Ticket created.')
             return redirect('ticket_detail', pk=ticket.pk)
     else:
-        form = TicketForm()
+        initial = {}
+        # "New ticket" from a contact's own page/row (see contact_list.html,
+        # contact_edit.html) — pre-attaches them as the basis for the ticket
+        # without staff having to search for them again. Vendors go in as
+        # the contractor (that's what a vendor contact IS for); everyone
+        # else (owner/tenant/guest/board member/...) as the reporter, since
+        # they're the one who'd be reporting an issue.
+        contact_id = request.GET.get('contact')
+        if contact_id:
+            contact = Contact.objects.filter(pk=contact_id).first()
+            if contact:
+                field = 'assigned_contact' if contact.contact_type == Contact.ContactType.VENDOR else 'reporter_contact'
+                initial[field] = contact.pk
+        form = TicketForm(initial=initial)
 
     vendor_contacts = [
         {'id': c.id, 'label': str(c)}
