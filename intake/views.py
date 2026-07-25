@@ -323,3 +323,44 @@ def quo_reset_candidates_trigger(request):
         _run_command_in_background('reset_pending_quo_candidates')
         messages.success(request, 'Clearing the pending Quo review queue in the background — check Railway logs, then run the sync again.')
     return redirect('quo_webhook_log')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_analyze_contacts_count(request):
+    """Admin-only: runs analyze_recent_quo_contacts --count-only synchronously
+    (no Quo message fetch or Claude calls, just a handful of DB/API-list
+    queries — fast enough to answer inline) and surfaces the result as a
+    message instead of making the admin dig through Railway logs for a
+    single number. See the command's own docstring for what "qualifies"."""
+    if request.method == 'POST':
+        import io
+
+        from django.core.management import call_command
+
+        buf = io.StringIO()
+        try:
+            call_command('analyze_recent_quo_contacts', '--count-only', stdout=buf)
+            messages.success(request, buf.getvalue().strip() or 'Done — no output.')
+        except Exception:
+            logger.exception('analyze_recent_quo_contacts --count-only failed')
+            messages.error(request, 'Count failed — check Railway logs.')
+    return redirect('contact_review')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_analyze_contacts_trigger(request):
+    """Admin-only, one-time baseline pass: runs analyze_recent_quo_contacts
+    for real (creating ContactImportCandidate rows) in the background — one
+    Claude API call per qualifying contact, so this can take a while for a
+    large batch. Check Railway logs for progress; new candidates show up at
+    /contacts/review/ as they're created."""
+    if request.method == 'POST':
+        _run_command_in_background('analyze_recent_quo_contacts')
+        messages.success(
+            request,
+            'Started analyzing recent Quo contacts in the background — check Railway logs for progress. '
+            'New candidates will appear below as they\'re created.',
+        )
+    return redirect('contact_review')

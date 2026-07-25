@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import timedelta
 
@@ -698,6 +699,24 @@ def contact_review(request):
     })
 
 
+@login_required
+@user_passes_test(_is_admin)
+def contact_candidates_clear_all(request):
+    """Admin-only, one-time: hard-deletes every still-PENDING
+    ContactImportCandidate outright, regardless of source (Quo/Gmail/Yardi)
+    — not a reject, which would just leave 725+ resolved-but-still-there
+    rows around. Used to reset a review queue that's grown too large/stale
+    to work through row by row before repopulating it with a better-
+    targeted pass (see analyze_recent_quo_contacts). Never touches already-
+    approved/rejected candidates or real Contacts."""
+    if request.method == 'POST':
+        qs = ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
+        count = qs.count()
+        qs.delete()
+        messages.success(request, f'Deleted {count} pending contact candidate(s).')
+    return redirect('contact_review')
+
+
 def _candidate_dupe(candidate):
     """A Contact already matching this candidate's phone or email, if any —
     checked again at approval time (not just at import time) in case
@@ -712,41 +731,86 @@ def _candidate_dupe(candidate):
     return Contact.objects.filter(lookup).first()
 
 
+def _approve_candidate(candidate, user, name, phone, email, contact_type, trade, property_id):
+    """Shared by the single-candidate approve view (kept for direct/API use)
+    and the review screen's bulk-save endpoint. Returns (ok, error, linked_existing)
+    — on failure the candidate is left untouched (still PENDING) so it's
+    simply skipped this round rather than silently mis-saved."""
+    name = name.strip() or candidate.name
+    phone = phone.strip()
+    email = email.strip()
+    contact_type = contact_type or candidate.suggested_contact_type
+    trade = trade.strip()
+
+    if not is_valid_phone(phone):
+        return False, 'Phone must be in XXX-XXX-XXXX format.', False
+
+    candidate.name, candidate.phone, candidate.email = name, phone, email
+    existing = _candidate_dupe(candidate)
+    if existing:
+        contact = existing
+    else:
+        contact = Contact.objects.create(
+            name=name, phone=phone, email=email, contact_type=contact_type, trade=trade,
+            source=candidate.source,
+        )
+        if property_id:
+            contact.properties.add(property_id)
+    candidate.status = ContactImportCandidate.Status.APPROVED
+    candidate.resolved_at = timezone.now()
+    candidate.resolved_by = user
+    candidate.resolved_contact = contact
+    candidate.save()
+    return True, None, bool(existing)
+
+
+def _reject_candidate(candidate, user):
+    candidate.status = ContactImportCandidate.Status.REJECTED
+    candidate.resolved_at = timezone.now()
+    candidate.resolved_by = user
+    candidate.save()
+
+
+def _apply_update(update, user):
+    contact = update.contact
+    if update.proposed_name:
+        contact.name = update.proposed_name
+    if update.proposed_phone:
+        contact.phone = update.proposed_phone
+    if update.proposed_email:
+        contact.email = update.proposed_email
+    contact.save(update_fields=['name', 'phone', 'email'])
+    update.status = ContactUpdateCandidate.Status.APPLIED
+    update.resolved_at = timezone.now()
+    update.resolved_by = user
+    update.save()
+
+
+def _dismiss_update(update, user):
+    update.status = ContactUpdateCandidate.Status.DISMISSED
+    update.resolved_at = timezone.now()
+    update.resolved_by = user
+    update.save()
+
+
 @login_required
 def contact_review_approve(request, pk):
     candidate = get_object_or_404(ContactImportCandidate, pk=pk, status=ContactImportCandidate.Status.PENDING)
     if request.method == 'POST':
-        name = request.POST.get('name', '').strip() or candidate.name
-        phone = request.POST.get('phone', '').strip()
-        email = request.POST.get('email', '').strip()
-        contact_type = request.POST.get('contact_type') or candidate.suggested_contact_type
-        trade = request.POST.get('trade', '').strip()
-        property_id = request.POST.get('property_id') or None
-
-        if not is_valid_phone(phone):
-            messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was approved.')
-            return redirect('contact_review')
-
-        candidate.name, candidate.phone, candidate.email = name, phone, email
-        existing = _candidate_dupe(candidate)
-        if existing:
-            contact = existing
-        else:
-            contact = Contact.objects.create(
-                name=name, phone=phone, email=email, contact_type=contact_type, trade=trade,
-                source=candidate.source,
-            )
-            if property_id:
-                contact.properties.add(property_id)
-        candidate.status = ContactImportCandidate.Status.APPROVED
-        candidate.resolved_at = timezone.now()
-        candidate.resolved_by = request.user
-        candidate.resolved_contact = contact
-        candidate.save()
-        messages.success(
-            request,
-            f'Approved — {"linked to existing" if existing else "created"} contact "{contact.name}".',
+        ok, error, linked_existing = _approve_candidate(
+            candidate, request.user,
+            request.POST.get('name', ''), request.POST.get('phone', ''), request.POST.get('email', ''),
+            request.POST.get('contact_type', ''), request.POST.get('trade', ''),
+            request.POST.get('property_id') or None,
         )
+        if ok:
+            messages.success(
+                request,
+                f'Approved — {"linked to existing" if linked_existing else "created"} '
+                f'contact "{candidate.resolved_contact.name}".',
+            )
+        else:
+            messages.error(request, f'{error} — nothing was approved.')
     return redirect('contact_review')
 
 
@@ -754,10 +818,7 @@ def contact_review_approve(request, pk):
 def contact_review_reject(request, pk):
     candidate = get_object_or_404(ContactImportCandidate, pk=pk, status=ContactImportCandidate.Status.PENDING)
     if request.method == 'POST':
-        candidate.status = ContactImportCandidate.Status.REJECTED
-        candidate.resolved_at = timezone.now()
-        candidate.resolved_by = request.user
-        candidate.save()
+        _reject_candidate(candidate, request.user)
         messages.success(request, f'Rejected "{candidate.name}".')
     return redirect('contact_review')
 
@@ -768,20 +829,73 @@ def contact_update_apply(request, pk):
         ContactUpdateCandidate, pk=pk, status=ContactUpdateCandidate.Status.PENDING,
     )
     if request.method == 'POST':
-        contact = update.contact
-        if update.proposed_name:
-            contact.name = update.proposed_name
-        if update.proposed_phone:
-            contact.phone = update.proposed_phone
-        if update.proposed_email:
-            contact.email = update.proposed_email
-        contact.save(update_fields=['name', 'phone', 'email'])
-        update.status = ContactUpdateCandidate.Status.APPLIED
-        update.resolved_at = timezone.now()
-        update.resolved_by = request.user
-        update.save()
-        messages.success(request, f'Updated "{contact.name}" from Quo.')
+        contact_name = update.contact.name
+        _apply_update(update, request.user)
+        messages.success(request, f'Updated "{contact_name}" from Quo.')
     return redirect('contact_review')
+
+
+@login_required
+def contact_review_bulk_save(request):
+    """The review screen's floating "Save Changes" button — every
+    approve/reject/apply/dismiss decision is marked client-side only (no
+    request per click, see contact_review.html), so this processes every
+    marked decision in one request instead of the page reloading after
+    each single one. Reads a JSON body (not request.POST) since entries mix
+    two different candidate tables with a decision and, for approvals, the
+    row's live-edited field values. A candidate resolved by someone else
+    since the page loaded (already not PENDING) is skipped quietly rather
+    than erroring the whole batch."""
+    if request.method != 'POST':
+        return redirect('contact_review')
+
+    try:
+        entries = json.loads(request.body or '[]')
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Malformed request.'}, status=400)
+
+    approved = rejected = applied = dismissed = 0
+    errors = []
+    for entry in entries:
+        pk = entry.get('pk')
+        decision = entry.get('decision')
+        kind = entry.get('type')
+        try:
+            if kind == 'candidate':
+                candidate = ContactImportCandidate.objects.get(
+                    pk=pk, status=ContactImportCandidate.Status.PENDING,
+                )
+                if decision == 'approve':
+                    ok, error, _linked_existing = _approve_candidate(
+                        candidate, request.user,
+                        entry.get('name', ''), entry.get('phone', ''), entry.get('email', ''),
+                        entry.get('contact_type', ''), entry.get('trade', ''),
+                        entry.get('property_id') or None,
+                    )
+                    if ok:
+                        approved += 1
+                    else:
+                        errors.append(f'{candidate.name or candidate.phone or "unnamed"}: {error}')
+                elif decision == 'reject':
+                    _reject_candidate(candidate, request.user)
+                    rejected += 1
+            elif kind == 'update':
+                update = ContactUpdateCandidate.objects.get(
+                    pk=pk, status=ContactUpdateCandidate.Status.PENDING,
+                )
+                if decision == 'apply':
+                    _apply_update(update, request.user)
+                    applied += 1
+                elif decision == 'dismiss':
+                    _dismiss_update(update, request.user)
+                    dismissed += 1
+        except (ContactImportCandidate.DoesNotExist, ContactUpdateCandidate.DoesNotExist):
+            continue
+
+    return JsonResponse({
+        'success': True, 'approved': approved, 'rejected': rejected,
+        'applied': applied, 'dismissed': dismissed, 'errors': errors,
+    })
 
 
 @login_required
@@ -790,10 +904,7 @@ def contact_update_dismiss(request, pk):
         ContactUpdateCandidate, pk=pk, status=ContactUpdateCandidate.Status.PENDING,
     )
     if request.method == 'POST':
-        update.status = ContactUpdateCandidate.Status.DISMISSED
-        update.resolved_at = timezone.now()
-        update.resolved_by = request.user
-        update.save()
+        _dismiss_update(update, request.user)
         messages.success(request, f'Dismissed the proposed update for "{update.contact.name}".')
     return redirect('contact_review')
 

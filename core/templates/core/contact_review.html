@@ -1,11 +1,42 @@
 {% extends 'base.html' %}
 {% block title %}Contacts to review{% endblock %}
 {% block content %}
+{% if request.user.is_superuser %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> One-time baseline pass</h6>
+        <p class="small text-muted mb-2">
+            Clear this queue out, then pull every Quo-saved contact we've actually exchanged messages
+            with in the last 12 months (and don't already have as a Contact) and AI-classify them from
+            their full 12-month history. Preview the count first — it's free and instant.
+        </p>
+        <div class="d-flex flex-wrap gap-2">
+            <form method="post" action="{% url 'quo_analyze_contacts_count' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Preview count (no changes)</button>
+            </form>
+            <form method="post" action="{% url 'quo_analyze_contacts_trigger' %}" class="d-inline"
+                  onsubmit="return confirm('Run the full 12-month analysis pass? This calls Claude once per qualifying contact and runs in the background — check Railway logs for progress.');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-primary btn-sm">Run analysis pass</button>
+            </form>
+            <form method="post" action="{% url 'contact_candidates_clear_all' %}" class="d-inline"
+                  onsubmit="return confirm('Permanently delete all {{ candidates|length }} pending contact candidate(s) below? This cannot be undone.');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger btn-sm">Clear all pending ({{ candidates|length }})</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<form id="review-bulk-form">
+{% csrf_token %}
 {% if update_candidates %}
 <h2 class="page-title my-3">Contact updates ({{ update_candidates|length }})</h2>
-<p class="text-muted">These contacts already exist and are in use — their info changed in Quo since we last synced. Apply to update the real Contact, or dismiss to keep what's on file.</p>
+<p class="text-muted">These contacts already exist and are in use — their info changed in Quo since we last synced. Mark Apply to update the real Contact, or Dismiss to keep what's on file, then Save Changes.</p>
 {% for u in update_candidates %}
-<div class="card mb-3">
+<div class="card mb-3" data-review-card data-kind="update" data-pk="{{ u.pk }}">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-2">
             <span class="badge rounded-pill bg-light text-dark border">Quo update</span>
@@ -26,14 +57,11 @@
                 <div class="form-control-plaintext py-0">{{ u.contact.email|default:"—" }} {% if u.proposed_email and u.proposed_email != u.contact.email %}<i data-lucide="arrow-right" class="icon"></i> <strong>{{ u.proposed_email }}</strong>{% endif %}</div>
             </div>
         </div>
-        <form method="post" action="{% url 'contact_update_apply' u.pk %}" class="d-inline">
-            {% csrf_token %}
-            <button class="btn btn-success btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Apply</button>
-        </form>
-        <form method="post" action="{% url 'contact_update_dismiss' u.pk %}" class="d-inline">
-            {% csrf_token %}
-            <button class="btn btn-link btn-sm text-danger" type="submit"><i data-lucide="x" class="icon"></i> Dismiss</button>
-        </form>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-success btn-sm" data-review-decide="apply"><i data-lucide="check" class="icon"></i> Apply</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" data-review-decide="dismiss"><i data-lucide="x" class="icon"></i> Dismiss</button>
+            <span class="small fw-medium" data-review-marked hidden></span>
+        </div>
     </div>
 </div>
 {% endfor %}
@@ -41,90 +69,87 @@
 {% endif %}
 
 <h2 class="page-title my-3">Contacts to review ({{ candidates|length }})</h2>
-<p class="text-muted">Imported from Quo/Gmail — not usable anywhere in the app (ticket pickers, property pages) until approved. Edit any field before approving if the import got something wrong.</p>
+<p class="text-muted">Imported from Quo/Gmail — not usable anywhere in the app (ticket pickers, property pages) until approved. Edit any field before approving if the import got something wrong. Mark Approve/Reject on as many as you like, then Save Changes once — nothing happens until then.</p>
 
 {% for c in candidates %}
-<div class="card mb-3">
+<div class="card mb-3" data-review-card data-kind="candidate" data-pk="{{ c.pk }}">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-2">
             <span class="badge rounded-pill bg-light text-dark border">{{ c.get_source_display }}</span>
             <span class="text-muted small">{{ c.created_at|date:"M j, Y" }}</span>
         </div>
-        {% if c.raw_context %}<p class="text-muted small mb-2">{{ c.raw_context }}</p>{% endif %}
-        <form method="post" action="{% url 'contact_review_approve' c.pk %}">
-            {% csrf_token %}
-            <div class="row g-2 mb-3">
-                <div class="col-md-4">
-                    <label class="form-label small text-muted mb-1">Name</label>
-                    <input type="text" name="name" class="form-control" value="{{ c.name }}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label small text-muted mb-1">Phone</label>
-                    <input type="tel" name="phone" class="form-control" placeholder="555-123-4567" value="{{ c.phone }}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label small text-muted mb-1">Email</label>
-                    <input type="email" name="email" class="form-control" value="{{ c.email }}">
-                </div>
+        {% if c.raw_context %}<p class="text-muted small mb-2">{{ c.raw_context|linebreaksbr }}</p>{% endif %}
+        <div class="row g-2 mb-3">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Name</label>
+                <input type="text" class="form-control" data-review-field="name" value="{{ c.name }}">
             </div>
-
-            <div class="mb-3">
-                <label class="form-label small text-muted mb-1 d-block">Type</label>
-                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="contact_type">
-                    <input type="hidden" name="contact_type" data-bubble-input value="{{ c.suggested_contact_type }}">
-                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a type"></div>
-                    <div class="bubble-pool" data-bubble-pool>
-                        {% for value, label in type_choices %}
-                            <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
-                        {% endfor %}
-                    </div>
-                </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Phone</label>
+                <input type="tel" class="form-control" data-review-field="phone" placeholder="555-123-4567" value="{{ c.phone }}">
             </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Email</label>
+                <input type="email" class="form-control" data-review-field="email" value="{{ c.email }}">
+            </div>
+        </div>
 
-            <div class="mb-3">
-                <label class="form-label small text-muted mb-1 d-block">Property (optional)</label>
-                <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property_id">
-                    <input type="hidden" name="property_id" data-bubble-input value="{{ c.suggested_property_id|default:'' }}">
-                    <div class="bubble-slot" data-bubble-slot data-empty-text="No property"></div>
-                    <div class="bubble-pool" data-bubble-pool data-tier="1">
-                        {% for entry in properties_by_type %}
-                            <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
-                        {% endfor %}
-                    </div>
-                    {% for entry in properties_by_type %}
-                        {% if entry.needs_city_tier %}
-                            <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
-                                {% for city_entry in entry.cities %}
-                                    <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
-                                {% endfor %}
-                            </div>
-                            {% for city_entry in entry.cities %}
-                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
-                                {% if city_entry.needs_filter %}
-                                    <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
-                                {% endif %}
-                                {% for p in city_entry.properties %}
-                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
-                                {% endfor %}
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
-                                {% for p in entry.properties %}
-                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
-                                {% endfor %}
-                            </div>
-                        {% endif %}
+        <div class="mb-3">
+            <label class="form-label small text-muted mb-1 d-block">Type</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="contact_type">
+                <input type="hidden" data-bubble-input data-review-field="contact_type" value="{{ c.suggested_contact_type }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a type"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in type_choices %}
+                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
                     {% endfor %}
                 </div>
             </div>
+        </div>
 
-            <button class="btn btn-success" type="submit"><i data-lucide="check" class="icon"></i> Approve</button>
-        </form>
-        <form method="post" action="{% url 'contact_review_reject' c.pk %}" class="mt-2" onsubmit="return confirm('Reject this candidate? It won\'t become a Contact.');">
-            {% csrf_token %}
-            <button class="btn btn-link btn-sm text-danger p-0 d-inline-flex align-items-center gap-1" type="submit"><i data-lucide="x" class="icon"></i> Reject</button>
-        </form>
+        <div class="mb-3">
+            <label class="form-label small text-muted mb-1 d-block">Property (optional)</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property_id">
+                <input type="hidden" data-bubble-input data-review-field="property_id" value="{{ c.suggested_property_id|default:'' }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="No property"></div>
+                <div class="bubble-pool" data-bubble-pool data-tier="1">
+                    {% for entry in properties_by_type %}
+                        <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                    {% endfor %}
+                </div>
+                {% for entry in properties_by_type %}
+                    {% if entry.needs_city_tier %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                            {% for city_entry in entry.cities %}
+                                <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                            {% endfor %}
+                        </div>
+                        {% for city_entry in entry.cities %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                            {% if city_entry.needs_filter %}
+                                <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                            {% endif %}
+                            {% for p in city_entry.properties %}
+                                <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                            {% for p in entry.properties %}
+                                <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-success btn-sm" data-review-decide="approve"><i data-lucide="check" class="icon"></i> Approve</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" data-review-decide="reject"><i data-lucide="x" class="icon"></i> Reject</button>
+            <span class="small fw-medium" data-review-marked hidden></span>
+        </div>
     </div>
 </div>
 {% empty %}
@@ -135,4 +160,91 @@
     </div>
 </div>
 {% endfor %}
+</form>
+
+<button type="button" id="review-save-changes-btn" class="btn btn-primary shadow"
+        style="position: fixed; top: 84px; right: 24px; z-index: 1040; display: none;">
+    <i data-lucide="save" class="icon"></i> Save Changes (<span id="review-save-changes-count">0</span>)
+</button>
+
+<script>
+(function () {
+    var form = document.getElementById('review-bulk-form');
+    var saveBtn = document.getElementById('review-save-changes-btn');
+    var countEl = document.getElementById('review-save-changes-count');
+    var csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
+    var marks = new Map(); // card -> decision
+
+    function labelFor(kind, decision) {
+        if (kind === 'candidate') return decision === 'approve' ? 'Marked: Approve' : 'Marked: Reject';
+        return decision === 'apply' ? 'Marked: Apply' : 'Marked: Dismiss';
+    }
+
+    function updateFloatingButton() {
+        var count = marks.size;
+        countEl.textContent = count;
+        saveBtn.style.display = count ? 'inline-flex' : 'none';
+    }
+
+    form.querySelectorAll('[data-review-card]').forEach(function (card) {
+        var markedLabel = card.querySelector('[data-review-marked]');
+        card.querySelectorAll('[data-review-decide]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var decision = btn.dataset.reviewDecide;
+                if (marks.get(card) === decision) {
+                    // clicking the already-marked decision again un-marks the card
+                    marks.delete(card);
+                    card.style.removeProperty('border-color');
+                    markedLabel.hidden = true;
+                } else {
+                    marks.set(card, decision);
+                    card.style.borderColor = decision === 'approve' || decision === 'apply'
+                        ? 'var(--status-good)' : 'var(--status-critical, #dc3545)';
+                    markedLabel.textContent = labelFor(card.dataset.kind, decision);
+                    markedLabel.style.color = decision === 'approve' || decision === 'apply'
+                        ? 'var(--status-good)' : 'var(--status-critical, #dc3545)';
+                    markedLabel.hidden = false;
+                }
+                updateFloatingButton();
+            });
+        });
+    });
+
+    saveBtn.addEventListener('click', function () {
+        var entries = [];
+        marks.forEach(function (decision, card) {
+            var entry = { type: card.dataset.kind, pk: parseInt(card.dataset.pk, 10), decision: decision };
+            if (card.dataset.kind === 'candidate') {
+                card.querySelectorAll('[data-review-field]').forEach(function (field) {
+                    entry[field.dataset.reviewField] = field.value;
+                });
+            }
+            entries.push(entry);
+        });
+        if (!entries.length) return;
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+
+        fetch('{% url "contact_review_bulk_save" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify(entries),
+        })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                if (data.errors && data.errors.length) {
+                    alert('Some rows had a problem and were left for you to fix:\n\n' + data.errors.join('\n'));
+                }
+                location.reload();
+            })
+            .catch(function () {
+                alert('Save failed — check your connection and try again.');
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i data-lucide="save" class="icon"></i> Save Changes (' + marks.size + ')';
+                if (window.lucide) lucide.createIcons();
+            });
+    });
+})();
+</script>
 {% endblock %}

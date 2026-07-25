@@ -19,5 +19,13 @@ urlpatterns = [
         'webhooks/quo/log/reset-contacts/', views.quo_reset_candidates_trigger,
         name='quo_reset_candidates_trigger',
     ),
+    path(
+        'webhooks/quo/log/analyze-contacts/count/', views.quo_analyze_contacts_count,
+        name='quo_analyze_contacts_count',
+    ),
+    path(
+        'webhooks/quo/log/analyze-contacts/run/', views.quo_analyze_contacts_trigger,
+        name='quo_analyze_contacts_trigger',
+    ),
     path('webhooks/quo/<str:token>/', views.quo_webhook, name='quo_webhook'),
 ]
