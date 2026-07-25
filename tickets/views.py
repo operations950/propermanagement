@@ -609,6 +609,10 @@ def ticket_list(request):
         qs = qs.filter(property_id=property_id)
         selected_property = Property.objects.filter(pk=property_id).first()
 
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(Q(title__icontains=q) | Q(property__name__icontains=q))
+
     return render(request, 'tickets/ticket_list.html', {
         'tickets': qs,
         'now': timezone.now(),
@@ -622,6 +626,7 @@ def ticket_list(request):
         'selected_template': selected_template,
         'selected_scheduled_for': scheduled_for,
         'selected_property': selected_property,
+        'q': q,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
         'properties_by_type': properties_by_type(),

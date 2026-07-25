@@ -6,7 +6,8 @@
 <a href="{% url 'ticket_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> All recurring task rules</a>
 {% endif %}
 <div class="d-flex justify-content-between align-items-center my-3">
-    <h2 class="page-title">
+    <h2 class="page-title mb-0 d-flex align-items-center gap-2">
+        <i data-lucide="clipboard-list" class="icon-lg"></i>
         {% if selected_source == 'recurring' %}Recurring Tasks{% elif selected_status == 'complete' %}Completed & cancelled{% else %}Tickets{% endif %}
         {% if selected_role == 'none' %} — no department assigned{% elif selected_role %} — {{ selected_role_label }}{% endif %}
     </h2>
@@ -31,36 +32,40 @@
 </div>
 {% endif %}
 
-<form method="get" class="row g-2 mb-3">
+<form method="get" class="row g-2 mb-3 align-items-center">
     <div class="col-auto">
-        <select name="status" class="form-select" onchange="this.form.submit()">
-            <option value="active" {% if selected_status == 'active' %}selected{% endif %}>Active tickets</option>
-            <option value="complete" {% if selected_status == 'complete' %}selected{% endif %}>Completed & cancelled</option>
-            <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All statuses</option>
-            <optgroup label="Specific status">
-                {% for value, label in status_choices %}
-                    <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </optgroup>
-        </select>
+        <input type="text" name="q" class="form-control" placeholder="Search title or property…" value="{{ q }}">
     </div>
+    <input type="hidden" name="status" value="{{ selected_status }}">
+    <input type="hidden" name="role" value="{{ selected_role }}">
+    <input type="hidden" name="source" value="{{ selected_source }}">
     <div class="col-auto">
-        <select name="role" class="form-select" onchange="this.form.submit()">
-            <option value="">All departments</option>
-            <option value="none" {% if selected_role == 'none' %}selected{% endif %}>No department assigned</option>
-            {% for value, label in role_choices %}
-                <option value="{{ value }}" {% if value == selected_role %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-auto">
-        <select name="source" class="form-select" onchange="this.form.submit()">
-            <option value="" {% if not selected_source %}selected{% endif %}>Tickets & recurring tasks</option>
-            <option value="reactive" {% if selected_source == 'reactive' %}selected{% endif %}>Tickets only</option>
-            <option value="recurring" {% if selected_source == 'recurring' %}selected{% endif %}>Recurring tasks only</option>
-        </select>
+        <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="search" class="icon"></i> Search</button>
     </div>
 </form>
+
+<div class="d-flex flex-wrap gap-2 mb-2">
+    <a href="{% querystring status='active' %}" class="bubble{% if selected_status == 'active' %} bubble-locked{% endif %}">Active tickets</a>
+    <a href="{% querystring status='complete' %}" class="bubble{% if selected_status == 'complete' %} bubble-locked{% endif %}">Completed & cancelled</a>
+    <a href="{% querystring status='all' %}" class="bubble{% if selected_status == 'all' %} bubble-locked{% endif %}">All statuses</a>
+    {% for value, label in status_choices %}
+        <a href="{% querystring status=value %}" class="bubble{% if value == selected_status %} bubble-locked{% endif %}">{{ label }}</a>
+    {% endfor %}
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-2">
+    <a href="{% querystring role=None %}" class="bubble{% if not selected_role %} bubble-locked{% endif %}">All departments</a>
+    <a href="{% querystring role='none' %}" class="bubble{% if selected_role == 'none' %} bubble-locked{% endif %}">No department assigned</a>
+    {% for value, label in role_choices %}
+        <a href="{% querystring role=value %}" class="bubble{% if value == selected_role %} bubble-locked{% endif %}">{{ label }}</a>
+    {% endfor %}
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <a href="{% querystring source=None %}" class="bubble{% if not selected_source %} bubble-locked{% endif %}">Tickets & recurring tasks</a>
+    <a href="{% querystring source='reactive' %}" class="bubble{% if selected_source == 'reactive' %} bubble-locked{% endif %}">Tickets only</a>
+    <a href="{% querystring source='recurring' %}" class="bubble{% if selected_source == 'recurring' %} bubble-locked{% endif %}">Recurring tasks only</a>
+</div>
 
 {% comment %}
 Desktop/tablet: a real table. table-responsive lets it scroll sideways
