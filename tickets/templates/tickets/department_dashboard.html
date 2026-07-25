@@ -69,6 +69,13 @@
 </div>
 
 <script>
+    document.querySelectorAll('[data-task-group-chevron]').forEach(function (chevron) {
+        var collapseEl = chevron.closest('[data-dashboard-item]').querySelector('.collapse');
+        if (!collapseEl) return;
+        collapseEl.addEventListener('show.bs.collapse', function () { chevron.style.transform = 'rotate(90deg)'; });
+        collapseEl.addEventListener('hide.bs.collapse', function () { chevron.style.transform = 'rotate(0deg)'; });
+    });
+
     document.querySelectorAll('[data-ajax-close]').forEach(function (form) {
         form.addEventListener('submit', function (e) {
             e.preventDefault();

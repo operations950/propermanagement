@@ -1,4 +1,37 @@
 {% load ticket_extras %}
+{% if t.is_task_group %}
+<div class="list-group-item py-2 px-3" data-dashboard-item style="border-left: 3px solid var(--role-{{ role }});">
+    <div class="d-flex justify-content-between align-items-start gap-2" role="button" data-bs-toggle="collapse" data-bs-target="#taskgroup-{{ t.pk }}" style="cursor: pointer;">
+        <div class="flex-grow-1" style="min-width: 0; overflow: hidden;">
+            <div class="d-flex align-items-center gap-1" style="min-width: 0;">
+                <i data-lucide="chevron-right" class="icon flex-shrink-0" data-task-group-chevron style="transition: transform 0.15s;"></i>
+                <span class="fw-medium text-truncate">{{ t.title|truncatechars:50 }}</span>
+                <span class="badge rounded-pill bg-light text-dark border flex-shrink-0" title="Steps completed">{{ t.done_count }}/{{ t.total_count }}</span>
+                {% if t|is_overdue:now %}<span class="badge bg-danger flex-shrink-0" style="font-size: 0.7rem;">Overdue</span>{% endif %}
+                {% if t.delayed %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: color-mix(in srgb, var(--status-warning) 18%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 40%, white);">Delayed</span>{% endif %}
+                {% if t|is_due_today:now %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: color-mix(in srgb, var(--status-good) 20%, white); color: color-mix(in srgb, var(--status-good) 65%, black); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">Due Today</span>{% endif %}
+            </div>
+            <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">
+                {{ t.property.name|default:'Company-wide' }} &middot; {{ t.total_count }} step{{ t.total_count|pluralize }}
+            </div>
+        </div>
+        <div class="text-nowrap text-end tabular-nums flex-shrink-0" style="font-size: 0.8rem;">
+            {% if t.due_date %}
+                <span style="color: var(--ink-muted);">{{ t.due_date|date:"M j" }}</span>
+            {% else %}
+                <span style="color: var(--border-hairline);">no due date</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="collapse mt-2" id="taskgroup-{{ t.pk }}">
+        <div class="list-group list-group-flush ps-3" style="border-left: 2px solid var(--border-hairline);">
+        {% for member in t.members %}
+            {% include 'tickets/_dashboard_item.html' with t=member %}
+        {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
 <div class="list-group-item py-2 px-3" data-dashboard-item style="border-left: 3px solid var(--role-{{ role }});">
     <div class="d-flex justify-content-between align-items-start gap-2">
         <div class="flex-grow-1" style="min-width: 0; overflow: hidden;">
@@ -49,3 +82,4 @@
         </div>
     {% endif %}
 </div>
+{% endif %}

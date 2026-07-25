@@ -94,8 +94,8 @@ class TaskPackageTemplateInline(admin.TabularInline):
 
 @admin.register(TaskPackage)
 class TaskPackageAdmin(admin.ModelAdmin):
-    list_display = ['title', 'is_active']
-    list_filter = ['is_active']
+    list_display = ['title', 'department', 'is_active']
+    list_filter = ['department', 'is_active']
     search_fields = ['title']
     inlines = [TaskPackageTemplateInline]
 

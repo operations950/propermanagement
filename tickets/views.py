@@ -93,6 +93,52 @@ def _daily_checklist_key(ticket, now):
     return _ticket_urgency_key(ticket, now)
 
 
+class _TaskGroupRow:
+    """A dashboard-only stand-in for one PackageRun's sibling step tickets —
+    a "Task Group" per the Function/Task Group/Task model (see TaskPackage's
+    docstring). Exposes just enough of a Ticket's interface (.due_date,
+    .priority, .status, .delayed) that the existing urgency-sort key
+    functions and is_overdue/is_due_today template filters work on it
+    unchanged, so it can sit in the same sorted bucket as ungrouped Tickets
+    and collapse to one row in _dashboard_item.html with its real steps
+    nested inside, instead of every step cluttering the dashboard as its
+    own line (see #11's "single line item as a container" ask)."""
+    is_task_group = True
+    source = Ticket.Source.RECURRING
+    status = ''  # never 'completed' — the header's own badges read the aggregates below, not this
+    delayed = False
+
+    def __init__(self, run, members):
+        members = sorted(members, key=lambda m: m.title)
+        self.pk = f'run-{run.pk}'
+        self.run = run
+        self.members = members
+        self.title = run.package.title
+        self.property = run.property
+        self.due_date = members[0].due_date
+        self.priority = min(members, key=lambda m: PRIORITY_RANK.get(m.priority, 2)).priority
+        self.delayed = any(m.delayed for m in members)
+        self.done_count = sum(1 for m in members if m.status in Ticket.DEPENDENCY_SATISFYING_STATUSES)
+        self.total_count = len(members)
+
+
+def _group_task_rows(tickets, sort_key):
+    """Collapses tickets sharing a package_run into one _TaskGroupRow, then
+    sorts the mixed (group + ungrouped-ticket) list with `sort_key` — the
+    same _daily_checklist_key/_ticket_urgency_key/needs-date key already
+    used for plain tickets, since _TaskGroupRow exposes the same
+    .due_date/.priority attributes those read."""
+    solo, by_run = [], {}
+    for t in tickets:
+        if t.package_run_id:
+            by_run.setdefault(t.package_run_id, []).append(t)
+        else:
+            solo.append(t)
+    rows = solo + [_TaskGroupRow(members[0].package_run, members) for members in by_run.values()]
+    rows.sort(key=sort_key)
+    return rows
+
+
 @login_required
 def dashboard(request):
     now = timezone.now()
@@ -365,7 +411,9 @@ def department_dashboard(request, role):
 
     qs = list(
         Ticket.objects.filter(assigned_role=role, property__isnull=False, status__in=OPEN_STATUSES)
-        .select_related('property', 'assigned_staff__user', 'assigned_contact', 'created_from_template')
+        .select_related(
+            'property', 'assigned_staff__user', 'assigned_contact', 'created_from_template', 'package_run__package',
+        )
         .prefetch_related('checklist_items')
     )
     updated_ticket_ids = _tickets_with_new_activity(qs, request.user)
@@ -393,12 +441,23 @@ def department_dashboard(request, role):
         else:
             needs_date_bucket.append(t)
 
-    for bucket in (today_tickets, today_tasks):
-        bucket.sort(key=lambda t: _daily_checklist_key(t, now))
-    for bucket in (soon_tickets, soon_tasks):
-        bucket.sort(key=lambda t: _ticket_urgency_key(t, now))
-    for bucket in (needs_date_tickets, needs_date_tasks):
-        bucket.sort(key=lambda t: (PRIORITY_RANK.get(t.priority, 2), t.title))
+    today_tickets.sort(key=lambda t: _daily_checklist_key(t, now))
+    soon_tickets.sort(key=lambda t: _ticket_urgency_key(t, now))
+    needs_date_tickets.sort(key=lambda t: (PRIORITY_RANK.get(t.priority, 2), t.title))
+
+    # Counted before grouping collapses same-run tasks into one row each —
+    # the badge/total counts below should still reflect real ticket counts.
+    task_total = len(needs_date_tasks) + len(today_tasks) + len(soon_tasks) + later_task_count
+
+    # Tasks (not Tickets) can belong to a package_run — see #11's Function/
+    # Task Group/Task model. _group_task_rows collapses each run's sibling
+    # step tickets into one _TaskGroupRow so a 20-property monthly close
+    # shows 20 rows, not 20x however-many-steps individual lines.
+    today_tasks = _group_task_rows(today_tasks, lambda t: _daily_checklist_key(t, now))
+    soon_tasks = _group_task_rows(soon_tasks, lambda t: _ticket_urgency_key(t, now))
+    needs_date_tasks = _group_task_rows(
+        needs_date_tasks, lambda t: (PRIORITY_RANK.get(t.priority, 2), t.title),
+    )
 
     staff_profile = getattr(request.user, 'staff_profile', None)
     calendar_token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
@@ -429,7 +488,7 @@ def department_dashboard(request, role):
         'today_tasks': today_tasks,
         'soon_tasks': soon_tasks,
         'later_task_count': later_task_count,
-        'task_total': len(needs_date_tasks) + len(today_tasks) + len(soon_tasks) + later_task_count,
+        'task_total': task_total,
         'ticket_list_url': f"{reverse('ticket_list')}?role={role}&source=reactive",
         'task_list_url': f"{reverse('ticket_list')}?role={role}&source=recurring",
         'now': now,

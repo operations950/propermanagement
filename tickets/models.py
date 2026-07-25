@@ -148,6 +148,11 @@ class TaskPackage(models.Model):
     whether a step has a depends_on set, not a different kind of object."""
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    department = models.CharField(
+        max_length=20, choices=StaffProfile.Role.choices, default='',
+        help_text='Which single department this Function belongs to — its steps normally all share one '
+                   'default_assigned_role already; this makes that explicit rather than implied.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
