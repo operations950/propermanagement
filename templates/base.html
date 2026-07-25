@@ -182,7 +182,7 @@
                     <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts</a>
                     <a class="nav-link" href="{% url 'supplies:digest' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
-                    <a class="nav-link" href="/admin/"><i data-lucide="shield" class="icon"></i> Admin</a>
+                    <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
 
                     <div class="dropdown mx-lg-2 my-2 my-lg-0">
                         <button class="btn btn-primary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false">

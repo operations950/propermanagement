@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Admin Tools{% endblock %}
+{% block content %}
+<h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="shield" class="icon-lg"></i> Admin Tools</h2>
+<p class="text-muted">Administrative actions kept separate from the day-to-day screens. Anything not covered here yet is still available in <a href="/admin/">Django admin</a>.</p>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon"></i> Properties</h6>
+        <p class="text-muted small">Deactivating hides a property from active lists and pickers everywhere else in the app — every linked ticket, contact, and follow-up history stays intact and can be restored anytime.</p>
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Name</th><th>Type</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            {% for p in properties %}
+            <tr>
+                <td class="fw-medium">{{ p.name }}</td>
+                <td>{{ p.get_property_type_display }}</td>
+                <td>
+                    {% if p.is_active %}
+                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">Active</span>
+                    {% else %}
+                        <span class="badge rounded-pill bg-light text-dark border">Inactive</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="post" action="{% url 'property_toggle_active' p.pk %}" onsubmit="return confirm('{% if p.is_active %}Deactivate{% else %}Reactivate{% endif %} \'{{ p.name|escapejs }}\'?');">
+                        {% csrf_token %}
+                        <button class="btn btn-outline-secondary btn-sm" type="submit">
+                            {% if p.is_active %}Deactivate{% else %}Reactivate{% endif %}
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

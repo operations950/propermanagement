@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -26,6 +26,10 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_admin(user):
+    return user.is_superuser
 
 
 def _safe_next(request, default='dashboard'):
@@ -158,6 +162,36 @@ def property_list(request):
         'selected_type': selected_type,
         'show_inactive': show_inactive,
     })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def admin_tools(request):
+    """Staff-facing admin toolbox — deliberately separate from the
+    property edit screen (deactivating/reactivating a property is an
+    administrative action, not a property-detail edit) and from Django's
+    raw /admin/ (which stays available for anything not yet given its own
+    control here, linked at the bottom of this page)."""
+    properties = Property.objects.all().order_by('-is_active', 'property_type', 'name')
+    return render(request, 'core/admin_tools.html', {'properties': properties})
+
+
+@login_required
+@user_passes_test(_is_admin)
+def property_toggle_active(request, pk):
+    """Soft-delete/restore only — a property with tickets, contacts, and
+    follow-up history spanning years should never be hard-deleted from the
+    UI. Deactivating just hides it from the active pickers/lists
+    (property_list's default filter, New Ticket's property picker, etc.)
+    while preserving every linked record permanently."""
+    prop = get_object_or_404(Property, pk=pk)
+    if request.method == 'POST':
+        prop.is_active = not prop.is_active
+        prop.save(update_fields=['is_active'])
+        messages.success(
+            request, f'"{prop.name}" is now {"active" if prop.is_active else "inactive"}.',
+        )
+    return redirect('admin_tools')
 
 
 def _standardize_property_address(request, prop):
