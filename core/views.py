@@ -1,5 +1,6 @@
 import logging
 
+from django.conf import settings as django_settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Q
@@ -16,7 +17,7 @@ from tickets.models import (
 from tickets.services import applicability
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
-from . import google_calendar, places, usps
+from . import app_settings, google_calendar, places, usps
 from .duplicates import find_duplicate_groups, merge_all_into
 from .forms import ContactForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
@@ -173,7 +174,33 @@ def admin_tools(request):
     raw /admin/ (which stays available for anything not yet given its own
     control here, linked at the bottom of this page)."""
     properties = Property.objects.all().order_by('-is_active', 'property_type', 'name')
-    return render(request, 'core/admin_tools.html', {'properties': properties})
+    secrets = [
+        {
+            'key': key, 'label': label,
+            'is_set': bool(getattr(django_settings, key, '')),
+            'masked': app_settings.masked(getattr(django_settings, key, '')),
+        }
+        for key, label in app_settings.SECRET_KEYS
+    ]
+    return render(request, 'core/admin_tools.html', {'properties': properties, 'secrets': secrets})
+
+
+@login_required
+@user_passes_test(_is_admin)
+def admin_settings_save(request):
+    if request.method == 'POST':
+        valid_keys = dict(app_settings.SECRET_KEYS)
+        updated = 0
+        for key in valid_keys:
+            value = request.POST.get(key, '')
+            if value:  # blank means "leave unchanged" — the field never shows the real value to re-submit
+                app_settings.set_secret(key, value, user=request.user)
+                updated += 1
+        if updated:
+            messages.success(request, f'Updated {updated} setting(s).')
+        else:
+            messages.info(request, 'Nothing changed — all fields were left blank.')
+    return redirect('admin_tools')
 
 
 @login_required

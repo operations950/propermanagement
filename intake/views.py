@@ -5,6 +5,7 @@ import json
 import logging
 import re
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
@@ -19,18 +20,21 @@ from .models import GmailInboxToken, QuoMessage, QuoThreadState, QuoWebhookLog
 
 logger = logging.getLogger(__name__)
 
-# URL-embedded shared secret the registered Quo webhook POSTs to
-# (/webhooks/quo/<token>/) — belt-and-suspenders alongside the real HMAC
-# signature check below, since Quo's docs don't cover any other way to gate
-# an inbound webhook URL itself.
-QUO_WEBHOOK_TOKEN = 'lzCh81OzYOhib5o7bB014g7feykYB25q'
+# Fallback values for the two Quo webhook secrets below, from before they
+# were made overridable via /admin-tools/ (see core/app_settings.py) —
+# kept as the default so nothing breaks for a deploy where no AppSetting
+# row exists yet. Prefer _quo_webhook_token()/_quo_webhook_signing_key()
+# over reading these directly.
+_QUO_WEBHOOK_TOKEN_FALLBACK = 'lzCh81OzYOhib5o7bB014g7feykYB25q'
+_QUO_WEBHOOK_SIGNING_KEY_FALLBACK = 'V2gxdFZFQzlHRlRzT2JaMXBHekd5ZG1wMmswVW1zdTQ='
 
-# The base64 "key" Quo returned when this webhook was registered
-# (POST /v1/webhooks/messages) — the actual HMAC secret, used to verify the
-# Openphone-Signature header on every request (Quo is a rebrand of
-# OpenPhone; see _verify_quo_signature for the algorithm, confirmed against
-# a real captured event before this was wired in).
-QUO_WEBHOOK_SIGNING_KEY = 'V2gxdFZFQzlHRlRzT2JaMXBHekd5ZG1wMmswVW1zdTQ='
+
+def _quo_webhook_token():
+    return getattr(settings, 'QUO_WEBHOOK_TOKEN', '') or _QUO_WEBHOOK_TOKEN_FALLBACK
+
+
+def _quo_webhook_signing_key():
+    return getattr(settings, 'QUO_WEBHOOK_SIGNING_KEY', '') or _QUO_WEBHOOK_SIGNING_KEY_FALLBACK
 
 _CONVERSATION_ID_RE = re.compile(r'/c/(CN[0-9a-f]+)')
 
@@ -124,7 +128,7 @@ def _verify_quo_signature(request):
     _scheme, _version, timestamp, provided_sig = parts
     signed_data = f'{timestamp}.{request.body.decode("utf-8", errors="replace")}'
     try:
-        key_bytes = base64.b64decode(QUO_WEBHOOK_SIGNING_KEY)
+        key_bytes = base64.b64decode(_quo_webhook_signing_key())
     except (ValueError, TypeError):
         return False
     computed_sig = base64.b64encode(
@@ -190,7 +194,7 @@ def quo_webhook(request, token):
     every event is logged verbatim to QuoWebhookLog regardless of
     verification outcome (audit trail), but only signature-verified events
     are actually processed into QuoMessage/QuoThreadState."""
-    if token != QUO_WEBHOOK_TOKEN:
+    if token != _quo_webhook_token():
         return HttpResponseForbidden()
 
     body = request.body.decode('utf-8', errors='replace')

@@ -10,6 +10,7 @@ urlpatterns = [
     path('calendar/timezone/', views.timezone_select, name='timezone_select'),
     path('admin-tools/', views.admin_tools, name='admin_tools'),
     path('admin-tools/properties/<int:pk>/toggle/', views.property_toggle_active, name='property_toggle_active'),
+    path('admin-tools/settings/save/', views.admin_settings_save, name='admin_settings_save'),
     path('properties/', views.property_list, name='property_list'),
     path('properties/new/', views.property_create, name='property_create'),
     path('properties/<int:pk>/', views.property_detail, name='property_detail'),

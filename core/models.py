@@ -442,3 +442,21 @@ class GoogleCalendarToken(models.Model):
 
     def __str__(self):
         return f'{self.staff} — {self.google_email or "Google Calendar"}'
+
+
+class AppSetting(models.Model):
+    """A DB-backed override for one API key/secret, editable from
+    /admin-tools/ instead of requiring a code or Railway env var edit —
+    see core/app_settings.py, which applies these on top of settings.py's
+    env-var defaults. Deliberately just a flat key/value store scoped to
+    secrets (see app_settings.SECRET_KEYS) rather than a generic settings
+    editor — arbitrary Django settings shouldn't be runtime-editable."""
+    key = models.CharField(max_length=100, unique=True)
+    value = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    def __str__(self):
+        return self.key
