@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import GmailInboxToken, GmailThreadState, PollCursor, QuoThreadState, Reservation
+from .models import GmailInboxToken, GmailThreadState, PollCursor, QuoMessage, QuoThreadState, Reservation
 
 
 @admin.register(Reservation)
@@ -19,6 +19,14 @@ class PollCursorAdmin(admin.ModelAdmin):
 class QuoThreadStateAdmin(admin.ModelAdmin):
     list_display = ['conversation_id', 'participant', 'last_message_id', 'last_classified_at', 'updated_at']
     search_fields = ['conversation_id', 'participant']
+
+
+@admin.register(QuoMessage)
+class QuoMessageAdmin(admin.ModelAdmin):
+    list_display = ['conversation_id', 'direction', 'from_number', 'to_number', 'body', 'quo_created_at']
+    list_filter = ['direction']
+    search_fields = ['conversation_id', 'from_number', 'to_number', 'body']
+    ordering = ['-quo_created_at']
 
 
 @admin.register(GmailInboxToken)
