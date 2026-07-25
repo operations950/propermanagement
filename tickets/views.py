@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
 from django.db.models import Count, Q
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -673,28 +673,59 @@ def _parse_quo_timestamp(iso_str):
 
 
 def _contractor_thread(ticket):
-    """Chronological, merged view of live Quo messages with this ticket's
+    """Chronological, merged view of Quo messages with this ticket's
     assigned contact plus this app's own logged SMS sends to them, for the
     Contractor Communication card. None if no contact is assigned (the
     card doesn't render at all then). has_quo_thread distinguishes "no
     Quo conversation has ever been linked to this contact's phone" from
-    "linked, but no messages yet" — different empty-state copy."""
+    "linked, but no messages yet" — different empty-state copy.
+
+    Once a ticket is bound to a specific conversation (Ticket.source_reference
+    — set the first time a message sends/arrives for it, see
+    messaging.services.send_via_quo and intake/views.py's webhook handler),
+    this reads straight from the local QuoMessage table the webhook keeps
+    live — instant, no Quo API call, and correctly scoped to *this*
+    conversation even if the contact has others going. Before that binding
+    exists yet, falls back to the older live-fetch-by-phone-number path."""
     contact = ticket.assigned_contact
     if not contact:
         return None
 
-    quo_messages = fetch_quo_conversation(contact)
     entries = []
-    for m in (quo_messages or []):
-        at = _parse_quo_timestamp(m.get('at', ''))
-        if at:
-            entries.append({'direction': m['direction'], 'body': m['body'], 'at': at})
+    if ticket.source_reference:
+        from intake.models import QuoMessage
+
+        has_quo_thread = True
+        for m in QuoMessage.objects.filter(conversation_id=ticket.source_reference):
+            if m.quo_created_at:
+                entries.append({'direction': m.direction, 'body': m.body, 'at': timezone.localtime(m.quo_created_at)})
+    else:
+        quo_messages = fetch_quo_conversation(contact)
+        has_quo_thread = quo_messages is not None
+        for m in (quo_messages or []):
+            at = _parse_quo_timestamp(m.get('at', ''))
+            if at:
+                entries.append({'direction': m['direction'], 'body': m['body'], 'at': at})
 
     for log in ticket.followups.filter(contact=contact, channel=FollowUpLog.Channel.SMS):
         entries.append({'direction': 'out', 'body': log.body, 'at': timezone.localtime(log.sent_at)})
 
     entries.sort(key=lambda e: e['at'])
-    return {'entries': entries, 'has_quo_thread': quo_messages is not None}
+    return {'entries': entries, 'has_quo_thread': has_quo_thread}
+
+
+@login_required
+def ticket_contractor_thread_refresh(request, pk):
+    """Polled by ticket_detail.html every 20s while the page is open (see
+    its script block) so a webhook-delivered reply shows up without a full
+    reload — cheap now that _contractor_thread reads from our own
+    webhook-populated QuoMessage table once a ticket is bound to a
+    conversation, rather than a live Quo API call every tick."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    thread = _contractor_thread(ticket)
+    if thread is None:
+        return HttpResponse('')
+    return render(request, 'tickets/_contractor_thread_entries.html', thread)
 
 
 @login_required

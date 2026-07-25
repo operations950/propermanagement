@@ -95,11 +95,10 @@ class GmailThreadState(models.Model):
 
 
 class QuoWebhookLog(models.Model):
-    """Raw capture of every inbound Quo webhook POST — TEMPORARY, purely to
-    discover what payload shape Quo actually sends (their docs specify how
-    to register a webhook but not what it delivers). Once the real shape is
-    known and a proper handler is built to act on these events, this table
-    stops being the point and can be trimmed/retired."""
+    """Raw capture of every inbound Quo webhook POST — kept around as a
+    plain audit trail / debugging aid (see /webhooks/quo/log/), separate
+    from QuoMessage which is the actual structured store the app reads
+    from."""
 
     received_at = models.DateTimeField(auto_now_add=True)
     raw_body = models.TextField(blank=True)
@@ -111,3 +110,33 @@ class QuoWebhookLog(models.Model):
 
     def __str__(self):
         return f'Quo webhook @ {self.received_at}'
+
+
+class QuoMessage(models.Model):
+    """One row per Quo SMS message, populated live by the message.received/
+    message.delivered webhook (see intake/views.py::quo_webhook) — the
+    local mirror of a Quo conversation's content, so a ticket's Contractor
+    Communication thread (tickets/views.py::_contractor_thread) can read
+    straight from our own DB instead of hitting Quo's API on every page
+    load once a ticket is bound to a specific conversation_id
+    (Ticket.source_reference — see messaging/services.py::send_via_quo)."""
+
+    class Direction(models.TextChoices):
+        IN = 'in', 'Incoming'
+        OUT = 'out', 'Outgoing'
+
+    conversation_id = models.CharField(max_length=100, db_index=True, blank=True)
+    message_id = models.CharField(max_length=100, unique=True)
+    phone_number_id = models.CharField(max_length=100, blank=True)
+    direction = models.CharField(max_length=3, choices=Direction.choices)
+    from_number = models.CharField(max_length=30, blank=True)
+    to_number = models.CharField(max_length=30, blank=True)
+    body = models.TextField(blank=True)
+    quo_created_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['quo_created_at']
+
+    def __str__(self):
+        return f'{self.direction} {self.message_id} in {self.conversation_id}'

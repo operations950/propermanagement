@@ -1,24 +1,38 @@
+import base64
+import hashlib
+import hmac as hmac_lib
 import json
 import logging
+import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
+from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import gmail_auth
-from .models import GmailInboxToken, QuoWebhookLog
+from .models import GmailInboxToken, QuoMessage, QuoThreadState, QuoWebhookLog
 
 logger = logging.getLogger(__name__)
 
-# Temporary, hardcoded shared secret for the test Quo webhook — Quo's docs
-# don't document any request-signing mechanism, so this URL-embedded token
-# is the only thing standing between this endpoint and the public internet.
-# Fine for the discovery phase (see QuoWebhookLog's docstring); revisit if
-# this becomes the permanent ingestion path.
+# URL-embedded shared secret the registered Quo webhook POSTs to
+# (/webhooks/quo/<token>/) — belt-and-suspenders alongside the real HMAC
+# signature check below, since Quo's docs don't cover any other way to gate
+# an inbound webhook URL itself.
 QUO_WEBHOOK_TOKEN = 'lzCh81OzYOhib5o7bB014g7feykYB25q'
+
+# The base64 "key" Quo returned when this webhook was registered
+# (POST /v1/webhooks/messages) — the actual HMAC secret, used to verify the
+# Openphone-Signature header on every request (Quo is a rebrand of
+# OpenPhone; see _verify_quo_signature for the algorithm, confirmed against
+# a real captured event before this was wired in).
+QUO_WEBHOOK_SIGNING_KEY = 'V2gxdFZFQzlHRlRzT2JaMXBHekd5ZG1wMmswVW1zdTQ='
+
+_CONVERSATION_ID_RE = re.compile(r'/c/(CN[0-9a-f]+)')
 
 
 def _is_admin(user):
@@ -97,12 +111,85 @@ def gmail_disconnect(request):
     return redirect('dashboard')
 
 
+def _verify_quo_signature(request):
+    """hmac;<version>;<timestamp>;<base64 sig> in Openphone-Signature —
+    Quo is a rebrand of OpenPhone, and this is OpenPhone's own documented
+    scheme (their docs don't cover it under the Quo name). Confirmed
+    against a real captured event before this was wired in as an actual
+    gate rather than just the URL token."""
+    header = request.headers.get('Openphone-Signature', '')
+    parts = header.split(';')
+    if len(parts) != 4 or parts[0] != 'hmac':
+        return False
+    _scheme, _version, timestamp, provided_sig = parts
+    signed_data = f'{timestamp}.{request.body.decode("utf-8", errors="replace")}'
+    try:
+        key_bytes = base64.b64decode(QUO_WEBHOOK_SIGNING_KEY)
+    except (ValueError, TypeError):
+        return False
+    computed_sig = base64.b64encode(
+        hmac_lib.new(key_bytes, signed_data.encode('utf-8'), hashlib.sha256).digest()
+    ).decode()
+    return hmac_lib.compare_digest(computed_sig, provided_sig)
+
+
+def _parse_iso(ts):
+    if not ts:
+        return None
+    dt = parse_datetime(ts)
+    if dt and timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    return dt
+
+
+def _process_quo_webhook_event(event):
+    """message.received/message.delivered -> a local QuoMessage row (see
+    its docstring) plus keeping QuoThreadState in sync so the existing
+    poll_quo-based paths (fetch_quo_conversation, caller-identity lookup)
+    stay consistent. Anything else (call events, other message statuses)
+    is ignored — this app doesn't act on those yet."""
+    if event.get('type') not in ('message.received', 'message.delivered'):
+        return
+
+    data = event.get('data') or {}
+    obj = data.get('object') or {}
+    message_id = obj.get('id', '')
+    if not message_id:
+        return
+
+    match = _CONVERSATION_ID_RE.search(data.get('deepLink', '') or '')
+    conversation_id = match.group(1) if match else ''
+    direction = QuoMessage.Direction.IN if obj.get('direction') == 'incoming' else QuoMessage.Direction.OUT
+    participant = obj.get('from') if direction == QuoMessage.Direction.IN else obj.get('to')
+
+    QuoMessage.objects.get_or_create(message_id=message_id, defaults={
+        'conversation_id': conversation_id,
+        'phone_number_id': obj.get('phoneNumberId', ''),
+        'direction': direction,
+        'from_number': obj.get('from', ''),
+        'to_number': obj.get('to', ''),
+        'body': obj.get('text', ''),
+        'quo_created_at': _parse_iso(obj.get('createdAt', '')),
+    })
+
+    if conversation_id:
+        QuoThreadState.objects.update_or_create(
+            conversation_id=conversation_id,
+            defaults={
+                'phone_number_id': obj.get('phoneNumberId', ''),
+                'participant': participant or '',
+                'last_message_id': message_id,
+            },
+        )
+
+
 @csrf_exempt
 @require_POST
 def quo_webhook(request, token):
-    """Discovery-phase Quo webhook receiver — see QuoWebhookLog's
-    docstring. Just captures the raw payload for inspection; no event
-    processing yet, since we don't know the real shape until one lands."""
+    """Live Quo webhook receiver (message.received/message.delivered) —
+    every event is logged verbatim to QuoWebhookLog regardless of
+    verification outcome (audit trail), but only signature-verified events
+    are actually processed into QuoMessage/QuoThreadState."""
     if token != QUO_WEBHOOK_TOKEN:
         return HttpResponseForbidden()
 
@@ -117,7 +204,17 @@ def quo_webhook(request, token):
         parsed=parsed,
         headers={k: v for k, v in request.headers.items() if k.lower() not in ('cookie', 'authorization')},
     )
-    logger.info('Quo webhook received: %s', body[:2000])
+
+    if not _verify_quo_signature(request):
+        logger.warning('Quo webhook: signature verification failed — event logged but not processed')
+        return JsonResponse({'ok': True})
+
+    if parsed and parsed.get('object') == 'event':
+        try:
+            _process_quo_webhook_event(parsed)
+        except Exception:
+            logger.exception('Quo webhook: failed to process event %s', parsed.get('id'))
+
     return JsonResponse({'ok': True})
 
 

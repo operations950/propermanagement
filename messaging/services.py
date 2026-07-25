@@ -100,7 +100,46 @@ def _quo_from_number(thread):
     return None
 
 
-def send_via_quo(to_number, body):
+def _parse_iso(ts):
+    from django.utils import timezone as dj_timezone
+    from django.utils.dateparse import parse_datetime
+
+    if not ts:
+        return None
+    dt = parse_datetime(ts)
+    if dt and dj_timezone.is_naive(dt):
+        dt = dj_timezone.make_aware(dt)
+    return dt
+
+
+def _record_sent_message(data, ticket):
+    """Echo our own outbound send into QuoMessage immediately, rather than
+    waiting on the message.delivered webhook to (redundantly) tell us what
+    we already know we just sent. More importantly: the first time a
+    ticket sends through Quo, lock it to that specific conversation_id
+    (Ticket.source_reference) — see tickets/views.py's _contractor_thread
+    for why matching by contact phone number alone isn't precise enough
+    once a contact has more than one conversation going."""
+    from intake.models import QuoMessage
+
+    conversation_id = data.get('conversationId', '')
+    message_id = data.get('id', '')
+    if message_id:
+        QuoMessage.objects.get_or_create(message_id=message_id, defaults={
+            'conversation_id': conversation_id,
+            'phone_number_id': data.get('phoneNumberId', ''),
+            'direction': QuoMessage.Direction.OUT,
+            'from_number': data.get('from', ''),
+            'to_number': ','.join(data.get('to') or []),
+            'body': data.get('text', ''),
+            'quo_created_at': _parse_iso(data.get('createdAt', '')),
+        })
+    if ticket and conversation_id and not ticket.source_reference:
+        ticket.source_reference = conversation_id
+        ticket.save(update_fields=['source_reference'])
+
+
+def send_via_quo(to_number, body, ticket=None):
     """Send `body` to `to_number` through Quo — whichever line is already
     talking to them if a thread exists (so the reply lands in the same
     thread fetch_quo_conversation reads from), or settings.QUO_DEFAULT_FROM_NUMBER
@@ -112,7 +151,13 @@ def send_via_quo(to_number, body):
     the caller should fall back to get_sms_backend() in that case. Raises
     on an actual Quo API failure (we did try to send, Quo rejected it) —
     that must surface as a real failure to the caller's audit trail, not
-    be swallowed into a fake stub "success"."""
+    be swallowed into a fake stub "success".
+
+    `ticket`, when given, gets bound to whichever Quo conversation this
+    send lands in (see _record_sent_message) — the first Quo send tied to
+    a ticket is what establishes that binding, since a manually-created
+    ticket has no conversation_id of its own until it actually talks to
+    someone through Quo."""
     participant = _to_e164(to_number)
     if not participant:
         return False
@@ -138,6 +183,7 @@ def send_via_quo(to_number, body):
         timeout=15,
     )
     resp.raise_for_status()
+    _record_sent_message(resp.json().get('data', {}), ticket)
     return True
 
 
@@ -197,7 +243,7 @@ def send_followup(ticket, channel, to_override=None, user=None, custom_body=None
             to_number = to_override or (reporter.phone if reporter else '')
             if not to_number:
                 raise ValueError("No phone number available for this ticket's reporter.")
-            if not send_via_quo(to_number, body):
+            if not send_via_quo(to_number, body, ticket=ticket):
                 get_sms_backend().send(to_number, body)
             log.sent_to = to_number
         else:
@@ -262,7 +308,7 @@ def send_followup_bulk(channel, contact_ids, body, ticket=None, property=None, s
             try:
                 if channel == FollowUpLog.Channel.SMS:
                     sent_to = contact.phone
-                    if not send_via_quo(sent_to, body):
+                    if not send_via_quo(sent_to, body, ticket=ticket):
                         get_sms_backend().send(sent_to, body)
                 else:
                     sent_to = contact.email

@@ -316,16 +316,8 @@
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
                 <p class="small text-muted mb-2">{{ ticket.assigned_contact.name }}{% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}</p>
 
-                <div class="imessage-thread" id="contractor-thread">
-                    {% for entry in contractor_thread.entries %}
-                        <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
-                    {% empty %}
-                        {% if contractor_thread.has_quo_thread %}
-                        <p class="text-muted small text-center py-3 mb-0" data-empty-placeholder>No messages yet.</p>
-                        {% else %}
-                        <p class="text-muted small text-center py-3 mb-0" data-empty-placeholder>No Quo conversation linked yet for this contact.</p>
-                        {% endif %}
-                    {% endfor %}
+                <div class="imessage-thread" id="contractor-thread" data-refresh-url="{% url 'ticket_contractor_thread_refresh' ticket.pk %}">
+                    {% include 'tickets/_contractor_thread_entries.html' with entries=contractor_thread.entries has_quo_thread=contractor_thread.has_quo_thread %}
                 </div>
 
                 <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" class="d-flex gap-2 mt-2" id="contractor-send-form">
@@ -401,6 +393,32 @@
                         input.focus();
                     });
             });
+        })();
+        </script>
+        <script>
+        (function () {
+            // Live refresh while this page stays open — Quo's webhook writes
+            // new messages into our own DB the moment they arrive/deliver
+            // (see intake/views.py::quo_webhook), so this is just a cheap
+            // local re-render, not a live Quo API call — safe to poll far
+            // more often than the old 5-minute Quo-poller cadence.
+            var thread = document.getElementById('contractor-thread');
+            if (!thread || !thread.dataset.refreshUrl) return;
+            var REFRESH_MS = 20000;
+
+            function refresh() {
+                if (document.hidden) return;
+                fetch(thread.dataset.refreshUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (resp) { return resp.text(); })
+                    .then(function (html) {
+                        var wasAtBottom = thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 20;
+                        thread.innerHTML = html;
+                        if (wasAtBottom) thread.scrollTop = thread.scrollHeight;
+                    })
+                    .catch(function () { /* transient network hiccup — just try again next tick */ });
+            }
+
+            setInterval(refresh, REFRESH_MS);
         })();
         </script>
         {% endif %}

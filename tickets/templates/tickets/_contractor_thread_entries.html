@@ -1,0 +1,10 @@
+{% comment %}Contractor Communication thread bubbles — shared between the initial ticket_detail.html render and ticket_contractor_thread_refresh's polled response, so they can never drift out of sync.{% endcomment %}
+{% for entry in entries %}
+<div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
+{% empty %}
+    {% if has_quo_thread %}
+    <p class="text-muted small text-center py-3 mb-0" data-empty-placeholder>No messages yet.</p>
+    {% else %}
+    <p class="text-muted small text-center py-3 mb-0" data-empty-placeholder>No Quo conversation linked yet for this contact.</p>
+    {% endif %}
+{% endfor %}
