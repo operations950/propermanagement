@@ -976,6 +976,12 @@ def ticket_detail(request, pk):
         == ticket.created_from_template.approval_role
     )
 
+    vendor_link_cooldown_hours_left = 0
+    if ticket.vendor_link_sent_at:
+        elapsed = timezone.now() - ticket.vendor_link_sent_at
+        if elapsed < timedelta(hours=24):
+            vendor_link_cooldown_hours_left = max(1, round(24 - elapsed.total_seconds() / 3600))
+
     return render(request, 'tickets/ticket_detail.html', {
         'ticket': ticket,
         'back_url': _safe_back_url(request, exclude_path=request.path),
@@ -1033,6 +1039,7 @@ def ticket_detail(request, pk):
         'selected_contractor_label': str(ticket.assigned_contact) if ticket.assigned_contact_id else '',
         'contractor_thread': _contractor_thread(ticket),
         'quo_default_from_number': settings.QUO_DEFAULT_FROM_NUMBER,
+        'vendor_link_cooldown_hours_left': vendor_link_cooldown_hours_left,
         'now': timezone.now(),
     })
 
@@ -1436,14 +1443,21 @@ def ticket_set_property(request, pk):
 def ticket_set_contacts(request, pk):
     """The 3-column Related contacts picker's auto-save — every bubble
     lock/unlock in any of the Owner/Contractor/Additional columns submits
-    this form immediately (see the page-local script in ticket_detail.html),
-    so there's no separate Save button. Each column is synced independently
+    this immediately (see the page-local script in ticket_detail.html), so
+    there's no separate Save button. Each column is synced independently
     to TicketContact links under its own role (add missing, remove absent
     — Contact.properties' lock-to-add/unlock-to-remove convention, just
     three of them side by side), and each column's inline add-new-contact
     sub-form is handled the same way ticket_create's contractor/reporter
-    fields are."""
+    fields are.
+
+    AJAX-only in practice (the page-local script always sends
+    X-Requested-With — see its own comment on why a plain form.submit()
+    was wrong here): every bubble lock/unlock would otherwise navigate the
+    whole page, resetting scroll position and any other in-progress edits
+    on it. The non-AJAX branch is kept only as a plain-POST fallback."""
     ticket = get_object_or_404(Ticket, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if request.method == 'POST':
         data = request.POST.copy()
         columns = (
@@ -1452,11 +1466,17 @@ def ticket_set_contacts(request, pk):
             ('additional', TicketContact.Role.OTHER, Contact.ContactType.OTHER),
         )
         phone_error = False
+        new_contacts = []
         for prefix, role, default_type in columns:
             name = data.get(f'new_contact__name__{prefix}', '').strip()
             if name:
                 phone = data.get(f'new_contact__phone__{prefix}', '').strip()
                 if not is_valid_phone(phone):
+                    if is_ajax:
+                        return JsonResponse({
+                            'success': False, 'prefix': prefix,
+                            'error': 'Phone must be in XXX-XXX-XXXX format — nothing was saved.',
+                        })
                     messages.error(request, 'Phone must be in XXX-XXX-XXXX format — nothing was saved.')
                     phone_error = True
                     continue
@@ -1466,6 +1486,7 @@ def ticket_set_contacts(request, pk):
                     defaults={'contact_type': default_type},
                 )
                 data.setlist(f'{prefix}_contact_ids', data.getlist(f'{prefix}_contact_ids') + [str(contact.pk)])
+                new_contacts.append({'prefix': prefix, 'id': contact.pk, 'label': str(contact)})
 
         if not phone_error:
             for prefix, role, _default_type in columns:
@@ -1477,6 +1498,9 @@ def ticket_set_contacts(request, pk):
                 for contact_id in contact_ids:
                     if contact_id not in existing:
                         TicketContact.objects.get_or_create(ticket=ticket, contact_id=contact_id, role=role)
+
+        if is_ajax:
+            return JsonResponse({'success': True, 'new_contacts': new_contacts})
     return redirect('ticket_detail', pk=ticket.pk)
 
 
@@ -1603,6 +1627,44 @@ def ticket_followup_sms(request, pk):
         else:
             messages.error(request, 'Choose at least one recipient and write a message first.')
     return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_send_vendor_link(request, pk):
+    """Send Vendor Completion Link button in the Contractor Communication
+    card — texts the assigned contractor their vendor-portal completion
+    link directly (same token vendor_link in ticket_detail's context
+    already uses). Rate-limited to once per 24h via
+    Ticket.vendor_link_sent_at so a re-click doesn't spam the same
+    contact with repeat asks; enforced server-side (not just a disabled
+    button) so it holds across page reloads and multiple staff."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method != 'POST':
+        return redirect('ticket_detail', pk=ticket.pk)
+
+    contact = ticket.assigned_contact
+    if not contact or not contact.phone:
+        return JsonResponse({'success': False, 'error': 'No contractor phone number on file.'})
+
+    if ticket.vendor_link_sent_at and timezone.now() - ticket.vendor_link_sent_at < timedelta(hours=24):
+        hours_left = 24 - (timezone.now() - ticket.vendor_link_sent_at).total_seconds() / 3600
+        return JsonResponse({
+            'success': False,
+            'error': f'Already sent — try again in about {max(1, round(hours_left))}h.',
+        })
+
+    vendor_link = request.build_absolute_uri(f'/vendor/t/{ticket.completion_token}/')
+    body = f'Hi {contact.name}, please fill out this form once the work on "{ticket.title}" is done: {vendor_link}'
+    logs = send_followup_bulk(FollowUpLog.Channel.SMS, [contact.pk], body, ticket=ticket, user=request.user)
+    ok = any(log.success for log in logs)
+    if ok:
+        ticket.vendor_link_sent_at = timezone.now()
+        ticket.save(update_fields=['vendor_link_sent_at'])
+    return JsonResponse({
+        'success': ok,
+        'error': '' if ok else 'Send failed — check the contractor\'s phone number.',
+        'sent_at': ticket.vendor_link_sent_at.isoformat() if ok else None,
+    })
 
 
 @login_required

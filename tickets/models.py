@@ -383,6 +383,11 @@ class Ticket(models.Model):
         help_text='Set the first time any Follow-Up text or email successfully sends — never reset, '
                    'so it just means "someone has been contacted at least once," not "up to date."',
     )
+    vendor_link_sent_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Last time the vendor completion-form link was texted to the assigned contractor '
+                   'from the Contractor Communication card — rate-limits that button to once per 24h.',
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

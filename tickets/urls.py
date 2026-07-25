@@ -31,5 +31,6 @@ urlpatterns = [
     path('tickets/<int:pk>/delete/', views.ticket_delete, name='ticket_delete'),
     path('tickets/<int:pk>/followup/sms/', views.ticket_followup_sms, name='ticket_followup_sms'),
     path('tickets/<int:pk>/contractor-thread/', views.ticket_contractor_thread_refresh, name='ticket_contractor_thread_refresh'),
+    path('tickets/<int:pk>/vendor-link/send/', views.ticket_send_vendor_link, name='ticket_send_vendor_link'),
     path('tickets/<int:pk>/followup/email/', views.ticket_followup_email, name='ticket_followup_email'),
 ]

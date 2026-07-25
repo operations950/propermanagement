@@ -223,6 +223,7 @@
                                     <input type="email" name="new_contact__email__owner" class="form-control form-control-sm" placeholder="Email">
                                     <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
                                 </div>
+                                <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
                             </div>
                             <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="owner_contact_ids" data-initial-values="{{ owner_ids }}">
                                 <div class="bubble-slot" data-bubble-slot data-empty-text="No owner set"></div>
@@ -247,6 +248,7 @@
                                     <input type="email" name="new_contact__email__contractor" class="form-control form-control-sm" placeholder="Email">
                                     <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
                                 </div>
+                                <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
                             </div>
                             <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="contractor_contact_ids" data-initial-values="{{ contractor_ids }}">
                                 <div class="bubble-slot" data-bubble-slot data-empty-text="No contractor set"></div>
@@ -271,6 +273,7 @@
                                     <input type="email" name="new_contact__email__additional" class="form-control form-control-sm" placeholder="Email">
                                     <button type="button" class="btn btn-outline-primary btn-sm mt-1" data-related-contact-add>+ Add</button>
                                 </div>
+                                <p class="text-danger small mt-1 mb-0" data-contact-filter-error hidden></p>
                             </div>
                             <div class="bubble-picker mb-0" data-bubble-picker data-mode="multi" data-name="additional_contact_ids" data-initial-values="{{ additional_ids }}">
                                 <div class="bubble-slot" data-bubble-slot data-empty-text="None yet"></div>
@@ -300,9 +303,24 @@
                     var ready = false;
                     window.addEventListener('load', function () { ready = true; });
 
+                    // AJAX, not form.requestSubmit()/submit() — a real page
+                    // navigation on every single bubble lock/unlock reset the
+                    // whole page (scroll position, any other in-progress
+                    // edits) each time, which is exactly what felt like "the
+                    // screen resets" when locking in a contact/contractor/
+                    // owner. bubble-picker.js already updates the bubble
+                    // itself instantly client-side, so this is fire-and-
+                    // forget — no response handling needed for a plain
+                    // lock/unlock. ticket_set_contacts detects the
+                    // X-Requested-With header and returns JSON instead of
+                    // redirecting.
                     function autosave() {
                         if (!ready) return;
-                        form.requestSubmit ? form.requestSubmit() : form.submit();
+                        fetch(form.action, {
+                            method: 'POST',
+                            body: new FormData(form),
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        }).catch(function () { /* transient network hiccup — next lock/unlock retries the full state anyway */ });
                     }
 
                     // Every bubble lock/unlock in any of the 3 columns saves
@@ -327,10 +345,57 @@
                         });
                     });
 
+                    // Add-new is the one action with a real server round trip
+                    // to wait for — the contact doesn't have an id to lock a
+                    // bubble for until the server creates it, and a bad phone
+                    // number needs to show an error right where it was typed
+                    // rather than a messages-framework banner that would only
+                    // ever appear after a reload this flow no longer does.
                     form.querySelectorAll('[data-related-contact-add]').forEach(function (btn) {
+                        var addNewDiv = btn.closest('[data-contact-filter-addnew]');
+                        var filterRoot = btn.closest('[data-contact-filter]');
+                        var nameInput = addNewDiv.querySelector('input[name^="new_contact__name__"]');
+                        var phoneInput = addNewDiv.querySelector('input[name^="new_contact__phone__"]');
+                        var emailInput = addNewDiv.querySelector('input[name^="new_contact__email__"]');
+                        var errorEl = filterRoot.querySelector('[data-contact-filter-error]');
+                        var textInput = filterRoot.querySelector('[data-contact-filter-text]');
+                        var listEl = filterRoot.querySelector('[data-contact-filter-list]');
+
                         btn.addEventListener('click', function () {
-                            var nameInput = btn.closest('[data-contact-filter-addnew]').querySelector('input[name^="new_contact__name__"]');
-                            if (nameInput && nameInput.value.trim()) autosave();
+                            if (!nameInput.value.trim()) return;
+                            if (errorEl) errorEl.hidden = true;
+                            btn.disabled = true;
+
+                            fetch(form.action, {
+                                method: 'POST',
+                                body: new FormData(form),
+                                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                            })
+                                .then(function (resp) { return resp.json(); })
+                                .then(function (data) {
+                                    if (data.success) {
+                                        (data.new_contacts || []).forEach(function (nc) {
+                                            var picker = form.querySelector('[data-bubble-picker][data-name="' + nc.prefix + '_contact_ids"]');
+                                            if (picker && picker._bubbleApi) picker._bubbleApi.lockValue(String(nc.id), nc.label);
+                                        });
+                                        nameInput.value = '';
+                                        phoneInput.value = '';
+                                        if (emailInput) emailInput.value = '';
+                                        addNewDiv.hidden = true;
+                                        if (textInput) textInput.value = '';
+                                        if (listEl) listEl.hidden = true;
+                                    } else if (errorEl) {
+                                        errorEl.textContent = data.error || 'Could not add contact.';
+                                        errorEl.hidden = false;
+                                    }
+                                })
+                                .catch(function () {
+                                    if (errorEl) {
+                                        errorEl.textContent = 'Could not add contact — check your connection and try again.';
+                                        errorEl.hidden = false;
+                                    }
+                                })
+                                .finally(function () { btn.disabled = false; });
                         });
                     });
                 })();
@@ -383,8 +448,21 @@
         {% if contractor_thread %}
         <div class="card mb-3" id="contractor-communication-card">
             <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
+                    {% if ticket.assigned_contact.phone %}
+                    <form method="post" action="{% url 'ticket_send_vendor_link' ticket.pk %}" id="send-vendor-link-form" class="flex-shrink-0">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-secondary btn-sm text-nowrap" id="send-vendor-link-btn"
+                                {% if vendor_link_cooldown_hours_left %}disabled title="Sent within the last 24h — try again in about {{ vendor_link_cooldown_hours_left }}h"{% endif %}>
+                            <i data-lucide="link" class="icon"></i>
+                            <span data-send-vendor-link-label>{% if vendor_link_cooldown_hours_left %}Sent — retry in {{ vendor_link_cooldown_hours_left }}h{% else %}Send Vendor Completion Link{% endif %}</span>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
                 <p class="small text-muted mb-2">{{ ticket.assigned_contact.name }}{% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}</p>
+                <p class="text-danger small mb-2" id="vendor-link-send-error" hidden></p>
 
                 <div class="imessage-thread" id="contractor-thread" data-refresh-url="{% url 'ticket_contractor_thread_refresh' ticket.pk %}">
                     {% include 'tickets/_contractor_thread_entries.html' with entries=contractor_thread.entries has_quo_thread=contractor_thread.has_quo_thread %}
@@ -489,6 +567,45 @@
             }
 
             setInterval(refresh, REFRESH_MS);
+        })();
+        </script>
+        <script>
+        (function () {
+            var form = document.getElementById('send-vendor-link-form');
+            if (!form) return;
+            var btn = document.getElementById('send-vendor-link-btn');
+            var errorEl = document.getElementById('vendor-link-send-error');
+            var label = btn.querySelector('[data-send-vendor-link-label]');
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                btn.disabled = true;
+                errorEl.hidden = true;
+                fetch(form.action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            label.textContent = 'Sent — retry in 24h';
+                            btn.title = 'Sent — try again in about 24h';
+                        } else {
+                            errorEl.textContent = data.error || 'Send failed.';
+                            errorEl.hidden = false;
+                            // Only a real send starts the 24h cooldown — a
+                            // failure (bad phone, transient send error)
+                            // shouldn't lock staff out of retrying.
+                            btn.disabled = false;
+                        }
+                    })
+                    .catch(function () {
+                        errorEl.textContent = 'Send failed — check your connection and try again.';
+                        errorEl.hidden = false;
+                        btn.disabled = false;
+                    });
+            });
         })();
         </script>
         {% endif %}
