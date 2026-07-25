@@ -136,8 +136,17 @@ class QuoAdapter(IntakeAdapter):
 
     def _build_contact_lookup(self):
         """phone (E.164) -> {'name': ..., 'company': ...}. Quo's /v1/contacts
-        has no phone-number filter, so this fetches the whole list once per
-        poll rather than once per conversation."""
+        has no phone-number filter, so this fetches the whole list (up to 40
+        paginated requests) rather than once per conversation — cached for
+        an hour since a business's contact list barely changes minute to
+        minute, and re-fetching it on every 5-minute poll was reliably
+        tripping Quo's 10 req/sec rate limit for no benefit."""
+        from django.core.cache import cache
+
+        cached = cache.get('quo_contact_lookup')
+        if cached is not None:
+            return cached
+
         lookup = {}
         try:
             contacts = self._list_contacts()
@@ -153,6 +162,7 @@ class QuoAdapter(IntakeAdapter):
                 if number:
                     lookup[number] = {'name': name, 'company': company}
         logger.info('Quo: loaded %d contact(s) for caller-identity lookup', len(lookup))
+        cache.set('quo_contact_lookup', lookup, timeout=3600)
         return lookup
 
     def _recent_messages(self, messages):
