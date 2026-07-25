@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timedelta
 
 import requests
@@ -11,6 +12,19 @@ logger = logging.getLogger(__name__)
 
 QUO_API_BASE = 'https://api.quo.com'
 CURSOR_KEY = 'quo_conversations_updated_after'
+
+# Quo's own limit is 10 req/sec per key, but several independent processes
+# share this one key (the scheduler's poll_quo/classify_pending_contacts/
+# sync_quo_contacts jobs, plus any admin-triggered command like
+# analyze_recent_quo_contacts, which alone can fire 25+ requests in under a
+# second just paginating conversations) — a fixed pacing delay after every
+# call plus a retry-with-backoff on 429 is what actually keeps a real,
+# multi-hundred-page crawl from dying partway through instead of a single
+# unhandled QuoAPIError (see the analyze_recent_quo_contacts production
+# failure this was written to fix: it 429'd on _list_contacts() right after
+# a clean 26-request conversation crawl, and the whole run was lost).
+RATE_LIMIT_PACING_SECONDS = 0.12
+MAX_429_RETRIES = 5
 
 # How much thread history to actually feed Claude / store as raw_context.
 # Some Quo threads span months or years with the same recurring vendor —
@@ -68,24 +82,25 @@ class QuoAdapter(IntakeAdapter):
         return {'Authorization': settings.QUO_API_KEY, 'Content-Type': 'application/json'}
 
     def _get(self, path, params=None):
-        resp = requests.get(f'{QUO_API_BASE}{path}', headers=self._headers(), params=params or {}, timeout=15)
-        if resp.status_code == 429:
-            raise QuoAPIError('Rate limited by Quo API (429) — will retry next poll.')
-        resp.raise_for_status()
-        data = resp.json()
-        if path == '/v1/conversations':
-            # TEMPORARY diagnostic — production reports 0 results for a
-            # window independently confirmed (via the same key, same
-            # params) to contain real conversations. Logging the literal
-            # outbound URL/response to see what production's own network
-            # path actually sends/receives, since the request library, key,
-            # and code are all otherwise confirmed identical. Remove once
-            # root-caused.
-            logger.info(
-                'Quo: DIAG raw request url=%s status=%d data_len=%d nextPageToken=%r',
-                resp.url, resp.status_code, len(data.get('data', [])), data.get('nextPageToken'),
-            )
-        return data
+        for attempt in range(1, MAX_429_RETRIES + 1):
+            resp = requests.get(f'{QUO_API_BASE}{path}', headers=self._headers(), params=params or {}, timeout=15)
+            if resp.status_code == 429:
+                if attempt == MAX_429_RETRIES:
+                    raise QuoAPIError('Rate limited by Quo API (429) — exhausted retries.')
+                retry_after = resp.headers.get('Retry-After')
+                try:
+                    wait = float(retry_after) if retry_after else 0.5 * (2 ** (attempt - 1))
+                except ValueError:
+                    wait = 0.5 * (2 ** (attempt - 1))
+                logger.warning(
+                    'Quo: rate limited (429) on %s, retrying in %.1fs (attempt %d/%d)',
+                    path, wait, attempt, MAX_429_RETRIES,
+                )
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            time.sleep(RATE_LIMIT_PACING_SECONDS)
+            return resp.json()
 
     def _list_conversations(self, updated_after=None):
         conversations = []

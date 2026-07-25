@@ -1,12 +1,21 @@
-"""Loads core/fixtures/yardi_vendors.json (296 vendors exported from Yardi,
-covering the Comm-STR-LTR and Associations vendor lists) as
+"""One-time load of core/fixtures/yardi_vendors.json (296 vendors exported
+from Yardi, covering the Comm-STR-LTR and Associations vendor lists) as
 ContactImportCandidate rows for the usual review queue — same hard gate as
 Quo/Gmail imports, nothing here is a real Contact until a human approves it.
 
-Dedup: by phone or email against existing Contacts and already-pending
-candidates when the vendor has one; falls back to an exact case-insensitive
-name match against other Yardi-sourced candidates/contacts when neither is
-on file (most rows have no phone/email at all) — the fixture is a fixed
+Deliberately NOT wired into the Procfile — it ran once already, and this
+fixture is a fixed snapshot, not a moving feed. Running it on every deploy
+resurrected every rejected/cleared vendor on the very next release, since
+"cleared" or "rejected" looked identical to "never staged" the moment the
+old row was gone/excluded. Only ever run this again manually and on
+purpose (e.g. a genuinely new Yardi export).
+
+Dedup: by phone or email against existing Contacts and ANY already-known
+candidate for that phone/email — pending, approved, OR rejected, since a
+rejected candidate is a person staff already looked at and dismissed, not
+someone to offer again. Falls back to an exact case-insensitive name match
+against other Yardi-sourced candidates/contacts when neither phone nor
+email is on file (most rows have neither) — the fixture is a fixed
 snapshot, not a moving feed, so this is really about making re-runs safe
 rather than catching real-world renames.
 """
@@ -27,15 +36,10 @@ class Command(BaseCommand):
         vendors = json.loads(FIXTURE_PATH.read_text(encoding='utf-8'))
 
         known_phones = set(Contact.objects.exclude(phone='').values_list('phone', flat=True))
-        known_phones |= set(
-            ContactImportCandidate.objects.exclude(status=ContactImportCandidate.Status.REJECTED)
-            .exclude(phone='').values_list('phone', flat=True)
-        )
+        known_phones |= set(ContactImportCandidate.objects.exclude(phone='').values_list('phone', flat=True))
         known_emails = {e.lower() for e in Contact.objects.exclude(email='').values_list('email', flat=True)}
         known_emails |= {
-            e.lower() for e in ContactImportCandidate.objects
-            .exclude(status=ContactImportCandidate.Status.REJECTED).exclude(email='')
-            .values_list('email', flat=True)
+            e.lower() for e in ContactImportCandidate.objects.exclude(email='').values_list('email', flat=True)
         }
         known_yardi_names = {
             n.lower() for n in ContactImportCandidate.objects.filter(source=Contact.Source.YARDI)
