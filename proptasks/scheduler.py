@@ -30,8 +30,8 @@ def _run_poll_gmail():
     _run_command('poll_gmail')
 
 
-def _run_poll_quo():
-    _run_command('poll_quo')
+def _run_classify_quo_conversations():
+    _run_command('classify_quo_conversations')
 
 
 def _run_poll_calendar():
@@ -76,10 +76,14 @@ def start():
         next_run_time=datetime.now(), args=['daily_supply_digest'],
     )
     # Real-source polls run on the same cadence as the fake adapter (except
-    # Quo and Gmail, which have their own dedicated intervals); they're
-    # no-ops until their credentials are configured (see intake/adapters/*.py).
+    # Gmail, which has its own dedicated interval); they're no-ops until
+    # their credentials are configured (see intake/adapters/*.py). Quo no
+    # longer has a poll-and-classify job here — message capture is now
+    # real-time via the message webhook (see intake/views.py::quo_webhook),
+    # and classify_quo_conversations judges that locally-captured history
+    # on its own, decoupled, slower cadence instead.
     _scheduler.add_job(_run_poll_gmail, 'interval', minutes=settings.GMAIL_POLL_INTERVAL_MINUTES)
-    _scheduler.add_job(_run_poll_quo, 'interval', minutes=settings.QUO_POLL_INTERVAL_MINUTES)
+    _scheduler.add_job(_run_classify_quo_conversations, 'interval', minutes=settings.QUO_CLASSIFY_INTERVAL_MINUTES)
     _scheduler.add_job(_run_poll_calendar, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(_run_poll_airbnb, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(_run_poll_vrbo, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)

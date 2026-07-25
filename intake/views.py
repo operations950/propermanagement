@@ -225,3 +225,48 @@ def quo_webhook_log(request):
     hunting through Railway's log UI for a JSON body Quo POSTed us."""
     logs = QuoWebhookLog.objects.all()[:50]
     return render(request, 'intake/quo_webhook_log.html', {'logs': logs})
+
+
+def _run_command_in_background(name, *args):
+    """Kicks off a management command on a daemon thread and returns
+    immediately — for admin-triggered commands (backfill, force-classify)
+    that can take longer than a request/proxy timeout tolerates. Progress
+    is only visible via Railway logs (both commands write their own
+    progress lines via self.stdout.write), not this response."""
+    import threading
+
+    from django.core.management import call_command
+
+    def _run():
+        try:
+            call_command(name, *args)
+        except Exception:
+            logger.exception('%s (background, admin-triggered) failed', name)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_backfill_trigger(request):
+    """Admin-only: kicks off backfill_quo_messages in the background — the
+    one-time (safe to re-run) historical sync so classify_quo_conversations
+    has more than just what's arrived since the webhook went live. No
+    Railway shell access, so this is the only way to run it on production."""
+    if request.method == 'POST':
+        _run_command_in_background('backfill_quo_messages')
+        messages.success(request, 'Quo backfill started in the background — check Railway logs for progress.')
+    return redirect('quo_webhook_log')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_classify_trigger(request):
+    """Admin-only: force an immediate classify_quo_conversations pass
+    instead of waiting for its next scheduled run (see
+    settings.QUO_CLASSIFY_INTERVAL_MINUTES) — mainly for testing/verifying
+    the pipeline without sitting around."""
+    if request.method == 'POST':
+        _run_command_in_background('classify_quo_conversations')
+        messages.success(request, 'Quo classification pass started in the background — check Railway logs for progress.')
+    return redirect('quo_webhook_log')

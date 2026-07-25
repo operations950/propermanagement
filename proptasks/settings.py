@@ -212,6 +212,12 @@ QUO_INITIAL_SYNC_DAYS = int(os.environ.get('QUO_INITIAL_SYNC_DAYS', '7'))
 # Quo is a live customer-facing SMS line, so it deserves its own cadence
 # rather than piggybacking on FAKE_POLL_INTERVAL_MINUTES.
 QUO_POLL_INTERVAL_MINUTES = int(os.environ.get('QUO_POLL_INTERVAL_MINUTES', '5'))
+# How often classify_quo_conversations re-judges conversations with new
+# local activity (message capture itself is real-time via the Quo webhook —
+# this is just how often the "does this need a ticket" AI pass re-runs, kept
+# slower/decoupled on purpose so a conversation gets a chance to develop
+# before being judged, and so Claude isn't re-run on every single message).
+QUO_CLASSIFY_INTERVAL_MINUTES = int(os.environ.get('QUO_CLASSIFY_INTERVAL_MINUTES', '120'))
 # The Quo line to send a contact's very first message from, when they have no
 # existing thread yet (see messaging.services.send_via_quo) — an established
 # thread still always sends from whichever line that contact already talks
