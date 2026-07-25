@@ -42,6 +42,11 @@
             --status-critical: #d03b3b;
             --status-warning:  #fab219;
             --status-good:     #0ca30c;
+            /* Urgent priority specifically — distinct from both the red
+               "critical" status and the amber "warning" status so Urgent
+               tickets don't get lost among Blocked/Overdue badges that
+               already use those two. */
+            --priority-urgent: #f2790a;
 
             /* Everything above is a shade of blue/slate/gray (brand + role
                ramp) or a reserved status meaning (red/amber/green) — none of

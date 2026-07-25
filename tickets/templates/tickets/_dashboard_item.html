@@ -7,6 +7,8 @@
                    style="min-width: 0; {% if t.status == 'completed' %}text-decoration: line-through;{% endif %}">
                     {{ t.title|truncatechars:60 }}
                 </a>
+                {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
+                {% if t.pk in updated_ticket_ids %}<span class="badge flex-shrink-0 d-inline-flex align-items-center gap-1" style="font-size: 0.7rem; background: var(--accent-contrast); color: #fff;" title="New vendor communication since you last opened this"><i data-lucide="message-circle" style="width: 0.65rem; height: 0.65rem;"></i> Update</span>{% endif %}
                 {% if t|is_overdue:now %}<span class="badge bg-danger flex-shrink-0" style="font-size: 0.7rem;">Overdue</span>{% endif %}
                 {% if t|is_due_today:now %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: color-mix(in srgb, var(--status-good) 20%, white); color: color-mix(in srgb, var(--status-good) 65%, black); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">Due Today</span>{% endif %}
                 {% if t|is_escalated:now %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--status-critical); color: #fff;">Escalated</span>{% endif %}

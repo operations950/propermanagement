@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -26,7 +26,7 @@ from messaging.services import _followup_result_message, _group_followups, fetch
 from .forms import ReassignForm, TicketForm, TicketTemplateForm
 from .models import (
     FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact,
-    TicketTemplate,
+    TicketTemplate, TicketView,
 )
 from .services.package_engine import unblock_dependents
 
@@ -274,6 +274,52 @@ def _format_calendar_events(events, days_ahead=2):
     return day_boxes
 
 
+def _tickets_with_new_activity(tickets, user):
+    """Ticket ids (from `tickets`) where a vendor communication (a Quo
+    message or a logged SMS) landed after `user` last opened this
+    ticket's detail page. Only tickets this user has actually opened
+    before are eligible — a ticket nobody's looked at yet isn't "new
+    since last viewed," it's just unread, a different concept the
+    dashboard already surfaces elsewhere (needs-a-due-date, Today, etc)."""
+    from intake.models import QuoMessage
+
+    candidate_ids = [t.pk for t in tickets if t.assigned_contact_id]
+    if not candidate_ids:
+        return set()
+
+    viewed_at = dict(
+        TicketView.objects.filter(ticket_id__in=candidate_ids, user=user)
+        .values_list('ticket_id', 'last_viewed_at')
+    )
+    if not viewed_at:
+        return set()
+
+    by_id = {t.pk: t for t in tickets if t.pk in viewed_at}
+    conversation_ids = [t.source_reference for t in by_id.values() if t.source_reference]
+    quo_latest = dict(
+        QuoMessage.objects.filter(conversation_id__in=conversation_ids)
+        .values('conversation_id').annotate(latest=Max('quo_created_at'))
+        .values_list('conversation_id', 'latest')
+    )
+    followup_latest = dict(
+        FollowUpLog.objects.filter(ticket_id__in=by_id.keys(), channel=FollowUpLog.Channel.SMS)
+        .values('ticket_id').annotate(latest=Max('sent_at')).values_list('ticket_id', 'latest')
+    )
+
+    updated = set()
+    for ticket_id, last_viewed in viewed_at.items():
+        t = by_id.get(ticket_id)
+        if not t:
+            continue
+        latest = quo_latest.get(t.source_reference) if t.source_reference else None
+        fu = followup_latest.get(ticket_id)
+        if fu and (latest is None or fu > latest):
+            latest = fu
+        if latest and latest > last_viewed:
+            updated.add(ticket_id)
+    return updated
+
+
 @login_required
 def department_dashboard(request, role):
     """A department's own front page, split into the three things staff
@@ -300,11 +346,12 @@ def department_dashboard(request, role):
     today = timezone.localdate()
     soon_cutoff = today + timedelta(days=2)
 
-    qs = (
+    qs = list(
         Ticket.objects.filter(assigned_role=role, property__isnull=False, status__in=OPEN_STATUSES)
         .select_related('property', 'assigned_staff__user', 'assigned_contact', 'created_from_template')
         .prefetch_related('checklist_items')
     )
+    updated_ticket_ids = _tickets_with_new_activity(qs, request.user)
 
     needs_date_tickets, needs_date_tasks = [], []
     today_tickets, soon_tickets = [], []
@@ -353,6 +400,7 @@ def department_dashboard(request, role):
     return render(request, 'tickets/department_dashboard.html', {
         'role': role,
         'role_label': dict(StaffProfile.Role.choices).get(role),
+        'updated_ticket_ids': updated_ticket_ids,
         'needs_date_tickets': needs_date_tickets,
         'needs_date_tasks': needs_date_tasks,
         'today_tickets': today_tickets,
@@ -795,6 +843,12 @@ def ticket_detail(request, pk):
             'template_occurrence', 'package_run__package',
         ),
         pk=pk,
+    )
+    # Opening this page IS "having seen it" — resets this user's own "new
+    # vendor activity" indicator on the department dashboard (see
+    # department_dashboard's _tickets_with_new_activity) going forward.
+    TicketView.objects.update_or_create(
+        ticket=ticket, user=request.user, defaults={'last_viewed_at': timezone.now()},
     )
     reassign_form = ReassignForm(initial={
         'assigned_role': ticket.assigned_role,

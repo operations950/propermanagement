@@ -530,6 +530,21 @@ class TicketAssignmentLog(models.Model):
         ordering = ['-changed_at']
 
 
+class TicketView(models.Model):
+    """When a given staff user last opened this ticket's detail page —
+    per-user, not global, since a shared dashboard used by several staff
+    at once needs each person's own "have I seen this update" state, not
+    one flag that any teammate opening the ticket clears for everyone.
+    Powers the department dashboard's "new activity since you last looked"
+    indicator (vendor communication only — see department_dashboard)."""
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='views')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    last_viewed_at = models.DateTimeField()
+
+    class Meta:
+        unique_together = [('ticket', 'user')]
+
+
 class FollowUpLog(models.Model):
     class Channel(models.TextChoices):
         EMAIL = 'email', 'Email'
