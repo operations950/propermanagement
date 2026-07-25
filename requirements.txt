@@ -6,6 +6,7 @@ requests==2.34.2
 anthropic==0.69.0
 google-auth-oauthlib==1.2.2
 google-api-python-client==2.184.0
+openpyxl==3.1.5
 
 # Production deployment (Railway) — see settings.py's DATABASES/MIDDLEWARE
 # and the Procfile. Not used by local dev (SQLite + runserver).

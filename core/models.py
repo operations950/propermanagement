@@ -190,6 +190,7 @@ class Contact(models.Model):
         QUO = 'quo', 'Quo'
         GMAIL = 'gmail', 'Gmail'
         YARDI = 'yardi', 'Yardi'
+        DOCUMENT = 'document', 'Document import'
 
     name = models.CharField(max_length=200)
     contact_type = models.CharField(max_length=20, choices=ContactType.choices, default=ContactType.OTHER)

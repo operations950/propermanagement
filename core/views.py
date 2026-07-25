@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from messaging.services import _followup_result_message, _group_followups, _to_e164, fetch_quo_conversation, send_followup_bulk
+from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
 from tickets.models import (
     Frequency, FollowUpLog, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate,
     Ticket, TicketTemplate,
@@ -24,6 +24,7 @@ from tickets.services import applicability
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
 from . import app_settings, google_calendar, google_login, places, usps
+from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
 from .forms import ContactForm, EmailOrUsernameAuthenticationForm, PropertyForm, PropertyTemplateOverrideForm
 from .models import (
@@ -638,6 +639,81 @@ def contact_list(request):
         ),
         'duplicate_group_count': len(find_duplicate_groups()),
     })
+
+
+@login_required
+def contact_import_parse(request):
+    """Drag-and-drop contact import, step 1: hands the uploaded document to
+    Claude and returns a plain JSON list of extracted contacts — nothing is
+    saved yet. The staff member reviews/edits/excludes rows in the browser;
+    contact_import_commit is what actually creates Contacts, once they
+    click Accept all."""
+    if request.method != 'POST':
+        return redirect('contact_list')
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'success': False, 'error': 'No file received.'}, status=400)
+    try:
+        contacts = extract_contacts_from_document(upload)
+    except DocumentImportError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': True, 'contacts': contacts})
+
+
+@login_required
+def contact_import_commit(request):
+    """Step 2: creates real Contact rows from whatever the staff member
+    left in the preview (after their own edits/exclusions) — no separate
+    review queue, since they've already reviewed it right here. Still
+    skips anything that already matches an existing Contact by phone or
+    email, same dedup every other import path in this app does."""
+    if request.method != 'POST':
+        return redirect('contact_list')
+    try:
+        payload = json.loads(request.body)
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Malformed request.'}, status=400)
+
+    rows = payload.get('contacts') or []
+    existing_phones = {_to_e164(p) for p in Contact.objects.exclude(phone='').values_list('phone', flat=True)}
+    existing_phones.discard('')
+    existing_emails = {e.lower() for e in Contact.objects.exclude(email='').values_list('email', flat=True)}
+
+    created = skipped_duplicate = skipped_no_name = 0
+    for row in rows:
+        name = (row.get('name') or '').strip()
+        if not name:
+            skipped_no_name += 1
+            continue
+        phone_raw = (row.get('phone') or '').strip()
+        phone = _to_dash_format(phone_raw) if phone_raw else ''
+        email = (row.get('email') or '').strip()
+        phone_key = _to_e164(phone) if phone else ''
+        if (phone_key and phone_key in existing_phones) or (email and email.lower() in existing_emails):
+            skipped_duplicate += 1
+            continue
+
+        contact_type = row.get('contact_type') or Contact.ContactType.OTHER
+        if contact_type not in Contact.ContactType.values:
+            contact_type = Contact.ContactType.OTHER
+
+        Contact.objects.create(
+            name=name, phone=phone, email=email, contact_type=contact_type,
+            trade=(row.get('trade') or '').strip() if contact_type == Contact.ContactType.VENDOR else '',
+            source=Contact.Source.DOCUMENT,
+        )
+        if phone_key:
+            existing_phones.add(phone_key)
+        if email:
+            existing_emails.add(email.lower())
+        created += 1
+
+    parts = [f'Added {created} contact{"s" if created != 1 else ""}.']
+    if skipped_duplicate:
+        parts.append(f'Skipped {skipped_duplicate} already in Proper Management.')
+    if skipped_no_name:
+        parts.append(f'Skipped {skipped_no_name} with no name.')
+    return JsonResponse({'success': True, 'created': created, 'message': ' '.join(parts)})
 
 
 def _contact_form_context(form, **extra):

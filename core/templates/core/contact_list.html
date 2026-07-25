@@ -14,6 +14,9 @@
             <i data-lucide="copy" class="icon"></i> {{ duplicate_group_count }} possible duplicate{{ duplicate_group_count|pluralize }}
         </a>
         {% endif %}
+        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importContactsModal">
+            <i data-lucide="upload" class="icon"></i> Import contacts
+        </button>
         <a href="{% url 'contact_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New contact</a>
     </div>
 </div>
@@ -71,4 +74,42 @@
     });
 })();
 </script>
+
+<div class="modal fade" id="importContactsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content" data-contact-import
+             data-parse-url="{% url 'contact_import_parse' %}" data-commit-url="{% url 'contact_import_commit' %}">
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2"><i data-lucide="upload" class="icon"></i> Import contacts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div data-import-dropzone class="text-center p-4 rounded" style="border: 2px dashed var(--border-hairline); cursor: pointer;">
+                    <i data-lucide="file-up" class="icon-lg d-block mx-auto mb-2" style="color: var(--ink-muted);"></i>
+                    <div>Drag a document here, or <span style="color: var(--brand-primary); text-decoration: underline;">click to browse</span></div>
+                    <div class="small text-muted mt-1">PDF, image, CSV, Excel, or plain text</div>
+                    <input type="file" data-import-file-input hidden accept=".pdf,.csv,.txt,.xlsx,.xlsm,.png,.jpg,.jpeg,.gif,.webp">
+                </div>
+                <div data-import-loading class="text-center py-4" hidden>
+                    <div class="spinner-border" style="color: var(--brand-primary);" role="status"></div>
+                    <div class="small text-muted mt-2">Reading document…</div>
+                </div>
+                <div data-import-error class="alert alert-danger mt-3" hidden></div>
+                <div data-import-results hidden>
+                    <p class="small text-muted mb-2">
+                        <i data-lucide="pencil" class="icon"></i> to edit a row &middot;
+                        <i data-lucide="x" class="icon"></i> to exclude it
+                    </p>
+                    <div data-import-rows class="border rounded" style="border-color: var(--border-hairline) !important;"></div>
+                </div>
+                <template data-import-type-options>{% for value, label in type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</template>
+            </div>
+            <div class="modal-footer" data-import-footer hidden>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" data-import-accept-all>Accept all (<span data-import-count>0</span>)</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
