@@ -14,9 +14,13 @@
     <div class="card-body">
         <h6 class="card-title small" style="color: var(--ink-muted);">{{ log.received_at }}</h6>
         <pre class="small mb-2" style="white-space: pre-wrap; word-break: break-word;">{{ log.parsed|default:log.raw_body|pprint }}</pre>
-        <details>
+        <details class="mb-2">
             <summary class="small" style="color: var(--ink-muted); cursor: pointer;">Headers</summary>
             <pre class="small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ log.headers|pprint }}</pre>
+        </details>
+        <details>
+            <summary class="small" style="color: var(--ink-muted); cursor: pointer;">Raw body (exact bytes, for signature verification)</summary>
+            <textarea readonly class="form-control small" rows="4" id="raw-{{ log.pk }}">{{ log.raw_body }}</textarea>
         </details>
     </div>
 </div>
