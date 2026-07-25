@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 
 from core.models import Contact, ContactImportCandidate, ContactUpdateCandidate
 from intake.adapters.quo import QuoAdapter
+from messaging.services import _to_e164
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +40,25 @@ class Command(BaseCommand):
 
         contacts = QuoAdapter()._list_contacts()
 
+        # Contact.phone is stored in two different shapes depending on how the row was created —
+        # dash-format XXX-XXX-XXXX when approved through the review form (core.models.phone_validator),
+        # raw E.164 when auto-created straight from a live Quo event (intake/classifier.py, which
+        # doesn't go through a ModelForm so the validator never runs). Quo's API always returns E.164.
+        # Comparing either set of keys directly against Quo's raw value would silently fail to match
+        # roughly half of them — normalize everything to E.164 before building any lookup or comparison.
         contacts_by_ext_id = {c.quo_external_id: c for c in Contact.objects.exclude(quo_external_id='')}
-        contacts_by_phone = {c.phone: c for c in Contact.objects.exclude(phone='')}
+        contacts_by_phone = {}
+        for c in Contact.objects.exclude(phone=''):
+            key = _to_e164(c.phone)
+            if key:
+                contacts_by_phone[key] = c
         contacts_by_email = {c.email.lower(): c for c in Contact.objects.exclude(email='')}
 
         pending = ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
         pending_ext_ids = set(pending.exclude(external_id='').values_list('external_id', flat=True))
-        pending_phones = set(pending.exclude(phone='').values_list('phone', flat=True))
+        pending_phones = {
+            _to_e164(p) for p in pending.exclude(phone='').values_list('phone', flat=True) if _to_e164(p)
+        }
         pending_emails = {e.lower() for e in pending.exclude(email='').values_list('email', flat=True)}
 
         created = updates_flagged = backfilled = 0
@@ -62,9 +75,10 @@ class Command(BaseCommand):
                 continue
             quo_updated_at = _parse_quo_timestamp(c.get('updatedAt'))
 
+            phone_key = _to_e164(phone) if phone else ''
             contact = contacts_by_ext_id.get(external_id)
             if contact is None:
-                contact = contacts_by_phone.get(phone) or (contacts_by_email.get(email.lower()) if email else None)
+                contact = contacts_by_phone.get(phone_key) or (contacts_by_email.get(email.lower()) if email else None)
                 if contact is not None:
                     # A real Contact that predates external_id tracking — link it up
                     # silently (recognizing an existing person, not a content change)
@@ -81,8 +95,8 @@ class Command(BaseCommand):
                     continue  # nothing changed in Quo since the last sync
                 changed = (
                     (name and name != contact.name)
-                    or (phone and phone != contact.phone)
-                    or (email and email != contact.email)
+                    or (phone and phone_key and phone_key != _to_e164(contact.phone))
+                    or (email and email.lower() != contact.email.lower())
                 )
                 if changed and not ContactUpdateCandidate.objects.filter(
                     contact=contact, status=ContactUpdateCandidate.Status.PENDING,
@@ -101,7 +115,9 @@ class Command(BaseCommand):
                     contact.save(update_fields=['quo_updated_at'])
                 continue
 
-            if external_id in pending_ext_ids or phone in pending_phones or (email and email.lower() in pending_emails):
+            if external_id in pending_ext_ids or (phone_key and phone_key in pending_phones) or (
+                email and email.lower() in pending_emails
+            ):
                 continue
 
             ContactImportCandidate.objects.create(
@@ -111,8 +127,8 @@ class Command(BaseCommand):
                 raw_context=f'Company on file (Quo): {company}' if company else 'Saved Quo contact, no company on file.',
             )
             pending_ext_ids.add(external_id)
-            if phone:
-                pending_phones.add(phone)
+            if phone_key:
+                pending_phones.add(phone_key)
             if email:
                 pending_emails.add(email.lower())
             created += 1

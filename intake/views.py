@@ -293,3 +293,16 @@ def quo_sync_contacts_trigger(request):
         _run_command_in_background('sync_quo_contacts')
         messages.success(request, 'Quo contact sync started in the background — check Railway logs for progress.')
     return redirect('quo_webhook_log')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quo_reconcile_candidates_trigger(request):
+    """Admin-only, one-time: cleans up pending Quo candidates that a
+    phone-format bug in an earlier sync_quo_contacts run mass-staged as
+    duplicates of contacts that already existed (see
+    reconcile_pending_quo_candidates's docstring)."""
+    if request.method == 'POST':
+        _run_command_in_background('reconcile_pending_quo_candidates')
+        messages.success(request, 'Reconciling pending Quo candidates in the background — check Railway logs for progress.')
+    return redirect('quo_webhook_log')
