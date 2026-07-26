@@ -131,6 +131,24 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
             </div>
         </div>
 
+        <div class="mb-3" data-trade-field hidden>
+            <label class="form-label small text-muted mb-1 d-block">Trade <span style="color: var(--status-warning);">(required for vendors/contractors)</span></label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="trade" data-trade-picker>
+                <input type="hidden" data-bubble-input data-review-field="trade" data-trade-hidden
+                       value="{% if c.trade and c.trade not in trade_choices %}__other__{% else %}{{ c.trade|default:'' }}{% endif %}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a trade"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for t in trade_choices %}
+                        <button type="button" class="bubble" data-value="{{ t }}" data-label="{{ t }}">{{ t }}</button>
+                    {% endfor %}
+                    <button type="button" class="bubble" data-value="__other__" data-label="Other">Other</button>
+                </div>
+            </div>
+            <input type="text" class="form-control mt-2" data-trade-other-input placeholder="Enter trade"
+                   {% if not c.trade or c.trade in trade_choices %}hidden{% endif %}
+                   value="{% if c.trade and c.trade not in trade_choices %}{{ c.trade }}{% endif %}">
+        </div>
+
         <div class="mb-3">
             <label class="form-label small text-muted mb-1 d-block">Property (optional)</label>
             <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property_id">
@@ -210,11 +228,48 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
         saveBtn.style.display = count ? 'inline-flex' : 'none';
     }
 
+    // Vendor/contractor candidates must have a trade chosen before they can be
+    // approved — mirrors ContactForm.clean()'s same requirement for the regular
+    // contact_create/contact_edit forms.
+    form.querySelectorAll('[data-review-card][data-kind="candidate"]').forEach(function (card) {
+        var typePicker = card.querySelector('.bubble-picker[data-name="contact_type"]');
+        var tradeField = card.querySelector('[data-trade-field]');
+        var tradePicker = card.querySelector('[data-trade-picker]');
+        var tradeHidden = card.querySelector('[data-trade-hidden]');
+        var otherInput = card.querySelector('[data-trade-other-input]');
+        if (!typePicker || !tradeField) return;
+
+        function applyType(value) {
+            tradeField.hidden = value !== 'vendor';
+        }
+        typePicker.addEventListener('bubble:lock', function (e) { applyType(e.detail.value); });
+        typePicker.addEventListener('bubble:unlock', function () { applyType(''); });
+        applyType(typePicker.querySelector('[data-bubble-input]').value);
+
+        tradePicker.addEventListener('bubble:lock', function (e) {
+            otherInput.hidden = e.detail.value !== '__other__';
+            if (e.detail.value === '__other__') {
+                tradeHidden.value = otherInput.value;
+                otherInput.focus();
+            }
+        });
+        tradePicker.addEventListener('bubble:unlock', function () { otherInput.hidden = true; });
+        otherInput.addEventListener('input', function () { tradeHidden.value = otherInput.value; });
+    });
+
     form.querySelectorAll('[data-review-card]').forEach(function (card) {
         var markedLabel = card.querySelector('[data-review-marked]');
         card.querySelectorAll('[data-review-decide]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var decision = btn.dataset.reviewDecide;
+                if (decision === 'approve' && card.dataset.kind === 'candidate') {
+                    var typeInput = card.querySelector('.bubble-picker[data-name="contact_type"] [data-bubble-input]');
+                    var tradeHidden = card.querySelector('[data-trade-hidden]');
+                    if (typeInput && typeInput.value === 'vendor' && (!tradeHidden || !tradeHidden.value || tradeHidden.value === '__other__')) {
+                        alert('Choose a trade for this vendor/contractor before approving.');
+                        return;
+                    }
+                }
                 if (marks.get(card) === decision) {
                     // clicking the already-marked decision again un-marks the card
                     marks.delete(card);
@@ -260,6 +315,11 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
                 if (data.errors && data.errors.length) {
                     alert('Some rows had a problem and were left for you to fix:\n\n' + data.errors.join('\n'));
                 }
+                // Browsers restore scroll position on a same-URL reload by default —
+                // after a save, the reviewed cards are gone/changed, so land back at
+                // the top instead of wherever the user happened to be scrolled to.
+                if (history.scrollRestoration) history.scrollRestoration = 'manual';
+                window.scrollTo(0, 0);
                 location.reload();
             })
             .catch(function () {

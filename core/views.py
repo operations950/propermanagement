@@ -828,6 +828,7 @@ def contact_review(request):
         'candidates': candidates,
         'update_candidates': update_candidates,
         'type_choices': Contact.ContactType.choices,
+        'trade_choices': TRADE_CHOICES,
         'properties_by_type': properties_by_type(),
     })
 
@@ -877,6 +878,8 @@ def _approve_candidate(candidate, user, name, phone, email, contact_type, trade,
 
     if not is_valid_phone(phone):
         return False, 'Phone must be in XXX-XXX-XXXX format.', False
+    if contact_type == Contact.ContactType.VENDOR and not trade:
+        return False, 'Choose a trade for vendor/contractor contacts.', False
 
     candidate.name, candidate.phone, candidate.email = name, phone, email
     existing = _candidate_dupe(candidate)
