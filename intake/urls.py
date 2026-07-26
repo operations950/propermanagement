@@ -12,6 +12,10 @@ urlpatterns = [
         'integrations/gmail/audit-airbnb-tickets/', views.audit_airbnb_tickets_trigger,
         name='audit_airbnb_tickets_trigger',
     ),
+    path(
+        'tickets/flag-duplicate-tickets/', views.flag_duplicate_tickets_trigger,
+        name='flag_duplicate_tickets_trigger',
+    ),
     path('webhooks/quo/log/', views.quo_webhook_log, name='quo_webhook_log'),
     path('webhooks/quo/log/backfill/', views.quo_backfill_trigger, name='quo_backfill_trigger'),
     path('webhooks/quo/log/classify/', views.quo_classify_trigger, name='quo_classify_trigger'),

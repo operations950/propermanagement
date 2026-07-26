@@ -134,6 +134,13 @@
             </button>
         </form>
         <p class="text-muted small mt-1 mb-0">Read-only — re-checks existing Airbnb cleaning tickets against the fixed classifier and reports (Railway logs only) which ones look like they shouldn't have been created. Nothing is changed automatically.</p>
+        <form method="post" action="{% url 'flag_duplicate_tickets_trigger' %}" class="d-inline mt-2">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+                <i data-lucide="copy-x" class="icon"></i> Flag duplicate tickets
+            </button>
+        </form>
+        <p class="text-muted small mt-1 mb-0">Checks existing open tickets against each other, grouped by property, for the same "different conversation, same real-world issue" pattern the AI intake pipeline now catches automatically going forward. Flags matches for review on the <a href="{% url 'ticket_pending' %}">Pending</a> screen — never auto-cancels or merges anything.</p>
         <hr class="my-3">
         <p class="text-muted small mb-1">
             {% if gmail_inbox_tokens %}

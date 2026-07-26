@@ -437,6 +437,17 @@ class Ticket(models.Model):
         help_text='Why this was Blocked / Skipped / Not applicable — see REASON_REQUIRED_STATUSES.',
     )
 
+    possible_duplicate_of = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='possible_duplicates',
+        help_text='Set by intake/duplicate_classifier.py when a newly-created ticket looks like it '
+                   'describes the same real-world issue as an already-open ticket at the same '
+                   'property. Held in the Pending screen\'s "Possible duplicate" queue until a human '
+                   'confirms or dismisses the match — never auto-merged or auto-cancelled.',
+    )
+    duplicate_reasoning = models.TextField(
+        blank=True, help_text='Claude\'s reasoning for flagging possible_duplicate_of.',
+    )
+
     followup_done = models.BooleanField(
         default=False,
         help_text='Set the first time any Follow-Up text or email successfully sends — never reset, '

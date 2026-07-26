@@ -515,43 +515,94 @@ def department_dashboard(request, role):
 
 @login_required
 def ticket_pending(request):
-    """Three review queues on one screen, in decreasing order of "how much
-    is still unknown": "AI Property Match" is email-sourced tickets Claude
-    has already read — property guess included — but deliberately left
-    without a due date or department (see
-    intake/classifier.py::_reconcile_thread_ticket) until a human confirms
-    both via quick bubble locks. "Needs a due date" is anything that
-    already has a property AND department but no due date — a ticket
-    isn't really solidified until staff knows when it's due, so it stays
-    here (out of every department dashboard/list) instead of looking like
-    a scheduled, actionable item. "No property yet" is the oldest queue —
-    any source that couldn't even be pinned to a property. Each bucket
-    excludes tickets already claimed by an earlier one, so nothing shows
-    twice."""
+    """Four review queues on one screen, in decreasing order of "how much
+    is still unknown": "Possible duplicate" comes first — Claude flagged a
+    newly-created ticket as probably the same real-world issue as one
+    already open at the same property (see
+    intake/duplicate_classifier.py, intake/classifier.py::_flag_if_duplicate)
+    — nothing else about it matters until a human confirms or dismisses
+    that match, so it's held here regardless of its due_date/role/property
+    state. "AI Property Match" is email-sourced tickets Claude has already
+    read — property guess included — but deliberately left without a due
+    date or department (see intake/classifier.py::_reconcile_thread_ticket)
+    until a human confirms both via quick bubble locks. "Needs a due date"
+    is anything that already has a property AND department but no due
+    date — a ticket isn't really solidified until staff knows when it's
+    due, so it stays here (out of every department dashboard/list) instead
+    of looking like a scheduled, actionable item. "No property yet" is the
+    oldest queue — any source that couldn't even be pinned to a property.
+    Each bucket excludes tickets already claimed by an earlier one, so
+    nothing shows twice."""
     base = Ticket.objects.exclude(status=Ticket.Status.CANCELLED)
+
+    duplicate_tickets = (
+        base.filter(possible_duplicate_of__isnull=False)
+        .select_related(
+            'assigned_staff__user', 'assigned_contact', 'property',
+            'possible_duplicate_of__property', 'possible_duplicate_of__assigned_staff__user',
+            'possible_duplicate_of__assigned_contact',
+        ).order_by('-created_at')
+    )
+    duplicate_ids = list(duplicate_tickets.values_list('pk', flat=True))
+
     ai_match_tickets = (
-        base.filter(source='email', due_date__isnull=True, assigned_role='')
+        base.filter(source='email', due_date__isnull=True, assigned_role='').exclude(pk__in=duplicate_ids)
         .select_related('assigned_staff__user', 'assigned_contact', 'property').order_by('-created_at')
     )
     ai_match_ids = list(ai_match_tickets.values_list('pk', flat=True))
 
     needs_date_tickets = (
-        base.filter(due_date__isnull=True, property__isnull=False).exclude(pk__in=ai_match_ids)
+        base.filter(due_date__isnull=True, property__isnull=False).exclude(pk__in=ai_match_ids + duplicate_ids)
         .select_related('assigned_staff__user', 'assigned_contact', 'property').order_by('-created_at')
     )
     needs_date_ids = list(needs_date_tickets.values_list('pk', flat=True))
 
     tickets = (
-        base.filter(property__isnull=True).exclude(pk__in=ai_match_ids + needs_date_ids)
+        base.filter(property__isnull=True).exclude(pk__in=ai_match_ids + needs_date_ids + duplicate_ids)
         .select_related('assigned_staff__user', 'assigned_contact').order_by('-created_at')
     )
     today = timezone.localdate()
     return render(request, 'tickets/pending.html', {
         'tickets': tickets, 'ai_match_tickets': ai_match_tickets, 'needs_date_tickets': needs_date_tickets,
+        'duplicate_tickets': duplicate_tickets,
         'properties_by_type': properties_by_type(), 'now': timezone.now(),
         'today': today.isoformat(), 'due_date_presets': _due_date_presets(today),
         'department_choices': StaffProfile.Role.choices,
     })
+
+
+@login_required
+def ticket_duplicate_dismiss(request, pk):
+    """"Possible duplicate" row's "No — keep as separate ticket" — clears
+    the flag so the ticket falls through to whichever of the other pending
+    buckets applies next (or straight into the normal ticket flow if it
+    already has a due date and department)."""
+    ticket = get_object_or_404(Ticket, pk=pk, possible_duplicate_of__isnull=False)
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        if title:
+            ticket.title = title
+        ticket.possible_duplicate_of = None
+        ticket.duplicate_reasoning = ''
+        ticket.save()
+        messages.success(request, f'"{ticket.title}" kept as a separate ticket.')
+    return redirect('ticket_pending')
+
+
+@login_required
+def ticket_duplicate_confirm(request, pk):
+    """"Possible duplicate" row's "Yes — this is a duplicate" — cancels the
+    new ticket with a reason pointing at the original rather than deleting
+    it outright, so the record (and its raw_context) stays for reference."""
+    ticket = get_object_or_404(Ticket, pk=pk, possible_duplicate_of__isnull=False)
+    if request.method == 'POST':
+        original = ticket.possible_duplicate_of
+        ticket.status = Ticket.Status.CANCELLED
+        ticket.cancelled_at = timezone.now()
+        ticket.cancelled_reason = f'Duplicate of ticket #{original.pk} "{original.title}" — confirmed by staff'[:300]
+        ticket.save()
+        messages.success(request, f'Cancelled as a duplicate of "{original.title}".')
+    return redirect('ticket_pending')
 
 
 @login_required
@@ -565,6 +616,9 @@ def ticket_ai_match_save(request, pk):
         Ticket, pk=pk, source='email', due_date__isnull=True, assigned_role='',
     )
     if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        if title:
+            ticket.title = title
         description = request.POST.get('description')
         if description is not None:
             ticket.description = description.strip()
@@ -596,6 +650,9 @@ def ticket_needs_date_save(request, pk):
     Match."""
     ticket = get_object_or_404(Ticket, pk=pk, due_date__isnull=True, property__isnull=False)
     if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        if title:
+            ticket.title = title
         description = request.POST.get('description')
         if description is not None:
             ticket.description = description.strip()
@@ -642,6 +699,9 @@ def ticket_pending_save(request, pk):
     the property blank to keep refining it later."""
     ticket = get_object_or_404(Ticket, pk=pk, property__isnull=True)
     if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        if title:
+            ticket.title = title
         ticket.description = request.POST.get('description', '').strip()
         property_id = request.POST.get('property_id')
         if property_id:

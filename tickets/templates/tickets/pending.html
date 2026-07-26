@@ -4,8 +4,73 @@
 {% block content %}
 <h2 class="page-title my-3">Pending</h2>
 
+<h5 class="d-flex align-items-center gap-2 mb-1"><i data-lucide="copy-x" class="icon"></i> Possible duplicate ({{ duplicate_tickets|length }})</h5>
+<p class="text-muted">Claude flagged this newly-created ticket as probably the same real-world issue as one already open at the same property. Nothing else about it (due date, department, ...) matters until this is resolved either way.</p>
+
+{% for t in duplicate_tickets %}
+<div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-warning, #c99a3f) 45%, var(--border-hairline));">
+    <div class="card-body p-4">
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <div class="small text-uppercase fw-medium mb-1" style="color: var(--ink-muted); letter-spacing: .03em;">New candidate</div>
+                <div class="fw-semibold">{{ t.title }}</div>
+                <div class="small text-muted">{{ t.description }}</div>
+            </div>
+            <div class="col-md-6">
+                <div class="small text-uppercase fw-medium mb-1" style="color: var(--ink-muted); letter-spacing: .03em;">Already open</div>
+                <a href="{% url 'ticket_detail' t.possible_duplicate_of.pk %}" class="fw-semibold text-decoration-none">{{ t.possible_duplicate_of.title }}</a>
+                <div class="small text-muted">{{ t.possible_duplicate_of.description }}</div>
+                <div class="small text-muted mt-1">{{ t.possible_duplicate_of.assignee_label }}{% if t.possible_duplicate_of.due_date %} · Due {{ t.possible_duplicate_of.due_date|date:"M j" }}{% endif %}</div>
+            </div>
+        </div>
+
+        {% if t.duplicate_reasoning %}
+        <div class="mb-3 small p-2 rounded" style="background: var(--brand-surface, #f5f5f7); color: var(--ink-muted);">
+            <i data-lucide="sparkles" class="icon"></i> {{ t.duplicate_reasoning }}
+        </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label fw-medium" for="id_dup_title-{{ t.pk }}">Ticket name</label>
+            <input type="text" id="id_dup_title-{{ t.pk }}" class="form-control" value="{{ t.title }}" form="dup-dismiss-{{ t.pk }}" name="title">
+        </div>
+
+        {% if t.raw_context %}
+        <div class="mb-3">
+            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-bs-toggle="collapse" data-bs-target="#dup-source-{{ t.pk }}" style="color: var(--ink-muted);">
+                <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
+            </button>
+            <div class="collapse mt-1" id="dup-source-{{ t.pk }}">
+                <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2">
+            <form method="post" action="{% url 'ticket_duplicate_confirm' t.pk %}" onsubmit="return confirm('Cancel this ticket as a duplicate of #{{ t.possible_duplicate_of.pk }}?');">
+                {% csrf_token %}
+                <button class="btn btn-outline-danger" type="submit"><i data-lucide="copy-x" class="icon"></i> Yes — this is a duplicate</button>
+            </form>
+            <form method="post" id="dup-dismiss-{{ t.pk }}" action="{% url 'ticket_duplicate_dismiss' t.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-primary" type="submit"><i data-lucide="check" class="icon"></i> No — keep as separate ticket</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="card mb-4" style="max-width: 760px;">
+    <div class="card-body text-center py-4" style="color: var(--ink-muted);">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+        No possible duplicates flagged.
+    </div>
+</div>
+{% endfor %}
+
+<hr class="my-4">
+
 <h5 class="d-flex align-items-center gap-2 mb-1"><i data-lucide="sparkles" class="icon"></i> AI Property Match ({{ ai_match_tickets|length }})</h5>
-<p class="text-muted">Auto-detected from email — Claude has read the thread and guessed a property, but a due date and department still need a human before this becomes a real queued ticket. Fix the description if needed, confirm/set the property if it's missing, then lock in a date and department.</p>
+<p class="text-muted">Auto-detected from email — Claude has read the thread and guessed a property, but a due date and department still need a human before this becomes a real queued ticket. Fix the ticket name/description if needed, confirm/set the property if it's missing, then lock in a date and department.</p>
 
 {% for t in ai_match_tickets %}
 <div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--accent-contrast, #6e95b2) 35%, var(--border-hairline));">
@@ -16,6 +81,10 @@
         </div>
         <form method="post" action="{% url 'ticket_ai_match_save' t.pk %}">
             {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label fw-medium" for="id_ai_title-{{ t.pk }}">Ticket name</label>
+                <input type="text" name="title" id="id_ai_title-{{ t.pk }}" class="form-control" value="{{ t.title }}">
+            </div>
             <div class="mb-3">
                 <label class="form-label fw-medium" for="id_ai_description-{{ t.pk }}">Description</label>
                 <textarea name="description" id="id_ai_description-{{ t.pk }}" class="form-control" rows="2">{{ t.description }}</textarea>
@@ -141,6 +210,10 @@
         <form method="post" action="{% url 'ticket_needs_date_save' t.pk %}">
             {% csrf_token %}
             <div class="mb-3">
+                <label class="form-label fw-medium" for="id_needs_date_title-{{ t.pk }}">Ticket name</label>
+                <input type="text" name="title" id="id_needs_date_title-{{ t.pk }}" class="form-control" value="{{ t.title }}">
+            </div>
+            <div class="mb-3">
                 <label class="form-label fw-medium" for="id_needs_date_description-{{ t.pk }}">Description</label>
                 <textarea name="description" id="id_needs_date_description-{{ t.pk }}" class="form-control" rows="2">{{ t.description }}</textarea>
             </div>
@@ -210,6 +283,10 @@
         </div>
         <form method="post" action="{% url 'ticket_pending_save' t.pk %}">
             {% csrf_token %}
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_title-{{ t.pk }}">Ticket name</label>
+                <input type="text" name="title" id="id_title-{{ t.pk }}" class="form-control" value="{{ t.title }}">
+            </div>
             <div class="mb-4">
                 <label class="form-label fw-medium" for="id_description-{{ t.pk }}">Description</label>
                 <textarea name="description" id="id_description-{{ t.pk }}" class="form-control" rows="2">{{ t.description }}</textarea>

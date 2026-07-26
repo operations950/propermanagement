@@ -358,6 +358,28 @@ def audit_airbnb_tickets_trigger(request):
 
 @login_required
 @user_passes_test(_is_admin)
+def flag_duplicate_tickets_trigger(request):
+    """Admin-only: runs flag_duplicate_tickets in the background — checks
+    existing open tickets against each other (grouped by property) for the
+    same "different threads, same real-world issue" pattern the live
+    intake pipeline now catches on every new ticket going forward (see
+    intake/duplicate_classifier.py). Unlike the Airbnb audit, this one DOES
+    write to the database — it flags matches via
+    Ticket.possible_duplicate_of so they show up in the Pending screen's
+    "Possible duplicate" queue, but never auto-cancels or merges anything.
+    No Railway shell access, so this is the only way to run it on
+    production."""
+    if request.method == 'POST':
+        _run_command_in_background('flag_duplicate_tickets')
+        messages.success(
+            request, 'Duplicate-ticket sweep started in the background — flagged matches will appear on '
+                      'the Pending screen shortly.',
+        )
+    return redirect('admin_tools')
+
+
+@login_required
+@user_passes_test(_is_admin)
 def quo_backfill_trigger(request):
     """Admin-only: kicks off backfill_quo_messages in the background — the
     one-time (safe to re-run) historical sync so classify_quo_conversations

@@ -7,6 +7,7 @@ from core.models import Contact, Property, StaffProfile
 from supplies.models import SupplyRequest
 from tickets.models import Ticket, TicketContact
 
+from . import duplicate_classifier
 from .adapters.base import RawEvent
 from .models import GmailThreadState, QuoThreadState, Reservation
 
@@ -16,6 +17,48 @@ SHORTAGE_KEYWORDS = [
     'toilet paper', 'paper towels', 'trash bags', 'coffee', 'dish soap',
     'light bulbs', 'laundry detergent', 'shampoo', 'hand soap', 'soap',
 ]
+
+# Mirrors tickets/views.py's OPEN_STATUSES — kept as a separate small
+# constant here (rather than importing tickets.views, a view module not
+# meant to be imported from) so this module's dependencies stay to
+# tickets.models only.
+ACTIVE_TICKET_STATUSES = [
+    Ticket.Status.OPEN, Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS, Ticket.Status.BLOCKED,
+    Ticket.Status.UPCOMING, Ticket.Status.DEFERRED, Ticket.Status.VENDOR_COMPLETE,
+]
+
+
+def _flag_if_duplicate(ticket, prop, title, summary):
+    """Called right after a brand-new ticket is created from AI intake —
+    checks it against other still-open tickets at the same property and, if
+    Claude is confident it's the same real-world issue, flags it via
+    possible_duplicate_of/duplicate_reasoning so it lands in the Pending
+    screen's "Possible duplicate" queue instead of proceeding straight into
+    the normal ticket flow (see tickets/views.py::ticket_pending). Never
+    blocks ticket creation and never auto-cancels/merges — a human always
+    makes the final call, see intake/duplicate_classifier.py."""
+    if prop is None:
+        return
+    candidates = list(
+        Ticket.objects.filter(property=prop, status__in=ACTIVE_TICKET_STATUSES)
+        .exclude(pk=ticket.pk).order_by('-created_at')[:duplicate_classifier.MAX_CANDIDATES]
+    )
+    if not candidates:
+        return
+    verdict = duplicate_classifier.find_duplicate_ticket(prop, candidates, title, summary)
+    if verdict is None or not verdict.is_duplicate or not verdict.duplicate_ticket_id:
+        return
+    match = next((c for c in candidates if c.pk == verdict.duplicate_ticket_id), None)
+    if match is None:
+        logger.warning(
+            'Duplicate check for ticket %s named a candidate id %s not in the offered list',
+            ticket.pk, verdict.duplicate_ticket_id,
+        )
+        return
+    ticket.possible_duplicate_of = match
+    ticket.duplicate_reasoning = verdict.reasoning
+    ticket.save(update_fields=['possible_duplicate_of', 'duplicate_reasoning'])
+    logger.info('Ticket %s flagged as possible duplicate of ticket %s', ticket.pk, match.pk)
 
 
 def _parse_date(value):
@@ -154,8 +197,10 @@ def _handle_maintenance(event: RawEvent):
             'assigned_role': StaffProfile.Role.MAINTENANCE,
         },
     )
-    if created and reporter:
-        TicketContact.objects.get_or_create(ticket=ticket, contact=reporter, role=TicketContact.Role.REPORTER)
+    if created:
+        if reporter:
+            TicketContact.objects.get_or_create(ticket=ticket, contact=reporter, role=TicketContact.Role.REPORTER)
+        _flag_if_duplicate(ticket, prop, ticket.title, ticket.description)
     return ticket
 
 
@@ -309,6 +354,7 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     )
     if reporter:
         TicketContact.objects.get_or_create(ticket=ticket, contact=reporter, role=TicketContact.Role.REPORTER)
+    _flag_if_duplicate(ticket, prop, verdict.title, verdict.summary)
     return ticket
 
 
@@ -501,6 +547,8 @@ def _handle_generic(event: RawEvent):
             'assigned_role': StaffProfile.Role.PROPERTY_MANAGER,
         },
     )
-    if created and reporter:
-        TicketContact.objects.get_or_create(ticket=ticket, contact=reporter, role=TicketContact.Role.REPORTER)
+    if created:
+        if reporter:
+            TicketContact.objects.get_or_create(ticket=ticket, contact=reporter, role=TicketContact.Role.REPORTER)
+        _flag_if_duplicate(ticket, prop, ticket.title, ticket.description)
     return ticket
