@@ -32,7 +32,7 @@ from .services.package_engine import unblock_dependents
 
 OPEN_STATUSES = [
     Ticket.Status.OPEN, Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS, Ticket.Status.BLOCKED,
-    Ticket.Status.UPCOMING, Ticket.Status.DEFERRED,
+    Ticket.Status.UPCOMING, Ticket.Status.DEFERRED, Ticket.Status.VENDOR_COMPLETE,
 ]
 
 # The two buckets staff actually think in: still-active work, and done work

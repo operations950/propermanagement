@@ -1,6 +1,5 @@
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from tickets.models import Ticket
@@ -16,7 +15,9 @@ def _client_ip(request):
     return request.META.get('REMOTE_ADDR', '0.0.0.0')
 
 
-CLOSED_STATUSES = {Ticket.Status.COMPLETED, Ticket.Status.VERIFIED, Ticket.Status.CANCELLED}
+CLOSED_STATUSES = {
+    Ticket.Status.VENDOR_COMPLETE, Ticket.Status.COMPLETED, Ticket.Status.VERIFIED, Ticket.Status.CANCELLED,
+}
 
 
 @require_http_methods(['GET', 'POST'])
@@ -47,8 +48,11 @@ def vendor_ticket_view(request, token):
         elif action == 'mark_complete' and not is_closed:
             complete_form = VendorCompleteForm(request.POST)
             if complete_form.is_valid():
-                ticket.status = Ticket.Status.COMPLETED
-                ticket.completed_at = timezone.now()
+                # Vendor Complete, not Completed — an outside party's own
+                # claim of "done" isn't final until staff reviews it (see
+                # Ticket.Status.VENDOR_COMPLETE). completed_at is set later,
+                # by ticket_set_status, at the moment staff actually confirms.
+                ticket.status = Ticket.Status.VENDOR_COMPLETE
                 notes = complete_form.cleaned_data['resolution_notes']
                 if notes:
                     ticket.resolution_notes = notes

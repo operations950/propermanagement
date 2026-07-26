@@ -76,6 +76,12 @@ def status_badge_style(ticket):
             'background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); '
             'border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);'
         )
+    if ticket.status == 'vendor_complete':
+        return (
+            'background: color-mix(in srgb, var(--status-warning) 18%, white); '
+            'color: color-mix(in srgb, var(--status-warning) 60%, black); '
+            'border: 1px solid color-mix(in srgb, var(--status-warning) 40%, white);'
+        )
     if ticket.priority == 'urgent':
         return 'background: var(--priority-urgent); color: #fff;'
     return (

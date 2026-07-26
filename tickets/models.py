@@ -305,6 +305,11 @@ class Ticket(models.Model):
         IN_PROGRESS = 'in_progress', 'In progress'
         BLOCKED = 'blocked', 'Blocked'
         UPCOMING = 'upcoming', 'Upcoming'
+        # Set only by the public vendor-completion link (vendorportal.views) —
+        # an outside party can never set COMPLETED directly. Deliberately in
+        # OPEN_STATUSES (tickets/views.py) — a vendor's own claim of "done"
+        # isn't the real thing until staff reviews and completes it.
+        VENDOR_COMPLETE = 'vendor_complete', 'Vendor Complete'
         COMPLETED = 'completed', 'Completed'
         VERIFIED = 'verified', 'Verified'
         SKIPPED = 'skipped', 'Skipped'

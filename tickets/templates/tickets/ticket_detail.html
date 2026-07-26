@@ -317,10 +317,10 @@
                 <div class="row">
                 {% for a in attachments %}
                     <div class="col-md-4 mb-2">
-                        {% if a.file.url|slice:"-4:" == ".jpg" or a.file.url|slice:"-5:" == ".jpeg" or a.file.url|slice:"-4:" == ".png" or a.file.url|slice:"-5:" == ".webp" %}
-                            <img src="{{ a.file.url }}" class="img-fluid rounded mb-1" alt="{{ a.caption }}">
+                        {% if a.is_video %}
+                            <video src="{{ a.file.url }}" controls class="rounded mb-1" style="width: 100%; max-height: 220px; background: #000;"></video>
                         {% else %}
-                            <a href="{{ a.file.url }}">{{ a.file.name }}</a>
+                            <img src="{{ a.file.url }}" class="img-fluid rounded mb-1" alt="{{ a.caption }}" style="cursor: zoom-in;" data-attachment-expand>
                         {% endif %}
                         <div><small class="text-muted">{{ a.caption }}{% if a.uploaded_by_contact %} — {{ a.uploaded_by_contact }}{% endif %}</small></div>
                     </div>
@@ -328,6 +328,30 @@
                 </div>
             </div>
         </div>
+        <div class="d-none" data-attachment-lightbox style="position: fixed; inset: 0; z-index: 1060; background: rgba(0,0,0,0.85); align-items: center; justify-content: center; padding: 2rem; cursor: zoom-out;">
+            <img data-attachment-lightbox-img style="max-width: 100%; max-height: 100%; border-radius: var(--bs-border-radius);">
+        </div>
+        <script>
+        (function () {
+            var lightbox = document.querySelector('[data-attachment-lightbox]');
+            var lightboxImg = lightbox.querySelector('[data-attachment-lightbox-img]');
+            function open(src) {
+                lightboxImg.src = src;
+                lightbox.classList.remove('d-none');
+                lightbox.classList.add('d-flex');
+            }
+            function close() {
+                lightbox.classList.add('d-none');
+                lightbox.classList.remove('d-flex');
+                lightboxImg.src = '';
+            }
+            document.querySelectorAll('[data-attachment-expand]').forEach(function (img) {
+                img.addEventListener('click', function () { open(img.src); });
+            });
+            lightbox.addEventListener('click', close);
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+        })();
+        </script>
         {% endif %}
 
         <div class="card mb-3">
