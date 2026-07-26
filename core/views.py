@@ -356,14 +356,10 @@ def admin_settings_save(request):
         valid_keys = dict(app_settings.SECRET_KEYS)
         updated = 0
         for key in valid_keys:
-            # Strip whitespace and any non-ASCII character before saving — every one of these is a
-            # plain-ASCII API key/secret that ends up straight in an HTTP header (Authorization/
-            # x-api-key/etc.), and a stray character a browser paste can silently carry along (a
-            # trailing newline, a non-breaking space, a smart quote from a doc/webpage the key was
-            # copied out of) crashes every API call using it with a hard-to-diagnose
-            # UnicodeEncodeError deep in the HTTP client, not a validation error here.
-            value = request.POST.get(key, '').strip().encode('ascii', 'ignore').decode('ascii')
+            value = request.POST.get(key, '').strip()
             if value:  # blank means "leave unchanged" — the field never shows the real value to re-submit
+                # set_secret sanitizes (strips whitespace, drops non-ASCII) before storing — see
+                # app_settings._sanitize_secret for why that matters for every one of these values.
                 app_settings.set_secret(key, value, user=request.user)
                 updated += 1
         if updated:
