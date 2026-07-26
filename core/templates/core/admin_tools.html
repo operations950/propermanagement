@@ -10,20 +10,46 @@
             <i data-lucide="key-round" class="icon"></i> API Keys &amp; Secrets <i data-lucide="chevron-down" class="icon ms-auto"></i>
         </h6>
         <div class="collapse" id="admin-section-secrets">
-        <p class="text-muted small mt-3">Set once here to override whatever's in the environment — takes effect immediately, no redeploy needed. Already-set values are masked; leave a field blank to keep it unchanged.</p>
-        <form method="post" action="{% url 'admin_settings_save' %}">
+        <p class="text-muted small mt-3">Set once here to override whatever's in the environment — takes effect immediately, no redeploy needed. Already-set values are masked; leave a field locked (or blank if you unlock it) to keep it unchanged.</p>
+        <form method="post" action="{% url 'admin_settings_save' %}" autocomplete="off">
             {% csrf_token %}
             <div class="row g-3">
             {% for s in secrets %}
-                <div class="col-md-6">
+                <div class="col-md-6" data-secret-field>
                     <label class="form-label small fw-medium mb-1" for="secret-{{ s.key }}">{{ s.label }}</label>
-                    <input type="password" name="{{ s.key }}" id="secret-{{ s.key }}" class="form-control form-control-sm"
-                           placeholder="{% if s.is_set %}{{ s.masked }} — leave blank to keep{% else %}not set{% endif %}" autocomplete="off">
+                    <div class="d-flex align-items-center gap-2 form-control form-control-sm bg-light" data-secret-display>
+                        <span class="text-muted text-truncate">{% if s.is_set %}{{ s.masked }}{% else %}not set{% endif %}</span>
+                        <button type="button" class="btn btn-link btn-sm p-0 ms-auto flex-shrink-0" data-secret-toggle title="Unlock to change">
+                            <i data-lucide="pencil" class="icon" style="width: 0.8rem; height: 0.8rem;"></i>
+                        </button>
+                    </div>
+                    <input type="text" name="{{ s.key }}" id="secret-{{ s.key }}" class="form-control form-control-sm d-none" data-secret-input
+                           placeholder="{% if s.is_set %}{{ s.masked }} — leave blank to keep{% else %}not set{% endif %}"
+                           autocomplete="off" autocapitalize="off" spellcheck="false" readonly>
                 </div>
             {% endfor %}
             </div>
             <button class="btn btn-outline-primary btn-sm mt-3" type="submit">Save changes</button>
         </form>
+        <script>
+        (function () {
+            document.querySelectorAll('[data-secret-field]').forEach(function (field) {
+                var toggle = field.querySelector('[data-secret-toggle]');
+                var display = field.querySelector('[data-secret-display]');
+                var input = field.querySelector('[data-secret-input]');
+                toggle.addEventListener('click', function () {
+                    display.hidden = true;
+                    input.classList.remove('d-none');
+                    // readonly until unlocked — browsers won't offer to autofill a saved
+                    // password into a readonly field, which is what was replacing these
+                    // placeholders with unrelated saved credentials before the field was
+                    // ever touched. Dropped the instant the user actually wants to type.
+                    input.removeAttribute('readonly');
+                    input.focus();
+                });
+            });
+        })();
+        </script>
         {% if google_redirect_uris %}
         <hr class="my-3">
         <p class="text-muted small mb-1">Google OAuth client's <strong>Authorized redirect URIs</strong> must include all of these (staff sign-on, calendar connect, gmail connect share one client):</p>
