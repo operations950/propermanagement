@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
-from django.db.models import Count, Max, Q
+from django.db.models import Count, F, Max, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -671,7 +671,7 @@ def ticket_pending_delete(request, pk):
 
 # Column key -> ORM field, in the same order the table renders them. Used by
 # both _ticket_sort_order (build the .order_by()) and _ticket_sort_columns
-# (build each header's up/down arrow links) so the two never drift apart.
+# (build each header's click-to-sort link) so the two never drift apart.
 TICKET_SORT_FIELDS = [
     ('department', 'assigned_role', 'Department'),
     ('property', 'property__name', 'Property'),
@@ -682,34 +682,53 @@ TICKET_SORT_FIELDS = [
     ('contractor', 'assigned_contact__name', 'Assigned Contractor'),
 ]
 
+# The list always opens sorted by due date, soonest first — not just "most
+# recently created" — until staff picks a different column.
+DEFAULT_TICKET_SORT = 'due'
+
 
 def _ticket_sort_order(sort_param):
     """A `sort=` GET value like 'due' (ascending) or '-due' (descending) ->
-    the .order_by() args — always falls back to Ticket.Meta.ordering
-    (newest first) as a stable secondary key so rows with equal values
-    (e.g. every 'Assigned' status) don't visibly shuffle between requests."""
+    the .order_by() args. Falls back to DEFAULT_TICKET_SORT when unset/
+    invalid, and always appends '-created_at' as a stable secondary key so
+    rows with equal values (e.g. every 'Assigned' status, or every blank
+    due_date) don't visibly shuffle between requests."""
+    sort_param = sort_param or DEFAULT_TICKET_SORT
     key = sort_param.lstrip('-')
+    is_desc = sort_param.startswith('-')
     fields = {field_key: field for field_key, field, _ in TICKET_SORT_FIELDS}
     if key not in fields:
-        return ['-created_at']
+        key, is_desc = DEFAULT_TICKET_SORT, False
     field = fields[key]
-    return [f'-{field}' if sort_param.startswith('-') else field, '-created_at']
+    if key == 'due':
+        # due_date is nullable — nulls last regardless of direction, so a
+        # ticket with no due date never jumps to the front of an ascending
+        # sort just because SQL treats NULL as the lowest value.
+        primary = F(field).desc(nulls_last=True) if is_desc else F(field).asc(nulls_last=True)
+    else:
+        primary = f'-{field}' if is_desc else field
+    return [primary, '-created_at']
 
 
 def _ticket_sort_columns(sort_param):
-    """One entry per sortable column for the template's header row: which
-    GET value each of its up/down arrows should link to, and whether that
-    arrow reflects the currently-active sort (for highlighting)."""
-    key = sort_param.lstrip('-')
-    is_desc = sort_param.startswith('-')
+    """One entry per sortable column for the template's header row: the
+    single GET value clicking that header's label should link to (toggles
+    asc/desc if it's already the active column, else defaults to
+    ascending), and whether it's the currently active sort (for the arrow
+    indicator)."""
+    active = sort_param or DEFAULT_TICKET_SORT
+    key = active.lstrip('-')
+    is_desc = active.startswith('-')
     columns = []
     for field_key, _, label in TICKET_SORT_FIELDS:
+        is_active = key == field_key
+        next_sort = f'-{field_key}' if (is_active and not is_desc) else field_key
         columns.append({
             'key': field_key,
-            'neg_key': f'-{field_key}',
             'label': label,
-            'asc_is_active': key == field_key and not is_desc,
-            'desc_is_active': key == field_key and is_desc,
+            'next_sort': next_sort,
+            'is_active': is_active,
+            'is_desc': is_active and is_desc,
         })
     return columns
 

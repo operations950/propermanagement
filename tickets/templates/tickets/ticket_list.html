@@ -278,18 +278,15 @@ height instead of wrapping onto two lines.
     </colgroup>
     <thead><tr>
         {% for col in sort_columns %}
-        <th>
-            <span class="d-inline-flex align-items-center gap-1">
+        <th class="p-0">
+            <a href="{% querystring sort=col.next_sort %}"
+               class="d-flex align-items-center gap-1 px-2 py-2 text-decoration-none w-100"
+               style="color: {% if col.is_active %}var(--ink-primary){% else %}var(--ink-secondary){% endif %}; font-weight: {% if col.is_active %}600{% else %}inherit{% endif %};"
+               title="Sort by {{ col.label }}">
                 {{ col.label }}
-                <span class="d-inline-flex flex-column" style="line-height: 0.6;">
-                    <a href="{% querystring sort=col.key %}" title="Sort {{ col.label }} ascending" style="color: {% if col.asc_is_active %}var(--brand-slate){% else %}var(--border-hairline){% endif %};">
-                        <i data-lucide="chevron-up" style="width: 0.7rem; height: 0.7rem;"></i>
-                    </a>
-                    <a href="{% querystring sort=col.neg_key %}" title="Sort {{ col.label }} descending" style="color: {% if col.desc_is_active %}var(--brand-slate){% else %}var(--border-hairline){% endif %};">
-                        <i data-lucide="chevron-down" style="width: 0.7rem; height: 0.7rem;"></i>
-                    </a>
-                </span>
-            </span>
+                <i data-lucide="{% if col.is_active %}{% if col.is_desc %}chevron-down{% else %}chevron-up{% endif %}{% else %}chevrons-up-down{% endif %}"
+                   class="icon" style="width: 0.85rem; height: 0.85rem; {% if not col.is_active %}opacity: 0.35;{% endif %} flex-shrink: 0;"></i>
+            </a>
         </th>
         {% endfor %}
         <th></th>
