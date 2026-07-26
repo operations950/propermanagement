@@ -64,6 +64,27 @@ def department_icon(role):
 
 
 @register.filter
+def status_badge_style(ticket):
+    """Same color-mix'd, palette-only badge treatment used elsewhere
+    (admin_tools.html's Active/Inactive, ticket_detail's priority badge)
+    instead of raw Bootstrap contextual classes (bg-danger/success/
+    secondary/primary), which pull in colors outside the brand ramp."""
+    if ticket.status == 'cancelled':
+        return 'background-color: #e9ecef; color: #495057;'
+    if ticket.status in ('completed', 'verified'):
+        return (
+            'background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); '
+            'border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);'
+        )
+    if ticket.priority == 'urgent':
+        return 'background: var(--priority-urgent); color: #fff;'
+    return (
+        'background: color-mix(in srgb, var(--brand-primary) 15%, white); color: var(--brand-primary); '
+        'border: 1px solid color-mix(in srgb, var(--brand-primary) 35%, white);'
+    )
+
+
+@register.filter
 def is_overdue(ticket, now):
     """True if ticket.due_date's LOCAL calendar date is before now's LOCAL
     calendar date. Deliberately uses timezone.localtime() on both sides —

@@ -19,30 +19,43 @@
 </div>
 
 {% if selected_template %}
-<div class="alert alert-info d-flex justify-content-between align-items-center py-2">
+<div class="d-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
+     style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">
     <span>Showing tasks from: <strong>{{ selected_template.title }}</strong>{% if selected_scheduled_for %} &middot; {{ selected_scheduled_for }}{% endif %}</span>
-    <a href="{% url 'ticket_template_detail' selected_template.pk %}" class="small">View rule</a>
+    <a href="{% url 'ticket_template_detail' selected_template.pk %}" class="small" style="color: var(--brand-primary);">View rule</a>
 </div>
 {% endif %}
 
 {% if selected_property %}
-<div class="alert alert-info d-flex justify-content-between align-items-center py-2">
+<div class="d-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
+     style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">
     <span>Showing tickets & tasks for: <strong>{{ selected_property.name }}</strong></span>
-    <a href="{% url 'property_detail' selected_property.pk %}" class="small">View property</a>
+    <a href="{% url 'property_detail' selected_property.pk %}" class="small" style="color: var(--brand-primary);">View property</a>
 </div>
 {% endif %}
 
-<form method="get" class="row g-2 mb-3 align-items-center">
-    <div class="col-auto">
-        <input type="text" name="q" class="form-control" placeholder="Search title or property…" value="{{ q }}">
+<div class="row g-2 mb-3 align-items-center">
+    <div class="col-auto position-relative">
+        <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
+        <input type="text" id="ticket-search-input" class="form-control" style="padding-left: 2.2rem; min-width: 320px;"
+               placeholder="Search title or property…" value="{{ q }}" autocomplete="off">
     </div>
-    <input type="hidden" name="status" value="{{ selected_status }}">
-    <input type="hidden" name="role" value="{{ selected_role }}">
-    <input type="hidden" name="source" value="{{ selected_source }}">
-    <div class="col-auto">
-        <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="search" class="icon"></i> Search</button>
-    </div>
-</form>
+</div>
+<script>
+(function () {
+    var input = document.getElementById('ticket-search-input');
+    var timer = null;
+    input.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            var params = new URLSearchParams(window.location.search);
+            if (input.value) params.set('q', input.value);
+            else params.delete('q');
+            window.location.search = params.toString();
+        }, 500);
+    });
+})();
+</script>
 
 <div class="d-flex flex-wrap gap-2 mb-2">
     <a href="{% querystring status='active' %}" class="bubble{% if selected_status == 'active' %} bubble-locked{% endif %}">Active tickets</a>
@@ -91,7 +104,7 @@ height instead of wrapping onto two lines.
                     <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none">{{ t.title }}</a>
                 </td>
                 <td class="text-nowrap {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}">{{ t.due_date|date:'M j, Y'|default:'—' }}</td>
-                <td><span class="badge rounded-pill bg-{% if t.status == 'cancelled' %}secondary{% elif t.status == 'completed' or t.status == 'verified' %}success{% elif t.priority == 'urgent' %}danger{% else %}primary{% endif %}">{{ t.get_status_display }}</span></td>
+                <td><span class="badge rounded-pill" style="{{ t|status_badge_style }}">{{ t.get_status_display }}</span></td>
                 <td class="text-truncate">{{ t.assigned_staff|default:'—' }}</td>
                 <td class="text-truncate">{{ t.assigned_contact|default:'—' }}</td>
                 <td class="text-nowrap">
@@ -132,7 +145,7 @@ just laid out top-to-bottom rather than in cells.
 
             <div class="d-flex flex-wrap gap-2 mb-2">
                 <span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span>
-                <span class="badge rounded-pill bg-{% if t.status == 'cancelled' %}secondary{% elif t.status == 'completed' or t.status == 'verified' %}success{% elif t.priority == 'urgent' %}danger{% else %}primary{% endif %}">{{ t.get_status_display }}</span>
+                <span class="badge rounded-pill" style="{{ t|status_badge_style }}">{{ t.get_status_display }}</span>
             </div>
             <div class="small text-muted mb-2">
                 Due {{ t.due_date|date:'M j, Y'|default:'—' }}{% if t|is_overdue:now %} <span class="text-danger fw-semibold">(overdue)</span>{% endif %}
