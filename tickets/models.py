@@ -166,9 +166,22 @@ class TaskGroup(models.Model):
     """An optional sub-bucket of steps within a Function (TaskPackage) — a
     Function may organize its recurring tasks into one or more named groups,
     or skip grouping entirely and hang tasks directly off the Function (see
-    TaskPackageTemplate.task_group, nullable for exactly that reason)."""
+    TaskPackageTemplate.task_group, nullable for exactly that reason).
+
+    property_types is the broad-group targeting set once for the whole
+    group ("Short-Term Rentals") instead of on every step individually —
+    see tickets.services.applicability.template_applies_to_property, which
+    only defers to this when it's non-empty. Left empty, a step's own
+    TicketTemplate.target_type still governs it exactly as before, so
+    existing groups (created before this field existed) keep behaving
+    identically until someone opts in."""
     package = models.ForeignKey(TaskPackage, on_delete=models.CASCADE, related_name='task_groups')
     title = models.CharField(max_length=200)
+    property_types = models.JSONField(
+        default=list, blank=True,
+        help_text='Broad property category this group\'s tasks apply to (e.g. Short-Term Rentals). '
+                   'Leave empty to have each task in this group use its own Target settings instead.',
+    )
     sequence_order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:

@@ -31,11 +31,42 @@
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="card-title mb-0 d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> {{ group.title }}</h6>
-            <div class="d-flex gap-2">
+            <div>
+                <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> {{ group.title }}</h6>
+                {% if group.target_summary %}
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--brand-primary) 15%, white); color: var(--brand-primary); border: 1px solid color-mix(in srgb, var(--brand-primary) 35%, white);">
+                        <i data-lucide="crosshair" class="icon" style="width: 0.75rem; height: 0.75rem;"></i> Applies to: {{ group.target_summary }}
+                    </span>
+                {% else %}
+                    <span class="small text-muted">Each task below uses its own Target settings</span>
+                {% endif %}
+            </div>
+            <div class="d-flex gap-2 flex-shrink-0">
                 <a href="{% url 'ticket_template_create' %}?package={{ function.pk }}&group={{ group.pk }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="plus" class="icon"></i> Add task</a>
+                <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#group-edit-{{ group.pk }}" title="Edit group"><i data-lucide="pencil" class="icon"></i></button>
                 <button type="button" class="btn btn-link btn-sm p-0 text-danger" data-bs-toggle="collapse" data-bs-target="#group-delete-{{ group.pk }}" title="Delete group"><i data-lucide="trash-2" class="icon"></i></button>
             </div>
+        </div>
+        <div class="collapse mb-2" id="group-edit-{{ group.pk }}">
+            <form method="post" action="{% url 'task_group_edit' group.pk %}" class="p-2 rounded" style="background: var(--surface-page);">
+                {% csrf_token %}
+                <div class="mb-2">
+                    <label class="form-label small fw-medium mb-1">Title</label>
+                    <input type="text" name="title" class="form-control form-control-sm" value="{{ group.title }}" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-medium mb-1 d-block">Applies to (optional)</label>
+                    <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="property_types" data-initial-values="{{ group.property_types|join:',' }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Each task keeps its own Target settings"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in property_type_choices %}
+                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-outline-secondary btn-sm" type="submit">Save</button>
+            </form>
         </div>
         <div class="collapse mb-2" id="group-delete-{{ group.pk }}">
             <form method="post" action="{% url 'task_group_delete' group.pk %}" class="d-flex align-items-center gap-2 p-2 rounded" style="background: color-mix(in srgb, var(--status-critical) 8%, white);">
@@ -100,11 +131,24 @@
 <div class="card" style="border-radius: var(--bs-border-radius-lg); max-width: 420px;">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder-plus" class="icon"></i> Add a Task Group</h6>
-        <p class="text-muted small">Optional — use this if the Function has several distinct phases/areas (e.g. "Move-in" vs. "Move-out"). Skip it if your tasks are simple enough to list directly above.</p>
-        <form method="post" action="{% url 'task_group_create' function.pk %}" class="d-flex gap-2">
+        <p class="text-muted small">Optional — use this if the Function has several distinct phases/areas (e.g. "Move-in" vs. "Move-out"), or to apply a broad property category (e.g. "Short-Term Rentals") to every task you add underneath it, set once here. Skip it if your tasks are simple enough to list directly above.</p>
+        <form method="post" action="{% url 'task_group_create' function.pk %}">
             {% csrf_token %}
-            <input type="text" name="title" class="form-control form-control-sm" placeholder="Task Group name" required>
-            <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit">Add</button>
+            <div class="mb-2">
+                <input type="text" name="title" class="form-control form-control-sm" placeholder="Task Group name" required>
+            </div>
+            <div class="mb-2">
+                <label class="form-label small fw-medium mb-1 d-block">Applies to (optional)</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="property_types">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Each task keeps its own Target settings"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for value, label in property_type_choices %}
+                            <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" type="submit">Add</button>
         </form>
     </div>
 </div>

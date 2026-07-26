@@ -1449,8 +1449,14 @@ def function_detail(request, pk):
         function.steps.filter(task_group__isnull=True).select_related('template').order_by('sequence_order')
     )
     for group in task_groups:
+        group.target_summary = _group_target_summary(group)
+        group.edit_form = TaskGroupForm(instance=group)
         for step in group.steps.all():
-            step.template.target_summary = _target_summary(step.template)
+            # A grouped step with the group's broad targeting set no longer
+            # consults its own Target section — see applicability.py — so
+            # its per-step summary is only shown when the group hasn't set
+            # one, keeping the table honest about what's actually in effect.
+            step.template.target_summary = None if group.target_summary else _target_summary(step.template)
     for step in ungrouped_steps:
         step.template.target_summary = _target_summary(step.template)
     return render(request, 'tickets/function_detail.html', {
@@ -1458,6 +1464,7 @@ def function_detail(request, pk):
         'task_groups': task_groups,
         'ungrouped_steps': ungrouped_steps,
         'assigned_property_count': function.property_assignments.count(),
+        'property_type_choices': Property.Type.choices,
     })
 
 
@@ -1481,11 +1488,12 @@ def task_group_create(request, package_pk):
 def task_group_edit(request, pk):
     group = get_object_or_404(TaskGroup, pk=pk)
     if request.method == 'POST':
-        title = request.POST.get('title', '').strip()
-        if title:
-            group.title = title
-            group.save(update_fields=['title'])
+        form = TaskGroupForm(request.POST, instance=group)
+        if form.is_valid():
+            form.save()
             messages.success(request, 'Saved.')
+        else:
+            messages.error(request, 'Give the Task Group a title.')
     return redirect('function_detail', pk=group.package_id)
 
 
@@ -1540,6 +1548,7 @@ def ticket_template_create(request):
     context = _ticket_template_form_context(form, today)
     context['function'] = function
     context['task_group'] = task_group
+    context['task_group_summary'] = _group_target_summary(task_group) if task_group else None
     return render(request, 'tickets/ticket_template_form.html', context)
 
 
@@ -1579,6 +1588,17 @@ def _target_summary(template):
         labels = [type_labels.get(t, t) for t in template.property_types]
         return ', '.join(labels) if labels else 'Every property'
     return 'Every property'
+
+
+def _group_target_summary(group):
+    """The broad property category a Task Group applies to, or None when
+    the group hasn't set one — in which case its steps fall back to their
+    own individual Target settings (see applicability.py::
+    template_applies_to_property)."""
+    if not group.property_types:
+        return None
+    type_labels = dict(Property.Type.choices)
+    return ', '.join(type_labels.get(t, t) for t in group.property_types)
 
 
 @login_required

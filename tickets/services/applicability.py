@@ -25,20 +25,32 @@ def _override_for(template, property):
     return PropertyTemplateOverride.objects.filter(template=template, property=property).first()
 
 
+def task_group_for_template(template):
+    """The Task Group (if any) this template is grouped under, in whichever
+    package it's a step of. A template only ever belongs to one Function in
+    practice (see ticket_template_create), so the first match is enough."""
+    membership = (
+        TaskPackageTemplate.objects.filter(template=template, task_group__isnull=False)
+        .select_related('task_group').first()
+    )
+    return membership.task_group if membership else None
+
+
 def template_applies_to_property(template, property, *, respect_overrides=True, override=None):
     """Pure predicate, no DB writes.
 
-    Dispatches on target_type: COMPANY never matches a real property (no
-    per-property override scope exists for it either — see below). Otherwise
-    an EXCLUDE override always wins; then PROPERTY (exact match) / CONTACT
+    A template grouped under a Task Group that has its own property_types
+    set defers entirely to the group's broad targeting (type constraint AND
+    required attributes, OR active package assignment) instead of the
+    template's own target_type — see TaskGroup.property_types. Otherwise
+    dispatches on target_type: COMPANY never matches a real property (no
+    per-property override scope exists for it either — see below). An
+    EXCLUDE override always wins; then PROPERTY (exact match) / CONTACT
     (property is in template.contact.properties) / EVERY_PROPERTY &
     PROPERTY_CATEGORY (type constraint AND required attributes, OR active
     package assignment). An INCLUDE override then force-includes regardless
     of the base match.
     """
-    if template.target_type == TicketTemplate.TargetType.COMPANY:
-        return False
-
     if respect_overrides:
         if override is None:
             override = _override_for(template, property)
@@ -46,6 +58,23 @@ def template_applies_to_property(template, property, *, respect_overrides=True, 
             return False
     else:
         override = None
+
+    task_group = task_group_for_template(template)
+    if task_group is not None and task_group.property_types:
+        package_match = TaskPackageTemplate.objects.filter(
+            template=template, package__is_active=True,
+            package__property_assignments__property=property,
+        ).exists()
+        type_match = property.property_type in task_group.property_types
+        required_ids = set(template.required_attributes.values_list('id', flat=True))
+        attr_match = required_ids <= _property_attribute_ids(property)
+        base_match = (type_match and attr_match) or package_match
+        if override and override.action == PropertyTemplateOverride.Action.INCLUDE:
+            return True
+        return base_match
+
+    if template.target_type == TicketTemplate.TargetType.COMPANY:
+        return False
 
     if template.target_type == TicketTemplate.TargetType.PROPERTY:
         base_match = template.property_id == property.id

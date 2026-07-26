@@ -168,7 +168,9 @@ class Command(BaseCommand):
         created_count = [0]
 
         for template in TicketTemplate.objects.filter(is_active=True).prefetch_related('checklist_items'):
-            if template.target_type == TicketTemplate.TargetType.COMPANY:
+            task_group = applicability.task_group_for_template(template)
+            group_governs = bool(task_group and task_group.property_types)
+            if template.target_type == TicketTemplate.TargetType.COMPANY and not group_governs:
                 # A single company-wide occurrence per period, not fanned out
                 # to any property — [None] flows through the exact same
                 # cursor/occurrence/ticket machinery every other template

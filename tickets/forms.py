@@ -170,6 +170,22 @@ class FunctionForm(forms.ModelForm):
 
 
 class TaskGroupForm(forms.ModelForm):
+    property_types = forms.MultipleChoiceField(
+        choices=Property.Type.choices, required=False,
+        label='Applies to (optional)',
+        help_text='Set once here for the whole group — every task added under this group targets these '
+                   'property types instead of needing its own Target section. Leave empty to have each '
+                   'task in the group keep using its own Target settings.',
+    )
+
     class Meta:
         model = TaskGroup
-        fields = ['title']
+        fields = ['title', 'property_types']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.initial['property_types'] = self.instance.property_types
+
+    def clean_property_types(self):
+        return list(self.cleaned_data['property_types'])

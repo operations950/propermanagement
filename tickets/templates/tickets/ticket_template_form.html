@@ -17,6 +17,13 @@
     <i data-lucide="corner-down-right" class="icon me-2" style="color: var(--brand-primary);"></i>
     Adding to Function: <strong class="ms-1">{{ function.title }}</strong>{% if task_group %}<span class="mx-1">&middot;</span>Task Group: <strong>{{ task_group.title }}</strong>{% endif %}
 </div>
+{% if task_group_summary %}
+<div class="d-flex align-items-center py-2 px-3 mb-3 rounded"
+     style="background: color-mix(in srgb, var(--status-warning) 10%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 30%, white);">
+    <i data-lucide="info" class="icon me-2" style="color: var(--status-warning);"></i>
+    Task Group "{{ task_group.title }}" already applies to <strong class="mx-1">{{ task_group_summary }}</strong> — the Target section below is ignored for tasks in this group.
+</div>
+{% endif %}
 {% endif %}
 
 <form method="post" class="card" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">

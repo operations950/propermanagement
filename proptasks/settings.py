@@ -190,6 +190,15 @@ EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
+# Without this, a socket that can't reach the SMTP host (wrong port, or the
+# host silently dropping the connection instead of refusing it — Railway and
+# several other PaaS providers block outbound SMTP for anti-spam reasons)
+# blocks forever. That leaves the request stuck until gunicorn's own worker
+# timeout kills the entire process out from under it — which is what
+# happened in production (WORKER TIMEOUT on POST /tickets/<id>/followup/
+# email/) rather than send_mail's own try/except ever getting a chance to
+# catch a normal, fast, loggable failure.
+EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '10'))
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@example.com')
 
 # --- SMS (follow-up messages) ---
