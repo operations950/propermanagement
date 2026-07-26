@@ -170,9 +170,9 @@
                     <p class="text-muted small mb-0" data-status-notes-empty>No updates yet.</p>
                     {% endfor %}
                 </div>
-                <form method="post" action="{% url 'ticket_add_status_note' ticket.pk %}" class="d-flex gap-2" id="status-note-form">
+                <form method="post" action="{% url 'ticket_add_status_note' ticket.pk %}" class="d-flex gap-2 align-items-end" id="status-note-form">
                     {% csrf_token %}
-                    <input type="text" name="body" class="form-control form-control-sm" placeholder="Provide an update on the situation…" required autocomplete="off">
+                    <textarea name="body" class="form-control form-control-sm" placeholder="Provide an update on the situation…" required autocomplete="off" rows="1" style="resize: none; overflow: hidden; max-height: 200px;" data-autogrow></textarea>
                     <button class="btn btn-primary btn-sm flex-shrink-0" type="submit"><i data-lucide="send" class="icon"></i></button>
                 </form>
                 <p class="text-danger small mt-1 mb-0" id="status-note-error" hidden></p>
@@ -182,8 +182,23 @@
                     if (!form) return;
                     var thread = document.getElementById('status-notes-thread');
                     var errorEl = document.getElementById('status-note-error');
-                    var input = form.querySelector('input[name="body"]');
+                    var input = form.querySelector('[name="body"]');
                     var button = form.querySelector('button[type="submit"]');
+
+                    function resizeInput() {
+                        input.style.height = 'auto';
+                        input.style.height = input.scrollHeight + 'px';
+                    }
+                    input.addEventListener('input', resizeInput);
+
+                    // Enter sends (matching the old single-line input's behavior);
+                    // Shift+Enter still inserts a real newline for a multi-line update.
+                    input.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            form.requestSubmit();
+                        }
+                    });
 
                     form.addEventListener('submit', function (e) {
                         e.preventDefault();
@@ -219,6 +234,7 @@
                                     thread.appendChild(entry);
                                     thread.scrollTop = thread.scrollHeight;
                                     input.value = '';
+                                    resizeInput();
                                 } else {
                                     errorEl.textContent = data.error || 'Could not post update.';
                                     errorEl.hidden = false;
@@ -650,7 +666,10 @@
                     </form>
                     {% endif %}
                 </div>
-                <p class="small text-muted mb-2">{{ ticket.assigned_contact.name }}{% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}</p>
+                <p class="small text-muted mb-2">
+                    <a href="{% url 'contact_edit' ticket.assigned_contact.pk %}" class="text-decoration-none">{{ ticket.assigned_contact.name }}</a>
+                    {% if ticket.assigned_contact.phone %} &middot; {{ ticket.assigned_contact.phone }}{% endif %}
+                </p>
                 <p class="text-danger small mb-2" id="vendor-link-send-error" hidden></p>
 
                 <div class="imessage-thread" id="contractor-thread" data-refresh-url="{% url 'ticket_contractor_thread_refresh' ticket.pk %}">

@@ -426,8 +426,18 @@
       addBtn.addEventListener('click', function () {
         list.hidden = true;
         addNewRow.hidden = false;
+        // Pre-fill the new-contact Name field with whatever was already
+        // typed in the search box — the whole reason "+ Add new" shows up
+        // is that this exact text didn't match anyone, so requiring it to
+        // be retyped into a second, visually similar field right below is
+        // an easy way to silently lose the name (submitting a blank name
+        // makes the server-side add-new handler no-op with no contact
+        // created and no visible error).
         const firstInput = addNewRow.querySelector('input');
-        if (firstInput) firstInput.focus();
+        if (firstInput) {
+          if (!firstInput.value.trim() && text.value.trim()) firstInput.value = text.value.trim();
+          firstInput.focus();
+        }
       });
       list.appendChild(addBtn);
 
