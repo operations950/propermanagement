@@ -14,6 +14,7 @@ urlpatterns = [
     path('admin-tools/', views.admin_tools, name='admin_tools'),
     path('admin-tools/properties/<int:pk>/toggle/', views.property_toggle_active, name='property_toggle_active'),
     path('admin-tools/settings/save/', views.admin_settings_save, name='admin_settings_save'),
+    path('admin-tools/settings/test-email/', views.admin_test_email_send, name='admin_test_email_send'),
     path('admin-tools/phone-settings/save/', views.admin_phone_settings_save, name='admin_phone_settings_save'),
     path('admin-tools/staff/new/', views.staff_create, name='staff_create'),
     path('properties/', views.property_list, name='property_list'),

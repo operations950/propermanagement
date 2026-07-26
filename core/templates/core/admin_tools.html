@@ -65,6 +65,43 @@
 
 <div class="card mb-3">
     <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-email" style="cursor: pointer;">
+            <i data-lucide="mail" class="icon"></i> Email Configuration <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        </h6>
+        <div class="collapse" id="admin-section-email">
+        <p class="text-muted small mt-3">Shown in the clear, not masked — this is what's actually driving (or breaking) follow-up emails, so it needs to be readable, not just "set/not set".</p>
+        <form method="post" action="{% url 'admin_settings_save' %}" autocomplete="off">
+            {% csrf_token %}
+            <div class="row g-3">
+            {% for s in email_settings %}
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium mb-1" for="email-{{ s.key }}">{{ s.label }}</label>
+                    <input type="text" name="{{ s.key }}" id="email-{{ s.key }}" class="form-control form-control-sm"
+                           value="{{ s.value }}" autocomplete="off" autocapitalize="off" spellcheck="false">
+                </div>
+            {% endfor %}
+            </div>
+            <button class="btn btn-outline-primary btn-sm mt-3" type="submit">Save changes</button>
+        </form>
+        <hr class="my-3">
+        <p class="small mb-1"><strong>Effective configuration</strong> (read-only — from environment/settings, not editable here):</p>
+        <ul class="text-muted small mb-0">
+            <li>Backend: <code>{{ email_backend }}</code>{% if email_is_console %} <span style="color: var(--status-warning);">— console/no-op, nothing actually sends until EMAIL_HOST above is set</span>{% endif %}</li>
+            <li>Port: <code>{{ email_port }}</code> &middot; TLS: <code>{{ email_use_tls }}</code> &middot; Connect timeout: <code>{{ email_timeout }}s</code></li>
+        </ul>
+        <hr class="my-3">
+        <p class="small mb-2"><strong>Send a test email</strong> — the most direct way to see the real failure (or confirm success) right now.</p>
+        <form method="post" action="{% url 'admin_test_email_send' %}" class="d-flex gap-2">
+            {% csrf_token %}
+            <input type="email" name="to_address" class="form-control form-control-sm" placeholder="you@example.com" value="{{ test_email_default_to }}" required style="max-width: 280px;">
+            <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="send" class="icon"></i> Send test email</button>
+        </form>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-phone" style="cursor: pointer;">
             <i data-lucide="phone" class="icon"></i> Phone Lines <i data-lucide="chevron-down" class="icon ms-auto"></i>
         </h6>

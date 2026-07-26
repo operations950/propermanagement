@@ -376,13 +376,21 @@ def admin_tools(request):
     raw /admin/ (which stays available for anything not yet given its own
     control here, linked at the bottom of this page)."""
     properties = Property.objects.all().order_by('-is_active', 'property_type', 'name')
+    # Email fields get their own section further down, shown in the clear —
+    # unlike every other secret here, an admin needs to actually read these
+    # back to debug a broken SMTP setup, not just confirm one is present.
+    email_keys = {'EMAIL_HOST', 'EMAIL_HOST_USER', 'EMAIL_HOST_PASSWORD', 'DEFAULT_FROM_EMAIL'}
     secrets = [
         {
             'key': key, 'label': label,
             'is_set': bool(getattr(django_settings, key, '')),
             'masked': app_settings.masked(getattr(django_settings, key, '')),
         }
-        for key, label in app_settings.SECRET_KEYS
+        for key, label in app_settings.SECRET_KEYS if key not in email_keys
+    ]
+    email_settings = [
+        {'key': key, 'label': label, 'value': getattr(django_settings, key, '') or ''}
+        for key, label in app_settings.SECRET_KEYS if key in email_keys
     ]
     google_redirect_uris = [
         request.build_absolute_uri(reverse(name))
@@ -394,6 +402,13 @@ def admin_tools(request):
         'scan_phone_number_id': django_settings.QUO_SCAN_PHONE_NUMBER_ID,
         'outbound_from_number': django_settings.QUO_DEFAULT_FROM_NUMBER,
         'staff_profiles': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__last_name'),
+        'email_settings': email_settings,
+        'email_backend': django_settings.EMAIL_BACKEND,
+        'email_is_console': django_settings.EMAIL_BACKEND.endswith('console.EmailBackend'),
+        'email_port': django_settings.EMAIL_PORT,
+        'email_use_tls': django_settings.EMAIL_USE_TLS,
+        'email_timeout': getattr(django_settings, 'EMAIL_TIMEOUT', None),
+        'test_email_default_to': request.user.email,
     })
 
 
@@ -482,6 +497,47 @@ def admin_settings_save(request):
             messages.success(request, f'Updated {updated} setting(s).')
         else:
             messages.info(request, 'Nothing changed — all fields were left blank.')
+    return redirect('admin_tools')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def admin_test_email_send(request):
+    """A real send_mail() call, bypassing FollowUpLog/ticket machinery
+    entirely — isolates "is SMTP actually configured right" from "is the
+    ticket follow-up code path calling it correctly." fail_silently=False
+    surfaces the real exception (auth failure, timeout, refused connection,
+    ...) as a flash message instead of it disappearing into a try/except
+    somewhere, which is the only way to actually diagnose a broken setup
+    without shell/log access."""
+    if request.method == 'POST':
+        to_address = request.POST.get('to_address', '').strip()
+        if not to_address:
+            messages.error(request, 'Enter an address to send the test email to.')
+            return redirect('admin_tools')
+        from django.core.mail import send_mail
+
+        from_address = django_settings.DEFAULT_FROM_EMAIL or django_settings.EMAIL_HOST_USER or 'noreply@example.com'
+        try:
+            send_mail(
+                'PropTasks test email',
+                'This is a test email sent from Admin Tools to verify your SMTP configuration is working.',
+                from_address, [to_address], fail_silently=False,
+            )
+        except Exception as exc:
+            messages.error(request, f'Test email failed: {type(exc).__name__}: {exc}')
+        else:
+            if django_settings.EMAIL_BACKEND.endswith('console.EmailBackend'):
+                messages.warning(
+                    request,
+                    'Sent, but EMAIL_HOST is blank — this only went to the server console/log, not a '
+                    'real inbox. Fill in Email Configuration below and save first.',
+                )
+            else:
+                messages.success(
+                    request, f'Test email sent to {to_address} via {django_settings.EMAIL_HOST}:{django_settings.EMAIL_PORT} '
+                    f'from {from_address} — check the inbox (and spam folder).',
+                )
     return redirect('admin_tools')
 
 
