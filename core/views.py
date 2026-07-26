@@ -654,9 +654,10 @@ def property_detail(request, pk):
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'save_access_info':
-            for field in ['gate_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password', 'access_notes']:
+            fields = ['gate_code', 'door_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password', 'access_notes']
+            for field in fields:
                 setattr(prop, field, request.POST.get(field, '').strip())
-            prop.save(update_fields=['gate_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password', 'access_notes'])
+            prop.save(update_fields=fields)
             messages.success(request, 'Access info saved.')
         elif action == 'add_system_location':
             system_name = request.POST.get('system_name', '').strip()

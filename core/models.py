@@ -63,6 +63,7 @@ class Property(models.Model):
     # single-valued per property, unlike system locations below, which are a
     # variable-length list — hence plain fields here rather than a side table.
     gate_code = models.CharField(max_length=50, blank=True)
+    door_code = models.CharField(max_length=50, blank=True)
     lockbox_code = models.CharField(max_length=50, blank=True)
     alarm_code = models.CharField(max_length=50, blank=True)
     wifi_network = models.CharField(max_length=100, blank=True)

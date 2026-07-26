@@ -139,11 +139,17 @@
                 {% endif %}
             </div>
         </div>
+    </div>
+</div>
 
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#property-followup-history-collapse" style="cursor: pointer;">
+            <i data-lucide="history" class="icon"></i> Communication History <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        </h6>
+        <div class="collapse" id="property-followup-history-collapse">
         {% if followup_batches %}
-        <hr>
-        <small class="text-muted">Recent communication:</small>
-        <ul class="list-unstyled small mb-0" id="property-followup-history">
+        <ul class="list-unstyled small mb-0 mt-3" id="property-followup-history">
         {% for batch in followup_batches %}
             <li class="mb-2">
                 <a class="text-decoration-none d-flex justify-content-between align-items-center gap-2" data-bs-toggle="collapse" href="#property-followup-batch-{{ forloop.counter }}" role="button">
@@ -163,7 +169,10 @@
             </li>
         {% endfor %}
         </ul>
+        {% else %}
+        <p class="text-muted small mb-0 mt-3">No communication sent from this property yet.</p>
         {% endif %}
+        </div>
     </div>
 </div>
 
@@ -188,7 +197,10 @@
                             <label class="form-label small text-muted mb-1">Alarm code</label>
                             <input type="text" name="alarm_code" class="form-control form-control-sm" value="{{ property.alarm_code }}">
                         </div>
-                        <div class="col-6"></div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Door code</label>
+                            <input type="text" name="door_code" class="form-control form-control-sm" value="{{ property.door_code }}">
+                        </div>
                         <div class="col-6">
                             <label class="form-label small text-muted mb-1">WiFi network</label>
                             <input type="text" name="wifi_network" class="form-control form-control-sm" value="{{ property.wifi_network }}">
@@ -246,18 +258,45 @@
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Amenities</h6>
                 <p class="small text-muted">Services, physical features, and compliance tags — also used by recurring task rules to auto-apply.</p>
-                {% for attr in attributes %}
-                <form method="post" class="form-check">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="toggle_attribute">
-                    <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
-                    <input class="form-check-input" type="checkbox" id="amenity-{{ attr.pk }}"
-                           {% if attr.pk in assigned_attribute_ids %}checked{% endif %} onchange="this.form.submit()">
-                    <label class="form-check-label small" for="amenity-{{ attr.pk }}">{{ attr.label }} <span class="text-muted">({{ attr.get_category_display }})</span></label>
-                </form>
-                {% empty %}
-                <p class="text-muted small mb-0">No amenity tags defined yet — add some in Admin.</p>
-                {% endfor %}
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    {% for attr in attributes %}
+                        {% if attr.pk in assigned_attribute_ids %}
+                        <form method="post" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="toggle_attribute">
+                            <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
+                            <button type="submit" class="bubble bubble-locked">
+                                {{ attr.label }} <i data-lucide="x" style="width: 0.7rem; height: 0.7rem;"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    {% endfor %}
+                    {% if not attributes %}
+                    <p class="text-muted small mb-0">No amenity tags defined yet.</p>
+                    {% elif not assigned_attribute_ids %}
+                    <p class="text-muted small mb-0">No amenities added yet.</p>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#amenity-add-pool">
+                    <i data-lucide="plus" class="icon"></i> Add amenity
+                </button>
+                <div class="collapse mt-2" id="amenity-add-pool">
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for attr in attributes %}
+                            {% if attr.pk not in assigned_attribute_ids %}
+                            <form method="post" class="d-inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="toggle_attribute">
+                                <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
+                                <button type="submit" class="bubble">{{ attr.label }}</button>
+                            </form>
+                            {% endif %}
+                        {% endfor %}
+                        {% if attributes|length == assigned_attribute_ids|length %}
+                        <p class="text-muted small mb-0">All amenities already added.</p>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
