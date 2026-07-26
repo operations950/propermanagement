@@ -6,8 +6,11 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon"></i> API Keys &amp; Secrets</h6>
-        <p class="text-muted small">Set once here to override whatever's in the environment — takes effect immediately, no redeploy needed. Already-set values are masked; leave a field blank to keep it unchanged.</p>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-secrets" style="cursor: pointer;">
+            <i data-lucide="key-round" class="icon"></i> API Keys &amp; Secrets <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        </h6>
+        <div class="collapse" id="admin-section-secrets">
+        <p class="text-muted small mt-3">Set once here to override whatever's in the environment — takes effect immediately, no redeploy needed. Already-set values are masked; leave a field blank to keep it unchanged.</p>
         <form method="post" action="{% url 'admin_settings_save' %}">
             {% csrf_token %}
             <div class="row g-3">
@@ -30,13 +33,17 @@
         {% endfor %}
         </ul>
         {% endif %}
+        </div>
     </div>
 </div>
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="phone" class="icon"></i> Phone Lines</h6>
-        <p class="text-muted small">This Quo account has {{ quo_phone_lines|length }} phone line{{ quo_phone_lines|length|pluralize }}. Pick which one to scan for new tickets, and which one to send outbound texts from.</p>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-phone" style="cursor: pointer;">
+            <i data-lucide="phone" class="icon"></i> Phone Lines <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        </h6>
+        <div class="collapse" id="admin-section-phone">
+        <p class="text-muted small mt-3">This Quo account has {{ quo_phone_lines|length }} phone line{{ quo_phone_lines|length|pluralize }}. Pick which one to scan for new tickets, and which one to send outbound texts from.</p>
         {% if quo_phone_lines %}
         <form method="post" action="{% url 'admin_phone_settings_save' %}">
             {% csrf_token %}
@@ -64,13 +71,17 @@
         {% else %}
         <p class="text-muted small mb-0">No phone lines available — set the Quo API key above to load them.</p>
         {% endif %}
+        </div>
     </div>
 </div>
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon"></i> Properties</h6>
-        <p class="text-muted small">Deactivating hides a property from active lists and pickers everywhere else in the app — every linked ticket, contact, and follow-up history stays intact and can be restored anytime.</p>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-properties" style="cursor: pointer;">
+            <i data-lucide="building-2" class="icon"></i> Properties <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        </h6>
+        <div class="collapse" id="admin-section-properties">
+        <p class="text-muted small mt-3">Deactivating hides a property from active lists and pickers everywhere else in the app — every linked ticket, contact, and follow-up history stays intact and can be restored anytime.</p>
         <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
             <thead><tr><th>Name</th><th>Type</th><th>Status</th><th></th></tr></thead>
@@ -99,6 +110,12 @@
             </tbody>
         </table>
         </div>
+        </div>
     </div>
 </div>
+
+<style>
+[data-bs-toggle="collapse"] .icon.ms-auto { transition: transform 0.15s; }
+[data-bs-toggle="collapse"][aria-expanded="true"] .icon.ms-auto { transform: rotate(180deg); }
+</style>
 {% endblock %}
