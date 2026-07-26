@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, login as auth_login
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.db.models import Count, Max, Q
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -719,24 +719,9 @@ def property_detail(request, pk):
 
     assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
 
-    # Every vendor ever assigned a ticket here — independent of whether
-    # they're still linked via Contact.properties (a one-off vendor from a
-    # single past job usually never gets formally "linked" to the property
-    # at all), so "who have we used before" is answered from actual job
-    # history rather than from that link.
-    past_vendors = (
-        Contact.objects.filter(contact_type=Contact.ContactType.VENDOR, assigned_tickets__property=prop)
-        .annotate(
-            job_count=Count('assigned_tickets', filter=Q(assigned_tickets__property=prop), distinct=True),
-            last_job_at=Max('assigned_tickets__created_at', filter=Q(assigned_tickets__property=prop)),
-        )
-        .order_by('-last_job_at')
-    )
-
     return render(request, 'core/property_detail.html', {
         'property': prop,
         'contact_groups': contact_groups,
-        'past_vendors': past_vendors,
         'contacts_with_thread_ids': contacts_with_thread_ids,
         'text_contacts': [c for c in contacts if c.phone],
         'email_contacts': [c for c in contacts if c.email],

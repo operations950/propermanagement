@@ -93,23 +93,6 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="wrench" class="icon"></i> Past Vendors</h6>
-        {% for v in past_vendors %}
-        <div class="d-flex justify-content-between align-items-center py-1 border-top">
-            <div>
-                <a href="{% url 'contact_edit' v.pk %}" class="text-decoration-none">{{ v.name }}</a>
-                {% if v.trade %}<span class="badge rounded-pill bg-light text-dark border ms-1">{{ v.trade }}</span>{% endif %}
-            </div>
-            <span class="text-muted small text-nowrap">{{ v.job_count }} job{{ v.job_count|pluralize }} &middot; last {{ v.last_job_at|date:"M j, Y" }}</span>
-        </div>
-        {% empty %}
-        <p class="text-muted mb-0">No vendor has done work at this property yet.</p>
-        {% endfor %}
-    </div>
-</div>
-
-<div class="card mb-3">
-    <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="send" class="icon"></i> Communication</h6>
         <div class="row g-3">
             <div class="col-md-6">

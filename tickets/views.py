@@ -1883,6 +1883,20 @@ def ticket_set_contacts(request, pk):
     return redirect('ticket_detail', pk=ticket.pk)
 
 
+def _link_vendor_to_property(ticket):
+    """A vendor/contractor who completes a job at a property becomes
+    formally associated with it going forward — Contact.properties, the
+    same M2M every other "belongs to this property" contact uses, so they
+    show up in that property's Contacts card and Related Contacts
+    suggestions from then on. add() is a no-op if already linked."""
+    if (
+        ticket.property_id
+        and ticket.assigned_contact_id
+        and ticket.assigned_contact.contact_type == Contact.ContactType.VENDOR
+    ):
+        ticket.assigned_contact.properties.add(ticket.property_id)
+
+
 @login_required
 def ticket_set_status(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
@@ -1922,6 +1936,8 @@ def ticket_set_status(request, pk):
                 ticket.cancelled_at = timezone.now()
                 ticket.cancelled_reason = request.POST.get('cancelled_reason', '')
             ticket.save()
+            if new_status == Ticket.Status.COMPLETED:
+                _link_vendor_to_property(ticket)
             if new_status in Ticket.DEPENDENCY_SATISFYING_STATUSES:
                 unblock_dependents(ticket)
             messages.success(request, f'Status updated to {ticket.get_status_display()}.')
@@ -1988,6 +2004,7 @@ def ticket_close_no_followup(request, pk):
         ticket.status = Ticket.Status.COMPLETED
         ticket.completed_at = timezone.now()
         ticket.save()
+        _link_vendor_to_property(ticket)
         if is_ajax:
             return JsonResponse({'success': True})
     if ticket.assigned_role in StaffProfile.Role.values:
