@@ -397,7 +397,10 @@ def _handle_airbnb_email_booking(event: RawEvent):
 
     thread_id = event.external_id
     mailbox_email = event.extra.get('mailbox_email', '')
-    extract = extract_airbnb_booking(event.body)
+    # event.title is the latest message's Subject (see GmailAdapter._build_event)
+    # — Airbnb's clearest signal for which of its automated email types this
+    # is; previously never reached Claude at all.
+    extract = extract_airbnb_booking(event.body, subject=event.title)
 
     if extract is None:
         GmailThreadState.objects.get_or_create(mailbox_email=mailbox_email, thread_id=thread_id)
@@ -412,8 +415,39 @@ def _handle_airbnb_email_booking(event: RawEvent):
         },
     )
 
+    # The stable Gmail thread id, not Claude's extracted confirmation_code —
+    # the exact confirmation_code text Claude reads back can vary slightly
+    # between repeated reads of the SAME thread (a normal poll retry, or a
+    # manual admin look-back rerun), which previously let one physical email
+    # spawn a second ticket under a different source_reference. This is the
+    # same class of bug already fixed for the generic thread-classification
+    # path in _reconcile_thread_ticket — key on the one thing guaranteed
+    # stable and unique, not an AI-derived value. A genuinely separate Gmail
+    # thread for the same reservation (e.g. a later reminder Airbnb didn't
+    # thread together with the original) isn't covered by this — Gmail's own
+    # threading keeps related Airbnb notifications together in practice.
+    reservation_id = thread_id
+
     if not extract.is_booking_confirmation:
         logger.info('Airbnb email %s: not a new booking confirmation, skipping', thread_id)
+        # If an earlier message in this same thread already created a
+        # ticket (e.g. Claude read a real confirmation, and this later
+        # message is Airbnb's cancellation notice for the same thread),
+        # stand it down — mirrors _reconcile_thread_ticket's own
+        # untouched-ticket auto-cancel rule.
+        existing = Ticket.objects.filter(
+            source='airbnb', source_reference=reservation_id, kind='cleaning',
+        ).exclude(status=Ticket.Status.CANCELLED).first()
+        if (
+            existing and existing.status == Ticket.Status.OPEN
+            and not existing.assigned_staff_id and not existing.assigned_contact_id
+            and not existing.resolution_notes
+        ):
+            existing.status = Ticket.Status.CANCELLED
+            existing.cancelled_at = timezone.now()
+            existing.cancelled_reason = 'Later Airbnb thread activity is not a booking confirmation (e.g. a cancellation)'
+            existing.save()
+            logger.info('Airbnb thread %s: auto-cancelled untouched ticket %s', thread_id, existing.pk)
         return None
 
     prop = Property.objects.filter(name=extract.property_name).first() if extract.property_name else None
@@ -422,9 +456,9 @@ def _handle_airbnb_email_booking(event: RawEvent):
     # notification is Airbnb's own system address, not the guest's real
     # contact info (Airbnb never exposes that in these emails). Claude's
     # guest_name is descriptive text only.
-    reservation_id = extract.confirmation_code or thread_id
     check_out = _parse_date(extract.check_out)
     guest_label = f' for {extract.guest_name}' if extract.guest_name else ''
+    confirmation_note = f' (confirmation {extract.confirmation_code})' if extract.confirmation_code else ''
 
     if prop:
         Reservation.objects.update_or_create(
@@ -440,7 +474,7 @@ def _handle_airbnb_email_booking(event: RawEvent):
         source='airbnb', source_reference=reservation_id, kind='cleaning',
         defaults={
             'title': f'Clean {prop.name} after checkout' if prop else 'Clean after Airbnb checkout',
-            'description': f'Airbnb reservation {reservation_id}{guest_label}' + (f', check-out {check_out}' if check_out else '') + '.',
+            'description': f'Airbnb reservation{confirmation_note}{guest_label}' + (f', check-out {check_out}' if check_out else '') + '.',
             'raw_context': event.body,
             'property': prop,
             'priority': 'medium',

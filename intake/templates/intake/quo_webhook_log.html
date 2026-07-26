@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}Quo Webhook Log{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center my-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="webhook" class="icon-lg"></i> Quo Webhook Log</h2>
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2">
         <form method="post" action="{% url 'quo_backfill_trigger' %}" onsubmit="return confirm('Pull every Quo conversation\'s full history into QuoMessage? This runs in the background and can take a few minutes.');">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-secondary btn-sm">Run historical backfill</button>

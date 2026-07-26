@@ -28,7 +28,7 @@ from processes.models import ProcessInstance, ProcessInstanceDocument, ProcessIn
 from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
 from .models import (
     FollowUpLog, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket, TicketAssignmentLog,
-    TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate, TicketView,
+    TicketAttachment, TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate, TicketView,
 )
 from .services.package_engine import unblock_dependents
 from .services.process_gate import incomplete_process_instances, process_gate_error_message
@@ -669,6 +669,51 @@ def ticket_pending_delete(request, pk):
     return redirect('ticket_pending')
 
 
+# Column key -> ORM field, in the same order the table renders them. Used by
+# both _ticket_sort_order (build the .order_by()) and _ticket_sort_columns
+# (build each header's up/down arrow links) so the two never drift apart.
+TICKET_SORT_FIELDS = [
+    ('department', 'assigned_role', 'Department'),
+    ('property', 'property__name', 'Property'),
+    ('issue', 'title', 'Issue'),
+    ('due', 'due_date', 'Due'),
+    ('status', 'status', 'Status'),
+    ('staff', 'assigned_staff__user__first_name', 'Assigned Staff'),
+    ('contractor', 'assigned_contact__name', 'Assigned Contractor'),
+]
+
+
+def _ticket_sort_order(sort_param):
+    """A `sort=` GET value like 'due' (ascending) or '-due' (descending) ->
+    the .order_by() args — always falls back to Ticket.Meta.ordering
+    (newest first) as a stable secondary key so rows with equal values
+    (e.g. every 'Assigned' status) don't visibly shuffle between requests."""
+    key = sort_param.lstrip('-')
+    fields = {field_key: field for field_key, field, _ in TICKET_SORT_FIELDS}
+    if key not in fields:
+        return ['-created_at']
+    field = fields[key]
+    return [f'-{field}' if sort_param.startswith('-') else field, '-created_at']
+
+
+def _ticket_sort_columns(sort_param):
+    """One entry per sortable column for the template's header row: which
+    GET value each of its up/down arrows should link to, and whether that
+    arrow reflects the currently-active sort (for highlighting)."""
+    key = sort_param.lstrip('-')
+    is_desc = sort_param.startswith('-')
+    columns = []
+    for field_key, _, label in TICKET_SORT_FIELDS:
+        columns.append({
+            'key': field_key,
+            'neg_key': f'-{field_key}',
+            'label': label,
+            'asc_is_active': key == field_key and not is_desc,
+            'desc_is_active': key == field_key and is_desc,
+        })
+    return columns
+
+
 @login_required
 def ticket_list(request):
     """Defaults to the active bucket (open/assigned/in_progress/blocked) —
@@ -763,6 +808,8 @@ def ticket_list(request):
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(property__name__icontains=q))
 
+    qs = qs.order_by(*_ticket_sort_order(request.GET.get('sort', '')))
+
     return render(request, 'tickets/ticket_list.html', {
         'tickets': qs,
         'now': timezone.now(),
@@ -788,6 +835,7 @@ def ticket_list(request):
             Contact.objects.filter(contact_type=Contact.ContactType.VENDOR).order_by('name')
         ),
         'properties_by_type': properties_by_type(),
+        'sort_columns': _ticket_sort_columns(request.GET.get('sort', '')),
     })
 
 
@@ -2265,6 +2313,28 @@ def ticket_close_no_followup(request, pk):
     return redirect('dashboard')
 
 
+FOLLOWUP_UPLOAD_ALLOWED_CONTENT_TYPES = ('image/jpeg', 'image/png', 'image/webp', 'image/heic')
+
+
+def _save_new_followup_attachments(request, ticket):
+    """Saves any freshly-uploaded files from the Follow-Up compose's
+    `new_files` input as TicketAttachments (same model/storage the
+    existing photo-picker already reads from), so they can be sent
+    alongside a message the same way an already-existing attachment can.
+    Returns (new_pks, error) — on error, nothing was saved and the caller
+    should stop before sending anything."""
+    new_pks = []
+    for f in request.FILES.getlist('new_files'):
+        if f.content_type not in FOLLOWUP_UPLOAD_ALLOWED_CONTENT_TYPES:
+            return [], f'{f.name}: only photo uploads (JPEG, PNG, WEBP, HEIC) can be attached to a message.'
+        if f.size > settings.VENDOR_UPLOAD_MAX_BYTES:
+            max_mb = settings.VENDOR_UPLOAD_MAX_BYTES // (1024 * 1024)
+            return [], f'{f.name} is too large (max {max_mb}MB).'
+        attachment = TicketAttachment.objects.create(ticket=ticket, file=f, uploaded_by_user=request.user)
+        new_pks.append(attachment.pk)
+    return new_pks, ''
+
+
 @login_required
 def ticket_followup_sms(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
@@ -2272,7 +2342,13 @@ def ticket_followup_sms(request, pk):
     if request.method == 'POST':
         contact_ids = request.POST.getlist('contact_ids')
         body = request.POST.get('body', '').strip()
-        attachment_ids = request.POST.getlist('attachment_ids')
+        new_pks, upload_error = _save_new_followup_attachments(request, ticket)
+        if upload_error:
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': upload_error})
+            messages.error(request, upload_error)
+            return redirect('ticket_detail', pk=ticket.pk)
+        attachment_ids = request.POST.getlist('attachment_ids') + new_pks
         media_urls = [
             request.build_absolute_uri(a.file.url)
             for a in ticket.attachments.filter(pk__in=attachment_ids) if not a.is_video
@@ -2361,7 +2437,13 @@ def ticket_followup_email(request, pk):
         subject = request.POST.get('subject', '').strip()
         body = request.POST.get('body', '').strip()
         group = request.POST.get('group') == '1'
-        attachment_ids = request.POST.getlist('attachment_ids')
+        new_pks, upload_error = _save_new_followup_attachments(request, ticket)
+        if upload_error:
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': upload_error})
+            messages.error(request, upload_error)
+            return redirect('ticket_detail', pk=ticket.pk)
+        attachment_ids = request.POST.getlist('attachment_ids') + new_pks
         attachments = (
             [a for a in ticket.attachments.filter(pk__in=attachment_ids) if not a.is_video]
             if attachment_ids else None

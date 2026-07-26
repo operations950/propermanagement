@@ -145,6 +145,27 @@
         }
         .brand-logo { height: 32px; width: auto; }
 
+        /* Below the lg breakpoint the nav collapses into a stacked list
+           (see navbar-expand-lg below) — the desktop nav-link padding is
+           tuned for a single horizontal row, so links there read a bit
+           small/cramped as touch targets once stacked vertically. Bump
+           padding/size and separate rows with a hairline so each is a
+           clearly distinct, comfortably tappable row. */
+        @media (max-width: 991.98px) {
+            .brand-bar .nav-link {
+                font-size: 1.05rem;
+                padding: 0.7rem 0.75rem !important;
+            }
+            .brand-bar .navbar-nav > .nav-link,
+            .brand-bar .navbar-nav > form {
+                border-bottom: 1px solid var(--border-hairline);
+            }
+            .brand-bar .navbar-nav > .dropdown {
+                border-bottom: 1px solid var(--border-hairline);
+                padding-bottom: 0.5rem;
+            }
+        }
+
         .card {
             border: 1px solid var(--border-hairline);
             background: var(--surface-card);

@@ -505,7 +505,7 @@
         {% if contractor_thread %}
         <div class="card mb-3" id="contractor-communication-card">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Contractor Communication</h6>
                     {% if ticket.assigned_contact.phone %}
                     <form method="post" action="{% url 'ticket_send_vendor_link' ticket.pk %}" id="send-vendor-link-form" class="flex-shrink-0">
@@ -544,9 +544,21 @@
         </div>
         <script>
         (function () {
+            var thread = document.getElementById('contractor-thread');
+            if (thread) {
+                thread.scrollTop = thread.scrollHeight;
+                // A later layout pass (e.g. this page's own
+                // lucide.createIcons() call, which runs after this block)
+                // can still nudge scrollHeight by a few px — a deferred
+                // second pass catches that. setTimeout (not
+                // requestAnimationFrame, which is paused entirely for a
+                // backgrounded/inactive tab) so this still fires
+                // regardless of tab visibility.
+                setTimeout(function () { thread.scrollTop = thread.scrollHeight; }, 0);
+            }
+
             var form = document.getElementById('contractor-send-form');
             if (!form) return;
-            var thread = document.getElementById('contractor-thread');
             var errorEl = document.getElementById('contractor-send-error');
             var input = form.querySelector('input[name="body"]');
             var button = form.querySelector('button[type="submit"]');
@@ -1137,6 +1149,7 @@
                 <h6 class="d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Text</h6>
                 {% if followup_text_parties %}
                 <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" id="ticket-followup-sms-form"
+                      enctype="multipart/form-data"
                       onsubmit="var n=this.querySelectorAll('input[name=contact_ids]').length; if(!n){alert('Choose at least one recipient first.'); return false;} return confirm('Send this text to ' + n + ' recipient(s)?');">
                     {% csrf_token %}
                     <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
@@ -1160,6 +1173,10 @@
                         </div>
                     </div>
                     {% endif %}
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium mb-1">Upload a new photo (optional — sends as MMS)</label>
+                        <input type="file" name="new_files" accept="image/*" multiple class="form-control form-control-sm">
+                    </div>
                     <textarea name="body" class="form-control mb-2" rows="4" placeholder="Message…" required></textarea>
                     <button class="btn btn-primary btn-sm w-100" type="submit">Send Text</button>
                 </form>
@@ -1170,7 +1187,7 @@
           <div class="col-md-6">
                 <h6 class="d-flex align-items-center gap-2"><i data-lucide="mail" class="icon"></i> Email</h6>
                 {% if followup_email_parties %}
-                <form method="post" action="{% url 'ticket_followup_email' ticket.pk %}" id="ticket-followup-email-form">
+                <form method="post" action="{% url 'ticket_followup_email' ticket.pk %}" id="ticket-followup-email-form" enctype="multipart/form-data">
                     {% csrf_token %}
                     <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
                         <div class="bubble-slot" data-bubble-slot data-empty-text="No one selected"></div>
@@ -1194,6 +1211,10 @@
                         </div>
                     </div>
                     {% endif %}
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium mb-1">Upload a new photo (optional)</label>
+                        <input type="file" name="new_files" accept="image/*" multiple class="form-control form-control-sm">
+                    </div>
                     <textarea name="body" class="form-control mb-2" rows="4" placeholder="Message…" required></textarea>
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="group" value="1" id="followup-group-check">

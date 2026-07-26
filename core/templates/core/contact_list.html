@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}Contacts{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center my-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="contact" class="icon-lg"></i> Contacts</h2>
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2">
         {% if pending_review_count %}
         <a href="{% url 'contact_review' %}" class="btn btn-outline-warning d-flex align-items-center gap-1">
             <i data-lucide="circle-alert" class="icon"></i> {{ pending_review_count }} to review
@@ -36,7 +36,7 @@
     {% endfor %}
 </div>
 
-<div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
 <div class="table-responsive">
 <table class="table bg-white align-middle mb-0">
     <thead><tr><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Property</th><th></th></tr></thead>
@@ -46,10 +46,15 @@
 </table>
 </div>
 </div>
+
+<div class="d-md-none" id="contact-mobile-cards">
+{% include 'core/_contact_mobile_cards.html' %}
+</div>
 <script>
 (function () {
     var input = document.getElementById('contact-search-input');
     var tbody = document.getElementById('contact-table-body');
+    var mobileCards = document.getElementById('contact-mobile-cards');
     var selectedType = '{{ selected_type|escapejs }}';
     var timer = null;
 
@@ -60,9 +65,10 @@
         fetch('{% url "contact_list" %}?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })
-            .then(function (resp) { return resp.text(); })
-            .then(function (html) {
-                tbody.innerHTML = html;
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                tbody.innerHTML = data.desktop;
+                mobileCards.innerHTML = data.mobile;
                 if (window.lucide) lucide.createIcons();
                 history.replaceState(null, '', '?' + params.toString());
             });

@@ -9,7 +9,7 @@
 </p>
 <div class="card">
     <div class="card-body">
-        <div class="imessage-thread">
+        <div class="imessage-thread" id="previous-conversation-thread">
             {% for entry in entries %}
             <div class="imessage-bubble imessage-{{ entry.direction }}">{{ entry.body }}<span class="imessage-bubble-time">{{ entry.at|date:"M j, g:i A" }}</span></div>
             {% empty %}
@@ -18,4 +18,13 @@
         </div>
     </div>
 </div>
+<script>
+(function () {
+    var thread = document.getElementById('previous-conversation-thread');
+    if (thread) {
+        thread.scrollTop = thread.scrollHeight;
+        setTimeout(function () { thread.scrollTop = thread.scrollHeight; }, 0);
+    }
+})();
+</script>
 {% endblock %}

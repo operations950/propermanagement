@@ -1,0 +1,31 @@
+{% for c in contacts %}
+    <div class="card mb-2">
+        <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                    <div class="fw-semibold">
+                        <a href="{% url 'contact_edit' c.pk %}" class="text-decoration-none">{{ c.name }}</a>
+                    </div>
+                    <div class="small text-muted">
+                        {{ c.phone|default:'' }}{% if c.phone and c.email %} &middot; {% endif %}{{ c.email|default:'' }}
+                        {% if not c.phone and not c.email %}&mdash;{% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge rounded-pill bg-light text-dark border">{{ c.get_contact_type_display }}</span>
+                {% for label in c.secondary_type_labels %}<span class="badge rounded-pill bg-light text-dark border">{{ label }}</span>{% endfor %}
+                {% if c.trade %}<span class="badge rounded-pill bg-light text-dark border">{{ c.trade }}</span>{% endif %}
+            </div>
+            {% if c.properties.all %}
+            <div class="small text-muted mb-2">
+                {% for p in c.properties.all %}<a href="{% url 'property_edit' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+            </div>
+            {% endif %}
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'ticket_create' %}?contact={{ c.pk }}" class="btn btn-outline-primary btn-sm"><i data-lucide="plus" class="icon"></i> New ticket</a>
+                <a href="{% url 'contact_edit' c.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+            </div>
+        </div>
+    </div>
+{% empty %}<p class="text-muted text-center py-4"><i data-lucide="contact" class="icon-lg d-block mx-auto mb-1"></i>No contacts match.</p>{% endfor %}

@@ -5,7 +5,7 @@
 {% if selected_source == 'recurring' %}
 <a href="{% url 'ticket_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> All recurring task rules</a>
 {% endif %}
-<div class="d-flex justify-content-between align-items-center my-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2">
         <i data-lucide="clipboard-list" class="icon-lg"></i>
         {% if selected_source == 'recurring' %}Recurring Tasks{% elif selected_status == 'complete' %}Completed & cancelled{% else %}Tickets{% endif %}
@@ -276,7 +276,24 @@ height instead of wrapping onto two lines.
         <col style="width: 9%;"><col style="width: 10%;"><col style="width: 13%;">
         <col style="width: 13%;"><col style="width: 6%;">
     </colgroup>
-    <thead><tr><th>Department</th><th>Property</th><th>Issue</th><th>Due</th><th>Status</th><th>Assigned Staff</th><th>Assigned Contractor</th><th></th></tr></thead>
+    <thead><tr>
+        {% for col in sort_columns %}
+        <th>
+            <span class="d-inline-flex align-items-center gap-1">
+                {{ col.label }}
+                <span class="d-inline-flex flex-column" style="line-height: 0.6;">
+                    <a href="{% querystring sort=col.key %}" title="Sort {{ col.label }} ascending" style="color: {% if col.asc_is_active %}var(--brand-slate){% else %}var(--border-hairline){% endif %};">
+                        <i data-lucide="chevron-up" style="width: 0.7rem; height: 0.7rem;"></i>
+                    </a>
+                    <a href="{% querystring sort=col.neg_key %}" title="Sort {{ col.label }} descending" style="color: {% if col.desc_is_active %}var(--brand-slate){% else %}var(--border-hairline){% endif %};">
+                        <i data-lucide="chevron-down" style="width: 0.7rem; height: 0.7rem;"></i>
+                    </a>
+                </span>
+            </span>
+        </th>
+        {% endfor %}
+        <th></th>
+    </tr></thead>
     {% for t in tickets %}
         <tbody data-row-edit>
             <tr>

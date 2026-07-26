@@ -55,16 +55,27 @@ EXTRACT_BOOKING_TOOL = {
 }
 
 BOOKING_PROMPT = """\
-Here is an automated email from Airbnb, sent to a property management business's shared inbox. \
-Determine whether it's a brand-new reservation confirmation (as opposed to a cancellation, payout \
-notice, review request, or anything else Airbnb sends automatically), and if so extract the \
-reservation details.
+Here is an automated Gmail thread from Airbnb, sent to a property management business's shared \
+inbox. It may include more than one message if Airbnb reused the same thread across a \
+reservation's lifecycle (confirmation, then later a reminder, message notification, etc.) — base \
+your answer on the MOST RECENT message (the last one in the transcript below), using any earlier \
+messages only as background context.
+
+Subject of the most recent message: {subject}
+
+Determine whether that most recent message is itself a brand-new reservation confirmation (as \
+opposed to a cancellation, payout notice, review request, itinerary/checkout reminder, a guest \
+message relayed through Airbnb, or anything else Airbnb sends automatically) — the Subject line \
+above is usually the clearest signal. Note that even a non-confirmation message (e.g. a reminder) \
+will often restate the full itinerary (property, dates, confirmation code) for context, so \
+seeing that information present is NOT by itself evidence of a new confirmation. If it is a new \
+confirmation, extract the reservation details.
 
 Known properties: {property_names}
 
---- Email ---
+--- Thread transcript ---
 {email_text}
---- End email ---\
+--- End transcript ---\
 """
 
 
@@ -78,9 +89,15 @@ class AirbnbBookingExtract:
         self.guest_name = guest_name
 
 
-def extract_airbnb_booking(email_text: str) -> AirbnbBookingExtract | None:
-    """Read one Airbnb automated email and decide whether it's a new
-    booking confirmation, extracting the reservation details if so.
+def extract_airbnb_booking(email_text: str, subject: str = '') -> AirbnbBookingExtract | None:
+    """Read an Airbnb automated email thread and decide whether its MOST
+    RECENT message is a new booking confirmation, extracting the
+    reservation details if so. `subject` should be that latest message's
+    Subject header — Airbnb's clearest, most template-driven signal for
+    which of its many automated email types this is, and previously
+    dropped entirely before it reached Claude (the likely cause of some
+    non-confirmation emails, e.g. reminders that restate the full
+    itinerary, being misread as new bookings).
     Returns None (safe no-op, logged) if ANTHROPIC_API_KEY isn't configured
     yet, or if Claude's response couldn't be parsed — the caller treats
     that the same as thread_classifier.classify_thread returning None
@@ -107,6 +124,7 @@ def extract_airbnb_booking(email_text: str) -> AirbnbBookingExtract | None:
                 'content': BOOKING_PROMPT.format(
                     property_names=', '.join(property_names) or '(none configured)',
                     email_text=email_text,
+                    subject=subject or '(none)',
                 ),
             }],
         )

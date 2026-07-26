@@ -426,6 +426,8 @@
                 .then(function (html) {
                     container.innerHTML = html;
                     container.hidden = false;
+                    container.scrollTop = container.scrollHeight;
+                    setTimeout(function () { container.scrollTop = container.scrollHeight; }, 0);
                     btn.dataset.loaded = '1';
                 })
                 .finally(function () { btn.disabled = false; });

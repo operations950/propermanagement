@@ -836,7 +836,10 @@ def contact_list(request):
     qs = qs.order_by('name')
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return render(request, 'core/_contact_table_rows.html', {'contacts': qs})
+        return JsonResponse({
+            'desktop': render_to_string('core/_contact_table_rows.html', {'contacts': qs}, request=request),
+            'mobile': render_to_string('core/_contact_mobile_cards.html', {'contacts': qs}, request=request),
+        })
 
     return render(request, 'core/contact_list.html', {
         'contacts': qs,
