@@ -27,7 +27,13 @@ from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 from . import app_settings, google_calendar, google_login, places, usps
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
-from .forms import ContactForm, EmailOrUsernameAuthenticationForm, PropertyForm, PropertyTemplateOverrideForm
+from .forms import (
+    ContactForm,
+    EmailOrUsernameAuthenticationForm,
+    PropertyForm,
+    PropertyTemplateOverrideForm,
+    StaffCreateForm,
+)
 from .models import (
     Contact, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal, GoogleCalendarToken, Property,
     PropertyAttribute, PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, TRADE_CHOICES,
@@ -387,7 +393,54 @@ def admin_tools(request):
         'quo_phone_lines': _list_quo_phone_lines(),
         'scan_phone_number_id': django_settings.QUO_SCAN_PHONE_NUMBER_ID,
         'outbound_from_number': django_settings.QUO_DEFAULT_FROM_NUMBER,
+        'staff_profiles': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__last_name'),
     })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def staff_create(request):
+    """The only way to create a staff account short of Django admin.
+    Checks the entered email against existing Contacts (a person often
+    starts out as a vendor/guest/board-member Contact before joining the
+    team) — if one matches, this holds off creating anything and asks for
+    explicit confirmation before proceeding, rather than silently leaving
+    both a Contact and a User for the same real person lying around."""
+    matched_contact = None
+    if request.method == 'POST':
+        form = StaffCreateForm(request.POST)
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            matched_contact = Contact.objects.filter(email__iexact=email).first()
+            confirmed = request.POST.get('confirm_merge') == '1'
+            if not matched_contact or confirmed:
+                User = get_user_model()
+                user = User.objects.create_user(
+                    username=email, email=email,
+                    first_name=form.cleaned_data['first_name'], last_name=form.cleaned_data['last_name'],
+                    password=form.cleaned_data['password'],
+                )
+                StaffProfile.objects.create(
+                    user=user, role=form.cleaned_data['role'],
+                    phone=form.cleaned_data['phone'] or (matched_contact.phone if matched_contact else ''),
+                    timezone=form.cleaned_data['timezone'],
+                )
+                if matched_contact and confirmed:
+                    contact_name = matched_contact.name
+                    matched_contact.delete()
+                    messages.success(
+                        request,
+                        f'Staff account created for {user.get_full_name()} — merged contact '
+                        f'"{contact_name}" into it.',
+                    )
+                else:
+                    messages.success(request, f'Staff account created for {user.get_full_name()}.')
+                return redirect('admin_tools')
+            # matched_contact exists and not yet confirmed — fall through to
+            # re-render the same form with a warning instead of saving.
+    else:
+        form = StaffCreateForm()
+    return render(request, 'core/staff_form.html', {'form': form, 'matched_contact': matched_contact})
 
 
 @login_required

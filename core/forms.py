@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
 
 from tickets.models import PropertyTemplateOverride
@@ -119,3 +120,28 @@ class ContactForm(forms.ModelForm):
             contact.save()
             self.save_m2m()
         return contact
+
+
+class StaffCreateForm(forms.Form):
+    """Admin Tools' "New Staff" form — there's no other way to create a
+    staff account short of Django admin. Deliberately a plain Form, not a
+    ModelForm over User, since it spans two models (User + StaffProfile)
+    and needs its own clean_email to check for a collision against an
+    existing Contact (see core/views.py::staff_create for the confirm-
+    before-merge flow that check enables)."""
+    first_name = forms.CharField(max_length=150, label='First name')
+    last_name = forms.CharField(max_length=150, required=False, label='Last name')
+    email = forms.EmailField(label='Email')
+    phone = forms.CharField(max_length=30, required=False, label='Phone (optional)')
+    role = forms.ChoiceField(choices=StaffProfile.Role.choices, required=False, label='Department')
+    timezone = forms.ChoiceField(
+        choices=StaffProfile.Timezone.choices, initial=StaffProfile.Timezone.EASTERN, label='Timezone',
+    )
+    password = forms.CharField(widget=forms.PasswordInput, label='Temporary password')
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip().lower()
+        User = get_user_model()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('A user with this email already exists.')
+        return email

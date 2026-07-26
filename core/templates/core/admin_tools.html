@@ -140,6 +140,37 @@
     </div>
 </div>
 
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-staff" style="cursor: pointer;">
+            <i data-lucide="users" class="icon"></i> Staff <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        </h6>
+        <div class="collapse" id="admin-section-staff">
+        <p class="text-muted small mt-3">The only way to create a staff account short of Django admin.</p>
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Phone</th></tr></thead>
+            <tbody>
+            {% for sp in staff_profiles %}
+            <tr>
+                <td class="fw-medium">{{ sp.user.get_full_name|default:sp.user.username }}</td>
+                <td>{{ sp.user.email }}</td>
+                <td>{{ sp.get_role_display|default:'—' }}</td>
+                <td>{{ sp.phone|default:'—' }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-muted">No staff accounts yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <a href="{% url 'staff_create' %}" class="btn btn-outline-primary btn-sm mt-3">
+            <i data-lucide="user-plus" class="icon"></i> New staff
+        </a>
+        </div>
+    </div>
+</div>
+
 <style>
 [data-bs-toggle="collapse"] .icon.ms-auto { transition: transform 0.15s; }
 [data-bs-toggle="collapse"][aria-expanded="true"] .icon.ms-auto { transform: rotate(180deg); }

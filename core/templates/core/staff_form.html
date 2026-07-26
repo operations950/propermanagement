@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}New staff{% endblock %}
+{% block content %}
+<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Admin Tools</a>
+<h2 class="page-title mb-3">New staff</h2>
+<div class="card" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-4">
+        {% if matched_contact %}
+        <div class="alert alert-warning">
+            <p class="mb-2"><strong>{{ matched_contact.email }}</strong> already exists as a contact — <strong>{{ matched_contact.name }}</strong> ({{ matched_contact.get_contact_type_display }}{% if matched_contact.phone %}, {{ matched_contact.phone }}{% endif %}).</p>
+            <p class="mb-2 small">Create the staff account and merge that contact into it? The contact record will be deleted; anything linked to it (tickets, follow-ups, properties) stays linked to the new staff member instead.</p>
+            <form method="post" class="d-flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="first_name" value="{{ form.first_name.value|default:'' }}">
+                <input type="hidden" name="last_name" value="{{ form.last_name.value|default:'' }}">
+                <input type="hidden" name="email" value="{{ form.email.value|default:'' }}">
+                <input type="hidden" name="phone" value="{{ form.phone.value|default:'' }}">
+                <input type="hidden" name="role" value="{{ form.role.value|default:'' }}">
+                <input type="hidden" name="timezone" value="{{ form.timezone.value|default:'' }}">
+                <input type="hidden" name="password" value="{{ form.password.value|default:'' }}">
+                <input type="hidden" name="confirm_merge" value="1">
+                <button class="btn btn-warning btn-sm" type="submit">Create &amp; merge contact</button>
+                <a href="{% url 'staff_create' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+            </form>
+        </div>
+        {% else %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-medium" for="id_first_name">First name</label>
+                    <input type="text" name="first_name" id="id_first_name" class="form-control {% if form.first_name.errors %}is-invalid{% endif %}" value="{{ form.first_name.value|default:'' }}" required>
+                    {% if form.first_name.errors %}<div class="invalid-feedback d-block">{{ form.first_name.errors|join:', ' }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium" for="id_last_name">Last name</label>
+                    <input type="text" name="last_name" id="id_last_name" class="form-control" value="{{ form.last_name.value|default:'' }}">
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_email">Email</label>
+                <input type="email" name="email" id="id_email" class="form-control {% if form.email.errors %}is-invalid{% endif %}" value="{{ form.email.value|default:'' }}" required>
+                {% if form.email.errors %}<div class="invalid-feedback d-block">{{ form.email.errors|join:', ' }}</div>{% endif %}
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_phone">Phone <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+                <input type="tel" name="phone" id="id_phone" class="form-control" placeholder="555-123-4567" value="{{ form.phone.value|default:'' }}">
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-medium" for="id_role">Department</label>
+                    <select name="role" id="id_role" class="form-select">
+                        <option value="">Unassigned</option>
+                        {% for value, label in form.fields.role.choices %}
+                            {% if value %}<option value="{{ value }}" {% if form.role.value == value %}selected{% endif %}>{{ label }}</option>{% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium" for="id_timezone">Timezone</label>
+                    <select name="timezone" id="id_timezone" class="form-select">
+                        {% for value, label in form.fields.timezone.choices %}
+                            <option value="{{ value }}" {% if form.timezone.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_password">Temporary password</label>
+                <input type="password" name="password" id="id_password" class="form-control {% if form.password.errors %}is-invalid{% endif %}" required>
+                {% if form.password.errors %}<div class="invalid-feedback d-block">{{ form.password.errors|join:', ' }}</div>{% endif %}
+            </div>
+
+            <button class="btn btn-primary" type="submit">
+                <i data-lucide="user-plus" class="icon"></i> Create staff
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
