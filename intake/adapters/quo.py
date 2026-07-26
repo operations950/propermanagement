@@ -321,13 +321,17 @@ class QuoAdapter(IntakeAdapter):
             for s in QuoThreadState.objects.filter(conversation_id__in=[c['id'] for c in conversations])
         }
 
+        scan_phone_number_id = settings.QUO_SCAN_PHONE_NUMBER_ID
+
         events = []
         seen_ids = set()
         for i, convo in enumerate(conversations, start=1):
             conversation_id = convo['id']
             seen_ids.add(conversation_id)
-            logger.info('Quo: checking conversation %d/%d (%s)', i, len(conversations), conversation_id)
             phone_number_id = convo.get('phoneNumberId')
+            if scan_phone_number_id and phone_number_id != scan_phone_number_id:
+                continue
+            logger.info('Quo: checking conversation %d/%d (%s)', i, len(conversations), conversation_id)
             participants = convo.get('participants') or []
             if not participants:
                 continue
@@ -357,6 +361,8 @@ class QuoAdapter(IntakeAdapter):
         retry_states = list(
             QuoThreadState.objects.filter(last_classified_at__isnull=True).exclude(conversation_id__in=seen_ids)
         )
+        if scan_phone_number_id:
+            retry_states = [s for s in retry_states if s.phone_number_id == scan_phone_number_id]
         if retry_states:
             logger.info('Quo: retrying %d previously-unclassified conversation(s)', len(retry_states))
         for state in retry_states:

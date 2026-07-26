@@ -330,6 +330,37 @@ def property_list(request):
     })
 
 
+def _list_quo_phone_lines():
+    """This Quo account's own phone lines, for the scan/outbound pickers on
+    admin_tools — cached like _build_contact_lookup's contact list, since
+    these barely ever change and admin_tools shouldn't cost a live Quo API
+    call (plus its retry/backoff delay) on every load. Returns [] rather
+    than raising if QUO_API_KEY isn't configured or the call fails, so the
+    page still renders with an explanatory empty state."""
+    from django.core.cache import cache
+
+    if not django_settings.QUO_API_KEY:
+        return []
+    cached = cache.get('quo_phone_lines')
+    if cached is not None:
+        return cached
+
+    from intake.adapters.quo import QuoAdapter, QuoAPIError
+    import requests
+
+    try:
+        numbers = QuoAdapter()._list_phone_numbers()
+    except (requests.RequestException, QuoAPIError):
+        logger.exception('Quo: failed to list phone numbers for admin_tools')
+        return []
+    lines = [
+        {'id': n['id'], 'number': n.get('number', ''), 'label': n.get('name') or n.get('number', '')}
+        for n in numbers if n.get('id')
+    ]
+    cache.set('quo_phone_lines', lines, timeout=3600)
+    return lines
+
+
 @login_required
 @user_passes_test(_is_admin)
 def admin_tools(request):
@@ -353,7 +384,20 @@ def admin_tools(request):
     ]
     return render(request, 'core/admin_tools.html', {
         'properties': properties, 'secrets': secrets, 'google_redirect_uris': google_redirect_uris,
+        'quo_phone_lines': _list_quo_phone_lines(),
+        'scan_phone_number_id': django_settings.QUO_SCAN_PHONE_NUMBER_ID,
+        'outbound_from_number': django_settings.QUO_DEFAULT_FROM_NUMBER,
     })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def admin_phone_settings_save(request):
+    if request.method == 'POST':
+        app_settings.set_secret('QUO_SCAN_PHONE_NUMBER_ID', request.POST.get('scan_phone_number_id', ''), user=request.user)
+        app_settings.set_secret('QUO_DEFAULT_FROM_NUMBER', request.POST.get('outbound_from_number', ''), user=request.user)
+        messages.success(request, 'Phone line settings updated.')
+    return redirect('admin_tools')
 
 
 @login_required

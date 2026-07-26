@@ -35,6 +35,40 @@
 
 <div class="card mb-3">
     <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="phone" class="icon"></i> Phone Lines</h6>
+        <p class="text-muted small">This Quo account has {{ quo_phone_lines|length }} phone line{{ quo_phone_lines|length|pluralize }}. Pick which one to scan for new tickets, and which one to send outbound texts from.</p>
+        {% if quo_phone_lines %}
+        <form method="post" action="{% url 'admin_phone_settings_save' %}">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium mb-1" for="scan-phone-number">Scan for tickets on</label>
+                    <select name="scan_phone_number_id" id="scan-phone-number" class="form-select form-select-sm">
+                        <option value="">All lines (no restriction)</option>
+                        {% for line in quo_phone_lines %}
+                        <option value="{{ line.id }}" {% if line.id == scan_phone_number_id %}selected{% endif %}>{{ line.label }} ({{ line.number }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium mb-1" for="outbound-phone-number">Send outbound texts from</label>
+                    <select name="outbound_from_number" id="outbound-phone-number" class="form-select form-select-sm">
+                        {% for line in quo_phone_lines %}
+                        <option value="{{ line.number }}" {% if line.number == outbound_from_number %}selected{% endif %}>{{ line.label }} ({{ line.number }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <button class="btn btn-outline-primary btn-sm mt-3" type="submit">Save changes</button>
+        </form>
+        {% else %}
+        <p class="text-muted small mb-0">No phone lines available — set the Quo API key above to load them.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon"></i> Properties</h6>
         <p class="text-muted small">Deactivating hides a property from active lists and pickers everywhere else in the app — every linked ticket, contact, and follow-up history stays intact and can be restored anytime.</p>
         <div class="table-responsive">

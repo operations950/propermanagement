@@ -245,6 +245,11 @@ QUO_CONTACT_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUO_CONTACT_SYNC_INTERVA
 # thread still always sends from whichever line that contact already talks
 # to, this is only the "we're initiating, not replying" fallback.
 QUO_DEFAULT_FROM_NUMBER = os.environ.get('QUO_DEFAULT_FROM_NUMBER', '+15615996300')
+# When set, QuoAdapter.pull() only scans conversations on this one phone line
+# (Quo's own phoneNumberId) instead of every line the account owns — see
+# core/views.py::admin_tools for the staff-facing picker. Blank means "scan
+# every line," the original/default behavior.
+QUO_SCAN_PHONE_NUMBER_ID = os.environ.get('QUO_SCAN_PHONE_NUMBER_ID', '')
 GOOGLE_CALENDAR_CREDENTIALS_PATH = os.environ.get('GOOGLE_CALENDAR_CREDENTIALS_PATH', '')
 AIRBNB_API_KEY = os.environ.get('AIRBNB_API_KEY', '')
 VRBO_API_KEY = os.environ.get('VRBO_API_KEY', '')
