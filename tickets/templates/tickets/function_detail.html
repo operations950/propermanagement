@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}{{ function.title }}{% endblock %}
+{% block content %}
+<a href="{% url 'function_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Functions</a>
+
+<div class="d-flex justify-content-between align-items-start my-3">
+    <div>
+        <h2 class="page-title mb-1 d-flex align-items-center gap-2">
+            <i data-lucide="repeat" class="icon-lg"></i> {{ function.title }}
+            {% if not function.is_active %}<span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+        </h2>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge" style="{{ function.department|department_badge_style }}">
+                <i data-lucide="{{ function.department|department_icon }}" class="icon"></i> {{ function.get_department_display|default:'No department' }}
+            </span>
+            <span class="small text-muted">Assigned to {{ assigned_property_count }} propert{{ assigned_property_count|pluralize:'y,ies' }}</span>
+        </div>
+        {% if function.description %}<p class="text-muted small mt-2 mb-0">{{ function.description }}</p>{% endif %}
+    </div>
+    <div class="d-flex gap-2 flex-shrink-0">
+        <a href="{% url 'function_edit' function.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+        <form method="post" action="{% url 'function_delete' function.pk %}" onsubmit="return confirm('Delete Function \'{{ function.title|escapejs }}\'? This does not delete its recurring task rules, only the grouping.');">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger btn-sm" type="submit"><i data-lucide="trash-2" class="icon"></i> Delete</button>
+        </form>
+    </div>
+</div>
+
+{% for group in task_groups %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="card-title mb-0 d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> {{ group.title }}</h6>
+            <div class="d-flex gap-2">
+                <a href="{% url 'ticket_template_create' %}?package={{ function.pk }}&group={{ group.pk }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="plus" class="icon"></i> Add task</a>
+                <button type="button" class="btn btn-link btn-sm p-0 text-danger" data-bs-toggle="collapse" data-bs-target="#group-delete-{{ group.pk }}" title="Delete group"><i data-lucide="trash-2" class="icon"></i></button>
+            </div>
+        </div>
+        <div class="collapse mb-2" id="group-delete-{{ group.pk }}">
+            <form method="post" action="{% url 'task_group_delete' group.pk %}" class="d-flex align-items-center gap-2 p-2 rounded" style="background: color-mix(in srgb, var(--status-critical) 8%, white);">
+                {% csrf_token %}
+                <span class="small">Delete "{{ group.title }}"? Its tasks stay on this Function, ungrouped.</span>
+                <button class="btn btn-outline-danger btn-sm" type="submit">Confirm delete</button>
+            </form>
+        </div>
+        {% if group.steps.all %}
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Task</th><th>Applies to</th><th>Frequency</th><th>Next run</th><th></th></tr></thead>
+            <tbody>
+            {% for step in group.steps.all %}
+                <tr>
+                    <td><a href="{% url 'ticket_template_detail' step.template.pk %}" class="text-decoration-none">{{ step.template.title }}</a></td>
+                    <td class="text-muted small">{{ step.template.target_summary }}</td>
+                    <td class="text-muted small">{{ step.template.get_frequency_display }}</td>
+                    <td class="text-muted small">{{ step.template.next_run_date }}</td>
+                    <td><a href="{% url 'ticket_template_edit' step.template.pk %}" class="btn btn-link btn-sm p-0"><i data-lucide="pencil" class="icon"></i></a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">No tasks in this group yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="card-title mb-0 d-flex align-items-center gap-2"><i data-lucide="list-checks" class="icon"></i> Tasks {% if task_groups %}<span class="fw-normal small text-muted">(not in a group)</span>{% endif %}</h6>
+            <a href="{% url 'ticket_template_create' %}?package={{ function.pk }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="plus" class="icon"></i> Add task</a>
+        </div>
+        {% if ungrouped_steps %}
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Task</th><th>Applies to</th><th>Frequency</th><th>Next run</th><th></th></tr></thead>
+            <tbody>
+            {% for step in ungrouped_steps %}
+                <tr>
+                    <td><a href="{% url 'ticket_template_detail' step.template.pk %}" class="text-decoration-none">{{ step.template.title }}</a></td>
+                    <td class="text-muted small">{{ step.template.target_summary }}</td>
+                    <td class="text-muted small">{{ step.template.get_frequency_display }}</td>
+                    <td class="text-muted small">{{ step.template.next_run_date }}</td>
+                    <td><a href="{% url 'ticket_template_edit' step.template.pk %}" class="btn btn-link btn-sm p-0"><i data-lucide="pencil" class="icon"></i></a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">Nothing here yet — add a task directly, or add a Task Group below to organize things first.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="border-radius: var(--bs-border-radius-lg); max-width: 420px;">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder-plus" class="icon"></i> Add a Task Group</h6>
+        <p class="text-muted small">Optional — use this if the Function has several distinct phases/areas (e.g. "Move-in" vs. "Move-out"). Skip it if your tasks are simple enough to list directly above.</p>
+        <form method="post" action="{% url 'task_group_create' function.pk %}" class="d-flex gap-2">
+            {% csrf_token %}
+            <input type="text" name="title" class="form-control form-control-sm" placeholder="Task Group name" required>
+            <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit">Add</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -4,7 +4,7 @@ from django import forms
 from django.utils import timezone
 
 from core.models import Contact, Property, PropertyAttribute, StaffProfile, property_dropdown_queryset
-from .models import Frequency, Ticket, TicketContact, TicketTemplate
+from .models import Frequency, TaskGroup, TaskPackage, Ticket, TicketContact, TicketTemplate
 
 
 class TicketForm(forms.ModelForm):
@@ -158,3 +158,18 @@ class AssignContractorForm(forms.Form):
         queryset=Contact.objects.filter(contact_type=Contact.ContactType.VENDOR), required=False,
         label='Vendor / contractor',
     )
+
+
+class FunctionForm(forms.ModelForm):
+    department = forms.ChoiceField(choices=StaffProfile.Role.choices, label='Department')
+
+    class Meta:
+        model = TaskPackage
+        fields = ['title', 'description', 'department']
+        widgets = {'description': forms.Textarea(attrs={'rows': 2})}
+
+
+class TaskGroupForm(forms.ModelForm):
+    class Meta:
+        model = TaskGroup
+        fields = ['title']

@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}Functions{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center my-3">
+    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="repeat" class="icon-lg"></i> Functions</h2>
+    <a href="{% url 'function_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New Function</a>
+</div>
+<p class="text-muted">A Function is a recurring area of work — organize it into Task Groups, or just add tasks directly.</p>
+
+<div class="row g-2 mb-3 align-items-center">
+    <div class="col-auto position-relative">
+        <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
+        <input type="text" id="function-search-input" class="form-control" style="padding-left: 2.2rem; min-width: 320px;"
+               placeholder="Search functions…" value="{{ q }}" autocomplete="off">
+    </div>
+</div>
+<script>
+(function () {
+    var input = document.getElementById('function-search-input');
+    var timer = null;
+    input.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            var params = new URLSearchParams(window.location.search);
+            if (input.value) params.set('q', input.value);
+            else params.delete('q');
+            window.location.search = params.toString();
+        }, 500);
+    });
+})();
+</script>
+
+<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="table-responsive">
+<table class="table bg-white align-middle mb-0">
+    <thead><tr><th>Function</th><th>Department</th><th>Task Groups</th><th>Tasks</th><th>Properties</th><th></th></tr></thead>
+    <tbody>
+    {% for pkg in packages %}
+        <tr>
+            <td class="fw-medium">
+                <a href="{% url 'function_detail' pkg.pk %}" class="text-decoration-none">{{ pkg.title }}</a>
+                {% if not pkg.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+            </td>
+            <td><span class="badge" style="{{ pkg.department|department_badge_style }}">{{ pkg.get_department_display|default:'—' }}</span></td>
+            <td>{{ pkg.group_count }}</td>
+            <td>{{ pkg.step_count }}</td>
+            <td>{{ pkg.property_assignments.count }}</td>
+            <td class="text-nowrap">
+                <a href="{% url 'function_edit' pkg.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+            </td>
+        </tr>
+    {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4"><i data-lucide="repeat" class="icon-lg d-block mx-auto mb-1"></i>No Functions yet — create one to get started.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+</div>
+
+<div class="d-md-none">
+{% for pkg in packages %}
+    <div class="card mb-2">
+        <div class="card-body p-3">
+            <div class="fw-semibold mb-1">
+                <a href="{% url 'function_detail' pkg.pk %}" class="text-decoration-none">{{ pkg.title }}</a>
+                {% if not pkg.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge" style="{{ pkg.department|department_badge_style }}">{{ pkg.get_department_display|default:'—' }}</span>
+                <span class="badge rounded-pill bg-light text-dark border">{{ pkg.group_count }} group{{ pkg.group_count|pluralize }}</span>
+                <span class="badge rounded-pill bg-light text-dark border">{{ pkg.step_count }} task{{ pkg.step_count|pluralize }}</span>
+            </div>
+            <a href="{% url 'function_edit' pkg.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+        </div>
+    </div>
+{% empty %}<p class="text-muted text-center py-4">No Functions yet — create one to get started.</p>{% endfor %}
+</div>
+
+<hr class="my-4">
+<a href="{% url 'ticket_template_list' %}" class="small text-decoration-none" style="color: var(--ink-muted);">View all recurring task rules (including ones not attached to a Function) →</a>
+{% endblock %}

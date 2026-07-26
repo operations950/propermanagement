@@ -23,10 +23,10 @@ from core.models import (
 )
 from messaging.services import _followup_result_message, _group_followups, fetch_quo_conversation, send_followup_bulk
 
-from .forms import AssignContractorForm, ReassignForm, TicketForm, TicketTemplateForm
+from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
 from .models import (
-    FollowUpLog, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem, TicketContact,
-    TicketStatusNote, TicketTemplate, TicketView,
+    FollowUpLog, TaskGroup, TaskPackage, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem,
+    TicketContact, TicketStatusNote, TicketTemplate, TicketView,
 )
 from .services.package_engine import unblock_dependents
 
@@ -1296,12 +1296,137 @@ def _ticket_template_form_context(form, today):
 
 
 @login_required
+def function_list(request):
+    """Functions (TaskPackage) are the main-nav "Functions" landing page —
+    the primary way staff organize recurring work now: start a Function,
+    optionally add Task Group(s) under it, then add Recurring Tasks either
+    directly on the Function or inside one of its groups. A TicketTemplate
+    never attached to any Function stays reachable via the older flat
+    ticket_template_list ("All recurring task rules")."""
+    packages = TaskPackage.objects.prefetch_related('task_groups', 'steps').order_by('title')
+    q = request.GET.get('q', '').strip()
+    if q:
+        packages = packages.filter(title__icontains=q)
+    packages = list(packages)
+    for pkg in packages:
+        pkg.step_count = len(pkg.steps.all())
+        pkg.group_count = len(pkg.task_groups.all())
+    return render(request, 'tickets/function_list.html', {'packages': packages, 'q': q})
+
+
+@login_required
+def function_create(request):
+    if request.method == 'POST':
+        form = FunctionForm(request.POST)
+        if form.is_valid():
+            function = form.save()
+            messages.success(request, f'Function "{function.title}" created.')
+            return redirect('function_detail', pk=function.pk)
+    else:
+        form = FunctionForm()
+    return render(request, 'tickets/function_form.html', {'form': form, 'is_new': True})
+
+
+@login_required
+def function_edit(request, pk):
+    function = get_object_or_404(TaskPackage, pk=pk)
+    if request.method == 'POST':
+        form = FunctionForm(request.POST, instance=function)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Function "{function.title}" saved.')
+            return redirect('function_detail', pk=function.pk)
+    else:
+        form = FunctionForm(instance=function)
+    return render(request, 'tickets/function_form.html', {'form': form, 'is_new': False, 'function': function})
+
+
+@login_required
+def function_delete(request, pk):
+    function = get_object_or_404(TaskPackage, pk=pk)
+    if request.method == 'POST':
+        title = function.title
+        function.delete()
+        messages.success(request, f'Deleted Function "{title}".')
+        return redirect('function_list')
+    return redirect('function_detail', pk=pk)
+
+
+@login_required
+def function_detail(request, pk):
+    function = get_object_or_404(TaskPackage, pk=pk)
+    task_groups = list(function.task_groups.prefetch_related('steps__template').order_by('sequence_order'))
+    ungrouped_steps = list(
+        function.steps.filter(task_group__isnull=True).select_related('template').order_by('sequence_order')
+    )
+    for group in task_groups:
+        for step in group.steps.all():
+            step.template.target_summary = _target_summary(step.template)
+    for step in ungrouped_steps:
+        step.template.target_summary = _target_summary(step.template)
+    return render(request, 'tickets/function_detail.html', {
+        'function': function,
+        'task_groups': task_groups,
+        'ungrouped_steps': ungrouped_steps,
+        'assigned_property_count': function.property_assignments.count(),
+    })
+
+
+@login_required
+def task_group_create(request, package_pk):
+    function = get_object_or_404(TaskPackage, pk=package_pk)
+    if request.method == 'POST':
+        form = TaskGroupForm(request.POST)
+        if form.is_valid():
+            group = form.save(commit=False)
+            group.package = function
+            group.sequence_order = function.task_groups.count()
+            group.save()
+            messages.success(request, f'Task Group "{group.title}" added.')
+        else:
+            messages.error(request, 'Give the Task Group a title.')
+    return redirect('function_detail', pk=package_pk)
+
+
+@login_required
+def task_group_edit(request, pk):
+    group = get_object_or_404(TaskGroup, pk=pk)
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        if title:
+            group.title = title
+            group.save(update_fields=['title'])
+            messages.success(request, 'Saved.')
+    return redirect('function_detail', pk=group.package_id)
+
+
+@login_required
+def task_group_delete(request, pk):
+    group = get_object_or_404(TaskGroup, pk=pk)
+    package_pk = group.package_id
+    if request.method == 'POST':
+        title = group.title
+        group.delete()
+        messages.success(request, f'Deleted Task Group "{title}" — its tasks stay on the Function, ungrouped.')
+    return redirect('function_detail', pk=package_pk)
+
+
+@login_required
 def ticket_template_create(request):
     today = timezone.localdate()
+    package_id = request.GET.get('package') or request.POST.get('package')
+    group_id = request.GET.get('group') or request.POST.get('group')
+    function = TaskPackage.objects.filter(pk=package_id).first() if package_id else None
+    task_group = TaskGroup.objects.filter(pk=group_id, package=function).first() if (function and group_id) else None
     if request.method == 'POST':
         form = TicketTemplateForm(request.POST)
         if form.is_valid():
             template = form.save()
+            if function:
+                TaskPackageTemplate.objects.get_or_create(
+                    package=function, template=template,
+                    defaults={'task_group': task_group, 'sequence_order': function.steps.count()},
+                )
             # The scheduler only runs generate_recurring_tickets every
             # RECURRING_TICKET_INTERVAL_MINUTES (default 30) — without this,
             # a template due today wouldn't produce a visible ticket for up
@@ -1310,15 +1435,23 @@ def ticket_template_create(request):
             # this template or any other.
             call_command('generate_recurring_tickets')
             messages.success(request, f'Recurring task rule "{template.title}" created.')
+            if function:
+                return redirect('function_detail', pk=function.pk)
             return redirect('ticket_template_detail', pk=template.pk)
     else:
         # A plain ISO string, not a date object — {{ }} auto-formats a raw
         # date/datetime object into a locale-formatted string ("July 23,
         # 2026"), which would silently break the hidden bubble-input's
         # value match against the ISO-stringed date_presets below.
-        form = TicketTemplateForm(initial={'next_run_date': today.isoformat()})
+        initial = {'next_run_date': today.isoformat()}
+        if function:
+            initial['default_assigned_role'] = function.department
+        form = TicketTemplateForm(initial=initial)
 
-    return render(request, 'tickets/ticket_template_form.html', _ticket_template_form_context(form, today))
+    context = _ticket_template_form_context(form, today)
+    context['function'] = function
+    context['task_group'] = task_group
+    return render(request, 'tickets/ticket_template_form.html', context)
 
 
 @login_required

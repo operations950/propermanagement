@@ -4,13 +4,25 @@
 {% block content %}
 {% if template %}
 <a href="{% url 'ticket_template_detail' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ template.title }}</a>
+{% elif function %}
+<a href="{% url 'function_detail' function.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ function.title }}</a>
 {% else %}
 <a href="{% url 'ticket_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Recurring task rules</a>
 {% endif %}
-<h2 class="page-title mb-3">{% if template %}Edit recurring task rule{% else %}New recurring task rule{% endif %}</h2>
+<h2 class="page-title mb-3">{% if template %}Edit recurring task rule{% else %}New recurring task{% endif %}</h2>
+
+{% if function and not template %}
+<div class="d-flex align-items-center py-2 px-3 mb-3 rounded"
+     style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">
+    <i data-lucide="corner-down-right" class="icon me-2" style="color: var(--brand-primary);"></i>
+    Adding to Function: <strong class="ms-1">{{ function.title }}</strong>{% if task_group %}<span class="mx-1">&middot;</span>Task Group: <strong>{{ task_group.title }}</strong>{% endif %}
+</div>
+{% endif %}
 
 <form method="post" class="card" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
     {% csrf_token %}
+    {% if function %}<input type="hidden" name="package" value="{{ function.pk }}">{% endif %}
+    {% if task_group %}<input type="hidden" name="group" value="{{ task_group.pk }}">{% endif %}
     <div class="card-body p-4">
 
         {% if form.non_field_errors %}

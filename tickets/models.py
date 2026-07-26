@@ -162,8 +162,30 @@ class TaskPackage(models.Model):
         return self.title
 
 
+class TaskGroup(models.Model):
+    """An optional sub-bucket of steps within a Function (TaskPackage) — a
+    Function may organize its recurring tasks into one or more named groups,
+    or skip grouping entirely and hang tasks directly off the Function (see
+    TaskPackageTemplate.task_group, nullable for exactly that reason)."""
+    package = models.ForeignKey(TaskPackage, on_delete=models.CASCADE, related_name='task_groups')
+    title = models.CharField(max_length=200)
+    sequence_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sequence_order']
+
+    def __str__(self):
+        return f'{self.package} — {self.title}'
+
+
 class TaskPackageTemplate(models.Model):
     package = models.ForeignKey(TaskPackage, on_delete=models.CASCADE, related_name='steps')
+    task_group = models.ForeignKey(
+        TaskGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='steps',
+        help_text='Optional — leave blank for a task that hangs directly off the Function rather '
+                   'than one of its Task Groups. Deleting the group ungroups its tasks rather than '
+                   'deleting them.',
+    )
     template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='package_memberships')
     sequence_order = models.PositiveSmallIntegerField(default=0)
     depends_on = models.ForeignKey(

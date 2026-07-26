@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}{% if is_new %}New Function{% else %}Edit {{ function.title }}{% endif %}{% endblock %}
+{% block content %}
+{% if function %}
+<a href="{% url 'function_detail' function.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ function.title }}</a>
+{% else %}
+<a href="{% url 'function_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Functions</a>
+{% endif %}
+<h2 class="page-title mb-3">{% if is_new %}New Function{% else %}Edit {{ function.title }}{% endif %}</h2>
+
+<form method="post" class="card" style="max-width: 640px; border-radius: var(--bs-border-radius-lg);">
+    {% csrf_token %}
+    <div class="card-body p-4">
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_title">Title</label>
+            <input type="text" name="title" id="id_title" required
+                   class="form-control {% if form.title.errors %}is-invalid{% endif %}" value="{{ form.title.value|default:'' }}">
+            {% if form.title.errors %}<div class="invalid-feedback d-block">{{ form.title.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_description">Description <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <textarea name="description" id="id_description" rows="2" class="form-control">{{ form.description.value|default:'' }}</textarea>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Department</label>
+            {% if form.department.errors %}<div class="text-danger small mb-1">{{ form.department.errors|join:', ' }}</div>{% endif %}
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="department">
+                <input type="hidden" name="department" data-bubble-input value="{{ form.department.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a department"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.department.choices %}
+                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});">
+                            <i data-lucide="{{ value|department_icon }}" class="icon"></i> {{ label }}
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary" type="submit">
+            <i data-lucide="{% if is_new %}plus{% else %}check{% endif %}" class="icon"></i>
+            {% if is_new %}Create Function{% else %}Save changes{% endif %}
+        </button>
+    </div>
+</form>
+{% endblock %}
