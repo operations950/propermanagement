@@ -102,7 +102,9 @@ def gmail_callback(request):
             'access_token_expires_at': creds.expiry,
         },
     )
-    messages.success(request, f'Gmail connected: {email or "mailbox"}.')
+    from core.app_settings import _sync_email_backend
+    _sync_email_backend()
+    messages.success(request, f'Gmail connected: {email or "mailbox"} — now used to send follow-up emails too.')
     return redirect('dashboard')
 
 
@@ -111,6 +113,8 @@ def gmail_callback(request):
 def gmail_disconnect(request):
     if request.method == 'POST':
         GmailInboxToken.objects.all().delete()
+        from core.app_settings import _sync_email_backend
+        _sync_email_backend()
         messages.success(request, 'Gmail disconnected.')
     return redirect('dashboard')
 

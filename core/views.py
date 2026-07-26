@@ -396,6 +396,8 @@ def admin_tools(request):
         request.build_absolute_uri(reverse(name))
         for name in ('google_login_callback', 'calendar_callback', 'gmail_callback')
     ]
+    from intake.models import GmailInboxToken
+    gmail_inbox_token = GmailInboxToken.objects.first()
     return render(request, 'core/admin_tools.html', {
         'properties': properties, 'secrets': secrets, 'google_redirect_uris': google_redirect_uris,
         'quo_phone_lines': _list_quo_phone_lines(),
@@ -410,6 +412,7 @@ def admin_tools(request):
         'email_use_ssl': getattr(django_settings, 'EMAIL_USE_SSL', False),
         'email_timeout': getattr(django_settings, 'EMAIL_TIMEOUT', None),
         'test_email_default_to': request.user.email,
+        'gmail_inbox_token': gmail_inbox_token,
     })
 
 

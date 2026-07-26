@@ -73,19 +73,37 @@ def sanitized_setting(key):
     return _sanitize_secret(key, getattr(settings, key, '') or '')
 
 
+def _gmail_mailbox_connected():
+    try:
+        from intake.models import GmailInboxToken
+        return GmailInboxToken.objects.exists()
+    except Exception:
+        # Table not migrated yet, or DB unreachable — no mailbox, fall
+        # through to the SMTP/console choice below.
+        return False
+
+
 def _sync_email_backend():
     """settings.EMAIL_BACKEND is chosen once, in settings.py, from the raw
     EMAIL_HOST env var — before Django even loads AppConfig.ready(), let
-    alone a DB-backed override. Setting EMAIL_HOST here (via apply_overrides
-    or an admin save) would otherwise silently keep every send going through
-    the console/no-op backend even once real SMTP credentials exist. Called
-    after every place EMAIL_HOST might change."""
+    alone a DB-backed override or a Gmail mailbox connected afterward.
+    Setting EMAIL_HOST here (via apply_overrides or an admin save) would
+    otherwise silently keep every send going through the console/no-op
+    backend even once real credentials exist. Called after every place
+    EMAIL_HOST or the connected Gmail mailbox might change.
+
+    Gmail API wins over SMTP whenever a mailbox is connected — SMTP is
+    confirmed unusable on Railway (outbound blocked entirely, every port),
+    so there's no case where SMTP would be the better choice once Gmail
+    is available."""
     from django.conf import settings
 
-    settings.EMAIL_BACKEND = (
-        'django.core.mail.backends.smtp.EmailBackend' if settings.EMAIL_HOST
-        else 'django.core.mail.backends.console.EmailBackend'
-    )
+    if _gmail_mailbox_connected():
+        settings.EMAIL_BACKEND = 'core.email_backends.GmailAPIBackend'
+    elif settings.EMAIL_HOST:
+        settings.EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    else:
+        settings.EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 
 def apply_overrides():

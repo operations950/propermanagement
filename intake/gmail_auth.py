@@ -11,7 +11,16 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'openid', 'email']
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    # Lets this app send through the connected mailbox via the Gmail API
+    # instead of SMTP — see core/email_backends.py::GmailAPIBackend. Added
+    # after Railway's outbound SMTP turned out to be blocked entirely (both
+    # 587 and 465 timed out with valid credentials). A mailbox connected
+    # before this scope existed needs reconnecting once to re-consent.
+    'https://www.googleapis.com/auth/gmail.send',
+    'openid', 'email',
+]
 
 
 def is_configured():

@@ -84,11 +84,25 @@
             <button class="btn btn-outline-primary btn-sm mt-3" type="submit">Save changes</button>
         </form>
         <hr class="my-3">
-        <p class="small mb-1"><strong>Effective configuration</strong> (read-only — from environment/settings, not editable here):</p>
+        <p class="small mb-1"><strong>Sending via Gmail</strong> — the actual send path on Railway. SMTP (below) is confirmed blocked outbound on this host, on every port tested, so this takes over automatically whenever a mailbox is connected.</p>
+        {% if gmail_inbox_token %}
+        <p class="small mb-2 d-flex align-items-center gap-2">
+            <i data-lucide="check-circle-2" class="icon" style="color: var(--status-good);"></i>
+            Connected: <strong>{{ gmail_inbox_token.mailbox_email }}</strong> — outgoing follow-up emails send through this account.
+        </p>
+        <a href="{% url 'gmail_connect' %}" class="btn btn-outline-secondary btn-sm">Reconnect</a>
+        {% else %}
+        <p class="small mb-2 d-flex align-items-center gap-2">
+            <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
+            No Gmail account connected — sending falls back to SMTP below, which doesn't work on Railway.
+        </p>
+        <a href="{% url 'gmail_connect' %}" class="btn btn-outline-primary btn-sm">Connect Gmail</a>
+        {% endif %}
+        <hr class="my-3">
+        <p class="small mb-1"><strong>SMTP fallback</strong> (read-only — from environment, not editable here; only used when no Gmail mailbox is connected):</p>
         <ul class="text-muted small mb-0">
-            <li>Backend: <code>{{ email_backend }}</code>{% if email_is_console %} <span style="color: var(--status-warning);">— console/no-op, nothing actually sends until EMAIL_HOST above is set</span>{% endif %}</li>
+            <li>Backend in use right now: <code>{{ email_backend }}</code>{% if email_is_console %} <span style="color: var(--status-warning);">— console/no-op, nothing actually sends</span>{% endif %}</li>
             <li>Port: <code>{{ email_port }}</code> &middot; TLS: <code>{{ email_use_tls }}</code> &middot; SSL: <code>{{ email_use_ssl }}</code> &middot; Connect timeout: <code>{{ email_timeout }}s</code></li>
-            <li class="mt-1">Port/TLS/SSL come from Railway environment variables, not the fields above — set <code>EMAIL_PORT=465</code>, <code>EMAIL_USE_SSL=true</code>, <code>EMAIL_USE_TLS=false</code> there to try implicit SSL if 587/STARTTLS keeps timing out (some hosts block one but not the other).</li>
         </ul>
         <hr class="my-3">
         <p class="small mb-2"><strong>Send a test email</strong> — the most direct way to see the real failure (or confirm success) right now.</p>
