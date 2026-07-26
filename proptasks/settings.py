@@ -3,6 +3,7 @@ Django settings for proptasks project.
 """
 
 import os
+import socket
 from pathlib import Path
 
 import dj_database_url
@@ -11,6 +12,25 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env')
+
+# Railway's containers have no outbound IPv6 route, but smtp.gmail.com (and
+# many other mail hosts) resolve to an IPv6 address as well as an IPv4 one —
+# whichever DNS/getaddrinfo returns first is what smtplib tries first, and an
+# IPv6 attempt with no route out fails immediately with OSError: [Errno 101]
+# Network is unreachable, before ever falling back to the IPv4 address that
+# would have worked. Forcing every unspecified-family lookup in this process
+# to IPv4 sidesteps that — safe process-wide since nothing here needs IPv6,
+# and callers that explicitly ask for a specific family are left alone.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if family == 0:
+        family = socket.AF_INET
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 
 def env_bool(name, default=False):
