@@ -69,7 +69,29 @@
             <i data-lucide="mail" class="icon"></i> Email Configuration <i data-lucide="chevron-down" class="icon ms-auto"></i>
         </h6>
         <div class="collapse" id="admin-section-email">
-        <p class="text-muted small mt-3">Shown in the clear, not masked — this is what's actually driving (or breaking) follow-up emails, so it needs to be readable, not just "set/not set".</p>
+        <hr class="my-3">
+        <p class="small mb-1"><strong>Sending via Gmail</strong> — the actual send path on Railway. SMTP (below) is confirmed blocked outbound on this host, on every port tested, so this takes over automatically whenever a mailbox is connected.</p>
+        {% if gmail_inbox_token %}
+        <p class="small mb-2 d-flex align-items-center gap-2">
+            <i data-lucide="check-circle-2" class="icon" style="color: var(--status-good);"></i>
+            Connected: <strong>{{ gmail_inbox_token.mailbox_email }}</strong> — outgoing follow-up emails send through this account.
+        </p>
+        <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-outline-secondary btn-sm">Reconnect</a>
+        {% else %}
+        <p class="small mb-2 d-flex align-items-center gap-2">
+            <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
+            No Gmail account connected — sending falls back to SMTP below, which doesn't work on Railway.
+        </p>
+        <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-outline-primary btn-sm">Connect Gmail</a>
+        {% endif %}
+        <hr class="my-3">
+        <p class="text-muted small mb-1">
+            {% if gmail_inbox_token %}
+            <strong>SMTP fields below aren't used right now</strong> — Gmail is connected and handles every send. They only matter as a fallback if Gmail ever gets disconnected.
+            {% else %}
+            Shown in the clear, not masked — this is what's actually driving (or breaking) follow-up emails via SMTP, so it needs to be readable, not just "set/not set".
+            {% endif %}
+        </p>
         <form method="post" action="{% url 'admin_settings_save' %}" autocomplete="off">
             {% csrf_token %}
             <div class="row g-3">
@@ -83,27 +105,10 @@
             </div>
             <button class="btn btn-outline-primary btn-sm mt-3" type="submit">Save changes</button>
         </form>
-        <hr class="my-3">
-        <p class="small mb-1"><strong>Sending via Gmail</strong> — the actual send path on Railway. SMTP (below) is confirmed blocked outbound on this host, on every port tested, so this takes over automatically whenever a mailbox is connected.</p>
-        {% if gmail_inbox_token %}
-        <p class="small mb-2 d-flex align-items-center gap-2">
-            <i data-lucide="check-circle-2" class="icon" style="color: var(--status-good);"></i>
-            Connected: <strong>{{ gmail_inbox_token.mailbox_email }}</strong> — outgoing follow-up emails send through this account.
+        <p class="text-muted small mt-2 mb-0">
+            Backend in use right now: <code>{{ email_backend }}</code>{% if email_is_console %} <span style="color: var(--status-warning);">— console/no-op, nothing actually sends</span>{% endif %}
+            &middot; SMTP port: <code>{{ email_port }}</code> &middot; TLS: <code>{{ email_use_tls }}</code> &middot; SSL: <code>{{ email_use_ssl }}</code> &middot; Connect timeout: <code>{{ email_timeout }}s</code>
         </p>
-        <a href="{% url 'gmail_connect' %}" class="btn btn-outline-secondary btn-sm">Reconnect</a>
-        {% else %}
-        <p class="small mb-2 d-flex align-items-center gap-2">
-            <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
-            No Gmail account connected — sending falls back to SMTP below, which doesn't work on Railway.
-        </p>
-        <a href="{% url 'gmail_connect' %}" class="btn btn-outline-primary btn-sm">Connect Gmail</a>
-        {% endif %}
-        <hr class="my-3">
-        <p class="small mb-1"><strong>SMTP fallback</strong> (read-only — from environment, not editable here; only used when no Gmail mailbox is connected):</p>
-        <ul class="text-muted small mb-0">
-            <li>Backend in use right now: <code>{{ email_backend }}</code>{% if email_is_console %} <span style="color: var(--status-warning);">— console/no-op, nothing actually sends</span>{% endif %}</li>
-            <li>Port: <code>{{ email_port }}</code> &middot; TLS: <code>{{ email_use_tls }}</code> &middot; SSL: <code>{{ email_use_ssl }}</code> &middot; Connect timeout: <code>{{ email_timeout }}s</code></li>
-        </ul>
         <hr class="my-3">
         <p class="small mb-2"><strong>Send a test email</strong> — the most direct way to see the real failure (or confirm success) right now.</p>
         <form method="post" action="{% url 'admin_test_email_send' %}" class="d-flex gap-2">

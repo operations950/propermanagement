@@ -51,28 +51,31 @@ def gmail_connect(request):
     must be logged into that mailbox's own Google account — this view just
     starts the flow, it can't grant access to an inbox the person clicking
     "Allow" doesn't control."""
+    next_url = request.GET.get('next') if request.GET.get('next') in ('dashboard', 'admin_tools') else 'dashboard'
     if not gmail_auth.is_configured():
         messages.error(request, 'Google OAuth isn\'t configured yet — ask an admin to add the credentials.')
-        return redirect('dashboard')
+        return redirect(next_url)
 
     flow = gmail_auth.build_flow(request)
     auth_url, state = flow.authorization_url(
         access_type='offline', include_granted_scopes='true', prompt='consent',
     )
     request.session['gmail_oauth_state'] = state
+    request.session['gmail_oauth_next'] = next_url
     return redirect(auth_url)
 
 
 @login_required
 @user_passes_test(_is_admin)
 def gmail_callback(request):
+    next_url = request.session.pop('gmail_oauth_next', 'dashboard')
     state = request.session.pop('gmail_oauth_state', None)
     if not state or request.GET.get('state') != state:
         messages.error(request, 'Gmail connection failed (session expired) — try again.')
-        return redirect('dashboard')
+        return redirect(next_url)
     if request.GET.get('error'):
         messages.info(request, 'Gmail connection cancelled.')
-        return redirect('dashboard')
+        return redirect(next_url)
 
     flow = gmail_auth.build_flow(request)
     try:
@@ -80,7 +83,7 @@ def gmail_callback(request):
     except Exception:
         logger.exception('Gmail: token exchange failed')
         messages.error(request, 'Gmail connection failed — please try again.')
-        return redirect('dashboard')
+        return redirect(next_url)
 
     creds = flow.credentials
     email = ''
@@ -105,18 +108,19 @@ def gmail_callback(request):
     from core.app_settings import _sync_email_backend
     _sync_email_backend()
     messages.success(request, f'Gmail connected: {email or "mailbox"} — now used to send follow-up emails too.')
-    return redirect('dashboard')
+    return redirect(next_url)
 
 
 @login_required
 @user_passes_test(_is_admin)
 def gmail_disconnect(request):
+    next_url = request.POST.get('next') if request.POST.get('next') in ('dashboard', 'admin_tools') else 'dashboard'
     if request.method == 'POST':
         GmailInboxToken.objects.all().delete()
         from core.app_settings import _sync_email_backend
         _sync_email_backend()
         messages.success(request, 'Gmail disconnected.')
-    return redirect('dashboard')
+    return redirect(next_url)
 
 
 def _verify_quo_signature(request):

@@ -521,11 +521,17 @@ def admin_test_email_send(request):
             return redirect('admin_tools')
         from django.core.mail import send_mail
 
-        from_address = django_settings.DEFAULT_FROM_EMAIL or django_settings.EMAIL_HOST_USER or 'noreply@example.com'
+        from intake.models import GmailInboxToken
+        gmail_token = GmailInboxToken.objects.first()
+        using_gmail = django_settings.EMAIL_BACKEND.endswith('GmailAPIBackend')
+        if using_gmail and gmail_token:
+            from_address = django_settings.DEFAULT_FROM_EMAIL or gmail_token.mailbox_email
+        else:
+            from_address = django_settings.DEFAULT_FROM_EMAIL or django_settings.EMAIL_HOST_USER or 'noreply@example.com'
         try:
             send_mail(
                 'PropTasks test email',
-                'This is a test email sent from Admin Tools to verify your SMTP configuration is working.',
+                'This is a test email sent from Admin Tools to verify your email configuration is working.',
                 from_address, [to_address], fail_silently=False,
             )
         except Exception as exc:
@@ -534,8 +540,13 @@ def admin_test_email_send(request):
             if django_settings.EMAIL_BACKEND.endswith('console.EmailBackend'):
                 messages.warning(
                     request,
-                    'Sent, but EMAIL_HOST is blank — this only went to the server console/log, not a '
-                    'real inbox. Fill in Email Configuration below and save first.',
+                    'Sent, but no send path is configured — this only went to the server console/log, not a '
+                    'real inbox. Connect Gmail or fill in Email Configuration below and save first.',
+                )
+            elif using_gmail:
+                messages.success(
+                    request, f'Test email sent to {to_address} via Gmail ({gmail_token.mailbox_email if gmail_token else "?"}) '
+                    f'from {from_address} — check the inbox (and spam folder).',
                 )
             else:
                 messages.success(
