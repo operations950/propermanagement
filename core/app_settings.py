@@ -56,6 +56,19 @@ def _sanitize_secret(key, value):
     return ascii_only
 
 
+def sanitized_setting(key):
+    """Reads settings.<key> and sanitizes it on the spot — call this at the
+    actual point of use (building an API client, etc.) instead of trusting
+    settings.<key> is already clean. apply_overrides()/set_secret() only
+    sanitize a value that came through the DB-backed AppSetting override;
+    a key set directly as a Railway environment variable (settings.py's
+    `os.environ.get(...)` default) never passes through either of those and
+    could carry the exact same kind of corruption completely unnoticed."""
+    from django.conf import settings
+
+    return _sanitize_secret(key, getattr(settings, key, '') or '')
+
+
 def apply_overrides():
     from django.conf import settings
 

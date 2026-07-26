@@ -70,6 +70,8 @@ def classify_message_relevance(ticket, messages):
 
     import anthropic
 
+    from core.app_settings import sanitized_setting
+
     windowed = messages[-MAX_MESSAGES:]
     lines = []
     if len(messages) > len(windowed):
@@ -81,7 +83,7 @@ def classify_message_relevance(ticket, messages):
         lines.append(f'[id={m.pk}] [{timestamp}] {speaker}: {m.body}')
     transcript = '\n'.join(lines)
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=sanitized_setting('ANTHROPIC_API_KEY'))
     try:
         message = client.messages.create(
             model=MODEL,

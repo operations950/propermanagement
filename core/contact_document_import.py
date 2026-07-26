@@ -147,7 +147,9 @@ def extract_contacts_from_document(uploaded_file):
 
     import anthropic
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    from .app_settings import sanitized_setting
+
+    client = anthropic.Anthropic(api_key=sanitized_setting('ANTHROPIC_API_KEY'))
     try:
         message = client.messages.create(
             model=MODEL,

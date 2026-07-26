@@ -142,9 +142,11 @@ def classify_thread(
 
     import anthropic  # imported lazily so the package is only required once a key is configured
 
+    from core.app_settings import sanitized_setting
+
     property_names = list(Property.objects.filter(is_active=True).values_list('name', flat=True))
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=sanitized_setting('ANTHROPIC_API_KEY'))
     try:
         message = client.messages.create(
             model=MODEL,

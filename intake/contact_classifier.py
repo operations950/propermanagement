@@ -82,10 +82,12 @@ def classify_contact(transcript, contact_info='', property_names=None):
 
     import anthropic
 
+    from core.app_settings import sanitized_setting
+
     if property_names is None:
         property_names = list(Property.objects.filter(is_active=True).values_list('name', flat=True))
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=sanitized_setting('ANTHROPIC_API_KEY'))
     try:
         message = client.messages.create(
             model=MODEL,
