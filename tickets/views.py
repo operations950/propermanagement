@@ -719,6 +719,43 @@ def ticket_list(request):
         qs = qs.filter(property_id=property_id)
         selected_property = Property.objects.filter(pk=property_id).first()
 
+    assigned_staff_id = request.GET.get('assigned_staff')
+    selected_assigned_staff = None
+    if assigned_staff_id:
+        qs = qs.filter(assigned_staff_id=assigned_staff_id)
+        selected_assigned_staff = StaffProfile.objects.select_related('user').filter(pk=assigned_staff_id).first()
+
+    assigned_contact_id = request.GET.get('assigned_contact')
+    selected_assigned_contact = None
+    if assigned_contact_id:
+        qs = qs.filter(assigned_contact_id=assigned_contact_id)
+        selected_assigned_contact = Contact.objects.filter(pk=assigned_contact_id).first()
+
+    today = timezone.localdate()
+    due = request.GET.get('due', '')
+    due_on = parse_date(request.GET.get('due_on', '') or '')
+    if due == 'overdue':
+        qs = qs.filter(due_date__lt=today)
+    elif due == 'today':
+        qs = qs.filter(due_date=today)
+    elif due == 'tomorrow':
+        qs = qs.filter(due_date=today + timedelta(days=1))
+    elif due == 'week':
+        qs = qs.filter(due_date__gte=today, due_date__lte=today + timedelta(days=7))
+    elif due == 'month':
+        qs = qs.filter(due_date__gte=today, due_date__lte=today + timedelta(days=30))
+    elif due == 'none':
+        qs = qs.filter(due_date__isnull=True)
+    elif due == 'custom' and due_on:
+        qs = qs.filter(due_date=due_on)
+    else:
+        due = ''
+    due_labels = {
+        'overdue': 'Overdue', 'today': 'Today', 'tomorrow': 'Tomorrow',
+        'week': 'Next 7 days', 'month': 'Next 30 days', 'none': 'No due date',
+        'custom': due_on.strftime('%b %-d, %Y') if due_on else 'Custom date',
+    }
+
     q = request.GET.get('q', '').strip()
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(property__name__icontains=q))
@@ -729,6 +766,7 @@ def ticket_list(request):
         'status_choices': Ticket.Status.choices,
         'role_choices': StaffProfile.Role.choices,
         'selected_status': status,
+        'selected_status_label': dict(Ticket.Status.choices).get(status),
         'selected_role': role,
         'selected_role_label': dict(StaffProfile.Role.choices).get(role) if role else None,
         'selected_source': source,
@@ -736,6 +774,11 @@ def ticket_list(request):
         'selected_template': selected_template,
         'selected_scheduled_for': scheduled_for,
         'selected_property': selected_property,
+        'selected_assigned_staff': selected_assigned_staff,
+        'selected_assigned_contact': selected_assigned_contact,
+        'selected_due': due,
+        'selected_due_on': due_on.isoformat() if due_on else '',
+        'selected_due_label': due_labels.get(due),
         'q': q,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
