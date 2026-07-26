@@ -35,9 +35,10 @@ from .forms import (
     StaffCreateForm,
 )
 from .models import (
-    Contact, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal, GoogleCalendarToken, Property,
-    PropertyAttribute, PropertyAttributeAssignment, PropertyDocument, PropertySystemLocation, StaffProfile,
-    TRADE_CHOICES, creatable_contact_types, group_contacts_by_type, is_valid_phone, properties_by_type,
+    Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
+    GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, PropertyDocument,
+    PropertySystemLocation, StaffProfile, TRADE_CHOICES, creatable_contact_types, group_contacts_by_type,
+    is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -971,6 +972,21 @@ def contact_create(request):
 def contact_edit(request, pk):
     contact = get_object_or_404(Contact, pk=pk)
     if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_document':
+            name = request.POST.get('name', '').strip()
+            file = request.FILES.get('file')
+            if name and file:
+                ContactDocument.objects.create(contact=contact, name=name, file=file, uploaded_by=request.user)
+                messages.success(request, 'Document added.')
+            else:
+                messages.error(request, 'A name and a file are both required.')
+            return redirect('contact_edit', pk=contact.pk)
+        elif action == 'delete_document':
+            ContactDocument.objects.filter(pk=request.POST.get('document_id'), contact=contact).delete()
+            messages.success(request, 'Removed.')
+            return redirect('contact_edit', pk=contact.pk)
+
         form = ContactForm(request.POST, instance=contact)
         if form.is_valid():
             form.save()
@@ -978,7 +994,9 @@ def contact_edit(request, pk):
             return redirect('contact_list')
     else:
         form = ContactForm(instance=contact)
-    return render(request, 'core/contact_form.html', _contact_form_context(form, is_new=False, contact=contact))
+    return render(request, 'core/contact_form.html', _contact_form_context(
+        form, is_new=False, contact=contact, documents=contact.documents.all(),
+    ))
 
 
 @login_required

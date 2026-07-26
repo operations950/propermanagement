@@ -139,6 +139,25 @@ class TemplateChecklistItem(models.Model):
         return self.text
 
 
+class TicketTemplateDocument(models.Model):
+    """A staff-uploaded reference document for a recurring task rule (e.g.
+    a vendor contract, a checklist PDF, instructions) — same shape as
+    core.models.PropertyDocument/ContactDocument."""
+    template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='documents')
+    name = models.CharField(max_length=200)
+    file = models.FileField(upload_to='ticket_template_documents/%Y/%m/')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} — {self.template}'
+
+
 class TaskPackage(models.Model):
     """A reusable, admin-authored bundle of TicketTemplates attachable to a
     property (e.g. "STR Base Package") — see PropertyPackage. Steps may
@@ -571,6 +590,7 @@ class TicketAttachment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     VIDEO_EXTENSIONS = ('.mp4', '.mov', '.webm', '.m4v')
+    IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif')
 
     def __str__(self):
         return self.caption or self.file.name
@@ -578,6 +598,17 @@ class TicketAttachment(models.Model):
     @property
     def is_video(self):
         return self.file.name.lower().endswith(self.VIDEO_EXTENSIONS)
+
+    @property
+    def is_image(self):
+        return self.file.name.lower().endswith(self.IMAGE_EXTENSIONS)
+
+    @property
+    def is_document(self):
+        """Neither a photo nor a video — a PDF/Word/Excel-type upload from
+        the general-purpose Documents card (as opposed to the photo/video
+        gallery, or a Follow-Up compose's MMS/email image attachment)."""
+        return not self.is_video and not self.is_image
 
 
 class TicketAssignmentLog(models.Model):

@@ -48,6 +48,8 @@ urlpatterns = [
         name='process_item_schedule_meet',
     ),
     path('processes/items/<int:item_pk>/document/', views.process_item_document, name='process_item_document'),
+    path('tickets/<int:pk>/documents/upload/', views.ticket_document_upload, name='ticket_document_upload'),
+    path('tickets/documents/<int:pk>/delete/', views.ticket_document_delete, name='ticket_document_delete'),
     path('tickets/<int:pk>/quick-edit/', views.ticket_quick_edit, name='ticket_quick_edit'),
     path('tickets/<int:pk>/due-date/', views.ticket_set_due_date, name='ticket_set_due_date'),
     path('tickets/<int:pk>/delete/', views.ticket_delete, name='ticket_delete'),

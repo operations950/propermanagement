@@ -28,7 +28,8 @@ from processes.models import ProcessInstance, ProcessInstanceDocument, ProcessIn
 from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
 from .models import (
     FollowUpLog, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket, TicketAssignmentLog,
-    TicketAttachment, TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate, TicketView,
+    TicketAttachment, TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate, TicketTemplateDocument,
+    TicketView,
 )
 from .services.package_engine import unblock_dependents
 from .services.process_gate import incomplete_process_instances, process_gate_error_message
@@ -1262,7 +1263,9 @@ def ticket_detail(request, pk):
         'followup_text_parties': [c for c in followup_parties if c.phone],
         'followup_email_parties': [c for c in followup_parties if c.email],
         'attachments': all_attachments,
-        'photo_attachments': [a for a in all_attachments if not a.is_video],
+        'media_attachments': [a for a in all_attachments if a.is_image or a.is_video],
+        'photo_attachments': [a for a in all_attachments if a.is_image],
+        'document_attachments': [a for a in all_attachments if a.is_document],
         'ticket_contacts': linked_ticket_contacts,
         'owner_contacts': contact_pools['owner_contacts'],
         'owner_ids': contact_pools['owner_ids'],
@@ -1741,6 +1744,20 @@ def ticket_template_detail(request, pk):
     template = get_object_or_404(
         TicketTemplate.objects.select_related('property', 'contact', 'default_assigned_staff'), pk=pk,
     )
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_document':
+            name = request.POST.get('name', '').strip()
+            file = request.FILES.get('file')
+            if name and file:
+                TicketTemplateDocument.objects.create(template=template, name=name, file=file, uploaded_by=request.user)
+                messages.success(request, 'Document added.')
+            else:
+                messages.error(request, 'A name and a file are both required.')
+        elif action == 'delete_document':
+            TicketTemplateDocument.objects.filter(pk=request.POST.get('document_id'), template=template).delete()
+            messages.success(request, 'Removed.')
+        return redirect('ticket_template_detail', pk=template.pk)
     template.target_summary = _target_summary(template)
     occurrences = (
         template.occurrences.order_by('-scheduled_for')
@@ -1752,6 +1769,7 @@ def ticket_template_detail(request, pk):
         'template': template,
         'occurrences': occurrences,
         'all_tasks_url': f"{reverse('ticket_list')}?source=recurring&template={template.pk}",
+        'documents': template.documents.all(),
     })
 
 
@@ -2352,6 +2370,41 @@ def _save_new_followup_attachments(request, ticket):
         attachment = TicketAttachment.objects.create(ticket=ticket, file=f, uploaded_by_user=request.user)
         new_pks.append(attachment.pk)
     return new_pks, ''
+
+
+@login_required
+def ticket_document_upload(request, pk):
+    """The ticket detail Documents card — a general-purpose file upload
+    (PDF/Word/Excel/images, not just MMS-able photos) stored as a
+    TicketAttachment same as everything else on the ticket; is_document
+    (tickets/models.py) keeps it out of the photo/video gallery and the
+    Follow-Up compose's picker."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        f = request.FILES.get('file')
+        if not f:
+            messages.error(request, 'Choose a file first.')
+        elif f.content_type not in settings.PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES:
+            messages.error(request, 'That file type isn\'t allowed — photos, PDFs, Word, or Excel files only.')
+        elif f.size > settings.PROCESS_ATTACHMENT_MAX_BYTES:
+            max_mb = settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
+            messages.error(request, f'File is too large (max {max_mb}MB).')
+        else:
+            TicketAttachment.objects.create(
+                ticket=ticket, file=f, caption=request.POST.get('name', '').strip(), uploaded_by_user=request.user,
+            )
+            messages.success(request, 'Document added.')
+    return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_document_delete(request, pk):
+    attachment = get_object_or_404(TicketAttachment, pk=pk)
+    ticket_pk = attachment.ticket_id
+    if request.method == 'POST':
+        attachment.delete()
+        messages.success(request, 'Removed.')
+    return redirect('ticket_detail', pk=ticket_pk)
 
 
 @login_required

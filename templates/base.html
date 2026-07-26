@@ -240,5 +240,34 @@
     <script src="{% static 'js/row-edit.js' %}"></script>
     <script src="{% static 'js/contact-import.js' %}"></script>
     <script>lucide.createIcons();</script>
+    <script>
+    (function () {
+        // A form POST (save, delete, toggle, ...) redirects back to the
+        // same page and reloads it from scratch — the browser has no
+        // "you were scrolled halfway down" memory for that (unlike
+        // back/forward navigation, which restores scroll on its own).
+        // Restore it ourselves via sessionStorage, keyed per URL (path +
+        // query string) so different filtered views of the same list page
+        // don't share a position. Skipped when the URL has a #anchor —
+        // native browser jump-to-fragment (e.g. property_detail's
+        // "Go to Communication card" link) should win instead.
+        if (window.location.hash) return;
+        var key = 'scrollpos:' + window.location.pathname + window.location.search;
+        var saved = sessionStorage.getItem(key);
+        if (saved !== null) {
+            window.scrollTo(0, parseInt(saved, 10));
+        }
+        var saveTimer = null;
+        window.addEventListener('scroll', function () {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(function () {
+                sessionStorage.setItem(key, String(window.scrollY));
+            }, 150);
+        }, { passive: true });
+        window.addEventListener('beforeunload', function () {
+            sessionStorage.setItem(key, String(window.scrollY));
+        });
+    })();
+    </script>
 </body>
 </html>

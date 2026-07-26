@@ -322,6 +322,24 @@ def creatable_contact_types():
     return [c for c in Contact.ContactType.choices if c[0] != Contact.ContactType.STAFF_ADJACENT]
 
 
+class ContactDocument(models.Model):
+    """A staff-uploaded reference document for a contact — same shape as
+    PropertyDocument (manually named, no fixed doc-type schema)."""
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='documents')
+    name = models.CharField(max_length=200)
+    file = models.FileField(upload_to='contact_documents/%Y/%m/')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} — {self.contact}'
+
+
 class ContactImportCandidate(models.Model):
     """A contact harvested from a bulk Quo/Gmail import, held here — not in
     the real Contact table — until a human reviews and approves it. Hard
