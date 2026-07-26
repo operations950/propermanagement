@@ -80,6 +80,11 @@
                         data-thread-url="{% url 'property_contact_thread' property.pk c.pk %}">
                     <i data-lucide="message-circle" class="icon"></i> View conversation
                 </button>
+                {% elif c.phone %}
+                <button type="button" class="btn btn-link btn-sm p-0 flex-shrink-0" data-start-conversation
+                        data-contact-pk="{{ c.pk }}">
+                    <i data-lucide="message-circle-plus" class="icon"></i> Start Conversation
+                </button>
                 {% endif %}
             </div>
             <div class="imessage-thread mt-2 mb-2" data-thread-container="{{ c.pk }}" hidden></div>
@@ -363,6 +368,90 @@
                     btn.dataset.loaded = '1';
                 })
                 .finally(function () { btn.disabled = false; });
+        });
+    });
+
+    // Contact "Start Conversation" — no Quo thread exists yet for this
+    // contact (see contacts_with_thread_ids), so instead of a read-only
+    // history there's a first-message compose box, reusing the same
+    // per-contact container the "View conversation" expand uses. Sends
+    // through property_followup_sms exactly like the Communication card's
+    // bulk Text form, just pre-targeted at this one contact.
+    document.querySelectorAll('[data-start-conversation]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var contactPk = btn.dataset.contactPk;
+            var container = document.querySelector('[data-thread-container="' + contactPk + '"]');
+            if (container.dataset.composing === '1') {
+                container.hidden = !container.hidden;
+                return;
+            }
+            container.dataset.composing = '1';
+            container.innerHTML =
+                '<div class="d-flex gap-2">' +
+                '<input type="text" class="form-control form-control-sm" placeholder="Message…" data-start-conversation-input>' +
+                '<button type="button" class="btn btn-primary btn-sm flex-shrink-0" data-start-conversation-send>Send</button>' +
+                '</div>' +
+                '<p class="text-danger small mt-1 mb-0" data-start-conversation-error hidden></p>';
+            container.hidden = false;
+
+            var input = container.querySelector('[data-start-conversation-input]');
+            var sendBtn = container.querySelector('[data-start-conversation-send]');
+            var errorEl = container.querySelector('[data-start-conversation-error]');
+
+            function send() {
+                var body = input.value.trim();
+                if (!body) return;
+                input.disabled = true;
+                sendBtn.disabled = true;
+                errorEl.hidden = true;
+
+                // No real <form> backs this compose box (it's built from a
+                // plain string above), so there's no {% csrf_token %} of
+                // its own — reuse the one already rendered in the
+                // Communication card's Text form instead of hand-rolling
+                // cookie-parsing for it.
+                var csrfToken = document.querySelector('#property-sms-form input[name="csrfmiddlewaretoken"]').value;
+                var formData = new FormData();
+                formData.append('csrfmiddlewaretoken', csrfToken);
+                formData.append('contact_ids', contactPk);
+                formData.append('body', body);
+
+                fetch('{% url "property_followup_sms" property.pk %}', {
+                    method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            var bubble = document.createElement('div');
+                            bubble.className = 'imessage-bubble imessage-out';
+                            bubble.textContent = body;
+                            var time = document.createElement('span');
+                            time.className = 'imessage-bubble-time';
+                            time.textContent = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                            bubble.appendChild(time);
+                            container.innerHTML = '';
+                            container.appendChild(bubble);
+                            var note = document.createElement('p');
+                            note.className = 'text-muted small mt-2 mb-0';
+                            note.textContent = 'Sent.';
+                            container.appendChild(note);
+                        } else {
+                            errorEl.textContent = data.error || 'Send failed.';
+                            errorEl.hidden = false;
+                            input.disabled = false;
+                            sendBtn.disabled = false;
+                        }
+                    })
+                    .catch(function () {
+                        errorEl.textContent = 'Send failed — check your connection and try again.';
+                        errorEl.hidden = false;
+                        input.disabled = false;
+                        sendBtn.disabled = false;
+                    });
+            }
+            sendBtn.addEventListener('click', send);
+            input.addEventListener('keydown', function (e) { if (e.key === 'Enter') send(); });
+            input.focus();
         });
     });
 })();
