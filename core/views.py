@@ -10,6 +10,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -313,6 +314,12 @@ def property_list(request):
     if not show_inactive:
         qs = qs.filter(is_active=True)
     qs = qs.order_by('property_type', '-is_general', 'name')
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'desktop': render_to_string('core/_property_table_rows.html', {'properties': qs}, request=request),
+            'mobile': render_to_string('core/_property_mobile_cards.html', {'properties': qs}, request=request),
+        })
 
     return render(request, 'core/property_list.html', {
         'properties': qs,

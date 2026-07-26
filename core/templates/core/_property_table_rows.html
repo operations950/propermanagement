@@ -1,0 +1,20 @@
+{% load core_extras %}
+{% for p in properties %}
+    <tr>
+        <td class="fw-medium">
+            <i data-lucide="{{ p.property_type|property_type_icon }}" class="icon" style="color: var(--brand-slate);"></i>
+            <a href="{% url 'property_detail' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+        </td>
+        <td>
+            <span class="badge rounded-pill bg-light text-dark border">{{ p.get_property_type_display }}</span>
+            {% if p.is_general %}<span class="badge rounded-pill bg-light text-dark border">General</span>{% endif %}
+        </td>
+        <td class="text-muted small">{{ p.address|default:'—' }}</td>
+        <td class="text-nowrap">
+            <a href="{% url 'property_recurring_tasks' p.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> Recurring tasks</a>
+            <a href="{% url 'property_edit' p.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+        </td>
+    </tr>
+{% empty %}
+    <tr><td colspan="4" class="text-center text-muted py-4"><i data-lucide="building-2" class="icon-lg d-block mx-auto mb-1"></i>No properties match.</td></tr>
+{% endfor %}
