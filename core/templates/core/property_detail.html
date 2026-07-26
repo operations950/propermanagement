@@ -71,6 +71,7 @@
             <div class="d-flex justify-content-between align-items-center py-1 border-top">
                 <div>
                     <a href="{% url 'contact_edit' c.pk %}" class="text-decoration-none">{{ c.name }}</a>
+                    {% if c.trade %}<span class="badge rounded-pill bg-light text-dark border ms-1">{{ c.trade }}</span>{% endif %}
                     <span class="text-muted small ms-1">{{ c.phone }}{% if c.phone and c.email %} &middot; {% endif %}{{ c.email }}</span>
                 </div>
                 {% if c.pk in contacts_with_thread_ids %}

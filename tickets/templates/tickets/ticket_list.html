@@ -62,6 +62,10 @@
         {% if selected_status == 'active' %}Active tickets{% elif selected_status == 'complete' %}Completed & cancelled{% elif selected_status == 'all' %}All statuses{% else %}{{ selected_status_label }}{% endif %}
     </button>
 
+    <button type="button" class="bubble bubble-locked" data-filter-toggle="source">
+        {% if selected_source == 'reactive' %}Tickets only{% elif selected_source == 'recurring' %}Recurring tasks only{% else %}Tickets & recurring tasks{% endif %}
+    </button>
+
     {% if selected_role %}
         <a href="{% querystring role=None %}" class="bubble bubble-locked">{% if selected_role == 'none' %}No department assigned{% else %}{{ selected_role_label }}{% endif %}</a>
     {% else %}
@@ -101,6 +105,15 @@
         {% for value, label in status_choices %}
             <a href="{% querystring status=value %}" class="bubble{% if value == selected_status %} bubble-locked{% endif %}">{{ label }}</a>
         {% endfor %}
+        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
+    </div>
+</div>
+
+<div class="p-2 mb-2 rounded" data-filter-pool="source" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{% querystring source=None %}" class="bubble{% if not selected_source %} bubble-locked{% endif %}">Tickets & recurring tasks</a>
+        <a href="{% querystring source='reactive' %}" class="bubble{% if selected_source == 'reactive' %} bubble-locked{% endif %}">Tickets only</a>
+        <a href="{% querystring source='recurring' %}" class="bubble{% if selected_source == 'recurring' %} bubble-locked{% endif %}">Recurring tasks only</a>
         <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
     </div>
 </div>
@@ -239,12 +252,6 @@
     });
 })();
 </script>
-
-<div class="d-flex flex-wrap gap-2 mb-3">
-    <a href="{% querystring source=None %}" class="bubble{% if not selected_source %} bubble-locked{% endif %}">Tickets & recurring tasks</a>
-    <a href="{% querystring source='reactive' %}" class="bubble{% if selected_source == 'reactive' %} bubble-locked{% endif %}">Tickets only</a>
-    <a href="{% querystring source='recurring' %}" class="bubble{% if selected_source == 'recurring' %} bubble-locked{% endif %}">Recurring tasks only</a>
-</div>
 
 {% comment %}
 Desktop/tablet: a real table, styled to match the compact, uniform-height
