@@ -914,14 +914,23 @@ def _contractor_thread(ticket):
     else:
         quo_messages = fetch_quo_conversation(contact)
         has_quo_thread = quo_messages is not None
+        quo_out_bodies = set()
         for m in (quo_messages or []):
             at = _parse_quo_timestamp(m.get('at', ''))
             if at:
                 entries.append({'direction': m['direction'], 'body': m['body'], 'at': at, 'related': True})
+                if m['direction'] == 'out':
+                    quo_out_bodies.add(m['body'].strip())
 
-        # Not bound yet — QuoMessage has nothing for this contact, so the
-        # only record of our own sends is the FollowUpLog audit trail.
+        # Not bound yet — fall back to the FollowUpLog audit trail for our
+        # own sends, but skip any whose text already showed up in the live
+        # Quo fetch above: send_via_quo's own send already puts the message
+        # in Quo's conversation history immediately, so once this contact
+        # has ANY Quo thread (even one started after this exact message),
+        # counting both sources renders the same outbound text twice.
         for log in ticket.followups.filter(contact=contact, channel=FollowUpLog.Channel.SMS):
+            if log.body.strip() in quo_out_bodies:
+                continue
             entries.append({'direction': 'out', 'body': log.body, 'at': timezone.localtime(log.sent_at), 'related': True})
 
     entries.sort(key=lambda e: e['at'])
