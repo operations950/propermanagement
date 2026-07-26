@@ -97,6 +97,14 @@ def gmail_callback(request):
         except Exception:
             logger.exception('Gmail: failed to look up connected mailbox address')
 
+    # Exactly one shared mailbox is supported (see GmailInboxToken's
+    # docstring) — every other reader/writer uses .first()/.exists() with
+    # no email filter. Connecting a *different* address than whatever was
+    # connected before must replace it, not add a second row (mailbox_email
+    # is unique, so update_or_create alone would just create a sibling row
+    # keyed on the new address, leaving the old one as the stale thing
+    # .first() keeps returning).
+    GmailInboxToken.objects.exclude(mailbox_email=email or 'unknown').delete()
     GmailInboxToken.objects.update_or_create(
         mailbox_email=email or 'unknown',
         defaults={
