@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'messaging',
     'intake',
     'supplies',
+    'processes',
 ]
 
 MIDDLEWARE = [
@@ -328,6 +329,19 @@ VENDOR_UPLOAD_MAX_BYTES = 75 * 1024 * 1024
 VENDOR_UPLOAD_ALLOWED_CONTENT_TYPES = [
     'image/jpeg', 'image/png', 'image/webp', 'image/heic',
     'video/mp4', 'video/quicktime', 'video/webm',
+]
+
+# Process instance attachments (proof-of-completion uploads like a signed
+# affidavit, or a photo of a physically-posted notice) — broader than the
+# vendor portal's image/video-only list since these can be scanned documents.
+PROCESS_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
+PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES = [
+    'image/jpeg', 'image/png', 'image/webp', 'image/heic',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]
 
 # Surface our own app's logger.info() calls on the console — without this,

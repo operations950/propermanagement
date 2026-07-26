@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}{{ label }}{% endblock %}
+{% block content %}
+<div class="my-3">
+    <a href="{% url 'ticket_detail' ticket.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Back to ticket</a>
+    <h2 class="page-title">{{ label }}</h2>
+    <p class="text-muted mb-0">{{ ticket.title }}{% if ticket.property %} — {{ ticket.property.name }}{% endif %}</p>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <p class="small mb-3" style="color: var(--ink-muted);">
+            Prefilled from this checklist's Google Meet step and the property's board meeting address where available — edit freely before saving. Saving marks this checklist step complete. Use your browser's print (Ctrl/Cmd+P) if you need a paper or PDF copy.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <textarea name="content" class="form-control" rows="24" style="font-family: monospace; font-size: 0.9rem;">{{ content }}</textarea>
+            <button type="submit" class="btn btn-primary mt-3">Save</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

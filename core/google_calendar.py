@@ -149,15 +149,22 @@ class GoogleCalendarWriteError(Exception):
         self.needs_reconnect = needs_reconnect
 
 
-def _event_body(summary, start, end, all_day):
+def _event_body(summary, start, end, all_day, add_meet=False):
     if all_day:
-        return {'summary': summary, 'start': {'date': start.isoformat()}, 'end': {'date': end.isoformat()}}
-    tz_name = timezone.get_current_timezone_name()
-    return {
-        'summary': summary,
-        'start': {'dateTime': start.isoformat(), 'timeZone': tz_name},
-        'end': {'dateTime': end.isoformat(), 'timeZone': tz_name},
-    }
+        body = {'summary': summary, 'start': {'date': start.isoformat()}, 'end': {'date': end.isoformat()}}
+    else:
+        tz_name = timezone.get_current_timezone_name()
+        body = {
+            'summary': summary,
+            'start': {'dateTime': start.isoformat(), 'timeZone': tz_name},
+            'end': {'dateTime': end.isoformat(), 'timeZone': tz_name},
+        }
+    if add_meet:
+        import uuid
+        body['conferenceData'] = {
+            'createRequest': {'requestId': str(uuid.uuid4()), 'conferenceSolutionKey': {'type': 'hangoutsMeet'}},
+        }
+    return body
 
 
 def _service_for(token):
@@ -184,16 +191,21 @@ def _run_write(token, action, *args):
         raise GoogleCalendarWriteError('Google Calendar didn\'t accept that change — please try again.') from e
 
 
-def create_event(token, calendar_id, summary, start, end, all_day=False):
-    body = _event_body(summary, start, end, all_day)
-    return _run_write(token, lambda service: service.events().insert(calendarId=calendar_id, body=body).execute())
-
-
-def update_event(token, calendar_id, event_id, summary, start, end, all_day=False):
-    body = _event_body(summary, start, end, all_day)
+def create_event(token, calendar_id, summary, start, end, all_day=False, add_meet=False):
+    body = _event_body(summary, start, end, all_day, add_meet=add_meet)
+    kwargs = {'conferenceDataVersion': 1} if add_meet else {}
     return _run_write(
         token,
-        lambda service: service.events().patch(calendarId=calendar_id, eventId=event_id, body=body).execute(),
+        lambda service: service.events().insert(calendarId=calendar_id, body=body, **kwargs).execute(),
+    )
+
+
+def update_event(token, calendar_id, event_id, summary, start, end, all_day=False, add_meet=False):
+    body = _event_body(summary, start, end, all_day, add_meet=add_meet)
+    kwargs = {'conferenceDataVersion': 1} if add_meet else {}
+    return _run_write(
+        token,
+        lambda service: service.events().patch(calendarId=calendar_id, eventId=event_id, body=body, **kwargs).execute(),
     )
 
 

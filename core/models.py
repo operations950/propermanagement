@@ -71,6 +71,12 @@ class Property(models.Model):
     access_notes = models.TextField(
         blank=True, help_text='Anything else staff need to get in or navigate the property.',
     )
+    board_meeting_address = models.CharField(
+        max_length=300, blank=True,
+        help_text='Where this association normally holds its board meetings — used to prefill the '
+                   'meeting Notice template. Primarily relevant to Association-type properties, but '
+                   'not restricted to them.',
+    )
 
     class Meta:
         verbose_name_plural = 'properties'
@@ -101,6 +107,28 @@ class PropertySystemLocation(models.Model):
 
     def __str__(self):
         return f'{self.system_name} — {self.property}'
+
+
+class PropertyDocument(models.Model):
+    """A staff-uploaded reference document for a property — governing docs
+    for an Association, or anything else worth keeping on hand for other
+    property types. Manually named by whoever uploads it (no fixed doc-type
+    schema); `category` is a freeform hint (e.g. "Governing Documents"),
+    left blank when it doesn't apply."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='documents')
+    name = models.CharField(max_length=200)
+    category = models.CharField(max_length=100, blank=True)
+    file = models.FileField(upload_to='property_documents/%Y/%m/')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} — {self.property}'
 
 
 def property_dropdown_queryset():
@@ -195,6 +223,22 @@ def group_vendors_by_trade(contacts):
         (groups[k] for k in order),
         key=lambda g: (g['label'] == 'Other', g['label']),
     )
+
+
+def group_contacts_by_type(contacts):
+    """Buckets contacts by their `contact_type` — feeds the same group-tier
+    drilldown bubble picker as group_vendors_by_trade, but for the property
+    Communication card's "quick-add Board Members / Association Members /
+    Owners" pickers rather than vendor trades."""
+    labels = dict(Contact.ContactType.choices)
+    groups, order = {}, []
+    for c in contacts:
+        key = c.contact_type
+        if key not in groups:
+            groups[key] = {'key': key, 'label': labels.get(key, key), 'contacts': []}
+            order.append(key)
+        groups[key]['contacts'].append(c)
+    return [groups[k] for k in order]
 
 
 class Contact(models.Model):

@@ -36,8 +36,8 @@ from .forms import (
 )
 from .models import (
     Contact, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal, GoogleCalendarToken, Property,
-    PropertyAttribute, PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, TRADE_CHOICES,
-    creatable_contact_types, is_valid_phone, properties_by_type,
+    PropertyAttribute, PropertyAttributeAssignment, PropertyDocument, PropertySystemLocation, StaffProfile,
+    TRADE_CHOICES, creatable_contact_types, group_contacts_by_type, is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -654,11 +654,28 @@ def property_detail(request, pk):
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'save_access_info':
-            fields = ['gate_code', 'door_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password', 'access_notes']
+            fields = [
+                'gate_code', 'door_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password',
+                'access_notes', 'board_meeting_address',
+            ]
             for field in fields:
                 setattr(prop, field, request.POST.get(field, '').strip())
             prop.save(update_fields=fields)
             messages.success(request, 'Access info saved.')
+        elif action == 'add_document':
+            name = request.POST.get('name', '').strip()
+            file = request.FILES.get('file')
+            if name and file:
+                PropertyDocument.objects.create(
+                    property=prop, name=name, category=request.POST.get('category', '').strip(),
+                    file=file, uploaded_by=request.user,
+                )
+                messages.success(request, 'Document added.')
+            else:
+                messages.error(request, 'A name and a file are both required.')
+        elif action == 'delete_document':
+            PropertyDocument.objects.filter(pk=request.POST.get('document_id'), property=prop).delete()
+            messages.success(request, 'Removed.')
         elif action == 'add_system_location':
             system_name = request.POST.get('system_name', '').strip()
             location = request.POST.get('location', '').strip()
@@ -728,6 +745,9 @@ def property_detail(request, pk):
         'email_contacts': [c for c in contacts if c.email],
         'open_tickets': open_tickets,
         'system_locations': prop.system_locations.all(),
+        'documents': prop.documents.all(),
+        'text_contact_groups': group_contacts_by_type([c for c in contacts if c.phone]),
+        'email_contact_groups': group_contacts_by_type([c for c in contacts if c.email]),
         'attributes': PropertyAttribute.objects.filter(is_active=True),
         'assigned_attribute_ids': assigned_attribute_ids,
         'followup_batches': _group_followups(prop.followups.select_related('contact')[:30]),
