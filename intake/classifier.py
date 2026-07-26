@@ -195,18 +195,27 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     # applies (this is what lands them in the "AI Property Match" section of
     # the pending mailbox), but assigned_role stays blank until staff sets it
     # there. Quo/other sources are trusted enough to auto-assign a department
-    # outright (kind, used only to key the existing-ticket lookup below,
-    # still reflects Claude's real guess either way).
+    # outright.
     assigned_role = role if event.source != 'email' else ''
 
     # Supply requests aren't reconciled the same way — they're idempotent by
     # (property, source_reference, item) already and lower-stakes than a
     # ticket, so there's nothing to "walk back" the way there is for a
     # ticket someone might already be working.
+    #
+    # Looked up by (source, source_reference) ONLY — NOT also by kind. A
+    # thread gets reclassified from scratch every time it has new activity
+    # (or on a manual look-back), and Claude's guessed role/kind can shift
+    # between runs (e.g. "generic" then "maintenance") for the exact same
+    # conversation. Filtering on kind here made that shift invisible to this
+    # lookup, so a re-run silently created a SECOND ticket for the same
+    # email instead of updating the first — one thread ending up with
+    # multiple tickets. kind is allowed to drift on the existing ticket
+    # below instead of ever forking a new record.
     existing = None
     if not verdict.is_supply_request:
         existing = (
-            Ticket.objects.filter(source=event.source, source_reference=conversation_id, kind=kind)
+            Ticket.objects.filter(source=event.source, source_reference=conversation_id)
             .exclude(status=Ticket.Status.CANCELLED).first()
         )
     untouched = bool(existing) and (
@@ -253,6 +262,14 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
             property=prop, source_reference=conversation_id, item_guess='',
             defaults={'raw_text': verdict.summary},
         )
+        if existing and untouched:
+            # The same thread was previously read as an actionable ticket
+            # and is now reclassified as a supply request instead — stand
+            # the old ticket down rather than leaving both records live.
+            existing.status = Ticket.Status.CANCELLED
+            existing.cancelled_at = timezone.now()
+            existing.cancelled_reason = 'Later thread activity reclassified this as a supply request'
+            existing.save()
         return req
 
     if existing:
@@ -263,6 +280,7 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
             existing.description = verdict.summary
             existing.raw_context = event.body
             existing.priority = verdict.priority
+            existing.kind = kind
             existing.property = prop or existing.property  # don't clobber a property someone already set
             existing.assigned_role = assigned_role or existing.assigned_role
             existing.save()
