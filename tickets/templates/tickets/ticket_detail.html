@@ -791,6 +791,7 @@
 
             form.addEventListener('submit', function (e) {
                 e.preventDefault();
+                if (!confirm('Send the vendor completion link to {{ ticket.assigned_contact.name|default:"this contractor"|escapejs }}? They\'ll get a text with a link to mark the job done and upload photos.')) return;
                 btn.disabled = true;
                 errorEl.hidden = true;
                 fetch(form.action, {

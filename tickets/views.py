@@ -511,28 +511,39 @@ def department_dashboard(request, role):
 
 @login_required
 def ticket_pending(request):
-    """Two review queues on one screen. "AI Property Match" (top) is
-    email-sourced tickets Claude has already classified — property guess
-    included — but deliberately left without a due date or department (see
-    intake/classifier.py::_reconcile_thread_ticket) until a human actually
-    reads the thread and picks both via quick bubble locks; a ticket
-    graduates out the moment both are set, whether or not Claude's property
-    guess was also right. Below that, the older "no property at all" queue
-    (any source, usually Quo) — excludes anything already shown above so a
-    property-less email ticket doesn't appear twice."""
+    """Three review queues on one screen, in decreasing order of "how much
+    is still unknown": "AI Property Match" is email-sourced tickets Claude
+    has already read — property guess included — but deliberately left
+    without a due date or department (see
+    intake/classifier.py::_reconcile_thread_ticket) until a human confirms
+    both via quick bubble locks. "Needs a due date" is anything that
+    already has a property AND department but no due date — a ticket
+    isn't really solidified until staff knows when it's due, so it stays
+    here (out of every department dashboard/list) instead of looking like
+    a scheduled, actionable item. "No property yet" is the oldest queue —
+    any source that couldn't even be pinned to a property. Each bucket
+    excludes tickets already claimed by an earlier one, so nothing shows
+    twice."""
     base = Ticket.objects.exclude(status=Ticket.Status.CANCELLED)
     ai_match_tickets = (
         base.filter(source='email', due_date__isnull=True, assigned_role='')
         .select_related('assigned_staff__user', 'assigned_contact', 'property').order_by('-created_at')
     )
     ai_match_ids = list(ai_match_tickets.values_list('pk', flat=True))
+
+    needs_date_tickets = (
+        base.filter(due_date__isnull=True, property__isnull=False).exclude(pk__in=ai_match_ids)
+        .select_related('assigned_staff__user', 'assigned_contact', 'property').order_by('-created_at')
+    )
+    needs_date_ids = list(needs_date_tickets.values_list('pk', flat=True))
+
     tickets = (
-        base.filter(property__isnull=True).exclude(pk__in=ai_match_ids)
+        base.filter(property__isnull=True).exclude(pk__in=ai_match_ids + needs_date_ids)
         .select_related('assigned_staff__user', 'assigned_contact').order_by('-created_at')
     )
     today = timezone.localdate()
     return render(request, 'tickets/pending.html', {
-        'tickets': tickets, 'ai_match_tickets': ai_match_tickets,
+        'tickets': tickets, 'ai_match_tickets': ai_match_tickets, 'needs_date_tickets': needs_date_tickets,
         'properties_by_type': properties_by_type(), 'now': timezone.now(),
         'today': today.isoformat(), 'due_date_presets': _due_date_presets(today),
         'department_choices': StaffProfile.Role.choices,
@@ -569,6 +580,41 @@ def ticket_ai_match_save(request, pk):
             messages.success(request, f'"{ticket.title}" is ready — moved to {ticket.get_assigned_role_display()}.')
         else:
             messages.success(request, 'Saved.')
+    return redirect('ticket_pending')
+
+
+@login_required
+def ticket_needs_date_save(request, pk):
+    """"Needs a due date" row's Save — property and department are already
+    set here, so this only ever sets due_date (plus an optional
+    description edit). Graduates out of the pending screen automatically
+    once due_date is set, same no-explicit-accept pattern as AI Property
+    Match."""
+    ticket = get_object_or_404(Ticket, pk=pk, due_date__isnull=True, property__isnull=False)
+    if request.method == 'POST':
+        description = request.POST.get('description')
+        if description is not None:
+            ticket.description = description.strip()
+        raw_due_date = request.POST.get('due_date', '')
+        if raw_due_date:
+            parsed = parse_date(raw_due_date)
+            if parsed:
+                ticket.due_date = timezone.make_aware(datetime.combine(parsed, datetime.min.time()))
+        ticket.save()
+        if ticket.due_date:
+            messages.success(request, f'"{ticket.title}" now has a due date.')
+        else:
+            messages.success(request, 'Saved.')
+    return redirect('ticket_pending')
+
+
+@login_required
+def ticket_needs_date_delete(request, pk):
+    ticket = get_object_or_404(Ticket, pk=pk, due_date__isnull=True, property__isnull=False)
+    if request.method == 'POST':
+        title = ticket.title
+        ticket.delete()
+        messages.success(request, f'Deleted "{title}".')
     return redirect('ticket_pending')
 
 

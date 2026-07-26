@@ -128,6 +128,74 @@
 
 <hr class="my-4">
 
+<h5 class="d-flex align-items-center gap-2 mb-1"><i data-lucide="calendar-clock" class="icon"></i> Needs a due date ({{ needs_date_tickets|length }})</h5>
+<p class="text-muted">Property and department are already set — a ticket isn't solidified until it has a due date too, so these stay out of the regular lists until one's picked.</p>
+
+{% for t in needs_date_tickets %}
+<div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold fs-5">{{ t.title }}</a>
+            <span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display }}</span>
+        </div>
+        <form method="post" action="{% url 'ticket_needs_date_save' t.pk %}">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label fw-medium" for="id_needs_date_description-{{ t.pk }}">Description</label>
+                <textarea name="description" id="id_needs_date_description-{{ t.pk }}" class="form-control" rows="2">{{ t.description }}</textarea>
+            </div>
+
+            {% if t.raw_context %}
+            <div class="mb-3">
+                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-bs-toggle="collapse" data-bs-target="#needs-date-source-{{ t.pk }}" style="color: var(--ink-muted);">
+                    <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
+                </button>
+                <div class="collapse mt-1" id="needs-date-source-{{ t.pk }}">
+                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="mb-3">
+                <span class="form-label fw-medium d-block mb-1">Property</span>
+                <span class="badge rounded-pill bg-light text-dark border"><i data-lucide="map-pin" class="icon"></i> {{ t.property.name }}</span>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-medium d-block">Due date</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="due_date" data-ai-due-date-picker>
+                    <input type="hidden" name="due_date" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="No due date"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for preset in due_date_presets %}
+                            <button type="button" class="bubble" data-value="{{ preset.value }}" data-label="{{ preset.label }}">{{ preset.label }}</button>
+                        {% endfor %}
+                        <button type="button" class="bubble" data-ai-due-date-custom-bubble data-label="Custom" data-no-autolock>Custom</button>
+                    </div>
+                    <input type="date" class="form-control form-control-sm mt-2" style="max-width: 200px;" hidden min="{{ today }}" data-ai-due-date-custom-input>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit"><i data-lucide="check" class="icon"></i> Save</button>
+                <button class="btn btn-outline-danger btn-sm ms-auto" type="submit" formaction="{% url 'ticket_needs_date_delete' t.pk %}" formnovalidate onclick="return confirm('Delete this pending item? This can\'t be undone.');">
+                    <i data-lucide="trash-2" class="icon"></i> Delete — not actually a ticket
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% empty %}
+<div class="card mb-4" style="max-width: 760px;">
+    <div class="card-body text-center py-4" style="color: var(--ink-muted);">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+        Nothing waiting on a due date.
+    </div>
+</div>
+{% endfor %}
+
+<hr class="my-4">
+
 <h5 class="mb-1">No property yet ({{ tickets|length }})</h5>
 <p class="text-muted">These are unconfirmed candidates, not real tickets yet — usually auto-detected from Quo with no clear property. For each one: fix the description if needed, then either lock in a property (which moves it into its department's real queue — pick a "general" bubble if it's not about one specific address) or delete it if it isn't actually a ticket.</p>
 

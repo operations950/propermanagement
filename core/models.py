@@ -182,7 +182,7 @@ class Contact(models.Model):
         ASSOCIATION_MEMBER = 'association_member', 'Association Member'
         ON_SITE_STAFF = 'on_site_staff', 'On-site Staff'
         VENDOR = 'vendor', 'Vendor / Contractor'
-        STAFF_ADJACENT = 'staff_adjacent', 'Staff-adjacent'
+        STAFF_ADJACENT = 'staff_adjacent', 'Staff'
         OTHER = 'other', 'Other'
 
     class Source(models.TextChoices):
