@@ -2,6 +2,7 @@ import base64
 import logging
 import re
 from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from email.utils import parseaddr
 
 from django.conf import settings
@@ -111,7 +112,13 @@ class GmailAdapter(IntakeAdapter):
 
         def _msg_time(m):
             try:
-                return datetime.fromtimestamp(int(m.get('internalDate', 0)) / 1000, tz=timezone.utc)
+                # dt_timezone (stdlib datetime.timezone), not the
+                # django.utils.timezone imported as `timezone` above —
+                # that module has no .utc attribute as of Django 5+, which
+                # made this raise AttributeError (not caught below) on
+                # every thread with more than MIN_MESSAGES messages,
+                # silently dropping it from _build_event entirely.
+                return datetime.fromtimestamp(int(m.get('internalDate', 0)) / 1000, tz=dt_timezone.utc)
             except (ValueError, TypeError):
                 return None
 
