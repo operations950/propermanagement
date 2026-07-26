@@ -38,6 +38,10 @@ def _run_sync_quo_contacts():
     _run_command('sync_quo_contacts')
 
 
+def _run_link_quo_contact_threads():
+    _run_command('link_quo_contact_threads')
+
+
 def _run_poll_calendar():
     _run_command('poll_calendar')
 
@@ -89,6 +93,9 @@ def start():
     _scheduler.add_job(_run_poll_gmail, 'interval', minutes=settings.GMAIL_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(_run_classify_quo_conversations, 'interval', minutes=settings.QUO_CLASSIFY_INTERVAL_MINUTES)
     _scheduler.add_job(_run_sync_quo_contacts, 'interval', minutes=settings.QUO_CONTACT_SYNC_INTERVAL_MINUTES)
+    _scheduler.add_job(
+        _run_link_quo_contact_threads, 'interval', minutes=settings.QUO_CONTACT_LINK_INTERVAL_MINUTES,
+    )
     _scheduler.add_job(_run_poll_calendar, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(_run_poll_airbnb, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(_run_poll_vrbo, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)

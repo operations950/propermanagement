@@ -250,6 +250,12 @@ QUO_DEFAULT_FROM_NUMBER = os.environ.get('QUO_DEFAULT_FROM_NUMBER', '+1561599630
 # core/views.py::admin_tools for the staff-facing picker. Blank means "scan
 # every line," the original/default behavior.
 QUO_SCAN_PHONE_NUMBER_ID = os.environ.get('QUO_SCAN_PHONE_NUMBER_ID', '')
+# How often link_quo_contact_threads runs — a cheap global conversation crawl
+# that fills in QuoThreadState rows purely by phone-number match, so a
+# contact's text history is discoverable (contact/property "view
+# conversation", ticket detail's Contractor Communication box) even if the
+# regular Quo poller's own cursor never happened to cover that thread.
+QUO_CONTACT_LINK_INTERVAL_MINUTES = int(os.environ.get('QUO_CONTACT_LINK_INTERVAL_MINUTES', '120'))
 GOOGLE_CALENDAR_CREDENTIALS_PATH = os.environ.get('GOOGLE_CALENDAR_CREDENTIALS_PATH', '')
 AIRBNB_API_KEY = os.environ.get('AIRBNB_API_KEY', '')
 VRBO_API_KEY = os.environ.get('VRBO_API_KEY', '')
