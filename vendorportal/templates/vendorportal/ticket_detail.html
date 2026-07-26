@@ -18,11 +18,17 @@
 {% if attachments %}
 <div class="card my-3">
     <div class="card-body p-4">
-        <h5 class="d-flex align-items-center gap-2 mb-3"><i data-lucide="images" class="icon"></i> Photos</h5>
-        <div class="row">
+        <h5 class="d-flex align-items-center gap-2 mb-3"><i data-lucide="images" class="icon"></i> Photos &amp; videos</h5>
+        <div class="row g-2">
             {% for a in attachments %}
-            <div class="col-md-3 mb-2">
-                <img src="{{ a.file.url }}" class="img-fluid rounded" alt="{{ a.caption }}" style="border-radius: var(--bs-border-radius) !important;">
+            <div class="col-6 col-md-3">
+                {% if a.is_video %}
+                <video src="{{ a.file.url }}" controls style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--bs-border-radius);"></video>
+                {% else %}
+                <a href="{{ a.file.url }}" target="_blank" rel="noopener">
+                    <img src="{{ a.file.url }}" alt="{{ a.caption }}" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--bs-border-radius);">
+                </a>
+                {% endif %}
                 {% if a.caption %}<small class="text-muted d-block mt-1">{{ a.caption }}</small>{% endif %}
             </div>
             {% endfor %}
@@ -33,15 +39,44 @@
 
 <div class="card my-3">
     <div class="card-body p-4">
-        <h5 class="d-flex align-items-center gap-2 mb-3"><i data-lucide="camera" class="icon"></i> Add a photo</h5>
-        <form method="post" enctype="multipart/form-data">
+        <h5 class="d-flex align-items-center gap-2 mb-3"><i data-lucide="camera" class="icon"></i> Add a photo or video</h5>
+        <form method="post" enctype="multipart/form-data" id="vendor-upload-form">
             {% csrf_token %}
             <input type="hidden" name="action" value="upload_photo">
-            {{ upload_form.as_p }}
-            <button class="btn btn-outline-secondary" type="submit"><i data-lucide="upload" class="icon"></i> Upload photo</button>
+            {{ upload_form.file }}
+            <div class="d-flex gap-2 mb-2">
+                <button type="button" class="btn btn-outline-secondary flex-fill d-flex align-items-center justify-content-center gap-1" id="vendor-take-photo-btn">
+                    <i data-lucide="camera" class="icon"></i> Take Photo
+                </button>
+                <button type="button" class="btn btn-outline-secondary flex-fill d-flex align-items-center justify-content-center gap-1" id="vendor-choose-file-btn">
+                    <i data-lucide="folder-open" class="icon"></i> Choose File
+                </button>
+            </div>
+            <div id="vendor-file-name" class="small text-muted mb-2"></div>
+            {% if upload_form.file.errors %}<div class="alert alert-danger py-2 small">{{ upload_form.file.errors|join:' ' }}</div>{% endif %}
+            {{ upload_form.caption }}
+            <button class="btn btn-primary mt-3" type="submit"><i data-lucide="upload" class="icon"></i> Upload</button>
         </form>
     </div>
 </div>
+<script>
+(function () {
+    var fileInput = document.getElementById('{{ upload_form.file.id_for_label }}');
+    var fileName = document.getElementById('vendor-file-name');
+    fileInput.hidden = true;
+    document.getElementById('vendor-take-photo-btn').addEventListener('click', function () {
+        fileInput.setAttribute('capture', 'environment');
+        fileInput.click();
+    });
+    document.getElementById('vendor-choose-file-btn').addEventListener('click', function () {
+        fileInput.removeAttribute('capture');
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', function () {
+        fileName.textContent = fileInput.files[0] ? fileInput.files[0].name : '';
+    });
+})();
+</script>
 
 {% if not is_closed %}
 <div class="card my-3 border-success">

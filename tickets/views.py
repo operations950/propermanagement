@@ -1706,7 +1706,20 @@ def ticket_send_vendor_link(request, pk):
         })
 
     vendor_link = request.build_absolute_uri(f'/vendor/t/{ticket.completion_token}/')
-    body = f'Hi {contact.name}, please fill out this form once the work on "{ticket.title}" is done: {vendor_link}'
+    prop = ticket.property
+    if prop and prop.street and prop.city:
+        location = f'{prop.street} in {prop.city}'
+    elif prop:
+        location = prop.name
+    else:
+        location = 'your property'
+    # Deliberately doesn't name the contractor or reference any internal ticket/company
+    # details — this goes straight to the vendor's phone, not staff.
+    body = (
+        f'Thank You for your help with our recent issue at {location}! To help our '
+        'recordkeeping, we kindly ask that you click the following link and give us '
+        f'feedback on the job and any related photos or videos: {vendor_link}'
+    )
     logs = send_followup_bulk(FollowUpLog.Channel.SMS, [contact.pk], body, ticket=ticket, user=request.user)
     ok = any(log.success for log in logs)
     if ok:

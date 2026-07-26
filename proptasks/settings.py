@@ -282,9 +282,13 @@ USPS_CLIENT_SECRET = os.environ.get('USPS_CLIENT_SECRET', '')
 # before deciding whether it's actionable. Blank = classification no-ops.
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
-# Max upload size for vendor-submitted completion photos (bytes)
-VENDOR_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
-VENDOR_UPLOAD_ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
+# Max upload size for vendor-submitted completion photos/videos (bytes) — video
+# needs real headroom over a plain photo, hence the bump from the original 10MB.
+VENDOR_UPLOAD_MAX_BYTES = 75 * 1024 * 1024
+VENDOR_UPLOAD_ALLOWED_CONTENT_TYPES = [
+    'image/jpeg', 'image/png', 'image/webp', 'image/heic',
+    'video/mp4', 'video/quicktime', 'video/webm',
+]
 
 # Surface our own app's logger.info() calls on the console — without this,
 # a long-running sync (e.g. poll_quo's first full historical backfill) is a

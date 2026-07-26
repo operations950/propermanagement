@@ -530,8 +530,14 @@ class TicketAttachment(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    VIDEO_EXTENSIONS = ('.mp4', '.mov', '.webm', '.m4v')
+
     def __str__(self):
         return self.caption or self.file.name
+
+    @property
+    def is_video(self):
+        return self.file.name.lower().endswith(self.VIDEO_EXTENSIONS)
 
 
 class TicketAssignmentLog(models.Model):
