@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('core', '0026_contactdocument'),
-        ('processes', '0002_generalize_processes'),
+        ('processes', '0004_generalize_processes_cleanup'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
