@@ -1,7 +1,11 @@
 {% for c in contacts %}
     <tr>
         <td class="fw-medium">{{ c.name }}</td>
-        <td><span class="badge rounded-pill bg-light text-dark border">{{ c.get_contact_type_display }}</span>{% if c.trade %} <span class="text-muted small">{{ c.trade }}</span>{% endif %}</td>
+        <td>
+            <span class="badge rounded-pill bg-light text-dark border">{{ c.get_contact_type_display }}</span>
+            {% for label in c.secondary_type_labels %}<span class="badge rounded-pill bg-light text-dark border">{{ label }}</span>{% endfor %}
+            {% if c.trade %} <span class="text-muted small">{{ c.trade }}</span>{% endif %}
+        </td>
         <td class="text-muted small">{{ c.phone|default:'—' }}</td>
         <td class="text-muted small">{{ c.email|default:'—' }}</td>
         <td class="text-muted small">{% for p in c.properties.all %}<a href="{% url 'property_edit' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td>

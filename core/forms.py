@@ -76,7 +76,18 @@ class PropertyForm(forms.ModelForm):
         return cleaned
 
 
+SECONDARY_TYPE_CHOICES = [c for c in Contact.ContactType.choices if c[0] != Contact.ContactType.VENDOR]
+
+
 class ContactForm(forms.ModelForm):
+    # secondary_types is a plain JSONField, not a relation — handled here as
+    # a bound-but-not-Meta.fields MultipleChoiceField so ModelForm doesn't try
+    # to auto-map it (its default JSONField widget is a raw text area), and
+    # saved onto the instance explicitly in save() below instead.
+    secondary_types = forms.MultipleChoiceField(
+        choices=SECONDARY_TYPE_CHOICES, required=False, label='Also (optional)',
+    )
+
     class Meta:
         model = Contact
         fields = ['name', 'contact_type', 'trade', 'phone', 'email', 'properties', 'notes']
@@ -86,8 +97,25 @@ class ContactForm(forms.ModelForm):
             'phone': forms.TextInput(attrs={'type': 'tel', 'placeholder': '555-123-4567'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields['secondary_types'].initial = self.instance.secondary_types
+
     def clean(self):
         cleaned = super().clean()
         if cleaned.get('contact_type') == Contact.ContactType.VENDOR and not cleaned.get('trade'):
             self.add_error('trade', 'Choose a trade for vendor/contractor contacts.')
+        # Vendor/Contractor stays single-type — a Trade already distinguishes it,
+        # and it's never combined with e.g. Owner/Board Member in practice.
+        if cleaned.get('contact_type') == Contact.ContactType.VENDOR:
+            cleaned['secondary_types'] = []
         return cleaned
+
+    def save(self, commit=True):
+        contact = super().save(commit=False)
+        contact.secondary_types = self.cleaned_data.get('secondary_types') or []
+        if commit:
+            contact.save()
+            self.save_m2m()
+        return contact

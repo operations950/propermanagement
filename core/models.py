@@ -194,6 +194,13 @@ class Contact(models.Model):
 
     name = models.CharField(max_length=200)
     contact_type = models.CharField(max_length=20, choices=ContactType.choices, default=ContactType.OTHER)
+    secondary_types = models.JSONField(
+        default=list, blank=True,
+        help_text='Additional simultaneous types beyond the primary Type above — e.g. an Owner who is '
+                   'also a Board Member. Never used for Vendor/Contractor, which stays single-type since '
+                   "it forces a Trade below. A plain list of ContactType values, not a relation — this "
+                   'is tag-like metadata, not something ever queried/filtered on at scale.',
+    )
     trade = models.CharField(
         max_length=100, blank=True,
         help_text='For vendors: e.g. plumbing, HVAC, cleaning, handyman',
@@ -229,6 +236,10 @@ class Contact(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.get_contact_type_display()})'
+
+    def secondary_type_labels(self):
+        labels = dict(self.ContactType.choices)
+        return [labels.get(t, t) for t in (self.secondary_types or [])]
 
 
 class ContactImportCandidate(models.Model):

@@ -45,6 +45,18 @@
                        value="{% if trade_is_other %}{{ form.trade.value|default:'' }}{% endif %}">
             </div>
 
+            <div class="mb-4" id="secondary-types-field">
+                <label class="form-label fw-medium d-block">Also <span class="fw-normal" style="color: var(--ink-muted);">(optional — a contact can hold more than one type, e.g. Owner and Board Member)</span></label>
+                <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="secondary_types" data-initial-values="{{ selected_secondary_types }}" id="secondary-types-picker">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="No additional types"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for value, label in form.fields.secondary_types.choices %}
+                            <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
             <div class="mb-4">
                 <label class="form-label fw-medium" for="id_phone">Phone</label>
                 <input type="tel" name="phone" id="id_phone" class="form-control {% if form.phone.errors %}is-invalid{% endif %}" placeholder="555-123-4567" value="{{ form.phone.value|default:'' }}">
@@ -116,9 +128,12 @@
     var tradePicker = document.getElementById('trade-picker');
     var tradeHidden = document.getElementById('id_trade');
     var otherInput = document.getElementById('trade-other-input');
+    var secondaryTypesField = document.getElementById('secondary-types-field');
 
     function applyType(value) {
         tradeField.hidden = value !== 'vendor';
+        // Vendor/Contractor stays single-type — see ContactForm.clean().
+        secondaryTypesField.hidden = value === 'vendor';
     }
     typePicker.addEventListener('bubble:lock', function (e) { applyType(e.detail.value); });
     typePicker.addEventListener('bubble:unlock', function () { applyType(''); });
