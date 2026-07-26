@@ -229,7 +229,15 @@ def send_via_quo(to_number, body, ticket=None, media_urls=None):
         timeout=15,
     )
     resp.raise_for_status()
-    _record_sent_message(resp.json().get('data', {}), ticket)
+    # The send itself is already done and irreversible by this point — a
+    # problem recording it locally (malformed/empty response body, a DB
+    # hiccup writing QuoMessage) must never turn an actually-successful
+    # send into a reported failure. Log it for whoever needs to notice the
+    # bookkeeping gap, but still report True.
+    try:
+        _record_sent_message(resp.json().get('data', {}), ticket)
+    except Exception:
+        logger.exception('Quo: message sent but recording it locally failed')
     return True
 
 

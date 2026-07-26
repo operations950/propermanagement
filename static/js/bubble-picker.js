@@ -455,7 +455,9 @@
             text.value = c.label;
             list.hidden = true;
             addNewRow.hidden = true;
-            root.dispatchEvent(new CustomEvent('contact:choose', { detail: { id: c.id, label: c.label } }));
+            root.dispatchEvent(new CustomEvent('contact:choose', {
+              detail: { id: c.id, label: c.label, hasPhone: !!c.has_phone, hasEmail: !!c.has_email },
+            }));
           });
           list.appendChild(item);
         });

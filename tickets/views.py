@@ -1201,18 +1201,23 @@ def ticket_detail(request, pk):
         'additional_contacts': contact_pools['additional_contacts'],
         'additional_ids': contact_pools['additional_ids'],
         'owner_contacts_json': json.dumps([
-            {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type__in=[
+            {'id': c.id, 'label': str(c), 'has_phone': bool(c.phone), 'has_email': bool(c.email)}
+            for c in Contact.objects.filter(contact_type__in=[
                 Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER,
                 Contact.ContactType.ASSOCIATION_MEMBER, Contact.ContactType.TENANT,
             ])
         ]),
         'contractor_search_json': json.dumps([
-            {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
+            {'id': c.id, 'label': str(c), 'has_phone': bool(c.phone), 'has_email': bool(c.email)}
+            for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
         ]),
         # Additional contacts has no type restriction on who can be added —
         # search finds anyone, including a vendor or owner also tracked
         # elsewhere on the ticket.
-        'additional_contacts_json': json.dumps([{'id': c.id, 'label': str(c)} for c in Contact.objects.all()]),
+        'additional_contacts_json': json.dumps([
+            {'id': c.id, 'label': str(c), 'has_phone': bool(c.phone), 'has_email': bool(c.email)}
+            for c in Contact.objects.all()
+        ]),
         'followup_batches': _group_followups(ticket.followups.select_related('contact')[:30]),
         'checklist_items': ticket.checklist_items.all(),
         'package_siblings': package_siblings,

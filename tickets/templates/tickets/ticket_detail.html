@@ -868,6 +868,28 @@
                         picker.addEventListener('bubble:unlock', autosave);
                     });
 
+                    // A contact newly linked here (existing contact picked via
+                    // search, or a brand-new one created via +Add below) is
+                    // otherwise invisible to the Follow-Up modal until a full
+                    // reload — its Text/Email bubble pools are rendered once
+                    // from the page's initial load. Appending the bubble here
+                    // instead needs no extra wiring for the click-to-lock
+                    // behavior itself: bubble-picker.js's multi-picker binds
+                    // its lock listener on the pool *container*, not each
+                    // bubble, so a bubble added later the same way still
+                    // works the first time it's clicked.
+                    function addFollowupBubble(formId, id, label) {
+                        var pool = document.querySelector('#' + formId + ' [data-bubble-pool]');
+                        if (!pool || pool.querySelector('.bubble[data-value="' + id + '"]')) return;
+                        var bubble = document.createElement('button');
+                        bubble.type = 'button';
+                        bubble.className = 'bubble';
+                        bubble.dataset.value = id;
+                        bubble.dataset.label = label;
+                        bubble.textContent = label;
+                        pool.appendChild(bubble);
+                    }
+
                     [
                         ['owner-filter', 'owner_contact_ids'],
                         ['contractor-filter-related', 'contractor_contact_ids'],
@@ -878,6 +900,8 @@
                         if (!filterRoot || !picker) return;
                         filterRoot.addEventListener('contact:choose', function (e) {
                             picker._bubbleApi.lockValue(String(e.detail.id), e.detail.label);
+                            if (e.detail.hasPhone) addFollowupBubble('ticket-followup-sms-form', e.detail.id, e.detail.label);
+                            if (e.detail.hasEmail) addFollowupBubble('ticket-followup-email-form', e.detail.id, e.detail.label);
                         });
                     });
 
@@ -901,6 +925,9 @@
                             if (!nameInput.value.trim()) return;
                             if (errorEl) errorEl.hidden = true;
                             btn.disabled = true;
+                            // Captured before the fields get cleared on success below.
+                            var hadPhone = !!phoneInput.value.trim();
+                            var hadEmail = !!(emailInput && emailInput.value.trim());
 
                             fetch(form.action, {
                                 method: 'POST',
@@ -913,6 +940,8 @@
                                         (data.new_contacts || []).forEach(function (nc) {
                                             var picker = form.querySelector('[data-bubble-picker][data-name="' + nc.prefix + '_contact_ids"]');
                                             if (picker && picker._bubbleApi) picker._bubbleApi.lockValue(String(nc.id), nc.label);
+                                            if (hadPhone) addFollowupBubble('ticket-followup-sms-form', nc.id, nc.label);
+                                            if (hadEmail) addFollowupBubble('ticket-followup-email-form', nc.id, nc.label);
                                         });
                                         nameInput.value = '';
                                         phoneInput.value = '';
@@ -1005,7 +1034,7 @@
           <div class="col-md-6 mb-3 mb-md-0">
                 <h6 class="d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Text</h6>
                 {% if followup_text_parties %}
-                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}"
+                <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" id="ticket-followup-sms-form"
                       onsubmit="var n=this.querySelectorAll('input[name=contact_ids]').length; if(!n){alert('Choose at least one recipient first.'); return false;} return confirm('Send this text to ' + n + ' recipient(s)?');">
                     {% csrf_token %}
                     <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
