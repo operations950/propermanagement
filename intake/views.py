@@ -320,6 +320,30 @@ def _run_command_in_background(name, *args):
 
 @login_required
 @user_passes_test(_is_admin)
+def gmail_lookback_trigger(request):
+    """Admin-only: force a one-off re-check of a connected mailbox's last
+    N days of threads, ignoring the normal poll cursor — for "did we miss
+    anything" without waiting for (or being limited by) the incremental
+    poll. No Railway shell access, so this is the only way to run it on
+    production. See intake/management/commands/gmail_lookback.py."""
+    if request.method == 'POST':
+        mailbox_id = request.POST.get('mailbox_id')
+        token = GmailInboxToken.objects.filter(pk=mailbox_id).first()
+        days = request.POST.get('days', '2')
+        if not token:
+            messages.error(request, 'Mailbox not found.')
+        else:
+            _run_command_in_background('gmail_lookback', '--mailbox', token.mailbox_email, '--days', str(days))
+            messages.success(
+                request,
+                f'Looking back {days} day(s) on {token.mailbox_email} in the background — '
+                'check Railway logs for progress and results.',
+            )
+    return redirect('admin_tools')
+
+
+@login_required
+@user_passes_test(_is_admin)
 def quo_backfill_trigger(request):
     """Admin-only: kicks off backfill_quo_messages in the background — the
     one-time (safe to re-run) historical sync so classify_quo_conversations

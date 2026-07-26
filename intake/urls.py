@@ -7,6 +7,7 @@ urlpatterns = [
     path('integrations/gmail/callback/', views.gmail_callback, name='gmail_callback'),
     path('integrations/gmail/disconnect/', views.gmail_disconnect, name='gmail_disconnect'),
     path('integrations/gmail/set-primary/', views.gmail_set_primary, name='gmail_set_primary'),
+    path('integrations/gmail/lookback/', views.gmail_lookback_trigger, name='gmail_lookback_trigger'),
     path('webhooks/quo/log/', views.quo_webhook_log, name='quo_webhook_log'),
     path('webhooks/quo/log/backfill/', views.quo_backfill_trigger, name='quo_backfill_trigger'),
     path('webhooks/quo/log/classify/', views.quo_classify_trigger, name='quo_classify_trigger'),

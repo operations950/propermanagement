@@ -74,7 +74,7 @@
         {% if gmail_inbox_tokens %}
         <div class="table-responsive mb-2">
         <table class="table table-sm align-middle mb-0">
-            <thead><tr><th>Mailbox</th><th>Connected</th><th>Sends outgoing mail</th><th></th></tr></thead>
+            <thead><tr><th>Mailbox</th><th>Connected</th><th>Sends outgoing mail</th><th>Look back</th><th></th></tr></thead>
             <tbody>
             {% for token in gmail_inbox_tokens %}
             <tr>
@@ -93,6 +93,15 @@
                     </form>
                     {% endif %}
                 </td>
+                <td>
+                    <form method="post" action="{% url 'gmail_lookback_trigger' %}" class="d-flex align-items-center gap-1"
+                          onsubmit="return confirm('Re-check the last ' + this.days.value + ' day(s) of {{ token.mailbox_email|escapejs }} right now? This re-evaluates every thread in that window, even ones already seen.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="mailbox_id" value="{{ token.pk }}">
+                        <input type="number" name="days" value="2" min="1" max="30" class="form-control form-control-sm" style="width: 4rem;">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm text-nowrap">days back</button>
+                    </form>
+                </td>
                 <td class="text-nowrap">
                     <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-link btn-sm p-0">Reconnect</a>
                     <form method="post" action="{% url 'gmail_disconnect' %}" class="d-inline ms-2"
@@ -108,6 +117,7 @@
             </tbody>
         </table>
         </div>
+        <p class="text-muted small mb-2">"Look back" force-rechecks a mailbox's recent threads right now, ignoring the normal poll — runs in the background; check Railway logs for what it found (including any Airbnb bookings turned into cleaning tickets).</p>
         {% else %}
         <p class="small mb-2 d-flex align-items-center gap-2">
             <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
