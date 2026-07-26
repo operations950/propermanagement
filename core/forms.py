@@ -4,7 +4,7 @@ from django.contrib.auth.forms import AuthenticationForm
 
 from tickets.models import PropertyTemplateOverride
 
-from .models import Contact, Property, StaffProfile
+from .models import Contact, Property, StaffProfile, creatable_contact_types
 
 
 class EmailOrUsernameAuthenticationForm(AuthenticationForm):
@@ -77,7 +77,9 @@ class PropertyForm(forms.ModelForm):
         return cleaned
 
 
-SECONDARY_TYPE_CHOICES = [c for c in Contact.ContactType.choices if c[0] != Contact.ContactType.VENDOR]
+SECONDARY_TYPE_CHOICES = [
+    c for c in creatable_contact_types() if c[0] != Contact.ContactType.VENDOR
+]
 
 
 class ContactForm(forms.ModelForm):
@@ -102,14 +104,23 @@ class ContactForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance and self.instance.pk:
             self.fields['secondary_types'].initial = self.instance.secondary_types
+        # 'Staff' is admin-only (see core/views.py::staff_create) — this form
+        # never offers it for a contact that isn't already that type, but an
+        # existing Staff contact still needs to render correctly (and stay
+        # Staff by default) when someone opens it from the Contacts list.
+        type_choices = creatable_contact_types()
+        if self.instance and self.instance.contact_type == Contact.ContactType.STAFF_ADJACENT:
+            type_choices = Contact.ContactType.choices
+        self.fields['contact_type'].choices = type_choices
 
     def clean(self):
         cleaned = super().clean()
         if cleaned.get('contact_type') == Contact.ContactType.VENDOR and not cleaned.get('trade'):
             self.add_error('trade', 'Choose a trade for vendor/contractor contacts.')
-        # Vendor/Contractor stays single-type — a Trade already distinguishes it,
-        # and it's never combined with e.g. Owner/Board Member in practice.
-        if cleaned.get('contact_type') == Contact.ContactType.VENDOR:
+        # Vendor/Contractor and Staff both stay single-type — a Trade already
+        # distinguishes the former, and the latter is never combined with
+        # e.g. Owner/Board Member in practice.
+        if cleaned.get('contact_type') in (Contact.ContactType.VENDOR, Contact.ContactType.STAFF_ADJACENT):
             cleaned['secondary_types'] = []
         return cleaned
 

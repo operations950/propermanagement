@@ -103,7 +103,7 @@
                     </p>
                     <div data-import-rows class="border rounded" style="border-color: var(--border-hairline) !important;"></div>
                 </div>
-                <template data-import-type-options>{% for value, label in type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</template>
+                <template data-import-type-options>{% for value, label in creatable_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</template>
                 <template data-import-property-options><option value="">No property</option>{% for p in active_properties %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}</template>
             </div>
             <div class="modal-footer" data-import-footer hidden>

@@ -37,7 +37,7 @@ from .forms import (
 from .models import (
     Contact, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal, GoogleCalendarToken, Property,
     PropertyAttribute, PropertyAttributeAssignment, PropertySystemLocation, StaffProfile, TRADE_CHOICES,
-    is_valid_phone, properties_by_type,
+    creatable_contact_types, is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -426,14 +426,26 @@ def staff_create(request):
                     timezone=form.cleaned_data['timezone'],
                 )
                 if matched_contact and confirmed:
-                    contact_name = matched_contact.name
-                    matched_contact.delete()
+                    # Converted, not deleted — every staff member needs a
+                    # Staff-type Contact so they're still findable in any
+                    # contact search across the app (see creatable_contact_types
+                    # for why every OTHER contact-creation path is barred from
+                    # ever producing this type themselves).
+                    matched_contact.contact_type = Contact.ContactType.STAFF_ADJACENT
+                    matched_contact.secondary_types = []
+                    matched_contact.save(update_fields=['contact_type', 'secondary_types'])
                     messages.success(
                         request,
                         f'Staff account created for {user.get_full_name()} — merged contact '
-                        f'"{contact_name}" into it.',
+                        f'"{matched_contact.name}" into it.',
                     )
                 else:
+                    Contact.objects.create(
+                        name=user.get_full_name(),
+                        contact_type=Contact.ContactType.STAFF_ADJACENT,
+                        phone=form.cleaned_data['phone'],
+                        email=email,
+                    )
                     messages.success(request, f'Staff account created for {user.get_full_name()}.')
                 return redirect('admin_tools')
             # matched_contact exists and not yet confirmed — fall through to
@@ -737,6 +749,7 @@ def contact_list(request):
     return render(request, 'core/contact_list.html', {
         'contacts': qs,
         'type_choices': Contact.ContactType.choices,
+        'creatable_type_choices': creatable_contact_types(),
         'q': q,
         'selected_type': selected_type,
         'pending_review_count': (
@@ -899,7 +912,7 @@ def contact_review(request):
     return render(request, 'core/contact_review.html', {
         'candidates': candidates,
         'update_candidates': update_candidates,
-        'type_choices': Contact.ContactType.choices,
+        'type_choices': creatable_contact_types(),
         'trade_choices': TRADE_CHOICES,
         'properties_by_type': properties_by_type(),
     })

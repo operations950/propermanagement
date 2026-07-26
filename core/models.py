@@ -242,6 +242,17 @@ class Contact(models.Model):
         return [labels.get(t, t) for t in (self.secondary_types or [])]
 
 
+def creatable_contact_types():
+    """Contact.ContactType choices offered by every contact-creation path
+    EXCEPT Admin Tools' staff-creation flow (core/views.py::staff_create) —
+    'Staff' is admin-only, so the plain Contact form, the quick-add-from-
+    ticket flow, and AI-classified imports (Quo/Gmail/document) all draw
+    from this instead of the full choice list. An already-Staff contact
+    being edited through the plain form is handled separately (see
+    ContactForm) rather than here, so this stays a flat exclusion list."""
+    return [c for c in Contact.ContactType.choices if c[0] != Contact.ContactType.STAFF_ADJACENT]
+
+
 class ContactImportCandidate(models.Model):
     """A contact harvested from a bulk Quo/Gmail import, held here — not in
     the real Contact table — until a human reviews and approves it. Hard

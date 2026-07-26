@@ -4,7 +4,7 @@ import logging
 
 from django.conf import settings
 
-from .models import Contact, Property
+from .models import Contact, Property, creatable_contact_types
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +34,13 @@ EXTRACT_CONTACTS_TOOL = {
                         'email': {'type': 'string', 'description': 'Email address. Empty string if none.'},
                         'contact_type': {
                             'type': 'string',
-                            'enum': [c[0] for c in Contact.ContactType.choices],
+                            'enum': [c[0] for c in creatable_contact_types()],
                             'description': (
                                 'Best guess at what this contact is: vendor for an outside contractor/repair '
                                 'company, owner/tenant/board_member/association_member/on_site_staff/guest if '
-                                'the document clearly says so, other/staff_adjacent if genuinely unclear.'
+                                'the document clearly says so, other if genuinely unclear. Never staff_adjacent '
+                                '("Staff") — that type is reserved for this company\'s own team, set up only '
+                                'through Admin Tools, never inferred from an imported document.'
                             ),
                         },
                         'trade': {

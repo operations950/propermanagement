@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 
-from core.models import Contact, Property
+from core.models import Contact, Property, creatable_contact_types
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +16,14 @@ CLASSIFY_CONTACT_TOOL = {
         'properties': {
             'contact_type': {
                 'type': 'string',
-                'enum': [c[0] for c in Contact.ContactType.choices],
+                'enum': [c[0] for c in creatable_contact_types()],
                 'description': (
                     'Best guess at what this person is to the business, based on how they talk and what '
                     'they discuss — owner (of a unit/association), board_member, association_member, '
                     'tenant, on_site_staff, vendor (an outside contractor/repair company), guest, or '
-                    'other/staff_adjacent if genuinely unclear.'
+                    'other if genuinely unclear. Never staff_adjacent ("Staff") — that type is reserved '
+                    "for this company's own team, set up only through Admin Tools, never inferred from "
+                    'message history.'
                 ),
             },
             'property_name': {
