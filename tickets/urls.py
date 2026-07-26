@@ -26,6 +26,7 @@ urlpatterns = [
     path('templates/new/', views.ticket_template_create, name='ticket_template_create'),
     path('templates/<int:pk>/', views.ticket_template_detail, name='ticket_template_detail'),
     path('templates/<int:pk>/edit/', views.ticket_template_edit, name='ticket_template_edit'),
+    path('task-steps/<int:step_pk>/duplicate/', views.task_step_duplicate, name='task_step_duplicate'),
     path('tickets/<int:pk>/', views.ticket_detail, name='ticket_detail'),
     path('tickets/<int:pk>/reassign/', views.ticket_reassign, name='ticket_reassign'),
     path('tickets/<int:pk>/assign-contractor/', views.ticket_assign_contractor, name='ticket_assign_contractor'),

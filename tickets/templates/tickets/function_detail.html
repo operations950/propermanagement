@@ -86,7 +86,13 @@
                     <td class="text-muted small">{{ step.template.target_summary }}</td>
                     <td class="text-muted small">{{ step.template.get_frequency_display }}</td>
                     <td class="text-muted small">{{ step.template.next_run_date }}</td>
-                    <td><a href="{% url 'ticket_template_edit' step.template.pk %}" class="btn btn-link btn-sm p-0"><i data-lucide="pencil" class="icon"></i></a></td>
+                    <td class="text-nowrap">
+                        <a href="{% url 'ticket_template_edit' step.template.pk %}" class="btn btn-link btn-sm p-0" title="Edit"><i data-lucide="pencil" class="icon"></i></a>
+                        <form method="post" action="{% url 'task_step_duplicate' step.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-link btn-sm p-0 ms-2" title="Duplicate"><i data-lucide="copy" class="icon"></i></button>
+                        </form>
+                    </td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -116,7 +122,13 @@
                     <td class="text-muted small">{{ step.template.target_summary }}</td>
                     <td class="text-muted small">{{ step.template.get_frequency_display }}</td>
                     <td class="text-muted small">{{ step.template.next_run_date }}</td>
-                    <td><a href="{% url 'ticket_template_edit' step.template.pk %}" class="btn btn-link btn-sm p-0"><i data-lucide="pencil" class="icon"></i></a></td>
+                    <td class="text-nowrap">
+                        <a href="{% url 'ticket_template_edit' step.template.pk %}" class="btn btn-link btn-sm p-0" title="Edit"><i data-lucide="pencil" class="icon"></i></a>
+                        <form method="post" action="{% url 'task_step_duplicate' step.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-link btn-sm p-0 ms-2" title="Duplicate"><i data-lucide="copy" class="icon"></i></button>
+                        </form>
+                    </td>
                 </tr>
             {% endfor %}
             </tbody>

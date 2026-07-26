@@ -181,14 +181,21 @@
 </div>
 
 <div class="p-2 mb-2 rounded" data-filter-pool="contractor" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <input type="text" class="form-control form-control-sm mb-2" style="max-width: 240px;" placeholder="Filter…" data-pool-filter-input>
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-2" data-tier="1">
         <a href="{% querystring assigned_contact=None %}" class="bubble{% if not selected_assigned_contact %} bubble-locked{% endif %}">All contractors</a>
-        {% for c in vendor_list %}
-            <a href="{% querystring assigned_contact=c.id %}" class="bubble{% if selected_assigned_contact.id == c.id %} bubble-locked{% endif %}" data-pool-filter-item>{{ c.name }}</a>
+        {% for group in vendor_groups %}
+            <button type="button" class="bubble" data-tier-toggle="{{ group.key }}">{{ group.label }}</button>
         {% endfor %}
         <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
     </div>
+    {% for group in vendor_groups %}
+    <div class="d-flex flex-wrap gap-2 mt-2" data-tier="2" data-tier-for="{{ group.key }}" hidden>
+        <button type="button" class="bubble" data-tier-back style="--bubble-color: var(--ink-muted);">← {{ group.label }}</button>
+        {% for c in group.contacts %}
+            <a href="{% querystring assigned_contact=c.id %}" class="bubble{% if selected_assigned_contact.id == c.id %} bubble-locked{% endif %}">{{ c.name }}</a>
+        {% endfor %}
+    </div>
+    {% endfor %}
 </div>
 
 <script>
@@ -209,24 +216,26 @@
         btn.addEventListener('click', closeAll);
     });
 
-    // Property pool's type -> property drilldown.
-    var propertyPool = document.querySelector('[data-filter-pool="property"]');
-    if (propertyPool) {
-        var tier1 = propertyPool.querySelector('[data-tier="1"]');
-        propertyPool.querySelectorAll('[data-tier-toggle]').forEach(function (btn) {
+    // Any filter pool's tier-1 -> tier-2 drilldown (property: type ->
+    // property; contractor: trade -> vendor) — same show/hide mechanics
+    // regardless of what the two tiers actually represent.
+    document.querySelectorAll('[data-filter-pool]').forEach(function (pool) {
+        var tier1 = pool.querySelector('[data-tier="1"]');
+        if (!tier1) return;
+        pool.querySelectorAll('[data-tier-toggle]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 tier1.hidden = true;
-                var tier2 = propertyPool.querySelector('[data-tier-for="' + btn.dataset.tierToggle + '"]');
+                var tier2 = pool.querySelector('[data-tier-for="' + btn.dataset.tierToggle + '"]');
                 if (tier2) tier2.hidden = false;
             });
         });
-        propertyPool.querySelectorAll('[data-tier-back]').forEach(function (btn) {
+        pool.querySelectorAll('[data-tier-back]').forEach(function (btn) {
             btn.addEventListener('click', function () {
-                propertyPool.querySelectorAll('[data-tier="2"]').forEach(function (t) { t.hidden = true; });
+                pool.querySelectorAll('[data-tier="2"]').forEach(function (t) { t.hidden = true; });
                 tier1.hidden = false;
             });
         });
-    }
+    });
 
     // Due Date pool's Custom date input navigates on change.
     var dueCustomInput = document.querySelector('[data-due-custom-input]');

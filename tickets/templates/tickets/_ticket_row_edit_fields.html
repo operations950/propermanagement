@@ -93,11 +93,19 @@
                 {% endfor %}
             </div>
             <div class="small text-muted mb-1">Vendors</div>
-            <div class="bubble-pool" data-bubble-pool>
-                {% for v in vendor_list %}
+            <div class="bubble-pool" data-bubble-pool data-group-tier>
+                {% for group in vendor_groups %}
+                    <button type="button" class="bubble" data-no-autolock data-group-toggle="{{ group.key }}">{{ group.label }}</button>
+                {% endfor %}
+            </div>
+            {% for group in vendor_groups %}
+            <div class="bubble-pool mt-2" data-bubble-pool data-group="{{ group.key }}" hidden>
+                <button type="button" class="bubble" data-no-autolock data-back>← {{ group.label }}</button>
+                {% for v in group.contacts %}
                     <button type="button" class="bubble" data-value="contact-{{ v.pk }}" data-label="{{ v.name }}">{{ v.name }}</button>
                 {% endfor %}
             </div>
+            {% endfor %}
         </div>
     </div>
 

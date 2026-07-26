@@ -13,6 +13,8 @@ for the consent screen to grant it.
 """
 import base64
 import logging
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -60,17 +62,36 @@ class GmailAPIBackend(BaseEmailBackend):
 
     def _build_raw_message(self, message, from_address):
         alternatives = getattr(message, 'alternatives', None) or []
-        if alternatives:
-            mime = MIMEMultipart('alternative')
-            mime.attach(MIMEText(message.body, 'plain'))
+        attachments = getattr(message, 'attachments', None) or []
+
+        if alternatives or attachments:
+            body_part = MIMEMultipart('alternative')
+            body_part.attach(MIMEText(message.body, 'plain'))
             for content, mimetype in alternatives:
                 subtype = mimetype.split('/')[-1] if mimetype else 'html'
-                mime.attach(MIMEText(content, subtype))
+                body_part.attach(MIMEText(content, subtype))
+            # A bare MIMEText can't carry attachments (only MIMEMultipart
+            # supports .attach()) — wrap in an outer multipart/mixed only
+            # when there's actually something to attach, so a plain
+            # attachment-free send still produces the same message as before.
+            mime = MIMEMultipart('mixed') if attachments else body_part
+            if attachments:
+                mime.attach(body_part)
         else:
             mime = MIMEText(message.body, 'plain')
+
         mime['Subject'] = message.subject
         mime['From'] = message.from_email or from_address
         mime['To'] = ', '.join(message.to)
         if message.cc:
             mime['Cc'] = ', '.join(message.cc)
+
+        for filename, content, mimetype in attachments:
+            maintype, _, subtype = (mimetype or 'application/octet-stream').partition('/')
+            part = MIMEBase(maintype or 'application', subtype or 'octet-stream')
+            part.set_payload(content.encode('utf-8') if isinstance(content, str) else content)
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', 'attachment', filename=filename)
+            mime.attach(part)
+
         return base64.urlsafe_b64encode(mime.as_bytes()).decode('ascii')

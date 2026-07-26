@@ -166,11 +166,34 @@ def properties_by_type():
 # "Other" needs to accept free text that isn't one of these — the bubble UI
 # is just a convenience over the same field, not a stricter schema.
 TRADE_CHOICES = [
-    'HVAC', 'Plumbing', 'Electrical', 'Handyman', 'Landscaping', 'Pool Service', 'Pest Control',
-    'Roofing', 'Painting', 'Locksmith', 'Appliance Repair', 'Cleaning', 'General Contractor',
-    'Flooring', 'Drywall', 'Fencing', 'Security / Alarm', 'Elevator', 'Waterproofing',
-    'Window / Glass', 'Concrete / Paving', 'Moving / Hauling', 'Insurance', 'Legal',
+    'HVAC', 'Plumbing', 'Electrical', 'Handyman', 'Landscaping', 'Tree Trimming', 'Irrigation',
+    'Pool Service', 'Pest Control', 'Roofing', 'Painting', 'Locksmith', 'Appliance Repair',
+    'Cleaning', 'General Contractor', 'Flooring', 'Drywall', 'Fencing', 'Security / Alarm',
+    'Elevator', 'Waterproofing', 'Window / Glass', 'Concrete / Paving', 'Moving / Hauling',
+    'Insurance', 'Legal',
 ]
+
+
+def group_vendors_by_trade(contacts):
+    """Buckets Vendor/Contractor contacts by their `trade` field — feeds the
+    trade-tier drilldown bubble pickers (Tickets tab's Contractor filter,
+    the ticket-row Assignee quick-edit) so a company with 20+ vendors never
+    renders them as one flat wall of bubbles. Untraded contacts land in a
+    trailing "Other" group rather than being dropped."""
+    from django.utils.text import slugify
+
+    groups, order = {}, []
+    for c in contacts:
+        label = c.trade or 'Other'
+        key = slugify(label) or 'other'
+        if key not in groups:
+            groups[key] = {'key': key, 'label': label, 'contacts': []}
+            order.append(key)
+        groups[key]['contacts'].append(c)
+    return sorted(
+        (groups[k] for k in order),
+        key=lambda g: (g['label'] == 'Other', g['label']),
+    )
 
 
 class Contact(models.Model):
@@ -181,6 +204,7 @@ class Contact(models.Model):
         BOARD_MEMBER = 'board_member', 'Board Member'
         ASSOCIATION_MEMBER = 'association_member', 'Association Member'
         ON_SITE_STAFF = 'on_site_staff', 'On-site Staff'
+        LEAD = 'lead', 'Lead'
         VENDOR = 'vendor', 'Vendor / Contractor'
         STAFF_ADJACENT = 'staff_adjacent', 'Staff'
         OTHER = 'other', 'Other'

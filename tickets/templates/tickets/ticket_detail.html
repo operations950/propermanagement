@@ -996,6 +996,11 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        {% if photo_attachments %}
+        <style>
+        .photo-attach-checkbox:checked + .photo-attach-thumb { border-color: var(--bs-primary); box-shadow: 0 0 0 2px var(--bs-primary); }
+        </style>
+        {% endif %}
         <div class="row">
           <div class="col-md-6 mb-3 mb-md-0">
                 <h6 class="d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Text</h6>
@@ -1011,6 +1016,19 @@
                             {% endfor %}
                         </div>
                     </div>
+                    {% if photo_attachments %}
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium mb-1">Attach photos (optional — sends as MMS)</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for a in photo_attachments %}
+                            <label class="mb-0" style="cursor: pointer;">
+                                <input type="checkbox" name="attachment_ids" value="{{ a.pk }}" class="d-none photo-attach-checkbox">
+                                <img src="{{ a.file.url }}" alt="{{ a.caption }}" class="photo-attach-thumb rounded" style="width: 52px; height: 52px; object-fit: cover; border: 2px solid transparent;">
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
                     <textarea name="body" class="form-control mb-2" rows="4" placeholder="Message…" required></textarea>
                     <button class="btn btn-primary btn-sm w-100" type="submit">Send Text</button>
                 </form>
@@ -1032,6 +1050,19 @@
                         </div>
                     </div>
                     <input type="text" name="subject" class="form-control mb-2" placeholder="Subject" required>
+                    {% if photo_attachments %}
+                    <div class="mb-2">
+                        <label class="form-label small fw-medium mb-1">Attach photos (optional)</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for a in photo_attachments %}
+                            <label class="mb-0" style="cursor: pointer;">
+                                <input type="checkbox" name="attachment_ids" value="{{ a.pk }}" class="d-none photo-attach-checkbox">
+                                <img src="{{ a.file.url }}" alt="{{ a.caption }}" class="photo-attach-thumb rounded" style="width: 52px; height: 52px; object-fit: cover; border: 2px solid transparent;">
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
                     <textarea name="body" class="form-control mb-2" rows="4" placeholder="Message…" required></textarea>
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="group" value="1" id="followup-group-check">

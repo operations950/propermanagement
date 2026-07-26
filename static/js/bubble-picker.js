@@ -498,6 +498,40 @@
     }
   }
 
+  // ---- Optional group tier layered on top of an existing pool (single ---
+  // or multi mode) — for a pool that would otherwise dump 20+ flat bubbles
+  // on the page at once (e.g. every Vendor/Contractor, grouped by trade).
+  // Purely a visual show/hide layer: the real selectable bubbles still
+  // live in ordinary [data-bubble-pool] elements, so initSinglePicker/
+  // initMultiPicker's own click-to-lock logic needs no changes at all —
+  // data-no-autolock on the group/back buttons (the same escape hatch the
+  // due-date "Custom" bubble already uses) is what stops THEM from being
+  // treated as a selectable value. Mirrors the drilldown picker's own
+  // tier1/tier2 show-one-at-a-time convention for consistency.
+
+  function initGroupTiers(root) {
+    const tier1 = root.querySelector('[data-group-tier]');
+    if (!tier1) return;
+    const groupPools = Array.from(root.querySelectorAll('[data-bubble-pool][data-group]'));
+
+    function showOnly(pool) {
+      tier1.hidden = Boolean(pool);
+      groupPools.forEach(function (p) { p.hidden = p !== pool; });
+    }
+
+    tier1.querySelectorAll('[data-group-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const pool = root.querySelector('[data-bubble-pool][data-group="' + cssEscape(btn.dataset.groupToggle) + '"]');
+        if (pool) showOnly(pool);
+      });
+    });
+
+    groupPools.forEach(function (pool) {
+      const backBtn = pool.querySelector('[data-back]');
+      if (backBtn) backBtn.addEventListener('click', function () { showOnly(null); });
+    });
+  }
+
   // ---- Optional text filter for a (currently dormant) >50-item tier ---
   // Rendered as the first child inside its own [data-bubble-pool], so it
   // shows/hides for free whenever the drilldown picker toggles that pool.
@@ -524,6 +558,7 @@
       else if (root.dataset.mode === 'drilldown-multi') initDrilldownMultiPicker(root);
       else if (root.dataset.mode === 'multi') initMultiPicker(root);
       else initSinglePicker(root);
+      initGroupTiers(root);
     });
     document.querySelectorAll('[data-contact-filter]').forEach(initContactFilter);
     document.querySelectorAll('[data-bubble-filter]').forEach(initBubbleFilter);

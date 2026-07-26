@@ -18,15 +18,15 @@ from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
 from core.models import (
-    Contact, Property, PropertyAttribute, StaffProfile, is_valid_phone, properties_by_type,
-    property_dropdown_queryset,
+    Contact, Property, PropertyAttribute, StaffProfile, group_vendors_by_trade, is_valid_phone,
+    properties_by_type, property_dropdown_queryset,
 )
 from messaging.services import _followup_result_message, _group_followups, fetch_quo_conversation, send_followup_bulk
 
 from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
 from .models import (
-    FollowUpLog, TaskGroup, TaskPackage, TaskPackageTemplate, Ticket, TicketAssignmentLog, TicketChecklistItem,
-    TicketContact, TicketStatusNote, TicketTemplate, TicketView,
+    FollowUpLog, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket, TicketAssignmentLog,
+    TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate, TicketView,
 )
 from .services.package_engine import unblock_dependents
 
@@ -781,7 +781,9 @@ def ticket_list(request):
         'selected_due_label': due_labels.get(due),
         'q': q,
         'staff_list': StaffProfile.objects.select_related('user'),
-        'vendor_list': Contact.objects.filter(contact_type=Contact.ContactType.VENDOR),
+        'vendor_groups': group_vendors_by_trade(
+            Contact.objects.filter(contact_type=Contact.ContactType.VENDOR).order_by('name')
+        ),
         'properties_by_type': properties_by_type(),
     })
 
@@ -1177,6 +1179,7 @@ def ticket_detail(request, pk):
             vendor_link_cooldown_hours_left = max(1, round(24 - elapsed.total_seconds() / 3600))
 
     back_url = _safe_back_url(request, exclude_path=request.path)
+    all_attachments = list(ticket.attachments.all().order_by('-created_at'))
 
     return render(request, 'tickets/ticket_detail.html', {
         'ticket': ticket,
@@ -1188,7 +1191,8 @@ def ticket_detail(request, pk):
         )[:10],
         'followup_text_parties': [c for c in followup_parties if c.phone],
         'followup_email_parties': [c for c in followup_parties if c.email],
-        'attachments': ticket.attachments.all().order_by('-created_at'),
+        'attachments': all_attachments,
+        'photo_attachments': [a for a in all_attachments if not a.is_video],
         'ticket_contacts': linked_ticket_contacts,
         'owner_contacts': contact_pools['owner_contacts'],
         'owner_ids': contact_pools['owner_ids'],
@@ -1569,6 +1573,34 @@ def ticket_template_edit(request, pk):
     context = _ticket_template_form_context(form, today)
     context['template'] = template
     return render(request, 'tickets/ticket_template_form.html', context)
+
+
+@login_required
+def task_step_duplicate(request, step_pk):
+    """Copies a Task (TicketTemplate) and its membership in the Function/
+    Task Group it lives in, landing on the copy's edit form so the details
+    that should differ (title, date, target) can be adjusted right away
+    rather than duplicating in place and leaving two identical tasks."""
+    if request.method != 'POST':
+        return redirect('dashboard')
+    step = get_object_or_404(TaskPackageTemplate, pk=step_pk)
+    original = step.template
+
+    new_template = TicketTemplate.objects.get(pk=original.pk)
+    new_template.pk = None
+    new_template.title = f'{original.title} (copy)'
+    new_template.save()
+    new_template.required_attributes.set(original.required_attributes.all())
+    for item in original.checklist_items.all():
+        TemplateChecklistItem.objects.create(
+            template=new_template, text=item.text, sequence_order=item.sequence_order, is_required=item.is_required,
+        )
+    TaskPackageTemplate.objects.create(
+        package=step.package, task_group=step.task_group, template=new_template,
+        sequence_order=step.package.steps.count(),
+    )
+    messages.success(request, f'Duplicated "{original.title}" — now editing the copy.')
+    return redirect('ticket_template_edit', pk=new_template.pk)
 
 
 _TARGET_TYPE_ORDER = ['company', 'every_property', 'property_category', 'contact', 'property']
@@ -1970,9 +2002,15 @@ def ticket_followup_sms(request, pk):
     if request.method == 'POST':
         contact_ids = request.POST.getlist('contact_ids')
         body = request.POST.get('body', '').strip()
+        attachment_ids = request.POST.getlist('attachment_ids')
+        media_urls = [
+            request.build_absolute_uri(a.file.url)
+            for a in ticket.attachments.filter(pk__in=attachment_ids) if not a.is_video
+        ] if attachment_ids else None
         if contact_ids and body:
             logs = send_followup_bulk(
                 FollowUpLog.Channel.SMS, contact_ids, body, ticket=ticket, user=request.user,
+                media_urls=media_urls,
             )
             if is_ajax:
                 # Contractor Communication's compose box: the new bubble in
@@ -2053,10 +2091,15 @@ def ticket_followup_email(request, pk):
         subject = request.POST.get('subject', '').strip()
         body = request.POST.get('body', '').strip()
         group = request.POST.get('group') == '1'
+        attachment_ids = request.POST.getlist('attachment_ids')
+        attachments = (
+            [a for a in ticket.attachments.filter(pk__in=attachment_ids) if not a.is_video]
+            if attachment_ids else None
+        )
         if contact_ids and subject and body:
             logs = send_followup_bulk(
                 FollowUpLog.Channel.EMAIL, contact_ids, body, ticket=ticket, subject=subject,
-                group=group, user=request.user,
+                group=group, user=request.user, attachments=attachments,
             )
             if is_ajax:
                 succeeded = sum(1 for log in logs if log.success)

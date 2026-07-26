@@ -3,11 +3,31 @@ import re
 import uuid
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage, send_mail
 
 from tickets.models import FollowUpLog
 
 logger = logging.getLogger(__name__)
+
+
+def _send_email(subject, body, from_email, to_list, attachments=None):
+    """send_mail() has no way to carry attachments — this is the one extra
+    step needed to reuse it here: build the same message via EmailMessage
+    instead, which every configured backend (console/SMTP/GmailAPIBackend)
+    already knows how to send identically. attachments is a list of
+    TicketAttachment (photos only — see ticket_followup_email's caller)."""
+    if not attachments:
+        send_mail(subject, body, from_email, to_list)
+        return
+    email = EmailMessage(subject, body, from_email, to_list)
+    for attachment in attachments:
+        name = attachment.file.name.rsplit('/', 1)[-1]
+        attachment.file.open('rb')
+        try:
+            email.attach(name, attachment.file.read())
+        finally:
+            attachment.file.close()
+    email.send()
 
 
 def _to_e164(phone):
@@ -157,7 +177,7 @@ def _record_sent_message(data, ticket):
         ticket.save(update_fields=['source_reference'])
 
 
-def send_via_quo(to_number, body, ticket=None):
+def send_via_quo(to_number, body, ticket=None, media_urls=None):
     """Send `body` to `to_number` through Quo — whichever line is already
     talking to them if a thread exists (so the reply lands in the same
     thread fetch_quo_conversation reads from), or settings.QUO_DEFAULT_FROM_NUMBER
@@ -175,7 +195,12 @@ def send_via_quo(to_number, body, ticket=None):
     send lands in (see _record_sent_message) — the first Quo send tied to
     a ticket is what establishes that binding, since a manually-created
     ticket has no conversation_id of its own until it actually talks to
-    someone through Quo."""
+    someone through Quo.
+
+    `media_urls`, when given, sends as MMS — Quo (OpenPhone's API) expects
+    publicly-fetchable URLs, not uploaded bytes, so the caller must already
+    have absolute URLs (see ticket_followup_sms building these from
+    TicketAttachment.file.url via request.build_absolute_uri)."""
     participant = _to_e164(to_number)
     if not participant:
         return False
@@ -194,10 +219,13 @@ def send_via_quo(to_number, body, ticket=None):
     from intake.adapters.quo import QUO_API_BASE
     import requests
 
+    payload = {'content': body, 'from': from_number, 'to': [participant]}
+    if media_urls:
+        payload['mediaUrls'] = media_urls
     resp = requests.post(
         f'{QUO_API_BASE}/v1/messages',
         headers={'Authorization': settings.QUO_API_KEY, 'Content-Type': 'application/json'},
-        json={'content': body, 'from': from_number, 'to': [participant]},
+        json=payload,
         timeout=15,
     )
     resp.raise_for_status()
@@ -277,7 +305,10 @@ def send_followup(ticket, channel, to_override=None, user=None, custom_body=None
     return log
 
 
-def send_followup_bulk(channel, contact_ids, body, ticket=None, property=None, subject='', group=False, user=None):
+def send_followup_bulk(
+    channel, contact_ids, body, ticket=None, property=None, subject='', group=False, user=None,
+    attachments=None, media_urls=None,
+):
     """The Follow-Up modal's send action — and the property dashboard's
     Communication card — any number of recipients, one FollowUpLog row per
     contact (even for a combined group email) so "who did I message and
@@ -288,7 +319,12 @@ def send_followup_bulk(channel, contact_ids, body, ticket=None, property=None, s
 
     Exactly one of `ticket`/`property` must be set — matches
     FollowUpLog's own CheckConstraint, this is just where that invariant
-    first gets enforced rather than failing at .save()."""
+    first gets enforced rather than failing at .save().
+
+    `attachments` (TicketAttachment objects, for EMAIL) and `media_urls`
+    (absolute URL strings, for SMS/MMS) are both optional and only ever
+    populated by the ticket Follow-Up modal's photo picker — the property
+    Communication card has no ticket attachments to draw from."""
     if bool(ticket) == bool(property):
         raise ValueError('send_followup_bulk requires exactly one of ticket or property.')
     context = ticket or property
@@ -309,7 +345,7 @@ def send_followup_bulk(channel, contact_ids, body, ticket=None, property=None, s
 
     if channel == FollowUpLog.Channel.EMAIL and group:
         try:
-            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [c.email for c in contacts])
+            _send_email(subject, body, settings.DEFAULT_FROM_EMAIL, [c.email for c in contacts], attachments)
             success, error = True, ''
         except Exception as exc:
             success, error = False, str(exc)[:300]
@@ -326,11 +362,11 @@ def send_followup_bulk(channel, contact_ids, body, ticket=None, property=None, s
             try:
                 if channel == FollowUpLog.Channel.SMS:
                     sent_to = contact.phone
-                    if not send_via_quo(sent_to, body, ticket=ticket):
+                    if not send_via_quo(sent_to, body, ticket=ticket, media_urls=media_urls):
                         get_sms_backend().send(sent_to, body)
                 else:
                     sent_to = contact.email
-                    send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [sent_to])
+                    _send_email(subject, body, settings.DEFAULT_FROM_EMAIL, [sent_to], attachments)
             except Exception as exc:
                 success, error = False, str(exc)[:300]
                 logger.exception('Follow-up send failed for %s contact %s', context, contact.pk)
