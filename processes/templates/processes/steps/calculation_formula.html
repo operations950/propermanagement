@@ -1,0 +1,9 @@
+{% load process_extras %}
+<div class="small mb-1">
+    {% if step.config.output_label %}{{ step.config.output_label }}: {% endif %}
+    <strong>{{ step|evaluate_formula }}</strong>
+</div>
+<form method="post" action="{% url 'process_run_step_update' step.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-primary">Accept</button>
+</form>

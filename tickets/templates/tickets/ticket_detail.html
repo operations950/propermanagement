@@ -280,101 +280,11 @@
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Processes</h6>
 
-                {% for instance in process_instances %}
-                <div class="mb-3 {% if not forloop.last %}pb-3 border-bottom{% endif %}">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <div class="fw-bold">{{ instance.process_template.name }}</div>
-                        {% with progress=instance.progress %}
-                        {% if progress %}
-                        <span class="badge rounded-pill bg-light text-dark border">{{ progress.0 }}/{{ progress.1 }}</span>
-                        {% endif %}
-                        {% endwith %}
-                    </div>
-
-                    {% with tmpl_attachments=instance.process_template.attachments.all %}
-                    {% if tmpl_attachments %}
-                    <div class="small mb-2" style="color: var(--ink-muted);">
-                        {% for att in tmpl_attachments %}
-                        <div><i data-lucide="paperclip" class="icon"></i> <a href="{{ att.file.url }}" target="_blank" rel="noopener">{{ att.caption|default:att.file.name }}</a>{% if att.template_item %} — {{ att.template_item.text }}{% endif %}</div>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    {% endwith %}
-
-                    <ul class="list-unstyled mb-0">
-                        {% for item in instance.items.all %}
-                        <li class="mb-2">
-                            <form method="post" action="{% url 'process_item_toggle' item.pk %}" class="d-flex align-items-center gap-2">
-                                {% csrf_token %}
-                                <input class="form-check-input mt-0" type="checkbox"
-                                    {% if item.is_checked %}checked{% endif %}
-                                    {% if not item.is_checked and item.requires_upload and not item.attachments.all %}disabled{% endif %}
-                                    onchange="this.form.submit()" id="process-item-{{ item.pk }}">
-                                <label class="form-check-label {% if item.is_checked %}text-muted{% endif %}" style="{% if item.is_checked %}text-decoration: line-through;{% endif %}" for="process-item-{{ item.pk }}">
-                                    {{ item.text }}
-                                </label>
-                            </form>
-
-                            {% if item.action_type == 'google_meet' %}
-                                {% if item.meeting_link %}
-                                <div class="small ms-4 mt-1">
-                                    <div>{{ item.meeting_datetime|date:"M j, Y g:i A" }}</div>
-                                    <div><a href="{{ item.meeting_link }}" target="_blank" rel="noopener">Join Google Meet</a>{% if item.meeting_dial_in %} — {{ item.meeting_dial_in }}{% endif %}</div>
-                                </div>
-                                {% else %}
-                                <div class="ms-4 mt-1">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="var el=document.getElementById('meet-form-{{ item.pk }}'); el.hidden=!el.hidden;">Schedule Google Meet</button>
-                                    <form id="meet-form-{{ item.pk }}" method="post" action="{% url 'process_item_schedule_meet' item.pk %}" class="d-flex align-items-center gap-2 mt-2" hidden>
-                                        {% csrf_token %}
-                                        <input type="datetime-local" name="meeting_datetime" class="form-control form-control-sm" style="max-width: 220px;" required>
-                                        <button type="submit" class="btn btn-sm btn-primary">Schedule</button>
-                                    </form>
-                                </div>
-                                {% endif %}
-                            {% elif item.action_type == 'document_template' %}
-                                <div class="ms-4 mt-1">
-                                    <a href="{% url 'process_item_document' item.pk %}" class="small">
-                                        {% if item.document %}Prepared — view/edit{% else %}Not started — prepare document{% endif %}
-                                    </a>
-                                </div>
-                            {% elif item.action_type == 'email_link' %}
-                                <div class="ms-4 mt-1">
-                                    <a href="{% url 'property_detail' ticket.property_id %}#communication" class="small">Go to Communication card →</a>
-                                </div>
-                            {% endif %}
-
-                            {% if item.requires_upload %}
-                            <div class="ms-4 mt-1">
-                                {% for att in item.attachments.all %}
-                                <div class="small"><i data-lucide="paperclip" class="icon"></i> <a href="{{ att.file.url }}" target="_blank" rel="noopener">{{ att.caption|default:att.file.name }}</a></div>
-                                {% endfor %}
-                                {% if not item.is_checked %}
-                                <form method="post" action="{% url 'process_item_upload' item.pk %}" enctype="multipart/form-data" class="d-flex align-items-center gap-2 mt-1">
-                                    {% csrf_token %}
-                                    {{ process_upload_form.file }}
-                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Attach</button>
-                                </form>
-                                {% endif %}
-                            </div>
-                            {% endif %}
-                        </li>
-                        {% endfor %}
-                    </ul>
-                </div>
+                {% for run in process_runs %}
+                {% include "processes/_run_card.html" with run=run %}
                 {% endfor %}
 
-                <form method="post" action="{% url 'process_attach' ticket.pk %}" class="{% if process_instances %}mt-2{% endif %}">
-                    {% csrf_token %}
-                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="process_template_ids">
-                        <div class="bubble-slot" data-bubble-slot data-empty-text="Attach a checklist…"></div>
-                        <div class="bubble-pool" data-bubble-pool>
-                            {% for tmpl in attachable_process_templates %}
-                            <button type="button" class="bubble" data-value="{{ tmpl.pk }}" data-label="{{ tmpl.name }}">{{ tmpl.name }}</button>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-sm btn-outline-primary">Attach</button>
-                </form>
+                {% include "processes/_attach_form.html" with target_type="ticket" target_id=ticket.pk has_runs=process_runs %}
             </div>
         </div>
 

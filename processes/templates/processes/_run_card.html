@@ -1,0 +1,60 @@
+{% load process_extras %}
+<div class="mb-3 {% if not forloop.last %}pb-3 border-bottom{% endif %}">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+        <div class="fw-bold">{{ run.process_template.name }}</div>
+        {% with progress=run.progress %}
+        {% if progress %}
+        <span class="badge rounded-pill bg-light text-dark border">{{ progress.0 }}/{{ progress.1 }}</span>
+        {% endif %}
+        {% endwith %}
+    </div>
+
+    {% with tmpl_attachments=run.process_template.attachments.all %}
+    {% if tmpl_attachments %}
+    <div class="small mb-2" style="color: var(--ink-muted);">
+        {% for att in tmpl_attachments %}
+        <div><i data-lucide="paperclip" class="icon"></i> <a href="{{ att.file.url }}" target="_blank" rel="noopener">{{ att.caption|default:att.file.name }}</a>{% if att.template_step %} — {{ att.template_step.label }}{% endif %}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <ul class="list-unstyled mb-0">
+        {% for step in run.steps.all %}
+        {% if step.is_required or step.is_complete %}
+        <li class="mb-2">
+            <div class="d-flex align-items-start gap-2">
+                <i data-lucide="{% if step.is_complete %}check-circle-2{% else %}circle{% endif %}" class="icon mt-1" style="{% if step.is_complete %}color: var(--status-good);{% else %}color: var(--ink-muted);{% endif %}"></i>
+                <div class="flex-grow-1">
+                    <div class="{% if step.is_complete %}text-muted{% endif %}" style="{% if step.is_complete %}text-decoration: line-through;{% endif %}">
+                        {{ step.label }}{% if not step.is_required %} <span class="small text-muted">(optional)</span>{% endif %}
+                    </div>
+                    {% if step.help_text %}<div class="small text-muted">{{ step.help_text }}</div>{% endif %}
+
+                    {% if not step.is_complete %}
+                    <div class="mt-1">
+                        {% include "processes/steps/"|add:step.step_type|add:".html" with step=step %}
+                    </div>
+                    {% else %}
+                    <div class="small text-muted mt-1">{{ step|step_response_summary }}</div>
+                    {% endif %}
+
+                    {% if step.attachments.all %}
+                    <div class="mt-1">
+                        {% for att in step.attachments.all %}
+                        <div class="small"><i data-lucide="paperclip" class="icon"></i> <a href="{{ att.file.url }}" target="_blank" rel="noopener">{{ att.caption|default:att.file.name }}</a></div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </li>
+        {% endif %}
+        {% endfor %}
+    </ul>
+
+    <form method="post" action="{% url 'process_run_external_link_create' run.pk %}" class="mt-2" onsubmit="return confirm('Create a secure external link for this process?');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i data-lucide="link" class="icon"></i> Create external link</button>
+    </form>
+</div>

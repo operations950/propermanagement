@@ -163,6 +163,18 @@
         </form>
     </div>
 </div>
+
+<div class="card mb-3" style="max-width: 640px; border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Processes</h6>
+
+        {% for run in process_runs %}
+        {% include "processes/_run_card.html" with run=run %}
+        {% endfor %}
+
+        {% include "processes/_attach_form.html" with target_type="contact" target_id=contact.pk has_runs=process_runs %}
+    </div>
+</div>
 {% endif %}
 
 <script>

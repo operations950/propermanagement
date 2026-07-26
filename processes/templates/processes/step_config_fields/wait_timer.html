@@ -1,0 +1,14 @@
+<div class="row g-2 mt-1">
+    <div class="col-md-6">
+        <label class="form-label small fw-medium mb-1">Wait mode</label>
+        <select name="config_wait_mode" class="form-select form-select-sm">
+            <option value="manual_resume" {% if step.config.wait_mode == 'manual_resume' %}selected{% endif %}>Manual resume only</option>
+            <option value="duration" {% if step.config.wait_mode == 'duration' %}selected{% endif %}>Fixed duration</option>
+            <option value="until_date" {% if step.config.wait_mode == 'until_date' %}selected{% endif %}>Until a specific date</option>
+        </select>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-medium mb-1">Duration (days)</label>
+        <input type="number" name="config_duration_days" class="form-control form-control-sm" value="{{ step.config.duration_days|default:'' }}">
+    </div>
+</div>

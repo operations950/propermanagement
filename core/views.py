@@ -17,6 +17,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
+from processes.models import ProcessTemplate
 from tickets.models import (
     Frequency, FollowUpLog, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate,
     Ticket, TicketTemplate,
@@ -752,6 +753,8 @@ def property_detail(request, pk):
         'attributes': PropertyAttribute.objects.filter(is_active=True),
         'assigned_attribute_ids': assigned_attribute_ids,
         'followup_batches': _group_followups(prop.followups.select_related('contact')[:30]),
+        'process_runs': prop.process_runs.select_related('process_template').prefetch_related('steps__attachments'),
+        'attachable_process_templates': ProcessTemplate.objects.filter(is_active=True),
         'now': timezone.now(),
     })
 
@@ -996,6 +999,8 @@ def contact_edit(request, pk):
         form = ContactForm(instance=contact)
     return render(request, 'core/contact_form.html', _contact_form_context(
         form, is_new=False, contact=contact, documents=contact.documents.all(),
+        process_runs=contact.process_runs.select_related('process_template').prefetch_related('steps__attachments'),
+        attachable_process_templates=ProcessTemplate.objects.filter(is_active=True),
     ))
 
 

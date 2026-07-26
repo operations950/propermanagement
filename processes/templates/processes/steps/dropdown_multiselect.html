@@ -1,0 +1,9 @@
+<form method="post" action="{% url 'process_run_step_update' step.pk %}" class="d-flex align-items-center gap-2">
+    {% csrf_token %}
+    <select name="selected" class="form-select form-select-sm" style="max-width: 260px;" {% if step.config.multi %}multiple{% endif %}>
+        {% for option in step.config.options %}
+        <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+</form>

@@ -1,0 +1,11 @@
+<div class="row g-2 mt-1">
+    <div class="col-md-8">
+        <label class="form-label small fw-medium mb-1">Formula <span class="text-muted">(use {step_key} to reference another step's number, e.g. "{balance} * 1.05")</span></label>
+        <input type="text" name="config_formula" class="form-control form-control-sm" value="{{ step.config.formula }}">
+    </div>
+    <div class="col-md-4">
+        <label class="form-label small fw-medium mb-1">Output label</label>
+        <input type="text" name="config_output_label" class="form-control form-control-sm" value="{{ step.config.output_label }}">
+    </div>
+</div>
+<p class="small text-muted mt-1">This step's own key: <code>{{ step.step_key }}</code></p>

@@ -368,6 +368,18 @@
     </div>
 </div>
 
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Processes</h6>
+
+        {% for run in process_runs %}
+        {% include "processes/_run_card.html" with run=run %}
+        {% endfor %}
+
+        {% include "processes/_attach_form.html" with target_type="property" target_id=property.pk has_runs=process_runs %}
+    </div>
+</div>
+
 <script>
 (function () {
     // Communication card: submit via fetch so a send doesn't reload the

@@ -1,0 +1,12 @@
+{% load process_extras %}
+<form method="post" action="{% url 'process_run_step_update' step.pk %}" class="d-flex align-items-center gap-2">
+    {% csrf_token %}
+    <select name="record_id" class="form-select form-select-sm" style="max-width: 260px;">
+        <option value="">Choose {{ step.config.target }}…</option>
+        {% record_options step.config.target as options %}
+        {% for id, label in options %}
+        <option value="{{ id }}">{{ label }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+</form>

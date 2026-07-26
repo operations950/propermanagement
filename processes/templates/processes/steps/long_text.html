@@ -1,0 +1,5 @@
+<form method="post" action="{% url 'process_run_step_update' step.pk %}">
+    {% csrf_token %}
+    <textarea name="value" class="form-control form-control-sm" rows="2" style="max-width: 420px;"></textarea>
+    <button type="submit" class="btn btn-sm btn-outline-primary mt-1">Save</button>
+</form>

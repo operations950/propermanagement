@@ -291,6 +291,10 @@ QUO_SCAN_PHONE_NUMBER_ID = os.environ.get('QUO_SCAN_PHONE_NUMBER_ID', '')
 # conversation", ticket detail's Contractor Communication box) even if the
 # regular Quo poller's own cursor never happened to cover that thread.
 QUO_CONTACT_LINK_INTERVAL_MINUTES = int(os.environ.get('QUO_CONTACT_LINK_INTERVAL_MINUTES', '120'))
+# How often resume_expired_wait_steps checks for WAIT_TIMER process steps
+# whose configured duration has elapsed — a wait step isn't time-critical
+# to the minute, so this runs on a coarser cadence than the intake polls.
+PROCESS_WAIT_CHECK_INTERVAL_MINUTES = int(os.environ.get('PROCESS_WAIT_CHECK_INTERVAL_MINUTES', '60'))
 GOOGLE_CALENDAR_CREDENTIALS_PATH = os.environ.get('GOOGLE_CALENDAR_CREDENTIALS_PATH', '')
 AIRBNB_API_KEY = os.environ.get('AIRBNB_API_KEY', '')
 VRBO_API_KEY = os.environ.get('VRBO_API_KEY', '')

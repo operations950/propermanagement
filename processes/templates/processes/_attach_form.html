@@ -1,0 +1,14 @@
+<form method="post" action="{% url 'process_run_attach' %}" class="{% if has_runs %}mt-2{% endif %}">
+    {% csrf_token %}
+    <input type="hidden" name="target_type" value="{{ target_type }}">
+    <input type="hidden" name="target_id" value="{{ target_id }}">
+    <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="process_template_ids">
+        <div class="bubble-slot" data-bubble-slot data-empty-text="Attach a process…"></div>
+        <div class="bubble-pool" data-bubble-pool>
+            {% for tmpl in attachable_process_templates %}
+            <button type="button" class="bubble" data-value="{{ tmpl.pk }}" data-label="{{ tmpl.name }}">{{ tmpl.name }}</button>
+            {% endfor %}
+        </div>
+    </div>
+    <button type="submit" class="btn btn-sm btn-outline-primary">Attach</button>
+</form>

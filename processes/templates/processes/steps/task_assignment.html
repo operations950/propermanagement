@@ -1,0 +1,13 @@
+{% if step.response.ticket_id %}
+<div class="small mb-1"><a href="{% url 'ticket_detail' step.response.ticket_id %}">View task #{{ step.response.ticket_id }} →</a></div>
+<form method="post" action="{% url 'process_run_step_complete_task' step.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-primary">Mark complete</button>
+</form>
+{% else %}
+<form method="post" action="{% url 'process_run_step_assign_task' step.pk %}" class="d-flex align-items-center gap-2">
+    {% csrf_token %}
+    <input type="number" name="due_days" class="form-control form-control-sm" placeholder="Due in days" style="max-width: 140px;" value="{{ step.config.default_days_until_due }}">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Create task</button>
+</form>
+{% endif %}

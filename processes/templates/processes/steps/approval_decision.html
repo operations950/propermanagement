@@ -1,0 +1,15 @@
+<div class="d-flex gap-2 flex-wrap">
+    {% for route in step.config.routes %}
+    <form method="post" action="{% url 'process_run_step_decide' step.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="route_label" value="{{ route.label }}">
+        <button type="submit" class="btn btn-sm btn-outline-primary">{{ route.label }}</button>
+    </form>
+    {% empty %}
+    <form method="post" action="{% url 'process_run_step_decide' step.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="route_label" value="Approved">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Approve</button>
+    </form>
+    {% endfor %}
+</div>

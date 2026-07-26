@@ -1,0 +1,61 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ run.process_template.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-4" style="max-width: 640px;">
+    <h4 class="mb-1">{{ run.process_template.name }}</h4>
+    <p class="text-muted small mb-4">Complete the steps below. You don't need an account — this link is just for you.</p>
+
+    {% for step in steps %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex align-items-start gap-2">
+                <i class="bi" style="width: 1.2rem;">{% if step.is_complete %}✅{% else %}⬜{% endif %}</i>
+                <div class="flex-grow-1">
+                    <div class="fw-medium {% if step.is_complete %}text-muted{% endif %}">{{ step.label }}</div>
+                    {% if step.help_text %}<div class="small text-muted mb-2">{{ step.help_text }}</div>{% endif %}
+
+                    {% if not step.is_complete %}
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="hidden" name="step_id" value="{{ step.pk }}">
+                        {% if step.step_type == 'checkbox' %}
+                        <button type="submit" class="btn btn-sm btn-primary">Mark complete</button>
+                        {% elif step.step_type == 'checklist' %}
+                        {% for item in step.config.items %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="checklist_item" value="{{ item }}" id="ext-{{ step.pk }}-{{ forloop.counter }}">
+                            <label class="form-check-label small" for="ext-{{ step.pk }}-{{ forloop.counter }}">{{ item }}</label>
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-sm btn-primary mt-1">Save</button>
+                        {% elif step.step_type == 'short_text' or step.step_type == 'long_text' %}
+                        <input type="text" name="value" class="form-control form-control-sm mb-1">
+                        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                        {% elif step.step_type == 'digital_signature' or step.step_type == 'document_upload' or step.step_type == 'photo_video_upload' %}
+                        <input type="hidden" name="action" value="upload">
+                        {% if step.step_type == 'digital_signature' %}
+                        <p class="small text-muted mb-1">Take a photo of your signature, or upload a signed file.</p>
+                        {% endif %}
+                        <input type="file" name="file" class="form-control form-control-sm my-1" required>
+                        <button type="submit" class="btn btn-sm btn-primary">Upload</button>
+                        {% endif %}
+                    </form>
+                    {% else %}
+                    <div class="small text-muted">Done</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-muted">Nothing assigned to you on this link.</p>
+    {% endfor %}
+</div>
+</body>
+</html>

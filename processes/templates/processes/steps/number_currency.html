@@ -1,0 +1,6 @@
+<form method="post" action="{% url 'process_run_step_update' step.pk %}" class="d-flex align-items-center gap-2">
+    {% csrf_token %}
+    {% if step.config.is_currency %}<span class="small">$</span>{% endif %}
+    <input type="number" step="0.01" name="value" class="form-control form-control-sm" style="max-width: 160px;">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+</form>

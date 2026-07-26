@@ -1,0 +1,11 @@
+{% load process_extras %}
+<form method="post" action="{% url 'process_run_step_update' step.pk %}">
+    {% csrf_token %}
+    {% for item in step.config.items %}
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="checklist_item" value="{{ item }}" id="cl-{{ step.pk }}-{{ forloop.counter }}">
+        <label class="form-check-label small" for="cl-{{ step.pk }}-{{ forloop.counter }}">{{ item }}</label>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-sm btn-outline-primary mt-1">Save</button>
+</form>

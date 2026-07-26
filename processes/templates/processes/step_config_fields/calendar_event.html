@@ -1,0 +1,12 @@
+<div class="row g-2 mt-1">
+    <div class="col-md-6 d-flex align-items-end">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="config_add_meet" id="meet-{{ step.pk }}" {% if step.config.add_meet %}checked{% endif %}>
+            <label class="form-check-label small" for="meet-{{ step.pk }}">Add a Google Meet link</label>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-medium mb-1">Default duration (minutes)</label>
+        <input type="number" name="config_duration_minutes" class="form-control form-control-sm" value="{{ step.config.default_duration_minutes|default:60 }}">
+    </div>
+</div>

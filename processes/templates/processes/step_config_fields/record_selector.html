@@ -1,0 +1,8 @@
+<div class="mt-2">
+    <label class="form-label small fw-medium mb-1">Links to</label>
+    <select name="config_target" class="form-select form-select-sm" style="max-width: 200px;">
+        <option value="property" {% if step.config.target == 'property' %}selected{% endif %}>Property</option>
+        <option value="contact" {% if step.config.target == 'contact' %}selected{% endif %}>Contact</option>
+        <option value="ticket" {% if step.config.target == 'ticket' %}selected{% endif %}>Ticket</option>
+    </select>
+</div>

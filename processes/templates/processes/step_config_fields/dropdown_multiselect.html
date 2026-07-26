@@ -1,0 +1,13 @@
+{% load process_extras %}
+<div class="row g-2 mt-1">
+    <div class="col-md-8">
+        <label class="form-label small fw-medium mb-1">Options (one per line)</label>
+        <textarea name="config_options" class="form-control form-control-sm" rows="3">{{ step.config.options|lines_join }}</textarea>
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="config_multi" id="multi-{{ step.pk }}" {% if step.config.multi %}checked{% endif %}>
+            <label class="form-check-label small" for="multi-{{ step.pk }}">Allow multiple selections</label>
+        </div>
+    </div>
+</div>

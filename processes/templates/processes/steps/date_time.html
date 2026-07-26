@@ -1,0 +1,5 @@
+<form method="post" action="{% url 'process_run_step_update' step.pk %}" class="d-flex align-items-center gap-2">
+    {% csrf_token %}
+    <input type="datetime-local" name="value" class="form-control form-control-sm" style="max-width: 220px;">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+</form>

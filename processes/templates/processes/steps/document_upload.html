@@ -1,0 +1,10 @@
+<form method="post" action="{% url 'process_run_step_upload' step.pk %}" enctype="multipart/form-data" class="d-flex align-items-center gap-2 mb-1">
+    {% csrf_token %}
+    <input type="file" name="file" class="form-control form-control-sm" style="max-width: 260px;" required>
+    <input type="text" name="caption" class="form-control form-control-sm" placeholder="Caption (optional)" style="max-width: 160px;">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Attach</button>
+</form>
+<form method="post" action="{% url 'process_run_step_complete_upload' step.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-primary">Mark complete</button>
+</form>

@@ -1,0 +1,5 @@
+{% load process_extras %}
+<form method="post" action="{% url 'process_run_step_update' step.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-primary">Mark complete</button>
+</form>

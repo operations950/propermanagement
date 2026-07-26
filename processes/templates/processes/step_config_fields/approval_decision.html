@@ -1,0 +1,10 @@
+{% load process_extras %}
+<div class="mt-2">
+    <label class="form-label small fw-medium mb-1 d-block">Routes <span class="text-muted">(label + optional target step key to jump to on that choice; leave target blank to just continue)</span></label>
+    {% for i in "123" %}
+    <div class="d-flex gap-2 mb-1">
+        <input type="text" name="config_route_label" class="form-control form-control-sm" placeholder="Route label (e.g. Approve)" style="max-width: 220px;" value="{% route_value step.config.routes forloop.counter0 'label' %}">
+        <input type="text" name="config_route_target" class="form-control form-control-sm" placeholder="Target step key (optional)" style="max-width: 220px;" value="{% route_value step.config.routes forloop.counter0 'target_step_key' %}">
+    </div>
+    {% endfor %}
+</div>

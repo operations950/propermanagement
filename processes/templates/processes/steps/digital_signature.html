@@ -1,0 +1,7 @@
+<div data-signature-pad data-csrf="{{ csrf_token }}" data-upload-url="{% url 'process_run_step_upload' step.pk %}">
+    <canvas data-signature-canvas width="300" height="120" style="border: 1px solid var(--border-hairline); border-radius: 4px; touch-action: none; background: #fff;"></canvas>
+    <div class="mt-1">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-signature-clear>Clear</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-signature-save>Save signature</button>
+    </div>
+</div>

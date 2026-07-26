@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Preview — {{ template.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'process_template_edit' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Back to builder</a>
+<h2 class="page-title my-3">{{ template.name }} <span class="badge bg-secondary">Preview</span></h2>
+{% if template.description %}<p class="text-muted">{{ template.description }}</p>{% endif %}
+
+<ol class="list-group list-group-numbered">
+    {% for step in steps %}
+    <li class="list-group-item">
+        <div class="fw-medium">{{ step.label }}{% if not step.is_required %} <span class="small text-muted">(optional)</span>{% endif %}</div>
+        {% if step.help_text %}<div class="small text-muted">{{ step.help_text }}</div>{% endif %}
+        <div class="small text-muted mt-1">
+            {{ step.get_step_type_display }}
+            {% if step.assignee_role %} · Assigned to {{ step.get_assignee_role_display }}{% endif %}
+            {% if step.requires_upload %} · Requires proof upload{% endif %}
+            {% if step.deadline_days_after_start %} · Due {{ step.deadline_days_after_start }} day(s) after start{% endif %}
+        </div>
+    </li>
+    {% endfor %}
+</ol>
+{% endblock %}

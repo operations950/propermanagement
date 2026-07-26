@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block title %}{{ template.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'process_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Process templates</a>
+
+<div class="card my-3">
+    <div class="card-body">
+        <form method="post" action="{% url 'process_template_edit' template.pk %}">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium">Name</label>
+                    <input type="text" name="name" class="form-control" value="{{ template.name }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium">Category</label>
+                    <input type="text" name="category" class="form-control" value="{{ template.category }}" placeholder="e.g. Short-Term Rental">
+                </div>
+                <div class="col-12">
+                    <label class="form-label small fw-medium">Description</label>
+                    <textarea name="description" class="form-control" rows="2">{{ template.description }}</textarea>
+                </div>
+            </div>
+            <div class="form-check mt-3">
+                <input class="form-check-input" type="checkbox" name="is_active" id="tpl-active" {% if template.is_active %}checked{% endif %}>
+                <label class="form-check-label small" for="tpl-active">Active — attachable to tickets/properties/contacts</label>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                <a href="{% url 'process_template_preview' template.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="eye" class="icon"></i> Preview</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h6 class="mb-2">Steps</h6>
+{% for step in steps %}
+<div class="card mb-2">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <span class="badge rounded-pill bg-light text-dark border">{{ step.get_step_type_display }}</span>
+            <div class="d-flex gap-1">
+                <form method="post" action="{% url 'process_template_step_move' step.pk %}" class="d-inline">
+                    {% csrf_token %}<input type="hidden" name="direction" value="up">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="Move up"><i data-lucide="chevron-up" class="icon"></i></button>
+                </form>
+                <form method="post" action="{% url 'process_template_step_move' step.pk %}" class="d-inline">
+                    {% csrf_token %}<input type="hidden" name="direction" value="down">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="Move down"><i data-lucide="chevron-down" class="icon"></i></button>
+                </form>
+                <form method="post" action="{% url 'process_template_step_delete' step.pk %}" class="d-inline" onsubmit="return confirm('Remove this step?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger"><i data-lucide="trash-2" class="icon"></i></button>
+                </form>
+            </div>
+        </div>
+        <form method="post" action="{% url 'process_template_step_edit' step.pk %}">
+            {% csrf_token %}
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium mb-1">Label</label>
+                    <input type="text" name="label" class="form-control form-control-sm" value="{{ step.label }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium mb-1">Help text</label>
+                    <input type="text" name="help_text" class="form-control form-control-sm" value="{{ step.help_text }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-medium mb-1">Assignee</label>
+                    <select name="assignee_role" class="form-select form-select-sm">
+                        <option value="">— Unassigned —</option>
+                        {% for value, label in assignee_choices %}
+                        <option value="{{ value }}" {% if step.assignee_role == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-medium mb-1">Deadline (days after start)</label>
+                    <input type="number" name="deadline_days_after_start" class="form-control form-control-sm" value="{{ step.deadline_days_after_start|default:'' }}">
+                </div>
+                <div class="col-md-4 d-flex align-items-end gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="is_required" id="req-{{ step.pk }}" {% if step.is_required %}checked{% endif %}>
+                        <label class="form-check-label small" for="req-{{ step.pk }}">Required</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="requires_upload" id="up-{{ step.pk }}" {% if step.requires_upload %}checked{% endif %}>
+                        <label class="form-check-label small" for="up-{{ step.pk }}">Requires proof upload</label>
+                    </div>
+                </div>
+            </div>
+
+            {% include "processes/step_config_fields/"|add:step.step_type|add:".html" with step=step %}
+
+            <button type="submit" class="btn btn-sm btn-outline-primary mt-2">Save step</button>
+        </form>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted small">No steps yet — add one below.</p>
+{% endfor %}
+
+<div class="card">
+    <div class="card-body">
+        <h6 class="card-title">Add a step</h6>
+        <form method="post" action="{% url 'process_template_step_add' template.pk %}" class="d-flex flex-wrap gap-2 align-items-end">
+            {% csrf_token %}
+            <div>
+                <label class="form-label small fw-medium mb-1 d-block">Label</label>
+                <input type="text" name="label" class="form-control form-control-sm" style="width: 220px;" required>
+            </div>
+            <div>
+                <label class="form-label small fw-medium mb-1 d-block">Type</label>
+                <select name="step_type" class="form-select form-select-sm" style="width: 220px;">
+                    {% for value, label in step_types %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> Add step</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

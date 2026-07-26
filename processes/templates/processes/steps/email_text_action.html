@@ -1,0 +1,12 @@
+{% with target_property=step.run.property|default:step.run.ticket.property %}
+{% if target_property %}
+<div class="small mb-1"><a href="{% url 'property_detail' target_property.pk %}#communication">Go to Communication card →</a></div>
+{% elif step.run.ticket %}
+<div class="small mb-1"><a href="{% url 'ticket_detail' step.run.ticket_id %}#communication">Go to Follow-Up →</a></div>
+{% endif %}
+{% endwith %}
+<form method="post" action="{% url 'process_run_step_mark_sent' step.pk %}" class="d-flex align-items-center gap-2">
+    {% csrf_token %}
+    <input type="text" name="note" class="form-control form-control-sm" placeholder="Note (optional)" style="max-width: 220px;">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Mark sent</button>
+</form>

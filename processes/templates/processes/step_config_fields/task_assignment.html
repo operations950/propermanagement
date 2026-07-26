@@ -1,0 +1,17 @@
+<div class="row g-2 mt-1">
+    <div class="col-md-6">
+        <label class="form-label small fw-medium mb-1">Default department</label>
+        <select name="config_default_role" class="form-select form-select-sm">
+            <option value="">— None —</option>
+            {% for value, label in assignee_choices %}
+            {% if value != 'external' %}
+            <option value="{{ value }}" {% if step.config.default_role == value %}selected{% endif %}>{{ label }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label small fw-medium mb-1">Default days until due</label>
+        <input type="number" name="config_default_days_until_due" class="form-control form-control-sm" value="{{ step.config.default_days_until_due|default:'' }}">
+    </div>
+</div>

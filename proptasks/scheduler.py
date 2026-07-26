@@ -58,6 +58,10 @@ def _run_generate_recurring_tickets():
     _run_command('generate_recurring_tickets')
 
 
+def _run_resume_expired_wait_steps():
+    _run_command('resume_expired_wait_steps')
+
+
 def start():
     global _scheduler
     if _scheduler is not None:
@@ -99,6 +103,9 @@ def start():
     _scheduler.add_job(_run_poll_calendar, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(_run_poll_airbnb, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(_run_poll_vrbo, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
+    _scheduler.add_job(
+        _run_resume_expired_wait_steps, 'interval', minutes=settings.PROCESS_WAIT_CHECK_INTERVAL_MINUTES,
+    )
 
     _scheduler.start()
     logger.info('PropTasks scheduler started.')

@@ -2,17 +2,17 @@ from django.contrib import admin
 
 from .models import (
     ProcessAttachment,
-    ProcessInstance,
-    ProcessInstanceDocument,
-    ProcessInstanceItem,
+    ProcessRun,
+    ProcessRunExternalAccess,
+    ProcessRunStep,
     ProcessTemplate,
     ProcessTemplateAttachment,
-    ProcessTemplateItem,
+    ProcessTemplateStep,
 )
 
 
-class ProcessTemplateItemInline(admin.TabularInline):
-    model = ProcessTemplateItem
+class ProcessTemplateStepInline(admin.TabularInline):
+    model = ProcessTemplateStep
     extra = 0
 
 
@@ -23,31 +23,31 @@ class ProcessTemplateAttachmentInline(admin.TabularInline):
 
 @admin.register(ProcessTemplate)
 class ProcessTemplateAdmin(admin.ModelAdmin):
-    list_display = ['name', 'is_active', 'created_at']
-    list_filter = ['is_active']
+    list_display = ['name', 'category', 'is_active', 'created_at']
+    list_filter = ['is_active', 'category']
     search_fields = ['name', 'description']
-    inlines = [ProcessTemplateItemInline, ProcessTemplateAttachmentInline]
+    inlines = [ProcessTemplateStepInline, ProcessTemplateAttachmentInline]
 
 
-class ProcessInstanceItemInline(admin.TabularInline):
-    model = ProcessInstanceItem
+class ProcessRunStepInline(admin.TabularInline):
+    model = ProcessRunStep
     extra = 0
-    readonly_fields = ['checked_at', 'checked_by']
+    readonly_fields = ['completed_at', 'completed_by']
 
 
-@admin.register(ProcessInstance)
-class ProcessInstanceAdmin(admin.ModelAdmin):
-    list_display = ['process_template', 'ticket', 'created_at', 'completed_at']
-    list_filter = ['process_template']
-    inlines = [ProcessInstanceItemInline]
+@admin.register(ProcessRun)
+class ProcessRunAdmin(admin.ModelAdmin):
+    list_display = ['process_template', 'get_target', 'status', 'created_at', 'completed_at']
+    list_filter = ['process_template', 'status']
+    inlines = [ProcessRunStepInline]
 
 
 @admin.register(ProcessAttachment)
 class ProcessAttachmentAdmin(admin.ModelAdmin):
-    list_display = ['instance_item', 'caption', 'created_at']
+    list_display = ['run_step', 'caption', 'created_at']
 
 
-@admin.register(ProcessInstanceDocument)
-class ProcessInstanceDocumentAdmin(admin.ModelAdmin):
-    list_display = ['instance_item', 'generated_at', 'generated_by']
-    readonly_fields = ['generated_at']
+@admin.register(ProcessRunExternalAccess)
+class ProcessRunExternalAccessAdmin(admin.ModelAdmin):
+    list_display = ['run', 'token', 'token_expires_at', 'external_contact', 'created_at']
+    readonly_fields = ['token']

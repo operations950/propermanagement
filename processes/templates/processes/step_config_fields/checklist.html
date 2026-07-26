@@ -1,0 +1,5 @@
+{% load process_extras %}
+<div class="mt-2">
+    <label class="form-label small fw-medium mb-1">Checklist items (one per line)</label>
+    <textarea name="config_checklist_items" class="form-control form-control-sm" rows="3">{{ step.config.items|lines_join }}</textarea>
+</div>

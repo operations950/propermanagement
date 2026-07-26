@@ -6,12 +6,14 @@ attached "Board Meeting Checklist" that hasn't been fully run yet."""
 
 
 def incomplete_process_instances(ticket):
-    """Attached ProcessInstances (see processes/models.py) with at least
-    one unchecked required item — or an empty list if every attached
-    instance is fully checked (or none are attached)."""
+    """Attached, still-active ProcessRuns (see processes/models.py) with at
+    least one incomplete required step — or an empty list if every
+    attached run is fully complete (or none are attached). Cancelled runs
+    don't gate closing — a run someone stood down deliberately shouldn't
+    block the ticket."""
     return [
-        instance for instance in ticket.process_instances.prefetch_related('items')
-        if not instance.is_complete()
+        run for run in ticket.process_runs.exclude(status='cancelled').prefetch_related('steps')
+        if not run.is_complete()
     ]
 
 
@@ -21,5 +23,5 @@ def process_gate_error_message(ticket):
     incomplete = incomplete_process_instances(ticket)
     if not incomplete:
         return None
-    names = ', '.join(instance.process_template.name for instance in incomplete)
+    names = ', '.join(run.process_template.name for run in incomplete)
     return f'Finish the attached checklist first: {names} — nothing was changed.'

@@ -1,0 +1,9 @@
+<div class="small mb-1">
+    {% if step.config.wait_mode == 'until_date' %}Waiting until a set date.
+    {% elif step.config.wait_mode == 'duration' %}Waiting {{ step.config.duration_days }} day(s).
+    {% else %}Waiting for manual resume.{% endif %}
+</div>
+<form method="post" action="{% url 'process_run_step_resume_wait' step.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-primary">Resume now</button>
+</form>
