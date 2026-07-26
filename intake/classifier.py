@@ -189,6 +189,14 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     """
     role = verdict.role if verdict.role in StaffProfile.Role.values else ''
     kind = 'maintenance' if role == StaffProfile.Role.MAINTENANCE else 'generic'
+    # Email-sourced tickets need a human to actually read the thread before
+    # committing to a department or due date — Claude's property guess still
+    # applies (this is what lands them in the "AI Property Match" section of
+    # the pending mailbox), but assigned_role stays blank until staff sets it
+    # there. Quo/other sources are trusted enough to auto-assign a department
+    # outright (kind, used only to key the existing-ticket lookup below,
+    # still reflects Claude's real guess either way).
+    assigned_role = role if event.source != 'email' else ''
 
     # Supply requests aren't reconciled the same way — they're idempotent by
     # (property, source_reference, item) already and lower-stakes than a
@@ -255,7 +263,7 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
             existing.raw_context = event.body
             existing.priority = verdict.priority
             existing.property = prop or existing.property  # don't clobber a property someone already set
-            existing.assigned_role = role or existing.assigned_role
+            existing.assigned_role = assigned_role or existing.assigned_role
             existing.save()
         # else: a human already engaged — leave their work alone even though
         # the thread has more activity now.
@@ -278,7 +286,7 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     ticket = Ticket.objects.create(
         source=event.source, source_reference=conversation_id, kind=kind,
         title=verdict.title, description=verdict.summary, raw_context=event.body,
-        property=prop, priority=verdict.priority, assigned_role=role,
+        property=prop, priority=verdict.priority, assigned_role=assigned_role,
     )
     if reporter:
         TicketContact.objects.get_or_create(ticket=ticket, contact=reporter, role=TicketContact.Role.REPORTER)

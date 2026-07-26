@@ -1,8 +1,134 @@
 {% extends 'base.html' %}
 {% load ticket_extras %}
-{% block title %}Pending — needs property{% endblock %}
+{% block title %}Pending — needs review{% endblock %}
 {% block content %}
-<h2 class="page-title my-3">Pending ({{ tickets|length }})</h2>
+<h2 class="page-title my-3">Pending</h2>
+
+<h5 class="d-flex align-items-center gap-2 mb-1"><i data-lucide="sparkles" class="icon"></i> AI Property Match ({{ ai_match_tickets|length }})</h5>
+<p class="text-muted">Auto-detected from email — Claude has read the thread and guessed a property, but a due date and department still need a human before this becomes a real queued ticket. Fix the description if needed, confirm/set the property if it's missing, then lock in a date and department.</p>
+
+{% for t in ai_match_tickets %}
+<div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--accent-contrast, #6e95b2) 35%, var(--border-hairline));">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body fw-semibold fs-5">{{ t.title }}</a>
+            <span class="badge rounded-pill bg-light text-dark border">{{ t.get_source_display|default:t.source }}</span>
+        </div>
+        <form method="post" action="{% url 'ticket_ai_match_save' t.pk %}">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label fw-medium" for="id_ai_description-{{ t.pk }}">Description</label>
+                <textarea name="description" id="id_ai_description-{{ t.pk }}" class="form-control" rows="2">{{ t.description }}</textarea>
+            </div>
+
+            {% if t.raw_context %}
+            <div class="mb-3">
+                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-bs-toggle="collapse" data-bs-target="#ai-source-{{ t.pk }}" style="color: var(--ink-muted);">
+                    <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
+                </button>
+                <div class="collapse mt-1" id="ai-source-{{ t.pk }}">
+                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if t.property_id %}
+            <div class="mb-3">
+                <span class="form-label fw-medium d-block mb-1">Property</span>
+                <span class="badge rounded-pill bg-light text-dark border"><i data-lucide="map-pin" class="icon"></i> {{ t.property.name }}</span>
+            </div>
+            {% else %}
+            <div class="mb-3">
+                <label class="form-label fw-medium d-block">Property</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property_id">
+                    <input type="hidden" name="property_id" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="No property — leave pending"></div>
+                    <div class="bubble-pool" data-bubble-pool data-tier="1">
+                        {% for entry in properties_by_type %}
+                            <button type="button" class="bubble" data-value="{{ entry.type_key }}" data-label="{{ entry.type_label }}">{{ entry.type_label }}</button>
+                        {% endfor %}
+                    </div>
+                    {% for entry in properties_by_type %}
+                        {% if entry.needs_city_tier %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="1.5" data-parent="{{ entry.type_key }}" hidden>
+                                {% for city_entry in entry.cities %}
+                                    <button type="button" class="bubble" data-value="{{ city_entry.city }}" data-label="{{ city_entry.city }}">{{ city_entry.city }}</button>
+                                {% endfor %}
+                            </div>
+                            {% for city_entry in entry.cities %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-city="{{ city_entry.city }}" hidden>
+                                {% if city_entry.needs_filter %}
+                                    <input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow…" data-bubble-filter>
+                                {% endif %}
+                                {% for p in city_entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="bubble-pool" data-bubble-pool data-tier="2" data-parent="{{ entry.type_key }}" hidden>
+                                {% for p in entry.properties %}
+                                    <button type="button" class="bubble" data-value="{{ p.id }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-medium d-block">Due date</label>
+                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="due_date" data-ai-due-date-picker>
+                        <input type="hidden" name="due_date" data-bubble-input value="">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="No due date"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for preset in due_date_presets %}
+                                <button type="button" class="bubble" data-value="{{ preset.value }}" data-label="{{ preset.label }}">{{ preset.label }}</button>
+                            {% endfor %}
+                            <button type="button" class="bubble" data-ai-due-date-custom-bubble data-label="Custom" data-no-autolock>Custom</button>
+                        </div>
+                        <input type="date" class="form-control form-control-sm mt-2" style="max-width: 200px;" hidden min="{{ today }}" data-ai-due-date-custom-input>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-medium d-block">Department</label>
+                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assigned_role">
+                        <input type="hidden" name="assigned_role" data-bubble-input value="">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a department"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in department_choices %}
+                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});">
+                                    <i data-lucide="{{ value|department_icon }}" class="icon"></i> {{ label }}
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit"><i data-lucide="check" class="icon"></i> Save</button>
+                <button class="btn btn-outline-danger btn-sm ms-auto" type="submit" formaction="{% url 'ticket_ai_match_delete' t.pk %}" formnovalidate onclick="return confirm('Delete this pending item? This can\'t be undone.');">
+                    <i data-lucide="trash-2" class="icon"></i> Delete — not actually a ticket
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% empty %}
+<div class="card mb-4" style="max-width: 760px;">
+    <div class="card-body text-center py-4" style="color: var(--ink-muted);">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+        Nothing waiting on a date/department.
+    </div>
+</div>
+{% endfor %}
+
+<hr class="my-4">
+
+<h5 class="mb-1">No property yet ({{ tickets|length }})</h5>
 <p class="text-muted">These are unconfirmed candidates, not real tickets yet — usually auto-detected from Quo with no clear property. For each one: fix the description if needed, then either lock in a property (which moves it into its department's real queue — pick a "general" bubble if it's not about one specific address) or delete it if it isn't actually a ticket.</p>
 
 {% for t in tickets %}
@@ -20,6 +146,17 @@
                 <label class="form-label fw-medium" for="id_description-{{ t.pk }}">Description</label>
                 <textarea name="description" id="id_description-{{ t.pk }}" class="form-control" rows="2">{{ t.description }}</textarea>
             </div>
+
+            {% if t.raw_context %}
+            <div class="mb-4">
+                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-bs-toggle="collapse" data-bs-target="#pending-source-{{ t.pk }}" style="color: var(--ink-muted);">
+                    <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
+                </button>
+                <div class="collapse mt-1" id="pending-source-{{ t.pk }}">
+                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+                </div>
+            </div>
+            {% endif %}
 
             <div class="mb-4">
                 <label class="form-label fw-medium d-block">Property</label>
@@ -81,4 +218,29 @@
     </div>
 </div>
 {% endfor %}
+
+<script>
+(function () {
+    document.querySelectorAll('[data-ai-due-date-picker]').forEach(function (picker) {
+        var customBubble = picker.querySelector('[data-ai-due-date-custom-bubble]');
+        var customInput = picker.querySelector('[data-ai-due-date-custom-input]');
+        if (!customBubble || !customInput) return;
+        customBubble.addEventListener('click', function () {
+            customInput.hidden = false;
+            customInput.focus();
+        });
+        customInput.addEventListener('change', function () {
+            if (!customInput.value) return;
+            customBubble.dataset.value = customInput.value;
+            customBubble.dataset.label = new Date(customInput.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            picker._bubbleApi.lock(customBubble);
+            customInput.hidden = true;
+        });
+        picker.addEventListener('bubble:unlock', function () {
+            customInput.hidden = true;
+            customInput.value = '';
+        });
+    });
+})();
+</script>
 {% endblock %}

@@ -300,8 +300,12 @@
         {% if ticket.raw_context %}
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title text-muted d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Original source text</h6>
-                <p class="small text-muted" style="white-space: pre-wrap;">{{ ticket.raw_context }}</p>
+                <h6 class="card-title text-muted d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#original-source-text" style="cursor: pointer;">
+                    <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
+                </h6>
+                <div class="collapse mt-2" id="original-source-text">
+                    <p class="small text-muted" style="white-space: pre-wrap;">{{ ticket.raw_context }}</p>
+                </div>
             </div>
         </div>
         {% endif %}

@@ -511,16 +511,77 @@ def department_dashboard(request, role):
 
 @login_required
 def ticket_pending(request):
-    """Tickets with no property yet — held here instead of any role's queue
-    until a property is assigned, since the source (usually Quo) couldn't
-    tell which property the request was about."""
+    """Two review queues on one screen. "AI Property Match" (top) is
+    email-sourced tickets Claude has already classified — property guess
+    included — but deliberately left without a due date or department (see
+    intake/classifier.py::_reconcile_thread_ticket) until a human actually
+    reads the thread and picks both via quick bubble locks; a ticket
+    graduates out the moment both are set, whether or not Claude's property
+    guess was also right. Below that, the older "no property at all" queue
+    (any source, usually Quo) — excludes anything already shown above so a
+    property-less email ticket doesn't appear twice."""
+    base = Ticket.objects.exclude(status=Ticket.Status.CANCELLED)
+    ai_match_tickets = (
+        base.filter(source='email', due_date__isnull=True, assigned_role='')
+        .select_related('assigned_staff__user', 'assigned_contact', 'property').order_by('-created_at')
+    )
+    ai_match_ids = list(ai_match_tickets.values_list('pk', flat=True))
     tickets = (
-        Ticket.objects.filter(property__isnull=True).exclude(status=Ticket.Status.CANCELLED)
+        base.filter(property__isnull=True).exclude(pk__in=ai_match_ids)
         .select_related('assigned_staff__user', 'assigned_contact').order_by('-created_at')
     )
+    today = timezone.localdate()
     return render(request, 'tickets/pending.html', {
-        'tickets': tickets, 'properties_by_type': properties_by_type(), 'now': timezone.now(),
+        'tickets': tickets, 'ai_match_tickets': ai_match_tickets,
+        'properties_by_type': properties_by_type(), 'now': timezone.now(),
+        'today': today.isoformat(), 'due_date_presets': _due_date_presets(today),
+        'department_choices': StaffProfile.Role.choices,
     })
+
+
+@login_required
+def ticket_ai_match_save(request, pk):
+    """AI Property Match row's Save — sets whichever of property (if
+    Claude couldn't guess it)/due date/department the staff member just
+    picked. No explicit "accept" step: the ticket simply stops matching
+    the AI Property Match queryset (and starts behaving like any other
+    ticket) once both due_date and assigned_role are set."""
+    ticket = get_object_or_404(
+        Ticket, pk=pk, source='email', due_date__isnull=True, assigned_role='',
+    )
+    if request.method == 'POST':
+        description = request.POST.get('description')
+        if description is not None:
+            ticket.description = description.strip()
+        property_id = request.POST.get('property_id')
+        if property_id and not ticket.property_id:
+            ticket.property_id = property_id
+        raw_due_date = request.POST.get('due_date', '')
+        if raw_due_date:
+            parsed = parse_date(raw_due_date)
+            if parsed:
+                ticket.due_date = timezone.make_aware(datetime.combine(parsed, datetime.min.time()))
+        assigned_role = request.POST.get('assigned_role')
+        if assigned_role in StaffProfile.Role.values:
+            ticket.assigned_role = assigned_role
+        ticket.save()
+        if ticket.due_date and ticket.assigned_role:
+            messages.success(request, f'"{ticket.title}" is ready — moved to {ticket.get_assigned_role_display()}.')
+        else:
+            messages.success(request, 'Saved.')
+    return redirect('ticket_pending')
+
+
+@login_required
+def ticket_ai_match_delete(request, pk):
+    ticket = get_object_or_404(
+        Ticket, pk=pk, source='email', due_date__isnull=True, assigned_role='',
+    )
+    if request.method == 'POST':
+        title = ticket.title
+        ticket.delete()
+        messages.success(request, f'Deleted "{title}".')
+    return redirect('ticket_pending')
 
 
 @login_required
