@@ -30,6 +30,7 @@ urlpatterns = [
     path('contacts/import/parse/', views.contact_import_parse, name='contact_import_parse'),
     path('contacts/import/commit/', views.contact_import_commit, name='contact_import_commit'),
     path('contacts/<int:pk>/edit/', views.contact_edit, name='contact_edit'),
+    path('contacts/<int:pk>/delete/', views.contact_delete, name='contact_delete'),
     path('contacts/review/', views.contact_review, name='contact_review'),
     path('contacts/review/clear-all/', views.contact_candidates_clear_all, name='contact_candidates_clear_all'),
     path('contacts/review/bulk-save/', views.contact_review_bulk_save, name='contact_review_bulk_save'),

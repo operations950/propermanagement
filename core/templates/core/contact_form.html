@@ -114,10 +114,19 @@
                 <textarea name="notes" id="id_notes" class="form-control" rows="3">{{ form.notes.value|default:'' }}</textarea>
             </div>
 
-            <button class="btn btn-primary" type="submit">
-                <i data-lucide="{% if is_new %}plus{% else %}check{% endif %}" class="icon"></i>
-                {% if is_new %}Create contact{% else %}Save changes{% endif %}
-            </button>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-primary" type="submit">
+                    <i data-lucide="{% if is_new %}plus{% else %}check{% endif %}" class="icon"></i>
+                    {% if is_new %}Create contact{% else %}Save changes{% endif %}
+                </button>
+                {% if not is_new %}
+                <button class="btn btn-outline-danger btn-sm ms-auto" type="submit" formmethod="post"
+                        formaction="{% url 'contact_delete' contact.pk %}" formnovalidate
+                        onclick="return confirm('Delete {{ contact.name|escapejs }}? This can\'t be undone.');">
+                    <i data-lucide="trash-2" class="icon"></i> Delete contact
+                </button>
+                {% endif %}
+            </div>
         </form>
     </div>
 </div>

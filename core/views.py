@@ -821,6 +821,23 @@ def contact_edit(request, pk):
 
 
 @login_required
+def contact_delete(request, pk):
+    """Deleting a Contact is safe by design — every relationship that
+    matters (Ticket.assigned_contact, FollowUpLog.from_contact/to_contact,
+    TicketAttachment.uploaded_by_contact) is on_delete=SET_NULL, so real
+    tickets/attachments/follow-ups stay intact and simply lose the
+    assignment; only pure link/audit rows (TicketContact, duplicate-
+    dismissal pairs, pending update candidates) cascade away with them."""
+    contact = get_object_or_404(Contact, pk=pk)
+    if request.method == 'POST':
+        name = contact.name
+        contact.delete()
+        messages.success(request, f'Deleted contact "{name}".')
+        return redirect('contact_list')
+    return redirect('contact_edit', pk=pk)
+
+
+@login_required
 def contact_review(request):
     candidates = ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
     update_candidates = ContactUpdateCandidate.objects.filter(
