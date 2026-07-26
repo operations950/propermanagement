@@ -31,11 +31,11 @@ class QuoMessageAdmin(admin.ModelAdmin):
 
 @admin.register(GmailInboxToken)
 class GmailInboxTokenAdmin(admin.ModelAdmin):
-    list_display = ['mailbox_email', 'connected_at', 'updated_at']
+    list_display = ['mailbox_email', 'is_send_from', 'connected_at', 'updated_at']
     readonly_fields = ['refresh_token', 'access_token', 'access_token_expires_at', 'connected_at', 'updated_at']
 
 
 @admin.register(GmailThreadState)
 class GmailThreadStateAdmin(admin.ModelAdmin):
-    list_display = ['thread_id', 'last_message_id', 'last_classified_at', 'updated_at']
-    search_fields = ['thread_id']
+    list_display = ['mailbox_email', 'thread_id', 'last_message_id', 'last_classified_at', 'updated_at']
+    search_fields = ['mailbox_email', 'thread_id']

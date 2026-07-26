@@ -397,7 +397,7 @@ def admin_tools(request):
         for name in ('google_login_callback', 'calendar_callback', 'gmail_callback')
     ]
     from intake.models import GmailInboxToken
-    gmail_inbox_token = GmailInboxToken.objects.first()
+    gmail_inbox_tokens = GmailInboxToken.objects.all().order_by('connected_at')
     return render(request, 'core/admin_tools.html', {
         'properties': properties, 'secrets': secrets, 'google_redirect_uris': google_redirect_uris,
         'quo_phone_lines': _list_quo_phone_lines(),
@@ -412,7 +412,7 @@ def admin_tools(request):
         'email_use_ssl': getattr(django_settings, 'EMAIL_USE_SSL', False),
         'email_timeout': getattr(django_settings, 'EMAIL_TIMEOUT', None),
         'test_email_default_to': request.user.email,
-        'gmail_inbox_token': gmail_inbox_token,
+        'gmail_inbox_tokens': gmail_inbox_tokens,
     })
 
 
@@ -522,7 +522,7 @@ def admin_test_email_send(request):
         from django.core.mail import send_mail
 
         from intake.models import GmailInboxToken
-        gmail_token = GmailInboxToken.objects.first()
+        gmail_token = GmailInboxToken.objects.filter(is_send_from=True).first() or GmailInboxToken.objects.first()
         using_gmail = django_settings.EMAIL_BACKEND.endswith('GmailAPIBackend')
         if using_gmail and gmail_token:
             from_address = django_settings.DEFAULT_FROM_EMAIL or gmail_token.mailbox_email

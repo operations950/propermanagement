@@ -64,16 +64,24 @@ class QuoThreadState(models.Model):
 
 
 class GmailInboxToken(models.Model):
-    """OAuth credentials for the ONE shared mailbox this adapter reads (e.g.
-    admin@proper-realty.com) — connected once via intake/views.py's
-    gmail_connect flow (admin-only, since it grants read access to the
-    whole inbox). Deliberately separate from core.GoogleCalendarToken,
-    which is many individual staff calendars, not one shared inbox."""
+    """OAuth credentials for one shared mailbox this adapter polls for new
+    tickets (e.g. operations@proper-realty.com) — connected via
+    intake/views.py's gmail_connect flow (admin-only, since it grants read
+    access to the whole inbox). Any number of these can exist at once (each
+    is polled independently — see GmailAdapter.pull); `is_send_from` marks
+    the ONE that outgoing follow-up email actually sends through
+    (core/email_backends.py::GmailAPIBackend) — app code enforces at most
+    one True at a time, not a DB constraint. Deliberately separate from
+    core.GoogleCalendarToken, which is many individual staff calendars, not
+    a shared inbox."""
 
     mailbox_email = models.EmailField(unique=True)
     refresh_token = models.TextField()
     access_token = models.TextField(blank=True)
     access_token_expires_at = models.DateTimeField(null=True, blank=True)
+    is_send_from = models.BooleanField(
+        default=False, help_text='Outgoing follow-up email sends through this mailbox. Only one at a time.',
+    )
     connected_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -82,16 +90,23 @@ class GmailInboxToken(models.Model):
 
 
 class GmailThreadState(models.Model):
-    """Same purpose as QuoThreadState, one row per Gmail thread instead of
-    per Quo conversation."""
+    """Same purpose as QuoThreadState, one row per (mailbox, Gmail thread)
+    instead of per Quo conversation — mailbox_email is part of the natural
+    key since multiple inboxes are now polled independently (see
+    GmailAdapter.pull) and Gmail thread ids are only guaranteed unique
+    within one account."""
 
-    thread_id = models.CharField(max_length=100, unique=True)
+    mailbox_email = models.EmailField(blank=True)
+    thread_id = models.CharField(max_length=100)
     last_message_id = models.CharField(max_length=100, blank=True)
     last_classified_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = [('mailbox_email', 'thread_id')]
+
     def __str__(self):
-        return f'Gmail thread {self.thread_id}'
+        return f'Gmail thread {self.thread_id} ({self.mailbox_email})'
 
 
 class QuoWebhookLog(models.Model):

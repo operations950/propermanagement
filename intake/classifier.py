@@ -83,6 +83,7 @@ def process_event(event: RawEvent):
         'shortage': _handle_shortage,
         'quo_thread': _handle_quo_thread,
         'gmail_thread': _handle_gmail_thread,
+        'airbnb_email_booking': _handle_airbnb_email_booking,
     }.get(event.event_type, _handle_generic)
     return handler(event)
 
@@ -338,21 +339,98 @@ def _handle_gmail_thread(event: RawEvent):
     from .thread_classifier import classify_thread
 
     thread_id = event.external_id
+    mailbox_email = event.extra.get('mailbox_email', '')
     verdict = classify_thread(event.body, source_label='email thread')
 
     if verdict is None:
-        GmailThreadState.objects.get_or_create(thread_id=thread_id)
-        logger.info('Gmail thread %s: not classified this run, will retry next poll', thread_id)
+        GmailThreadState.objects.get_or_create(mailbox_email=mailbox_email, thread_id=thread_id)
+        logger.info('Gmail thread %s (%s): not classified this run, will retry next poll', thread_id, mailbox_email)
         return None
 
     GmailThreadState.objects.update_or_create(
-        thread_id=thread_id,
+        mailbox_email=mailbox_email, thread_id=thread_id,
         defaults={
             'last_message_id': event.extra.get('latest_message_id', ''),
             'last_classified_at': timezone.now(),
         },
     )
     return _reconcile_thread_ticket(event, thread_id, verdict)
+
+
+def _handle_airbnb_email_booking(event: RawEvent):
+    """A single Airbnb automated email (not a back-and-forth conversation),
+    flagged by GmailAdapter._build_event via its sender domain. Claude
+    decides whether it's actually a NEW booking confirmation (as opposed to
+    Airbnb's other automated mail — cancellations, payouts, review
+    requests, ...) and extracts the reservation details (see
+    intake/booking_classifier.py::extract_airbnb_booking).
+
+    Deliberately NOT routed through _handle_booking: that path trusts
+    event.property_name enough to auto-create a Property row for it
+    (get_or_create — fine for a real booking-platform API integration that
+    reports its own already-correct identifiers). Claude's property guess
+    here is a best-effort match against existing properties, exactly like
+    _reconcile_thread_ticket's — a parsing mistake must never silently
+    create a junk duplicate Property, so an unmatched guess leaves the
+    ticket's property blank for a human to set via the Pending screen
+    instead. The GmailThreadState bookkeeping mirrors _handle_gmail_thread
+    so this thread isn't reclassified every poll either way."""
+    from .booking_classifier import extract_airbnb_booking
+
+    thread_id = event.external_id
+    mailbox_email = event.extra.get('mailbox_email', '')
+    extract = extract_airbnb_booking(event.body)
+
+    if extract is None:
+        GmailThreadState.objects.get_or_create(mailbox_email=mailbox_email, thread_id=thread_id)
+        logger.info('Airbnb email %s (%s): not classified this run, will retry next poll', thread_id, mailbox_email)
+        return None
+
+    GmailThreadState.objects.update_or_create(
+        mailbox_email=mailbox_email, thread_id=thread_id,
+        defaults={
+            'last_message_id': event.extra.get('latest_message_id', ''),
+            'last_classified_at': timezone.now(),
+        },
+    )
+
+    if not extract.is_booking_confirmation:
+        logger.info('Airbnb email %s: not a new booking confirmation, skipping', thread_id)
+        return None
+
+    prop = Property.objects.filter(name=extract.property_name).first() if extract.property_name else None
+    # No Contact is created for the guest here — event.reporter_email/name
+    # come from the email's From header, which for an Airbnb automated
+    # notification is Airbnb's own system address, not the guest's real
+    # contact info (Airbnb never exposes that in these emails). Claude's
+    # guest_name is descriptive text only.
+    reservation_id = extract.confirmation_code or thread_id
+    check_out = _parse_date(extract.check_out)
+    guest_label = f' for {extract.guest_name}' if extract.guest_name else ''
+
+    if prop:
+        Reservation.objects.update_or_create(
+            source='airbnb', external_reservation_id=reservation_id,
+            defaults={
+                'property': prop,
+                'check_in': _parse_date(extract.check_in), 'check_out': check_out,
+                'status': Reservation.Status.BOOKED,
+            },
+        )
+
+    ticket, _created = Ticket.objects.get_or_create(
+        source='airbnb', source_reference=reservation_id, kind='cleaning',
+        defaults={
+            'title': f'Clean {prop.name} after checkout' if prop else 'Clean after Airbnb checkout',
+            'description': f'Airbnb reservation {reservation_id}{guest_label}' + (f', check-out {check_out}' if check_out else '') + '.',
+            'raw_context': event.body,
+            'property': prop,
+            'priority': 'medium',
+            'due_date': timezone.make_aware(datetime.combine(check_out, datetime.min.time())) if check_out else None,
+            'assigned_role': StaffProfile.Role.CLEANER,
+        },
+    )
+    return ticket
 
 
 def _handle_generic(event: RawEvent):

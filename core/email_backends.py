@@ -33,7 +33,13 @@ class GmailAPIBackend(BaseEmailBackend):
         from intake.gmail_auth import credentials_for
         from intake.models import GmailInboxToken
 
-        token = GmailInboxToken.objects.first()
+        # Multiple mailboxes may be connected (each polled independently for
+        # new tickets — see intake/adapters/gmail.py) but exactly one sends
+        # outgoing mail, chosen in Admin Tools (GmailInboxToken.is_send_from).
+        # .first() as a fallback only matters for an install that connected
+        # a mailbox before is_send_from existed and hasn't touched Admin
+        # Tools' "Send from" picker since.
+        token = GmailInboxToken.objects.filter(is_send_from=True).first() or GmailInboxToken.objects.first()
         if not token:
             if not self.fail_silently:
                 raise RuntimeError('No Gmail account connected — connect one in Admin Tools first.')

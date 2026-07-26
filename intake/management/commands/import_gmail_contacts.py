@@ -25,51 +25,57 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        if not is_configured() or not GmailInboxToken.objects.exists():
+        tokens = list(GmailInboxToken.objects.all())
+        if not is_configured() or not tokens:
             self.stdout.write(self.style.WARNING('Gmail is not connected — nothing to import.'))
             return
 
         adapter = GmailAdapter()
-        service = adapter._service()
-        if service is None:
-            self.stdout.write(self.style.WARNING('Gmail is not connected — nothing to import.'))
-            return
-
-        since = timezone.now() - timedelta(days=settings.GMAIL_CONTACT_IMPORT_DAYS)
-        query = f'in:inbox after:{since.strftime("%Y/%m/%d")}'
-        threads = adapter._list_threads(service, query)
-        self.stdout.write(f'Scanning {len(threads)} thread(s) from the last {settings.GMAIL_CONTACT_IMPORT_DAYS} day(s)...')
-
         known_emails = set(Contact.objects.exclude(email='').values_list('email', flat=True))
         known_emails |= set(
             ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
             .exclude(email='').values_list('email', flat=True)
         )
 
+        since = timezone.now() - timedelta(days=settings.GMAIL_CONTACT_IMPORT_DAYS)
+        query = f'in:inbox after:{since.strftime("%Y/%m/%d")}'
+
         created = 0
-        for th in threads:
+        for token in tokens:
             try:
-                thread = service.users().threads().get(userId='me', id=th['id'], format='metadata').execute()
+                service = adapter._service(token)
             except Exception:
-                logger.exception('Gmail contact import: failed to fetch thread %s', th['id'])
+                logger.exception('Gmail contact import: could not build a client for %s', token.mailbox_email)
                 continue
-            messages = thread.get('messages', [])
-            if not messages:
-                continue
-            first_message = messages[0]
-            from_header = adapter._header(first_message, 'From')
-            name, email_addr = parseaddr(from_header)
-            email_addr = email_addr.strip().lower()
-            if not email_addr or email_addr in known_emails:
-                continue
-            subject = adapter._header(first_message, 'Subject') or '(no subject)'
-            ContactImportCandidate.objects.create(
-                source=Contact.Source.GMAIL,
-                name=name or email_addr,
-                email=email_addr,
-                raw_context=f'Subject: {subject}',
+
+            threads = adapter._list_threads(service, query)
+            self.stdout.write(
+                f'{token.mailbox_email}: scanning {len(threads)} thread(s) from the last '
+                f'{settings.GMAIL_CONTACT_IMPORT_DAYS} day(s)...'
             )
-            known_emails.add(email_addr)
-            created += 1
+            for th in threads:
+                try:
+                    thread = service.users().threads().get(userId='me', id=th['id'], format='metadata').execute()
+                except Exception:
+                    logger.exception('Gmail contact import: failed to fetch thread %s', th['id'])
+                    continue
+                messages = thread.get('messages', [])
+                if not messages:
+                    continue
+                first_message = messages[0]
+                from_header = adapter._header(first_message, 'From')
+                name, email_addr = parseaddr(from_header)
+                email_addr = email_addr.strip().lower()
+                if not email_addr or email_addr in known_emails:
+                    continue
+                subject = adapter._header(first_message, 'Subject') or '(no subject)'
+                ContactImportCandidate.objects.create(
+                    source=Contact.Source.GMAIL,
+                    name=name or email_addr,
+                    email=email_addr,
+                    raw_context=f'Subject: {subject}',
+                )
+                known_emails.add(email_addr)
+                created += 1
 
         self.stdout.write(self.style.SUCCESS(f'Staged {created} new contact candidate(s) from Gmail.'))

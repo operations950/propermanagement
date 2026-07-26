@@ -97,15 +97,13 @@ def gmail_callback(request):
         except Exception:
             logger.exception('Gmail: failed to look up connected mailbox address')
 
-    # Exactly one shared mailbox is supported (see GmailInboxToken's
-    # docstring) — every other reader/writer uses .first()/.exists() with
-    # no email filter. Connecting a *different* address than whatever was
-    # connected before must replace it, not add a second row (mailbox_email
-    # is unique, so update_or_create alone would just create a sibling row
-    # keyed on the new address, leaving the old one as the stale thing
-    # .first() keeps returning).
-    GmailInboxToken.objects.exclude(mailbox_email=email or 'unknown').delete()
-    GmailInboxToken.objects.update_or_create(
+    # Any number of mailboxes can be connected at once — each is polled
+    # independently for new tickets (see GmailAdapter.pull). The first one
+    # ever connected becomes the send-from mailbox by default (Admin Tools
+    # lets an admin change that later); reconnecting an already-connected
+    # address just refreshes its token in place.
+    is_first_mailbox = not GmailInboxToken.objects.exists()
+    token, _ = GmailInboxToken.objects.update_or_create(
         mailbox_email=email or 'unknown',
         defaults={
             'refresh_token': creds.refresh_token or '',
@@ -113,9 +111,16 @@ def gmail_callback(request):
             'access_token_expires_at': creds.expiry,
         },
     )
+    if is_first_mailbox:
+        token.is_send_from = True
+        token.save(update_fields=['is_send_from'])
     from core.app_settings import _sync_email_backend
     _sync_email_backend()
-    messages.success(request, f'Gmail connected: {email or "mailbox"} — now used to send follow-up emails too.')
+    messages.success(
+        request,
+        f'Gmail connected: {email or "mailbox"} — now polled for new tickets'
+        + (' and used to send follow-up emails.' if token.is_send_from else '.'),
+    )
     return redirect(next_url)
 
 
@@ -124,11 +129,46 @@ def gmail_callback(request):
 def gmail_disconnect(request):
     next_url = request.POST.get('next') if request.POST.get('next') in ('dashboard', 'admin_tools') else 'dashboard'
     if request.method == 'POST':
-        GmailInboxToken.objects.all().delete()
-        from core.app_settings import _sync_email_backend
-        _sync_email_backend()
-        messages.success(request, 'Gmail disconnected.')
+        token = GmailInboxToken.objects.filter(pk=request.POST.get('mailbox_id')).first()
+        if token:
+            mailbox_email = token.mailbox_email
+            was_send_from = token.is_send_from
+            token.delete()
+            if was_send_from:
+                # Outgoing mail needs a new home, or it silently falls back
+                # to SMTP (confirmed broken on Railway — see
+                # core/email_backends.py) just because the mailbox that
+                # happened to be flagged got disconnected.
+                next_primary = GmailInboxToken.objects.order_by('connected_at').first()
+                if next_primary:
+                    next_primary.is_send_from = True
+                    next_primary.save(update_fields=['is_send_from'])
+            from core.app_settings import _sync_email_backend
+            _sync_email_backend()
+            messages.success(request, f'{mailbox_email} disconnected.')
+        else:
+            messages.error(request, 'Mailbox not found — nothing changed.')
     return redirect(next_url)
+
+
+@login_required
+@user_passes_test(_is_admin)
+def gmail_set_primary(request):
+    """Designates one connected mailbox as the one outgoing follow-up email
+    sends through (core/email_backends.py::GmailAPIBackend) — every other
+    connected mailbox stays polled for new tickets, just not used to send."""
+    if request.method == 'POST':
+        token = GmailInboxToken.objects.filter(pk=request.POST.get('mailbox_id')).first()
+        if token:
+            GmailInboxToken.objects.exclude(pk=token.pk).update(is_send_from=False)
+            token.is_send_from = True
+            token.save(update_fields=['is_send_from'])
+            from core.app_settings import _sync_email_backend
+            _sync_email_backend()
+            messages.success(request, f'{token.mailbox_email} will now send outgoing follow-up emails.')
+        else:
+            messages.error(request, 'Mailbox not found — nothing changed.')
+    return redirect('admin_tools')
 
 
 def _verify_quo_signature(request):

@@ -23,28 +23,30 @@ MAX_MESSAGE_CHARS = 3000  # per-message cap so one bloated email (long quoted ch
 
 
 class GmailAdapter(IntakeAdapter):
-    """Reads a shared mailbox (e.g. admin@proper-realty.com) via the Gmail
-    API. Connected once via intake/views.py's gmail_connect flow (admin-
-    only — see intake/gmail_auth.py) rather than an API key, since Gmail
-    access is per-Google-account OAuth, not a static credential.
+    """Reads one or more shared mailboxes (e.g. operations@proper-realty.com,
+    admin@proper-realty.com) via the Gmail API — each connected mailbox
+    (see intake.models.GmailInboxToken, connected via intake/views.py's
+    gmail_connect flow, admin-only) is polled independently in `pull()`.
+    OAuth per mailbox, not an API key, since Gmail access is per-Google-
+    account.
 
     Same whole-thread-classification architecture as Quo (see quo.py and
     intake/classifier.py's _handle_gmail_thread / _reconcile_thread_ticket):
     one RawEvent per email THREAD (not per message), only offered for
     (re)classification when the thread has new activity since we last saw
     it, with history bounded to a recent window rather than the whole
-    mailbox history.
+    mailbox history. The one exception is a thread whose latest message
+    comes from an @airbnb.com address — those go out as event_type
+    'airbnb_email_booking' instead of 'gmail_thread' (see _build_event),
+    which intake/classifier.py routes to structured booking extraction
+    (a cleaning ticket) rather than the generic thread classifier.
     """
 
-    def _service(self):
+    def _service(self, token):
         from googleapiclient.discovery import build
 
         from ..gmail_auth import credentials_for
-        from ..models import GmailInboxToken
 
-        token = GmailInboxToken.objects.first()
-        if not token:
-            return None
         creds = credentials_for(token)
         return build('gmail', 'v1', credentials=creds, cache_discovery=False)
 
@@ -134,7 +136,7 @@ class GmailAdapter(IntakeAdapter):
             lines.append(f'[{date}] From: {frm}\n{body}\n')
         return '\n'.join(lines)
 
-    def _build_event(self, service, thread_id, known_last_message_id):
+    def _build_event(self, service, thread_id, known_last_message_id, mailbox_email):
         thread = service.users().threads().get(userId='me', id=thread_id, format='full').execute()
         messages = thread.get('messages', [])
         if not messages:
@@ -150,37 +152,67 @@ class GmailAdapter(IntakeAdapter):
         name, email_addr = parseaddr(from_header)
         subject = self._header(messages[-1], 'Subject') or '(no subject)'
 
+        # Airbnb's own automated notifications (booking confirmations,
+        # cancellations, payout receipts, review requests, ...) all come
+        # from an @airbnb.com address — a cheap, high-recall pre-filter.
+        # The precise "is this actually a NEW booking confirmation" call is
+        # Claude's (see intake/booking_classifier.py::extract_airbnb_booking,
+        # invoked from intake/classifier.py::_handle_airbnb_email_booking),
+        # which also rejects Airbnb's other automated mail types this same
+        # domain check lets through.
+        latest_from = self._header(messages[-1], 'From')
+        is_airbnb = 'airbnb.com' in latest_from.lower()
+
         return RawEvent(
-            event_type='gmail_thread',
-            source='email',
+            event_type='airbnb_email_booking' if is_airbnb else 'gmail_thread',
+            source='airbnb' if is_airbnb else 'email',
             external_id=thread_id,
             title=subject,
             body=transcript,
             reporter_email=email_addr,
             reporter_name=name,
-            extra={'latest_message_id': latest_message_id},
+            extra={'latest_message_id': latest_message_id, 'mailbox_email': mailbox_email},
         )
 
     def pull(self) -> list[RawEvent]:
         from ..gmail_auth import is_configured
-        from ..models import GmailInboxToken, GmailThreadState, PollCursor
+        from ..models import GmailInboxToken
 
-        if not is_configured() or not GmailInboxToken.objects.exists():
+        if not is_configured():
             return []
 
-        service = self._service()
-        if service is None:
+        tokens = list(GmailInboxToken.objects.all())
+        if not tokens:
             return []
 
-        cursor, _ = PollCursor.objects.get_or_create(key=CURSOR_KEY, defaults={'value': ''})
+        events = []
+        for token in tokens:
+            events.extend(self._pull_mailbox(token))
+        return events
+
+    def _pull_mailbox(self, token) -> list[RawEvent]:
+        from ..models import GmailThreadState, PollCursor
+
+        mailbox_email = token.mailbox_email
+        try:
+            service = self._service(token)
+        except Exception:
+            logger.exception('Gmail (%s): could not build an authenticated client', mailbox_email)
+            return []
+
+        # Each mailbox gets its own cursor — the same day-granularity
+        # `after:` search-bound approach as before, just keyed per inbox
+        # instead of one shared global row.
+        cursor_key = f'{CURSOR_KEY}:{mailbox_email}'
+        cursor, _ = PollCursor.objects.get_or_create(key=cursor_key, defaults={'value': ''})
         if cursor.value:
             after = cursor.value
         else:
             since = timezone.now() - timedelta(days=settings.GMAIL_INITIAL_SYNC_DAYS)
             after = since.strftime('%Y/%m/%d')
             logger.info(
-                'Gmail: first sync — limiting to threads updated in the last %d day(s) (since %s)',
-                settings.GMAIL_INITIAL_SYNC_DAYS, after,
+                'Gmail (%s): first sync — limiting to threads updated in the last %d day(s) (since %s)',
+                mailbox_email, settings.GMAIL_INITIAL_SYNC_DAYS, after,
             )
         poll_started_at = timezone.now()
         query = f'in:inbox after:{after}'
@@ -188,38 +220,41 @@ class GmailAdapter(IntakeAdapter):
         try:
             threads = self._list_threads(service, query)
         except Exception:
-            logger.exception('Gmail: failed to list threads')
+            logger.exception('Gmail (%s): failed to list threads', mailbox_email)
             return []
-        logger.info('Gmail: found %d thread(s) to check (query=%r)', len(threads), query)
+        logger.info('Gmail (%s): found %d thread(s) to check (query=%r)', mailbox_email, len(threads), query)
 
         known_state = {
             s.thread_id: s.last_message_id
-            for s in GmailThreadState.objects.filter(thread_id__in=[t['id'] for t in threads])
+            for s in GmailThreadState.objects.filter(
+                mailbox_email=mailbox_email, thread_id__in=[t['id'] for t in threads],
+            )
         }
 
         events = []
         seen_ids = set()
-        for i, th in enumerate(threads, start=1):
+        for th in threads:
             thread_id = th['id']
             seen_ids.add(thread_id)
             try:
-                event = self._build_event(service, thread_id, known_state.get(thread_id))
+                event = self._build_event(service, thread_id, known_state.get(thread_id), mailbox_email)
             except Exception:
-                logger.exception('Gmail: failed to fetch thread %s', thread_id)
+                logger.exception('Gmail (%s): failed to fetch thread %s', mailbox_email, thread_id)
                 continue
             if event:
                 events.append(event)
 
         retry_states = list(
-            GmailThreadState.objects.filter(last_classified_at__isnull=True).exclude(thread_id__in=seen_ids)
+            GmailThreadState.objects.filter(mailbox_email=mailbox_email, last_classified_at__isnull=True)
+            .exclude(thread_id__in=seen_ids)
         )
         if retry_states:
-            logger.info('Gmail: retrying %d previously-unclassified thread(s)', len(retry_states))
+            logger.info('Gmail (%s): retrying %d previously-unclassified thread(s)', mailbox_email, len(retry_states))
         for state in retry_states:
             try:
-                event = self._build_event(service, state.thread_id, None)
+                event = self._build_event(service, state.thread_id, None, mailbox_email)
             except Exception:
-                logger.exception('Gmail: retry failed for thread %s', state.thread_id)
+                logger.exception('Gmail (%s): retry failed for thread %s', mailbox_email, state.thread_id)
                 continue
             if event:
                 events.append(event)

@@ -70,24 +70,57 @@
         </h6>
         <div class="collapse" id="admin-section-email">
         <hr class="my-3">
-        <p class="small mb-1"><strong>Sending via Gmail</strong> — the actual send path on Railway. SMTP (below) is confirmed blocked outbound on this host, on every port tested, so this takes over automatically whenever a mailbox is connected.</p>
-        {% if gmail_inbox_token %}
-        <p class="small mb-2 d-flex align-items-center gap-2">
-            <i data-lucide="check-circle-2" class="icon" style="color: var(--status-good);"></i>
-            Connected: <strong>{{ gmail_inbox_token.mailbox_email }}</strong> — outgoing follow-up emails send through this account.
-        </p>
-        <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-outline-secondary btn-sm">Reconnect</a>
+        <p class="small mb-1"><strong>Gmail mailboxes</strong> — each one is polled for new tickets (an Airbnb booking confirmation becomes a cleaning task automatically; anything else goes through AI triage). Exactly one also sends outgoing follow-up email — SMTP (below) is confirmed blocked outbound on Railway, on every port tested, so at least one mailbox needs to be connected for sending to work at all.</p>
+        {% if gmail_inbox_tokens %}
+        <div class="table-responsive mb-2">
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Mailbox</th><th>Connected</th><th>Sends outgoing mail</th><th></th></tr></thead>
+            <tbody>
+            {% for token in gmail_inbox_tokens %}
+            <tr>
+                <td>{{ token.mailbox_email }}</td>
+                <td class="text-muted small">{{ token.connected_at|date:"M j, Y" }}</td>
+                <td>
+                    {% if token.is_send_from %}
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">
+                        <i data-lucide="check" class="icon" style="width: 0.7rem; height: 0.7rem;"></i> Primary
+                    </span>
+                    {% else %}
+                    <form method="post" action="{% url 'gmail_set_primary' %}" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="mailbox_id" value="{{ token.pk }}">
+                        <button type="submit" class="btn btn-link btn-sm p-0">Make primary</button>
+                    </form>
+                    {% endif %}
+                </td>
+                <td class="text-nowrap">
+                    <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-link btn-sm p-0">Reconnect</a>
+                    <form method="post" action="{% url 'gmail_disconnect' %}" class="d-inline ms-2"
+                          onsubmit="return confirm('Disconnect {{ token.mailbox_email|escapejs }}? It stops being polled for new tickets{% if token.is_send_from %}, and another connected mailbox (if any) takes over sending{% endif %}.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="mailbox_id" value="{{ token.pk }}">
+                        <input type="hidden" name="next" value="admin_tools">
+                        <button type="submit" class="btn btn-link btn-sm text-danger p-0">Disconnect</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
         {% else %}
         <p class="small mb-2 d-flex align-items-center gap-2">
             <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
-            No Gmail account connected — sending falls back to SMTP below, which doesn't work on Railway.
+            No Gmail mailbox connected — sending falls back to SMTP below (doesn't work on Railway), and no inbox is polled for new tickets.
         </p>
-        <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-outline-primary btn-sm">Connect Gmail</a>
         {% endif %}
+        <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-outline-primary btn-sm">
+            <i data-lucide="plus" class="icon"></i> Connect {% if gmail_inbox_tokens %}another {% endif %}mailbox
+        </a>
         <hr class="my-3">
         <p class="text-muted small mb-1">
-            {% if gmail_inbox_token %}
-            <strong>SMTP fields below aren't used right now</strong> — Gmail is connected and handles every send. They only matter as a fallback if Gmail ever gets disconnected.
+            {% if gmail_inbox_tokens %}
+            <strong>SMTP fields below aren't used right now</strong> — the primary Gmail mailbox handles every send. They only matter as a fallback if every Gmail mailbox is ever disconnected.
             {% else %}
             Shown in the clear, not masked — this is what's actually driving (or breaking) follow-up emails via SMTP, so it needs to be readable, not just "set/not set".
             {% endif %}
