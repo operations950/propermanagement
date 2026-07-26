@@ -1805,17 +1805,32 @@ def ticket_send_vendor_link(request, pk):
 @login_required
 def ticket_followup_email(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if request.method == 'POST':
         contact_ids = request.POST.getlist('contact_ids')
         subject = request.POST.get('subject', '').strip()
         body = request.POST.get('body', '').strip()
         group = request.POST.get('group') == '1'
-        if contact_ids and body:
+        if contact_ids and subject and body:
             logs = send_followup_bulk(
                 FollowUpLog.Channel.EMAIL, contact_ids, body, ticket=ticket, subject=subject,
                 group=group, user=request.user,
             )
+            if is_ajax:
+                succeeded = sum(1 for log in logs if log.success)
+                ok = bool(logs) and succeeded == len(logs)
+                if not logs:
+                    error = 'Nothing sent — no eligible recipient was selected.'
+                elif succeeded == 0:
+                    error = 'Send failed — check the recipients\' email addresses.'
+                elif not ok:
+                    error = f'Sent to {succeeded} of {len(logs)} — check the rest\'s email addresses.'
+                else:
+                    error = ''
+                return JsonResponse({'success': ok, 'sent_count': succeeded, 'error': error})
             _followup_result_message(request, logs, 'recipient(s) by email')
+        elif is_ajax:
+            return JsonResponse({'success': False, 'error': 'Choose at least one recipient, a subject, and a message.'})
         else:
             messages.error(request, 'Choose at least one recipient and write a message first.')
     return redirect('ticket_detail', pk=ticket.pk)

@@ -27,6 +27,10 @@ SECRET_KEYS = [
     ('GOOGLE_OAUTH_CLIENT_SECRET', 'Google OAuth client secret'),
     ('USPS_CLIENT_ID', 'USPS client ID'),
     ('USPS_CLIENT_SECRET', 'USPS client secret'),
+    ('EMAIL_HOST', 'Email SMTP host (e.g. smtp.gmail.com)'),
+    ('EMAIL_HOST_USER', 'Email SMTP username'),
+    ('EMAIL_HOST_PASSWORD', 'Email SMTP password'),
+    ('DEFAULT_FROM_EMAIL', 'Email "from" address'),
 ]
 
 
@@ -69,6 +73,21 @@ def sanitized_setting(key):
     return _sanitize_secret(key, getattr(settings, key, '') or '')
 
 
+def _sync_email_backend():
+    """settings.EMAIL_BACKEND is chosen once, in settings.py, from the raw
+    EMAIL_HOST env var — before Django even loads AppConfig.ready(), let
+    alone a DB-backed override. Setting EMAIL_HOST here (via apply_overrides
+    or an admin save) would otherwise silently keep every send going through
+    the console/no-op backend even once real SMTP credentials exist. Called
+    after every place EMAIL_HOST might change."""
+    from django.conf import settings
+
+    settings.EMAIL_BACKEND = (
+        'django.core.mail.backends.smtp.EmailBackend' if settings.EMAIL_HOST
+        else 'django.core.mail.backends.console.EmailBackend'
+    )
+
+
 def apply_overrides():
     from django.conf import settings
 
@@ -84,6 +103,7 @@ def apply_overrides():
     for row in rows:
         value = _sanitize_secret(row.key, row.value) if row.key in secret_keys else row.value
         setattr(settings, row.key, value)
+    _sync_email_backend()
 
 
 def set_secret(key, value, user=None):
@@ -94,6 +114,8 @@ def set_secret(key, value, user=None):
     value = _sanitize_secret(key, value) if key in dict(SECRET_KEYS) else value
     AppSetting.objects.update_or_create(key=key, defaults={'value': value, 'updated_by': user})
     setattr(settings, key, value)
+    if key == 'EMAIL_HOST':
+        _sync_email_backend()
 
 
 def masked(value):

@@ -990,8 +990,7 @@
           <div class="col-md-6">
                 <h6 class="d-flex align-items-center gap-2"><i data-lucide="mail" class="icon"></i> Email</h6>
                 {% if followup_email_parties %}
-                <form method="post" action="{% url 'ticket_followup_email' ticket.pk %}"
-                      onsubmit="var n=this.querySelectorAll('input[name=contact_ids]').length; if(!n){alert('Choose at least one recipient first.'); return false;} return confirm('Send this email to ' + n + ' recipient(s)?');">
+                <form method="post" action="{% url 'ticket_followup_email' ticket.pk %}" id="ticket-followup-email-form">
                     {% csrf_token %}
                     <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
                         <div class="bubble-slot" data-bubble-slot data-empty-text="No one selected"></div>
@@ -1009,8 +1008,78 @@
                             Send as one group email (recipients will see each other)
                         </label>
                     </div>
-                    <button class="btn btn-primary btn-sm w-100" type="submit">Send Email</button>
+                    <button class="btn btn-primary btn-sm w-100" type="submit" data-followup-email-btn>Send Email</button>
+                    <p class="text-success small mt-1 mb-0" data-followup-email-success hidden><i data-lucide="check" class="icon"></i> Sent.</p>
+                    <p class="text-danger small mt-1 mb-0" data-followup-email-error hidden></p>
                 </form>
+                <script>
+                (function () {
+                    var form = document.getElementById('ticket-followup-email-form');
+                    var btn = form.querySelector('[data-followup-email-btn]');
+                    var successEl = form.querySelector('[data-followup-email-success]');
+                    var errorEl = form.querySelector('[data-followup-email-error]');
+                    var originalLabel = btn.textContent;
+                    var COOLDOWN_MS = 10000;
+
+                    form.addEventListener('submit', function (e) {
+                        e.preventDefault();
+                        var n = form.querySelectorAll('input[name="contact_ids"]').length;
+                        if (!n) {
+                            errorEl.textContent = 'Choose at least one recipient first.';
+                            errorEl.hidden = false;
+                            return;
+                        }
+                        if (!confirm('Send this email to ' + n + ' recipient(s)?')) return;
+
+                        // Captured before disabling — a disabled field is excluded from
+                        // FormData entirely (see the same note on the SMS compose box above).
+                        var formData = new FormData(form);
+
+                        successEl.hidden = true;
+                        errorEl.hidden = true;
+                        btn.disabled = true;
+                        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending…';
+
+                        fetch(form.action, {
+                            method: 'POST',
+                            body: formData,
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        })
+                            .then(function (resp) { return resp.json(); })
+                            .then(function (data) {
+                                if (data.success) {
+                                    successEl.textContent = 'Sent to ' + data.sent_count + ' recipient' + (data.sent_count === 1 ? '' : 's') + '.';
+                                    successEl.hidden = false;
+                                    var picker = form.querySelector('.bubble-picker[data-name="contact_ids"]');
+                                    form.querySelectorAll('.bubble-locked').forEach(function (b) {
+                                        if (picker._bubbleApi) picker._bubbleApi.unlock(b);
+                                    });
+                                    form.querySelector('[name="subject"]').value = '';
+                                    form.querySelector('[name="body"]').value = '';
+                                    // Stays disabled for a full 10s after a successful send (not
+                                    // just while in flight) so a staff member can't fire off
+                                    // several near-duplicate emails by clicking repeatedly.
+                                    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sent — wait 10s…';
+                                    setTimeout(function () {
+                                        btn.disabled = false;
+                                        btn.textContent = originalLabel;
+                                    }, COOLDOWN_MS);
+                                } else {
+                                    errorEl.textContent = data.error || 'Send failed.';
+                                    errorEl.hidden = false;
+                                    btn.disabled = false;
+                                    btn.textContent = originalLabel;
+                                }
+                            })
+                            .catch(function () {
+                                errorEl.textContent = 'Send failed — check your connection and try again.';
+                                errorEl.hidden = false;
+                                btn.disabled = false;
+                                btn.textContent = originalLabel;
+                            });
+                    });
+                })();
+                </script>
                 {% else %}
                 <p class="text-muted small">No party on this ticket has an email address.</p>
                 {% endif %}
