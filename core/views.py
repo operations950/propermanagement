@@ -407,6 +407,7 @@ def admin_tools(request):
         'email_is_console': django_settings.EMAIL_BACKEND.endswith('console.EmailBackend'),
         'email_port': django_settings.EMAIL_PORT,
         'email_use_tls': django_settings.EMAIL_USE_TLS,
+        'email_use_ssl': getattr(django_settings, 'EMAIL_USE_SSL', False),
         'email_timeout': getattr(django_settings, 'EMAIL_TIMEOUT', None),
         'test_email_default_to': request.user.email,
     })

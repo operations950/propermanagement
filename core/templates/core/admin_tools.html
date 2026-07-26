@@ -87,7 +87,8 @@
         <p class="small mb-1"><strong>Effective configuration</strong> (read-only — from environment/settings, not editable here):</p>
         <ul class="text-muted small mb-0">
             <li>Backend: <code>{{ email_backend }}</code>{% if email_is_console %} <span style="color: var(--status-warning);">— console/no-op, nothing actually sends until EMAIL_HOST above is set</span>{% endif %}</li>
-            <li>Port: <code>{{ email_port }}</code> &middot; TLS: <code>{{ email_use_tls }}</code> &middot; Connect timeout: <code>{{ email_timeout }}s</code></li>
+            <li>Port: <code>{{ email_port }}</code> &middot; TLS: <code>{{ email_use_tls }}</code> &middot; SSL: <code>{{ email_use_ssl }}</code> &middot; Connect timeout: <code>{{ email_timeout }}s</code></li>
+            <li class="mt-1">Port/TLS/SSL come from Railway environment variables, not the fields above — set <code>EMAIL_PORT=465</code>, <code>EMAIL_USE_SSL=true</code>, <code>EMAIL_USE_TLS=false</code> there to try implicit SSL if 587/STARTTLS keeps timing out (some hosts block one but not the other).</li>
         </ul>
         <hr class="my-3">
         <p class="small mb-2"><strong>Send a test email</strong> — the most direct way to see the real failure (or confirm success) right now.</p>

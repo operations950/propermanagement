@@ -209,7 +209,12 @@ EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+# TLS (STARTTLS, port 587) is the default; set EMAIL_USE_SSL=true + EMAIL_PORT=465
+# and EMAIL_USE_TLS=false as Railway env vars to try implicit-SSL instead — some
+# hosts that block 587 outbound leave 465 open. Mutually exclusive per Django's
+# own SMTP backend, which picks SMTP_SSL over SMTP purely based on this flag.
 EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
+EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
 # Without this, a socket that can't reach the SMTP host (wrong port, or the
 # host silently dropping the connection instead of refusing it — Railway and
 # several other PaaS providers block outbound SMTP for anti-spam reasons)
