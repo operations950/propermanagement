@@ -25,7 +25,7 @@ from tickets.models import (
 from tickets.services import applicability
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
-from . import app_settings, google_calendar, google_login, places, usps
+from . import app_settings, google_calendar, google_login, places, quickbooks, usps
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
 from .forms import (
@@ -38,8 +38,8 @@ from .forms import (
 from .models import (
     Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
     GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, PropertyDocument,
-    PropertySystemLocation, StaffProfile, TRADE_CHOICES, creatable_contact_types, group_contacts_by_type,
-    is_valid_phone, properties_by_type,
+    PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES, creatable_contact_types,
+    group_contacts_by_type, is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,6 +207,72 @@ def calendar_select(request):
             token.save(update_fields=['enabled_calendar_ids'])
             messages.success(request, 'Calendars updated.')
     return redirect(next_url)
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quickbooks_connect(request):
+    """Connecting the company's single QuickBooks company file is an admin
+    action (see admin_tools.html) even though viewing the resulting
+    Company Financials numbers only requires Company Admin dashboard
+    access — those are two different, deliberately separate permissions."""
+    if not quickbooks.is_configured():
+        messages.error(request, 'QuickBooks isn\'t configured yet — add the OAuth client ID/secret first.')
+        return redirect('admin_tools')
+
+    import secrets
+    state = secrets.token_urlsafe(24)
+    request.session['quickbooks_oauth_state'] = state
+    return redirect(quickbooks.authorize_url(request, state))
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quickbooks_callback(request):
+    state = request.session.pop('quickbooks_oauth_state', None)
+    if not state or request.GET.get('state') != state:
+        messages.error(request, 'QuickBooks connection failed (session expired) — try again.')
+        return redirect('admin_tools')
+    if request.GET.get('error'):
+        messages.info(request, 'QuickBooks connection cancelled.')
+        return redirect('admin_tools')
+
+    code = request.GET.get('code')
+    realm_id = request.GET.get('realmId')
+    if not code or not realm_id:
+        messages.error(request, 'QuickBooks connection failed — missing authorization code.')
+        return redirect('admin_tools')
+
+    token_data = quickbooks.exchange_code(request, code)
+    if not token_data:
+        messages.error(request, 'QuickBooks connection failed — please try again.')
+        return redirect('admin_tools')
+
+    # Exactly one company connection exists at a time — a new connect
+    # replaces whatever was there before (see QuickBooksToken's docstring).
+    QuickBooksToken.objects.all().delete()
+    QuickBooksToken.objects.create(
+        realm_id=realm_id,
+        access_token=token_data.get('access_token', ''),
+        refresh_token=token_data.get('refresh_token', ''),
+        access_token_expires_at=timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600)),
+        refresh_token_expires_at=(
+            timezone.now() + timedelta(seconds=token_data['x_refresh_token_expires_in'])
+            if token_data.get('x_refresh_token_expires_in') else None
+        ),
+        connected_by=request.user,
+    )
+    messages.success(request, 'QuickBooks connected.')
+    return redirect('admin_tools')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def quickbooks_disconnect(request):
+    if request.method == 'POST':
+        QuickBooksToken.objects.all().delete()
+        messages.success(request, 'QuickBooks disconnected.')
+    return redirect('admin_tools')
 
 
 def _parse_calendar_event_form(request):
@@ -402,6 +468,9 @@ def admin_tools(request):
     gmail_inbox_tokens = GmailInboxToken.objects.all().order_by('connected_at')
     return render(request, 'core/admin_tools.html', {
         'properties': properties, 'secrets': secrets, 'google_redirect_uris': google_redirect_uris,
+        'quickbooks_configured': quickbooks.is_configured(),
+        'quickbooks_token': QuickBooksToken.objects.first(),
+        'quickbooks_redirect_uri': quickbooks.redirect_uri_for_display(request),
         'quo_phone_lines': _list_quo_phone_lines(),
         'scan_phone_number_id': django_settings.QUO_SCAN_PHONE_NUMBER_ID,
         'outbound_from_number': django_settings.QUO_DEFAULT_FROM_NUMBER,
@@ -573,6 +642,20 @@ def property_toggle_active(request, pk):
         messages.success(
             request, f'"{prop.name}" is now {"active" if prop.is_active else "inactive"}.',
         )
+    return redirect('admin_tools')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def staff_toggle_company_admin(request, pk):
+    """The ongoing escape hatch for granting/revoking Owner Dashboard
+    access (see StaffProfile.is_company_admin) beyond the two people the
+    grant_company_admin management command seeds — this checkbox is the
+    only other way to change it."""
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    if request.method == 'POST':
+        profile.is_company_admin = bool(request.POST.get('is_company_admin'))
+        profile.save(update_fields=['is_company_admin'])
     return redirect('admin_tools')
 
 

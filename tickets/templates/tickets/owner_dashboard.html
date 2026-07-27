@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}Owner Dashboard — Proper Management{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
+    <div>
+        <h2 class="page-title mb-0">Owner Dashboard</h2>
+        <p class="mb-0" style="color: var(--ink-muted);">Company-wide health at a glance.</p>
+    </div>
+    <a href="{% url 'ticket_create' %}" class="btn btn-primary flex-shrink-0"><i data-lucide="plus" class="icon"></i> New ticket</a>
+</div>
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 mb-3">
+
+    {# --- Top left: Overdue Tickets --- #}
+    <div class="col">
+        <div class="card h-100" style="border-top: 4px solid var(--status-critical); border-radius: var(--bs-border-radius-lg);">
+            <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="card-header d-flex justify-content-between align-items-center bg-white border-bottom py-3 text-decoration-none">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--status-critical);">
+                    <i data-lucide="circle-alert" class="icon"></i> Overdue Tickets
+                </span>
+                <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ overdue_total }}</span>
+            </a>
+            {% if overdue_tickets %}
+            <div class="list-group list-group-flush">
+            {% for t in overdue_tickets %}
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-start gap-2" style="border-left: 3px solid var(--role-{{ t.assigned_role|default:'admin' }}); text-decoration: none;">
+                    <div style="min-width: 0; overflow: hidden;">
+                        <div class="d-flex align-items-center gap-1" style="min-width: 0;">
+                            <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
+                            {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
+                        </div>
+                        <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ t.property.name|default:'—' }} · {{ t.get_assigned_role_display|default:'Unrouted' }}</div>
+                    </div>
+                    <div class="text-nowrap text-end tabular-nums" style="font-size: 0.8rem; color: var(--status-critical); font-weight: 600;">{{ t.due_date|date:"M j" }}</div>
+                </a>
+            {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
+                <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Nothing overdue
+            </div>
+            {% endif %}
+            {% if overdue_total > overdue_tickets|length %}
+            <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="card-footer text-center text-decoration-none py-2" style="font-size: 0.85rem; color: var(--status-critical);">
+                View all {{ overdue_total }} →
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    {# --- Top middle: Departments --- #}
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                    <i data-lucide="layout-grid" class="icon"></i> Departments
+                </span>
+            </div>
+            <div class="list-group list-group-flush">
+            {% for box in department_boxes %}
+                <a href="{% url 'department_dashboard' box.role %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center text-decoration-none" style="border-left: 3px solid var(--role-{{ box.role }});">
+                    <span class="d-flex align-items-center gap-2">
+                        <i data-lucide="{{ box.role|department_icon }}" class="icon" style="color: var(--role-{{ box.role }});"></i>
+                        <span class="fw-medium" style="color: var(--ink-primary);">{{ box.label }}</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-2">
+                        {% if box.overdue_count %}<span class="fw-semibold" style="font-size: 0.75rem; color: var(--status-critical);">{{ box.overdue_count }} overdue</span>{% endif %}
+                        <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ box.total }}</span>
+                    </span>
+                </a>
+            {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {# --- Top right: Today's Calendar --- #}
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-body">
+                <h6 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Today's Calendar</h6>
+                {% include 'tickets/_dashboard_calendar.html' %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 mb-4">
+
+    {# --- Bottom left: Ticket Statistics --- #}
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                    <i data-lucide="bar-chart-3" class="icon"></i> Ticket Statistics
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <a href="{% url 'ticket_list' %}?status=active" class="text-decoration-none" style="color: var(--ink-primary);">Total open tickets</a>
+                    <a href="{% url 'ticket_list' %}?status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-primary);">{{ stats.total }}</a>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="text-decoration-none" style="color: var(--status-critical);">Past due</a>
+                    <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--status-critical);">{{ stats.past_due_count }} ({{ stats.past_due_pct }}%)</a>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <a href="{% url 'ticket_list' %}?due=tomorrow&status=active" class="text-decoration-none" style="color: var(--ink-secondary);">Due tomorrow</a>
+                    <a href="{% url 'ticket_list' %}?due=tomorrow&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-secondary);">{{ stats.due_tomorrow_count }} ({{ stats.due_tomorrow_pct }}%)</a>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <a href="{% url 'ticket_list' %}?due=week&status=active" class="text-decoration-none" style="color: var(--ink-secondary);">Due this week</a>
+                    <a href="{% url 'ticket_list' %}?due=week&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-secondary);">{{ stats.due_week_count }} ({{ stats.due_week_pct }}%)</a>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <a href="{% url 'ticket_list' %}?delayed=1&status=active" class="text-decoration-none" style="color: color-mix(in srgb, var(--status-warning) 60%, black);">Delayed</a>
+                    <a href="{% url 'ticket_list' %}?delayed=1&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: color-mix(in srgb, var(--status-warning) 60%, black);">{{ stats.delayed_count }} ({{ stats.delayed_pct }}%)</a>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <a href="{% url 'ticket_list' %}?assigned_staff=none&status=active" class="text-decoration-none" style="color: var(--ink-secondary);">Unassigned</a>
+                    <a href="{% url 'ticket_list' %}?assigned_staff=none&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-secondary);">{{ stats.unassigned_count }} ({{ stats.unassigned_pct }}%)</a>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <a href="{% url 'ticket_list' %}?status=complete&completed_since=7" class="text-decoration-none" style="color: var(--status-good);">Closed last 7 days</a>
+                    <a href="{% url 'ticket_list' %}?status=complete&completed_since=7" class="text-decoration-none fw-bold tabular-nums" style="color: var(--status-good);">{{ stats.closed_last_7_days_count }}</a>
+                </div>
+
+                {% if staff_ticket_counts %}
+                <hr>
+                <p class="small fw-medium mb-2" style="color: var(--ink-muted);">Open tickets by staff</p>
+                {% for row in staff_ticket_counts %}
+                <a href="{% url 'ticket_list' %}?assigned_staff={{ row.staff.pk }}&status=active" class="d-block text-decoration-none mb-2">
+                    <div class="d-flex justify-content-between mb-1" style="font-size: 0.8rem;">
+                        <span style="color: var(--ink-primary);">{{ row.staff.user.get_full_name|default:row.staff.user.username }}</span>
+                        <span class="fw-semibold tabular-nums" style="color: var(--ink-secondary);">{{ row.count }}</span>
+                    </div>
+                    <div class="rounded-pill" style="background: var(--surface-page); height: 6px; overflow: hidden;">
+                        <div class="rounded-pill h-100" style="width: {{ row.bar_pct }}%; background: var(--brand-primary);"></div>
+                    </div>
+                </a>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# --- Bottom middle: Company Financials --- #}
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                    <i data-lucide="landmark" class="icon"></i> Company Financials
+                </span>
+            </div>
+            <div class="card-body">
+                {% if quickbooks_token and quickbooks_token.last_synced_at %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span style="color: var(--ink-secondary);">YTD Revenue</span>
+                    <span class="fw-bold tabular-nums" style="color: var(--status-good);">${{ quickbooks_token.ytd_revenue|floatformat:0 }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span style="color: var(--ink-secondary);">YTD Expenses</span>
+                    <span class="fw-bold tabular-nums" style="color: var(--status-critical);">${{ quickbooks_token.ytd_expenses|floatformat:0 }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span style="color: var(--ink-secondary);">YTD Net Income</span>
+                    <span class="fw-bold tabular-nums" style="color: var(--ink-primary);">${{ quickbooks_token.ytd_net_income|floatformat:0 }}</span>
+                </div>
+                <p class="small mb-0" style="color: var(--ink-muted);">Last synced {{ quickbooks_token.last_synced_at|date:"M j, Y g:i A" }}</p>
+                {% elif quickbooks_token %}
+                <p class="text-muted small mb-0">Connected — first sync hasn't run yet.</p>
+                {% elif quickbooks_configured %}
+                <p class="text-muted small mb-3">Not connected yet.</p>
+                <a href="{% url 'quickbooks_connect' %}" class="btn btn-outline-primary btn-sm">
+                    <i data-lucide="plus" class="icon"></i> Connect QuickBooks
+                </a>
+                {% else %}
+                <p class="text-muted small mb-0">QuickBooks isn't configured yet — ask an admin.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# --- Bottom right: Local Weather --- #}
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                    <i data-lucide="cloud-sun" class="icon"></i> Local Weather
+                </span>
+            </div>
+            <div class="card-body" data-weather-widget data-office-lat="{{ office_latitude }}" data-office-lon="{{ office_longitude }}">
+                <p class="text-muted small mb-0" data-weather-status>Getting your location…</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

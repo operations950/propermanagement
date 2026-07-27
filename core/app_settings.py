@@ -27,6 +27,8 @@ SECRET_KEYS = [
     ('GOOGLE_OAUTH_CLIENT_SECRET', 'Google OAuth client secret'),
     ('USPS_CLIENT_ID', 'USPS client ID'),
     ('USPS_CLIENT_SECRET', 'USPS client secret'),
+    ('QUICKBOOKS_CLIENT_ID', 'QuickBooks OAuth client ID'),
+    ('QUICKBOOKS_CLIENT_SECRET', 'QuickBooks OAuth client secret'),
     ('EMAIL_HOST', 'Email SMTP host (e.g. smtp.gmail.com)'),
     ('EMAIL_HOST_USER', 'Email SMTP username'),
     ('EMAIL_HOST_PASSWORD', 'Email SMTP password'),

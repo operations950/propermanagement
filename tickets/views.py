@@ -143,16 +143,10 @@ def _group_task_rows(tickets, sort_key):
     return rows
 
 
-@login_required
-def dashboard(request):
-    now = timezone.now()
-    # A ticket only enters a role's queue once it has a property — see
-    # ticket_pending for the triage screen where property-less tickets wait.
-    open_tickets = list(
-        Ticket.objects.filter(status__in=OPEN_STATUSES, property__isnull=False)
-        .select_related('property', 'assigned_staff__user', 'assigned_contact')
-    )
-
+def _department_boxes(open_tickets, now):
+    """The 6 role queues, each with its top preview rows and counts — the
+    core of the standard dashboard, also reused as-is (without the ticket
+    previews) for the Departments box on the Owner Dashboard."""
     boxes = []
     for role in DASHBOARD_ROLE_ORDER:
         role_tickets = [t for t in open_tickets if t.assigned_role == role]
@@ -171,6 +165,24 @@ def dashboard(request):
             ),
             'delayed_count': sum(1 for t in role_tickets if t.delayed),
         })
+    return boxes
+
+
+@login_required
+def dashboard(request):
+    staff_profile = getattr(request.user, 'staff_profile', None)
+    if staff_profile and staff_profile.is_company_admin:
+        return _owner_dashboard(request)
+
+    now = timezone.now()
+    # A ticket only enters a role's queue once it has a property — see
+    # ticket_pending for the triage screen where property-less tickets wait.
+    open_tickets = list(
+        Ticket.objects.filter(status__in=OPEN_STATUSES, property__isnull=False)
+        .select_related('property', 'assigned_staff__user', 'assigned_contact')
+    )
+
+    boxes = _department_boxes(open_tickets, now)
 
     pending_property_count = (
         Ticket.objects.filter(property__isnull=True).exclude(status=Ticket.Status.CANCELLED).count()
@@ -190,6 +202,108 @@ def dashboard(request):
         'no_role_count': no_role_count,
         'awaiting_verification': awaiting_verification,
         'gmail_mailbox_count': gmail_mailbox_count,
+    })
+
+
+def _owner_dashboard(request):
+    """The six-box Company Admin dashboard — see dashboard()'s branch
+    above. Company-wide health at a glance rather than one department's
+    queue: overdue work across every department, quick links into each
+    department, today's calendar, ticket statistics, QuickBooks
+    financials, and local weather."""
+    now = timezone.now()
+    today = timezone.localdate()
+
+    open_tickets = list(
+        Ticket.objects.filter(status__in=OPEN_STATUSES, property__isnull=False)
+        .select_related('property', 'assigned_staff__user', 'assigned_contact')
+    )
+    department_boxes = _department_boxes(open_tickets, now)
+
+    overdue_tickets = sorted(
+        (t for t in open_tickets if t.due_date and timezone.localtime(t.due_date).date() < today),
+        key=lambda t: (t.due_date, PRIORITY_RANK.get(t.priority, 2)),
+    )
+
+    total = len(open_tickets)
+
+    def _pct(n):
+        return round(n / total * 100) if total else 0
+
+    past_due_count = len(overdue_tickets)
+    due_tomorrow_count = sum(
+        1 for t in open_tickets if t.due_date and timezone.localtime(t.due_date).date() == today + timedelta(days=1)
+    )
+    due_week_count = sum(
+        1 for t in open_tickets
+        if t.due_date and today <= timezone.localtime(t.due_date).date() <= today + timedelta(days=7)
+    )
+    delayed_count = sum(1 for t in open_tickets if t.delayed)
+    unassigned_count = sum(1 for t in open_tickets if not t.assigned_staff_id)
+    closed_last_7_days_count = Ticket.objects.filter(
+        status__in=COMPLETE_STATUSES, completed_at__gte=now - timedelta(days=7),
+    ).count()
+
+    staff_counts = {}
+    for t in open_tickets:
+        if t.assigned_staff_id:
+            staff_counts[t.assigned_staff_id] = staff_counts.get(t.assigned_staff_id, 0) + 1
+    staff_by_id = {sp.pk: sp for sp in StaffProfile.objects.select_related('user').filter(pk__in=staff_counts)}
+    max_staff_count = max(staff_counts.values(), default=0)
+    staff_ticket_counts = sorted(
+        (
+            {
+                'staff': staff_by_id[staff_id],
+                'count': count,
+                'bar_pct': round(count / max_staff_count * 100) if max_staff_count else 0,
+            }
+            for staff_id, count in staff_counts.items() if staff_id in staff_by_id
+        ),
+        key=lambda row: -row['count'],
+    )
+
+    staff_profile = request.user.staff_profile
+    calendar_token = getattr(staff_profile, 'google_calendar_token', None)
+    calendar_days, available_calendars, enabled_calendar_ids = [], [], ''
+    if calendar_token:
+        raw_events, available_calendars = get_upcoming_events(calendar_token, days_ahead=0)
+        calendar_days = _format_calendar_events(raw_events, days_ahead=0)
+        primary_id = next((c['id'] for c in available_calendars if c['is_primary']), 'primary')
+        enabled_ids = [c for c in (calendar_token.enabled_calendar_ids or [primary_id])]
+        for c in available_calendars:
+            c['color'] = _calendar_color(c['id'])
+        enabled_calendar_ids = ','.join(enabled_ids)
+
+    from core.models import QuickBooksToken
+    from core.quickbooks import is_configured as quickbooks_is_configured
+    quickbooks_token = QuickBooksToken.objects.first()
+
+    return render(request, 'tickets/owner_dashboard.html', {
+        'now': now,
+        'department_boxes': department_boxes,
+        'overdue_tickets': overdue_tickets[:BOX_PREVIEW_SIZE],
+        'overdue_total': past_due_count,
+        'stats': {
+            'total': total,
+            'past_due_count': past_due_count, 'past_due_pct': _pct(past_due_count),
+            'due_tomorrow_count': due_tomorrow_count, 'due_tomorrow_pct': _pct(due_tomorrow_count),
+            'due_week_count': due_week_count, 'due_week_pct': _pct(due_week_count),
+            'delayed_count': delayed_count, 'delayed_pct': _pct(delayed_count),
+            'unassigned_count': unassigned_count, 'unassigned_pct': _pct(unassigned_count),
+            'closed_last_7_days_count': closed_last_7_days_count,
+        },
+        'staff_ticket_counts': staff_ticket_counts,
+        'calendar_configured': calendar_is_configured(),
+        'calendar_token': calendar_token,
+        'calendar_days': calendar_days,
+        'available_calendars': available_calendars,
+        'enabled_calendar_ids': enabled_calendar_ids,
+        'current_timezone': getattr(staff_profile, 'timezone', ''),
+        'timezone_choices': StaffProfile.Timezone.choices,
+        'quickbooks_token': quickbooks_token,
+        'quickbooks_configured': quickbooks_is_configured(),
+        'office_latitude': settings.OFFICE_LATITUDE,
+        'office_longitude': settings.OFFICE_LONGITUDE,
     })
 
 
@@ -849,9 +963,18 @@ def ticket_list(request):
 
     assigned_staff_id = request.GET.get('assigned_staff')
     selected_assigned_staff = None
-    if assigned_staff_id:
+    if assigned_staff_id == 'none':
+        qs = qs.filter(assigned_staff__isnull=True)
+    elif assigned_staff_id:
         qs = qs.filter(assigned_staff_id=assigned_staff_id)
         selected_assigned_staff = StaffProfile.objects.select_related('user').filter(pk=assigned_staff_id).first()
+
+    if request.GET.get('delayed'):
+        qs = qs.filter(delayed=True)
+
+    completed_since = request.GET.get('completed_since')
+    if completed_since and completed_since.isdigit():
+        qs = qs.filter(completed_at__gte=timezone.now() - timedelta(days=int(completed_since)))
 
     assigned_contact_id = request.GET.get('assigned_contact')
     selected_assigned_contact = None

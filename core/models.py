@@ -481,6 +481,12 @@ class StaffProfile(models.Model):
         max_length=20, choices=Role.choices, blank=True,
         help_text='Which team this person is on — also used as the default queue reactive tickets route to.',
     )
+    is_company_admin = models.BooleanField(
+        default=False,
+        help_text='Sees the company-wide owner dashboard instead of the standard department dashboard. '
+                   'Orthogonal to role (a department/queue concept) and to User.is_superuser (Django-admin/'
+                   'Admin Tools access) — this is its own narrower permission.',
+    )
     phone = models.CharField(max_length=30, blank=True, validators=[phone_validator])
     timezone = models.CharField(
         max_length=40, choices=Timezone.choices, default=Timezone.EASTERN,
@@ -552,6 +558,32 @@ class GoogleCalendarToken(models.Model):
 
     def __str__(self):
         return f'{self.staff} — {self.google_email or "Google Calendar"}'
+
+
+class QuickBooksToken(models.Model):
+    """The company's single connected QuickBooks Online company file — not
+    per-staff like GoogleCalendarToken, since there's only one company to
+    connect (see core/quickbooks.py). Also caches the last-synced YTD
+    financial snapshot the Owner Dashboard reads, rather than calling
+    QuickBooks on every page load — refreshed by the daily
+    sync_quickbooks_financials job. QuickBooks refresh tokens expire after
+    ~100 days (unlike Google's), so periodic reconnection is expected."""
+    realm_id = models.CharField(max_length=50, help_text='The QuickBooks company ID this token authorizes access to.')
+    access_token = models.TextField(blank=True)
+    refresh_token = models.TextField()
+    access_token_expires_at = models.DateTimeField(null=True, blank=True)
+    refresh_token_expires_at = models.DateTimeField(null=True, blank=True)
+    connected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    connected_at = models.DateTimeField(auto_now_add=True)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    ytd_revenue = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    ytd_expenses = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    ytd_net_income = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    def __str__(self):
+        return f'QuickBooks company {self.realm_id}'
 
 
 class AppSetting(models.Model):

@@ -323,6 +323,18 @@ GOOGLE_PLACES_API_KEY = os.environ.get('GOOGLE_PLACES_API_KEY', '')
 USPS_CLIENT_ID = os.environ.get('USPS_CLIENT_ID', '')
 USPS_CLIENT_SECRET = os.environ.get('USPS_CLIENT_SECRET', '')
 
+# Company Financials on the Owner Dashboard (core/quickbooks.py, core/views.py).
+# Blank = the box shows a "Connect QuickBooks" prompt instead of erroring,
+# same future-integration pattern as the keys above.
+QUICKBOOKS_CLIENT_ID = os.environ.get('QUICKBOOKS_CLIENT_ID', '')
+QUICKBOOKS_CLIENT_SECRET = os.environ.get('QUICKBOOKS_CLIENT_SECRET', '')
+QUICKBOOKS_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUICKBOOKS_SYNC_INTERVAL_MINUTES', str(60 * 24)))
+
+# Local Weather box fallback location (used when the browser denies/lacks
+# geolocation) — the office at 1045 E Atlantic Ave, Delray Beach, FL 33483.
+OFFICE_LATITUDE = float(os.environ.get('OFFICE_LATITUDE', '26.4618'))
+OFFICE_LONGITUDE = float(os.environ.get('OFFICE_LONGITUDE', '-80.0617'))
+
 # Used by intake/thread_classifier.py to read a full Quo conversation thread
 # before deciding whether it's actionable. Blank = classification no-ops.
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')

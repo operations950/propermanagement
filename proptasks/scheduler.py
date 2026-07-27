@@ -62,6 +62,10 @@ def _run_resume_expired_wait_steps():
     _run_command('resume_expired_wait_steps')
 
 
+def _run_sync_quickbooks_financials():
+    _run_command('sync_quickbooks_financials')
+
+
 def start():
     global _scheduler
     if _scheduler is not None:
@@ -105,6 +109,9 @@ def start():
     _scheduler.add_job(_run_poll_vrbo, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(
         _run_resume_expired_wait_steps, 'interval', minutes=settings.PROCESS_WAIT_CHECK_INTERVAL_MINUTES,
+    )
+    _scheduler.add_job(
+        _run_sync_quickbooks_financials, 'interval', minutes=settings.QUICKBOOKS_SYNC_INTERVAL_MINUTES,
     )
 
     _scheduler.start()
