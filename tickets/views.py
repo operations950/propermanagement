@@ -360,10 +360,15 @@ def _layout_timeline(timed_events):
     columns = []
     for ev in timed_events:
         placed = False
-        for col in columns:
+        # enumerate() rather than columns.index(col) — index() matches by
+        # value equality, so two columns holding equal-content event dicts
+        # could resolve to the wrong column's position, mis-assigning
+        # _col and overlapping unrelated events' clickable boxes on top of
+        # each other on screen.
+        for idx, col in enumerate(columns):
             if col[-1]['end'] <= ev['start']:
                 col.append(ev)
-                ev['_col'] = columns.index(col)
+                ev['_col'] = idx
                 placed = True
                 break
         if not placed:
@@ -2238,6 +2243,12 @@ def ticket_set_status(request, pk):
                 if back_url and url_has_allowed_host_and_scheme(back_url, allowed_hosts={request.get_host()}):
                     return redirect(back_url)
                 return redirect('ticket_list')
+            # Completing a ticket is a "done, move on" moment too — send
+            # the user back to their dashboard (company-admin or standard,
+            # see dashboard()) rather than leaving them sitting on the
+            # now-completed ticket's own detail page.
+            if new_status == Ticket.Status.COMPLETED:
+                return redirect('dashboard')
     if 'next_qs' in request.POST:
         return _list_redirect(request)
     return redirect('ticket_detail', pk=ticket.pk)

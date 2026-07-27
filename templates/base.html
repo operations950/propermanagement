@@ -201,6 +201,13 @@
            (worse on mobile, under the browser chrome/home-indicator) and
            needs an awkward scroll-past to tap comfortably. */
         .page-content { padding-bottom: 6rem; }
+
+        /* The Google Calendar widget's "today" timeline grows taller the
+           earlier/later an outlier event starts/ends (see _layout_timeline
+           in tickets/views.py) — cap it to roughly match its sibling
+           dashboard boxes and scroll internally instead of stretching the
+           whole row. */
+        .calendar-days-scroll { max-height: 480px; overflow-y: auto; }
     </style>
     {% block extra_head %}{% endblock %}
 </head>

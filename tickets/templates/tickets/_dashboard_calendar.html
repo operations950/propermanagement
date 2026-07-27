@@ -90,6 +90,7 @@
 {% endif %}
 
 {% if calendar_token %}
+    <div class="calendar-days-scroll">
     {% for day in calendar_days %}
     <div class="card mb-2">
         <div class="card-body p-2">
@@ -162,6 +163,7 @@
         </div>
     </div>
     {% endfor %}
+    </div>
 {% elif calendar_configured %}
     <p class="text-muted small">Connect your Google Calendar to see your day alongside your tickets.</p>
     <a href="{% url 'calendar_connect' %}?next={{ request.path|urlencode }}" class="btn btn-outline-primary btn-sm">Connect Google Calendar</a>
@@ -199,6 +201,15 @@
                 var form = editPanel.querySelector('form');
                 form.querySelector('.calendar-event-id-field').value = el.dataset.eventId;
                 var bubbleRoot = form.querySelector('[data-bubble-picker]');
+                // Always set the underlying hidden input directly, not just
+                // via the bubble-picker's lock() — lock() only fires when a
+                // matching bubble exists in the pool, so relying on it alone
+                // left calendar_id holding whichever event was clicked last
+                // (silently pairing a new event_id with a stale calendar_id)
+                // whenever a match wasn't found, which could delete/edit
+                // the wrong calendar's event entirely.
+                var calendarIdInput = form.querySelector('[name="calendar_id"]');
+                if (calendarIdInput) calendarIdInput.value = el.dataset.calendarId;
                 var matchingBubble = bubbleRoot && bubbleRoot.querySelector('.bubble[data-value="' + el.dataset.calendarId + '"]');
                 if (matchingBubble && bubbleRoot._bubbleApi) bubbleRoot._bubbleApi.lock(matchingBubble, 0);
                 form.querySelector('.calendar-event-title').value = el.dataset.title;
