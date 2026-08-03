@@ -1,7 +1,13 @@
-"""Runs the reactive-intake polls, recurring-ticket generation, and the
-daily supply digest on a timer in-process, since none of Gmail/Quo/Calendar/
-Airbnb/VRBO offer a webhook we can just listen on — same shape as the
-vending-refund project's scheduler.py."""
+"""Runs recurring-ticket generation and the daily supply digest on a timer
+in-process — same shape as the vending-refund project's scheduler.py.
+
+Reactive/AI ticket intake (Gmail polling, Quo call/text classification,
+shared-calendar polling, Airbnb/VRBO booking polling) was fully reversed —
+see the removal in this same change — so this module no longer schedules
+any job that creates a Ticket automatically from an external source.
+Quo contact sync/thread-linking are kept: they enrich Contact records and
+communication history, not ticket creation, and stay valuable on their
+own."""
 import logging
 import os
 from datetime import datetime
@@ -22,36 +28,12 @@ def _run_command(name):
         logger.exception('%s failed', name)
 
 
-def _run_poll_fake():
-    _run_command('poll_fake')
-
-
-def _run_poll_gmail():
-    _run_command('poll_gmail')
-
-
-def _run_classify_quo_conversations():
-    _run_command('classify_quo_conversations')
-
-
 def _run_sync_quo_contacts():
     _run_command('sync_quo_contacts')
 
 
 def _run_link_quo_contact_threads():
     _run_command('link_quo_contact_threads')
-
-
-def _run_poll_calendar():
-    _run_command('poll_calendar')
-
-
-def _run_poll_airbnb():
-    _run_command('poll_airbnb')
-
-
-def _run_poll_vrbo():
-    _run_command('poll_vrbo')
 
 
 def _run_generate_recurring_tickets():
@@ -79,10 +61,6 @@ def start():
 
     _scheduler = BackgroundScheduler(daemon=True)
 
-    if settings.RUN_FAKE_ADAPTER:
-        _scheduler.add_job(
-            _run_poll_fake, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES, next_run_time=datetime.now(),
-        )
     _scheduler.add_job(
         _run_generate_recurring_tickets, 'interval',
         minutes=settings.RECURRING_TICKET_INTERVAL_MINUTES, next_run_time=datetime.now(),
@@ -91,22 +69,10 @@ def start():
         _run_command, 'interval', minutes=settings.SUPPLY_DIGEST_INTERVAL_MINUTES,
         next_run_time=datetime.now(), args=['daily_supply_digest'],
     )
-    # Real-source polls run on the same cadence as the fake adapter (except
-    # Gmail, which has its own dedicated interval); they're no-ops until
-    # their credentials are configured (see intake/adapters/*.py). Quo no
-    # longer has a poll-and-classify job here — message capture is now
-    # real-time via the message webhook (see intake/views.py::quo_webhook),
-    # and classify_quo_conversations judges that locally-captured history
-    # on its own, decoupled, slower cadence instead.
-    _scheduler.add_job(_run_poll_gmail, 'interval', minutes=settings.GMAIL_POLL_INTERVAL_MINUTES)
-    _scheduler.add_job(_run_classify_quo_conversations, 'interval', minutes=settings.QUO_CLASSIFY_INTERVAL_MINUTES)
     _scheduler.add_job(_run_sync_quo_contacts, 'interval', minutes=settings.QUO_CONTACT_SYNC_INTERVAL_MINUTES)
     _scheduler.add_job(
         _run_link_quo_contact_threads, 'interval', minutes=settings.QUO_CONTACT_LINK_INTERVAL_MINUTES,
     )
-    _scheduler.add_job(_run_poll_calendar, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
-    _scheduler.add_job(_run_poll_airbnb, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
-    _scheduler.add_job(_run_poll_vrbo, 'interval', minutes=settings.FAKE_POLL_INTERVAL_MINUTES)
     _scheduler.add_job(
         _run_resume_expired_wait_steps, 'interval', minutes=settings.PROCESS_WAIT_CHECK_INTERVAL_MINUTES,
     )

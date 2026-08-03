@@ -175,33 +175,24 @@ def dashboard(request):
         return _owner_dashboard(request)
 
     now = timezone.now()
-    # A ticket only enters a role's queue once it has a property — see
-    # ticket_pending for the triage screen where property-less tickets wait.
+    # A ticket only enters a role's queue once it has a property — reactive
+    # intake (the only source that ever left one without a property) is
+    # gone, so in practice every manually/recurring-created ticket already
+    # has one.
     open_tickets = list(
         Ticket.objects.filter(status__in=OPEN_STATUSES, property__isnull=False)
         .select_related('property', 'assigned_staff__user', 'assigned_contact')
     )
 
     boxes = _department_boxes(open_tickets, now)
-
-    pending_property_count = (
-        Ticket.objects.filter(property__isnull=True).exclude(status=Ticket.Status.CANCELLED).count()
-    )
     no_role_count = sum(1 for t in open_tickets if not t.assigned_role)
     awaiting_verification = Ticket.objects.filter(status=Ticket.Status.COMPLETED).select_related('property')
-
-    gmail_mailbox_count = 0
-    if request.user.is_superuser:
-        from intake.models import GmailInboxToken
-        gmail_mailbox_count = GmailInboxToken.objects.count()
 
     return render(request, 'tickets/dashboard.html', {
         'boxes': boxes,
         'now': now,
-        'pending_property_count': pending_property_count,
         'no_role_count': no_role_count,
         'awaiting_verification': awaiting_verification,
-        'gmail_mailbox_count': gmail_mailbox_count,
     })
 
 
@@ -634,60 +625,13 @@ def department_dashboard(request, role):
 
 @login_required
 def ticket_pending(request):
-    """Four review queues on one screen, in decreasing order of "how much
-    is still unknown": "Possible duplicate" comes first — Claude flagged a
-    newly-created ticket as probably the same real-world issue as one
-    already open at the same property (see
-    intake/duplicate_classifier.py, intake/classifier.py::_flag_if_duplicate)
-    — nothing else about it matters until a human confirms or dismisses
-    that match, so it's held here regardless of its due_date/role/property
-    state. "AI Property Match" is email-sourced tickets Claude has already
-    read — property guess included — but deliberately left without a due
-    date or department (see intake/classifier.py::_reconcile_thread_ticket)
-    until a human confirms both via quick bubble locks. "Needs a due date"
-    is anything that already has a property AND department but no due
-    date — a ticket isn't really solidified until staff knows when it's
-    due, so it stays here (out of every department dashboard/list) instead
-    of looking like a scheduled, actionable item. "No property yet" is the
-    oldest queue — any source that couldn't even be pinned to a property.
-    Each bucket excludes tickets already claimed by an earlier one, so
-    nothing shows twice."""
-    base = Ticket.objects.exclude(status=Ticket.Status.CANCELLED)
-
-    duplicate_tickets = (
-        base.filter(possible_duplicate_of__isnull=False)
-        .select_related(
-            'assigned_staff__user', 'assigned_contact', 'property',
-            'possible_duplicate_of__property', 'possible_duplicate_of__assigned_staff__user',
-            'possible_duplicate_of__assigned_contact',
-        ).order_by('-created_at')
-    )
-    duplicate_ids = list(duplicate_tickets.values_list('pk', flat=True))
-
-    ai_match_tickets = (
-        base.filter(source='email', due_date__isnull=True, assigned_role='').exclude(pk__in=duplicate_ids)
-        .select_related('assigned_staff__user', 'assigned_contact', 'property').order_by('-created_at')
-    )
-    ai_match_ids = list(ai_match_tickets.values_list('pk', flat=True))
-
-    needs_date_tickets = (
-        base.filter(due_date__isnull=True, property__isnull=False).exclude(pk__in=ai_match_ids + duplicate_ids)
-        .select_related('assigned_staff__user', 'assigned_contact', 'property').order_by('-created_at')
-    )
-    needs_date_ids = list(needs_date_tickets.values_list('pk', flat=True))
-
-    tickets = (
-        base.filter(property__isnull=True).exclude(pk__in=ai_match_ids + needs_date_ids + duplicate_ids)
-        .select_related('assigned_staff__user', 'assigned_contact').order_by('-created_at')
-    )
-    today = timezone.localdate()
-    return render(request, 'tickets/pending.html', {
-        'tickets': tickets, 'ai_match_tickets': ai_match_tickets, 'needs_date_tickets': needs_date_tickets,
-        'duplicate_tickets': duplicate_tickets,
-        'properties_by_type': properties_by_type(), 'now': timezone.now(),
-        'today': today.isoformat(), 'due_date_presets': _due_date_presets(today),
-        'department_choices': StaffProfile.Role.choices,
-    })
+    """Decommissioned along with reactive/AI ticket intake (Gmail/Quo/
+    calendar/Airbnb/VRBO polling no longer creates tickets — see
+    proptasks/scheduler.py) — nothing populates these review queues
+    anymore, so the screen just sends staff back to the dashboard. Kept as
+    a redirect rather than deleted so any bookmarked/old link still goes
+    somewhere sensible instead of 404ing."""
+    return redirect('dashboard')
 
 
 @login_required

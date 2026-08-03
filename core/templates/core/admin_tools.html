@@ -104,11 +104,11 @@
         </h6>
         <div class="collapse" id="admin-section-email">
         <hr class="my-3">
-        <p class="small mb-1"><strong>Gmail mailboxes</strong> — each one is polled for new tickets (an Airbnb booking confirmation becomes a cleaning task automatically; anything else goes through AI triage). Exactly one also sends outgoing follow-up email — SMTP (below) is confirmed blocked outbound on Railway, on every port tested, so at least one mailbox needs to be connected for sending to work at all.</p>
+        <p class="small mb-1"><strong>Gmail mailboxes</strong> — inbound polling for automatic ticket creation has been turned off; a connected mailbox now exists only to send outgoing follow-up email. SMTP (below) is confirmed blocked outbound on Railway, on every port tested, so at least one mailbox needs to be connected for sending to work at all.</p>
         {% if gmail_inbox_tokens %}
         <div class="table-responsive mb-2">
         <table class="table table-sm align-middle mb-0">
-            <thead><tr><th>Mailbox</th><th>Connected</th><th>Sends outgoing mail</th><th>Look back</th><th></th></tr></thead>
+            <thead><tr><th>Mailbox</th><th>Connected</th><th>Sends outgoing mail</th><th></th></tr></thead>
             <tbody>
             {% for token in gmail_inbox_tokens %}
             <tr>
@@ -127,19 +127,10 @@
                     </form>
                     {% endif %}
                 </td>
-                <td>
-                    <form method="post" action="{% url 'gmail_lookback_trigger' %}" class="d-flex align-items-center gap-1"
-                          onsubmit="return confirm('Re-check the last ' + this.days.value + ' day(s) of {{ token.mailbox_email|escapejs }} right now? This re-evaluates every thread in that window, even ones already seen.');">
-                        {% csrf_token %}
-                        <input type="hidden" name="mailbox_id" value="{{ token.pk }}">
-                        <input type="number" name="days" value="2" min="1" max="30" class="form-control form-control-sm" style="width: 4rem;">
-                        <button type="submit" class="btn btn-outline-secondary btn-sm text-nowrap">days back</button>
-                    </form>
-                </td>
                 <td class="text-nowrap">
                     <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-link btn-sm p-0">Reconnect</a>
                     <form method="post" action="{% url 'gmail_disconnect' %}" class="d-inline ms-2"
-                          onsubmit="return confirm('Disconnect {{ token.mailbox_email|escapejs }}? It stops being polled for new tickets{% if token.is_send_from %}, and another connected mailbox (if any) takes over sending{% endif %}.');">
+                          onsubmit="return confirm('Disconnect {{ token.mailbox_email|escapejs }}?{% if token.is_send_from %} Another connected mailbox (if any) takes over sending.{% endif %}');">
                         {% csrf_token %}
                         <input type="hidden" name="mailbox_id" value="{{ token.pk }}">
                         <input type="hidden" name="next" value="admin_tools">
@@ -151,23 +142,15 @@
             </tbody>
         </table>
         </div>
-        <p class="text-muted small mb-2">"Look back" force-rechecks a mailbox's recent threads right now, ignoring the normal poll — runs in the background; check Railway logs for what it found (including any Airbnb bookings turned into cleaning tickets).</p>
         {% else %}
         <p class="small mb-2 d-flex align-items-center gap-2">
             <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
-            No Gmail mailbox connected — sending falls back to SMTP below (doesn't work on Railway), and no inbox is polled for new tickets.
+            No Gmail mailbox connected — outgoing follow-up email falls back to SMTP below (doesn't work on Railway).
         </p>
         {% endif %}
         <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-outline-primary btn-sm">
             <i data-lucide="plus" class="icon"></i> Connect {% if gmail_inbox_tokens %}another {% endif %}mailbox
         </a>
-        <form method="post" action="{% url 'audit_airbnb_tickets_trigger' %}" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-secondary btn-sm">
-                <i data-lucide="search-check" class="icon"></i> Audit Airbnb tickets
-            </button>
-        </form>
-        <p class="text-muted small mt-1 mb-0">Read-only — re-checks existing Airbnb cleaning tickets against the fixed classifier and reports (Railway logs only) which ones look like they shouldn't have been created. Nothing is changed automatically.</p>
         <hr class="my-3">
         <p class="text-muted small mb-1">
             {% if gmail_inbox_tokens %}
@@ -206,41 +189,16 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-tickets" style="cursor: pointer;">
-            <i data-lucide="ticket" class="icon"></i> Ticket Tools <i data-lucide="chevron-down" class="icon ms-auto"></i>
-        </h6>
-        <div class="collapse show" id="admin-section-tickets">
-        <p class="text-muted small mt-3 mb-2">Checks existing open tickets against each other, grouped by property, for the same "different conversation, same real-world issue" pattern the AI intake pipeline now catches automatically on every new ticket going forward. Flags matches for review on the <a href="{% url 'ticket_pending' %}">Pending</a> screen — never auto-cancels or merges anything.</p>
-        <form method="post" action="{% url 'flag_duplicate_tickets_trigger' %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-secondary btn-sm">
-                <i data-lucide="copy-x" class="icon"></i> Flag duplicate tickets
-            </button>
-        </form>
-        </div>
-    </div>
-</div>
-
-<div class="card mb-3">
-    <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-phone" style="cursor: pointer;">
             <i data-lucide="phone" class="icon"></i> Phone Lines <i data-lucide="chevron-down" class="icon ms-auto"></i>
         </h6>
         <div class="collapse" id="admin-section-phone">
-        <p class="text-muted small mt-3">This Quo account has {{ quo_phone_lines|length }} phone line{{ quo_phone_lines|length|pluralize }}. Pick which one to scan for new tickets, and which one to send outbound texts from.</p>
+        <p class="text-muted small mt-3">This Quo account has {{ quo_phone_lines|length }} phone line{{ quo_phone_lines|length|pluralize }}. Pick which one to send outbound texts from.</p>
         {% if quo_phone_lines %}
         <form method="post" action="{% url 'admin_phone_settings_save' %}">
+            <input type="hidden" name="scan_phone_number_id" value="{{ scan_phone_number_id }}">
             {% csrf_token %}
             <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label small fw-medium mb-1" for="scan-phone-number">Scan for tickets on</label>
-                    <select name="scan_phone_number_id" id="scan-phone-number" class="form-select form-select-sm">
-                        <option value="">All lines (no restriction)</option>
-                        {% for line in quo_phone_lines %}
-                        <option value="{{ line.id }}" {% if line.id == scan_phone_number_id %}selected{% endif %}>{{ line.label }} ({{ line.number }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
                 <div class="col-md-6">
                     <label class="form-label small fw-medium mb-1" for="outbound-phone-number">Send outbound texts from</label>
                     <select name="outbound_from_number" id="outbound-phone-number" class="form-select form-select-sm">

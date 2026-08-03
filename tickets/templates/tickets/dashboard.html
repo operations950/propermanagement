@@ -10,34 +10,11 @@
     <a href="{% url 'ticket_create' %}" class="btn btn-primary flex-shrink-0"><i data-lucide="plus" class="icon"></i> New ticket</a>
 </div>
 
-{% if request.user.is_superuser %}
-<div class="d-flex align-items-center justify-content-between gap-3 mb-3 px-3 py-2 rounded" style="background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); font-size: 0.9rem;">
-    <span class="d-flex align-items-center gap-2">
-        <i data-lucide="mail" class="icon" style="color: {% if gmail_mailbox_count %}var(--status-good){% else %}var(--status-warning){% endif %};"></i>
-        {% if gmail_mailbox_count %}
-            Gmail inbox monitoring: <strong>{{ gmail_mailbox_count }} mailbox{{ gmail_mailbox_count|pluralize }}</strong> connected
-        {% else %}
-            No Gmail mailbox connected — inbound email won't be turned into tickets yet.
-        {% endif %}
-    </span>
-    <a href="{% url 'admin_tools' %}" class="btn btn-outline-secondary btn-sm">Manage in Admin Tools</a>
-</div>
-{% endif %}
-
-{% if pending_property_count or no_role_count %}
+{% if no_role_count %}
 <div class="d-flex align-items-center gap-3 mb-4 px-3 py-2 rounded" style="background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); font-size: 0.9rem;">
-    {% if pending_property_count %}
-    <a href="{% url 'ticket_pending' %}" class="text-decoration-none d-flex align-items-center gap-1">
-        <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
-        <strong>{{ pending_property_count }}</strong> pending property assignment
-    </a>
-    {% endif %}
-    {% if pending_property_count and no_role_count %}<span style="color: var(--border-hairline);">|</span>{% endif %}
-    {% if no_role_count %}
     <a href="{% url 'ticket_list' %}?role=none" class="text-decoration-none" style="color: var(--ink-secondary);">
         {{ no_role_count }} unrouted (no department)
     </a>
-    {% endif %}
 </div>
 {% endif %}
 
