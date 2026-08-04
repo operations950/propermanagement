@@ -157,6 +157,42 @@ class ImportBatch(models.Model):
         return f'{self.get_source_display()} import {self.created_at:%Y-%m-%d %H:%M}'
 
 
+class BookingFeedHealth(models.Model):
+    """One row per booking source (Airbnb, VRBO, ...) tracking whether that
+    platform's import pipeline is actually alive — feeds the owner
+    dashboard's on-site panel. Updated in booking_import_apply right after
+    a batch for that source applies successfully (see
+    onsite/views.py::_update_feed_health).
+
+    Three deliberately separate signals, because they fail differently:
+    - last_upload_at stale → the upload agent/staff routine is broken
+      (an alarm — nobody's feeding this source at all).
+    - newest_booked_date old despite a fresh last_upload_at → uploads are
+      happening but few/no NEW reservations have come in since (booking
+      pace is slow — informational, not a pipeline problem). Only
+      populated when the source file actually carries a "booked/reserved
+      on" column (see RawBooking.booked_at) — stays null if it never has,
+      rather than guessing.
+    - coverage_through → how far into the future the file's reservations
+      reach (same number as that batch's own ImportBatch.covers_end,
+      carried forward as a running high-water mark across every batch for
+      this source).
+    All three only ever move forward (a batch with an older max date than
+    what's already stored never overwrites it) — a stray partial/backdated
+    file should never make a healthy feed look like it regressed."""
+    source = models.CharField(max_length=20, choices=ImportBatch.Source.choices, unique=True)
+    last_upload_at = models.DateTimeField(null=True, blank=True)
+    newest_booked_date = models.DateField(null=True, blank=True)
+    coverage_through = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name_plural = 'booking feed health'
+        ordering = ['source']
+
+    def __str__(self):
+        return f'{self.get_source_display()} feed health'
+
+
 class DailyUploadSlot(models.Model):
     """One of the small, fixed set of reports staff actually pull every day
     (e.g. "Airbnb - Upcoming Page 1", "VRBO - Patrick") — a real model

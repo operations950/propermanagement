@@ -16,7 +16,10 @@ from supplies.models import SupplyRequest
 from vendorportal.models import AccessAttempt
 
 from .importers import BookingFileError, detect_format, parse_booking_file
-from .models import Booking, DailyUploadSlot, ImportBatch, PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia
+from .models import (
+    Booking, BookingFeedHealth, DailyUploadSlot, ImportBatch, PropertyChecklistItem, StandardChecklistItem,
+    Visit, VisitChecklistItem, VisitIssue, VisitMedia,
+)
 from .services import checklist as checklist_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
@@ -241,6 +244,31 @@ def _create_import_batch(user, source, uploaded_file, property=None):
     return batch, None
 
 
+def _update_feed_health(source, raw_bookings):
+    """Called once a batch for `source` actually applies successfully —
+    see BookingFeedHealth's docstring for what each field means and why
+    they're kept separate. All three only ever move forward."""
+    health, _ = BookingFeedHealth.objects.get_or_create(source=source)
+    update_fields = ['last_upload_at']
+    health.last_upload_at = timezone.now()
+
+    booked_dates = [r.booked_at for r in raw_bookings if r.booked_at]
+    if booked_dates:
+        newest = max(booked_dates)
+        if not health.newest_booked_date or newest > health.newest_booked_date:
+            health.newest_booked_date = newest
+            update_fields.append('newest_booked_date')
+
+    checkouts = [r.check_out for r in raw_bookings]
+    if checkouts:
+        furthest = max(checkouts)
+        if not health.coverage_through or furthest > health.coverage_through:
+            health.coverage_through = furthest
+            update_fields.append('coverage_through')
+
+    health.save(update_fields=update_fields)
+
+
 @login_required
 def booking_import_upload(request):
     """Phase 1 of the two-phase import. Two shapes:
@@ -385,6 +413,7 @@ def booking_import_apply(request, batch_id):
         batch.new_count, batch.changed_count, batch.cancelled_count = new_count, changed_count, cancelled_count
         batch.applied_at = timezone.now()
         batch.save(update_fields=['new_count', 'changed_count', 'cancelled_count', 'applied_at'])
+        _update_feed_health(batch.source, raw_bookings)
         messages.success(request, f'Imported: {new_count} new, {changed_count} changed, {cancelled_count} cancelled.')
         if visit_note:
             messages.warning(request, visit_note)
@@ -432,6 +461,7 @@ def booking_import_apply(request, batch_id):
     batch.new_count, batch.changed_count, batch.cancelled_count = total_new, total_changed, total_cancelled
     batch.applied_at = timezone.now()
     batch.save(update_fields=['new_count', 'changed_count', 'cancelled_count', 'applied_at'])
+    _update_feed_health(batch.source, raw_bookings)
 
     property_word = 'property' if len(matched) == 1 else 'properties'
     messages.success(

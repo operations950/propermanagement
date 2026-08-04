@@ -40,6 +40,15 @@ class RawBooking:
     # here; this module knows nothing about Property). Blank for .ics,
     # which is inherently single-listing.
     listing_name: str = ''
+    # When the guest actually MADE the reservation (not the stay dates) —
+    # only present when the platform's export includes a "Booked"/"Date
+    # booked" column, which not every report does (.ics never has one).
+    # Feeds onsite.BookingFeedHealth.newest_booked_date — a leading
+    # indicator of booking pace, distinct from how far out the calendar is
+    # filled (see that model's docstring). None, not a guess, when absent
+    # or unparseable — a soft/optional field is never worth failing the
+    # whole import over.
+    booked_at: date | None = None
 
 
 def detect_format(filename):
@@ -124,6 +133,10 @@ _CSV_FIELD_ALIASES = {
     # file is treated as belonging to whichever property staff pick anyway
     # (see onsite/views.py's format branch).
     'listing_name': ['listing', 'listing name', 'listing_name', 'property', 'property name', 'property_name', 'unit', 'unit name'],
+    # Also not required — when reservation date (when the guest booked,
+    # not the stay dates) is on the file, populates RawBooking.booked_at
+    # for onsite.BookingFeedHealth. Some exports have it, some don't.
+    'booked_at': ['booked', 'booked date', 'booked_date', 'date booked', 'booking date', 'reservation date'],
 }
 
 
@@ -166,6 +179,14 @@ def parse_csv(file_bytes):
             continue
         phone = (row.get(columns['guest_phone']) or '').strip() if columns['guest_phone'] else ''
         digits = re.sub(r'\D', '', phone)
+        booked_at = None
+        if columns['booked_at']:
+            raw_booked = (row.get(columns['booked_at']) or '').strip()
+            if raw_booked:
+                try:
+                    booked_at = _parse_csv_date(raw_booked)
+                except BookingFileError:
+                    pass  # optional field — an unparseable value just means "unknown," not a failed import
         bookings.append(RawBooking(
             external_uid=uid,
             check_in=_parse_csv_date(row[columns['check_in']]),
@@ -173,6 +194,7 @@ def parse_csv(file_bytes):
             guest_name=(row.get(columns['guest_name']) or '').strip() if columns['guest_name'] else '',
             guest_phone_last4=digits[-4:] if digits else '',
             listing_name=(row.get(columns['listing_name']) or '').strip() if columns['listing_name'] else '',
+            booked_at=booked_at,
         ))
 
     if not bookings:

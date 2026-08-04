@@ -317,6 +317,31 @@ class PackageRun(models.Model):
         return f'{self.package.title} — {self.property or "company-wide"} — {self.scheduled_for}'
 
 
+class DepartmentDefaultAssignee(models.Model):
+    """Who a ticket falls to when it's created for a department (`assigned_role`)
+    but nobody specific was picked — one row per role, not per person, since
+    a role maps to *a* default person, not the other way around (see
+    Ticket.save()'s auto-assign-on-create logic). Deliberately its own small
+    model rather than a field on StaffProfile: StaffProfile.role already
+    means "which team this person is on," not "who leads that team."
+
+    Every ticket should have a real person on it — auto-assigning from here
+    at creation makes that true without staff having to pick someone for
+    every single reactive/on-site-issue ticket. Ticket.assignment_source
+    records when this happened so an auto-assigned-and-never-touched ticket
+    can still surface as unowned work on the owner dashboard's quiet-list
+    panel, rather than silently hiding behind a name nobody actually
+    claimed."""
+    role = models.CharField(max_length=20, choices=StaffProfile.Role.choices, unique=True)
+    staff = models.ForeignKey(StaffProfile, on_delete=models.CASCADE, related_name='default_for_roles')
+
+    class Meta:
+        ordering = ['role']
+
+    def __str__(self):
+        return f'{self.get_role_display()} default → {self.staff}'
+
+
 class Ticket(models.Model):
     class Status(models.TextChoices):
         OPEN = 'open', 'Open'
@@ -344,6 +369,16 @@ class Ticket(models.Model):
     # Statuses a package step must reach before dependents blocked on it are released — see
     # tickets.services.package_engine.unblock_dependents.
     DEPENDENCY_SATISFYING_STATUSES = ['completed', 'verified', 'skipped', 'not_applicable', 'cancelled']
+
+    # The only statuses that mean "completed_at should be set" — narrower than
+    # DEPENDENCY_SATISFYING_STATUSES/COMPLETE_STATUSES (tickets/views.py), which also
+    # include cancelled/skipped/not_applicable: those are "stopped," not "finished," and
+    # shouldn't count toward the owner dashboard's "closed today" panel. See save() below.
+    TRUE_COMPLETION_STATUSES = ['completed', 'verified']
+
+    class AssignmentSource(models.TextChoices):
+        MANUAL = 'manual', 'Manual'
+        AUTO = 'auto', 'Auto-assigned'
 
     class Source(models.TextChoices):
         MANUAL = 'manual', 'Manual'
@@ -390,6 +425,13 @@ class Ticket(models.Model):
     assigned_contact = models.ForeignKey(
         Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tickets',
         help_text='Use for reassigning to an external vendor/contractor.',
+    )
+    assignment_source = models.CharField(
+        max_length=10, choices=AssignmentSource.choices, default=AssignmentSource.MANUAL,
+        help_text='Whether assigned_staff was picked by a human or filled in automatically from '
+                   'DepartmentDefaultAssignee at creation because assigned_role had one and nobody '
+                   'specific was chosen (see save()). Flipped back to "manual" the moment a human '
+                   'reassigns it — this only ever means "auto and still exactly as auto left it."',
     )
 
     priority = models.CharField(max_length=20, choices=Priority.choices, default=Priority.MEDIUM)
@@ -541,12 +583,55 @@ class Ticket(models.Model):
             return True
         return timezone.now() <= self.completion_token_expires_at
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        """Remembers the status this instance was actually loaded with, so
+        save() can tell "status changed away from completed/verified this
+        call" (→ clear completed_at) apart from "just re-saving the same
+        completed ticket for an unrelated field" (→ leave it alone). A
+        freshly-constructed Ticket() has no _loaded_status, which save()
+        treats as "nothing to compare against, don't touch completed_at."
+        """
+        instance = super().from_db(db, field_names, values)
+        instance._loaded_status = instance.status
+        return instance
+
     def save(self, *args, **kwargs):
         if self.completion_token_expires_at is None:
             self.completion_token_expires_at = timezone.now() + timedelta(
                 days=settings.VENDOR_TOKEN_EXPIRY_DAYS
             )
+
+        # Auto-assign-on-create: a ticket with a department but nobody
+        # specific gets whoever DepartmentDefaultAssignee names for that
+        # role, so "every ticket has a real person on it" holds without
+        # staff having to pick someone for every reactive/on-site-issue
+        # ticket. Only on the very first save — a ticket someone
+        # deliberately unassigned later should stay unassigned, not get
+        # silently re-filled. Not applied when creating without a role at
+        # all (nothing to look up), and never overrides a human's pick —
+        # the has-neither-assignee guard means a form-supplied assignee
+        # always wins.
+        if self._state.adding and self.assigned_role and not self.assigned_staff_id and not self.assigned_contact_id:
+            default = DepartmentDefaultAssignee.objects.filter(role=self.assigned_role).select_related('staff').first()
+            if default:
+                self.assigned_staff = default.staff
+                self.assignment_source = self.AssignmentSource.AUTO
+
+        # completed_at clear-on-reopen: whichever of the several status-
+        # changing views moved this ticket, if it left TRUE_COMPLETION_STATUSES
+        # the old completion timestamp no longer means anything — a ticket
+        # bounced back to in_progress/blocked/cancelled/etc. isn't "closed
+        # today" anymore, however it originally got closed.
+        loaded_status = getattr(self, '_loaded_status', None)
+        if (
+            loaded_status is not None and loaded_status != self.status
+            and self.status not in self.TRUE_COMPLETION_STATUSES and self.completed_at
+        ):
+            self.completed_at = None
+
         super().save(*args, **kwargs)
+        self._loaded_status = self.status
 
 
 class TicketChecklistItem(models.Model):

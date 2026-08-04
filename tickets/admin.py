@@ -4,6 +4,7 @@ from django.contrib import admin
 from core.models import Property
 
 from .models import (
+    DepartmentDefaultAssignee,
     FollowUpLog,
     PackageRun,
     PropertyPackage,
@@ -42,12 +43,17 @@ class TicketChecklistItemInline(admin.TabularInline):
 class TicketAdmin(admin.ModelAdmin):
     list_display = [
         'title', 'property', 'assigned_role', 'status', 'priority', 'assignee_label', 'due_date',
-        'source',
+        'source', 'assignment_source',
     ]
-    list_filter = ['status', 'priority', 'source', 'property', 'assigned_role']
+    list_filter = ['status', 'priority', 'source', 'property', 'assigned_role', 'assignment_source']
     search_fields = ['title', 'description', 'raw_context', 'source_reference']
     readonly_fields = ['completion_token', 'completion_token_expires_at', 'created_at', 'updated_at']
     inlines = [TicketContactInline, TicketAttachmentInline, TicketChecklistItemInline]
+
+
+@admin.register(DepartmentDefaultAssignee)
+class DepartmentDefaultAssigneeAdmin(admin.ModelAdmin):
+    list_display = ['role', 'staff']
 
 
 class TicketTemplateAdminForm(forms.ModelForm):

@@ -1036,9 +1036,11 @@ def ticket_quick_edit(request, pk):
         if kind == 'staff' and raw_id.isdigit():
             ticket.assigned_staff_id = int(raw_id)
             ticket.assigned_contact = None
+            ticket.assignment_source = Ticket.AssignmentSource.MANUAL
         elif kind == 'contact' and raw_id.isdigit():
             ticket.assigned_contact_id = int(raw_id)
             ticket.assigned_staff = None
+            ticket.assignment_source = Ticket.AssignmentSource.MANUAL
         else:
             ticket.assigned_staff = None
             ticket.assigned_contact = None
@@ -1924,6 +1926,7 @@ def ticket_reassign(request, pk):
             ticket.assigned_staff = new_staff
             if new_staff:
                 ticket.assigned_contact = None
+                ticket.assignment_source = Ticket.AssignmentSource.MANUAL
             ticket.assigned_role = form.cleaned_data['assigned_role']
             if ticket.status == Ticket.Status.OPEN:
                 ticket.status = Ticket.Status.ASSIGNED
@@ -1989,6 +1992,7 @@ def ticket_assign_contractor(request, pk):
             )
             if new_contact:
                 ticket.assigned_staff = None
+                ticket.assignment_source = Ticket.AssignmentSource.MANUAL
             if contact_changed:
                 ticket.rotate_completion_token()
             ticket.assigned_contact = new_contact
