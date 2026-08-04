@@ -69,9 +69,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
 
-    # Must precede staticfiles per django-cloudinary-storage's install docs.
-    'cloudinary_storage',
     'django.contrib.staticfiles',
+    # Not an installed app: cloudinary_storage's own collectstatic command
+    # override breaks WhiteNoise-based static collection outright (its
+    # copy_file is a no-op unless static files are *also* served from
+    # Cloudinary, which they aren't here) — we only need the storage
+    # backend CLASS referenced by dotted path in STORAGES below, which
+    # doesn't require app registration. See git history for the incident.
     'cloudinary',
 
     'core',
