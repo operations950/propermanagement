@@ -1118,10 +1118,22 @@ def contact_delete(request, pk):
     TicketAttachment.uploaded_by_contact) is on_delete=SET_NULL, so real
     tickets/attachments/follow-ups stay intact and simply lose the
     assignment; only pure link/audit rows (TicketContact, duplicate-
-    dismissal pairs, pending update candidates) cascade away with them."""
+    dismissal pairs, pending update candidates) cascade away with them.
+
+    One wrinkle since Ticket's assignment CheckConstraint requires exactly
+    one of assigned_staff/assigned_contact: Django's SET_NULL cascade is a
+    raw bulk UPDATE, not a per-instance save(), so it bypasses
+    Ticket.save()'s own "never leave neither set" fallback. For any ticket
+    where this contact is the SOLE assignee, resolve that explicitly
+    through save() first — its own fallback logic (department default,
+    then any company-admin) kicks in — so the cascade that follows has
+    nothing left to null out."""
     contact = get_object_or_404(Contact, pk=pk)
     if request.method == 'POST':
         name = contact.name
+        for ticket in Ticket.objects.filter(assigned_contact=contact, assigned_staff__isnull=True):
+            ticket.assigned_contact = None
+            ticket.save(update_fields=['assigned_contact', 'assigned_staff', 'assignment_source'])
         contact.delete()
         messages.success(request, f'Deleted contact "{name}".')
         return redirect('contact_list')

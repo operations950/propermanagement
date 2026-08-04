@@ -535,8 +535,21 @@ class Ticket(models.Model):
                 name='uniq_template_scheduled_for_property',
             ),
             models.CheckConstraint(
-                condition=models.Q(assigned_staff__isnull=True) | models.Q(assigned_contact__isnull=True),
-                name='ticket_single_assignee',
+                # Tightened from "at most one" to "exactly one" — every
+                # ticket has a real person on it now, staff or vendor, no
+                # exceptions. Ticket.save() guarantees this holds before a
+                # row ever reaches the DB (falls back to
+                # DepartmentDefaultAssignee / any company-admin whenever
+                # both would otherwise be empty); the migration that
+                # tightened this constraint backfilled every pre-existing
+                # row first, in the same migrate step, so it can never fail
+                # on old data regardless of what a prior deploy's Procfile
+                # backfill command did or didn't get to run.
+                condition=(
+                    (models.Q(assigned_staff__isnull=False) & models.Q(assigned_contact__isnull=True))
+                    | (models.Q(assigned_staff__isnull=True) & models.Q(assigned_contact__isnull=False))
+                ),
+                name='ticket_exactly_one_assignee',
             ),
         ]
 
@@ -609,20 +622,25 @@ class Ticket(models.Model):
                 days=settings.VENDOR_TOKEN_EXPIRY_DAYS
             )
 
-        # Auto-assign-on-create: a ticket with a department but nobody
-        # specific gets whoever DepartmentDefaultAssignee names for that
-        # role, so "every ticket has a real person on it" holds without
-        # staff having to pick someone for every reactive/on-site-issue
-        # ticket. Only on the very first save — a ticket someone
-        # deliberately unassigned later should stay unassigned, not get
-        # silently re-filled. Not applied when creating without a role at
-        # all (nothing to look up), and never overrides a human's pick —
-        # the has-neither-assignee guard means a form-supplied assignee
-        # always wins.
-        if self._state.adding and self.assigned_role and not self.assigned_staff_id and not self.assigned_contact_id:
-            default = DepartmentDefaultAssignee.objects.filter(role=self.assigned_role).select_related('staff').first()
-            if default:
-                self.assigned_staff = default.staff
+        # Every ticket needs a real person on it — deliberately unconditional,
+        # not just on create. "Unassigned" isn't a state this app lets a
+        # ticket sit in anymore (see the exactly-one CheckConstraint below):
+        # a brand-new ticket nobody was assigned to yet, or an existing one
+        # a human just cleared down to nobody via the quick-edit/reassign/
+        # clear-contractor paths, both land here the same way. Falls back to
+        # DepartmentDefaultAssignee for assigned_role, then any company-admin
+        # StaffProfile as a last resort, and marks it 'auto' — matching the
+        # brief's own framing: auto-assigned-and-never-touched is meant to
+        # surface on the quiet-list panel, not disappear as a silent null.
+        # Never overrides a human's actual pick — this only runs when BOTH
+        # fields are already empty going into this save.
+        if not self.assigned_staff_id and not self.assigned_contact_id:
+            default = None
+            if self.assigned_role:
+                default = DepartmentDefaultAssignee.objects.filter(role=self.assigned_role).select_related('staff').first()
+            staff = default.staff if default else StaffProfile.objects.filter(is_company_admin=True).first()
+            if staff:
+                self.assigned_staff = staff
                 self.assignment_source = self.AssignmentSource.AUTO
 
         # completed_at clear-on-reopen: whichever of the several status-
