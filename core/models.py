@@ -87,10 +87,31 @@ class Property(models.Model):
         null=True, blank=True,
         help_text='Same as check-in, for the checkout side of a turnover.',
     )
+    airbnb_listing_name = models.CharField(
+        max_length=200, blank=True,
+        help_text="This property's exact listing name/title on Airbnb — used by the onsite module's "
+                   'portfolio-wide booking import to automatically tie each reservation row to the '
+                   'right property. Set automatically the first time an unrecognized listing name is '
+                   'resolved during an import, or editable here directly.',
+    )
+    vrbo_listing_name = models.CharField(
+        max_length=200, blank=True,
+        help_text='Same as airbnb_listing_name, for VRBO.',
+    )
 
     class Meta:
         verbose_name_plural = 'properties'
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['airbnb_listing_name'], condition=~models.Q(airbnb_listing_name=''),
+                name='uniq_property_airbnb_listing_name',
+            ),
+            models.UniqueConstraint(
+                fields=['vrbo_listing_name'], condition=~models.Q(vrbo_listing_name=''),
+                name='uniq_property_vrbo_listing_name',
+            ),
+        ]
 
     def __str__(self):
         return self.name

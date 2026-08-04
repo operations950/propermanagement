@@ -1,16 +1,22 @@
 """Booking file parsing for the two-phase import (see onsite/views.py's
-booking_import_upload/booking_import_apply). Each import is for one
-property — both Airbnb and VRBO hand out one calendar feed/export per
-listing, so a file mixing properties isn't the common case this needs to
-handle.
+booking_import_upload/booking_import_apply).
 
-.ics is the common case (a calendar export — dates only, no guest name,
-per RFC5545's iCalendar format); .csv is the richer "reservation report"
-export some platforms also offer, with guest name/phone. Format is
-detected from the file extension; which platform (Airbnb vs VRBO) is
-picked by staff on the upload form rather than sniffed from content —
-the two calendar exports are structurally near-identical, so guessing
-would be unreliable where an explicit dropdown is trivial."""
+Two shapes, handled differently:
+- **.ics** — a per-listing calendar export (dates only, no guest name, per
+  RFC5545's iCalendar format). Airbnb/VRBO only ever hand out one of these
+  per listing, so it's inherently single-property — the property is picked
+  by staff on the upload form.
+- **.csv** — the richer, portfolio-wide "reservation report" export both
+  platforms also offer, with a row per reservation across every listing the
+  host manages, each row carrying that platform's own listing name/title.
+  No property is picked upfront; every row's `listing_name` is resolved
+  against `Property.airbnb_listing_name`/`vrbo_listing_name` by the caller
+  (see `onsite/services/bookings.py::resolve_listing_names`).
+
+Format is detected from the file extension; which platform (Airbnb vs VRBO)
+is picked by staff on the upload form rather than sniffed from content —
+the two exports are structurally near-identical, so guessing would be
+unreliable where an explicit bubble is trivial."""
 import csv
 import io
 import re
@@ -29,6 +35,11 @@ class RawBooking:
     check_out: date
     guest_name: str = ''
     guest_phone_last4: str = ''
+    # Only ever populated from a portfolio-wide .csv row — the platform's
+    # own listing name/title, resolved against a Property elsewhere (not
+    # here; this module knows nothing about Property). Blank for .ics,
+    # which is inherently single-listing.
+    listing_name: str = ''
 
 
 def detect_format(filename):
@@ -108,6 +119,11 @@ _CSV_FIELD_ALIASES = {
     'check_out': ['end date', 'end_date', 'check-out', 'check_out', 'checkout', 'departure'],
     'guest_name': ['guest name', 'guest_name', 'name'],
     'guest_phone': ['phone number', 'phone_number', 'phone'],
+    # Not required — a single-listing CSV export legitimately has no such
+    # column. When absent, every row's listing_name stays '' and the whole
+    # file is treated as belonging to whichever property staff pick anyway
+    # (see onsite/views.py's format branch).
+    'listing_name': ['listing', 'listing name', 'listing_name', 'property', 'property name', 'property_name', 'unit', 'unit name'],
 }
 
 
@@ -156,6 +172,7 @@ def parse_csv(file_bytes):
             check_out=_parse_csv_date(row[columns['check_out']]),
             guest_name=(row.get(columns['guest_name']) or '').strip() if columns['guest_name'] else '',
             guest_phone_last4=digits[-4:] if digits else '',
+            listing_name=(row.get(columns['listing_name']) or '').strip() if columns['listing_name'] else '',
         ))
 
     if not bookings:

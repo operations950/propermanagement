@@ -133,7 +133,12 @@ class ImportBatch(models.Model):
         AIRBNB = 'airbnb', 'Airbnb'
         VRBO = 'vrbo', 'VRBO'
 
-    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='onsite_import_batches')
+    # Null for a portfolio-wide .csv (many properties in one file, resolved
+    # per-row by listing name) — set only for the single-property .ics flow,
+    # or a .csv without a listing/property column. See onsite/importers.py.
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name='onsite_import_batches', null=True, blank=True,
+    )
     source = models.CharField(max_length=20, choices=Source.choices)
     raw_file = models.FileField(upload_to='onsite_import_batches/%Y/%m/')
     covers_start = models.DateField(help_text='Earliest checkout date this file actually covers.')

@@ -17,10 +17,19 @@ from django.utils import timezone
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
 from ..models import Booking, VisitType
+from core.models import Property
 
 TURNOVER_SLUG = 'turnover'
 DEFAULT_CHECK_IN_TIME = time(16, 0)
 DEFAULT_CHECK_OUT_TIME = time(11, 0)
+
+# Which Property field holds the stored listing name for each platform —
+# used both to resolve an import row's listing_name to a Property and to
+# write a newly-confirmed mapping back onto it.
+LISTING_NAME_FIELD = {
+    'airbnb': 'airbnb_listing_name',
+    'vrbo': 'vrbo_listing_name',
+}
 
 
 def _combine(property, date_value, which):
@@ -30,6 +39,52 @@ def _combine(property, date_value, which):
         t = property.default_check_out_time or DEFAULT_CHECK_OUT_TIME
     naive = datetime.combine(date_value, t)
     return timezone.make_aware(naive) if timezone.is_naive(naive) else naive
+
+
+def resolve_listing_names(raw_bookings, source):
+    """Splits a portfolio-wide file's rows by whether their listing_name
+    matches a Property's stored name for this platform. Returns
+    (matched: {Property: [RawBooking]}, unmatched: {listing_name: [RawBooking]})
+    — unmatched is grouped by the exact listing_name string so a human
+    resolves each distinct name once, not once per row."""
+    field = LISTING_NAME_FIELD[source]
+    names_seen = {r.listing_name for r in raw_bookings if r.listing_name}
+    properties_by_name = {
+        getattr(p, field): p
+        for p in Property.objects.filter(**{f'{field}__in': names_seen})
+    }
+    matched, unmatched = {}, {}
+    for row in raw_bookings:
+        property = properties_by_name.get(row.listing_name)
+        if property:
+            matched.setdefault(property, []).append(row)
+        else:
+            unmatched.setdefault(row.listing_name, []).append(row)
+    return matched, unmatched
+
+
+def check_listing_name_conflict(property, source, listing_name):
+    """Returns None if mapping listing_name -> property for this platform is
+    conflict-free, otherwise a dict describing what to warn about:
+    - {'type': 'cross', 'other_property': Property} — a DIFFERENT property
+      already claims this exact name; must be fixed there first (hard block).
+    - {'type': 'same', 'existing_name': str} — this property already has a
+      DIFFERENT name on file for this platform; mapping would overwrite it
+      (soft block — needs explicit confirmation)."""
+    field = LISTING_NAME_FIELD[source]
+    other = Property.objects.filter(**{field: listing_name}).exclude(pk=property.pk).first()
+    if other:
+        return {'type': 'cross', 'other_property': other}
+    existing_name = getattr(property, field)
+    if existing_name and existing_name != listing_name:
+        return {'type': 'same', 'existing_name': existing_name}
+    return None
+
+
+def save_listing_name(property, source, listing_name):
+    field = LISTING_NAME_FIELD[source]
+    setattr(property, field, listing_name)
+    property.save(update_fields=[field])
 
 
 def diff_bookings(property, source, raw_bookings):
@@ -87,10 +142,13 @@ def _find_next_booking(property, after_datetime, exclude_pk=None):
 
 
 @transaction.atomic
-def apply_bookings(property, source, raw_bookings, batch):
-    """Writes the diff computed the same way diff_bookings does. Returns
-    (new_count, changed_count, cancelled_count, visit_note) — visit_note is
-    a user-facing message when visit creation had to be skipped."""
+def apply_bookings_for_property(property, source, raw_bookings):
+    """Writes the diff computed the same way diff_bookings does, for ONE
+    property's rows. Returns (new_count, changed_count, cancelled_count,
+    visit_note) — visit_note is a user-facing message when visit creation
+    had to be skipped. Does not touch any ImportBatch; a portfolio-wide
+    import calls this once per resolved property and aggregates the counts
+    itself (see onsite/views.py)."""
     diff = diff_bookings(property, source, raw_bookings)
     turnover_type = VisitType.objects.filter(slug=TURNOVER_SLUG, is_active=True).first()
     visit_note = '' if turnover_type else (
@@ -136,9 +194,4 @@ def apply_bookings(property, source, raw_bookings, batch):
         for visit in active_visits:
             transaction.on_commit(lambda visit=visit: delete_visit_event(visit))
 
-    batch.new_count = len(diff['new'])
-    batch.changed_count = len(diff['changed'])
-    batch.cancelled_count = len(diff['cancelled'])
-    batch.applied_at = timezone.now()
-    batch.save(update_fields=['new_count', 'changed_count', 'cancelled_count', 'applied_at'])
-    return batch.new_count, batch.changed_count, batch.cancelled_count, visit_note
+    return len(diff['new']), len(diff['changed']), len(diff['cancelled']), visit_note

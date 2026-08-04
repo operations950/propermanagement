@@ -749,6 +749,22 @@ def property_detail(request, pk):
                 setattr(prop, time_field, request.POST.get(time_field) or None)
             prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time'])
             messages.success(request, 'Access info saved.')
+        elif action == 'save_booking_platforms':
+            conflicts = []
+            for field, label in (('airbnb_listing_name', 'Airbnb'), ('vrbo_listing_name', 'VRBO')):
+                value = request.POST.get(field, '').strip()
+                if value:
+                    other = Property.objects.filter(**{field: value}).exclude(pk=prop.pk).first()
+                    if other:
+                        conflicts.append(f'"{value}" is already {label}\'s listing name for {other.name} — fix that property first, or use a different name here.')
+                        continue
+                setattr(prop, field, value)
+            if conflicts:
+                for c in conflicts:
+                    messages.error(request, c)
+            else:
+                prop.save(update_fields=['airbnb_listing_name', 'vrbo_listing_name'])
+                messages.success(request, 'Booking platform names saved.')
         elif action == 'add_document':
             name = request.POST.get('name', '').strip()
             file = request.FILES.get('file')

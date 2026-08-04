@@ -13,10 +13,12 @@ from core.views import _is_admin
 from supplies.models import SupplyRequest
 from vendorportal.models import AccessAttempt
 
-from .importers import BookingFileError, parse_booking_file
+from .importers import BookingFileError, detect_format, parse_booking_file
 from .models import Booking, ImportBatch, PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia
 from .services import checklist as checklist_service
-from .services.bookings import apply_bookings, diff_bookings
+from .services.bookings import (
+    apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
+)
 
 # How far ahead of ready_by a visit starts showing as at-risk — a heads-up
 # window, not just "already late". Not user-configurable; a fixed buffer is
@@ -75,43 +77,110 @@ def dashboard(request):
     })
 
 
+def _str_properties():
+    return Property.objects.filter(property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True).order_by('name')
+
+
+def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
+    """Builds the preview context for a portfolio-wide .csv: which rows
+    auto-matched an existing Property (with their diff), and which distinct
+    listing names didn't. `posted`, when given, is request.POST from a just
+    -submitted (and blocked) Apply attempt — used to keep the human's picks
+    sticky and surface per-group conflict warnings without losing their
+    work, per the two-scenario warning the user asked for."""
+    matched, unmatched = resolve_listing_names(raw_bookings, source)
+    property_diffs = [
+        {'property': property, 'diff': diff_bookings(property, source, rows)}
+        for property, rows in sorted(matched.items(), key=lambda kv: kv[0].name)
+    ]
+    all_properties = list(_str_properties())
+
+    unmatched_groups = []
+    for i, (listing_name, rows) in enumerate(sorted(unmatched.items())):
+        posted_property_id = (posted.get(f'map_{i}') if posted else '') or ''
+        conflict = None
+        if posted is not None and posted_property_id:
+            chosen = Property.objects.filter(pk=posted_property_id).first()
+            if chosen:
+                conflict = check_listing_name_conflict(chosen, source, listing_name)
+                if conflict and conflict['type'] == 'same' and posted.get(f'confirm_{i}'):
+                    conflict = None
+        unmatched_groups.append({
+            'index': i,
+            'listing_name': listing_name,
+            'count': len(rows),
+            'sample_checkout': rows[0].check_out,
+            'properties': all_properties,
+            'posted_property_id': posted_property_id,
+            'unresolved': posted is not None and not posted_property_id,
+            'conflict': conflict,
+        })
+
+    return {
+        'batch': batch, 'portfolio': True, 'source': source,
+        'property_diffs': property_diffs, 'unmatched_groups': unmatched_groups,
+    }
+
+
 @login_required
 def booking_import_upload(request):
-    """Phase 1 of the two-phase import: parse the uploaded file, diff it
-    against existing Booking rows, and show the diff — nothing is written
-    to Booking/Visit yet. The file itself is saved onto a not-yet-applied
-    ImportBatch so booking_import_apply can act on exactly what was
-    previewed without re-uploading."""
-    str_properties = Property.objects.filter(
-        property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True,
-    ).order_by('name')
+    """Phase 1 of the two-phase import. Two shapes:
+    - a single-listing file (.ics always; a .csv with no listing/property
+      column) — staff pick the property, same as before.
+    - a portfolio-wide .csv (has a listing/property column with data) — no
+      property picked upfront; every row's listing name is auto-resolved
+      against Property.airbnb_listing_name/vrbo_listing_name, and whatever
+      doesn't match gets a resolution UI on the preview screen instead.
+    Nothing is written to Booking/Visit yet either way. The file itself is
+    saved onto a not-yet-applied ImportBatch so booking_import_apply can act
+    on exactly what was previewed without re-uploading."""
+    str_properties = _str_properties()
 
     if request.method == 'POST':
         property_id = request.POST.get('property')
         source = request.POST.get('source')
         uploaded_file = request.FILES.get('file')
 
-        if not (property_id and source and uploaded_file):
-            messages.error(request, 'Choose a property, a source, and a file.')
+        if not (source and uploaded_file):
+            messages.error(request, 'Choose a source and a file.')
             return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
 
-        property = get_object_or_404(Property, pk=property_id)
         try:
+            fmt = detect_format(uploaded_file.name)
             raw_bookings = parse_booking_file(uploaded_file)
-            diff = diff_bookings(property, source, raw_bookings)
         except BookingFileError as e:
             messages.error(request, str(e))
             return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
 
+        portfolio_mode = fmt == 'csv' and not property_id and any(r.listing_name for r in raw_bookings)
         covers_start = min(r.check_out for r in raw_bookings)
         covers_end = max(r.check_out for r in raw_bookings)
+
+        if not portfolio_mode:
+            if not property_id:
+                messages.error(
+                    request,
+                    'Choose a property — only a portfolio-wide .csv with a listing/property column can skip this.',
+                )
+                return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
+            property = get_object_or_404(Property, pk=property_id)
+            diff = diff_bookings(property, source, raw_bookings)
+            batch = ImportBatch.objects.create(
+                property=property, source=source, raw_file=uploaded_file,
+                covers_start=covers_start, covers_end=covers_end, imported_by=request.user,
+            )
+            return render(request, 'onsite/booking_import_preview.html', {
+                'batch': batch, 'property': property, 'diff': diff, 'portfolio': False,
+            })
+
         batch = ImportBatch.objects.create(
-            property=property, source=source, raw_file=uploaded_file,
+            property=None, source=source, raw_file=uploaded_file,
             covers_start=covers_start, covers_end=covers_end, imported_by=request.user,
         )
-        return render(request, 'onsite/booking_import_preview.html', {
-            'batch': batch, 'property': property, 'diff': diff,
-        })
+        return render(
+            request, 'onsite/booking_import_preview.html',
+            _portfolio_preview_context(batch, raw_bookings, source),
+        )
 
     return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
 
@@ -120,7 +189,12 @@ def booking_import_upload(request):
 def booking_import_apply(request, batch_id):
     """Phase 2: staff confirmed the diff shown by booking_import_upload —
     re-parses the same saved file (rather than trusting anything from the
-    client) and writes the changes."""
+    client) and writes the changes. For a portfolio batch, also validates
+    every submitted unmatched-listing-name -> property mapping first: any
+    still-unresolved name, or any unconfirmed conflict, blocks the whole
+    apply and re-shows the preview with the specific problem(s) flagged —
+    an all-or-nothing pass so a partial mapping never leaves some bookings
+    silently un-imported with no record of why."""
     batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
     if request.method != 'POST':
         return redirect('onsite_booking_import')
@@ -131,15 +205,69 @@ def booking_import_apply(request, batch_id):
         messages.error(request, f'Could not re-read the saved file: {e}')
         return redirect('onsite_booking_import')
 
-    new_count, changed_count, cancelled_count, visit_note = apply_bookings(
-        batch.property, batch.source, raw_bookings, batch,
-    )
+    if batch.property_id:
+        new_count, changed_count, cancelled_count, visit_note = apply_bookings_for_property(
+            batch.property, batch.source, raw_bookings,
+        )
+        batch.new_count, batch.changed_count, batch.cancelled_count = new_count, changed_count, cancelled_count
+        batch.applied_at = timezone.now()
+        batch.save(update_fields=['new_count', 'changed_count', 'cancelled_count', 'applied_at'])
+        messages.success(request, f'Imported: {new_count} new, {changed_count} changed, {cancelled_count} cancelled.')
+        if visit_note:
+            messages.warning(request, visit_note)
+        return redirect('onsite_dashboard')
+
+    matched, unmatched = resolve_listing_names(raw_bookings, batch.source)
+    pending_mappings = []
+    blocked = False
+    for i, (listing_name, rows) in enumerate(sorted(unmatched.items())):
+        property_id = request.POST.get(f'map_{i}')
+        if not property_id:
+            blocked = True
+            continue
+        property = get_object_or_404(Property, pk=property_id)
+        conflict = check_listing_name_conflict(property, batch.source, listing_name)
+        if conflict and conflict['type'] == 'same' and request.POST.get(f'confirm_{i}'):
+            conflict = None
+        if conflict:
+            blocked = True
+        else:
+            pending_mappings.append((listing_name, property, rows))
+
+    if blocked:
+        messages.error(
+            request,
+            'Every listing name needs to be mapped to a property (and any conflicts resolved) before this import can be applied.',
+        )
+        context = _portfolio_preview_context(batch, raw_bookings, batch.source, posted=request.POST)
+        return render(request, 'onsite/booking_import_preview.html', context)
+
+    for listing_name, property, rows in pending_mappings:
+        save_listing_name(property, batch.source, listing_name)
+        matched[property] = matched.get(property, []) + rows
+
+    total_new = total_changed = total_cancelled = 0
+    visit_notes = set()
+    for property, rows in matched.items():
+        n, c, x, note = apply_bookings_for_property(property, batch.source, rows)
+        total_new += n
+        total_changed += c
+        total_cancelled += x
+        if note:
+            visit_notes.add(note)
+
+    batch.new_count, batch.changed_count, batch.cancelled_count = total_new, total_changed, total_cancelled
+    batch.applied_at = timezone.now()
+    batch.save(update_fields=['new_count', 'changed_count', 'cancelled_count', 'applied_at'])
+
+    property_word = 'property' if len(matched) == 1 else 'properties'
     messages.success(
         request,
-        f'Imported: {new_count} new, {changed_count} changed, {cancelled_count} cancelled.',
+        f'Imported: {total_new} new, {total_changed} changed, {total_cancelled} cancelled, '
+        f'across {len(matched)} {property_word}.',
     )
-    if visit_note:
-        messages.warning(request, visit_note)
+    for note in visit_notes:
+        messages.warning(request, note)
     return redirect('onsite_dashboard')
 
 

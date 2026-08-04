@@ -5,14 +5,15 @@
 <h2 class="page-title mb-3">Import bookings</h2>
 <div class="card" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
     <div class="card-body p-4">
-        <p class="text-muted small">Upload a calendar export (.ics) or reservation report (.csv) from Airbnb or VRBO for one property. Nothing is saved until you review and confirm the changes on the next screen.</p>
+        <p class="text-muted small">Upload a calendar export (.ics) for one property, or a portfolio-wide reservation report (.csv) covering many properties/listings at once from Airbnb or VRBO. Nothing is saved until you review and confirm the changes on the next screen.</p>
         <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
             <div class="mb-4">
                 <label class="form-label fw-medium d-block">Property</label>
+                <p class="text-muted small mb-2">Only needed for a single-property .ics file, or a .csv with no listing/property column. Leave blank for a portfolio-wide .csv — every row's listing name will be matched to a property automatically, and anything unrecognized will ask you on the next screen.</p>
                 <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
                     <input type="hidden" name="property" data-bubble-input value="">
-                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property"></div>
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property (optional for portfolio .csv)"></div>
                     <div class="bubble-pool" data-bubble-pool>
                         {% for prop in properties %}
                         <button type="button" class="bubble" data-value="{{ prop.pk }}" data-label="{{ prop.name }}">{{ prop.name }}</button>

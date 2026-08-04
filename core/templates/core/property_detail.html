@@ -337,6 +337,32 @@
     </div>
 </div>
 
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Booking platforms</h6>
+                <p class="small text-muted">This property's exact listing name on each platform — used to automatically match reservations during an on-site visit booking import. Usually set for you the first time an unrecognized listing name is resolved during an import.</p>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="save_booking_platforms">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="form-label small text-muted mb-1">Airbnb listing name</label>
+                            <input type="text" name="airbnb_listing_name" class="form-control form-control-sm" value="{{ property.airbnb_listing_name }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small text-muted mb-1">VRBO listing name</label>
+                            <input type="text" name="vrbo_listing_name" class="form-control form-control-sm" value="{{ property.vrbo_listing_name }}">
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm mt-2" type="submit">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="card mb-3">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> Documents</h6>
