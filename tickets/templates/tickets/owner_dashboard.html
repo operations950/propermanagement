@@ -5,51 +5,143 @@
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
     <div>
         <h2 class="page-title mb-0">Owner Dashboard</h2>
-        <p class="mb-0" style="color: var(--ink-muted);">Company-wide health at a glance.</p>
+        <p class="mb-0" style="color: var(--ink-muted);">What needs a decision, not what's normal.</p>
     </div>
     <a href="{% url 'ticket_create' %}" class="btn btn-primary flex-shrink-0"><i data-lucide="plus" class="icon"></i> New ticket</a>
 </div>
 
-<div class="row row-cols-1 row-cols-lg-3 g-3 mb-3">
+{# ============================== 1. OFF TRACK — reactive tickets looking backward ============================== #}
+<div class="card mb-3" style="border-top: 4px solid var(--status-critical); border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--status-critical);">
+            <i data-lucide="circle-alert" class="icon"></i> Off track ({{ off_track|length }})
+        </span>
+    </div>
+    {% if off_track %}
+    <div class="list-group list-group-flush">
+    {% for row in off_track %}
+        <a href="{% url 'ticket_detail' row.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center gap-2 text-decoration-none" style="border-left: 3px solid var(--role-{{ row.ticket.assigned_role|default:'admin' }});">
+            <div style="min-width: 0; overflow: hidden;">
+                <div class="d-flex align-items-center gap-1" style="min-width: 0;">
+                    <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ row.ticket.title|truncatechars:48 }}</span>
+                </div>
+                <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ row.ticket.property.name|default:'—' }} · {{ row.ticket.get_assigned_role_display|default:'Unrouted' }}</div>
+            </div>
+            <span class="badge flex-shrink-0" style="{% if row.reason == 'blocked_overdue' or row.reason == 'overdue' %}background: var(--priority-urgent); color: #fff;{% elif row.reason == 'blocked' %}background: color-mix(in srgb, var(--status-warning) 20%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% elif row.reason == 'delayed' %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: var(--priority-urgent); color: #fff;{% endif %}">
+                {% if row.reason == 'blocked_overdue' %}Blocked & {{ row.days }}d late
+                {% elif row.reason == 'overdue' %}{{ row.days }}d late
+                {% elif row.reason == 'blocked' %}{{ row.days }}d blocked
+                {% elif row.reason == 'delayed' %}Delayed {{ row.days }}d
+                {% else %}Urgent{% endif %}
+            </span>
+        </a>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Nothing off track
+    </div>
+    {% endif %}
+</div>
 
-    {# --- Top left: Overdue Tickets --- #}
-    <div class="col">
-        <div class="card h-100" style="border-top: 4px solid var(--status-critical); border-radius: var(--bs-border-radius-lg);">
-            <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="card-header d-flex justify-content-between align-items-center bg-white border-bottom py-3 text-decoration-none">
-                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--status-critical);">
-                    <i data-lucide="circle-alert" class="icon"></i> Overdue Tickets
-                </span>
-                <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ overdue_total }}</span>
-            </a>
-            {% if overdue_tickets %}
-            <div class="list-group list-group-flush">
-            {% for t in overdue_tickets %}
-                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-start gap-2" style="border-left: 3px solid var(--role-{{ t.assigned_role|default:'admin' }}); text-decoration: none;">
-                    <div style="min-width: 0; overflow: hidden;">
-                        <div class="d-flex align-items-center gap-1" style="min-width: 0;">
-                            <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
-                            {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
-                        </div>
-                        <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ t.property.name|default:'—' }} · {{ t.get_assigned_role_display|default:'Unrouted' }}</div>
-                    </div>
-                    <div class="text-nowrap text-end tabular-nums" style="font-size: 0.8rem; color: var(--status-critical); font-weight: 600;">{{ t.due_date|date:"M j" }}</div>
-                </a>
+{# ============================== 2. ON-SITE — next 48 hours, looking forward ============================== #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="sparkles" class="icon"></i> On-site — next 48 hours
+        </span>
+    </div>
+    <div class="card-body">
+        {# Feed health strip — always rendered, even with zero visits/checkouts below, so a broken import pipeline never looks identical to a quiet day. #}
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            {% for health in onsite.feed_health %}
+            <div class="flex-fill p-2" style="min-width: 220px; border-radius: 10px; border: 1px solid {% if health.is_stale %}color-mix(in srgb, var(--status-critical) 40%, white){% else %}var(--bs-border-color, #e5e7eb){% endif %}; background: {% if health.is_stale %}color-mix(in srgb, var(--status-critical) 6%, white){% endif %};">
+                <div class="d-flex align-items-center gap-1 fw-semibold small mb-1" style="color: {% if health.is_stale %}var(--status-critical){% else %}var(--ink-primary){% endif %};">
+                    {% if health.is_stale %}<i data-lucide="alert-triangle" class="icon"></i>{% else %}<i data-lucide="check-circle-2" class="icon"></i>{% endif %}
+                    {{ health.get_source_display }}
+                </div>
+                <div class="small" style="color: var(--ink-muted);">
+                    Last upload: {% if health.last_upload_at %}{{ health.last_upload_at|timesince }} ago{% else %}never{% endif %}<br>
+                    Newest booked: {% if health.newest_booked_date %}{{ health.newest_booked_date }}{% else %}unknown{% endif %}<br>
+                    Coverage through: {% if health.coverage_through %}{{ health.coverage_through }}{% else %}—{% endif %}
+                </div>
+            </div>
             {% endfor %}
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="small fw-bold text-uppercase mb-2" style="letter-spacing: 0.05em; color: var(--ink-muted);">Unassigned checkouts tomorrow ({{ onsite.unassigned_tomorrow_checkouts|length }})</div>
+                {% for booking in onsite.unassigned_tomorrow_checkouts %}
+                <div class="d-flex justify-content-between align-items-center py-1 border-top small">
+                    <span>{{ booking.property.name }}</span>
+                    <a href="{% url 'onsite_dashboard' %}" class="btn btn-outline-secondary btn-sm">Assign</a>
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-0">All tomorrow's checkouts have a visit scheduled.</p>
+                {% endfor %}
             </div>
-            {% else %}
-            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
-                <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Nothing overdue
+            <div class="col-md-6">
+                <div class="small fw-bold text-uppercase mb-2" style="letter-spacing: 0.05em; color: var(--ink-muted);">Today's cleanings ({{ onsite.todays_visits|length }})</div>
+                {% for visit in onsite.todays_visits %}
+                <div class="d-flex justify-content-between align-items-center py-1 border-top small">
+                    <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none" style="color: var(--ink-primary);">{{ visit.property.name }}</a>
+                    {% if visit.derived_status == 'at_risk' %}
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-critical) 15%, white); color: var(--status-critical); border: 1px solid color-mix(in srgb, var(--status-critical) 35%, white);">At risk</span>
+                    {% elif visit.derived_status == 'in_progress' %}
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">In progress</span>
+                    {% elif visit.derived_status == 'submitted' or visit.derived_status == 'verified' %}
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">{{ visit.get_status_display }}</span>
+                    {% else %}
+                    <span class="badge rounded-pill bg-light text-muted border">{{ visit.get_status_display }}</span>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-0">No cleanings scheduled today.</p>
+                {% endfor %}
             </div>
-            {% endif %}
-            {% if overdue_total > overdue_tickets|length %}
-            <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="card-footer text-center text-decoration-none py-2" style="font-size: 0.85rem; color: var(--status-critical);">
-                View all {{ overdue_total }} →
-            </a>
-            {% endif %}
         </div>
     </div>
+</div>
 
-    {# --- Top middle: Departments --- #}
+{# ============================== 3. RECURRING — rules drifting ============================== #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="repeat" class="icon"></i> Recurring — rules drifting ({{ recurring_drift|length }})
+        </span>
+    </div>
+    {% if recurring_drift %}
+    <div class="list-group list-group-flush">
+    {% for row in recurring_drift %}
+        <a href="{% url 'ticket_template_detail' row.template.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none" style="border-left: 3px solid var(--role-{{ row.template.default_assigned_role|default:'admin' }});">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+                <span class="fw-medium" style="color: var(--ink-primary);">{{ row.template.title }}</span>
+                <span class="badge" style="{% if row.status == 'skipping' %}background: var(--priority-urgent); color: #fff;{% elif row.status == 'never_completed' %}background: color-mix(in srgb, var(--status-warning) 20%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% endif %}">
+                    {% if row.status == 'skipping' %}Skipping{% elif row.status == 'never_completed' %}Never completed{% else %}Running late{% endif %}
+                </span>
+            </div>
+            {% if row.runs %}
+            <div class="d-flex gap-1 mt-2">
+                {% for run in row.runs %}
+                <span title="{{ run.ticket.scheduled_for }}" style="width: 14px; height: 14px; border-radius: 4px; display: inline-block; background: {% if run.outcome == 'completed' %}var(--status-good){% elif run.outcome == 'late' %}var(--status-warning){% elif run.outcome == 'skipped' %}#c8ccd1{% else %}var(--brand-primary){% endif %};"></span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="small mt-1" style="color: var(--ink-muted);">No occurrences generated yet.</div>
+            {% endif %}
+        </a>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Every recurring rule is on pattern
+    </div>
+    {% endif %}
+</div>
+
+{# ============================== 4. DEPARTMENTS + CALENDAR ============================== #}
+<div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
     <div class="col">
         <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
             <div class="card-header bg-white border-bottom py-3">
@@ -73,8 +165,6 @@
             </div>
         </div>
     </div>
-
-    {# --- Top right: Today's Calendar --- #}
     <div class="col">
         <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
             <div class="card-body">
@@ -85,66 +175,98 @@
     </div>
 </div>
 
-<div class="row row-cols-1 row-cols-lg-3 g-3 mb-4">
-
-    {# --- Bottom left: Ticket Statistics --- #}
+{# ============================== 5. MOVEMENT TODAY ============================== #}
+<div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
     <div class="col">
         <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
             <div class="card-header bg-white border-bottom py-3">
                 <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-                    <i data-lucide="bar-chart-3" class="icon"></i> Ticket Statistics
+                    <i data-lucide="pencil-line" class="icon"></i> Updated today ({{ movement.updated_notes|length }})
                 </span>
             </div>
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <a href="{% url 'ticket_list' %}?status=active" class="text-decoration-none" style="color: var(--ink-primary);">Total open tickets</a>
-                    <a href="{% url 'ticket_list' %}?status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-primary);">{{ stats.total }}</a>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="text-decoration-none" style="color: var(--status-critical);">Past due</a>
-                    <a href="{% url 'ticket_list' %}?due=overdue&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--status-critical);">{{ stats.past_due_count }} ({{ stats.past_due_pct }}%)</a>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <a href="{% url 'ticket_list' %}?due=tomorrow&status=active" class="text-decoration-none" style="color: var(--ink-secondary);">Due tomorrow</a>
-                    <a href="{% url 'ticket_list' %}?due=tomorrow&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-secondary);">{{ stats.due_tomorrow_count }} ({{ stats.due_tomorrow_pct }}%)</a>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <a href="{% url 'ticket_list' %}?due=week&status=active" class="text-decoration-none" style="color: var(--ink-secondary);">Due this week</a>
-                    <a href="{% url 'ticket_list' %}?due=week&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-secondary);">{{ stats.due_week_count }} ({{ stats.due_week_pct }}%)</a>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <a href="{% url 'ticket_list' %}?delayed=1&status=active" class="text-decoration-none" style="color: color-mix(in srgb, var(--status-warning) 60%, black);">Delayed</a>
-                    <a href="{% url 'ticket_list' %}?delayed=1&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: color-mix(in srgb, var(--status-warning) 60%, black);">{{ stats.delayed_count }} ({{ stats.delayed_pct }}%)</a>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <a href="{% url 'ticket_list' %}?assigned_staff=none&status=active" class="text-decoration-none" style="color: var(--ink-secondary);">Unassigned</a>
-                    <a href="{% url 'ticket_list' %}?assigned_staff=none&status=active" class="text-decoration-none fw-bold tabular-nums" style="color: var(--ink-secondary);">{{ stats.unassigned_count }} ({{ stats.unassigned_pct }}%)</a>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <a href="{% url 'ticket_list' %}?status=complete&completed_since=7" class="text-decoration-none" style="color: var(--status-good);">Closed last 7 days</a>
-                    <a href="{% url 'ticket_list' %}?status=complete&completed_since=7" class="text-decoration-none fw-bold tabular-nums" style="color: var(--status-good);">{{ stats.closed_last_7_days_count }}</a>
-                </div>
-
-                {% if staff_ticket_counts %}
-                <hr>
-                <p class="small fw-medium mb-2" style="color: var(--ink-muted);">Open tickets by staff</p>
-                {% for row in staff_ticket_counts %}
-                <a href="{% url 'ticket_list' %}?assigned_staff={{ row.staff.pk }}&status=active" class="d-block text-decoration-none mb-2">
-                    <div class="d-flex justify-content-between mb-1" style="font-size: 0.8rem;">
-                        <span style="color: var(--ink-primary);">{{ row.staff.user.get_full_name|default:row.staff.user.username }}</span>
-                        <span class="fw-semibold tabular-nums" style="color: var(--ink-secondary);">{{ row.count }}</span>
+            {% if movement.updated_notes %}
+            <div class="list-group list-group-flush">
+            {% for note in movement.updated_notes %}
+                <a href="{% url 'ticket_detail' note.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
+                    <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                        <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ note.ticket.title|truncatechars:40 }}</span>
+                        <span class="text-nowrap small" style="color: var(--ink-muted);">{{ note.created_at|time:"g:i A" }}</span>
                     </div>
-                    <div class="rounded-pill" style="background: var(--surface-page); height: 6px; overflow: hidden;">
-                        <div class="rounded-pill h-100" style="width: {{ row.bar_pct }}%; background: var(--brand-primary);"></div>
-                    </div>
+                    <div class="small" style="color: var(--ink-secondary);">{{ note.body|truncatechars:140 }}</div>
+                    <div class="small" style="color: var(--ink-muted);">— {{ note.created_by.get_full_name|default:note.created_by.username|default:'System' }}</div>
                 </a>
-                {% endfor %}
-                {% endif %}
+            {% endfor %}
             </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">No status updates posted yet today.</div>
+            {% endif %}
         </div>
     </div>
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                    <i data-lucide="check-circle-2" class="icon"></i> Closed today
+                </span>
+                <span class="small" style="color: var(--ink-muted);">{{ movement.closed_reactive|length }} reactive · {{ movement.closed_recurring|length }} recurring</span>
+            </div>
+            {% if movement.closed_reactive or movement.closed_recurring %}
+            <div class="list-group list-group-flush">
+            {% for t in movement.closed_reactive %}
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center text-decoration-none">
+                    <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
+                    <span class="badge rounded-pill flex-shrink-0" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good);">Reactive</span>
+                </a>
+            {% endfor %}
+            {% for t in movement.closed_recurring %}
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center text-decoration-none">
+                    <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
+                    <span class="badge rounded-pill flex-shrink-0" style="background: var(--surface-page); color: var(--ink-secondary);">Recurring</span>
+                </a>
+            {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">Nothing closed yet today.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
 
-    {# --- Bottom middle: Company Financials --- #}
+{# ============================== 6. GONE QUIET — never urgent, always last ============================== #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="moon" class="icon"></i> Gone quiet ({{ quiet|length }})
+        </span>
+    </div>
+    {% if quiet %}
+    <div class="list-group list-group-flush">
+    {% for row in quiet %}
+        <a href="{% url 'ticket_detail' row.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center gap-2 text-decoration-none">
+            <div style="min-width: 0; overflow: hidden;">
+                <div class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ row.ticket.title|truncatechars:48 }}</div>
+                <div class="text-truncate small" style="color: var(--ink-muted);">{{ row.ticket.property.name|default:'—' }} · {{ row.ticket.get_assigned_role_display|default:'Unrouted' }}</div>
+            </div>
+            <div class="d-flex flex-wrap gap-1 flex-shrink-0 justify-content-end">
+            {% for r in row.reasons %}
+                <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary); border: 1px solid var(--bs-border-color, #e5e7eb);">
+                    {% if r.reason == 'no_activity' %}Quiet {{ r.since|timesince }}
+                    {% elif r.reason == 'blocked_long' %}Blocked {{ r.since|timesince }}
+                    {% elif r.reason == 'auto_untouched' %}Never opened by assignee
+                    {% else %}No due date, quiet{% endif %}
+                </span>
+            {% endfor %}
+            </div>
+        </a>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">Nothing's gone quiet.</div>
+    {% endif %}
+</div>
+
+{# ============================== Financials + Weather — unchanged, kept below the redesign's core panels ============================== #}
+<div class="row row-cols-1 row-cols-lg-2 g-3 mb-4">
     <div class="col">
         <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
             <div class="card-header bg-white border-bottom py-3">
@@ -180,8 +302,6 @@
             </div>
         </div>
     </div>
-
-    {# --- Bottom right: Local Weather --- #}
     <div class="col">
         <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
             <div class="card-header bg-white border-bottom py-3">

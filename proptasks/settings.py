@@ -372,6 +372,12 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 ONSITE_GENERATE_VISITS_INTERVAL_MINUTES = int(os.environ.get('ONSITE_GENERATE_VISITS_INTERVAL_MINUTES', str(60 * 24)))
 ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES', '30'))
 
+# Owner Dashboard's "Gone quiet" panel thresholds — see
+# tickets/services/owner_dashboard.py::gone_quiet. Settings, not literals,
+# per that panel's own design brief.
+OWNER_DASHBOARD_QUIET_DAYS = int(os.environ.get('OWNER_DASHBOARD_QUIET_DAYS', '7'))
+OWNER_DASHBOARD_BLOCKED_QUIET_DAYS = int(os.environ.get('OWNER_DASHBOARD_BLOCKED_QUIET_DAYS', '30'))
+
 # One shared Google Calendar every scheduled on-site visit gets pushed to —
 # uses whichever staff member's own connected GOOGLE_OAUTH_CLIENT_ID/SECRET
 # calendar has been shared access to this calendar (see

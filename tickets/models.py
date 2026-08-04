@@ -505,6 +505,13 @@ class Ticket(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    status_changed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When status last changed — set automatically in save() (see from_db()). Powers '
+                   '"Xd blocked"/"Xd since" duration displays on the owner dashboard, since a status '
+                   'value alone (e.g. "blocked") has no inherent sense of how long it\'s been that way. '
+                   "Null means never changed since creation — fall back to created_at.",
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -624,11 +631,11 @@ class Ticket(models.Model):
         # bounced back to in_progress/blocked/cancelled/etc. isn't "closed
         # today" anymore, however it originally got closed.
         loaded_status = getattr(self, '_loaded_status', None)
-        if (
-            loaded_status is not None and loaded_status != self.status
-            and self.status not in self.TRUE_COMPLETION_STATUSES and self.completed_at
-        ):
+        status_just_changed = loaded_status is not None and loaded_status != self.status
+        if status_just_changed and self.status not in self.TRUE_COMPLETION_STATUSES and self.completed_at:
             self.completed_at = None
+        if status_just_changed:
+            self.status_changed_at = timezone.now()
 
         super().save(*args, **kwargs)
         self._loaded_status = self.status

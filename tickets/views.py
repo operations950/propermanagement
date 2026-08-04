@@ -31,6 +31,7 @@ from .models import (
     TicketAttachment, TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate, TicketTemplateDocument,
     TicketView,
 )
+from .services import owner_dashboard as owner_dashboard_queries
 from .services.package_engine import unblock_dependents
 from .services.process_gate import incomplete_process_instances, process_gate_error_message
 
@@ -197,13 +198,18 @@ def dashboard(request):
 
 
 def _owner_dashboard(request):
-    """The six-box Company Admin dashboard — see dashboard()'s branch
-    above. Company-wide health at a glance rather than one department's
-    queue: overdue work across every department, quick links into each
-    department, today's calendar, ticket statistics, QuickBooks
-    financials, and local weather."""
+    """The Company Admin dashboard — see dashboard()'s branch above.
+    Rebuilt around exceptions and recent activity rather than totals and
+    percentages: a count you can't act on is noise, a list you can click
+    into is signal. Three time orientations, one panel each: reactive
+    tickets look backward (off_track_tickets), on-site work looks forward
+    (onsite_next_48h), recurring looks at drift at the RULE level, not the
+    instance (recurring_rules_drifting) — plus departments/calendar (kept
+    close to what existed), today's movement, and a never-urgent "gone
+    quiet" panel last. All five panel queries live in
+    tickets/services/owner_dashboard.py, not inline here — see that
+    module for why each is shaped the way it is."""
     now = timezone.now()
-    today = timezone.localdate()
 
     open_tickets = list(
         Ticket.objects.filter(status__in=OPEN_STATUSES, property__isnull=False)
@@ -211,47 +217,11 @@ def _owner_dashboard(request):
     )
     department_boxes = _department_boxes(open_tickets, now)
 
-    overdue_tickets = sorted(
-        (t for t in open_tickets if t.due_date and timezone.localtime(t.due_date).date() < today),
-        key=lambda t: (t.due_date, PRIORITY_RANK.get(t.priority, 2)),
-    )
-
-    total = len(open_tickets)
-
-    def _pct(n):
-        return round(n / total * 100) if total else 0
-
-    past_due_count = len(overdue_tickets)
-    due_tomorrow_count = sum(
-        1 for t in open_tickets if t.due_date and timezone.localtime(t.due_date).date() == today + timedelta(days=1)
-    )
-    due_week_count = sum(
-        1 for t in open_tickets
-        if t.due_date and today <= timezone.localtime(t.due_date).date() <= today + timedelta(days=7)
-    )
-    delayed_count = sum(1 for t in open_tickets if t.delayed)
-    unassigned_count = sum(1 for t in open_tickets if not t.assigned_staff_id)
-    closed_last_7_days_count = Ticket.objects.filter(
-        status__in=COMPLETE_STATUSES, completed_at__gte=now - timedelta(days=7),
-    ).count()
-
-    staff_counts = {}
-    for t in open_tickets:
-        if t.assigned_staff_id:
-            staff_counts[t.assigned_staff_id] = staff_counts.get(t.assigned_staff_id, 0) + 1
-    staff_by_id = {sp.pk: sp for sp in StaffProfile.objects.select_related('user').filter(pk__in=staff_counts)}
-    max_staff_count = max(staff_counts.values(), default=0)
-    staff_ticket_counts = sorted(
-        (
-            {
-                'staff': staff_by_id[staff_id],
-                'count': count,
-                'bar_pct': round(count / max_staff_count * 100) if max_staff_count else 0,
-            }
-            for staff_id, count in staff_counts.items() if staff_id in staff_by_id
-        ),
-        key=lambda row: -row['count'],
-    )
+    off_track = owner_dashboard_queries.off_track_tickets(now)
+    onsite = owner_dashboard_queries.onsite_next_48h(now)
+    recurring_drift = owner_dashboard_queries.recurring_rules_drifting()
+    movement = owner_dashboard_queries.movement_today()
+    quiet = owner_dashboard_queries.gone_quiet(now)
 
     staff_profile = request.user.staff_profile
     calendar_token = getattr(staff_profile, 'google_calendar_token', None)
@@ -272,18 +242,11 @@ def _owner_dashboard(request):
     return render(request, 'tickets/owner_dashboard.html', {
         'now': now,
         'department_boxes': department_boxes,
-        'overdue_tickets': overdue_tickets[:BOX_PREVIEW_SIZE],
-        'overdue_total': past_due_count,
-        'stats': {
-            'total': total,
-            'past_due_count': past_due_count, 'past_due_pct': _pct(past_due_count),
-            'due_tomorrow_count': due_tomorrow_count, 'due_tomorrow_pct': _pct(due_tomorrow_count),
-            'due_week_count': due_week_count, 'due_week_pct': _pct(due_week_count),
-            'delayed_count': delayed_count, 'delayed_pct': _pct(delayed_count),
-            'unassigned_count': unassigned_count, 'unassigned_pct': _pct(unassigned_count),
-            'closed_last_7_days_count': closed_last_7_days_count,
-        },
-        'staff_ticket_counts': staff_ticket_counts,
+        'off_track': off_track,
+        'onsite': onsite,
+        'recurring_drift': recurring_drift,
+        'movement': movement,
+        'quiet': quiet,
         'calendar_configured': calendar_is_configured(),
         'calendar_token': calendar_token,
         'calendar_days': calendar_days,
