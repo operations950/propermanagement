@@ -234,6 +234,14 @@
                             <label class="form-label small text-muted mb-1">WiFi password</label>
                             <input type="text" name="wifi_password" class="form-control form-control-sm" value="{{ property.wifi_password }}">
                         </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Check-in time</label>
+                            <input type="time" name="default_check_in_time" class="form-control form-control-sm" value="{{ property.default_check_in_time|time:'H:i' }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Check-out time</label>
+                            <input type="time" name="default_check_out_time" class="form-control form-control-sm" value="{{ property.default_check_out_time|time:'H:i' }}">
+                        </div>
                     </div>
                     <label class="form-label small text-muted mb-1">Board meeting address</label>
                     <input type="text" name="board_meeting_address" class="form-control form-control-sm mb-2" placeholder="Where this association normally holds board meetings" value="{{ property.board_meeting_address }}">

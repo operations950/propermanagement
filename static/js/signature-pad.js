@@ -70,6 +70,13 @@
                     fd.append('csrfmiddlewaretoken', root.dataset.csrf);
                     fd.append('file', blob, 'signature.png');
                     fd.append('caption', 'Signature');
+                    // Extra fields a specific caller wants sent alongside the
+                    // signature image (e.g. a typed name) — opt-in via
+                    // data-signature-extra so this stays a no-op for callers
+                    // that don't have any (the processes app's original use).
+                    root.querySelectorAll('[data-signature-extra]').forEach(function (el) {
+                        fd.append(el.name, el.value);
+                    });
                     saveBtn.disabled = true;
                     fetch(root.dataset.uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
                         .then(function () { window.location.reload(); });

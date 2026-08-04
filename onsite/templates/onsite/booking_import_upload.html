@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Import bookings{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+<h2 class="page-title mb-3">Import bookings</h2>
+<div class="card" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-4">
+        <p class="text-muted small">Upload a calendar export (.ics) or reservation report (.csv) from Airbnb or VRBO for one property. Nothing is saved until you review and confirm the changes on the next screen.</p>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Property</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
+                    <input type="hidden" name="property" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for prop in properties %}
+                        <button type="button" class="bubble" data-value="{{ prop.pk }}" data-label="{{ prop.name }}">{{ prop.name }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Source</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="source">
+                    <input type="hidden" name="source" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a source"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        <button type="button" class="bubble" data-value="airbnb" data-label="Airbnb">Airbnb</button>
+                        <button type="button" class="bubble" data-value="vrbo" data-label="VRBO">VRBO</button>
+                    </div>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label fw-medium" for="id_file">File (.ics or .csv)</label>
+                <input type="file" name="file" id="id_file" class="form-control" accept=".ics,.csv" required>
+            </div>
+            <button class="btn btn-primary" type="submit">Preview import</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

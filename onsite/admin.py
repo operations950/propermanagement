@@ -1,0 +1,94 @@
+from django.contrib import admin
+
+from .models import (
+    Booking,
+    ImportBatch,
+    PropertyChecklistItem,
+    PropertyChecklistOverride,
+    PropertyChecklistReview,
+    StandardChecklistItem,
+    Visit,
+    VisitChecklistItem,
+    VisitIssue,
+    VisitMedia,
+    VisitRule,
+    VisitType,
+)
+
+
+class StandardChecklistItemInline(admin.TabularInline):
+    model = StandardChecklistItem
+    extra = 1
+    fields = ['section', 'order', 'text', 'mandatory', 'requires_photo', 'requires_note', 'is_active']
+
+
+@admin.register(VisitType)
+class VisitTypeAdmin(admin.ModelAdmin):
+    list_display = ['name', 'default_duration_minutes', 'requires_deadline', 'is_active']
+    inlines = [StandardChecklistItemInline]
+
+
+@admin.register(StandardChecklistItem)
+class StandardChecklistItemAdmin(admin.ModelAdmin):
+    list_display = ['visit_type', 'section', 'text', 'mandatory', 'requires_photo', 'is_active']
+    list_filter = ['visit_type', 'section', 'mandatory', 'is_active']
+
+
+@admin.register(PropertyChecklistOverride)
+class PropertyChecklistOverrideAdmin(admin.ModelAdmin):
+    list_display = ['property', 'standard_item', 'is_hidden']
+    list_filter = ['visit_type', 'is_hidden']
+
+
+@admin.register(PropertyChecklistItem)
+class PropertyChecklistItemAdmin(admin.ModelAdmin):
+    list_display = ['property', 'visit_type', 'text', 'mandatory', 'is_active']
+    list_filter = ['visit_type', 'is_active']
+
+
+@admin.register(PropertyChecklistReview)
+class PropertyChecklistReviewAdmin(admin.ModelAdmin):
+    list_display = ['property', 'visit_type', 'reviewed_at']
+    list_filter = ['visit_type']
+
+
+@admin.register(Booking)
+class BookingAdmin(admin.ModelAdmin):
+    list_display = ['property', 'source', 'check_in', 'check_out', 'status']
+    list_filter = ['source', 'status']
+    search_fields = ['property__name', 'guest_name', 'external_uid']
+
+
+@admin.register(ImportBatch)
+class ImportBatchAdmin(admin.ModelAdmin):
+    list_display = ['property', 'source', 'covers_start', 'covers_end', 'new_count', 'changed_count', 'cancelled_count', 'applied_at']
+    list_filter = ['source']
+
+
+class VisitChecklistItemInline(admin.TabularInline):
+    model = VisitChecklistItem
+    extra = 0
+
+
+class VisitMediaInline(admin.TabularInline):
+    model = VisitMedia
+    extra = 0
+
+
+@admin.register(Visit)
+class VisitAdmin(admin.ModelAdmin):
+    list_display = ['property', 'visit_type', 'scheduled_date', 'status', 'assignee_label', 'ready_by']
+    list_filter = ['visit_type', 'status']
+    search_fields = ['property__name']
+    inlines = [VisitChecklistItemInline, VisitMediaInline]
+
+
+@admin.register(VisitIssue)
+class VisitIssueAdmin(admin.ModelAdmin):
+    list_display = ['visit', 'description', 'created_ticket', 'created_at']
+
+
+@admin.register(VisitRule)
+class VisitRuleAdmin(admin.ModelAdmin):
+    list_display = ['property', 'visit_type', 'interval_months', 'default_assignee', 'is_active']
+    list_filter = ['visit_type', 'is_active']

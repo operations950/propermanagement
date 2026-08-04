@@ -1,0 +1,117 @@
+{% extends 'vendorportal/base.html' %}
+{% load static %}
+{% block title %}{{ visit.property.name }} — {{ visit.visit_type }}{% endblock %}
+{% block content %}
+<div class="card my-3">
+    <div class="card-body p-4">
+        <h5 class="page-title mb-1">{{ visit.property.name }}</h5>
+        <p class="text-muted small mb-2">{{ visit.visit_type }}{% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"g:i A" }}{% endif %}</p>
+        {% if visit.property.gate_code or visit.property.door_code or visit.property.lockbox_code or visit.property.wifi_network or visit.property.access_notes %}
+        <div class="small mb-2">
+            {% if visit.property.gate_code %}<div>Gate code: <strong>{{ visit.property.gate_code }}</strong></div>{% endif %}
+            {% if visit.property.door_code %}<div>Door code: <strong>{{ visit.property.door_code }}</strong></div>{% endif %}
+            {% if visit.property.lockbox_code %}<div>Lockbox code: <strong>{{ visit.property.lockbox_code }}</strong></div>{% endif %}
+            {% if visit.property.wifi_network %}<div>WiFi: <strong>{{ visit.property.wifi_network }}</strong>{% if visit.property.wifi_password %} / {{ visit.property.wifi_password }}{% endif %}</div>{% endif %}
+            {% if visit.property.access_notes %}<div class="mt-1">{{ visit.property.access_notes }}</div>{% endif %}
+        </div>
+        {% endif %}
+        {% if visit.notes %}<div class="alert alert-info small py-2 mb-0">{{ visit.notes }}</div>{% endif %}
+    </div>
+</div>
+
+{% if not visit.started_at %}
+<form method="post" class="text-center my-5">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="start">
+    <button class="btn btn-primary btn-lg px-5" type="submit"><i data-lucide="play" class="icon"></i> Start</button>
+</form>
+
+{% elif is_submitted %}
+<div class="card my-3"><div class="card-body p-4 text-center">
+    <i data-lucide="check-circle" class="icon-lg d-block mx-auto mb-2" style="width: 2.5em; height: 2.5em; color: #0ca30c;"></i>
+    <h5 class="page-title mb-1">Submitted</h5>
+    <p class="text-muted mb-0">Thanks — this visit has been marked complete.</p>
+</div></div>
+
+{% else %}
+<div class="card my-3"><div class="card-body p-4">
+    <h6 class="card-title mb-3">Checklist</h6>
+    {% regroup checklist_items by section as section_groups %}
+    {% for group in section_groups %}
+        {% if group.grouper %}<div class="small fw-bold text-uppercase mt-3 mb-1" style="color: var(--brand-slate);">{{ group.grouper }}</div>{% endif %}
+        {% for item in group.list %}
+        <form method="post" enctype="multipart/form-data" class="border-top py-2">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_item">
+            <input type="hidden" name="item_id" value="{{ item.pk }}">
+            <div class="d-flex align-items-start gap-2">
+                <input type="checkbox" class="form-check-input mt-1" name="is_completed" value="1" {% if item.is_completed %}checked{% endif %}>
+                <div class="flex-grow-1">
+                    <div class="{% if item.is_completed %}text-decoration-line-through text-muted{% endif %}">{{ item.text }}{% if item.mandatory %} <span class="text-danger">*</span>{% endif %}{% if item.is_new_unreviewed %} <span class="badge bg-light text-muted border">New</span>{% endif %}</div>
+                    {% if item.requires_photo %}
+                    <div class="small mt-1">
+                        <input type="file" name="photo" accept="image/*,video/*" capture="environment" class="form-control form-control-sm">
+                        {% with count=item.media.all|length %}{% if count %}<span class="text-success"><i data-lucide="check" class="icon"></i> {{ count }} photo(s) attached</span>{% endif %}{% endwith %}
+                    </div>
+                    {% endif %}
+                    <textarea name="note" class="form-control form-control-sm mt-1" rows="1" placeholder="Note (optional)">{{ item.note }}</textarea>
+                    <input type="text" name="skip_reason" class="form-control form-control-sm mt-1" placeholder="Or explain why skipping" value="{{ item.skip_reason }}">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm mt-1">Save</button>
+                </div>
+            </div>
+        </form>
+        {% endfor %}
+    {% endfor %}
+    <p class="small text-muted mt-3 mb-0"><span class="text-danger">*</span> required</p>
+</div></div>
+
+<div class="card my-3"><div class="card-body p-4">
+    <h6 class="card-title mb-2">Report an issue</h6>
+    <p class="small text-muted">Something broken or worth flagging that isn't on the checklist? This creates a maintenance ticket.</p>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_issue">
+        <textarea name="description" class="form-control form-control-sm mb-2" rows="2" placeholder="What's wrong?"></textarea>
+        <input type="file" name="photos" accept="image/*,video/*" multiple class="form-control form-control-sm mb-2">
+        <button class="btn btn-outline-secondary btn-sm" type="submit">Report issue</button>
+    </form>
+    {% if issues %}
+    <div class="mt-3">
+        {% for issue in issues %}<div class="small border-top py-1">{{ issue.description }}</div>{% endfor %}
+    </div>
+    {% endif %}
+</div></div>
+
+<div class="card my-3"><div class="card-body p-4">
+    <h6 class="card-title mb-2">Supplies needed</h6>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_supply_request">
+        <textarea name="supplies_text" class="form-control form-control-sm mb-2" rows="2" placeholder="e.g. Running low on paper towels"></textarea>
+        <button class="btn btn-outline-secondary btn-sm" type="submit">Send request</button>
+    </form>
+</div></div>
+
+<div class="card my-3">
+    <div class="card-body p-4" data-signature-pad data-csrf="{{ csrf_token }}" data-upload-url="{% url 'onsite_visit_public_signature' visit.access_token %}">
+        <h6 class="card-title mb-2">Signature</h6>
+        {% if visit.signature_image %}
+        <p class="small text-success mb-2"><i data-lucide="check" class="icon"></i> Signed{% if visit.signed_name %} by {{ visit.signed_name }}{% endif %}</p>
+        {% endif %}
+        <input type="text" name="signed_name" data-signature-extra placeholder="Your name" class="form-control form-control-sm mb-2" value="{{ visit.signed_name }}">
+        <canvas data-signature-canvas width="600" height="150" style="width: 100%; height: 150px; border: 1px solid var(--border-hairline); border-radius: 8px; touch-action: none;"></canvas>
+        <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-signature-clear>Clear</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" data-signature-save>Save signature</button>
+        </div>
+    </div>
+</div>
+
+<form method="post" class="my-4">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="submit">
+    <button class="btn btn-primary btn-lg w-100" type="submit"><i data-lucide="send" class="icon"></i> Submit visit</button>
+</form>
+{% endif %}
+<script src="{% static 'js/signature-pad.js' %}"></script>
+{% endblock %}

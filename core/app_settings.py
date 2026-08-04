@@ -29,6 +29,16 @@ SECRET_KEYS = [
     ('USPS_CLIENT_SECRET', 'USPS client secret'),
     ('QUICKBOOKS_CLIENT_ID', 'QuickBooks OAuth client ID'),
     ('QUICKBOOKS_CLIENT_SECRET', 'QuickBooks OAuth client secret'),
+    # Unlike the other keys here, these are read into settings.STORAGES /
+    # settings.CLOUDINARY_STORAGE once at process boot (see settings.py) —
+    # Django caches the storage backend it builds from that, so a change
+    # made here takes full effect only after the app process restarts
+    # (the next deploy, or a manual restart), not instantly like the rest
+    # of this list.
+    ('CLOUDINARY_CLOUD_NAME', 'Cloudinary cloud name (media storage)'),
+    ('CLOUDINARY_API_KEY', 'Cloudinary API key'),
+    ('CLOUDINARY_API_SECRET', 'Cloudinary API secret'),
+    ('GOOGLE_ONSITE_CALENDAR_ID', 'Google Calendar ID for on-site visit push'),
     ('EMAIL_HOST', 'Email SMTP host (e.g. smtp.gmail.com)'),
     ('EMAIL_HOST_USER', 'Email SMTP username'),
     ('EMAIL_HOST_PASSWORD', 'Email SMTP password'),

@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Review import{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_booking_import' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Import bookings</a>
+<h2 class="page-title mb-1">Review import — {{ property.name }}</h2>
+<p class="text-muted small mb-4">{{ batch.get_source_display }} · covers {{ batch.covers_start }} to {{ batch.covers_end }}. Nothing has been saved yet.</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <div class="small text-muted text-uppercase fw-bold mb-2">New ({{ diff.new|length }})</div>
+            {% for row in diff.new %}
+            <div class="small py-1 border-top">{{ row.check_out }} checkout{% if row.guest_name %} — {{ row.guest_name }}{% endif %}</div>
+            {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <div class="small text-muted text-uppercase fw-bold mb-2">Changed dates ({{ diff.changed|length }})</div>
+            {% for row in diff.changed %}
+            <div class="small py-1 border-top">{{ row.external_uid }} → {{ row.check_out }}</div>
+            {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <div class="small text-muted text-uppercase fw-bold mb-2">Disappeared from feed ({{ diff.cancelled|length }})</div>
+            {% for booking in diff.cancelled %}
+            <div class="small py-1 border-top">{{ booking.check_out|date:'Y-m-d' }} checkout — will be cancelled</div>
+            {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
+        </div></div>
+    </div>
+</div>
+
+<form method="post" action="{% url 'onsite_booking_import_apply' batch.pk %}">
+    {% csrf_token %}
+    <button class="btn btn-primary" type="submit">Apply import</button>
+    <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

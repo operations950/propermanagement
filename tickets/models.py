@@ -354,6 +354,7 @@ class Ticket(models.Model):
         VRBO = 'vrbo', 'VRBO'
         FAKE = 'fake', 'Simulated (dev)'
         RECURRING = 'recurring', 'Recurring template'
+        ONSITE = 'onsite', 'On-site visit'
 
     title = models.CharField(max_length=200, help_text='A short, scannable headline — not a full sentence.')
     description = models.TextField(blank=True, help_text='One concise sentence. Full source context goes in raw_context.')

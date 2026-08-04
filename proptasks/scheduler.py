@@ -48,6 +48,14 @@ def _run_sync_quickbooks_financials():
     _run_command('sync_quickbooks_financials')
 
 
+def _run_generate_scheduled_visits():
+    _run_command('generate_scheduled_visits')
+
+
+def _run_sync_onsite_calendar():
+    _run_command('sync_onsite_calendar')
+
+
 def start():
     global _scheduler
     if _scheduler is not None:
@@ -78,6 +86,13 @@ def start():
     )
     _scheduler.add_job(
         _run_sync_quickbooks_financials, 'interval', minutes=settings.QUICKBOOKS_SYNC_INTERVAL_MINUTES,
+    )
+    _scheduler.add_job(
+        _run_generate_scheduled_visits, 'interval',
+        minutes=settings.ONSITE_GENERATE_VISITS_INTERVAL_MINUTES, next_run_time=datetime.now(),
+    )
+    _scheduler.add_job(
+        _run_sync_onsite_calendar, 'interval', minutes=settings.ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES,
     )
 
     _scheduler.start()

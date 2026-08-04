@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}Visit — {{ visit.property.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+<h2 class="page-title mb-3">{{ visit.property.name }} — {{ visit.visit_type }}</h2>
+<p class="text-muted">Status: {{ visit.get_status_display }} · Assignee: {{ visit.assignee_label }}{% if visit.ready_by %} · Ready by {{ visit.ready_by }}{% endif %}</p>
+{% endblock %}

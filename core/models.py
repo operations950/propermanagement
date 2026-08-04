@@ -77,6 +77,16 @@ class Property(models.Model):
                    'meeting Notice template. Primarily relevant to Association-type properties, but '
                    'not restricted to them.',
     )
+    default_check_in_time = models.TimeField(
+        null=True, blank=True,
+        help_text='Used by the onsite module to compute a turnover deadline when a booking import '
+                   "only carries a date (the common case for ICS feeds), and to fill in a guest's "
+                   'check-in time on the calendar. Short-term rentals only.',
+    )
+    default_check_out_time = models.TimeField(
+        null=True, blank=True,
+        help_text='Same as check-in, for the checkout side of a turnover.',
+    )
 
     class Meta:
         verbose_name_plural = 'properties'

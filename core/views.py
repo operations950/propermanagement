@@ -745,7 +745,9 @@ def property_detail(request, pk):
             ]
             for field in fields:
                 setattr(prop, field, request.POST.get(field, '').strip())
-            prop.save(update_fields=fields)
+            for time_field in ('default_check_in_time', 'default_check_out_time'):
+                setattr(prop, time_field, request.POST.get(time_field) or None)
+            prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time'])
             messages.success(request, 'Access info saved.')
         elif action == 'add_document':
             name = request.POST.get('name', '').strip()

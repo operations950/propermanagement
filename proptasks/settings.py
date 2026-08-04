@@ -68,7 +68,11 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+
+    # Must precede staticfiles per django-cloudinary-storage's install docs.
+    'cloudinary_storage',
     'django.contrib.staticfiles',
+    'cloudinary',
 
     'core',
     'tickets',
@@ -77,6 +81,7 @@ INSTALLED_APPS = [
     'intake',
     'supplies',
     'processes',
+    'onsite',
 ]
 
 MIDDLEWARE = [
@@ -169,18 +174,37 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # collectstatic's output — served by WhiteNoise in production
 
-STORAGES = {
-    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY', '')
+CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET', '')
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
+    'API_KEY': CLOUDINARY_API_KEY,
+    'API_SECRET': CLOUDINARY_API_SECRET,
 }
+
+# Railway's filesystem is ephemeral (wiped on every deploy/restart), so
+# anything saved to local MEDIA_ROOT in production won't survive — this
+# affects every FileField/ImageField app-wide (ticket attachments, contact/
+# property documents, process attachments, vendor and on-site-visit
+# photos), not just one feature. Cloudinary-backed storage is used whenever
+# all three CLOUDINARY_* vars are set (see /admin-tools/ or .env.example);
+# left blank, this falls back to plain local FileSystemStorage exactly as
+# before, which is fine for local dev but loses uploads on every production
+# deploy/restart until those vars are set.
+if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+    STORAGES = {
+        'default': {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'},
+        'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+    }
+else:
+    STORAGES = {
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+    }
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-# NOTE for production: Railway's filesystem is ephemeral (wiped on every
-# deploy/restart), so vendor-uploaded photos in MEDIA_ROOT won't survive
-# unless a persistent Volume is mounted there in the Railway dashboard, or
-# this is switched to S3-compatible storage. Not set up yet — see the
-# deployment notes.
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -338,6 +362,17 @@ OFFICE_LONGITUDE = float(os.environ.get('OFFICE_LONGITUDE', '-80.0617'))
 # Used by intake/thread_classifier.py to read a full Quo conversation thread
 # before deciding whether it's actionable. Blank = classification no-ops.
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
+# On-site Visits module (onsite app) — VisitRule generation and retrying
+# pending Google Calendar pushes.
+ONSITE_GENERATE_VISITS_INTERVAL_MINUTES = int(os.environ.get('ONSITE_GENERATE_VISITS_INTERVAL_MINUTES', str(60 * 24)))
+ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES', '30'))
+
+# One shared Google Calendar every scheduled on-site visit gets pushed to —
+# uses whichever staff member's own connected GOOGLE_OAUTH_CLIENT_ID/SECRET
+# calendar has been shared access to this calendar (see
+# onsite/google_calendar_push.py). Blank = pushes are skipped, no error.
+GOOGLE_ONSITE_CALENDAR_ID = os.environ.get('GOOGLE_ONSITE_CALENDAR_ID', '')
 
 # Max upload size for vendor-submitted completion photos/videos (bytes) — video
 # needs real headroom over a plain photo, hence the bump from the original 10MB.

@@ -17,6 +17,7 @@ urlpatterns = [
     path('vendor/', include('vendorportal.urls')),
     path('supplies/', include('supplies.urls')),
     path('processes/', include('processes.urls')),
+    path('onsite/', include('onsite.urls')),
     path('', include('core.urls')),
     path('', include('intake.urls')),
     path('', include('tickets.urls')),
