@@ -1,8 +1,10 @@
-from datetime import timedelta
+import calendar as calendar_module
+from datetime import date, datetime, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -14,7 +16,7 @@ from supplies.models import SupplyRequest
 from vendorportal.models import AccessAttempt
 
 from .importers import BookingFileError, detect_format, parse_booking_file
-from .models import Booking, ImportBatch, PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia
+from .models import Booking, DailyUploadSlot, ImportBatch, PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia
 from .services import checklist as checklist_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
@@ -40,20 +42,68 @@ def _visit_status(visit, now):
     return 'dirty'
 
 
+# Every range the board's tab strip can show. 'day' isn't a tab itself —
+# it's what a single ?date= drill-in (e.g. from the calendar view) renders
+# as, with its own "back to Today + Tomorrow" link instead of a tab.
+_RANGE_SPANS = {
+    'default': 1,  # today, tomorrow
+    'week': 6,     # today .. +6 (7 days)
+    'month': 29,   # today .. +29 (30 days)
+}
+
+
 @login_required
 def dashboard(request):
+    """Today's urgent items never move regardless of range (that banner is
+    about what needs attention *right now*), but the board itself can look
+    further out than just today — a same-day-only board was hiding every
+    visit created by an import unless it happened to land on today, which
+    is confusing right after an upload covering the next several weeks.
+    ?range=week|month broadens it; ?date=YYYY-MM-DD (from the calendar
+    view) narrows it to one specific day anywhere on the calendar."""
     today = timezone.localdate()
     now = timezone.now()
 
-    todays_visits = list(
-        Visit.objects.filter(scheduled_date=today)
+    date_param = request.GET.get('date')
+    if date_param:
+        try:
+            start = end = datetime.strptime(date_param, '%Y-%m-%d').date()
+        except ValueError:
+            start = end = today
+        range_key = 'day'
+    else:
+        range_key = request.GET.get('range') if request.GET.get('range') in _RANGE_SPANS else 'default'
+        start = today
+        end = today + timedelta(days=_RANGE_SPANS[range_key])
+
+    visits = list(
+        Visit.objects.filter(scheduled_date__gte=start, scheduled_date__lte=end)
         .exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED])
         .select_related('property', 'visit_type', 'assigned_staff__user', 'assigned_contact')
-        .order_by('ready_by')
+        .order_by('scheduled_date', 'ready_by')
     )
-    for visit in todays_visits:
+    for visit in visits:
         visit.derived_status = _visit_status(visit, now)
 
+    visits_by_date = {}
+    for visit in visits:
+        visits_by_date.setdefault(visit.scheduled_date, []).append(visit)
+
+    # The 2-day default (and a single drilled-in day) always show every day
+    # in range, even empty ones — "I uploaded bookings and see nothing" is
+    # exactly the confusing case an empty-but-visible Today/Tomorrow avoids.
+    # A week/month view skips empty days instead — 30 "no visits" sections
+    # would bury the days that actually matter.
+    show_empty_days = range_key in ('default', 'day')
+    board_days = []
+    span = (end - start).days
+    for offset in range(span + 1):
+        day = start + timedelta(days=offset)
+        day_visits = visits_by_date.get(day, [])
+        if day_visits or show_empty_days:
+            board_days.append({'date': day, 'visits': day_visits, 'is_today': day == today})
+
+    todays_visits = visits_by_date.get(today, [])
     checkouts_today = (
         Booking.objects.filter(check_out__date=today, status=Booking.Status.ACTIVE)
         .select_related('property')
@@ -63,17 +113,60 @@ def dashboard(request):
         b for b in checkouts_today
         if not any(v.status not in (Visit.Status.CANCELLED, Visit.Status.SKIPPED) for v in b.visits.all())
     ]
-
     unassigned_visits = [v for v in todays_visits if v.status == Visit.Status.UNASSIGNED]
     at_risk_visits = [v for v in todays_visits if v.derived_status == 'at_risk']
 
     return render(request, 'onsite/dashboard.html', {
         'today': today,
-        'todays_visits': todays_visits,
+        'range_key': range_key,
+        'drilled_in_date': start if range_key == 'day' else None,
+        'board_days': board_days,
         'checkouts_missing_visit': checkouts_missing_visit,
         'unassigned_visits': unassigned_visits,
         'at_risk_visits': at_risk_visits,
         'is_admin': _is_admin(request.user),
+    })
+
+
+@login_required
+def calendar_view(request):
+    """Zoomed-out month view — a grid of days with a visit count on each,
+    clicking a day drills into dashboard's ?date= single-day board. The
+    "expand further" half of the today/tomorrow/expand model; the board
+    itself is the "zoomed in" half."""
+    today = timezone.localdate()
+    month_param = request.GET.get('month', '')
+    try:
+        year, month = (int(p) for p in month_param.split('-', 1))
+        first_day = date(year, month, 1)
+    except (ValueError, TypeError):
+        first_day = today.replace(day=1)
+        year, month = first_day.year, first_day.month
+    last_day = date(year, month, calendar_module.monthrange(year, month)[1])
+
+    counts_by_day = dict(
+        Visit.objects.filter(scheduled_date__gte=first_day, scheduled_date__lte=last_day)
+        .exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED])
+        .values_list('scheduled_date')
+        .annotate(n=Count('id'))
+        .values_list('scheduled_date', 'n')
+    )
+
+    cal = calendar_module.Calendar(firstweekday=6)  # Sunday-first
+    weeks = [
+        [{'date': day, 'in_month': day.month == month, 'is_today': day == today, 'count': counts_by_day.get(day, 0)} for day in week]
+        for week in cal.monthdatescalendar(year, month)
+    ]
+
+    prev_month = (first_day - timedelta(days=1)).replace(day=1)
+    next_month = (last_day + timedelta(days=1))
+
+    return render(request, 'onsite/calendar.html', {
+        'weeks': weeks,
+        'month_label': first_day.strftime('%B %Y'),
+        'prev_month': prev_month.strftime('%Y-%m'),
+        'next_month': next_month.strftime('%Y-%m'),
+        'this_month': today.strftime('%Y-%m'),
     })
 
 
@@ -122,6 +215,32 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     }
 
 
+def _create_import_batch(user, source, uploaded_file, property=None):
+    """Shared by the generic upload form and each daily-upload-slot drop —
+    parses the file, decides single-property vs. portfolio-wide the same
+    way either time, and saves the not-yet-applied ImportBatch. Returns
+    (batch, error_message); batch is None on error."""
+    try:
+        fmt = detect_format(uploaded_file.name)
+        raw_bookings = parse_booking_file(uploaded_file)
+    except BookingFileError as e:
+        return None, str(e)
+
+    portfolio_mode = fmt == 'csv' and not property and any(r.listing_name for r in raw_bookings)
+    if not portfolio_mode and not property:
+        return None, (
+            'Choose a property — only a portfolio-wide .csv with a listing/property column can skip this.'
+        )
+
+    covers_start = min(r.check_out for r in raw_bookings)
+    covers_end = max(r.check_out for r in raw_bookings)
+    batch = ImportBatch.objects.create(
+        property=property if not portfolio_mode else None, source=source, raw_file=uploaded_file,
+        covers_start=covers_start, covers_end=covers_end, imported_by=user,
+    )
+    return batch, None
+
+
 @login_required
 def booking_import_upload(request):
     """Phase 1 of the two-phase import. Two shapes:
@@ -136,8 +255,14 @@ def booking_import_upload(request):
     act on exactly what was uploaded without re-uploading — a plain
     redirect to the batch's own preview URL once it's created, so refreshing
     or coming back to it (e.g. after a quick-add-property round trip) never
-    resubmits the file."""
+    resubmits the file.
+
+    The daily-upload-slots repository above this form on the same page
+    (see upload_slot) covers the small fixed set of reports staff actually
+    pull every day — this generic form stays as the fallback for anything
+    outside that set."""
     str_properties = _str_properties()
+    slots = DailyUploadSlot.objects.filter(is_active=True)
 
     if request.method == 'POST':
         property_id = request.POST.get('property')
@@ -146,34 +271,43 @@ def booking_import_upload(request):
 
         if not (source and uploaded_file):
             messages.error(request, 'Choose a source and a file.')
-            return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
-
-        try:
-            fmt = detect_format(uploaded_file.name)
-            raw_bookings = parse_booking_file(uploaded_file)
-        except BookingFileError as e:
-            messages.error(request, str(e))
-            return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
-
-        portfolio_mode = fmt == 'csv' and not property_id and any(r.listing_name for r in raw_bookings)
-        covers_start = min(r.check_out for r in raw_bookings)
-        covers_end = max(r.check_out for r in raw_bookings)
-
-        if not portfolio_mode and not property_id:
-            messages.error(
-                request,
-                'Choose a property — only a portfolio-wide .csv with a listing/property column can skip this.',
-            )
-            return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
+            return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties, 'slots': slots})
 
         property = get_object_or_404(Property, pk=property_id) if property_id else None
-        batch = ImportBatch.objects.create(
-            property=property, source=source, raw_file=uploaded_file,
-            covers_start=covers_start, covers_end=covers_end, imported_by=request.user,
-        )
+        batch, error = _create_import_batch(request.user, source, uploaded_file, property)
+        if error:
+            messages.error(request, error)
+            return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties, 'slots': slots})
         return redirect('onsite_booking_import_preview', batch_id=batch.pk)
 
-    return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
+    return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties, 'slots': slots})
+
+
+@login_required
+@require_http_methods(['POST'])
+def upload_slot(request, slot_id):
+    """Drop target for one of the named daily-upload slots — the source
+    (and, implicitly, "this is a portfolio-wide file") is already known
+    from the slot, so this is a single click/drop with nothing to pick,
+    unlike the generic form. Reuses the exact same parse/preview/apply
+    machinery as the generic upload — a slot is just a shortcut to the
+    same ImportBatch flow, not a separate code path."""
+    slot = get_object_or_404(DailyUploadSlot, pk=slot_id, is_active=True)
+    uploaded_file = request.FILES.get('file')
+    if not uploaded_file:
+        messages.error(request, 'No file received.')
+        return redirect('onsite_booking_import')
+
+    batch, error = _create_import_batch(request.user, slot.source, uploaded_file)
+    if error:
+        messages.error(request, f'{slot.label}: {error}')
+        return redirect('onsite_booking_import')
+
+    slot.last_uploaded_at = timezone.now()
+    slot.last_uploaded_by = request.user
+    slot.last_batch = batch
+    slot.save(update_fields=['last_uploaded_at', 'last_uploaded_by', 'last_batch'])
+    return redirect('onsite_booking_import_preview', batch_id=batch.pk)
 
 
 @login_required

@@ -1,43 +1,84 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Import bookings{% endblock %}
 {% block content %}
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
-<h2 class="page-title mb-3">Import bookings</h2>
-<div class="card" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
-    <div class="card-body p-4">
-        <p class="text-muted small">Upload a calendar export (.ics) for one property, or a portfolio-wide reservation report (.csv) covering many properties/listings at once from Airbnb or VRBO. Nothing is saved until you review and confirm the changes on the next screen.</p>
-        <form method="post" enctype="multipart/form-data">
+<h2 class="page-title mb-1">Import bookings</h2>
+<p class="text-muted small mb-3">Drag today's file onto its slot, or click a slot to browse. Nothing is saved until you review and confirm the changes on the next screen.</p>
+
+{% if slots %}
+<div class="upload-slot-grid mb-4">
+    {% for slot in slots %}
+    <div class="upload-slot" data-upload-slot>
+        <form method="post" action="{% url 'onsite_upload_slot' slot.pk %}" enctype="multipart/form-data">
             {% csrf_token %}
-            <div class="mb-4">
-                <label class="form-label fw-medium d-block">Property</label>
-                <p class="text-muted small mb-2">Only needed for a single-property .ics file, or a .csv with no listing/property column. Leave blank for a portfolio-wide .csv — every row's listing name will be matched to a property automatically, and anything unrecognized will ask you on the next screen.</p>
-                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
-                    <input type="hidden" name="property" data-bubble-input value="">
-                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property (optional for portfolio .csv)"></div>
-                    <div class="bubble-pool" data-bubble-pool>
-                        {% for prop in properties %}
-                        <button type="button" class="bubble" data-value="{{ prop.pk }}" data-label="{{ prop.name }}">{{ prop.name }}</button>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-            <div class="mb-4">
-                <label class="form-label fw-medium d-block">Source</label>
-                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="source">
-                    <input type="hidden" name="source" data-bubble-input value="">
-                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a source"></div>
-                    <div class="bubble-pool" data-bubble-pool>
-                        <button type="button" class="bubble" data-value="airbnb" data-label="Airbnb">Airbnb</button>
-                        <button type="button" class="bubble" data-value="vrbo" data-label="VRBO">VRBO</button>
-                    </div>
-                </div>
-            </div>
-            <div class="mb-4">
-                <label class="form-label fw-medium" for="id_file">File (.ics or .csv)</label>
-                <input type="file" name="file" id="id_file" class="form-control" accept=".ics,.csv" required>
-            </div>
-            <button class="btn btn-primary" type="submit">Preview import</button>
+            <input type="file" name="file" accept=".csv,.ics" hidden>
         </form>
+        <div class="upload-slot-icon"><i data-lucide="upload-cloud" class="icon-lg"></i></div>
+        <div class="upload-slot-label fw-medium small">{{ slot.label }}</div>
+        <div class="upload-slot-meta small text-muted">
+            {% if slot.last_uploaded_at %}Last uploaded {{ slot.last_uploaded_at|timesince }} ago{% else %}Not uploaded yet{% endif %}
+        </div>
     </div>
+    {% endfor %}
 </div>
+{% endif %}
+
+<details class="mb-3">
+    <summary class="text-muted small" style="cursor: pointer;">Something else? Upload a different file</summary>
+    <div class="card mt-2" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
+        <div class="card-body p-4">
+            <p class="text-muted small">Upload a calendar export (.ics) for one property, or a portfolio-wide reservation report (.csv) covering many properties/listings at once from Airbnb or VRBO.</p>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-4">
+                    <label class="form-label fw-medium d-block">Property</label>
+                    <p class="text-muted small mb-2">Only needed for a single-property .ics file, or a .csv with no listing/property column. Leave blank for a portfolio-wide .csv — every row's listing name will be matched to a property automatically, and anything unrecognized will ask you on the next screen.</p>
+                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
+                        <input type="hidden" name="property" data-bubble-input value="">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property (optional for portfolio .csv)"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for prop in properties %}
+                            <button type="button" class="bubble" data-value="{{ prop.pk }}" data-label="{{ prop.name }}">{{ prop.name }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-medium d-block">Source</label>
+                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="source">
+                        <input type="hidden" name="source" data-bubble-input value="">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a source"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            <button type="button" class="bubble" data-value="airbnb" data-label="Airbnb">Airbnb</button>
+                            <button type="button" class="bubble" data-value="vrbo" data-label="VRBO">VRBO</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-medium" for="id_file">File (.ics or .csv)</label>
+                    <input type="file" name="file" id="id_file" class="form-control" accept=".ics,.csv" required>
+                </div>
+                <button class="btn btn-primary" type="submit">Preview import</button>
+            </form>
+        </div>
+    </div>
+</details>
+
+<style>
+.upload-slot-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px;
+}
+.upload-slot {
+    border: 2px dashed var(--bs-border-color, #cbd5e1); border-radius: var(--bs-border-radius-lg, 12px);
+    padding: 18px 12px; text-align: center; cursor: pointer; transition: background-color .15s ease, border-color .15s ease;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.upload-slot:hover, .upload-slot-hover {
+    border-color: var(--bs-primary); background: color-mix(in srgb, var(--bs-primary) 6%, white);
+}
+.upload-slot-icon { color: var(--ink-muted, #6b7280); }
+.upload-slot-label { line-height: 1.25; }
+</style>
+<script src="{% static 'js/upload-slots.js' %}"></script>
 {% endblock %}

@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Booking,
+    DailyUploadSlot,
     ImportBatch,
     PropertyChecklistItem,
     PropertyChecklistOverride,
@@ -63,6 +64,13 @@ class BookingAdmin(admin.ModelAdmin):
 class ImportBatchAdmin(admin.ModelAdmin):
     list_display = ['property', 'source', 'covers_start', 'covers_end', 'new_count', 'changed_count', 'cancelled_count', 'applied_at']
     list_filter = ['source']
+
+
+@admin.register(DailyUploadSlot)
+class DailyUploadSlotAdmin(admin.ModelAdmin):
+    list_display = ['label', 'source', 'order', 'is_active', 'last_uploaded_at']
+    list_filter = ['source', 'is_active']
+    ordering = ['order', 'label']
 
 
 class VisitChecklistItemInline(admin.TabularInline):

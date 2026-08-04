@@ -157,6 +157,35 @@ class ImportBatch(models.Model):
         return f'{self.get_source_display()} import {self.created_at:%Y-%m-%d %H:%M}'
 
 
+class DailyUploadSlot(models.Model):
+    """One of the small, fixed set of reports staff actually pull every day
+    (e.g. "Airbnb - Upcoming Page 1", "VRBO - Patrick") — a real model
+    rather than a hardcoded list so admin can add/rename/retire a slot
+    without a deploy if the daily routine changes. Seeded by
+    seed_daily_upload_slots. Replaces a single generic "pick a source, pick
+    a file" upload with named drop zones matching exactly what staff
+    already do each day — see onsite/views.py::upload_slot."""
+    label = models.CharField(max_length=100, unique=True)
+    source = models.CharField(max_length=20, choices=ImportBatch.Source.choices)
+    filename_hint = models.CharField(
+        max_length=100, blank=True,
+        help_text='A substring (case-insensitive) often found in this file\'s real filename — used only '
+                   "to highlight a likely match when someone browses instead of dragging; dropping a file "
+                   "directly onto this slot always uses it regardless of filename. Leave blank if there's no reliable pattern.",
+    )
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    last_uploaded_at = models.DateTimeField(null=True, blank=True)
+    last_uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    last_batch = models.ForeignKey(ImportBatch, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    class Meta:
+        ordering = ['order', 'label']
+
+    def __str__(self):
+        return self.label
+
+
 class Booking(models.Model):
     """One reservation, from an Airbnb/VRBO file import — the source of
     truth for "is there a checkout today, and when's the next check-in."

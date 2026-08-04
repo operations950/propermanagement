@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}On-Site Visits — Calendar{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="page-title mb-0">{{ month_label }}</h2>
+    <div class="d-flex gap-2">
+        <a href="?month={{ prev_month }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chevron-left" class="icon"></i></a>
+        <a href="?month={{ this_month }}" class="btn btn-outline-secondary btn-sm">Today</a>
+        <a href="?month={{ next_month }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-2 p-md-3">
+        <div class="calendar-grid">
+            <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Sun</div>
+            <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Mon</div>
+            <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Tue</div>
+            <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Wed</div>
+            <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Thu</div>
+            <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Fri</div>
+            <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Sat</div>
+            {% for week in weeks %}
+                {% for day in week %}
+                <a href="{% url 'onsite_dashboard' %}?date={{ day.date|date:'Y-m-d' }}"
+                   class="calendar-day text-decoration-none {% if not day.in_month %}calendar-day-outside{% endif %} {% if day.is_today %}calendar-day-today{% endif %}">
+                    <div class="calendar-day-num small {% if day.is_today %}fw-bold{% endif %}">{{ day.date.day }}</div>
+                    {% if day.count %}
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--bs-primary) 15%, white); color: var(--bs-primary); border: 1px solid color-mix(in srgb, var(--bs-primary) 35%, white);">{{ day.count }} visit{{ day.count|pluralize }}</span>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.calendar-dow { padding: 6px 0; }
+.calendar-day {
+    min-height: 72px; padding: 6px; border-radius: 8px; border: 1px solid var(--bs-border-color, #e5e7eb);
+    color: inherit; display: flex; flex-direction: column; gap: 4px; transition: background-color .15s ease;
+}
+.calendar-day:hover { background: color-mix(in srgb, var(--bs-primary) 6%, white); }
+.calendar-day-outside { opacity: 0.4; }
+.calendar-day-today { border-color: var(--bs-primary); border-width: 2px; }
+@media (max-width: 576px) {
+    .calendar-day { min-height: 52px; padding: 4px; }
+    .calendar-dow { font-size: 0.65rem; }
+}
+</style>
+{% endblock %}

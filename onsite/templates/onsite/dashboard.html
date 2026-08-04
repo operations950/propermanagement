@@ -3,7 +3,7 @@
 {% block title %}On-Site Visits{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h2 class="page-title mb-0">On-Site Visits — {{ today|date:"l, M j" }}</h2>
+    <h2 class="page-title mb-0">On-Site Visits</h2>
     <div class="d-flex gap-2">
         {% if is_admin %}
         <a href="{% url 'onsite_checklist_custom_items' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="list-checks" class="icon"></i> Custom checklist items</a>
@@ -15,7 +15,7 @@
 {% if checkouts_missing_visit or unassigned_visits or at_risk_visits %}
 <div class="card mb-4" style="border-left: 4px solid var(--status-critical);">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2" style="color: var(--status-critical);"><i data-lucide="alert-triangle" class="icon"></i> Needs attention</h6>
+        <h6 class="card-title d-flex align-items-center gap-2" style="color: var(--status-critical);"><i data-lucide="alert-triangle" class="icon"></i> Needs attention today</h6>
         {% for booking in checkouts_missing_visit %}
         <div class="d-flex justify-content-between align-items-center py-1 border-top">
             <span class="small">{{ booking.property.name }} — checkout today, no visit scheduled</span>
@@ -38,17 +38,40 @@
 </div>
 {% endif %}
 
-<div class="card">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    {% if drilled_in_date %}
+    <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Today + Tomorrow</a>
+    {% else %}
+    <div class="btn-group btn-group-sm" role="group">
+        <a href="{% url 'onsite_dashboard' %}" class="btn {% if range_key == 'default' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Today + Tomorrow</a>
+        <a href="{% url 'onsite_dashboard' %}?range=week" class="btn {% if range_key == 'week' %}btn-primary{% else %}btn-outline-secondary{% endif %}">This week</a>
+        <a href="{% url 'onsite_dashboard' %}?range=month" class="btn {% if range_key == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Next 30 days</a>
+    </div>
+    {% endif %}
+    <a href="{% url 'onsite_calendar' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar" class="icon"></i> Calendar view</a>
+</div>
+
+{% if not board_days %}
+<div class="card"><div class="card-body">
+    <p class="text-muted small mb-0">No visits scheduled in this range.</p>
+</div></div>
+{% endif %}
+
+{% for day in board_days %}
+<div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title mb-3">Today's board</h6>
-        {% if todays_visits %}
+        <h6 class="card-title mb-3 d-flex align-items-center gap-2">
+            {{ day.date|date:"l, M j" }}
+            {% if day.is_today %}<span class="badge rounded-pill bg-light text-muted border">Today</span>{% endif %}
+        </h6>
+        {% if day.visits %}
         <div class="table-responsive">
             <table class="table table-sm align-middle">
                 <thead><tr>
                     <th>Property</th><th>Type</th><th>Status</th><th>Assignee</th><th>Ready by</th>
                 </tr></thead>
                 <tbody>
-                {% for visit in todays_visits %}
+                {% for visit in day.visits %}
                 <tr>
                     <td><a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none">{{ visit.property.name }}</a></td>
                     <td>{{ visit.visit_type }}</td>
@@ -71,8 +94,9 @@
             </table>
         </div>
         {% else %}
-        <p class="text-muted small mb-0">No visits scheduled for today.</p>
+        <p class="text-muted small mb-0">No visits scheduled.</p>
         {% endif %}
     </div>
 </div>
+{% endfor %}
 {% endblock %}
