@@ -10,7 +10,7 @@ Two shapes, handled differently:
   platforms also offer, with a row per reservation across every listing the
   host manages, each row carrying that platform's own listing name/title.
   No property is picked upfront; every row's `listing_name` is resolved
-  against `Property.airbnb_listing_name`/`vrbo_listing_name` by the caller
+  against stored `core.PropertyListingName` rows by the caller
   (see `onsite/services/bookings.py::resolve_listing_names`).
 
 Format is detected from the file extension; which platform (Airbnb vs VRBO)

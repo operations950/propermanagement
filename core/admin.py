@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
-    PropertyAttributeAssignment, PropertySystemLocation, StaffProfile,
+    PropertyAttributeAssignment, PropertyListingName, PropertySystemLocation, StaffProfile,
 )
 
 
@@ -16,12 +16,24 @@ class PropertySystemLocationInline(admin.TabularInline):
     extra = 1
 
 
+class PropertyListingNameInline(admin.TabularInline):
+    model = PropertyListingName
+    extra = 1
+
+
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
     list_display = ['name', 'property_type', 'is_general', 'address', 'address_verified', 'is_active', 'created_at']
     list_filter = ['property_type', 'is_general', 'address_verified', 'is_active']
     search_fields = ['name', 'address']
-    inlines = [PropertyAttributeAssignmentInline, PropertySystemLocationInline]
+    inlines = [PropertyAttributeAssignmentInline, PropertySystemLocationInline, PropertyListingNameInline]
+
+
+@admin.register(PropertyListingName)
+class PropertyListingNameAdmin(admin.ModelAdmin):
+    list_display = ['name', 'platform', 'property', 'created_at']
+    list_filter = ['platform']
+    search_fields = ['name', 'property__name']
 
 
 @admin.register(PropertyAttribute)

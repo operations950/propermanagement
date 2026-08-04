@@ -17,19 +17,11 @@ from django.utils import timezone
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
 from ..models import Booking, VisitType
-from core.models import Property
+from core.models import PropertyListingName
 
 TURNOVER_SLUG = 'turnover'
 DEFAULT_CHECK_IN_TIME = time(16, 0)
 DEFAULT_CHECK_OUT_TIME = time(11, 0)
-
-# Which Property field holds the stored listing name for each platform —
-# used both to resolve an import row's listing_name to a Property and to
-# write a newly-confirmed mapping back onto it.
-LISTING_NAME_FIELD = {
-    'airbnb': 'airbnb_listing_name',
-    'vrbo': 'vrbo_listing_name',
-}
 
 
 def _combine(property, date_value, which):
@@ -43,15 +35,17 @@ def _combine(property, date_value, which):
 
 def resolve_listing_names(raw_bookings, source):
     """Splits a portfolio-wide file's rows by whether their listing_name
-    matches a Property's stored name for this platform. Returns
+    matches a stored PropertyListingName for this platform. Returns
     (matched: {Property: [RawBooking]}, unmatched: {listing_name: [RawBooking]})
     — unmatched is grouped by the exact listing_name string so a human
-    resolves each distinct name once, not once per row."""
-    field = LISTING_NAME_FIELD[source]
+    resolves each distinct name once, not once per row. A property can
+    have any number of listing names on file (e.g. several units at one
+    address, not yet modeled as separate Property rows) — the name side
+    is what's unique, not the property side."""
     names_seen = {r.listing_name for r in raw_bookings if r.listing_name}
     properties_by_name = {
-        getattr(p, field): p
-        for p in Property.objects.filter(**{f'{field}__in': names_seen})
+        row.name: row.property
+        for row in PropertyListingName.objects.filter(platform=source, name__in=names_seen).select_related('property')
     }
     matched, unmatched = {}, {}
     for row in raw_bookings:
@@ -67,24 +61,26 @@ def check_listing_name_conflict(property, source, listing_name):
     """Returns None if mapping listing_name -> property for this platform is
     conflict-free, otherwise a dict describing what to warn about:
     - {'type': 'cross', 'other_property': Property} — a DIFFERENT property
-      already claims this exact name; must be fixed there first (hard block).
-    - {'type': 'same', 'existing_name': str} — this property already has a
-      DIFFERENT name on file for this platform; mapping would overwrite it
-      (soft block — needs explicit confirmation)."""
-    field = LISTING_NAME_FIELD[source]
-    other = Property.objects.filter(**{field: listing_name}).exclude(pk=property.pk).first()
+      already claims this exact name; must be fixed there first (hard block
+      — the DB's unique constraint would reject it anyway).
+    - {'type': 'additional', 'existing_names': [str, ...]} — this property
+      already answers to other name(s) on this platform; adding one more is
+      the normal multi-unit case, but still worth a confirmation click in
+      case the wrong property got picked by accident (soft block)."""
+    other = PropertyListingName.objects.filter(platform=source, name=listing_name).exclude(property=property).first()
     if other:
-        return {'type': 'cross', 'other_property': other}
-    existing_name = getattr(property, field)
-    if existing_name and existing_name != listing_name:
-        return {'type': 'same', 'existing_name': existing_name}
+        return {'type': 'cross', 'other_property': other.property}
+    existing_names = list(
+        PropertyListingName.objects.filter(property=property, platform=source)
+        .exclude(name=listing_name).values_list('name', flat=True),
+    )
+    if existing_names:
+        return {'type': 'additional', 'existing_names': existing_names}
     return None
 
 
 def save_listing_name(property, source, listing_name):
-    field = LISTING_NAME_FIELD[source]
-    setattr(property, field, listing_name)
-    property.save(update_fields=[field])
+    PropertyListingName.objects.get_or_create(property=property, platform=source, name=listing_name)
 
 
 def diff_bookings(property, source, raw_bookings):

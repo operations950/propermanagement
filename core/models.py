@@ -87,31 +87,10 @@ class Property(models.Model):
         null=True, blank=True,
         help_text='Same as check-in, for the checkout side of a turnover.',
     )
-    airbnb_listing_name = models.CharField(
-        max_length=200, blank=True,
-        help_text="This property's exact listing name/title on Airbnb — used by the onsite module's "
-                   'portfolio-wide booking import to automatically tie each reservation row to the '
-                   'right property. Set automatically the first time an unrecognized listing name is '
-                   'resolved during an import, or editable here directly.',
-    )
-    vrbo_listing_name = models.CharField(
-        max_length=200, blank=True,
-        help_text='Same as airbnb_listing_name, for VRBO.',
-    )
 
     class Meta:
         verbose_name_plural = 'properties'
         ordering = ['name']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['airbnb_listing_name'], condition=~models.Q(airbnb_listing_name=''),
-                name='uniq_property_airbnb_listing_name',
-            ),
-            models.UniqueConstraint(
-                fields=['vrbo_listing_name'], condition=~models.Q(vrbo_listing_name=''),
-                name='uniq_property_vrbo_listing_name',
-            ),
-        ]
 
     def __str__(self):
         return self.name
@@ -120,6 +99,36 @@ class Property(models.Model):
         if self.street and self.city and self.state and self.zip_code:
             self.address = f'{self.street}, {self.city}, {self.state} {self.zip_code}'
         super().save(*args, **kwargs)
+
+
+class PropertyListingName(models.Model):
+    """A name/title this property answers to on a booking platform — used
+    by the onsite module's portfolio-wide booking import to tie each
+    reservation row to the right property (see onsite/services/bookings.py).
+    A variable-length list rather than a single field on Property: a
+    multi-unit address (3 units, 1 Property record — this app hasn't
+    modeled individual units yet) commonly has a separate Airbnb/VRBO
+    listing per unit, all pointing at the same property. A given literal
+    name still belongs to exactly one property (the unique constraint
+    below) — it's the property side that's one-to-many, not the name
+    side."""
+    class Platform(models.TextChoices):
+        AIRBNB = 'airbnb', 'Airbnb'
+        VRBO = 'vrbo', 'VRBO'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='listing_names')
+    platform = models.CharField(max_length=20, choices=Platform.choices)
+    name = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['platform', 'name']
+        constraints = [
+            models.UniqueConstraint(fields=['platform', 'name'], name='uniq_listing_name_per_platform'),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.get_platform_display()}) → {self.property.name}'
 
 
 class PropertySystemLocation(models.Model):

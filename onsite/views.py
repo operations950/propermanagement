@@ -103,7 +103,7 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
             chosen = Property.objects.filter(pk=posted_property_id).first()
             if chosen:
                 conflict = check_listing_name_conflict(chosen, source, listing_name)
-                if conflict and conflict['type'] == 'same' and posted.get(f'confirm_{i}'):
+                if conflict and conflict['type'] == 'additional' and posted.get(f'confirm_{i}'):
                     conflict = None
         unmatched_groups.append({
             'index': i,
@@ -129,11 +129,14 @@ def booking_import_upload(request):
       column) — staff pick the property, same as before.
     - a portfolio-wide .csv (has a listing/property column with data) — no
       property picked upfront; every row's listing name is auto-resolved
-      against Property.airbnb_listing_name/vrbo_listing_name, and whatever
-      doesn't match gets a resolution UI on the preview screen instead.
+      against stored PropertyListingName rows, and whatever doesn't match
+      gets a resolution UI on the preview screen instead.
     Nothing is written to Booking/Visit yet either way. The file itself is
-    saved onto a not-yet-applied ImportBatch so booking_import_apply can act
-    on exactly what was previewed without re-uploading."""
+    saved onto a not-yet-applied ImportBatch so the preview/apply views can
+    act on exactly what was uploaded without re-uploading — a plain
+    redirect to the batch's own preview URL once it's created, so refreshing
+    or coming back to it (e.g. after a quick-add-property round trip) never
+    resubmits the file."""
     str_properties = _str_properties()
 
     if request.method == 'POST':
@@ -156,33 +159,69 @@ def booking_import_upload(request):
         covers_start = min(r.check_out for r in raw_bookings)
         covers_end = max(r.check_out for r in raw_bookings)
 
-        if not portfolio_mode:
-            if not property_id:
-                messages.error(
-                    request,
-                    'Choose a property — only a portfolio-wide .csv with a listing/property column can skip this.',
-                )
-                return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
-            property = get_object_or_404(Property, pk=property_id)
-            diff = diff_bookings(property, source, raw_bookings)
-            batch = ImportBatch.objects.create(
-                property=property, source=source, raw_file=uploaded_file,
-                covers_start=covers_start, covers_end=covers_end, imported_by=request.user,
+        if not portfolio_mode and not property_id:
+            messages.error(
+                request,
+                'Choose a property — only a portfolio-wide .csv with a listing/property column can skip this.',
             )
-            return render(request, 'onsite/booking_import_preview.html', {
-                'batch': batch, 'property': property, 'diff': diff, 'portfolio': False,
-            })
+            return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
 
+        property = get_object_or_404(Property, pk=property_id) if property_id else None
         batch = ImportBatch.objects.create(
-            property=None, source=source, raw_file=uploaded_file,
+            property=property, source=source, raw_file=uploaded_file,
             covers_start=covers_start, covers_end=covers_end, imported_by=request.user,
         )
-        return render(
-            request, 'onsite/booking_import_preview.html',
-            _portfolio_preview_context(batch, raw_bookings, source),
-        )
+        return redirect('onsite_booking_import_preview', batch_id=batch.pk)
 
     return render(request, 'onsite/booking_import_upload.html', {'properties': str_properties})
+
+
+@login_required
+def booking_import_preview(request, batch_id):
+    """Re-shows the diff for a not-yet-applied batch by re-parsing its saved
+    file — the GET counterpart to booking_import_upload's POST, so the
+    preview has a real URL to land on (after the initial upload, or after a
+    quick_add_property round trip) rather than only existing as an inline
+    render of the upload POST."""
+    batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
+    try:
+        raw_bookings = parse_booking_file(batch.raw_file)
+    except BookingFileError as e:
+        messages.error(request, f'Could not re-read the saved file: {e}')
+        return redirect('onsite_booking_import')
+
+    if batch.property_id:
+        diff = diff_bookings(batch.property, batch.source, raw_bookings)
+        return render(request, 'onsite/booking_import_preview.html', {
+            'batch': batch, 'property': batch.property, 'diff': diff, 'portfolio': False,
+        })
+
+    return render(
+        request, 'onsite/booking_import_preview.html',
+        _portfolio_preview_context(batch, raw_bookings, batch.source),
+    )
+
+
+@login_required
+@require_http_methods(['POST'])
+def quick_add_property(request, batch_id):
+    """Lets staff resolving an unmatched listing name create the missing
+    property on the spot — "we forgot to add it before this upload" — rather
+    than cancelling the import to go do it elsewhere. Created as a plain
+    active short-term rental with just a name; everything else (address,
+    access info, ...) gets filled in later the normal way. Redirects back to
+    the same batch's preview, where the new property now shows up in every
+    listing-name picker."""
+    batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
+    name = request.POST.get('new_property_name', '').strip()
+    if not name:
+        messages.error(request, 'Enter a name for the new property.')
+    elif Property.objects.filter(name__iexact=name).exists():
+        messages.error(request, f'A property named "{name}" already exists — pick it from the list instead.')
+    else:
+        Property.objects.create(name=name, property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True)
+        messages.success(request, f'Added "{name}" — pick it below for whichever listing name(s) it belongs to.')
+    return redirect('onsite_booking_import_preview', batch_id=batch.pk)
 
 
 @login_required
@@ -227,7 +266,7 @@ def booking_import_apply(request, batch_id):
             continue
         property = get_object_or_404(Property, pk=property_id)
         conflict = check_listing_name_conflict(property, batch.source, listing_name)
-        if conflict and conflict['type'] == 'same' and request.POST.get(f'confirm_{i}'):
+        if conflict and conflict['type'] == 'additional' and request.POST.get(f'confirm_{i}'):
             conflict = None
         if conflict:
             blocked = True

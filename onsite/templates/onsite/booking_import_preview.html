@@ -14,7 +14,7 @@
     <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
         <div class="card-body">
             <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="link-2" class="icon"></i> Unrecognized listing names ({{ unmatched_groups|length }})</h6>
-            <p class="text-muted small mb-3">These names from the file don't match any property's stored {{ batch.get_source_display }} listing name yet. Pick which property each one belongs to — every name must be resolved before this import can be applied.</p>
+            <p class="text-muted small mb-3">These names from the file don't match any property's stored {{ batch.get_source_display }} listing name yet. Pick which property each one belongs to — a property can have more than one listing name (e.g. several units at one address) — every name must be resolved before this import can be applied.</p>
             {% for group in unmatched_groups %}
             <div class="border-top pt-3 mt-3">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
@@ -30,11 +30,11 @@
                 <div class="small mb-2 p-2" style="color: var(--status-danger, #c0392b); background: var(--surface-danger-subtle, rgba(192,57,50,.08)); border-radius: 8px;">
                     <i data-lucide="alert-triangle" class="icon"></i> "{{ group.listing_name }}" is already {{ batch.get_source_display }}'s listing name for <strong>{{ group.conflict.other_property.name }}</strong>. Fix that property's listing name first (or pick a different property here) before this can be applied.
                 </div>
-                {% elif group.conflict.type == 'same' %}
+                {% elif group.conflict.type == 'additional' %}
                 <div class="small mb-2 p-2" style="color: var(--status-warning, #9a6700); background: var(--surface-warning-subtle, rgba(154,103,0,.08)); border-radius: 8px;">
-                    <i data-lucide="alert-triangle" class="icon"></i> This property already has a different {{ batch.get_source_display }} listing name on file: "<strong>{{ group.conflict.existing_name }}</strong>". Are you correcting/updating that property's name to "{{ group.listing_name }}" — or did you pick the wrong property by accident?
+                    <i data-lucide="alert-triangle" class="icon"></i> This property already answers to {{ group.conflict.existing_names|length }} other {{ batch.get_source_display }} name{{ group.conflict.existing_names|length|pluralize }}: "<strong>{{ group.conflict.existing_names|join:'", "' }}</strong>". Adding another is normal for a multi-unit property — but double-check you picked the right property before confirming.
                     <label class="d-flex align-items-center gap-2 mt-2 mb-0">
-                        <input type="checkbox" name="confirm_{{ group.index }}" value="1"> Yes, update this property's {{ batch.get_source_display }} listing name to "{{ group.listing_name }}".
+                        <input type="checkbox" name="confirm_{{ group.index }}" value="1"> Yes, add "{{ group.listing_name }}" as another name for this property.
                     </label>
                 </div>
                 {% endif %}
@@ -50,6 +50,18 @@
                 </div>
             </div>
             {% endfor %}
+
+            <div class="border-top pt-3 mt-3">
+                <div class="small text-muted mb-2">Don't see the property? It's fine to add it now instead of cancelling this import.</div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#quickAddProperty">+ New property</button>
+                <div class="collapse mt-2" id="quickAddProperty">
+                    <form method="post" action="{% url 'onsite_quick_add_property' batch.pk %}" class="d-flex gap-2 flex-wrap">
+                        {% csrf_token %}
+                        <input type="text" name="new_property_name" class="form-control form-control-sm" style="max-width: 320px;" placeholder="Property name" required>
+                        <button class="btn btn-secondary btn-sm" type="submit">Add property</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
     {% endif %}

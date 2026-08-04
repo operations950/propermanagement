@@ -342,21 +342,50 @@
         <div class="card h-100">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Booking platforms</h6>
-                <p class="small text-muted">This property's exact listing name on each platform — used to automatically match reservations during an on-site visit booking import. Usually set for you the first time an unrecognized listing name is resolved during an import.</p>
-                <form method="post">
+                <p class="small text-muted">Every name/title this property answers to on each platform — used to automatically match reservations during an on-site visit booking import. A property can have more than one per platform (e.g. several units at one address). Usually set for you the first time an unrecognized listing name is resolved during an import.</p>
+
+                <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Airbnb</div>
+                {% for ln in airbnb_listing_names %}
+                <div class="d-flex justify-content-between align-items-center py-1 border-top">
+                    <div class="small">{{ ln.name }}</div>
+                    <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove_listing_name">
+                        <input type="hidden" name="listing_name_id" value="{{ ln.pk }}">
+                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
+                    </form>
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-1">None on file yet.</p>
+                {% endfor %}
+                <form method="post" class="d-flex gap-2 mt-1 mb-3">
                     {% csrf_token %}
-                    <input type="hidden" name="action" value="save_booking_platforms">
-                    <div class="row g-2">
-                        <div class="col-12">
-                            <label class="form-label small text-muted mb-1">Airbnb listing name</label>
-                            <input type="text" name="airbnb_listing_name" class="form-control form-control-sm" value="{{ property.airbnb_listing_name }}">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label small text-muted mb-1">VRBO listing name</label>
-                            <input type="text" name="vrbo_listing_name" class="form-control form-control-sm" value="{{ property.vrbo_listing_name }}">
-                        </div>
-                    </div>
-                    <button class="btn btn-outline-primary btn-sm mt-2" type="submit">Save</button>
+                    <input type="hidden" name="action" value="add_listing_name">
+                    <input type="hidden" name="platform" value="airbnb">
+                    <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add an Airbnb listing name">
+                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
+                </form>
+
+                <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">VRBO</div>
+                {% for ln in vrbo_listing_names %}
+                <div class="d-flex justify-content-between align-items-center py-1 border-top">
+                    <div class="small">{{ ln.name }}</div>
+                    <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove_listing_name">
+                        <input type="hidden" name="listing_name_id" value="{{ ln.pk }}">
+                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
+                    </form>
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-1">None on file yet.</p>
+                {% endfor %}
+                <form method="post" class="d-flex gap-2 mt-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_listing_name">
+                    <input type="hidden" name="platform" value="vrbo">
+                    <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add a VRBO listing name">
+                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
                 </form>
             </div>
         </div>

@@ -38,8 +38,8 @@ from .forms import (
 from .models import (
     Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
     GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, PropertyDocument,
-    PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES, creatable_contact_types,
-    group_contacts_by_type, is_valid_phone, properties_by_type,
+    PropertyListingName, PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES,
+    creatable_contact_types, group_contacts_by_type, is_valid_phone, properties_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -749,22 +749,26 @@ def property_detail(request, pk):
                 setattr(prop, time_field, request.POST.get(time_field) or None)
             prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time'])
             messages.success(request, 'Access info saved.')
-        elif action == 'save_booking_platforms':
-            conflicts = []
-            for field, label in (('airbnb_listing_name', 'Airbnb'), ('vrbo_listing_name', 'VRBO')):
-                value = request.POST.get(field, '').strip()
-                if value:
-                    other = Property.objects.filter(**{field: value}).exclude(pk=prop.pk).first()
-                    if other:
-                        conflicts.append(f'"{value}" is already {label}\'s listing name for {other.name} — fix that property first, or use a different name here.')
-                        continue
-                setattr(prop, field, value)
-            if conflicts:
-                for c in conflicts:
-                    messages.error(request, c)
+        elif action == 'add_listing_name':
+            platform = request.POST.get('platform')
+            name = request.POST.get('listing_name', '').strip()
+            label = dict(PropertyListingName.Platform.choices).get(platform)
+            if not (label and name):
+                messages.error(request, 'Enter a listing name.')
             else:
-                prop.save(update_fields=['airbnb_listing_name', 'vrbo_listing_name'])
-                messages.success(request, 'Booking platform names saved.')
+                other = PropertyListingName.objects.filter(platform=platform, name=name).exclude(property=prop).first()
+                if other:
+                    messages.error(
+                        request,
+                        f'"{name}" is already {label}\'s listing name for {other.property.name} — remove it '
+                        'there first, or use a different name here.',
+                    )
+                else:
+                    _, created = PropertyListingName.objects.get_or_create(property=prop, platform=platform, name=name)
+                    messages.success(request, f'Added "{name}" as a {label} listing name.' if created else 'That name is already on file for this property.')
+        elif action == 'remove_listing_name':
+            PropertyListingName.objects.filter(pk=request.POST.get('listing_name_id'), property=prop).delete()
+            messages.success(request, 'Removed.')
         elif action == 'add_document':
             name = request.POST.get('name', '').strip()
             file = request.FILES.get('file')
@@ -848,6 +852,8 @@ def property_detail(request, pk):
         'email_contacts': [c for c in contacts if c.email],
         'open_tickets': open_tickets,
         'system_locations': prop.system_locations.all(),
+        'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB),
+        'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO),
         'documents': prop.documents.all(),
         'text_contact_groups': group_contacts_by_type([c for c in contacts if c.phone]),
         'email_contact_groups': group_contacts_by_type([c for c in contacts if c.email]),
