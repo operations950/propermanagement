@@ -9,6 +9,7 @@ google-api-python-client==2.184.0
 openpyxl==3.1.5
 cloudinary==1.44.1
 django-cloudinary-storage==0.3.0
+Pillow==12.3.0
 
 # Production deployment (Railway) — see settings.py's DATABASES/MIDDLEWARE
 # and the Procfile. Not used by local dev (SQLite + runserver).
