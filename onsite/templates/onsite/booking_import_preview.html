@@ -54,12 +54,16 @@
             <div class="border-top pt-3 mt-3">
                 <div class="small text-muted mb-2">Don't see the property? It's fine to add it now instead of cancelling this import.</div>
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#quickAddProperty">+ New property</button>
+                {# Deliberately NOT a nested <form> — an HTML <form> can't contain another
+                <form>; the browser silently drops it, which was actually closing the
+                outer Apply form early and stranding the Apply button outside of any
+                form (it stopped submitting). formaction/formmethod let this one button
+                post to a different URL while staying inside the single outer form. #}
                 <div class="collapse mt-2" id="quickAddProperty">
-                    <form method="post" action="{% url 'onsite_quick_add_property' batch.pk %}" class="d-flex gap-2 flex-wrap">
-                        {% csrf_token %}
-                        <input type="text" name="new_property_name" class="form-control form-control-sm" style="max-width: 320px;" placeholder="Property name" required>
-                        <button class="btn btn-secondary btn-sm" type="submit">Add property</button>
-                    </form>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <input type="text" name="new_property_name" class="form-control form-control-sm" style="max-width: 320px;" placeholder="Property name">
+                        <button class="btn btn-secondary btn-sm" type="submit" formaction="{% url 'onsite_quick_add_property' batch.pk %}" formmethod="post" formnovalidate>Add property</button>
+                    </div>
                 </div>
             </div>
         </div>
