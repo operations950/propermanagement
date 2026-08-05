@@ -143,13 +143,16 @@ class ImportBatch(models.Model):
     raw_file = models.FileField(upload_to='onsite_import_batches/%Y/%m/')
     covers_start = models.DateField(help_text='Earliest checkout date this file actually covers.')
     covers_end = models.DateField(help_text='Latest checkout date this file actually covers.')
-    is_cancellations_only = models.BooleanField(
+    is_partial_listing = models.BooleanField(
         default=False,
-        help_text='Copied from DailyUploadSlot.is_cancellations_only at upload time (False for the '
-                   'generic upload form). When True, this file is a PARTIAL listing that only contains '
-                   'cancelled reservations (e.g. Airbnb\'s separate Cancellations report) — the diff must '
-                   'not treat a booking simply being absent from it as evidence of cancellation, since '
-                   'every other still-active booking is absent from it too by design. See '
+        help_text='Copied from DailyUploadSlot.is_partial_listing at upload time (False for the generic '
+                   'upload form). When True, this file does NOT represent a complete, current listing of '
+                   'everything active for this source — either because it only ever contains cancelled '
+                   "reservations (Airbnb's separate Cancellations report), or because it's one of several "
+                   "pages/pieces of the full list (Airbnb's Page 1/Page 2 split, say). Either way, the "
+                   'diff must not treat a booking simply being absent from THIS file as evidence of '
+                   "cancellation — plenty of still-active bookings are legitimately absent from a partial "
+                   'file too (a Page-1-only booking is absent from Page 2, and vice versa). See '
                    'onsite/services/bookings.py::diff_bookings.',
     )
     new_count = models.PositiveIntegerField(default=0)
@@ -228,13 +231,17 @@ class DailyUploadSlot(models.Model):
                    'to skip this check for this slot (only the importer\'s own generic required columns '
                    'still apply).',
     )
-    is_cancellations_only = models.BooleanField(
+    is_partial_listing = models.BooleanField(
         default=False,
-        help_text='Check this for a slot whose file only ever contains cancelled reservations (e.g. '
-                   '"Airbnb Cancellations") rather than a full listing of everything currently on the '
-                   'books. Copied onto each ImportBatch created from this slot — see that field\'s help '
-                   'text for why it matters. Leave unchecked for a normal "here\'s everything upcoming" '
-                   'reservations report.',
+        help_text='Check this for a slot whose file is NOT a complete, standalone listing of everything '
+                   'currently on the books for this source — either it only ever contains cancelled '
+                   'reservations ("Airbnb Cancellations"), or it\'s one of several pages/pieces of a '
+                   'larger list (e.g. "Airbnb - Upcoming Page 1" and "Page 2", where neither page alone '
+                   "contains everything — a booking that's only on the other page must never look "
+                   'cancelled just because it\'s absent from this one). Copied onto each ImportBatch '
+                   'created from this slot — see that field\'s help text for why it matters. Leave '
+                   'unchecked only for a slot whose file is, by itself, everything currently upcoming for '
+                   'that source (e.g. VRBO\'s combined report).',
     )
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)

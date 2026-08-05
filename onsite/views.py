@@ -189,7 +189,7 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     property_diffs = [
         {
             'property': property,
-            'diff': diff_bookings(property, source, rows, is_cancellations_only=batch.is_cancellations_only),
+            'diff': diff_bookings(property, source, rows, is_partial_listing=batch.is_partial_listing),
         }
         for property, rows in sorted(matched.items(), key=lambda kv: kv[0].name)
     ]
@@ -222,7 +222,7 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     }
 
 
-def _create_import_batch(user, source, uploaded_file, property=None, is_cancellations_only=False):
+def _create_import_batch(user, source, uploaded_file, property=None, is_partial_listing=False):
     """Shared by the generic upload form and each daily-upload-slot drop —
     parses the file, decides single-property vs. portfolio-wide the same
     way either time, and saves the not-yet-applied ImportBatch. Returns
@@ -244,7 +244,7 @@ def _create_import_batch(user, source, uploaded_file, property=None, is_cancella
     batch = ImportBatch.objects.create(
         property=property if not portfolio_mode else None, source=source, raw_file=uploaded_file,
         covers_start=covers_start, covers_end=covers_end, imported_by=user,
-        is_cancellations_only=is_cancellations_only,
+        is_partial_listing=is_partial_listing,
     )
     return batch, None
 
@@ -347,7 +347,7 @@ def upload_slot(request, slot_id):
         return redirect('onsite_booking_import')
 
     batch, error = _create_import_batch(
-        request.user, slot.source, uploaded_file, is_cancellations_only=slot.is_cancellations_only,
+        request.user, slot.source, uploaded_file, is_partial_listing=slot.is_partial_listing,
     )
     if error:
         messages.error(request, f'{slot.label}: {error}')
@@ -376,7 +376,7 @@ def booking_import_preview(request, batch_id):
 
     if batch.property_id:
         diff = diff_bookings(
-            batch.property, batch.source, raw_bookings, is_cancellations_only=batch.is_cancellations_only,
+            batch.property, batch.source, raw_bookings, is_partial_listing=batch.is_partial_listing,
         )
         return render(request, 'onsite/booking_import_preview.html', {
             'batch': batch, 'property': batch.property, 'diff': diff, 'portfolio': False,
@@ -432,7 +432,7 @@ def booking_import_apply(request, batch_id):
 
     if batch.property_id:
         new_count, changed_count, cancelled_count, visit_note = apply_bookings_for_property(
-            batch.property, batch.source, raw_bookings, is_cancellations_only=batch.is_cancellations_only,
+            batch.property, batch.source, raw_bookings, is_partial_listing=batch.is_partial_listing,
         )
         batch.new_count, batch.changed_count, batch.cancelled_count = new_count, changed_count, cancelled_count
         batch.applied_at = timezone.now()
@@ -476,7 +476,7 @@ def booking_import_apply(request, batch_id):
     visit_notes = set()
     for property, rows in matched.items():
         n, c, x, note = apply_bookings_for_property(
-            property, batch.source, rows, is_cancellations_only=batch.is_cancellations_only,
+            property, batch.source, rows, is_partial_listing=batch.is_partial_listing,
         )
         total_new += n
         total_changed += c

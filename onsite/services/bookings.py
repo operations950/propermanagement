@@ -83,7 +83,7 @@ def save_listing_name(property, source, listing_name):
     PropertyListingName.objects.get_or_create(property=property, platform=source, name=listing_name)
 
 
-def diff_bookings(property, source, raw_bookings, is_cancellations_only=False):
+def diff_bookings(property, source, raw_bookings, is_partial_listing=False):
     """Read-only preview diff — nothing written. Returns a dict with 'new'/
     'changed' (lists of RawBooking) and 'cancelled' (list of existing
     Booking rows this file says — explicitly or by implication — are no
@@ -94,10 +94,14 @@ def diff_bookings(property, source, raw_bookings, is_cancellations_only=False):
        set by the importer). A row like this is never treated as new/changed,
        whether or not it matches an existing Booking.
     2. Inferred — an existing ACTIVE booking simply isn't in this file at
-       all. Skipped entirely when is_cancellations_only=True, because a
-       PARTIAL file (e.g. Airbnb's separate Cancellations report) only ever
-       lists cancellations — every other still-active booking is "absent"
-       from it by design, and would otherwise get wrongly swept up here."""
+       all. Skipped entirely when is_partial_listing=True, because a
+       PARTIAL file — either it only ever contains cancellations (Airbnb's
+       separate Cancellations report) or it's one of several pages/pieces of
+       a larger list (Airbnb's Page 1/Page 2 split) — doesn't claim to be
+       the complete picture, so plenty of still-active bookings are
+       legitimately "absent" from it too (a Page-1-only booking is absent
+       from Page 2's file, and vice versa) and would otherwise get wrongly
+       swept up here."""
     existing_by_uid = {
         b.external_uid: b
         for b in Booking.objects.filter(property=property, source=source)
@@ -117,7 +121,7 @@ def diff_bookings(property, source, raw_bookings, is_cancellations_only=False):
             changed_rows.append(row)
 
     inferred_cancelled = []
-    if not is_cancellations_only:
+    if not is_partial_listing:
         # A real Airbnb/VRBO ICS calendar export (or a comprehensive .csv
         # reservations report) lists every future reservation from today
         # onward, however far out — a booking that's genuinely still on the
@@ -163,14 +167,14 @@ def _find_next_booking(property, after_datetime, exclude_pk=None):
 
 
 @transaction.atomic
-def apply_bookings_for_property(property, source, raw_bookings, is_cancellations_only=False):
+def apply_bookings_for_property(property, source, raw_bookings, is_partial_listing=False):
     """Writes the diff computed the same way diff_bookings does, for ONE
     property's rows. Returns (new_count, changed_count, cancelled_count,
     visit_note) — visit_note is a user-facing message when visit creation
     had to be skipped. Does not touch any ImportBatch; a portfolio-wide
     import calls this once per resolved property and aggregates the counts
     itself (see onsite/views.py)."""
-    diff = diff_bookings(property, source, raw_bookings, is_cancellations_only=is_cancellations_only)
+    diff = diff_bookings(property, source, raw_bookings, is_partial_listing=is_partial_listing)
     turnover_type = VisitType.objects.filter(slug=TURNOVER_SLUG, is_active=True).first()
     visit_note = '' if turnover_type else (
         'Bookings were imported, but no active "Turnover" visit type exists yet — no visits were '
