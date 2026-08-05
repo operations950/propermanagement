@@ -63,7 +63,10 @@ class BookingAdmin(admin.ModelAdmin):
 
 @admin.register(ImportBatch)
 class ImportBatchAdmin(admin.ModelAdmin):
-    list_display = ['property', 'source', 'covers_start', 'covers_end', 'new_count', 'changed_count', 'cancelled_count', 'applied_at']
+    list_display = [
+        'property', 'source', 'covers_start', 'covers_end',
+        'new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at',
+    ]
     list_filter = ['source']
 
 

@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
-from ..models import Booking, VisitType
+from ..models import Booking, Visit, VisitType
 from core.models import PropertyListingName
 
 TURNOVER_SLUG = 'turnover'
@@ -83,78 +83,49 @@ def save_listing_name(property, source, listing_name):
     PropertyListingName.objects.get_or_create(property=property, platform=source, name=listing_name)
 
 
-def diff_bookings(property, source, raw_bookings, is_partial_listing=False):
+def diff_bookings(property, source, raw_bookings):
     """Read-only preview diff — nothing written. Returns a dict with 'new'/
-    'changed' (lists of RawBooking) and 'cancelled' (list of existing
-    Booking rows this file says — explicitly or by implication — are no
-    longer on the books).
+    'changed'/'reactivated' (lists of RawBooking) and 'cancelled' (list of
+    existing Booking rows).
 
-    Two independent ways a booking ends up in 'cancelled':
-    1. Explicit — the row's own Status column says so (RawBooking.is_cancelled,
-       set by the importer). A row like this is never treated as new/changed,
-       whether or not it matches an existing Booking.
-    2. Inferred — an existing ACTIVE booking simply isn't in this file at
-       all. Skipped entirely when is_partial_listing=True, because a
-       PARTIAL file — either it only ever contains cancellations (Airbnb's
-       separate Cancellations report) or it's one of several pages/pieces of
-       a larger list (Airbnb's Page 1/Page 2 split) — doesn't claim to be
-       the complete picture, so plenty of still-active bookings are
-       legitimately "absent" from it too (a Page-1-only booking is absent
-       from Page 2's file, and vice versa) and would otherwise get wrongly
-       swept up here."""
+    Cancellation is ALWAYS explicit — driven solely by the row's own Status
+    column (RawBooking.is_cancelled, set by the importer as "the word
+    'cancel' appears in the Status value"; both Airbnb and VRBO's real
+    exports carry one). A booking is never inferred cancelled just because
+    it's absent from a re-uploaded file — that heuristic caused two real
+    production bugs (a booking that's still active but happens to fall on
+    the "other half" of a paginated/partial file — e.g. Airbnb's Page 1 vs
+    Page 2 — looked cancelled purely because it wasn't in THIS particular
+    file) and the user explicitly asked that absence never be treated as
+    evidence of cancellation, for either platform. A cancelled row is never
+    treated as new/changed, whether or not it matches an existing Booking.
+
+    'reactivated' is the flip side: a row whose code we already have on
+    file as CANCELLED, but which shows up again in a non-cancellation row.
+    That means it's actually still active — most concretely, this is how a
+    booking wrongly cancelled by the old absence-inference bug (before
+    explicit-only detection existed) gets itself corrected: just re-upload
+    the file and its code reappears, no manual fix-up needed."""
     existing_by_uid = {
         b.external_uid: b
         for b in Booking.objects.filter(property=property, source=source)
     }
-    seen_uids = {row.external_uid for row in raw_bookings}
-    new_rows, changed_rows = [], []
-    explicitly_cancelled = []
+    new_rows, changed_rows, reactivated_rows = [], [], []
+    cancelled = []
     for row in raw_bookings:
         existing = existing_by_uid.get(row.external_uid)
         if row.is_cancelled:
             if existing is not None and existing.status == Booking.Status.ACTIVE:
-                explicitly_cancelled.append(existing)
+                cancelled.append(existing)
             continue
         if existing is None:
             new_rows.append(row)
+        elif existing.status == Booking.Status.CANCELLED:
+            reactivated_rows.append(row)
         elif existing.check_in.date() != row.check_in or existing.check_out.date() != row.check_out:
             changed_rows.append(row)
 
-    inferred_cancelled = []
-    if not is_partial_listing:
-        # A real Airbnb/VRBO ICS calendar export (or a comprehensive .csv
-        # reservations report) lists every future reservation from today
-        # onward, however far out — a booking that's genuinely still on the
-        # books would still appear in it. So a booking absent from the new
-        # file is presumed cancelled as long as its checkout falls between
-        # today and the furthest-out checkout date we know about (either
-        # from this file or from what we already had on record) — bounding
-        # by only this file's own rows would wrongly ignore an existing
-        # booking further out than anything the new file happens to contain
-        # (e.g. everything else on the books was already checked out,
-        # leaving this file with a nearer max date than a genuinely-
-        # cancelled later booking's).
-        known_checkouts = [r.check_out for r in raw_bookings if not r.is_cancelled] + [
-            b.check_out.date() for b in existing_by_uid.values() if b.status == Booking.Status.ACTIVE
-        ]
-        if known_checkouts:
-            covers_start = timezone.localdate()
-            covers_end = max(known_checkouts)
-            inferred_cancelled = [
-                b for uid, b in existing_by_uid.items()
-                if uid not in seen_uids
-                and b.status == Booking.Status.ACTIVE
-                and covers_start <= b.check_out.date() <= covers_end
-            ]
-
-    seen_pks = set()
-    cancelled = []
-    for b in explicitly_cancelled + inferred_cancelled:
-        if b.pk not in seen_pks:
-            seen_pks.add(b.pk)
-            cancelled.append(b)
-
-    return {'new': new_rows, 'changed': changed_rows, 'cancelled': cancelled}
+    return {'new': new_rows, 'changed': changed_rows, 'reactivated': reactivated_rows, 'cancelled': cancelled}
 
 
 def _find_next_booking(property, after_datetime, exclude_pk=None):
@@ -167,14 +138,14 @@ def _find_next_booking(property, after_datetime, exclude_pk=None):
 
 
 @transaction.atomic
-def apply_bookings_for_property(property, source, raw_bookings, is_partial_listing=False):
+def apply_bookings_for_property(property, source, raw_bookings):
     """Writes the diff computed the same way diff_bookings does, for ONE
-    property's rows. Returns (new_count, changed_count, cancelled_count,
-    visit_note) — visit_note is a user-facing message when visit creation
-    had to be skipped. Does not touch any ImportBatch; a portfolio-wide
-    import calls this once per resolved property and aggregates the counts
-    itself (see onsite/views.py)."""
-    diff = diff_bookings(property, source, raw_bookings, is_partial_listing=is_partial_listing)
+    property's rows. Returns (new_count, changed_count, reactivated_count,
+    cancelled_count, visit_note) — visit_note is a user-facing message when
+    visit creation had to be skipped. Does not touch any ImportBatch; a
+    portfolio-wide import calls this once per resolved property and
+    aggregates the counts itself (see onsite/views.py)."""
+    diff = diff_bookings(property, source, raw_bookings)
     turnover_type = VisitType.objects.filter(slug=TURNOVER_SLUG, is_active=True).first()
     visit_note = '' if turnover_type else (
         'Bookings were imported, but no active "Turnover" visit type exists yet — no visits were '
@@ -211,6 +182,38 @@ def apply_bookings_for_property(property, source, raw_bookings, is_partial_listi
             visit.save(update_fields=['scheduled_date', 'next_booking', 'ready_by'])
             transaction.on_commit(lambda visit=visit: push_visit(visit))
 
+    for row in diff['reactivated']:
+        booking = Booking.objects.get(property=property, source=source, external_uid=row.external_uid)
+        booking.status = Booking.Status.ACTIVE
+        booking.check_in = _combine(property, row.check_in, 'check_in')
+        booking.check_out = _combine(property, row.check_out, 'check_out')
+        booking.last_seen_at = timezone.now()
+        booking.save(update_fields=['status', 'check_in', 'check_out', 'last_seen_at'])
+
+        next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk)
+        cancelled_visit = booking.visits.filter(status=Visit.Status.CANCELLED).order_by('-pk').first()
+        if cancelled_visit:
+            # Bring the same Visit back rather than creating a duplicate —
+            # its checklist/assignee history is still intact underneath the
+            # cancellation, exactly as it was before.
+            cancelled_visit.status = (
+                Visit.Status.SCHEDULED
+                if cancelled_visit.assigned_staff_id or cancelled_visit.assigned_contact_id
+                else Visit.Status.UNASSIGNED
+            )
+            cancelled_visit.scheduled_date = booking.check_out.date()
+            cancelled_visit.next_booking = next_booking
+            cancelled_visit.ready_by = next_booking.check_in if next_booking else None
+            cancelled_visit.save(update_fields=['status', 'scheduled_date', 'next_booking', 'ready_by'])
+            transaction.on_commit(lambda visit=cancelled_visit: push_visit(visit))
+        elif turnover_type:
+            # No Visit at all survived (shouldn't normally happen, but
+            # don't leave a reactivated booking with no cleaning scheduled).
+            create_visit(
+                property, turnover_type, booking=booking, next_booking=next_booking,
+                scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
+            )
+
     for booking in diff['cancelled']:
         booking.status = Booking.Status.CANCELLED
         booking.save(update_fields=['status'])
@@ -219,4 +222,4 @@ def apply_bookings_for_property(property, source, raw_bookings, is_partial_listi
         for visit in active_visits:
             transaction.on_commit(lambda visit=visit: delete_visit_event(visit))
 
-    return len(diff['new']), len(diff['changed']), len(diff['cancelled']), visit_note
+    return len(diff['new']), len(diff['changed']), len(diff['reactivated']), len(diff['cancelled']), visit_note

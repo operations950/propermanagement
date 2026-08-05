@@ -187,10 +187,7 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     work, per the two-scenario warning the user asked for."""
     matched, unmatched = resolve_listing_names(raw_bookings, source)
     property_diffs = [
-        {
-            'property': property,
-            'diff': diff_bookings(property, source, rows, is_partial_listing=batch.is_partial_listing),
-        }
+        {'property': property, 'diff': diff_bookings(property, source, rows)}
         for property, rows in sorted(matched.items(), key=lambda kv: kv[0].name)
     ]
     all_properties = list(_str_properties())
@@ -222,7 +219,7 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     }
 
 
-def _create_import_batch(user, source, uploaded_file, property=None, is_partial_listing=False):
+def _create_import_batch(user, source, uploaded_file, property=None):
     """Shared by the generic upload form and each daily-upload-slot drop —
     parses the file, decides single-property vs. portfolio-wide the same
     way either time, and saves the not-yet-applied ImportBatch. Returns
@@ -244,7 +241,6 @@ def _create_import_batch(user, source, uploaded_file, property=None, is_partial_
     batch = ImportBatch.objects.create(
         property=property if not portfolio_mode else None, source=source, raw_file=uploaded_file,
         covers_start=covers_start, covers_end=covers_end, imported_by=user,
-        is_partial_listing=is_partial_listing,
     )
     return batch, None
 
@@ -346,9 +342,7 @@ def upload_slot(request, slot_id):
         )
         return redirect('onsite_booking_import')
 
-    batch, error = _create_import_batch(
-        request.user, slot.source, uploaded_file, is_partial_listing=slot.is_partial_listing,
-    )
+    batch, error = _create_import_batch(request.user, slot.source, uploaded_file)
     if error:
         messages.error(request, f'{slot.label}: {error}')
         return redirect('onsite_booking_import')
@@ -375,9 +369,7 @@ def booking_import_preview(request, batch_id):
         return redirect('onsite_booking_import')
 
     if batch.property_id:
-        diff = diff_bookings(
-            batch.property, batch.source, raw_bookings, is_partial_listing=batch.is_partial_listing,
-        )
+        diff = diff_bookings(batch.property, batch.source, raw_bookings)
         return render(request, 'onsite/booking_import_preview.html', {
             'batch': batch, 'property': batch.property, 'diff': diff, 'portfolio': False,
         })
@@ -431,14 +423,19 @@ def booking_import_apply(request, batch_id):
         return redirect('onsite_booking_import')
 
     if batch.property_id:
-        new_count, changed_count, cancelled_count, visit_note = apply_bookings_for_property(
-            batch.property, batch.source, raw_bookings, is_partial_listing=batch.is_partial_listing,
+        new_count, changed_count, reactivated_count, cancelled_count, visit_note = apply_bookings_for_property(
+            batch.property, batch.source, raw_bookings,
         )
-        batch.new_count, batch.changed_count, batch.cancelled_count = new_count, changed_count, cancelled_count
+        batch.new_count, batch.changed_count = new_count, changed_count
+        batch.reactivated_count, batch.cancelled_count = reactivated_count, cancelled_count
         batch.applied_at = timezone.now()
-        batch.save(update_fields=['new_count', 'changed_count', 'cancelled_count', 'applied_at'])
+        batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
         _update_feed_health(batch.source, raw_bookings)
-        messages.success(request, f'Imported: {new_count} new, {changed_count} changed, {cancelled_count} cancelled.')
+        messages.success(
+            request,
+            f'Imported: {new_count} new, {changed_count} changed, {reactivated_count} reactivated, '
+            f'{cancelled_count} cancelled.',
+        )
         if visit_note:
             messages.warning(request, visit_note)
         return redirect('onsite_dashboard')
@@ -472,28 +469,28 @@ def booking_import_apply(request, batch_id):
         save_listing_name(property, batch.source, listing_name)
         matched[property] = matched.get(property, []) + rows
 
-    total_new = total_changed = total_cancelled = 0
+    total_new = total_changed = total_reactivated = total_cancelled = 0
     visit_notes = set()
     for property, rows in matched.items():
-        n, c, x, note = apply_bookings_for_property(
-            property, batch.source, rows, is_partial_listing=batch.is_partial_listing,
-        )
+        n, c, r, x, note = apply_bookings_for_property(property, batch.source, rows)
         total_new += n
         total_changed += c
+        total_reactivated += r
         total_cancelled += x
         if note:
             visit_notes.add(note)
 
-    batch.new_count, batch.changed_count, batch.cancelled_count = total_new, total_changed, total_cancelled
+    batch.new_count, batch.changed_count = total_new, total_changed
+    batch.reactivated_count, batch.cancelled_count = total_reactivated, total_cancelled
     batch.applied_at = timezone.now()
-    batch.save(update_fields=['new_count', 'changed_count', 'cancelled_count', 'applied_at'])
+    batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
     _update_feed_health(batch.source, raw_bookings)
 
     property_word = 'property' if len(matched) == 1 else 'properties'
     messages.success(
         request,
-        f'Imported: {total_new} new, {total_changed} changed, {total_cancelled} cancelled, '
-        f'across {len(matched)} {property_word}.',
+        f'Imported: {total_new} new, {total_changed} changed, {total_reactivated} reactivated, '
+        f'{total_cancelled} cancelled, across {len(matched)} {property_word}.',
     )
     for note in visit_notes:
         messages.warning(request, note)
