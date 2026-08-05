@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -559,16 +559,36 @@ def visit_detail(request, pk):
 
         return redirect('onsite_visit_detail', pk=visit.pk)
 
+    # Scoped to actual cleaners, not every active staff member / every
+    # vendor of every trade — a plumber or an accountant has no business
+    # showing up as a candidate to assign a cleaning to. In-house staff
+    # means role=CLEANER specifically; outside contractors means a Vendor
+    # whose trade is (some form of) cleaning — matched loosely
+    # (icontains, not an exact 'Cleaning') so "House Cleaning" or
+    # "Turnover Cleaning" still counts, not just the bubble-picker's exact
+    # canonical wording. On-site Staff contacts stay unfiltered — that
+    # whole contact type exists specifically for on-property staff without
+    # a portal login (frequently the cleaner), so it's already scoped by
+    # definition. Whoever the visit is CURRENTLY assigned to always stays
+    # in the list even if they don't match — so an existing legacy/atypical
+    # assignment still renders correctly rather than showing a blank chip.
+    staff_options = StaffProfile.objects.select_related('user').filter(
+        Q(user__is_active=True, role=StaffProfile.Role.CLEANER) | Q(pk=visit.assigned_staff_id),
+    )
+    contact_options = Contact.objects.filter(
+        Q(contact_type=Contact.ContactType.VENDOR, trade__icontains='clean')
+        | Q(contact_type=Contact.ContactType.ON_SITE_STAFF)
+        | Q(pk=visit.assigned_contact_id),
+    )
+
     return render(request, 'onsite/visit_detail.html', {
         'visit': visit,
         'status_choices': Visit.Status.choices,
         'checklist_items': list(visit.checklist_items.all()),
         'media': visit.media.select_related('checklist_item', 'issue'),
         'issues': visit.issues.select_related('created_ticket'),
-        'staff_options': StaffProfile.objects.select_related('user').filter(user__is_active=True),
-        'contact_options': Contact.objects.filter(
-            contact_type__in=[Contact.ContactType.VENDOR, Contact.ContactType.ON_SITE_STAFF],
-        ),
+        'staff_options': staff_options,
+        'contact_options': contact_options,
         'is_admin': is_admin,
     })
 
