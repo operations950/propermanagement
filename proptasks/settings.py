@@ -378,6 +378,12 @@ ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC
 OWNER_DASHBOARD_QUIET_DAYS = int(os.environ.get('OWNER_DASHBOARD_QUIET_DAYS', '7'))
 OWNER_DASHBOARD_BLOCKED_QUIET_DAYS = int(os.environ.get('OWNER_DASHBOARD_BLOCKED_QUIET_DAYS', '30'))
 
+# Supply reorder cart-state thresholds — see supplies/services.py's cart
+# state table (build brief: "Supply reorder redesign"). Settings, not
+# literals, per that brief.
+SUPPLY_READING_STALE_DAYS = int(os.environ.get('SUPPLY_READING_STALE_DAYS', '14'))
+SUPPLY_DELIVERY_EXPECTED_DAYS = int(os.environ.get('SUPPLY_DELIVERY_EXPECTED_DAYS', '5'))
+
 # One shared Google Calendar every scheduled on-site visit gets pushed to —
 # uses whichever staff member's own connected GOOGLE_OAUTH_CLIENT_ID/SECRET
 # calendar has been shared access to this calendar (see
