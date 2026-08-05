@@ -30,15 +30,6 @@ CLASSIFY_TOOL = {
                     'the reporter said never mind, by the end of the conversation.'
                 ),
             },
-            'is_supply_request': {
-                'type': 'boolean',
-                'description': (
-                    'True ONLY if this is purely a supply/inventory reorder (e.g. "we\'re out of '
-                    'towels", "need more coffee pods") — these are routed to a supply order list, '
-                    'not the ticket queue. False for everything else, including maintenance, vendor '
-                    'quotes, billing, cleaning, and admin work.'
-                ),
-            },
             'priority': {'type': 'string', 'enum': ['low', 'medium', 'high', 'urgent']},
             'role': {
                 'type': 'string',
@@ -84,7 +75,7 @@ CLASSIFY_TOOL = {
             },
         },
         'required': [
-            'actionable', 'already_resolved', 'is_supply_request', 'priority', 'role', 'property_name', 'title',
+            'actionable', 'already_resolved', 'priority', 'role', 'property_name', 'title',
             'summary', 'reasoning',
         ],
     },
@@ -109,12 +100,11 @@ Known properties: {property_names}
 
 class ThreadVerdict:
     def __init__(
-        self, actionable, already_resolved, is_supply_request, priority, role, property_name, title, summary,
+        self, actionable, already_resolved, priority, role, property_name, title, summary,
         reasoning,
     ):
         self.actionable = actionable
         self.already_resolved = already_resolved
-        self.is_supply_request = is_supply_request
         self.priority = priority
         self.role = role
         self.property_name = property_name
@@ -180,7 +170,6 @@ def classify_thread(
         return ThreadVerdict(
             actionable=data['actionable'],
             already_resolved=data['already_resolved'],
-            is_supply_request=data['is_supply_request'],
             priority=data['priority'],
             role=data['role'],
             property_name=data.get('property_name'),

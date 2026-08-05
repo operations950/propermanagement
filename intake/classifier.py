@@ -4,7 +4,6 @@ from datetime import date, datetime
 from django.utils import timezone
 
 from core.models import Contact, Property, StaffProfile
-from supplies.models import SupplyRequest
 from tickets.models import Ticket, TicketContact
 
 from . import duplicate_classifier
@@ -12,11 +11,6 @@ from .adapters.base import RawEvent
 from .models import GmailThreadState, QuoThreadState, Reservation
 
 logger = logging.getLogger(__name__)
-
-SHORTAGE_KEYWORDS = [
-    'toilet paper', 'paper towels', 'trash bags', 'coffee', 'dish soap',
-    'light bulbs', 'laundry detergent', 'shampoo', 'hand soap', 'soap',
-]
 
 # Mirrors tickets/views.py's OPEN_STATUSES — kept as a separate small
 # constant here (rather than importing tickets.views, a view module not
@@ -106,15 +100,6 @@ def _get_reporter_contact(event: RawEvent):
     return contact
 
 
-def _extract_shortage_items(text):
-    text_lower = text.lower()
-    matches = [kw for kw in SHORTAGE_KEYWORDS if kw in text_lower]
-    # Drop any match that's just a substring of another match (e.g. don't
-    # report both "soap" and "dish soap" for the same mention).
-    matches = [kw for kw in matches if not any(kw != other and kw in other for other in matches)]
-    return matches or None
-
-
 def process_event(event: RawEvent):
     """Turn one normalized RawEvent into the right database effect. Safe to
     call repeatedly with the same event (get_or_create on stable external
@@ -123,7 +108,6 @@ def process_event(event: RawEvent):
         'booking': _handle_booking,
         'cancellation': _handle_cancellation,
         'maintenance': _handle_maintenance,
-        'shortage': _handle_shortage,
         'quo_thread': _handle_quo_thread,
         'gmail_thread': _handle_gmail_thread,
         'airbnb_email_booking': _handle_airbnb_email_booking,
@@ -204,25 +188,9 @@ def _handle_maintenance(event: RawEvent):
     return ticket
 
 
-def _handle_shortage(event: RawEvent):
-    prop = _get_property(event.property_name)
-    if prop is None:
-        logger.warning('Shortage event %s has no property_name, skipping', event.external_id)
-        return None
-    items = _extract_shortage_items(event.body or event.title) or [None]
-    created_requests = []
-    for item in items:
-        req, _ = SupplyRequest.objects.get_or_create(
-            property=prop, source_reference=event.external_id, item_guess=item or '',
-            defaults={'raw_text': event.body or event.title},
-        )
-        created_requests.append(req)
-    return created_requests
-
-
 def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     """Shared by every whole-thread-classification source (Quo, Gmail, ...):
-    turn a ThreadVerdict into the right Ticket/SupplyRequest effect.
+    turn a ThreadVerdict into the right Ticket effect.
 
     Because a thread gets reclassified every time it has new activity (not
     just once), this reconciles against whatever ticket already exists for
@@ -232,6 +200,14 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     added notes) can be auto-updated or auto-cancelled as new verdicts come
     in; once a human has engaged with it, this only adds a note for them to
     review — it never silently rewrites or closes their work.
+
+    Supply shortages reported over SMS/email are no longer specially
+    routed here — they land as an ordinary ticket like anything else. Par
+    levels are now captured directly at the on-site visit (see
+    supplies.services) rather than inferred from unstructured messages;
+    see that app's docstring for why. A message like "we're out of
+    towels" now falls through to a normal generic/maintenance ticket, same
+    as before this thread-level classification existed.
     """
     role = verdict.role if verdict.role in StaffProfile.Role.values else ''
     kind = 'maintenance' if role == StaffProfile.Role.MAINTENANCE else 'generic'
@@ -243,11 +219,6 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     # outright.
     assigned_role = role if event.source != 'email' else ''
 
-    # Supply requests aren't reconciled the same way — they're idempotent by
-    # (property, source_reference, item) already and lower-stakes than a
-    # ticket, so there's nothing to "walk back" the way there is for a
-    # ticket someone might already be working.
-    #
     # Looked up by (source, source_reference) ONLY — NOT also by kind. A
     # thread gets reclassified from scratch every time it has new activity
     # (or on a manual look-back), and Claude's guessed role/kind can shift
@@ -257,12 +228,10 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     # email instead of updating the first — one thread ending up with
     # multiple tickets. kind is allowed to drift on the existing ticket
     # below instead of ever forking a new record.
-    existing = None
-    if not verdict.is_supply_request:
-        existing = (
-            Ticket.objects.filter(source=event.source, source_reference=conversation_id)
-            .exclude(status=Ticket.Status.CANCELLED).first()
-        )
+    existing = (
+        Ticket.objects.filter(source=event.source, source_reference=conversation_id)
+        .exclude(status=Ticket.Status.CANCELLED).first()
+    )
     untouched = bool(existing) and (
         existing.status == Ticket.Status.OPEN
         and not existing.assigned_staff_id
@@ -301,21 +270,6 @@ def _reconcile_thread_ticket(event: RawEvent, conversation_id: str, verdict):
     # Property row (unlike _get_property, used by sources that report real
     # property identifiers directly).
     prop = Property.objects.filter(name=verdict.property_name).first() if verdict.property_name else None
-
-    if verdict.is_supply_request:
-        req, _ = SupplyRequest.objects.get_or_create(
-            property=prop, source_reference=conversation_id, item_guess='',
-            defaults={'raw_text': verdict.summary},
-        )
-        if existing and untouched:
-            # The same thread was previously read as an actionable ticket
-            # and is now reclassified as a supply request instead — stand
-            # the old ticket down rather than leaving both records live.
-            existing.status = Ticket.Status.CANCELLED
-            existing.cancelled_at = timezone.now()
-            existing.cancelled_reason = 'Later thread activity reclassified this as a supply request'
-            existing.save()
-        return req
 
     if existing:
         if untouched:

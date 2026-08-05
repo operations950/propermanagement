@@ -267,7 +267,6 @@ VENDOR_TOKEN_EXPIRY_DAYS = int(os.environ.get('VENDOR_TOKEN_EXPIRY_DAYS', '30'))
 RUN_SCHEDULER = env_bool('RUN_SCHEDULER', True)
 RECURRING_TICKET_INTERVAL_MINUTES = int(os.environ.get('RECURRING_TICKET_INTERVAL_MINUTES', '30'))
 FAKE_POLL_INTERVAL_MINUTES = int(os.environ.get('FAKE_POLL_INTERVAL_MINUTES', '5'))
-SUPPLY_DIGEST_INTERVAL_MINUTES = int(os.environ.get('SUPPLY_DIGEST_INTERVAL_MINUTES', '1440'))
 # The fake/demo adapter (intake/adapters/fake.py) simulates events against
 # made-up properties ("Sunset Villa", etc). Now that real property data
 # exists, it's off by default — flip on only for demo/dev purposes.

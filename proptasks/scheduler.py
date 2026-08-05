@@ -1,5 +1,5 @@
-"""Runs recurring-ticket generation and the daily supply digest on a timer
-in-process — same shape as the vending-refund project's scheduler.py.
+"""Runs recurring-ticket generation on a timer in-process — same shape as
+the vending-refund project's scheduler.py.
 
 Reactive/AI ticket intake (Gmail polling, Quo call/text classification,
 shared-calendar polling, Airbnb/VRBO booking polling) was fully reversed —
@@ -7,7 +7,12 @@ see the removal in this same change — so this module no longer schedules
 any job that creates a Ticket automatically from an external source.
 Quo contact sync/thread-linking are kept: they enrich Contact records and
 communication history, not ticket creation, and stay valuable on their
-own."""
+own.
+
+The daily_supply_digest job (and the free-text/AI supply request flow it
+served) was removed when the supply reorder system moved to par-level
+checks captured at the on-site visit — see supplies/services.py's
+docstring for the replacement."""
 import logging
 import os
 from datetime import datetime
@@ -72,10 +77,6 @@ def start():
     _scheduler.add_job(
         _run_generate_recurring_tickets, 'interval',
         minutes=settings.RECURRING_TICKET_INTERVAL_MINUTES, next_run_time=datetime.now(),
-    )
-    _scheduler.add_job(
-        _run_command, 'interval', minutes=settings.SUPPLY_DIGEST_INTERVAL_MINUTES,
-        next_run_time=datetime.now(), args=['daily_supply_digest'],
     )
     _scheduler.add_job(_run_sync_quo_contacts, 'interval', minutes=settings.QUO_CONTACT_SYNC_INTERVAL_MINUTES)
     _scheduler.add_job(
