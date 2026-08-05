@@ -11,9 +11,31 @@
             {% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"M j, g:i A" }}{% endif %}
             {% if visit.booking %} · from {{ visit.booking.get_source_display }} checkout{% endif %}
         </p>
+        {% if visit.property.address %}
+        <p class="text-muted small mb-0"><i data-lucide="map-pin" class="icon"></i> {{ visit.property.address }}</p>
+        {% endif %}
     </div>
     <a href="{% url 'onsite_visit_public' visit.access_token %}" target="_blank" class="btn btn-outline-secondary btn-sm"><i data-lucide="external-link" class="icon"></i> Open cleaner link</a>
 </div>
+
+{% if visit.booking.listing_name %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--brand-primary, #0d6efd) 35%, white); background: color-mix(in srgb, var(--brand-primary, #0d6efd) 6%, white);">
+    <div class="card-body py-2 d-flex align-items-center gap-2">
+        <i data-lucide="door-open" class="icon" style="color: var(--brand-primary, #0d6efd);"></i>
+        <div>
+            <div class="small text-uppercase fw-bold" style="letter-spacing: 0.04em; color: var(--brand-primary, #0d6efd);">{{ visit.booking.get_source_display }} listing</div>
+            <div class="fw-medium">{{ visit.booking.listing_name }}</div>
+        </div>
+    </div>
+</div>
+{% elif visit.property.listing_names.exists %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-warning) 35%, white);">
+    <div class="card-body py-2 d-flex align-items-center gap-2">
+        <i data-lucide="alert-triangle" class="icon" style="color: var(--status-warning);"></i>
+        <div class="small">This property has {{ visit.property.listing_names.count }} known listing name{{ visit.property.listing_names.count|pluralize }} (multiple units share this address) but this visit isn't tied to a specific one — double-check which unit before heading out.</div>
+    </div>
+</div>
+{% endif %}
 
 <div class="row g-3 mb-3">
     <div class="col-md-4">

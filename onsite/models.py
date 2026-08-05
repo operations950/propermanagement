@@ -267,6 +267,15 @@ class Booking(models.Model):
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bookings')
     source = models.CharField(max_length=20, choices=Source.choices)
     external_uid = models.CharField(max_length=200, help_text='UID from the ICS/CSV row — the idempotency key.')
+    listing_name = models.CharField(
+        max_length=200, blank=True,
+        help_text="The platform's own listing title for this specific reservation (from the portfolio "
+                   "CSV's listing/property column — see RawBooking.listing_name), e.g. \"800 Tropic - "
+                   'Wave (C)\". Property records a multi-unit address as ONE row (see '
+                   'PropertyListingName\'s docstring), so this is the only reliable way to tell which of '
+                   'several actual units at that address a given reservation — and its cleaning Visit — '
+                   'is for. Blank for a single-property .ics import, which has no listing column.',
+    )
     guest_name = models.CharField(max_length=200, blank=True)
     guest_phone_last4 = models.CharField(max_length=4, blank=True)
     check_in = models.DateTimeField()

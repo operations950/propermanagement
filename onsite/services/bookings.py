@@ -122,7 +122,17 @@ def diff_bookings(property, source, raw_bookings):
             new_rows.append(row)
         elif existing.status == Booking.Status.CANCELLED:
             reactivated_rows.append(row)
-        elif existing.check_in.date() != row.check_in or existing.check_out.date() != row.check_out:
+        elif (
+            existing.check_in.date() != row.check_in
+            or existing.check_out.date() != row.check_out
+            # A blank row.listing_name never counts as a "change" (a
+            # single-property .ics import has no listing column at all —
+            # this must never blank out a listing_name a portfolio CSV
+            # already set). This is also how an already-imported Booking
+            # from before this field existed picks one up on its very next
+            # ordinary re-upload, with no separate backfill needed.
+            or (row.listing_name and existing.listing_name != row.listing_name)
+        ):
             changed_rows.append(row)
 
     return {'new': new_rows, 'changed': changed_rows, 'reactivated': reactivated_rows, 'cancelled': cancelled}
@@ -158,6 +168,7 @@ def apply_bookings_for_property(property, source, raw_bookings):
         booking = Booking.objects.create(
             property=property, source=source, external_uid=row.external_uid,
             guest_name=row.guest_name, guest_phone_last4=row.guest_phone_last4,
+            listing_name=row.listing_name,
             check_in=check_in_dt, check_out=check_out_dt, last_seen_at=timezone.now(),
         )
         if turnover_type:
@@ -171,8 +182,10 @@ def apply_bookings_for_property(property, source, raw_bookings):
         booking = Booking.objects.get(property=property, source=source, external_uid=row.external_uid)
         booking.check_in = _combine(property, row.check_in, 'check_in')
         booking.check_out = _combine(property, row.check_out, 'check_out')
+        if row.listing_name:
+            booking.listing_name = row.listing_name
         booking.last_seen_at = timezone.now()
-        booking.save(update_fields=['check_in', 'check_out', 'last_seen_at'])
+        booking.save(update_fields=['check_in', 'check_out', 'listing_name', 'last_seen_at'])
         visit = booking.visits.exclude(status__in=['submitted', 'verified', 'cancelled']).first()
         if visit:
             next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk)
@@ -187,8 +200,10 @@ def apply_bookings_for_property(property, source, raw_bookings):
         booking.status = Booking.Status.ACTIVE
         booking.check_in = _combine(property, row.check_in, 'check_in')
         booking.check_out = _combine(property, row.check_out, 'check_out')
+        if row.listing_name:
+            booking.listing_name = row.listing_name
         booking.last_seen_at = timezone.now()
-        booking.save(update_fields=['status', 'check_in', 'check_out', 'last_seen_at'])
+        booking.save(update_fields=['status', 'check_in', 'check_out', 'listing_name', 'last_seen_at'])
 
         next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk)
         cancelled_visit = booking.visits.filter(status=Visit.Status.CANCELLED).order_by('-pk').first()

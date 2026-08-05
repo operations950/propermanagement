@@ -83,7 +83,7 @@ def dashboard(request):
     visits = list(
         Visit.objects.filter(scheduled_date__gte=start, scheduled_date__lte=end)
         .exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED])
-        .select_related('property', 'visit_type', 'assigned_staff__user', 'assigned_contact')
+        .select_related('property', 'visit_type', 'assigned_staff__user', 'assigned_contact', 'booking')
         .order_by('scheduled_date', 'ready_by')
     )
     for visit in visits:
@@ -504,7 +504,7 @@ def visit_detail(request, pk):
     only) delete outright. The cleaner's own token link (visit_public)
     stays the primary place a checklist actually gets WORKED; this is
     where staff fix a mistake or manage the visit from the office side."""
-    visit = get_object_or_404(Visit, pk=pk)
+    visit = get_object_or_404(Visit.objects.select_related('property', 'booking'), pk=pk)
     is_admin = _is_admin(request.user)
 
     if request.method == 'POST':

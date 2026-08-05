@@ -74,7 +74,10 @@
                 <tbody>
                 {% for visit in day.visits %}
                 <tr>
-                    <td><a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none">{{ visit.property.name }}</a></td>
+                    <td>
+                        <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none">{{ visit.property.name }}</a>
+                        {% if visit.booking.listing_name %}<div class="small" style="color: var(--ink-muted);">{{ visit.booking.listing_name }}</div>{% endif %}
+                    </td>
                     <td>{{ visit.visit_type }}</td>
                     <td>
                         {% if visit.derived_status == 'at_risk' %}
