@@ -209,3 +209,18 @@ def parse_booking_file(uploaded_file):
     if fmt == 'ics':
         return parse_ics(file_bytes)
     return parse_csv(file_bytes)
+
+
+def read_csv_header(uploaded_file):
+    """Peeks at just an uploaded .csv's header row (leaving the file
+    position untouched, same as parse_booking_file) so a daily-upload slot
+    can check the file's shape against DailyUploadSlot.required_columns
+    before anything is actually parsed or saved. Returns None for a non-csv
+    file (.ics has no header row to check) or one with no header at all."""
+    if detect_format(uploaded_file.name) != 'csv':
+        return None
+    file_bytes = uploaded_file.read()
+    uploaded_file.seek(0)
+    text = file_bytes.decode('utf-8-sig', errors='replace')
+    reader = csv.DictReader(io.StringIO(text))
+    return reader.fieldnames

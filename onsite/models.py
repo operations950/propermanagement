@@ -209,6 +209,16 @@ class DailyUploadSlot(models.Model):
                    "to highlight a likely match when someone browses instead of dragging; dropping a file "
                    "directly onto this slot always uses it regardless of filename. Leave blank if there's no reliable pattern.",
     )
+    required_columns = models.CharField(
+        max_length=500, blank=True,
+        help_text='Comma-separated column names (case-insensitive, matched against the file\'s header '
+                   'row) that MUST be present for a dropped file to be accepted here — e.g. '
+                   '"Confirmation Code, Start Date, End Date, Listing". A file missing any of these is '
+                   "rejected outright with a clear error before anything is parsed or saved, so dropping "
+                   "the wrong platform's file into this slot can't silently misread columns. Leave blank "
+                   'to skip this check for this slot (only the importer\'s own generic required columns '
+                   'still apply).',
+    )
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     last_uploaded_at = models.DateTimeField(null=True, blank=True)
@@ -220,6 +230,20 @@ class DailyUploadSlot(models.Model):
 
     def __str__(self):
         return self.label
+
+    def required_columns_list(self):
+        return [c.strip() for c in self.required_columns.split(',') if c.strip()]
+
+    def missing_columns(self, fieldnames):
+        """Given a CSV's actual header row (fieldnames), returns the subset
+        of required_columns_list() not present (case/whitespace-insensitive
+        match) — empty list means the file's format checks out for this
+        slot. No-op (always passes) when required_columns is blank."""
+        required = self.required_columns_list()
+        if not required:
+            return []
+        available = {(f or '').strip().lower() for f in fieldnames or []}
+        return [col for col in required if col.strip().lower() not in available]
 
 
 class Booking(models.Model):

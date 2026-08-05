@@ -2,6 +2,198 @@
 {% block title %}Visit — {{ visit.property.name }}{% endblock %}
 {% block content %}
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
-<h2 class="page-title mb-3">{{ visit.property.name }} — {{ visit.visit_type }}</h2>
-<p class="text-muted">Status: {{ visit.get_status_display }} · Assignee: {{ visit.assignee_label }}{% if visit.ready_by %} · Ready by {{ visit.ready_by }}{% endif %}</p>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title mb-1">{{ visit.property.name }} — {{ visit.visit_type }}</h2>
+        <p class="text-muted mb-0">
+            {% if visit.scheduled_date %}{{ visit.scheduled_date|date:"l, M j" }}{% else %}No date set{% endif %}
+            {% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"M j, g:i A" }}{% endif %}
+            {% if visit.booking %} · from {{ visit.booking.get_source_display }} checkout{% endif %}
+        </p>
+    </div>
+    <a href="{% url 'onsite_visit_public' visit.access_token %}" target="_blank" class="btn btn-outline-secondary btn-sm"><i data-lucide="external-link" class="icon"></i> Open cleaner link</a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="user" class="icon"></i> Assignee</h6>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="reassign">
+                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assignee">
+                        <input type="hidden" name="assignee" data-bubble-input value="{% if visit.assigned_staff_id %}staff-{{ visit.assigned_staff_id }}{% elif visit.assigned_contact_id %}contact-{{ visit.assigned_contact_id }}{% endif %}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Unassigned"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for sp in staff_options %}
+                            <button type="button" class="bubble" data-value="staff-{{ sp.pk }}" data-label="{{ sp.user.get_full_name|default:sp.user.username }}">{{ sp.user.get_full_name|default:sp.user.username }}</button>
+                            {% endfor %}
+                            {% for c in contact_options %}
+                            <button type="button" class="bubble" data-value="contact-{{ c.pk }}" data-label="{{ c.name }} (external)">{{ c.name }} (external)</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm mt-2" type="submit">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="activity" class="icon"></i> Status</h6>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="set_status">
+                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="status">
+                        <input type="hidden" name="status" data-bubble-input value="{{ visit.status }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a status"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in status_choices %}
+                            <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm mt-2" type="submit">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar" class="icon"></i> Schedule &amp; notes</h6>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="save_schedule">
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Date</label>
+                            <input type="date" name="scheduled_date" class="form-control form-control-sm" value="{{ visit.scheduled_date|date:'Y-m-d' }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Start time</label>
+                            <input type="time" name="scheduled_start" class="form-control form-control-sm" value="{{ visit.scheduled_start|time:'H:i' }}">
+                        </div>
+                    </div>
+                    <label class="form-label small text-muted mb-1">Notes</label>
+                    <textarea name="notes" class="form-control form-control-sm mb-2" rows="2">{{ visit.notes }}</textarea>
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="list-checks" class="icon"></i> Checklist ({{ checklist_items|length }})
+        </span>
+    </div>
+    {% if checklist_items %}
+    <div class="list-group list-group-flush">
+    {% for item in checklist_items %}
+        <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-start gap-2">
+            <div style="min-width: 0;">
+                <div class="{% if item.is_completed %}text-decoration-line-through text-muted{% endif %}">{{ item.text }}
+                    {% if item.mandatory %}<span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.65rem;">Required</span>{% endif %}
+                    {% if item.requires_photo %}<i data-lucide="camera" class="icon" style="width: 14px; height: 14px; color: var(--ink-muted);"></i>{% endif %}
+                </div>
+                {% if item.note %}<div class="small" style="color: var(--ink-muted);">Note: {{ item.note }}</div>{% endif %}
+                {% if item.skip_reason %}<div class="small" style="color: var(--status-warning);">Skipped: {{ item.skip_reason }}</div>{% endif %}
+            </div>
+            <form method="post" class="flex-shrink-0">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="toggle_checklist_item">
+                <input type="hidden" name="item_id" value="{{ item.pk }}">
+                <button class="btn btn-sm {% if item.is_completed %}btn-outline-secondary{% else %}btn-outline-primary{% endif %}" type="submit">
+                    {% if item.is_completed %}Undo{% else %}Mark done{% endif %}
+                </button>
+            </form>
+        </div>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">No checklist items — the cleaner link builds one once the visit type's checklist resolves.</div>
+    {% endif %}
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                    <i data-lucide="alert-circle" class="icon"></i> Issues reported ({{ issues|length }})
+                </span>
+            </div>
+            {% if issues %}
+            <div class="list-group list-group-flush">
+            {% for issue in issues %}
+                <div class="list-group-item py-2 px-3">
+                    <div>{{ issue.description }}</div>
+                    {% if issue.created_ticket %}
+                    <a href="{% url 'ticket_detail' issue.created_ticket.pk %}" class="small text-decoration-none">→ Ticket: {{ issue.created_ticket.title|truncatechars:40 }}</a>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">No issues reported.</div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-header bg-white border-bottom py-3">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                    <i data-lucide="image" class="icon"></i> Photos &amp; video ({{ media|length }})
+                </span>
+            </div>
+            {% if media %}
+            <div class="card-body d-flex flex-wrap gap-2">
+                {% for m in media %}
+                <a href="{{ m.file.url }}" target="_blank">
+                    {% if m.media_type == 'photo' %}
+                    <img src="{{ m.file.url }}" alt="{{ m.caption }}" style="width: 72px; height: 72px; object-fit: cover; border-radius: 8px;">
+                    {% else %}
+                    <span class="btn btn-outline-secondary btn-sm"><i data-lucide="video" class="icon"></i></span>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">No photos uploaded yet.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if visit.signed_name %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="signature" class="icon"></i> Signed off</h6>
+        <p class="small mb-0" style="color: var(--ink-muted);">{{ visit.signed_name }} · {{ visit.signed_at|date:"M j, Y g:i A" }}</p>
+        {% if visit.signature_image %}<img src="{{ visit.signature_image.url }}" alt="Signature" style="max-height: 80px; margin-top: 8px;">{% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if is_admin %}
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-critical) 35%, white);">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h6 class="mb-1" style="color: var(--status-critical);">Delete this visit</h6>
+            <p class="small mb-0" style="color: var(--ink-muted);">Permanent — removes the checklist, photos, and issue records with it. Admin only.</p>
+        </div>
+        <form method="post" onsubmit="return confirm('Delete this visit permanently? This cannot be undone.');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete">
+            <button class="btn btn-outline-danger btn-sm" type="submit">Delete visit</button>
+        </form>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

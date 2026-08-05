@@ -8,14 +8,15 @@ from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
-from core.models import Property
+from core.models import Contact, Property, StaffProfile
 from core.views import _is_admin
 from supplies.models import SupplyRequest
 from vendorportal.models import AccessAttempt
 
-from .importers import BookingFileError, detect_format, parse_booking_file
+from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
     Booking, BookingFeedHealth, DailyUploadSlot, ImportBatch, PropertyChecklistItem, StandardChecklistItem,
     Visit, VisitChecklistItem, VisitIssue, VisitMedia,
@@ -326,6 +327,21 @@ def upload_slot(request, slot_id):
         messages.error(request, 'No file received.')
         return redirect('onsite_booking_import')
 
+    # Reject outright, before anything is parsed or saved, if this file's
+    # header row doesn't match what this slot expects — catches the wrong
+    # platform's export (or a reformatted one) getting dropped into a slot
+    # rather than letting it silently misparse. No-op when the slot has no
+    # required_columns configured.
+    fieldnames = read_csv_header(uploaded_file)
+    missing = slot.missing_columns(fieldnames)
+    if missing:
+        messages.error(
+            request,
+            f'{slot.label}: this file doesn\'t look right for this slot — missing column(s) '
+            f'{", ".join(missing)}. Double-check you dropped the correct export here.',
+        )
+        return redirect('onsite_booking_import')
+
     batch, error = _create_import_batch(request.user, slot.source, uploaded_file)
     if error:
         messages.error(request, f'{slot.label}: {error}')
@@ -476,8 +492,78 @@ def booking_import_apply(request, batch_id):
 
 @login_required
 def visit_detail(request, pk):
+    """Staff-facing management screen for one visit — reassign, edit the
+    schedule/notes, override status, correct a checklist item, and (admin
+    only) delete outright. The cleaner's own token link (visit_public)
+    stays the primary place a checklist actually gets WORKED; this is
+    where staff fix a mistake or manage the visit from the office side."""
     visit = get_object_or_404(Visit, pk=pk)
-    return render(request, 'onsite/visit_detail.html', {'visit': visit})
+    is_admin = _is_admin(request.user)
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'reassign':
+            kind, _, raw_id = request.POST.get('assignee', '').partition('-')
+            if kind == 'staff' and raw_id.isdigit():
+                visit.assigned_staff_id = int(raw_id)
+                visit.assigned_contact = None
+            elif kind == 'contact' and raw_id.isdigit():
+                visit.assigned_contact_id = int(raw_id)
+                visit.assigned_staff = None
+            else:
+                visit.assigned_staff = None
+                visit.assigned_contact = None
+            if visit.status == Visit.Status.UNASSIGNED and (visit.assigned_staff_id or visit.assigned_contact_id):
+                visit.status = Visit.Status.SCHEDULED
+            visit.full_clean()
+            visit.save()
+            messages.success(request, 'Visit reassigned.')
+
+        elif action == 'save_schedule':
+            raw_date = request.POST.get('scheduled_date', '').strip()
+            visit.scheduled_date = parse_date(raw_date) if raw_date else None
+            raw_start = request.POST.get('scheduled_start', '').strip()
+            visit.scheduled_start = raw_start or None
+            visit.notes = request.POST.get('notes', '').strip()
+            visit.save(update_fields=['scheduled_date', 'scheduled_start', 'notes'])
+            messages.success(request, 'Visit updated.')
+
+        elif action == 'set_status':
+            new_status = request.POST.get('status')
+            if new_status in Visit.Status.values:
+                visit.status = new_status
+                visit.save(update_fields=['status'])
+                messages.success(request, f'Status updated to {visit.get_status_display()}.')
+
+        elif action == 'toggle_checklist_item':
+            item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
+            item.is_completed = not item.is_completed
+            item.completed_at = timezone.now() if item.is_completed else None
+            item.save(update_fields=['is_completed', 'completed_at'])
+
+        elif action == 'delete':
+            if not is_admin:
+                messages.error(request, 'Only an admin can delete a visit.')
+                return redirect('onsite_visit_detail', pk=visit.pk)
+            visit.delete()
+            messages.success(request, 'Visit deleted.')
+            return redirect('onsite_dashboard')
+
+        return redirect('onsite_visit_detail', pk=visit.pk)
+
+    return render(request, 'onsite/visit_detail.html', {
+        'visit': visit,
+        'status_choices': Visit.Status.choices,
+        'checklist_items': list(visit.checklist_items.all()),
+        'media': visit.media.select_related('checklist_item', 'issue'),
+        'issues': visit.issues.select_related('created_ticket'),
+        'staff_options': StaffProfile.objects.select_related('user').filter(user__is_active=True),
+        'contact_options': Contact.objects.filter(
+            contact_type__in=[Contact.ContactType.VENDOR, Contact.ContactType.ON_SITE_STAFF],
+        ),
+        'is_admin': is_admin,
+    })
 
 
 def _client_ip(request):
