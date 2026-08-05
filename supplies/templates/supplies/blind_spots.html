@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Supply blind spots{% endblock %}
+{% block content %}
+<h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="eye-off" class="icon-lg"></i> Supply blind spots</h2>
+<p class="text-muted">A short cart looks the same whether every property is well-stocked or nobody's actually checked. These are the coverage gaps the cart page can't see on its own.</p>
+
+<div class="card mb-3">
+    <div class="card-body p-4">
+        <h5 class="card-title d-flex align-items-center gap-2"><i data-lucide="package-x" class="icon"></i> No supply catalog set up ({{ no_catalog|length }})</h5>
+        {% if not no_catalog %}
+        <p class="text-muted mb-0">Every short-term rental has at least one supply item tracked.</p>
+        {% else %}
+        <p class="text-muted small">These properties have never had a par-level catalog built — cleaners at these properties see no supply check at all.</p>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Property</th><th></th></tr></thead>
+                <tbody>
+                {% for property in no_catalog %}
+                <tr>
+                    <td>{{ property.name }}</td>
+                    <td class="text-end">
+                        <form method="post" action="{% url 'supplies:clone_kit' property.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-primary" type="submit">
+                                <i data-lucide="copy-plus" class="icon"></i> Clone standard kit
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body p-4">
+        <h5 class="card-title d-flex align-items-center gap-2"><i data-lucide="clock-alert" class="icon"></i> Stale readings ({{ stale|length }})</h5>
+        {% if not stale %}
+        <p class="text-muted mb-0">Every property with a catalog has a recent reading on at least one item.</p>
+        {% else %}
+        <p class="text-muted small">These properties have a catalog, but no item has been read recently — treat as unknown, not stocked.</p>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Property</th><th>Last reading</th><th>Turnovers since</th></tr></thead>
+                <tbody>
+                {% for row in stale %}
+                <tr>
+                    <td>{{ row.property.name }}</td>
+                    <td>{% if row.latest_reading_at %}{{ row.latest_reading_at|date:"M j, Y" }}{% else %}Never{% endif %}</td>
+                    <td>{{ row.turnovers_since }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<p class="small text-muted">Item/Walmart id catalog management lives in <a href="{% url 'admin:supplies_supplyitem_changelist' %}">Admin</a>.</p>
+{% endblock %}

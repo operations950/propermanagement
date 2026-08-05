@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}{{ order.property.name }} order{% endblock %}
+{% block content %}
+<a href="{% url 'supplies:cart' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Today's cart</a>
+<h2 class="page-title mb-1">{{ order.property.name }} — order</h2>
+<p class="text-muted mb-3">
+    {% if order.sent_at %}Sent {{ order.sent_at|date:"M j, Y g:i A" }}{% if order.created_by %} by {{ order.created_by.get_full_name|default:order.created_by.username }}{% endif %}{% else %}Not sent (undone).{% endif %}
+</p>
+
+{% if cart_urls %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-4">
+        <h6 class="card-title mb-2">Open in Walmart</h6>
+        {% if cart_urls|length > 1 %}
+        <p class="small text-muted">This cart had too many items for one link — open each part below.</p>
+        {% endif %}
+        {% for url in cart_urls %}
+        <a href="{{ url }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm me-2 mb-2"><i data-lucide="external-link" class="icon"></i> {% if cart_urls|length > 1 %}Open cart {{ forloop.counter }}{% else %}Open Walmart cart{% endif %}</a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">Items ({{ lines|length }})</span>
+    </div>
+    <div class="list-group list-group-flush">
+    {% for line in lines %}
+        <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-center">
+            <span>{{ line.property_supply.supply_item.name }}</span>
+            <span class="text-muted">{{ line.quantity }}{% if not line.property_supply.supply_item.walmart_item_id %} <span class="badge bg-light text-muted border">skipped — no Walmart id</span>{% endif %}</span>
+        </div>
+    {% endfor %}
+    </div>
+</div>
+
+{% if order.sent_at %}
+<form method="post" action="{% url 'supplies:undo_order' order.pk %}" onsubmit="return confirm('Undo this order? It will drop back into today\'s cart if still below par.');">
+    {% csrf_token %}
+    <button class="btn btn-outline-secondary btn-sm" type="submit">Undo — not actually sent</button>
+</form>
+{% endif %}
+{% endblock %}

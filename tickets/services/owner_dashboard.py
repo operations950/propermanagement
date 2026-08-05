@@ -86,6 +86,7 @@ def onsite_next_48h(now=None):
     genuinely quiet day unless the feed strip itself is always visible."""
     from onsite.models import Booking, BookingFeedHealth, ImportBatch, Visit
     from onsite.views import _visit_status
+    from supplies.services import flagged_orders
 
     now = now or timezone.now()
     today = timezone.localdate()
@@ -128,6 +129,10 @@ def onsite_next_48h(now=None):
         'unassigned_tomorrow_checkouts': unassigned_tomorrow_checkouts,
         'todays_visits': todays_visits,
         'feed_health': feed_rows,
+        # A supply order still reading below par past the expected delivery
+        # window is a delivery failure, not a supply request — see
+        # supplies.services.flagged_orders. Never a Ticket (build brief).
+        'flagged_supply_orders': flagged_orders(),
     }
 
 

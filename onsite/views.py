@@ -13,7 +13,8 @@ from django.views.decorators.http import require_http_methods
 
 from core.models import Contact, Property, StaffProfile
 from core.views import _is_admin
-from supplies.models import SupplyRequest
+from supplies import services as supply_services
+from supplies.models import PropertySupply, SupplyReading
 from vendorportal.models import AccessAttempt
 
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
@@ -646,13 +647,13 @@ def visit_public(request, token):
                 for photo in request.FILES.getlist('photos'):
                     VisitMedia.objects.create(visit=visit, issue=issue, file=photo)
 
-        elif action == 'add_supply_request':
-            text = request.POST.get('supplies_text', '').strip()
-            if text:
-                SupplyRequest.objects.get_or_create(
-                    property=visit.property, source_reference=f'onsite-visit-{visit.pk}', item_guess='',
-                    defaults={'raw_text': text},
-                )
+        elif action == 'record_supply_reading':
+            property_supply = get_object_or_404(
+                PropertySupply, pk=request.POST.get('property_supply_id'), property=visit.property, is_active=True,
+            )
+            level = request.POST.get('level')
+            if level in SupplyReading.Level.values:
+                supply_services.record_reading(visit, property_supply, level)
 
         elif action == 'submit':
             try:
@@ -668,6 +669,7 @@ def visit_public(request, token):
         'visit': visit,
         'checklist_items': checklist_items,
         'issues': visit.issues.all(),
+        'supply_rows': supply_services.supply_check_context(visit),
         'is_submitted': visit.status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED),
     })
 

@@ -82,15 +82,48 @@
     {% endif %}
 </div></div>
 
+{% if supply_rows %}
 <div class="card my-3"><div class="card-body p-4">
-    <h6 class="card-title mb-2">Supplies needed</h6>
-    <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="add_supply_request">
-        <textarea name="supplies_text" class="form-control form-control-sm mb-2" rows="2" placeholder="e.g. Running low on paper towels"></textarea>
-        <button class="btn btn-outline-secondary btn-sm" type="submit">Send request</button>
-    </form>
+    <h6 class="card-title mb-1">Supplies</h6>
+    <p class="small text-muted mb-3">Tap what you see right now for each item — no need to count or guess a quantity.</p>
+    {% for row in supply_rows %}
+    <div class="border-top py-2">
+        <div class="fw-medium">{{ row.property_supply.supply_item.name }}</div>
+        {% if row.answered %}
+            <div class="small mt-1">
+                You said:
+                <span class="badge rounded-pill {% if row.answered.level == 'high' %}bg-success{% elif row.answered.level == 'mid' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                    {{ row.answered.get_level_display }}
+                </span>
+            </div>
+            <div class="small mt-2" style="color: var(--ink-muted);">
+                {% if row.previous_reading %}
+                <div>Last check: <strong>{{ row.previous_reading.get_level_display }}</strong> ({{ row.previous_reading.read_at|date:"M j" }})</div>
+                {% else %}
+                <div>No previous check on record.</div>
+                {% endif %}
+                {% if row.order_line %}
+                    {% if row.flagged %}
+                    <div class="mt-1" style="color: var(--status-critical);"><i data-lucide="alert-triangle" class="icon"></i> Ordered {{ row.order_line.order.sent_at|date:"M j" }} — still reading below par since. May not have arrived.</div>
+                    {% else %}
+                    <div class="mt-1">Last ordered {{ row.order_line.order.sent_at|date:"M j" }} ({{ row.order_line.quantity }}).</div>
+                    {% endif %}
+                {% endif %}
+            </div>
+        {% else %}
+            <form method="post" class="d-flex gap-2 mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="record_supply_reading">
+                <input type="hidden" name="property_supply_id" value="{{ row.property_supply.pk }}">
+                <button type="submit" name="level" value="high" class="btn btn-outline-success btn-sm flex-fill">High</button>
+                <button type="submit" name="level" value="mid" class="btn btn-outline-warning btn-sm flex-fill">Mid</button>
+                <button type="submit" name="level" value="low" class="btn btn-outline-danger btn-sm flex-fill">Low</button>
+            </form>
+        {% endif %}
+    </div>
+    {% endfor %}
 </div></div>
+{% endif %}
 
 <div class="card my-3">
     <div class="card-body p-4" data-signature-pad data-csrf="{{ csrf_token }}" data-upload-url="{% url 'onsite_visit_public_signature' visit.access_token %}">

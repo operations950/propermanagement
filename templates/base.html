@@ -229,7 +229,7 @@
                     <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts</a>
                     <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site</a>
-                    <a class="nav-link" href="{% url 'supplies:digest' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
+                    <a class="nav-link" href="{% url 'supplies:cart' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
 
                     <div class="dropdown mx-lg-2 my-2 my-lg-0">

@@ -146,6 +146,11 @@ class SupplyReading(models.Model):
                 condition=models.Q(read_by_staff__isnull=True) | models.Q(read_by_contact__isnull=True),
                 name='supplyreading_single_reader',
             ),
+            # "One row per item per visit" (the brief's own words) — a
+            # second tap on an already-answered item within the same visit
+            # isn't a correction (readings are never updated), it's a
+            # double-submit to reject outright.
+            models.UniqueConstraint(fields=['property_supply', 'visit'], name='uniq_reading_per_visit_per_item'),
         ]
 
     def __str__(self):

@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% block title %}Today's supply cart{% endblock %}
+{% block content %}
+<h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="shopping-cart" class="icon-lg"></i> Today's supply cart</h2>
+<p class="text-muted">Every item currently reading below par, across every property with a supply catalog set up. Reviewed and sent per property — a Walmart order ships to one address, so there's no combined cart across properties.
+<a href="{% url 'supplies:blind_spots' %}" class="ms-2"><i data-lucide="eye-off" class="icon"></i> Blind spots</a></p>
+
+{% if not properties %}
+<div class="card">
+    <div class="card-body text-center py-5" style="color: var(--ink-muted);">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+        Nothing below par right now.
+    </div>
+</div>
+{% endif %}
+
+{% for entry in properties %}
+<div class="card mb-3">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+            <h5 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="building-2" class="icon"></i> {{ entry.property.name }}</h5>
+            {% if not entry.property.address %}
+            <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">
+                <i data-lucide="alert-triangle" class="icon"></i> No delivery address on file
+            </span>
+            {% endif %}
+        </div>
+        <form method="post" action="{% url 'supplies:send_order' entry.property.pk %}">
+            {% csrf_token %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-3">
+                    <thead><tr>
+                        <th>Item</th><th>Current level</th><th>Qty</th><th>Last ordered</th><th></th>
+                    </tr></thead>
+                    <tbody>
+                    {% for row in entry.rows %}
+                        {% with ps=row.property_supply %}
+                        <tr>
+                            <td>
+                                {{ ps.supply_item.name }}
+                                {% if not ps.supply_item.walmart_item_id %}
+                                <div class="small" style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> No Walmart id set — <a href="{% url 'admin:supplies_supplyitem_change' ps.supply_item.pk %}">fix in catalog</a></div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge rounded-pill {% if row.state == 'in_cart_flagged' %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                    {{ row.reading.get_level_display }}
+                                </span>
+                                <span class="small" style="color: var(--ink-muted);"> · {{ row.reading.read_at|date:"M j" }}</span>
+                            </td>
+                            <td style="max-width: 90px;">
+                                <input type="number" name="qty_{{ ps.pk }}" class="form-control form-control-sm" value="{{ ps.reorder_quantity }}" min="1">
+                            </td>
+                            <td class="small" style="color: var(--ink-muted);">
+                                {% if row.order_line %}{{ row.order_line.order.sent_at|date:"M j" }} ({{ row.order_line.quantity }}){% else %}Never{% endif %}
+                            </td>
+                            <td>
+                                {% if row.flagged %}
+                                <span class="small" style="color: var(--status-critical);"><i data-lucide="alert-triangle" class="icon"></i> Ordered, still below par</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endwith %}
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button class="btn btn-primary btn-sm" type="submit" {% if entry.orderable_count == 0 %}disabled{% endif %}>
+                <i data-lucide="external-link" class="icon"></i> Send {{ entry.property.name }}'s cart to Walmart
+            </button>
+            {% if entry.missing_id_rows %}
+            <span class="small ms-2" style="color: var(--ink-muted);">{{ entry.missing_id_rows|length }} item(s) will be skipped — no Walmart id.</span>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
