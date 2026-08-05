@@ -5,6 +5,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="page-title mb-0">On-Site Visits</h2>
     <div class="d-flex gap-2">
+        <a href="{% url 'onsite_checklist_templates' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="clipboard-list" class="icon"></i> Checklist templates</a>
         {% if is_admin %}
         <a href="{% url 'onsite_checklist_custom_items' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="list-checks" class="icon"></i> Custom checklist items</a>
         {% endif %}

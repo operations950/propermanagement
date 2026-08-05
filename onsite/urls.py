@@ -14,4 +14,6 @@ urlpatterns = [
     path('v/<uuid:token>/', views.visit_public, name='onsite_visit_public'),
     path('v/<uuid:token>/signature/', views.visit_public_signature, name='onsite_visit_public_signature'),
     path('checklist-items/', views.checklist_custom_items, name='onsite_checklist_custom_items'),
+    path('checklist-templates/', views.checklist_templates, name='onsite_checklist_templates'),
+    path('checklist-templates/<int:type_id>/', views.checklist_template_detail, name='onsite_checklist_template_detail'),
 ]

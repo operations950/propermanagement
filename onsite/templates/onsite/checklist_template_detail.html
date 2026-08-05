@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% block title %}{{ visit_type.name }} checklist{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_checklist_templates' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Checklist templates</a>
+
+<h2 class="page-title mb-1">{{ visit_type.name }}{% if not visit_type.is_active %} <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.6em;">Inactive</span>{% endif %}</h2>
+<p class="text-muted small mb-4">{{ items|length }} checklist item{{ items|length|pluralize }}. This is the standard list every property of this visit type gets — a property can hide an item or add its own on top (see <a href="{% url 'onsite_checklist_custom_items' %}">custom checklist items</a>), but this is the shared baseline.</p>
+
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="settings" class="icon"></i> Visit type settings
+        </span>
+    </div>
+    <div class="card-body">
+        {% if is_admin %}
+        <form method="post" class="row g-2 align-items-end">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_type">
+            <div class="col-sm-4">
+                <label class="form-label small text-muted mb-1">Name</label>
+                <input type="text" name="name" class="form-control form-control-sm" value="{{ visit_type.name }}" required>
+            </div>
+            <div class="col-sm-3">
+                <label class="form-label small text-muted mb-1">Default duration (minutes)</label>
+                <input type="number" name="default_duration_minutes" class="form-control form-control-sm" value="{{ visit_type.default_duration_minutes }}" min="1">
+            </div>
+            <div class="col-sm-2">
+                <div class="form-check mt-4">
+                    <input type="checkbox" name="requires_deadline" class="form-check-input" id="requires_deadline" {% if visit_type.requires_deadline %}checked{% endif %}>
+                    <label class="form-check-label small" for="requires_deadline">Has ready-by deadline</label>
+                </div>
+            </div>
+            <div class="col-sm-2">
+                <div class="form-check mt-4">
+                    <input type="checkbox" name="is_active" class="form-check-input" id="vt_is_active" {% if visit_type.is_active %}checked{% endif %}>
+                    <label class="form-check-label small" for="vt_is_active">Active</label>
+                </div>
+            </div>
+            <div class="col-sm-1">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="small mb-0" style="color: var(--ink-muted);">
+            {{ visit_type.default_duration_minutes }} min default ·
+            {% if visit_type.requires_deadline %}has a ready-by deadline{% else %}no fixed deadline{% endif %} ·
+            {% if visit_type.is_active %}active{% else %}inactive{% endif %}
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="list-checks" class="icon"></i> Checklist items
+        </span>
+    </div>
+    {% if items %}
+    <div class="list-group list-group-flush">
+    {% for item in items %}
+        <div class="list-group-item py-2 px-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div style="min-width: 0;">
+                    <div class="{% if not item.is_active %}text-decoration-line-through text-muted{% endif %}">
+                        {% if item.section %}<span class="small text-muted">{{ item.section }} —</span> {% endif %}{{ item.text }}
+                    </div>
+                    <div class="small" style="color: var(--ink-muted);">
+                        {% if item.mandatory %}Required{% else %}Optional{% endif %}
+                        {% if item.requires_photo %} · photo required{% endif %}
+                        {% if item.requires_note %} · note required{% endif %}
+                        {% if not item.is_active %} · inactive{% endif %}
+                    </div>
+                </div>
+                {% if is_admin %}
+                <div class="d-flex gap-1 flex-shrink-0">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="move_item">
+                        <input type="hidden" name="item_id" value="{{ item.pk }}">
+                        <input type="hidden" name="direction" value="up">
+                        <button class="btn btn-outline-secondary btn-sm" type="submit" title="Move up"><i data-lucide="chevron-up" class="icon"></i></button>
+                    </form>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="move_item">
+                        <input type="hidden" name="item_id" value="{{ item.pk }}">
+                        <input type="hidden" name="direction" value="down">
+                        <button class="btn btn-outline-secondary btn-sm" type="submit" title="Move down"><i data-lucide="chevron-down" class="icon"></i></button>
+                    </form>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#edit-item-{{ item.pk }}"><i data-lucide="pencil" class="icon"></i></button>
+                    <form method="post" onsubmit="return confirm('Delete this checklist item?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_item">
+                        <input type="hidden" name="item_id" value="{{ item.pk }}">
+                        <button class="btn btn-outline-danger btn-sm" type="submit"><i data-lucide="trash-2" class="icon"></i></button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+            {% if is_admin %}
+            <div class="collapse mt-2" id="edit-item-{{ item.pk }}">
+                <form method="post" class="row g-2 align-items-end border-top pt-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_item">
+                    <input type="hidden" name="item_id" value="{{ item.pk }}">
+                    <div class="col-sm-5">
+                        <label class="form-label small text-muted mb-1">Text</label>
+                        <input type="text" name="text" class="form-control form-control-sm" value="{{ item.text }}" required>
+                    </div>
+                    <div class="col-sm-3">
+                        <label class="form-label small text-muted mb-1">Section</label>
+                        <input type="text" name="section" class="form-control form-control-sm" value="{{ item.section }}" list="sections-list" placeholder="e.g. Kitchen">
+                    </div>
+                    <div class="col-sm-4 d-flex gap-2 flex-wrap">
+                        <div class="form-check">
+                            <input type="checkbox" name="mandatory" class="form-check-input" id="mandatory-{{ item.pk }}" {% if item.mandatory %}checked{% endif %}>
+                            <label class="form-check-label small" for="mandatory-{{ item.pk }}">Required</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" name="requires_photo" class="form-check-input" id="photo-{{ item.pk }}" {% if item.requires_photo %}checked{% endif %}>
+                            <label class="form-check-label small" for="photo-{{ item.pk }}">Photo</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" name="requires_note" class="form-check-input" id="note-{{ item.pk }}" {% if item.requires_note %}checked{% endif %}>
+                            <label class="form-check-label small" for="note-{{ item.pk }}">Note</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" name="is_active" class="form-check-input" id="active-{{ item.pk }}" {% if item.is_active %}checked{% endif %}>
+                            <label class="form-check-label small" for="active-{{ item.pk }}">Active</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-outline-primary btn-sm" type="submit">Save item</button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">No checklist items yet.{% if is_admin %} Add the first one below.{% endif %}</div>
+    {% endif %}
+</div>
+
+{% if is_admin %}
+<datalist id="sections-list">
+    {% for section in sections %}<option value="{{ section }}">{% endfor %}
+</datalist>
+
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title mb-2">Add an item</h6>
+        <form method="post" class="row g-2 align-items-end">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_item">
+            <div class="col-sm-5">
+                <label class="form-label small text-muted mb-1">Text</label>
+                <input type="text" name="text" class="form-control form-control-sm" placeholder="e.g. Wipe down all counters" required>
+            </div>
+            <div class="col-sm-3">
+                <label class="form-label small text-muted mb-1">Section</label>
+                <input type="text" name="section" class="form-control form-control-sm" list="sections-list" placeholder="e.g. Kitchen">
+            </div>
+            <div class="col-sm-4 d-flex gap-2 flex-wrap">
+                <div class="form-check">
+                    <input type="checkbox" name="mandatory" class="form-check-input" id="new-mandatory" checked>
+                    <label class="form-check-label small" for="new-mandatory">Required</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" name="requires_photo" class="form-check-input" id="new-photo">
+                    <label class="form-check-label small" for="new-photo">Photo</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" name="requires_note" class="form-check-input" id="new-note">
+                    <label class="form-check-label small" for="new-note">Note</label>
+                </div>
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary btn-sm" type="submit">Add item</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

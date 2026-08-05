@@ -143,6 +143,15 @@ class ImportBatch(models.Model):
     raw_file = models.FileField(upload_to='onsite_import_batches/%Y/%m/')
     covers_start = models.DateField(help_text='Earliest checkout date this file actually covers.')
     covers_end = models.DateField(help_text='Latest checkout date this file actually covers.')
+    is_cancellations_only = models.BooleanField(
+        default=False,
+        help_text='Copied from DailyUploadSlot.is_cancellations_only at upload time (False for the '
+                   'generic upload form). When True, this file is a PARTIAL listing that only contains '
+                   'cancelled reservations (e.g. Airbnb\'s separate Cancellations report) — the diff must '
+                   'not treat a booking simply being absent from it as evidence of cancellation, since '
+                   'every other still-active booking is absent from it too by design. See '
+                   'onsite/services/bookings.py::diff_bookings.',
+    )
     new_count = models.PositiveIntegerField(default=0)
     changed_count = models.PositiveIntegerField(default=0)
     cancelled_count = models.PositiveIntegerField(default=0)
@@ -218,6 +227,14 @@ class DailyUploadSlot(models.Model):
                    "the wrong platform's file into this slot can't silently misread columns. Leave blank "
                    'to skip this check for this slot (only the importer\'s own generic required columns '
                    'still apply).',
+    )
+    is_cancellations_only = models.BooleanField(
+        default=False,
+        help_text='Check this for a slot whose file only ever contains cancelled reservations (e.g. '
+                   '"Airbnb Cancellations") rather than a full listing of everything currently on the '
+                   'books. Copied onto each ImportBatch created from this slot — see that field\'s help '
+                   'text for why it matters. Leave unchecked for a normal "here\'s everything upcoming" '
+                   'reservations report.',
     )
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)

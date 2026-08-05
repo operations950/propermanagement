@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -19,7 +19,7 @@ from vendorportal.models import AccessAttempt
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
     Booking, BookingFeedHealth, DailyUploadSlot, ImportBatch, PropertyChecklistItem, StandardChecklistItem,
-    Visit, VisitChecklistItem, VisitIssue, VisitMedia,
+    Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitType,
 )
 from .services import checklist as checklist_service
 from .services.bookings import (
@@ -187,7 +187,10 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     work, per the two-scenario warning the user asked for."""
     matched, unmatched = resolve_listing_names(raw_bookings, source)
     property_diffs = [
-        {'property': property, 'diff': diff_bookings(property, source, rows)}
+        {
+            'property': property,
+            'diff': diff_bookings(property, source, rows, is_cancellations_only=batch.is_cancellations_only),
+        }
         for property, rows in sorted(matched.items(), key=lambda kv: kv[0].name)
     ]
     all_properties = list(_str_properties())
@@ -219,7 +222,7 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     }
 
 
-def _create_import_batch(user, source, uploaded_file, property=None):
+def _create_import_batch(user, source, uploaded_file, property=None, is_cancellations_only=False):
     """Shared by the generic upload form and each daily-upload-slot drop —
     parses the file, decides single-property vs. portfolio-wide the same
     way either time, and saves the not-yet-applied ImportBatch. Returns
@@ -241,6 +244,7 @@ def _create_import_batch(user, source, uploaded_file, property=None):
     batch = ImportBatch.objects.create(
         property=property if not portfolio_mode else None, source=source, raw_file=uploaded_file,
         covers_start=covers_start, covers_end=covers_end, imported_by=user,
+        is_cancellations_only=is_cancellations_only,
     )
     return batch, None
 
@@ -342,7 +346,9 @@ def upload_slot(request, slot_id):
         )
         return redirect('onsite_booking_import')
 
-    batch, error = _create_import_batch(request.user, slot.source, uploaded_file)
+    batch, error = _create_import_batch(
+        request.user, slot.source, uploaded_file, is_cancellations_only=slot.is_cancellations_only,
+    )
     if error:
         messages.error(request, f'{slot.label}: {error}')
         return redirect('onsite_booking_import')
@@ -369,7 +375,9 @@ def booking_import_preview(request, batch_id):
         return redirect('onsite_booking_import')
 
     if batch.property_id:
-        diff = diff_bookings(batch.property, batch.source, raw_bookings)
+        diff = diff_bookings(
+            batch.property, batch.source, raw_bookings, is_cancellations_only=batch.is_cancellations_only,
+        )
         return render(request, 'onsite/booking_import_preview.html', {
             'batch': batch, 'property': batch.property, 'diff': diff, 'portfolio': False,
         })
@@ -424,7 +432,7 @@ def booking_import_apply(request, batch_id):
 
     if batch.property_id:
         new_count, changed_count, cancelled_count, visit_note = apply_bookings_for_property(
-            batch.property, batch.source, raw_bookings,
+            batch.property, batch.source, raw_bookings, is_cancellations_only=batch.is_cancellations_only,
         )
         batch.new_count, batch.changed_count, batch.cancelled_count = new_count, changed_count, cancelled_count
         batch.applied_at = timezone.now()
@@ -467,7 +475,9 @@ def booking_import_apply(request, batch_id):
     total_new = total_changed = total_cancelled = 0
     visit_notes = set()
     for property, rows in matched.items():
-        n, c, x, note = apply_bookings_for_property(property, batch.source, rows)
+        n, c, x, note = apply_bookings_for_property(
+            property, batch.source, rows, is_cancellations_only=batch.is_cancellations_only,
+        )
         total_new += n
         total_changed += c
         total_cancelled += x
@@ -700,3 +710,119 @@ def checklist_custom_items(request):
 
     rows = sorted(groups.values(), key=lambda g: (-len(g['items']), g['visit_type'].name, g['text']))
     return render(request, 'onsite/checklist_custom_items.html', {'rows': rows})
+
+
+@login_required
+def checklist_templates(request):
+    """Site-side answer to "where do I build a checklist in the first
+    place" — a VisitType picker/creator. Previously this only existed in
+    Django admin. Viewing is open to any logged-in staff; creating a new
+    visit type is admin-gated, same convention as visit_detail's delete
+    card. See checklist_template_detail for actually editing one's items."""
+    is_admin = _is_admin(request.user)
+
+    if request.method == 'POST':
+        if not is_admin:
+            messages.error(request, 'Only an admin can create a visit type.')
+            return redirect('onsite_checklist_templates')
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, 'Enter a name for the new visit type.')
+        elif VisitType.objects.filter(name__iexact=name).exists():
+            messages.error(request, f'A visit type named "{name}" already exists.')
+        else:
+            visit_type = VisitType.objects.create(name=name)
+            messages.success(request, f'Created "{visit_type.name}" — add its checklist items below.')
+            return redirect('onsite_checklist_template_detail', type_id=visit_type.pk)
+        return redirect('onsite_checklist_templates')
+
+    visit_types = VisitType.objects.annotate(item_count=Count('standard_items')).order_by('name')
+    return render(request, 'onsite/checklist_templates.html', {'visit_types': visit_types, 'is_admin': is_admin})
+
+
+@login_required
+def checklist_template_detail(request, type_id):
+    """Manage one VisitType's standard checklist — add/edit/reorder/delete
+    items, and edit the visit type's own settings — without going through
+    Django admin. Mirrors visit_detail.html's action-dispatch shape and
+    admin-only mutation gating; GET stays open to any logged-in staff so
+    non-admins can still see what a checklist actually contains.
+
+    Deliberately does NOT expose StandardChecklistItem.required_attributes
+    (the property-tag gating) — a narrower, less time-critical feature that
+    still exists via Django admin for the rare case it's needed; everything
+    staff touch day-to-day (add/edit/reorder/delete an item, tweak the
+    visit type itself) is covered here."""
+    visit_type = get_object_or_404(VisitType, pk=type_id)
+    is_admin = _is_admin(request.user)
+
+    if request.method == 'POST':
+        if not is_admin:
+            messages.error(request, 'Only an admin can edit a checklist.')
+            return redirect('onsite_checklist_template_detail', type_id=visit_type.pk)
+        action = request.POST.get('action')
+
+        if action == 'update_type':
+            name = request.POST.get('name', '').strip()
+            if name:
+                visit_type.name = name
+            raw_duration = request.POST.get('default_duration_minutes', '').strip()
+            if raw_duration.isdigit():
+                visit_type.default_duration_minutes = int(raw_duration)
+            visit_type.requires_deadline = request.POST.get('requires_deadline') == 'on'
+            visit_type.is_active = request.POST.get('is_active') == 'on'
+            visit_type.save()
+            messages.success(request, 'Visit type updated.')
+
+        elif action == 'add_item':
+            text = request.POST.get('text', '').strip()
+            section = request.POST.get('section', '').strip()
+            if text:
+                max_order = visit_type.standard_items.filter(section=section).aggregate(Max('order'))['order__max'] or 0
+                StandardChecklistItem.objects.create(
+                    visit_type=visit_type, text=text, section=section, order=max_order + 1,
+                    mandatory=request.POST.get('mandatory') == 'on',
+                    requires_photo=request.POST.get('requires_photo') == 'on',
+                    requires_note=request.POST.get('requires_note') == 'on',
+                )
+                messages.success(request, 'Item added.')
+            else:
+                messages.error(request, 'Enter the item text.')
+
+        elif action == 'update_item':
+            item = get_object_or_404(StandardChecklistItem, pk=request.POST.get('item_id'), visit_type=visit_type)
+            text = request.POST.get('text', '').strip()
+            if text:
+                item.text = text
+            item.section = request.POST.get('section', '').strip()
+            item.mandatory = request.POST.get('mandatory') == 'on'
+            item.requires_photo = request.POST.get('requires_photo') == 'on'
+            item.requires_note = request.POST.get('requires_note') == 'on'
+            item.is_active = request.POST.get('is_active') == 'on'
+            item.save()
+            messages.success(request, 'Item updated.')
+
+        elif action == 'delete_item':
+            StandardChecklistItem.objects.filter(pk=request.POST.get('item_id'), visit_type=visit_type).delete()
+            messages.success(request, 'Item deleted.')
+
+        elif action == 'move_item':
+            item = get_object_or_404(StandardChecklistItem, pk=request.POST.get('item_id'), visit_type=visit_type)
+            direction = request.POST.get('direction')
+            neighbors = visit_type.standard_items.filter(section=item.section)
+            neighbor = (
+                neighbors.filter(order__lt=item.order).order_by('-order').first() if direction == 'up'
+                else neighbors.filter(order__gt=item.order).order_by('order').first()
+            )
+            if neighbor:
+                item.order, neighbor.order = neighbor.order, item.order
+                item.save(update_fields=['order'])
+                neighbor.save(update_fields=['order'])
+
+        return redirect('onsite_checklist_template_detail', type_id=visit_type.pk)
+
+    items = list(visit_type.standard_items.order_by('section', 'order'))
+    sections = list(dict.fromkeys(item.section for item in items if item.section))
+    return render(request, 'onsite/checklist_template_detail.html', {
+        'visit_type': visit_type, 'items': items, 'sections': sections, 'is_admin': is_admin,
+    })

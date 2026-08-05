@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Checklist templates{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+    <h2 class="page-title mb-1">Checklist templates</h2>
+</div>
+<p class="text-muted small mb-4">Every kind of on-site visit (turnover, deep clean, inspection, ...) and its standard checklist — build or edit one here instead of Django admin. A property's actual checklist is this standard list plus anything added just for that property (see <a href="{% url 'onsite_checklist_custom_items' %}">custom checklist items</a>).</p>
+
+{% if is_admin %}
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title mb-2">New visit type</h6>
+        <form method="post" class="d-flex gap-2 flex-wrap">
+            {% csrf_token %}
+            <input type="text" name="name" class="form-control form-control-sm" style="max-width: 320px;" placeholder="e.g. Pool Inspection" required>
+            <button class="btn btn-primary btn-sm" type="submit">Create</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+    {% for vt in visit_types %}
+    <div class="col-md-4">
+        <a href="{% url 'onsite_checklist_template_detail' vt.pk %}" class="text-decoration-none">
+            <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);{% if not vt.is_active %} opacity: 0.6;{% endif %}">
+                <div class="card-body">
+                    <h6 class="card-title d-flex align-items-center justify-content-between">
+                        {{ vt.name }}
+                        {% if not vt.is_active %}<span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.65rem;">Inactive</span>{% endif %}
+                    </h6>
+                    <p class="small mb-0" style="color: var(--ink-muted);">
+                        {{ vt.item_count }} checklist item{{ vt.item_count|pluralize }} ·
+                        {{ vt.default_duration_minutes }} min ·
+                        {% if vt.requires_deadline %}has a ready-by deadline{% else %}no fixed deadline{% endif %}
+                    </p>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% empty %}
+    <p class="text-muted">No visit types yet.{% if is_admin %} Create one above.{% endif %}</p>
+    {% endfor %}
+</div>
+{% endblock %}

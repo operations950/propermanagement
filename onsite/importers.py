@@ -49,6 +49,17 @@ class RawBooking:
     # or unparseable — a soft/optional field is never worth failing the
     # whole import over.
     booked_at: date | None = None
+    # True when this row's own Status column says it's a cancellation —
+    # e.g. Airbnb's "Canceled by guest"/"Canceled by Airbnb", or VRBO's
+    # "Canceled" (VRBO mixes reservations and cancellations in one file;
+    # Airbnb ships cancellations as a separate file where every row is
+    # cancelled). Detected generically as "the word cancel appears in the
+    # Status value" rather than hardcoding each platform's exact wording,
+    # so a status the two platforms haven't been observed using yet still
+    # gets caught. See onsite/services/bookings.py::diff_bookings for how
+    # this is used instead of (or alongside) inferring a cancellation from
+    # a booking simply vanishing off a later re-upload.
+    is_cancelled: bool = False
 
 
 def detect_format(filename):
@@ -123,20 +134,38 @@ def parse_ics(file_bytes):
 
 
 _CSV_FIELD_ALIASES = {
+    # 'reservation id' is VRBO's own header; Airbnb calls it 'confirmation code'.
     'external_uid': ['confirmation code', 'confirmation_code', 'reservation id', 'reservation_id', 'uid'],
-    'check_in': ['start date', 'start_date', 'check-in', 'check_in', 'checkin', 'arrival'],
-    'check_out': ['end date', 'end_date', 'check-out', 'check_out', 'checkout', 'departure'],
+    # 'check-in date'/'check-out date' (with " date") are VRBO's real headers —
+    # distinct from the plain 'check-in'/'check-out' guesses below, which
+    # don't match anything VRBO or Airbnb actually ships. 'start date'/
+    # 'end date' are Airbnb's.
+    'check_in': ['start date', 'start_date', 'check-in date', 'check-in', 'check_in', 'checkin', 'arrival'],
+    'check_out': ['end date', 'end_date', 'check-out date', 'check-out', 'check_out', 'checkout', 'departure'],
+    # Airbnb's single combined column. VRBO instead splits first/last name
+    # into two columns — see guest_first_name/guest_last_name below, which
+    # parse_csv falls back to combining when this one isn't found.
     'guest_name': ['guest name', 'guest_name', 'name'],
-    'guest_phone': ['phone number', 'phone_number', 'phone'],
+    'guest_first_name': ['guest first name', 'first name'],
+    'guest_last_name': ['guest last name', 'last name'],
+    # 'contact' is Airbnb's real header for the phone column; 'guest phone'
+    # is VRBO's.
+    'guest_phone': ['guest phone', 'phone number', 'phone_number', 'phone', 'contact'],
+    # A cancellation reason/marker, when present — read generically (see
+    # RawBooking.is_cancelled) rather than hardcoded per platform, so a
+    # value neither platform has been observed using yet still gets caught.
+    'status': ['status'],
     # Not required — a single-listing CSV export legitimately has no such
     # column. When absent, every row's listing_name stays '' and the whole
     # file is treated as belonging to whichever property staff pick anyway
-    # (see onsite/views.py's format branch).
+    # (see onsite/views.py's format branch). 'property name' is VRBO's own
+    # header; Airbnb's is just 'listing'.
     'listing_name': ['listing', 'listing name', 'listing_name', 'property', 'property name', 'property_name', 'unit', 'unit name'],
     # Also not required — when reservation date (when the guest booked,
     # not the stay dates) is on the file, populates RawBooking.booked_at
-    # for onsite.BookingFeedHealth. Some exports have it, some don't.
-    'booked_at': ['booked', 'booked date', 'booked_date', 'date booked', 'booking date', 'reservation date'],
+    # for onsite.BookingFeedHealth. 'booked or inquired on' is VRBO's own
+    # header; Airbnb's is just 'booked'. Some exports have neither.
+    'booked_at': ['booked', 'booked date', 'booked_date', 'date booked', 'booking date', 'reservation date', 'booked or inquired on'],
 }
 
 
@@ -187,14 +216,27 @@ def parse_csv(file_bytes):
                     booked_at = _parse_csv_date(raw_booked)
                 except BookingFileError:
                     pass  # optional field — an unparseable value just means "unknown," not a failed import
+
+        if columns['guest_name']:
+            guest_name = (row.get(columns['guest_name']) or '').strip()
+        else:
+            # VRBO splits first/last into two columns instead of Airbnb's
+            # single one.
+            first = (row.get(columns['guest_first_name']) or '').strip() if columns['guest_first_name'] else ''
+            last = (row.get(columns['guest_last_name']) or '').strip() if columns['guest_last_name'] else ''
+            guest_name = f'{first} {last}'.strip()
+
+        status_value = (row.get(columns['status']) or '').strip() if columns['status'] else ''
+
         bookings.append(RawBooking(
             external_uid=uid,
             check_in=_parse_csv_date(row[columns['check_in']]),
             check_out=_parse_csv_date(row[columns['check_out']]),
-            guest_name=(row.get(columns['guest_name']) or '').strip() if columns['guest_name'] else '',
+            guest_name=guest_name,
             guest_phone_last4=digits[-4:] if digits else '',
             listing_name=(row.get(columns['listing_name']) or '').strip() if columns['listing_name'] else '',
             booked_at=booked_at,
+            is_cancelled='cancel' in status_value.lower(),
         ))
 
     if not bookings:
