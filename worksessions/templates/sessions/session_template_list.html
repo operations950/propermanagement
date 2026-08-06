@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
-{% block title %}Session Rules{% endblock %}
+{% block title %}Recurring Rules{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="page-title mb-0">Session Rules</h2>
+    <h2 class="page-title mb-0">Recurring Rules</h2>
     <a href="{% url 'session_template_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New rule</a>
 </div>
 
@@ -28,7 +28,7 @@
         {% endif %}
     </a>
 {% empty %}
-    <div class="card"><div class="card-body text-center py-4" style="color: var(--ink-muted);">No session rules yet.</div></div>
+    <div class="card"><div class="card-body text-center py-4" style="color: var(--ink-muted);">No recurring rules yet.</div></div>
 {% endfor %}
 </div>
 {% endblock %}

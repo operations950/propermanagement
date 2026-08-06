@@ -473,14 +473,15 @@ def _tickets_with_new_activity(tickets, user):
 
 @login_required
 def department_dashboard(request, role):
-    """A department's own front page, split into the three things staff
-    actually distinguish: reactive Tickets, generated proactive Tasks
-    (source == recurring — otherwise identical Ticket rows), and the
-    logged-in viewer's own Google Calendar (about their day, not the
-    team's, so it's the same regardless of which department they're
-    looking at).
+    """A department's own front page, split into the things staff actually
+    distinguish: reactive Tickets, this department's open recurring
+    Sessions (see the worksessions app — replaced the old source=recurring
+    Ticket "Tasks" column entirely, see the "Recurring work overhaul —
+    sessions" build brief), and the logged-in viewer's own Google Calendar
+    (about their day, not the team's, so it's the same regardless of which
+    department they're looking at).
 
-    Each of Tickets/Tasks is split into three groups:
+    Tickets are split into three groups:
     - Needs a due date: nobody's triaged these yet, so they're not
       "Today's" work until someone assigns one — shown first, as a
       to-do, not folded into Today where they'd get lost among real
@@ -490,6 +491,10 @@ def department_dashboard(request, role):
       for immediate confirmation, but it never reappears on a fresh load
       of this page — the query only ever pulls OPEN_STATUSES.
     - Next 2 days, and a collapsed count of everything further out.
+
+    Sessions aren't bucketed the same way (they're not a per-item triage
+    queue) — just every open Session for this department, soonest due
+    first, mirroring "My Sessions"' own "not a ticket queue" philosophy.
     """
     if role not in StaffProfile.Role.values:
         raise Http404
@@ -497,8 +502,12 @@ def department_dashboard(request, role):
     today = timezone.localdate()
     soon_cutoff = today + timedelta(days=2)
 
+    # source=recurring is retired (see worksessions) — excluded defensively
+    # in case any pre-decommission row is still lingering, but nothing
+    # creates new ones anymore.
     qs = list(
         Ticket.objects.filter(assigned_role=role, property__isnull=False, status__in=OPEN_STATUSES)
+        .exclude(source=Ticket.Source.RECURRING)
         .select_related(
             'property', 'assigned_staff__user', 'assigned_contact', 'created_from_template', 'package_run__package',
         )
@@ -506,46 +515,34 @@ def department_dashboard(request, role):
     )
     updated_ticket_ids = _tickets_with_new_activity(qs, request.user)
 
-    needs_date_tickets, needs_date_tasks = [], []
+    needs_date_tickets = []
     today_tickets, soon_tickets = [], []
-    today_tasks, soon_tasks = [], []
-    later_ticket_count = later_task_count = 0
+    later_ticket_count = 0
     for t in qs:
-        is_task = t.source == Ticket.Source.RECURRING
-        today_bucket = today_tasks if is_task else today_tickets
-        soon_bucket = soon_tasks if is_task else soon_tickets
-        needs_date_bucket = needs_date_tasks if is_task else needs_date_tickets
-
         if t.due_date:
             d = timezone.localtime(t.due_date).date()
             if d <= today:
-                today_bucket.append(t)
+                today_tickets.append(t)
             elif d <= soon_cutoff:
-                soon_bucket.append(t)
-            elif is_task:
-                later_task_count += 1
+                soon_tickets.append(t)
             else:
                 later_ticket_count += 1
         else:
-            needs_date_bucket.append(t)
+            needs_date_tickets.append(t)
 
     today_tickets.sort(key=lambda t: _daily_checklist_key(t, now))
     soon_tickets.sort(key=lambda t: _ticket_urgency_key(t, now))
     needs_date_tickets.sort(key=lambda t: (PRIORITY_RANK.get(t.priority, 2), t.title))
 
-    # Counted before grouping collapses same-run tasks into one row each —
-    # the badge/total counts below should still reflect real ticket counts.
-    task_total = len(needs_date_tasks) + len(today_tasks) + len(soon_tasks) + later_task_count
-
-    # Tasks (not Tickets) can belong to a package_run — see #11's Function/
-    # Task Group/Task model. _group_task_rows collapses each run's sibling
-    # step tickets into one _TaskGroupRow so a 20-property monthly close
-    # shows 20 rows, not 20x however-many-steps individual lines.
-    today_tasks = _group_task_rows(today_tasks, lambda t: _daily_checklist_key(t, now))
-    soon_tasks = _group_task_rows(soon_tasks, lambda t: _ticket_urgency_key(t, now))
-    needs_date_tasks = _group_task_rows(
-        needs_date_tasks, lambda t: (PRIORITY_RANK.get(t.priority, 2), t.title),
+    from worksessions.models import Session as _Session
+    department_sessions = list(
+        _Session.objects.filter(department=role, status=_Session.Status.OPEN)
+        .select_related('template').prefetch_related('lines')
+        .order_by('due_at', 'opens_at')
     )
+    for s in department_sessions:
+        s.done_count, s.total_count = s.progress()
+        s.overdue = s.is_overdue(today)
 
     staff_profile = getattr(request.user, 'staff_profile', None)
     calendar_token = getattr(staff_profile, 'google_calendar_token', None) if staff_profile else None
@@ -568,17 +565,12 @@ def department_dashboard(request, role):
         'timezone_choices': StaffProfile.Timezone.choices,
         'current_timezone': getattr(staff_profile, 'timezone', ''),
         'needs_date_tickets': needs_date_tickets,
-        'needs_date_tasks': needs_date_tasks,
         'today_tickets': today_tickets,
         'soon_tickets': soon_tickets,
         'later_ticket_count': later_ticket_count,
         'ticket_total': len(needs_date_tickets) + len(today_tickets) + len(soon_tickets) + later_ticket_count,
-        'today_tasks': today_tasks,
-        'soon_tasks': soon_tasks,
-        'later_task_count': later_task_count,
-        'task_total': task_total,
+        'department_sessions': department_sessions,
         'ticket_list_url': f"{reverse('ticket_list')}?role={role}&source=reactive",
-        'task_list_url': f"{reverse('ticket_list')}?role={role}&source=recurring",
         'now': now,
         'calendar_configured': calendar_is_configured(),
         'calendar_token': calendar_token,
@@ -1604,7 +1596,7 @@ def function_create(request):
     function_detail/function_edit stay reachable, unchanged, for whatever
     old rows still exist to be reviewed or cleaned up — only creation of
     new ones is blocked."""
-    messages.info(request, 'Recurring work now lives under Sessions — create a rule there instead.')
+    messages.info(request, 'Create your recurring rule here instead.')
     return redirect('session_template_create')
 
 
@@ -1706,7 +1698,7 @@ def ticket_template_create(request):
     TicketTemplate created here would never fire (the scheduler no longer
     runs generate_recurring_tickets on a timer); redirect straight to
     where a new recurring rule actually belongs now."""
-    messages.info(request, 'Recurring work now lives under Sessions — create a rule there instead.')
+    messages.info(request, 'Create your recurring rule here instead.')
     return redirect('session_template_create')
 
 

@@ -18,7 +18,7 @@ urlpatterns = [
     path('supplies/', include('supplies.urls')),
     path('processes/', include('processes.urls')),
     path('onsite/', include('onsite.urls')),
-    path('sessions/', include('worksessions.urls')),
+    path('recurring/', include('worksessions.urls')),
     path('', include('core.urls')),
     path('', include('intake.urls')),
     path('', include('tickets.urls')),

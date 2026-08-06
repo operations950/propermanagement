@@ -127,7 +127,7 @@
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-header bg-white border-bottom py-3">
         <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-            <i data-lucide="layers" class="icon"></i> Sessions — rules drifting ({{ session_drift|length }})
+            <i data-lucide="layers" class="icon"></i> Recurring — rules drifting ({{ session_drift|length }})
         </span>
     </div>
     {% if session_drift %}
@@ -159,7 +159,7 @@
     </div>
     {% else %}
     <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
-        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Every session rule is on pattern
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Every recurring rule is on pattern
     </div>
     {% endif %}
 </div>

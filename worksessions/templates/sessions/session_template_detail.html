@@ -2,7 +2,7 @@
 {% block title %}{{ template.name }}{% endblock %}
 {% block content %}
 <a href="{% url 'session_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 mb-2" style="color: var(--ink-muted);">
-    <i data-lucide="arrow-left" class="icon"></i> Session Rules
+    <i data-lucide="arrow-left" class="icon"></i> Recurring Rules
 </a>
 <div class="d-flex justify-content-between align-items-start mb-3">
     <div>
@@ -28,7 +28,7 @@
                 <div class="small" style="color: var(--ink-muted);">No frequency configured yet.</div>
                 {% endif %}
                 {% if not template.is_active %}
-                <div class="small mt-2" style="color: var(--status-critical);">This rule is inactive — no sessions will generate.</div>
+                <div class="small mt-2" style="color: var(--status-critical);">This rule is inactive — nothing will generate.</div>
                 {% endif %}
                 {% if template.active_from or template.active_until %}
                 <div class="small mt-2" style="color: var(--ink-muted);">
@@ -73,7 +73,7 @@
         </span>
     </a>
 {% empty %}
-    <div class="card"><div class="card-body text-center py-3 small" style="color: var(--ink-muted);">No sessions opened yet.</div></div>
+    <div class="card"><div class="card-body text-center py-3 small" style="color: var(--ink-muted);">Nothing opened yet.</div></div>
 {% endfor %}
 </div>
 {% endblock %}
