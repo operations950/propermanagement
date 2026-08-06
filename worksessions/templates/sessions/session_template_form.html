@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+{% load ticket_extras %}
+{% block title %}{% if template %}Edit session rule{% else %}New session rule{% endif %}{% endblock %}
+{% block content %}
+{% if template %}
+<a href="{% url 'session_template_detail' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ template.name }}</a>
+{% else %}
+<a href="{% url 'session_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Session Rules</a>
+{% endif %}
+<h2 class="page-title mb-3">{% if template %}Edit session rule{% else %}New session rule{% endif %}</h2>
+
+<div class="row g-3">
+<div class="col-lg-7">
+<form method="post" id="session-template-form" class="card" style="border-radius: var(--bs-border-radius-lg);">
+    {% csrf_token %}
+    <div class="card-body p-4">
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+
+        <div class="mb-3">
+            <label class="form-label fw-medium" for="id_name">Name</label>
+            <input type="text" name="name" id="id_name" required class="form-control {% if form.name.errors %}is-invalid{% endif %}" value="{{ form.name.value|default:'' }}">
+            {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors|join:', ' }}</div>{% endif %}
+        </div>
+        <div class="mb-4">
+            <label class="form-label fw-medium" for="id_description">Description <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <textarea name="description" id="id_description" rows="2" class="form-control">{{ form.description.value|default:'' }}</textarea>
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Owner &amp; department</h6>
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Owner</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="owner">
+                <input type="hidden" name="owner" data-bubble-input value="{{ form.owner.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose an owner"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for s in staff %}<button type="button" class="bubble" data-value="{{ s.pk }}" data-label="{{ s }}">{{ s }}</button>{% endfor %}
+                </div>
+            </div>
+            {% if form.owner.errors %}<div class="invalid-feedback d-block">{{ form.owner.errors|join:', ' }}</div>{% endif %}
+        </div>
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Department</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="department" id="department-picker">
+                <input type="hidden" name="department" data-bubble-input value="{{ form.department.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a department"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.department.choices %}
+                        {% if value %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}" style="--bubble-color: var(--role-{{ value }});"><i data-lucide="{{ value|department_icon }}" class="icon"></i> {{ label }}</button>{% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% if form.department.errors %}<div class="invalid-feedback d-block">{{ form.department.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Cadence</h6>
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Frequency</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="frequency" id="frequency-picker">
+                <input type="hidden" name="frequency" data-bubble-input value="{{ form.frequency.value|default:'' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a frequency"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.frequency.choices %}
+                        {% if value %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>{% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% if form.frequency.errors %}<div class="invalid-feedback d-block">{{ form.frequency.errors|join:', ' }}</div>{% endif %}
+        </div>
+        <div class="mb-4" id="workday-of-month-wrap">
+            <label class="form-label fw-medium" for="id_workday_of_month">Workday of month <span class="fw-normal" style="color: var(--ink-muted);">(only for "Monthly (by working day)" — weekends skipped, holidays not currently accounted for)</span></label>
+            <input type="number" name="workday_of_month" id="id_workday_of_month" min="1" max="23" class="form-control" style="max-width: 140px;" value="{{ form.workday_of_month.value|default_if_none:'' }}">
+            {% if form.workday_of_month.errors %}<div class="invalid-feedback d-block">{{ form.workday_of_month.errors|join:', ' }}</div>{% endif %}
+        </div>
+        <div class="row g-3 mb-4">
+            <div class="col-6">
+                <label class="form-label fw-medium" for="id_next_open_date">First open date</label>
+                <input type="date" name="next_open_date" id="id_next_open_date" required class="form-control {% if form.next_open_date.errors %}is-invalid{% endif %}" value="{{ form.next_open_date.value|default:'' }}">
+                {% if form.next_open_date.errors %}<div class="invalid-feedback d-block">{{ form.next_open_date.errors|join:', ' }}</div>{% endif %}
+            </div>
+            <div class="col-6">
+                <label class="form-label fw-medium" for="id_due_offset_days">Due offset (days after opening)</label>
+                <input type="number" name="due_offset_days" id="id_due_offset_days" min="0" class="form-control" value="{{ form.due_offset_days.value|default:'0' }}">
+            </div>
+        </div>
+        <div class="row g-3 mb-4">
+            <div class="col-6">
+                <label class="form-label fw-medium" for="id_active_from">Active from <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+                <input type="date" name="active_from" id="id_active_from" class="form-control" value="{{ form.active_from.value|default:'' }}">
+            </div>
+            <div class="col-6">
+                <label class="form-label fw-medium" for="id_active_until">Active until <span class="fw-normal" style="color: var(--ink-muted);">(optional — for seasonal rules)</span></label>
+                <input type="date" name="active_until" id="id_active_until" class="form-control {% if form.active_until.errors %}is-invalid{% endif %}" value="{{ form.active_until.value|default:'' }}">
+                {% if form.active_until.errors %}<div class="invalid-feedback d-block">{{ form.active_until.errors|join:', ' }}</div>{% endif %}
+            </div>
+        </div>
+        <div class="form-check mb-4">
+            <input class="form-check-input" type="checkbox" name="is_active" id="id_is_active" {% if form.is_active.value|default:True %}checked{% endif %}>
+            <label class="form-check-label" for="id_is_active">Active</label>
+        </div>
+
+        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Lines</h6>
+        <div class="mb-4">
+            <label class="form-label fw-medium d-block">Line source</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="line_source" id="line-source-picker">
+                <input type="hidden" name="line_source" data-bubble-input value="{{ form.line_source.value|default:'static' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a line source"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.line_source.choices %}
+                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div id="static-lines-wrap" class="mb-4">
+            <label class="form-label fw-medium" for="id_static_lines_text">Lines (one per line)</label>
+            <textarea name="static_lines_text" id="id_static_lines_text" rows="6" class="form-control">{{ form.static_lines_text.value|default:'' }}</textarea>
+        </div>
+        <div id="query-lines-wrap" class="mb-4" hidden>
+            <label class="form-label fw-medium d-block">Restrict to property types <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="d-flex flex-wrap gap-3 mb-3">
+                {% for value, label in form.fields.property_types.choices %}
+                <div class="form-check">
+                    <input class="form-check-input session-preview-input" type="checkbox" name="property_types" value="{{ value }}" id="ptype-{{ value }}" {% if value in form.property_types.value %}checked{% endif %}>
+                    <label class="form-check-label" for="ptype-{{ value }}">{{ label }}</label>
+                </div>
+                {% endfor %}
+            </div>
+            <label class="form-label fw-medium d-block">Requires these attributes <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            <div class="d-flex flex-wrap gap-3">
+                {% for attr in attributes %}
+                <div class="form-check">
+                    <input class="form-check-input session-preview-input" type="checkbox" name="required_attributes" value="{{ attr.pk }}" id="attr-{{ attr.pk }}" {% if attr in form.required_attributes.value %}checked{% endif %}>
+                    <label class="form-check-label" for="attr-{{ attr.pk }}">{{ attr.label }}</label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <button class="btn btn-primary" type="submit">{% if template %}<i data-lucide="check" class="icon"></i> Save changes{% else %}<i data-lucide="plus" class="icon"></i> Create session rule{% endif %}</button>
+    </div>
+</form>
+</div>
+
+<div class="col-lg-5">
+    <div class="card" style="border-radius: var(--bs-border-radius-lg); position: sticky; top: 90px;">
+        <div class="card-header bg-white border-bottom py-3">
+            <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+                <i data-lucide="eye" class="icon"></i> Live preview
+            </span>
+        </div>
+        <div class="card-body" id="preview-body">
+            <div class="small" style="color: var(--ink-muted);">Fill in owner, frequency, first open date, and line source to see what this rule will actually produce.</div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+(function () {
+    var form = document.getElementById('session-template-form');
+    var previewBody = document.getElementById('preview-body');
+    var workdayWrap = document.getElementById('workday-of-month-wrap');
+    var staticWrap = document.getElementById('static-lines-wrap');
+    var queryWrap = document.getElementById('query-lines-wrap');
+    var frequencyPicker = document.getElementById('frequency-picker');
+    var lineSourcePicker = document.getElementById('line-source-picker');
+
+    function applyFrequency(value) {
+        workdayWrap.hidden = (value !== 'monthly_workday');
+    }
+    function applyLineSource(value) {
+        staticWrap.hidden = (value !== 'static');
+        queryWrap.hidden = (value !== 'query');
+    }
+    if (frequencyPicker) {
+        frequencyPicker.addEventListener('bubble:lock', function (e) { applyFrequency(e.detail.value); runPreview(); });
+        applyFrequency(frequencyPicker.querySelector('[data-bubble-input]').value);
+    }
+    if (lineSourcePicker) {
+        lineSourcePicker.addEventListener('bubble:lock', function (e) { applyLineSource(e.detail.value); runPreview(); });
+        applyLineSource(lineSourcePicker.querySelector('[data-bubble-input]').value || 'static');
+    }
+
+    function runPreview() {
+        var fd = new FormData(form);
+        fetch('{% url "session_template_preview" %}', {method: 'POST', body: fd})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var html = '';
+                if (data.occurrences && data.occurrences.length) {
+                    html += '<div class="small fw-semibold mb-1">Next occurrences</div><ul class="list-unstyled small mb-3">';
+                    data.occurrences.forEach(function (o) { html += '<li>' + o.label + ' <span style="color: var(--ink-muted);">(' + o.date + ')</span></li>'; });
+                    html += '</ul>';
+                } else {
+                    html += '<div class="small mb-3" style="color: var(--ink-muted);">Set a frequency and first open date to see occurrences.</div>';
+                }
+                if (typeof data.line_count === 'number') {
+                    var firstDate = (data.occurrences && data.occurrences[0]) ? data.occurrences[0].label : 'the first occurrence';
+                    html += '<div class="small fw-semibold mb-1">This will create a session on ' + firstDate + ' with ' + data.line_count + ' line' + (data.line_count === 1 ? '' : 's') + '</div>';
+                    if (data.line_names && data.line_names.length) {
+                        html += '<div class="small" style="color: var(--ink-muted);">' + data.line_names.join(', ') + (data.line_count > data.line_names.length ? ', &hellip;' : '') + '</div>';
+                    }
+                }
+                previewBody.innerHTML = html;
+            })
+            .catch(function () { /* preview is best-effort, never blocks the form */ });
+    }
+
+    form.addEventListener('input', function (e) {
+        if (e.target.matches('input, textarea, select')) runPreview();
+    });
+    form.addEventListener('bubble:lock', runPreview);
+    document.addEventListener('DOMContentLoaded', runPreview);
+    runPreview();
+})();
+</script>
+{% endblock %}

@@ -220,6 +220,7 @@ def _owner_dashboard(request):
     off_track = owner_dashboard_queries.off_track_tickets(now)
     onsite = owner_dashboard_queries.onsite_next_48h(now)
     recurring_drift = owner_dashboard_queries.recurring_rules_drifting()
+    session_drift = owner_dashboard_queries.session_templates_drifting()
     movement = owner_dashboard_queries.movement_today()
     quiet = owner_dashboard_queries.gone_quiet(now)
 
@@ -245,6 +246,7 @@ def _owner_dashboard(request):
         'off_track': off_track,
         'onsite': onsite,
         'recurring_drift': recurring_drift,
+        'session_drift': session_drift,
         'movement': movement,
         'quiet': quiet,
         'calendar_configured': calendar_is_configured(),

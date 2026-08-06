@@ -390,6 +390,7 @@ class Ticket(models.Model):
         FAKE = 'fake', 'Simulated (dev)'
         RECURRING = 'recurring', 'Recurring template'
         ONSITE = 'onsite', 'On-site visit'
+        SESSION = 'session', 'Recurring session'
 
     title = models.CharField(max_length=200, help_text='A short, scannable headline — not a full sentence.')
     description = models.TextField(blank=True, help_text='One concise sentence. Full source context goes in raw_context.')

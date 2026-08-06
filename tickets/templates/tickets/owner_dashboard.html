@@ -156,6 +156,47 @@
     {% endif %}
 </div>
 
+{# ============================== 3b. SESSIONS — rules drifting ============================== #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="layers" class="icon"></i> Sessions — rules drifting ({{ session_drift|length }})
+        </span>
+    </div>
+    {% if session_drift %}
+    <div class="list-group list-group-flush">
+    {% for row in session_drift %}
+        <a href="{% url 'session_template_detail' row.template.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none" style="border-left: 3px solid var(--role-{{ row.template.department|default:'admin' }});">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+                <span class="fw-medium" style="color: var(--ink-primary);">{{ row.template.name }}</span>
+                <span class="badge" style="{% if row.status == 'skipping' %}background: var(--priority-urgent); color: #fff;{% elif row.status == 'never_submitted' or row.status == 'never_opened' %}background: color-mix(in srgb, var(--status-warning) 20%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% endif %}">
+                    {% if row.status == 'skipping' %}Skipping{% elif row.status == 'never_submitted' %}Never submitted{% elif row.status == 'never_opened' %}Never opened{% else %}Running late{% endif %}
+                </span>
+            </div>
+            {% if row.sessions %}
+            <div class="d-flex gap-1 mt-2">
+                {% for run in row.sessions %}
+                <span title="{{ run.session.period_label }}" style="width: 14px; height: 14px; border-radius: 4px; display: inline-block; background: {% if run.outcome == 'submitted' %}var(--status-good){% elif run.outcome == 'late' or run.outcome == 'overdue' %}var(--status-warning){% else %}var(--brand-primary){% endif %};"></span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="small mt-1" style="color: var(--ink-muted);">No sessions opened yet.</div>
+            {% endif %}
+            {% if row.repeated_skips %}
+            <div class="small mt-2" style="color: var(--ink-muted);">
+                Repeatedly skipped: {% for skip in row.repeated_skips %}{{ skip.label }} ({% for reason, count in skip.reasons.items %}{{ reason }}&times;{{ count }}{% if not forloop.last %}, {% endif %}{% endfor %}){% if not forloop.last %}; {% endif %}{% endfor %}
+            </div>
+            {% endif %}
+        </a>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
+        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Every session rule is on pattern
+    </div>
+    {% endif %}
+</div>
+
 {# ============================== 4. DEPARTMENTS + CALENDAR ============================== #}
 <div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
     <div class="col">

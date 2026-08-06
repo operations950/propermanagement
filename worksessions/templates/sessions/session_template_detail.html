@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}{{ template.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'session_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 mb-2" style="color: var(--ink-muted);">
+    <i data-lucide="arrow-left" class="icon"></i> Session Rules
+</a>
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h2 class="page-title mb-0">{{ template.name }}</h2>
+        <div style="color: var(--ink-muted);">{{ template.get_frequency_display }} &middot; {{ template.get_department_display }} &middot; owned by {{ template.owner }}</div>
+        {% if template.description %}<p class="mt-2 mb-0">{{ template.description }}</p>{% endif %}
+    </div>
+    <a href="{% url 'session_template_edit' template.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
+</div>
+
+<div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-body">
+                <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Next occurrences</h6>
+                {% if next_occurrences %}
+                <ul class="list-unstyled mb-0">
+                {% for occ in next_occurrences %}
+                    <li class="py-1 border-top small">{{ occ.label }} <span style="color: var(--ink-muted);">({{ occ.date }})</span></li>
+                {% endfor %}
+                </ul>
+                {% else %}
+                <div class="small" style="color: var(--ink-muted);">No frequency configured yet.</div>
+                {% endif %}
+                {% if not template.is_active %}
+                <div class="small mt-2" style="color: var(--status-critical);">This rule is inactive — no sessions will generate.</div>
+                {% endif %}
+                {% if template.active_from or template.active_until %}
+                <div class="small mt-2" style="color: var(--ink-muted);">
+                    Active window:
+                    {% if template.active_from %}from {{ template.active_from }}{% endif %}
+                    {% if template.active_until %}until {{ template.active_until }}{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
+            <div class="card-body">
+                <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Lines</h6>
+                {% if template.line_source == 'static' %}
+                <div class="small" style="color: var(--ink-muted);">Static list &middot; {{ static_lines|length }} line{{ static_lines|length|pluralize }}</div>
+                <ul class="list-unstyled mt-2 mb-0">
+                {% for line in static_lines %}
+                    <li class="py-1 border-top small">{{ line.label }}</li>
+                {% endfor %}
+                </ul>
+                {% else %}
+                <div class="small" style="color: var(--ink-muted);">
+                    Property query
+                    {% if template.property_types %} &middot; types: {{ template.property_types|join:', ' }}{% endif %}
+                    {% if template.required_attributes.all %} &middot; requires: {% for a in template.required_attributes.all %}{{ a }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<h6 class="fw-bold small text-uppercase mb-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Submission history</h6>
+<div class="list-group">
+{% for s in recent_sessions %}
+    <a href="{% url 'session_detail' s.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2">
+        <span>{{ s.period_label }}</span>
+        <span class="small" style="color: var(--ink-muted);">
+            {% if s.status == 'submitted' %}Submitted {{ s.submitted_at|date:'M j' }}{% else %}Open{% if s.due_at %}, due {{ s.due_at }}{% endif %}{% endif %}
+        </span>
+    </a>
+{% empty %}
+    <div class="card"><div class="card-body text-center py-3 small" style="color: var(--ink-muted);">No sessions opened yet.</div></div>
+{% endfor %}
+</div>
+{% endblock %}

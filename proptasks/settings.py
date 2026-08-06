@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'supplies',
     'processes',
     'onsite',
+    'worksessions',
 ]
 
 MIDDLEWARE = [
@@ -370,6 +371,12 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 # pending Google Calendar pushes.
 ONSITE_GENERATE_VISITS_INTERVAL_MINUTES = int(os.environ.get('ONSITE_GENERATE_VISITS_INTERVAL_MINUTES', str(60 * 24)))
 ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES', '30'))
+
+# Sessions module (sessions app) — replaces the old TicketTemplate-based
+# recurring-ticket generation for routine work that fans out to lines, not
+# tickets, per the "Recurring work overhaul — sessions" build brief. Runs
+# once immediately on boot (see scheduler.py), same as the old job did.
+SESSION_GENERATE_INTERVAL_MINUTES = int(os.environ.get('SESSION_GENERATE_INTERVAL_MINUTES', '30'))
 
 # Owner Dashboard's "Gone quiet" panel thresholds — see
 # tickets/services/owner_dashboard.py::gone_quiet. Settings, not literals,

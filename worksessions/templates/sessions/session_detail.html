@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}{{ session.template.name }} — {{ session.period_label }}{% endblock %}
+{% block content %}
+<a href="{% url 'my_sessions' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 mb-2" style="color: var(--ink-muted);">
+    <i data-lucide="arrow-left" class="icon"></i> My Sessions
+</a>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title mb-0">{{ session.template.name }}</h2>
+        <div style="color: var(--ink-muted);">{{ session.period_label }} &middot; opened {{ session.opens_at }}{% if session.due_at %} &middot; due {{ session.due_at }}{% endif %}</div>
+    </div>
+    <div class="text-end">
+        <span class="badge" style="background: {% if session.status == 'submitted' %}var(--status-good){% else %}var(--brand-primary){% endif %}; color: #fff;">
+            {{ session.get_status_display }}
+        </span>
+        <div class="small mt-1" style="color: var(--ink-muted);">{{ done }} of {{ total }} resolved</div>
+    </div>
+</div>
+
+{% if total %}
+<div class="progress mb-4" style="height: 8px;">
+    <div class="progress-bar" role="progressbar" style="width: {% widthratio done total 100 %}%; background: var(--brand-primary);"></div>
+</div>
+{% endif %}
+
+<div class="d-flex flex-column gap-2 mb-4">
+{% for line in lines %}
+    <div class="card" style="border-radius: var(--bs-border-radius-lg); {% if line.state == 'done' %}opacity: 0.75;{% endif %}">
+        <div class="card-body py-3">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="line_id" value="{{ line.pk }}">
+                <div class="d-flex gap-2 align-items-start flex-wrap">
+                    <div class="flex-grow-1">
+                        <div class="fw-medium" style="color: var(--ink-primary);">{{ line.label }}</div>
+                        {% if line.promoted_ticket_id %}
+                        <div class="small mt-1">
+                            <a href="{% url 'ticket_detail' line.promoted_ticket_id %}" class="text-decoration-none" style="color: var(--status-critical);">
+                                <i data-lucide="ticket" class="icon"></i> Promoted to ticket
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <select name="state" class="form-select form-select-sm line-state-select" style="max-width: 170px;">
+                        {% for value, label in state_choices %}
+                        <option value="{{ value }}" {% if value == line.state %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="skip-reason-wrap mt-2" {% if line.state != 'skipped' and line.state != 'not_applicable' %}hidden{% endif %}>
+                    <input type="text" name="skip_reason" class="form-control form-control-sm" placeholder="Reason (required to skip / mark N/A)" value="{{ line.skip_reason }}">
+                </div>
+                <div class="mt-2">
+                    <input type="text" name="notes" class="form-control form-control-sm" placeholder="Note (optional)" value="{{ line.notes }}">
+                </div>
+                <div class="mt-2 d-flex gap-2">
+                    <button type="submit" name="action" value="set_line_state" class="btn btn-sm btn-outline-primary">Save</button>
+                    {% if not line.promoted_ticket_id %}
+                    <button type="submit" name="action" value="promote" class="btn btn-sm btn-outline-danger"
+                            onclick="return confirm('Promote this line to a ticket? Use this when something is actually wrong, not for routine skips.');">
+                        <i data-lucide="ticket" class="icon"></i> Promote to ticket
+                    </button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+<div class="d-flex gap-2">
+    {% if session.status == 'open' %}
+    <form method="post" onsubmit="return confirm('Submit this session? Pending lines are allowed — a session submitted with gaps is fine, just make sure that\'s intentional.');">
+        {% csrf_token %}
+        <button type="submit" name="action" value="submit" class="btn btn-primary"><i data-lucide="check" class="icon"></i> Submit session</button>
+    </form>
+    {% else %}
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="action" value="reopen" class="btn btn-outline-secondary">Reopen</button>
+    </form>
+    {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('.line-state-select').forEach(function (select) {
+    select.addEventListener('change', function () {
+        var wrap = this.closest('form').querySelector('.skip-reason-wrap');
+        wrap.hidden = (this.value !== 'skipped' && this.value !== 'not_applicable');
+    });
+});
+</script>
+{% endblock %}

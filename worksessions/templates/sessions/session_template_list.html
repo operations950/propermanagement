@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Session Rules{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="page-title mb-0">Session Rules</h2>
+    <a href="{% url 'session_template_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New rule</a>
+</div>
+
+<div class="list-group">
+{% for row in rows %}
+    <a href="{% url 'session_template_detail' row.template.pk %}" class="list-group-item list-group-item-action py-3"
+       style="border-left: 3px solid var(--role-{{ row.template.department|default:'admin' }}); {% if not row.template.is_active %}opacity: 0.6;{% endif %}">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+            <div>
+                <span class="fw-medium" style="color: var(--ink-primary);">{{ row.template.name }}</span>
+                <span class="small ms-2" style="color: var(--ink-muted);">{{ row.template.get_frequency_display }} &middot; {{ row.template.owner }}</span>
+            </div>
+            {% if row.next_occurrences %}
+            <span class="small" style="color: var(--ink-muted);">Next: {{ row.next_occurrences.0.label }}</span>
+            {% endif %}
+        </div>
+        {% if row.recent_sessions %}
+        <div class="d-flex gap-1 mt-2">
+            {% for s in row.recent_sessions %}
+            <span title="{{ s.period_label }}" style="width: 12px; height: 12px; border-radius: 3px; display: inline-block; background: {% if s.status == 'submitted' %}var(--status-good){% else %}var(--brand-primary){% endif %};"></span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </a>
+{% empty %}
+    <div class="card"><div class="card-body text-center py-4" style="color: var(--ink-muted);">No session rules yet.</div></div>
+{% endfor %}
+</div>
+{% endblock %}

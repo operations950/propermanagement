@@ -194,6 +194,83 @@ def recurring_rules_drifting(lookback=5):
     return rows
 
 
+def session_templates_drifting(lookback=5):
+    """Panel 3, sessions half — same rule-level, only-drifting-shown shape
+    as recurring_rules_drifting above, now covering SessionTemplate/Session
+    (see the sessions app) instead of TicketTemplate/Ticket. This replaces
+    recurring_rules_drifting for any template that has been migrated to a
+    SessionTemplate; the two run side by side only until the Phase 6 wipe
+    retires the old TicketTemplate system entirely.
+
+    Adds one dimension recurring_rules_drifting has no equivalent for: the
+    same line skipped repeatedly across sessions, grouped by skip reason —
+    which is what makes the skip actionable rather than just a count."""
+    from worksessions.models import Session, SessionLine, SessionTemplate
+
+    today = timezone.localdate()
+    templates = list(SessionTemplate.objects.filter(is_active=True))
+    template_ids = [t.pk for t in templates]
+
+    recent_by_template = {}
+    for s in Session.objects.filter(template_id__in=template_ids).order_by('template_id', '-opens_at'):
+        bucket = recent_by_template.setdefault(s.template_id, [])
+        if len(bucket) < lookback:
+            bucket.append(s)
+    session_ids = [s.pk for bucket in recent_by_template.values() for s in bucket]
+
+    skip_counts = {}  # (template_id, label) -> {reason: count}
+    skip_rows = (
+        SessionLine.objects.filter(
+            session_id__in=session_ids, state__in=SessionLine.REASON_REQUIRED_STATES,
+        )
+        .values('session__template_id', 'label', 'skip_reason')
+    )
+    for row in skip_rows:
+        key = (row['session__template_id'], row['label'])
+        bucket = skip_counts.setdefault(key, {})
+        reason = row['skip_reason'] or '(no reason given)'
+        bucket[reason] = bucket.get(reason, 0) + 1
+
+    rows = []
+    for template in templates:
+        recent = recent_by_template.get(template.pk, [])
+        if not recent:
+            rows.append({'template': template, 'sessions': [], 'repeated_skips': [], 'status': 'never_opened'})
+            continue
+
+        runs = []
+        for s in recent:
+            if s.status == Session.Status.SUBMITTED:
+                late = bool(s.due_at and s.submitted_at and s.submitted_at.date() > s.due_at)
+                outcome = 'late' if late else 'submitted'
+            elif s.due_at and s.due_at < today:
+                outcome = 'overdue'
+            else:
+                outcome = 'open'
+            runs.append({'session': s, 'outcome': outcome})
+
+        repeated_skips = [
+            {'label': label, 'reasons': reasons}
+            for (tid, label), reasons in skip_counts.items()
+            if tid == template.pk and sum(reasons.values()) >= 2
+        ]
+
+        outcomes = [r['outcome'] for r in runs]
+        if repeated_skips:
+            status = 'skipping'
+        elif not any(o == 'submitted' for o in outcomes):
+            status = 'never_submitted'
+        elif 'overdue' in outcomes or 'late' in outcomes:
+            status = 'late'
+        else:
+            status = 'healthy'
+
+        if status != 'healthy':
+            rows.append({'template': template, 'sessions': runs, 'repeated_skips': repeated_skips, 'status': status})
+
+    return rows
+
+
 def movement_today():
     """Panel 5 — updated notes (actual text + author, not just "something
     changed") and closed-today counted separately by reactive vs.

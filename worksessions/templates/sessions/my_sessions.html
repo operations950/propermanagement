@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}My Sessions{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="page-title mb-0">My Sessions</h2>
+    <a href="{% url 'session_template_list' %}" class="btn btn-outline-secondary btn-sm">
+        <i data-lucide="settings" class="icon"></i> Rules
+    </a>
+</div>
+
+{% if not sessions %}
+<div class="card"><div class="card-body text-center py-5" style="color: var(--ink-muted);">
+    <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-2"></i>
+    Nothing open right now.
+</div></div>
+{% else %}
+<div class="list-group mb-4">
+{% for session in sessions %}
+    {% with progress=session.progress %}
+    <a href="{% url 'session_detail' session.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3"
+       style="border-left: 3px solid {% if session.is_overdue %}var(--status-critical){% else %}var(--brand-primary){% endif %};">
+        <div>
+            <div class="fw-medium" style="color: var(--ink-primary);">{{ session.template.name }}</div>
+            <div class="small" style="color: var(--ink-muted);">{{ session.period_label }} &middot; {{ progress.0 }} of {{ progress.1 }} lines resolved</div>
+        </div>
+        <div class="text-end">
+            {% if session.due_at %}
+            <div class="small {% if session.is_overdue %}fw-semibold{% endif %}" style="color: {% if session.is_overdue %}var(--status-critical){% else %}var(--ink-muted){% endif %};">
+                {% if session.is_overdue %}Overdue{% else %}Due{% endif %} {{ session.due_at }}
+            </div>
+            {% endif %}
+        </div>
+    </a>
+    {% endwith %}
+{% endfor %}
+</div>
+{% endif %}
+
+{% if recently_submitted %}
+<h6 class="fw-bold small text-uppercase mb-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Recently submitted</h6>
+<div class="list-group">
+{% for session in recently_submitted %}
+    <a href="{% url 'session_detail' session.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-2 small">
+        <span>{{ session.template.name }} &middot; {{ session.period_label }}</span>
+        <span style="color: var(--ink-muted);">Submitted {{ session.submitted_at|timesince }} ago</span>
+    </a>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}
