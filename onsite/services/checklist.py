@@ -5,6 +5,7 @@ property's overrides/additions, and only materialized (copied) once, at
 Visit creation, into VisitChecklistItem rows."""
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Max
 from django.utils import timezone
 
 from ..models import (
@@ -14,7 +15,13 @@ from ..models import (
     StandardChecklistItem,
     Visit,
     VisitChecklistItem,
+    VisitType,
 )
+
+# The slug seed_checklist_templates uses for the deep-clean addon bundle —
+# looked up by slug (not hardcoded id) wherever the addon's items need
+# resolving, so renaming the VisitType's display name never breaks this.
+DEEP_CLEAN_ADDON_SLUG = 'deep-clean'
 
 
 def resolve_checklist(property, visit_type):
@@ -66,12 +73,18 @@ def resolve_checklist(property, visit_type):
             'is_new_unreviewed': reviewed_at is None or item.created_at > reviewed_at,
         })
 
+    # Property-specific additions always sort after every standard item —
+    # their own 'order' field starts fresh at 0 independently, and now that
+    # sorting is by 'order' alone (see the note above), an unoffset 0 would
+    # jump a property-specific item to the very front of a 40-item standard
+    # list instead of appending after it.
+    property_item_offset = max((r['order'] for r in resolved), default=-1) + 1
     for item in PropertyChecklistItem.objects.filter(property=property, visit_type=visit_type, is_active=True):
         resolved.append({
             'source': VisitChecklistItem.Source.PROPERTY,
             'standard_item': None,
             'section': '',
-            'order': item.order,
+            'order': property_item_offset + item.order,
             'text': item.text,
             'mandatory': item.mandatory,
             'requires_photo': item.requires_photo,
@@ -79,7 +92,13 @@ def resolve_checklist(property, visit_type):
             'is_new_unreviewed': False,
         })
 
-    resolved.sort(key=lambda r: (r['section'], r['order']))
+    # Sorted by 'order' alone, NOT (section, order) — see
+    # StandardChecklistItem.Meta's comment for why: the seed data is
+    # written as one deliberate room-by-room sequence (Kitchen, then
+    # Bathrooms, then Bedrooms, ...), and each section's items are already
+    # contiguous within it, so sorting by section name would alphabetize
+    # the sections and scramble that intended flow.
+    resolved.sort(key=lambda r: r['order'])
     return resolved
 
 
@@ -89,15 +108,59 @@ def mark_checklist_reviewed(property, visit_type):
     )
 
 
+def _addon_visit_type(slug=DEEP_CLEAN_ADDON_SLUG):
+    return VisitType.objects.filter(slug=slug, is_addon=True).first()
+
+
+def _deep_clean_checklist_items(visit, property, order_offset):
+    """Resolves the deep-clean addon bundle's items for this property and
+    returns unsaved VisitChecklistItem instances for them, all grouped
+    under one flat 'Deep Clean Extras' section regardless of whatever
+    section the addon's own StandardChecklistItems are tagged with — this
+    is one extra bucket layered onto a normal turnover, not a second
+    room-by-room breakdown, so it doesn't need its own sub-sections.
+
+    order_offset MUST push every one of these past every item already on
+    (or about to be added to) the visit — resolve_checklist(addon_type)
+    numbers its own rows from 0, the exact same range the turnover items
+    already occupy, so without the offset the two groups' order values
+    overlap and VisitChecklistItem's plain 'order' sort (see its Meta's
+    comment) interleaves them into alternating sections instead of one
+    clean block at the end — caught by an actual screenshot during this
+    feature's build, not by review."""
+    addon_type = _addon_visit_type()
+    if addon_type is None:
+        return []
+    resolved = resolve_checklist(property, addon_type)
+    return [
+        VisitChecklistItem(
+            visit=visit,
+            source=VisitChecklistItem.Source.DEEP_CLEAN,
+            section='Deep Clean Extras',
+            order=order_offset + row['order'],
+            text=row['text'],
+            mandatory=row['mandatory'],
+            requires_photo=row['requires_photo'],
+            requires_note=row['requires_note'],
+            is_new_unreviewed=row['is_new_unreviewed'],
+        )
+        for row in resolved
+    ]
+
+
 @transaction.atomic
-def create_visit(property, visit_type, **visit_kwargs):
+def create_visit(property, visit_type, is_deep_clean=False, **visit_kwargs):
     """Creates a Visit and snapshots the currently-resolved checklist into
     VisitChecklistItem rows — the one place copying is correct, per the
     design doc, since a submitted visit's record must never change under it
-    even as the standard list keeps evolving."""
-    visit = Visit.objects.create(property=property, visit_type=visit_type, **visit_kwargs)
+    even as the standard list keeps evolving. is_deep_clean additionally
+    layers the deep-clean addon bundle's items on top (see
+    _deep_clean_checklist_items) — most callers won't know this at creation
+    time (a booking import has no way to know a given turnover should also
+    be a deep clean); see set_deep_clean for turning it on afterward."""
+    visit = Visit.objects.create(property=property, visit_type=visit_type, is_deep_clean=is_deep_clean, **visit_kwargs)
     resolved = resolve_checklist(property, visit_type)
-    VisitChecklistItem.objects.bulk_create([
+    items = [
         VisitChecklistItem(
             visit=visit,
             source=row['source'],
@@ -110,11 +173,41 @@ def create_visit(property, visit_type, **visit_kwargs):
             is_new_unreviewed=row['is_new_unreviewed'],
         )
         for row in resolved
-    ])
+    ]
+    if is_deep_clean:
+        offset = max((i.order for i in items), default=-1) + 1
+        items += _deep_clean_checklist_items(visit, property, offset)
+    VisitChecklistItem.objects.bulk_create(items)
     # Deferred to after commit — this is a network call, and shouldn't hold
     # the transaction (or block the caller) if Google is slow/unreachable.
     transaction.on_commit(lambda: _push_to_calendar(visit))
     return visit
+
+
+def set_deep_clean(visit, enabled):
+    """Turns the deep-clean addon on/off for an existing visit — the
+    realistic path, since a booking import can't know at creation time that
+    a given turnover should also be a deep clean; staff decide that
+    afterward (see visit_detail). Only allowed before the visit starts,
+    mirroring this module's existing 'checklist is frozen except one-off
+    additions before it starts' rule (see VisitChecklistItem's docstring) —
+    changing it mid-clean would rewrite the list out from under whoever's
+    already working it."""
+    if visit.started_at is not None:
+        raise ValidationError("Can't change deep-clean status after the visit has started.")
+    if enabled == visit.is_deep_clean:
+        return
+    if enabled:
+        existing_max = visit.checklist_items.aggregate(m=Max('order'))['m']
+        offset = (existing_max if existing_max is not None else -1) + 1
+        items = _deep_clean_checklist_items(visit, visit.property, offset)
+        if not items:
+            raise ValidationError('No deep-clean checklist bundle is configured yet — add items to it first.')
+        VisitChecklistItem.objects.bulk_create(items)
+    else:
+        visit.checklist_items.filter(source=VisitChecklistItem.Source.DEEP_CLEAN).delete()
+    visit.is_deep_clean = enabled
+    visit.save(update_fields=['is_deep_clean'])
 
 
 def _push_to_calendar(visit):

@@ -550,6 +550,16 @@ def visit_detail(request, pk):
             item.completed_at = timezone.now() if item.is_completed else None
             item.save(update_fields=['is_completed', 'completed_at'])
 
+        elif action == 'toggle_deep_clean':
+            try:
+                checklist_service.set_deep_clean(visit, enabled=request.POST.get('enabled') == '1')
+                messages.success(
+                    request,
+                    'Deep clean extras added to this visit.' if visit.is_deep_clean else 'Deep clean extras removed.',
+                )
+            except ValidationError as e:
+                messages.error(request, '; '.join(e.messages) if hasattr(e, 'messages') else str(e))
+
         elif action == 'delete':
             if not is_admin:
                 messages.error(request, 'Only an admin can delete a visit.')
@@ -622,17 +632,45 @@ def visit_public(request, token):
             visit.status = Visit.Status.IN_PROGRESS
             visit.save(update_fields=['started_at', 'status'])
 
-        elif action == 'update_item':
+        elif action == 'mark_item_done':
+            # Each of these five actions touches only the field(s) it owns —
+            # deliberately NOT one shared "update_item" branch that overwrites
+            # note/skip_reason/is_completed from whatever happened to be in
+            # the POST body every time. This page now renders each of those
+            # as its own small independent form (see visit_public.html), so a
+            # single-purpose "Done" tap must never blank out a note or
+            # skip_reason that isn't part of that particular form.
             item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
-            skip_reason = request.POST.get('skip_reason', '').strip()
-            item.note = request.POST.get('note', '').strip()
-            item.skip_reason = skip_reason
-            if skip_reason:
+            item.is_completed = True
+            item.skip_reason = ''
+            item.completed_at = timezone.now()
+            item.save(update_fields=['is_completed', 'skip_reason', 'completed_at'])
+
+        elif action == 'reopen_item':
+            # Undoes either a Done tap or a Skip — one action, since both are
+            # "closed" states a cleaner might want to back out of.
+            item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
+            item.is_completed = False
+            item.skip_reason = ''
+            item.completed_at = None
+            item.save(update_fields=['is_completed', 'skip_reason', 'completed_at'])
+
+        elif action == 'skip_item':
+            item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
+            reason = request.POST.get('skip_reason', '').strip()
+            if reason:
+                item.skip_reason = reason
                 item.is_completed = False
-            else:
-                item.is_completed = bool(request.POST.get('is_completed'))
-            item.completed_at = timezone.now() if item.is_completed else None
-            item.save(update_fields=['note', 'skip_reason', 'is_completed', 'completed_at'])
+                item.completed_at = None
+                item.save(update_fields=['skip_reason', 'is_completed', 'completed_at'])
+
+        elif action == 'note_item':
+            item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
+            item.note = request.POST.get('note', '').strip()
+            item.save(update_fields=['note'])
+
+        elif action == 'upload_item_photo':
+            item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
             photo = request.FILES.get('photo')
             if photo:
                 VisitMedia.objects.create(
@@ -667,11 +705,35 @@ def visit_public(request, token):
     checklist_items = list(visit.checklist_items.all())
     return render(request, 'onsite/visit_public.html', {
         'visit': visit,
-        'checklist_items': checklist_items,
+        'checklist_sections': _checklist_sections(checklist_items),
+        'checklist_done_count': sum(1 for i in checklist_items if i.is_completed or i.skip_reason),
+        'checklist_total_count': len(checklist_items),
         'issues': visit.issues.all(),
         'supply_rows': supply_services.supply_check_context(visit),
         'is_submitted': visit.status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED),
     })
+
+
+def _checklist_sections(checklist_items):
+    """Groups an already section-ordered list of VisitChecklistItems (see
+    VisitChecklistItem.Meta's ordering note) into
+    [{name, items, done_count, total_count}, ...] for visit_public.html's
+    collapsible-section layout — a "resolved" item (done OR skipped, same
+    definition submit_visit's gate uses) counts toward done_count so the
+    per-section badge and the top progress bar agree with what actually
+    blocks submission."""
+    sections = []
+    current = None
+    for item in checklist_items:
+        name = item.section or 'Checklist'
+        if current is None or current['name'] != name:
+            current = {'name': name, 'items': [], 'done_count': 0, 'total_count': 0}
+            sections.append(current)
+        current['items'].append(item)
+        current['total_count'] += 1
+        if item.is_completed or item.skip_reason:
+            current['done_count'] += 1
+    return sections
 
 
 @require_http_methods(['POST'])

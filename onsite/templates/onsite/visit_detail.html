@@ -5,7 +5,7 @@
 
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
-        <h2 class="page-title mb-1">{{ visit.property.name }} — {{ visit.visit_type }}</h2>
+        <h2 class="page-title mb-1">{{ visit.property.name }} — {{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.55em; vertical-align: middle;">+ Deep clean</span>{% endif %}</h2>
         <p class="text-muted mb-0">
             {% if visit.scheduled_date %}{{ visit.scheduled_date|date:"l, M j" }}{% else %}No date set{% endif %}
             {% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"M j, g:i A" }}{% endif %}
@@ -108,6 +108,30 @@
         </div>
     </div>
 </div>
+
+{% if not visit.started_at %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h6 class="mb-1 d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Deep clean</h6>
+            <p class="small mb-0" style="color: var(--ink-muted);">
+                {% if visit.is_deep_clean %}This visit also includes the deep-clean extras — turn off to remove them.
+                {% else %}Adds the deep-clean extra checklist items onto this turnover. Only changeable before it starts.{% endif %}
+            </p>
+        </div>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="toggle_deep_clean">
+            <input type="hidden" name="enabled" value="{% if visit.is_deep_clean %}0{% else %}1{% endif %}">
+            <button class="btn btn-sm {% if visit.is_deep_clean %}btn-secondary{% else %}btn-outline-primary{% endif %}" type="submit">
+                {% if visit.is_deep_clean %}<i data-lucide="x" class="icon"></i> Remove deep clean{% else %}<i data-lucide="plus" class="icon"></i> Make this a deep clean{% endif %}
+            </button>
+        </form>
+    </div>
+</div>
+{% elif visit.is_deep_clean %}
+<div class="small mb-3" style="color: var(--ink-muted);"><i data-lucide="sparkles" class="icon"></i> This visit includes the deep-clean extras.</div>
+{% endif %}
 
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-header bg-white border-bottom py-3">

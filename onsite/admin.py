@@ -26,7 +26,8 @@ class StandardChecklistItemInline(admin.TabularInline):
 
 @admin.register(VisitType)
 class VisitTypeAdmin(admin.ModelAdmin):
-    list_display = ['name', 'default_duration_minutes', 'requires_deadline', 'is_active']
+    list_display = ['name', 'is_addon', 'default_duration_minutes', 'requires_deadline', 'is_active']
+    list_editable = ['is_addon']
     inlines = [StandardChecklistItemInline]
 
 

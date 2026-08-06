@@ -34,6 +34,13 @@ class VisitType(models.Model):
         help_text='True for turnovers, which must beat the next check-in. False for deep cleans/'
                    "inspections scheduled between guests, where there's no hard ready_by.",
     )
+    is_addon = models.BooleanField(
+        default=False,
+        help_text='A checklist bundle that gets added onto another visit (e.g. Deep Clean extras '
+                   'added onto a Turnover) rather than a kind of visit that gets scheduled on its '
+                   'own — excluded from visit-type pickers. Its standard_items are still managed '
+                   'normally through the checklist editor.',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -77,7 +84,15 @@ class StandardChecklistItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['visit_type', 'section', 'order']
+        # Deliberately NOT ['visit_type', 'section', 'order'] — sorting by
+        # section name would alphabetize the sections (Bathrooms before
+        # Kitchen before... Final Walkthrough would jump ahead of Kitchen),
+        # scrambling the deliberate room-by-room flow the seed data is
+        # written in. Sections stay grouped correctly anyway because each
+        # section's rows are seeded contiguously — a single 'order' sort
+        # preserves both the section grouping AND the intended sequence.
+        # See resolve_checklist()'s matching note.
+        ordering = ['visit_type', 'order']
 
     def __str__(self):
         return f'{self.visit_type} — {self.text}'
@@ -355,6 +370,11 @@ class Visit(models.Model):
     signed_ip = models.GenericIPAddressField(null=True, blank=True)
 
     notes = models.TextField(blank=True, help_text='Staff-authored, visible to the assignee.')
+    is_deep_clean = models.BooleanField(
+        default=False,
+        help_text='This turnover also includes the deep-clean extra checklist items — see the '
+                   "addon VisitType's standard_items. Only changeable before the visit starts.",
+    )
     created_from_rule = models.ForeignKey(
         'VisitRule', on_delete=models.SET_NULL, null=True, blank=True, related_name='generated_visits',
     )
@@ -405,6 +425,7 @@ class VisitChecklistItem(models.Model):
         STANDARD = 'standard', 'Standard'
         PROPERTY = 'property', 'Property-specific'
         ONEOFF = 'oneoff', 'One-off'
+        DEEP_CLEAN = 'deep_clean', 'Deep clean extra'
 
     visit = models.ForeignKey(Visit, on_delete=models.CASCADE, related_name='checklist_items')
     source = models.CharField(max_length=20, choices=Source.choices)
@@ -426,7 +447,10 @@ class VisitChecklistItem(models.Model):
     )
 
     class Meta:
-        ordering = ['visit', 'section', 'order']
+        # See StandardChecklistItem.Meta's comment — same reasoning: a plain
+        # 'order' sort, not '(section, order)', keeps the deliberate
+        # room-by-room sequence instead of alphabetizing sections.
+        ordering = ['visit', 'order']
 
     def __str__(self):
         return self.text

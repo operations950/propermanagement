@@ -17,7 +17,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         today = timezone.localdate()
         created = 0
-        for rule in VisitRule.objects.filter(is_active=True).select_related('property', 'visit_type'):
+        # An addon bundle (e.g. deep-clean extras) is layered onto another
+        # visit via Visit.is_deep_clean, not scheduled as a Visit of its own
+        # — see onsite/services/checklist.py's set_deep_clean. A rule
+        # pointed at one is a misconfiguration, not something to silently
+        # generate ad-hoc Visits for.
+        for rule in (
+            VisitRule.objects.filter(is_active=True, visit_type__is_addon=False)
+            .select_related('property', 'visit_type')
+        ):
             next_due = (
                 rule.last_generated_at + relativedelta(months=rule.interval_months)
                 if rule.last_generated_at else today

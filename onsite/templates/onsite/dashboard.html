@@ -78,7 +78,7 @@
                         <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none">{{ visit.property.name }}</a>
                         {% if visit.booking.listing_name %}<div class="small" style="color: var(--ink-muted);">{{ visit.booking.listing_name }}</div>{% endif %}
                     </td>
-                    <td>{{ visit.visit_type }}</td>
+                    <td>{{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.6rem;">+ Deep clean</span>{% endif %}</td>
                     <td>
                         {% if visit.derived_status == 'at_risk' %}
                         <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-critical) 15%, white); color: var(--status-critical); border: 1px solid color-mix(in srgb, var(--status-critical) 35%, white);">At risk</span>

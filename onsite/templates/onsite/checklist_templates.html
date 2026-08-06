@@ -29,12 +29,17 @@
                 <div class="card-body">
                     <h6 class="card-title d-flex align-items-center justify-content-between">
                         {{ vt.name }}
-                        {% if not vt.is_active %}<span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.65rem;">Inactive</span>{% endif %}
+                        {% if vt.is_addon %}<span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.65rem;">Add-on bundle</span>
+                        {% elif not vt.is_active %}<span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.65rem;">Inactive</span>{% endif %}
                     </h6>
                     <p class="small mb-0" style="color: var(--ink-muted);">
+                        {% if vt.is_addon %}
+                        {{ vt.item_count }} extra item{{ vt.item_count|pluralize }} — layered onto another visit when flagged, not scheduled on its own
+                        {% else %}
                         {{ vt.item_count }} checklist item{{ vt.item_count|pluralize }} ·
                         {{ vt.default_duration_minutes }} min ·
                         {% if vt.requires_deadline %}has a ready-by deadline{% else %}no fixed deadline{% endif %}
+                        {% endif %}
                     </p>
                 </div>
             </div>

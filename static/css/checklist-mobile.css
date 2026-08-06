@@ -1,0 +1,211 @@
+/*
+ * Mobile-first styling for the cleaner's on-site checklist (onsite's
+ * visit_public.html) — chunky single-tap actions and native <details>
+ * disclosure instead of small checkboxes and always-visible form fields.
+ * Built from the same design tokens as bubble-picker.css (no new colors).
+ */
+
+.checklist-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.checklist-progress-bar {
+  flex-grow: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-page);
+  overflow: hidden;
+}
+
+.checklist-progress-fill {
+  height: 100%;
+  background: var(--status-good, #0ca30c);
+  border-radius: 4px;
+  transition: width 200ms ease;
+}
+
+.checklist-progress-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+}
+
+/* Section disclosure */
+
+.checklist-section {
+  border-top: 1px solid var(--border-hairline);
+}
+
+.checklist-section:first-of-type {
+  border-top: none;
+}
+
+.checklist-section > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.85rem 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.checklist-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.checklist-section > summary::after {
+  content: '\25BE'; /* ▾ */
+  color: var(--ink-muted);
+  transition: transform 160ms ease;
+  margin-left: 0.5rem;
+}
+
+.checklist-section[open] > summary::after {
+  transform: rotate(-180deg);
+}
+
+.checklist-section-count {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+  margin-left: auto;
+  margin-right: 0.5rem;
+}
+
+.checklist-section-count.checklist-section-count-done {
+  color: var(--status-good, #0ca30c);
+}
+
+/* Item row */
+
+.checklist-item {
+  padding: 0.6rem 0.25rem 0.9rem;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.checklist-item:first-child {
+  border-top: none;
+}
+
+.checklist-item-text {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.35;
+}
+
+.checklist-item-required {
+  color: var(--status-critical, #c0392b);
+  font-weight: 700;
+}
+
+/* Chip action buttons — chunky, ≥44px touch target, same visual language
+   as the bubble family without the fly-to-slot picker JS (these are
+   plain immediate-submit buttons, one tap = one POST). */
+
+.chip-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* The chip-row's direct children are a <form> (Done) and a <details>
+   (Skip) — not the buttons themselves, since each needs its own real form
+   to submit. These grow to fill the row; .chip-btn fills its wrapper. */
+.chip-row > form,
+.chip-row > details {
+  flex: 1;
+}
+
+.chip-btn {
+  width: 100%;
+  min-height: 44px;
+  border-radius: var(--bs-border-radius-xl);
+  border: 1.5px solid transparent;
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.chip-btn:active {
+  transform: scale(0.97);
+}
+
+/* The Skip chip is a <summary> (opens an inline reason field), not a real
+   button — Chrome/Safari need -webkit-details-marker hidden explicitly;
+   list-style:none alone (which covers Firefox) isn't enough on <summary>. */
+summary.chip-btn {
+  list-style: none;
+}
+
+summary.chip-btn::-webkit-details-marker {
+  display: none;
+}
+
+.chip-btn-done {
+  background: color-mix(in srgb, var(--status-good, #0ca30c) 12%, white);
+  border-color: color-mix(in srgb, var(--status-good, #0ca30c) 45%, white);
+  color: color-mix(in srgb, var(--status-good, #0ca30c) 70%, black);
+}
+
+.chip-btn-skip {
+  background: var(--surface-page);
+  border-color: var(--border-hairline);
+  color: var(--ink-secondary);
+}
+
+.chip-btn-solid-done {
+  flex: initial;
+  min-height: 38px;
+  background: var(--status-good, #0ca30c);
+  border-color: var(--status-good, #0ca30c);
+  color: #fff;
+  padding: 0 0.9rem;
+}
+
+.chip-btn-solid-skip {
+  flex: initial;
+  min-height: 38px;
+  background: var(--status-warning, #b8860b);
+  border-color: var(--status-warning, #b8860b);
+  color: #fff;
+  padding: 0 0.9rem;
+}
+
+/* Small inline disclosures (skip reason, optional note) */
+
+.checklist-inline-disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.checklist-inline-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.checklist-inline-disclosure[open] > summary {
+  margin-bottom: 0.4rem;
+}
+
+.checklist-photo-row {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
