@@ -499,6 +499,76 @@ def booking_import_apply(request, batch_id):
 
 
 @login_required
+def visit_create(request):
+    """Manually schedule a one-off visit — an owner-requested extra
+    cleaning, an ad-hoc inspection, anything not tied to a booking-file
+    checkout. Booking import is still how the bulk of turnovers get
+    created; this is the escape hatch for everything else, since neither
+    Django admin's plain "Add Visit" form (bypasses create_visit entirely,
+    so it wouldn't get a checklist at all) nor VisitRule (no UI, and it's
+    for recurring generation, not a single ad-hoc visit) covers this."""
+    str_properties = Property.objects.filter(
+        property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True,
+    ).order_by('name')
+    visit_types = VisitType.objects.filter(is_active=True, is_addon=False).order_by('name')
+    staff_options = StaffProfile.objects.select_related('user').filter(
+        user__is_active=True, role=StaffProfile.Role.CLEANER,
+    )
+    contact_options = Contact.objects.filter(
+        Q(contact_type=Contact.ContactType.VENDOR, trade__icontains='clean')
+        | Q(contact_type=Contact.ContactType.ON_SITE_STAFF),
+    )
+
+    if request.method == 'POST':
+        prop = get_object_or_404(Property, pk=request.POST.get('property'), property_type=Property.Type.SHORT_TERM_RENTAL) \
+            if request.POST.get('property') else None
+        visit_type = get_object_or_404(VisitType, pk=request.POST.get('visit_type'), is_addon=False) \
+            if request.POST.get('visit_type') else None
+
+        if not prop or not visit_type:
+            messages.error(request, 'Choose a property and a visit type.')
+            return render(request, 'onsite/visit_create.html', {
+                'str_properties': str_properties, 'visit_types': visit_types,
+                'staff_options': staff_options, 'contact_options': contact_options,
+            })
+
+        kwargs = {
+            'scheduled_date': parse_date(request.POST.get('scheduled_date', '').strip()) or None,
+            'scheduled_start': request.POST.get('scheduled_start', '').strip() or None,
+            'notes': request.POST.get('notes', '').strip(),
+        }
+        kind, _, raw_id = request.POST.get('assignee', '').partition('-')
+        if kind == 'staff' and raw_id.isdigit():
+            kwargs['assigned_staff_id'] = int(raw_id)
+            kwargs['status'] = Visit.Status.SCHEDULED
+        elif kind == 'contact' and raw_id.isdigit():
+            kwargs['assigned_contact_id'] = int(raw_id)
+            kwargs['status'] = Visit.Status.SCHEDULED
+
+        ready_by_date = request.POST.get('ready_by_date', '').strip()
+        if ready_by_date:
+            parsed_date = parse_date(ready_by_date)
+            ready_by_time = request.POST.get('ready_by_time', '').strip()
+            hour, _, minute = ready_by_time.partition(':')
+            time_part = datetime.min.time().replace(
+                hour=int(hour) if hour.isdigit() else 17, minute=int(minute) if minute.isdigit() else 0,
+            )
+            if parsed_date:
+                kwargs['ready_by'] = timezone.make_aware(datetime.combine(parsed_date, time_part))
+
+        visit = checklist_service.create_visit(
+            prop, visit_type, is_deep_clean=request.POST.get('is_deep_clean') == '1', **kwargs,
+        )
+        messages.success(request, f'Visit scheduled for {prop.name}.')
+        return redirect('onsite_visit_detail', pk=visit.pk)
+
+    return render(request, 'onsite/visit_create.html', {
+        'str_properties': str_properties, 'visit_types': visit_types,
+        'staff_options': staff_options, 'contact_options': contact_options,
+    })
+
+
+@login_required
 def visit_detail(request, pk):
     """Staff-facing management screen for one visit — reassign, edit the
     schedule/notes, override status, correct a checklist item, and (admin

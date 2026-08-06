@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}New visit{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+
+<h2 class="page-title mb-1">New visit</h2>
+<p class="text-muted small mb-4">Schedule a one-off visit that isn't coming from a booking file — an owner-requested extra cleaning, an ad-hoc inspection, anything outside the normal checkout flow.</p>
+
+<div class="card" style="border-radius: var(--bs-border-radius-lg); max-width: 640px;">
+    <div class="card-body p-4">
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Property</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
+                    <input type="hidden" name="property" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property"></div>
+                    <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for p in str_properties %}
+                        <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                        {% endfor %}
+                        {% if not str_properties %}<span class="small" style="color: var(--ink-muted);">No active short-term rental properties.</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Visit type</label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="visit_type">
+                    <input type="hidden" name="visit_type" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a visit type"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for vt in visit_types %}
+                        <button type="button" class="bubble" data-value="{{ vt.pk }}" data-label="{{ vt.name }}">{{ vt.name }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-check mt-2">
+                    <input type="checkbox" name="is_deep_clean" value="1" class="form-check-input" id="new-visit-deep-clean">
+                    <label class="form-check-label small" for="new-visit-deep-clean">Also include the deep-clean extras on this visit</label>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Assignee <span class="fw-normal" style="color: var(--ink-muted);">(optional — can be set later)</span></label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assignee">
+                    <input type="hidden" name="assignee" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Unassigned"></div>
+                    <div class="bubble-pool" data-bubble-pool>
+                        {% for sp in staff_options %}
+                        <button type="button" class="bubble" data-value="staff-{{ sp.pk }}" data-label="{{ sp.user.get_full_name|default:sp.user.username }}">{{ sp.user.get_full_name|default:sp.user.username }}</button>
+                        {% endfor %}
+                        {% for c in contact_options %}
+                        <button type="button" class="bubble" data-value="contact-{{ c.pk }}" data-label="{{ c.name }} (external)">{{ c.name }} (external)</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-2 mb-4">
+                <div class="col-sm-6">
+                    <label class="form-label small text-muted mb-1">Date</label>
+                    <input type="date" name="scheduled_date" class="form-control form-control-sm">
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label small text-muted mb-1">Start time</label>
+                    <input type="time" name="scheduled_start" class="form-control form-control-sm">
+                </div>
+            </div>
+
+            <div class="row g-2 mb-4">
+                <div class="col-sm-6">
+                    <label class="form-label small text-muted mb-1">Ready by <span style="color: var(--ink-muted);">(optional deadline)</span></label>
+                    <input type="date" name="ready_by_date" class="form-control form-control-sm">
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label small text-muted mb-1">&nbsp;</label>
+                    <input type="time" name="ready_by_time" class="form-control form-control-sm" value="17:00">
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label small text-muted mb-1">Notes <span style="color: var(--ink-muted);">(optional, visible to the assignee)</span></label>
+                <textarea name="notes" class="form-control form-control-sm" rows="2"></textarea>
+            </div>
+
+            <button class="btn btn-primary" type="submit"><i data-lucide="check" class="icon"></i> Schedule visit</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
