@@ -120,43 +120,10 @@
     </div>
 </div>
 
-{# ============================== 3. RECURRING — rules drifting ============================== #}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
-    <div class="card-header bg-white border-bottom py-3">
-        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-            <i data-lucide="repeat" class="icon"></i> Recurring — rules drifting ({{ recurring_drift|length }})
-        </span>
-    </div>
-    {% if recurring_drift %}
-    <div class="list-group list-group-flush">
-    {% for row in recurring_drift %}
-        <a href="{% url 'ticket_template_detail' row.template.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none" style="border-left: 3px solid var(--role-{{ row.template.default_assigned_role|default:'admin' }});">
-            <div class="d-flex justify-content-between align-items-center gap-2">
-                <span class="fw-medium" style="color: var(--ink-primary);">{{ row.template.title }}</span>
-                <span class="badge" style="{% if row.status == 'skipping' %}background: var(--priority-urgent); color: #fff;{% elif row.status == 'never_completed' %}background: color-mix(in srgb, var(--status-warning) 20%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% endif %}">
-                    {% if row.status == 'skipping' %}Skipping{% elif row.status == 'never_completed' %}Never completed{% else %}Running late{% endif %}
-                </span>
-            </div>
-            {% if row.runs %}
-            <div class="d-flex gap-1 mt-2">
-                {% for run in row.runs %}
-                <span title="{{ run.ticket.scheduled_for }}" style="width: 14px; height: 14px; border-radius: 4px; display: inline-block; background: {% if run.outcome == 'completed' %}var(--status-good){% elif run.outcome == 'late' %}var(--status-warning){% elif run.outcome == 'skipped' %}#c8ccd1{% else %}var(--brand-primary){% endif %};"></span>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="small mt-1" style="color: var(--ink-muted);">No occurrences generated yet.</div>
-            {% endif %}
-        </a>
-    {% endfor %}
-    </div>
-    {% else %}
-    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
-        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Every recurring rule is on pattern
-    </div>
-    {% endif %}
-</div>
-
-{# ============================== 3b. SESSIONS — rules drifting ============================== #}
+{# ============================== 3. SESSIONS — rules drifting ============================== #}
+{# The old TicketTemplate-based "Recurring — rules drifting" panel that used to sit here was #}
+{# removed once the sessions app fully replaced it and the old system was wiped from #}
+{# production — see the "Recurring work overhaul — sessions" build brief. #}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-header bg-white border-bottom py-3">
         <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">

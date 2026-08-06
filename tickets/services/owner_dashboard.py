@@ -19,7 +19,7 @@ from django.db.models import Exists, Max, OuterRef, Subquery
 from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
-from ..models import Priority, Ticket, TicketAssignmentLog, TicketStatusNote, TicketTemplate, TicketView
+from ..models import Priority, Ticket, TicketAssignmentLog, TicketStatusNote, TicketView
 
 OPEN_STATUSES = [
     Ticket.Status.OPEN, Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS, Ticket.Status.BLOCKED,
@@ -136,75 +136,17 @@ def onsite_next_48h(now=None):
     }
 
 
-def recurring_rules_drifting(lookback=5):
-    """Panel 3 — the unit of attention is the rule (TicketTemplate), not
-    the instance; a healthy rule (every recent run completed on time)
-    doesn't appear at all. One query for every relevant ticket across
-    every active template, grouped in Python afterward, rather than one
-    query per template — the latter is exactly the per-row-loop pattern
-    the brief's perf warning is about."""
-    today = timezone.localdate()
-    templates = list(TicketTemplate.objects.filter(is_active=True))
-    template_ids = [t.pk for t in templates]
-
-    recent_by_template = {}
-    tickets = (
-        Ticket.objects.filter(created_from_template_id__in=template_ids)
-        .select_related('property')
-        .order_by('created_from_template_id', '-scheduled_for')
-    )
-    for t in tickets:
-        bucket = recent_by_template.setdefault(t.created_from_template_id, [])
-        if len(bucket) < lookback:
-            bucket.append(t)
-
-    rows = []
-    for template in templates:
-        recent = recent_by_template.get(template.pk, [])
-        if not recent:
-            rows.append({'template': template, 'runs': [], 'status': 'never_completed'})
-            continue
-
-        runs = []
-        for t in recent:
-            if t.status in (Ticket.Status.COMPLETED, Ticket.Status.VERIFIED):
-                late = bool(t.completed_at and t.due_date and t.completed_at > t.due_date)
-                outcome = 'late' if late else 'completed'
-            elif t.status in (Ticket.Status.SKIPPED, Ticket.Status.CANCELLED, Ticket.Status.NOT_APPLICABLE):
-                outcome = 'skipped'
-            elif t.due_date and timezone.localtime(t.due_date).date() < today:
-                outcome = 'late'
-            else:
-                outcome = 'pending'
-            runs.append({'ticket': t, 'outcome': outcome})
-
-        outcomes = [r['outcome'] for r in runs]
-        if 'skipped' in outcomes:
-            status = 'skipping'
-        elif not any(o == 'completed' for o in outcomes):
-            status = 'never_completed'
-        elif 'late' in outcomes:
-            status = 'late'
-        else:
-            status = 'healthy'
-
-        if status != 'healthy':
-            rows.append({'template': template, 'runs': runs, 'status': status})
-
-    return rows
-
-
 def session_templates_drifting(lookback=5):
-    """Panel 3, sessions half — same rule-level, only-drifting-shown shape
-    as recurring_rules_drifting above, now covering SessionTemplate/Session
-    (see the sessions app) instead of TicketTemplate/Ticket. This replaces
-    recurring_rules_drifting for any template that has been migrated to a
-    SessionTemplate; the two run side by side only until the Phase 6 wipe
-    retires the old TicketTemplate system entirely.
+    """Panel 3 — the unit of attention is the rule (SessionTemplate), not
+    the instance; a healthy rule (every recent session submitted on time,
+    no repeated skip pattern) doesn't appear at all. Replaces the old
+    TicketTemplate-based recurring_rules_drifting(), which was removed once
+    the sessions app fully took over and the old system was wiped from
+    production — see the "Recurring work overhaul — sessions" build brief.
 
-    Adds one dimension recurring_rules_drifting has no equivalent for: the
-    same line skipped repeatedly across sessions, grouped by skip reason —
-    which is what makes the skip actionable rather than just a count."""
+    Adds one dimension the old panel had no equivalent for: the same line
+    skipped repeatedly across sessions, grouped by skip reason — which is
+    what makes the skip actionable rather than just a count."""
     from worksessions.models import Session, SessionLine, SessionTemplate
 
     today = timezone.localdate()

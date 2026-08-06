@@ -204,7 +204,9 @@ def _owner_dashboard(request):
     into is signal. Three time orientations, one panel each: reactive
     tickets look backward (off_track_tickets), on-site work looks forward
     (onsite_next_48h), recurring looks at drift at the RULE level, not the
-    instance (recurring_rules_drifting) — plus departments/calendar (kept
+    instance (session_templates_drifting — the sessions app fully replaced
+    the old TicketTemplate-based recurring system, see the "Recurring work
+    overhaul — sessions" build brief) — plus departments/calendar (kept
     close to what existed), today's movement, and a never-urgent "gone
     quiet" panel last. All five panel queries live in
     tickets/services/owner_dashboard.py, not inline here — see that
@@ -219,7 +221,6 @@ def _owner_dashboard(request):
 
     off_track = owner_dashboard_queries.off_track_tickets(now)
     onsite = owner_dashboard_queries.onsite_next_48h(now)
-    recurring_drift = owner_dashboard_queries.recurring_rules_drifting()
     session_drift = owner_dashboard_queries.session_templates_drifting()
     movement = owner_dashboard_queries.movement_today()
     quiet = owner_dashboard_queries.gone_quiet(now)
@@ -245,7 +246,6 @@ def _owner_dashboard(request):
         'department_boxes': department_boxes,
         'off_track': off_track,
         'onsite': onsite,
-        'recurring_drift': recurring_drift,
         'session_drift': session_drift,
         'movement': movement,
         'quiet': quiet,
@@ -1595,15 +1595,17 @@ def function_list(request):
 
 @login_required
 def function_create(request):
-    if request.method == 'POST':
-        form = FunctionForm(request.POST)
-        if form.is_valid():
-            function = form.save()
-            messages.success(request, f'Function "{function.title}" created.')
-            return redirect('function_detail', pk=function.pk)
-    else:
-        form = FunctionForm()
-    return render(request, 'tickets/function_form.html', {'form': form, 'is_new': True})
+    """Retired — see the "Recurring work overhaul — sessions" build brief.
+    The old TicketTemplate/TaskPackage system's automatic generation is
+    already gone (removed from proptasks/scheduler.py); this closes the
+    other half of "don't run both systems in parallel" by refusing to let
+    anyone create a NEW Function, which would just sit inert forever (no
+    scheduler job left to ever generate anything from it). function_list/
+    function_detail/function_edit stay reachable, unchanged, for whatever
+    old rows still exist to be reviewed or cleaned up — only creation of
+    new ones is blocked."""
+    messages.info(request, 'Recurring work now lives under Sessions — create a rule there instead.')
+    return redirect('session_template_create')
 
 
 @login_required
@@ -1700,46 +1702,12 @@ def task_group_delete(request, pk):
 
 @login_required
 def ticket_template_create(request):
-    today = timezone.localdate()
-    package_id = request.GET.get('package') or request.POST.get('package')
-    group_id = request.GET.get('group') or request.POST.get('group')
-    function = TaskPackage.objects.filter(pk=package_id).first() if package_id else None
-    task_group = TaskGroup.objects.filter(pk=group_id, package=function).first() if (function and group_id) else None
-    if request.method == 'POST':
-        form = TicketTemplateForm(request.POST)
-        if form.is_valid():
-            template = form.save()
-            if function:
-                TaskPackageTemplate.objects.get_or_create(
-                    package=function, template=template,
-                    defaults={'task_group': task_group, 'sequence_order': function.steps.count()},
-                )
-            # The scheduler only runs generate_recurring_tickets every
-            # RECURRING_TICKET_INTERVAL_MINUTES (default 30) — without this,
-            # a template due today wouldn't produce a visible ticket for up
-            # to half an hour. Idempotent (get_or_create per occurrence), so
-            # running it here doesn't risk double-generating anything, for
-            # this template or any other.
-            call_command('generate_recurring_tickets')
-            messages.success(request, f'Recurring task rule "{template.title}" created.')
-            if function:
-                return redirect('function_detail', pk=function.pk)
-            return redirect('ticket_template_detail', pk=template.pk)
-    else:
-        # A plain ISO string, not a date object — {{ }} auto-formats a raw
-        # date/datetime object into a locale-formatted string ("July 23,
-        # 2026"), which would silently break the hidden bubble-input's
-        # value match against the ISO-stringed date_presets below.
-        initial = {'next_run_date': today.isoformat()}
-        if function:
-            initial['default_assigned_role'] = function.department
-        form = TicketTemplateForm(initial=initial)
-
-    context = _ticket_template_form_context(form, today)
-    context['function'] = function
-    context['task_group'] = task_group
-    context['task_group_summary'] = _group_target_summary(task_group) if task_group else None
-    return render(request, 'tickets/ticket_template_form.html', context)
+    """Retired — same reasoning as function_create above. A new
+    TicketTemplate created here would never fire (the scheduler no longer
+    runs generate_recurring_tickets on a timer); redirect straight to
+    where a new recurring rule actually belongs now."""
+    messages.info(request, 'Recurring work now lives under Sessions — create a rule there instead.')
+    return redirect('session_template_create')
 
 
 @login_required
