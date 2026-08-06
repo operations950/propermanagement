@@ -49,30 +49,6 @@ def _is_admin(user):
     return user.is_superuser
 
 
-def _recurring_wipe_counts():
-    """Live counts for the old TicketTemplate-based recurring system —
-    same querysets tickets.wipe_recurring_tickets itself uses, duplicated
-    here (not imported from the command) so the admin_tools page can show
-    them on every load without touching stdout capture. See that
-    command's own docstring for the full rationale."""
-    templates = TicketTemplate.objects.all()
-    overrides = PropertyTemplateOverride.objects.all()
-    packages = TaskPackage.objects.all()
-    doomed_tickets = Ticket.objects.filter(source=Ticket.Source.RECURRING).exclude(
-        status__in=Ticket.TRUE_COMPLETION_STATUSES,
-    )
-    kept_tickets = Ticket.objects.filter(
-        source=Ticket.Source.RECURRING, status__in=Ticket.TRUE_COMPLETION_STATUSES,
-    )
-    return {
-        'templates': templates.count(),
-        'overrides': overrides.count(),
-        'packages': packages.count(),
-        'doomed_tickets': doomed_tickets.count(),
-        'kept_tickets': kept_tickets.count(),
-    }
-
-
 def _safe_next(request, default='dashboard'):
     next_url = request.POST.get('next') or request.GET.get('next')
     if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
