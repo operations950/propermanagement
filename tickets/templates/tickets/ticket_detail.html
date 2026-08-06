@@ -124,10 +124,37 @@
 
         <div class="card mb-3">
             <div class="card-body">
-                <h6 class="card-title d-flex align-items-center justify-content-between gap-2">
+                <h6 class="card-title d-flex align-items-center justify-content-between gap-2" data-priority-field>
                     <span class="d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Update status</span>
-                    <span class="badge rounded-pill{% if ticket.priority == 'urgent' %}{% else %} bg-light text-dark border{% endif %}" {% if ticket.priority == 'urgent' %}style="background: var(--priority-urgent); color: #fff;"{% endif %}>{{ ticket.get_priority_display }}</span>
+                    <span class="d-flex align-items-center gap-1">
+                        <span class="badge rounded-pill" data-priority-display{% if ticket.priority == 'urgent' %}{% else %} style="background: #e9ecef; color: #495057;"{% endif %}{% if ticket.priority == 'urgent' %} style="background: var(--priority-urgent); color: #fff;"{% endif %}>{{ ticket.get_priority_display }}</span>
+                        <button type="button" class="btn btn-link btn-sm p-0" data-priority-toggle><i data-lucide="pencil" class="icon" style="width: 0.8rem; height: 0.8rem;"></i></button>
+                    </span>
                 </h6>
+                <form method="post" action="{% url 'ticket_set_priority' ticket.pk %}" class="d-none align-items-center gap-2 mb-2" data-priority-form>
+                    {% csrf_token %}
+                    <div class="bubble-picker mb-0" data-bubble-picker data-mode="single" data-name="priority">
+                        <input type="hidden" name="priority" data-bubble-input value="{{ ticket.priority }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a priority"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in priority_choices %}
+                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}"{% if value == 'urgent' %} style="--bubble-color: var(--priority-urgent);"{% endif %}>{{ label }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+                </form>
+                <script>
+                    (function () {
+                        var field = document.querySelector('[data-priority-field]');
+                        var toggle = field.querySelector('[data-priority-toggle]');
+                        var form = document.querySelector('[data-priority-form]');
+                        toggle.addEventListener('click', function () {
+                            form.classList.toggle('d-none');
+                            form.classList.toggle('d-flex');
+                        });
+                    })();
+                </script>
                 <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
                     {% csrf_token %}
                     <input type="hidden" name="back_url" value="{{ back_url }}">

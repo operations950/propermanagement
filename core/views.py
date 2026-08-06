@@ -475,6 +475,7 @@ def admin_tools(request):
         'scan_phone_number_id': django_settings.QUO_SCAN_PHONE_NUMBER_ID,
         'outbound_from_number': django_settings.QUO_DEFAULT_FROM_NUMBER,
         'staff_profiles': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__last_name'),
+        'role_choices': StaffProfile.Role.choices,
         'email_settings': email_settings,
         'email_backend': django_settings.EMAIL_BACKEND,
         'email_is_console': django_settings.EMAIL_BACKEND.endswith('console.EmailBackend'),
@@ -656,6 +657,24 @@ def staff_toggle_company_admin(request, pk):
     if request.method == 'POST':
         profile.is_company_admin = bool(request.POST.get('is_company_admin'))
         profile.save(update_fields=['is_company_admin'])
+    return redirect('admin_tools')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def staff_set_role(request, pk):
+    """Inline Department edit on the Admin Tools Staff table — auto-submits
+    on change, same one-click pattern as the Company Admin checkbox right
+    next to it. Previously the only way to change an existing staff
+    member's department was Django admin (staff_create only sets it once,
+    at account creation)."""
+    profile = get_object_or_404(StaffProfile, pk=pk)
+    if request.method == 'POST':
+        new_role = request.POST.get('role', '')
+        if new_role == '' or new_role in StaffProfile.Role.values:
+            profile.role = new_role
+            profile.save(update_fields=['role'])
+            messages.success(request, f'{profile} is now {profile.get_role_display() or "in no department"}.')
     return redirect('admin_tools')
 
 

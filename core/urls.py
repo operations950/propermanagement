@@ -24,6 +24,7 @@ urlpatterns = [
         'admin-tools/staff/<int:pk>/toggle-company-admin/', views.staff_toggle_company_admin,
         name='staff_toggle_company_admin',
     ),
+    path('admin-tools/staff/<int:pk>/role/', views.staff_set_role, name='staff_set_role'),
     path('properties/', views.property_list, name='property_list'),
     path('properties/new/', views.property_create, name='property_create'),
     path('properties/<int:pk>/', views.property_detail, name='property_detail'),

@@ -27,9 +27,9 @@ from processes.models import ProcessTemplate
 
 from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
 from .models import (
-    FollowUpLog, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket, TicketAssignmentLog,
-    TicketAttachment, TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate, TicketTemplateDocument,
-    TicketView,
+    FollowUpLog, Priority, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket,
+    TicketAssignmentLog, TicketAttachment, TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate,
+    TicketTemplateDocument, TicketView,
 )
 from .services import owner_dashboard as owner_dashboard_queries
 from .services.package_engine import unblock_dependents
@@ -930,6 +930,7 @@ def ticket_list(request):
         'now': timezone.now(),
         'status_choices': Ticket.Status.choices,
         'role_choices': StaffProfile.Role.choices,
+        'priority_choices': Priority.choices,
         'selected_status': status,
         'selected_status_label': dict(Ticket.Status.choices).get(status),
         'selected_role': role,
@@ -990,6 +991,10 @@ def ticket_quick_edit(request, pk):
         role = request.POST.get('assigned_role', '')
         if role == '' or role in StaffProfile.Role.values:
             ticket.assigned_role = role
+
+        priority = request.POST.get('priority')
+        if priority in Priority.values:
+            ticket.priority = priority
 
         status = request.POST.get('status')
         if status in Ticket.Status.values and status != Ticket.Status.COMPLETED:
@@ -1397,6 +1402,7 @@ def ticket_detail(request, pk):
         'blocking_step_label': blocking_step_label,
         'occurrence_siblings': occurrence_siblings,
         'can_approve': can_approve,
+        'priority_choices': Priority.choices,
         'status_choices': Ticket.Status.choices,
         # Completed is a hard status, deliberately excluded from the casual
         # bubble picker — the "Mark Complete" button below is the one path
@@ -2010,6 +2016,24 @@ def ticket_set_property(request, pk):
         return _list_redirect(request)
     if request.POST.get('next') == 'pending':
         return redirect('ticket_pending')
+    return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_set_priority(request, pk):
+    """Inline priority edit — same pencil-toggle-reveals-a-form pattern as
+    Edit Due Date on ticket_detail.html, and also usable as the tickets
+    list's inline Priority edit (next_qs present, see _list_redirect) for
+    parity with the other already-inline-editable columns there."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        new_priority = request.POST.get('priority')
+        if new_priority in Priority.values:
+            ticket.priority = new_priority
+            ticket.save(update_fields=['priority'])
+            messages.success(request, f'Priority set to {ticket.get_priority_display()}.')
+    if 'next_qs' in request.POST:
+        return _list_redirect(request)
     return redirect('ticket_detail', pk=ticket.pk)
 
 

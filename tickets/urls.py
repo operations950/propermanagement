@@ -37,6 +37,7 @@ urlpatterns = [
         name='ticket_previous_conversation',
     ),
     path('tickets/<int:pk>/property/', views.ticket_set_property, name='ticket_set_property'),
+    path('tickets/<int:pk>/priority/', views.ticket_set_priority, name='ticket_set_priority'),
     path('tickets/<int:pk>/contacts/', views.ticket_set_contacts, name='ticket_set_contacts'),
     path('tickets/<int:pk>/status/', views.ticket_set_status, name='ticket_set_status'),
     path('tickets/<int:pk>/status/note/', views.ticket_add_status_note, name='ticket_add_status_note'),

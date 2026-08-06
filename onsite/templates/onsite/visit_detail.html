@@ -11,6 +11,14 @@
             {% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"M j, g:i A" }}{% endif %}
             {% if visit.booking %} · from {{ visit.booking.get_source_display }} checkout{% endif %}
         </p>
+        <p class="mb-0 small">
+            {% if visit.started_at %}
+            <span style="color: var(--status-good, #0ca30c);"><i data-lucide="play-circle" class="icon"></i> Cleaner started at {{ visit.started_at|date:"g:i A" }} on {{ visit.started_at|date:"M j" }}</span>
+            {% elif visit.status == 'cancelled' or visit.status == 'skipped' %}
+            {% else %}
+            <span style="color: var(--ink-muted);"><i data-lucide="circle-dashed" class="icon"></i> Not started yet — "Start time" below is only the planned time, not an actual start</span>
+            {% endif %}
+        </p>
         {% if visit.property.address %}
         <p class="text-muted small mb-0"><i data-lucide="map-pin" class="icon"></i> {{ visit.property.address }}</p>
         {% endif %}
@@ -96,7 +104,7 @@
                             <input type="date" name="scheduled_date" class="form-control form-control-sm" value="{{ visit.scheduled_date|date:'Y-m-d' }}">
                         </div>
                         <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Start time</label>
+                            <label class="form-label small text-muted mb-1">Planned start time</label>
                             <input type="time" name="scheduled_start" class="form-control form-control-sm" value="{{ visit.scheduled_start|time:'H:i' }}">
                         </div>
                     </div>

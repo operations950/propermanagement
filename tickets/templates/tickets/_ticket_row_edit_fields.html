@@ -29,6 +29,19 @@
     </div>
 
     <div class="col-12 col-md-6">
+        <label class="form-label small fw-medium mb-1 d-block">Priority</label>
+        <div class="bubble-picker mb-0" data-bubble-picker data-mode="single" data-name="priority">
+            <input type="hidden" name="priority" data-bubble-input value="{{ t.priority }}">
+            <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a priority"></div>
+            <div class="bubble-pool" data-bubble-pool>
+                {% for value, label in priority_choices %}
+                    <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}"{% if value == 'urgent' %} style="--bubble-color: var(--priority-urgent);"{% endif %}>{{ label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6">
         <label class="form-label small fw-medium mb-1 d-block">Status</label>
         <div class="bubble-picker mb-0" data-bubble-picker data-mode="single" data-name="status">
             <input type="hidden" name="status" data-bubble-input value="{{ t.status }}">

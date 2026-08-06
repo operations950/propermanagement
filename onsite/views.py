@@ -23,6 +23,7 @@ from .models import (
     Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitType,
 )
 from .services import checklist as checklist_service
+from .services import notify as notify_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
 )
@@ -559,6 +560,8 @@ def visit_create(request):
         visit = checklist_service.create_visit(
             prop, visit_type, is_deep_clean=request.POST.get('is_deep_clean') == '1', **kwargs,
         )
+        if visit.assigned_staff_id or visit.assigned_contact_id:
+            notify_service.notify_assignee(visit, request)
         messages.success(request, f'Visit scheduled for {prop.name}.')
         return redirect('onsite_visit_detail', pk=visit.pk)
 
@@ -596,6 +599,8 @@ def visit_detail(request, pk):
                 visit.status = Visit.Status.SCHEDULED
             visit.full_clean()
             visit.save()
+            if visit.assigned_staff_id or visit.assigned_contact_id:
+                notify_service.notify_assignee(visit, request)
             messages.success(request, 'Visit reassigned.')
 
         elif action == 'save_schedule':

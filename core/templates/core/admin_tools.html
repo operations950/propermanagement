@@ -271,7 +271,17 @@
             <tr>
                 <td class="fw-medium">{{ sp.user.get_full_name|default:sp.user.username }}</td>
                 <td>{{ sp.user.email }}</td>
-                <td>{{ sp.get_role_display|default:'—' }}</td>
+                <td>
+                    <form method="post" action="{% url 'staff_set_role' sp.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <select name="role" class="form-select form-select-sm" style="min-width: 150px;" onchange="this.form.submit()">
+                            <option value=""{% if not sp.role %} selected{% endif %}>—</option>
+                            {% for value, label in role_choices %}
+                            <option value="{{ value }}"{% if sp.role == value %} selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                </td>
                 <td>{{ sp.phone|default:'—' }}</td>
                 <td>
                     <form method="post" action="{% url 'staff_toggle_company_admin' sp.pk %}" class="d-inline">
