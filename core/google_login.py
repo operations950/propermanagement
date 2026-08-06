@@ -38,10 +38,26 @@ def build_flow(request):
 
 
 def email_from_credentials(creds):
-    """Returns the verified email from the id_token, or '' if missing/unverified."""
-    id_token = creds.id_token
-    if not isinstance(id_token, dict):
+    """Returns the verified email from the id_token, or '' if missing/unverified.
+
+    creds.id_token is the raw signed JWT string the token endpoint returned
+    (google.oauth2.credentials.Credentials documents it as `str`) — it was
+    never a decoded dict, so the previous `isinstance(id_token, dict)` check
+    here was always False and this always returned '', regardless of what
+    Google actually sent back. verify_oauth2_token both decodes it AND
+    checks the signature/audience (rejecting a token minted for a different
+    OAuth client), which a plain unverified decode would not."""
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    if not creds.id_token:
         return ''
-    if not id_token.get('email_verified'):
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            creds.id_token, google_requests.Request(), audience=settings.GOOGLE_OAUTH_CLIENT_ID,
+        )
+    except Exception:
         return ''
-    return id_token.get('email', '')
+    if not claims.get('email_verified'):
+        return ''
+    return claims.get('email', '')
