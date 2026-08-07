@@ -48,6 +48,15 @@ def session_detail(request, pk):
     session = get_object_or_404(
         Session.objects.select_related('template', 'owner__user').prefetch_related('lines'), pk=pk,
     )
+    # Line-level actions (set_line_state/promote) are fired from a per-line
+    # form and, on a session with a lot of lines, happen many times in a
+    # row — a plain redirect reloads the whole page and resets scroll to
+    # the top after every single click, which is exactly the friction the
+    # one-click done toggle was built to avoid. AJAX-only in practice (see
+    # ticket_related_contacts' identical comment on why): the page-local
+    # script always sends X-Requested-With. The non-AJAX branch is kept
+    # only as a plain-POST fallback.
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -55,6 +64,8 @@ def session_detail(request, pk):
             line = get_object_or_404(SessionLine, pk=request.POST.get('line_id'), session=session)
             state = request.POST.get('state')
             if state not in SessionLine.State.values:
+                if is_ajax:
+                    return JsonResponse({'success': False, 'error': 'Invalid line state.'})
                 messages.error(request, 'Invalid line state.')
                 return redirect('session_detail', pk=session.pk)
             try:
@@ -64,12 +75,31 @@ def session_detail(request, pk):
                     notes=request.POST.get('notes'),
                 )
             except ValidationError as exc:
-                messages.error(request, ' '.join(exc.messages))
+                error = ' '.join(exc.messages)
+                if is_ajax:
+                    return JsonResponse({'success': False, 'error': error})
+                messages.error(request, error)
+                return redirect('session_detail', pk=session.pk)
+            if is_ajax:
+                # Not session.progress() — `session` was fetched with
+                # prefetch_related('lines') up top, so session.lines.all()
+                # would return that stale cached queryset (evaluated before
+                # this request's own update) rather than reflecting the
+                # state just saved above. A fresh queryset sidesteps it.
+                total = SessionLine.objects.filter(session=session).count()
+                done = SessionLine.objects.filter(session=session).exclude(state=SessionLine.State.PENDING).count()
+                return JsonResponse({'success': True, 'state': line.state, 'done': done, 'total': total})
             return redirect('session_detail', pk=session.pk)
 
         if action == 'promote':
             line = get_object_or_404(SessionLine, pk=request.POST.get('line_id'), session=session)
             ticket = lifecycle_service.promote_to_ticket(line, description=request.POST.get('description', ''))
+            if is_ajax:
+                return JsonResponse({
+                    'success': True,
+                    'ticket_url': reverse('ticket_detail', args=[ticket.pk]),
+                    'ticket_title': ticket.title,
+                })
             messages.success(request, f'Promoted to ticket: {ticket.title}')
             return redirect('session_detail', pk=session.pk)
 

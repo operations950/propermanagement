@@ -13,44 +13,42 @@
         <span class="badge" style="background: {% if session.status == 'submitted' %}var(--status-good){% else %}var(--brand-primary){% endif %}; color: #fff;">
             {{ session.get_status_display }}
         </span>
-        <div class="small mt-1" style="color: var(--ink-muted);">{{ done }} of {{ total }} resolved</div>
+        <div class="small mt-1" style="color: var(--ink-muted);" id="session-progress-text">{{ done }} of {{ total }} resolved</div>
     </div>
 </div>
 
 {% if total %}
 <div class="progress mb-4" style="height: 8px;">
-    <div class="progress-bar" role="progressbar" style="width: {% widthratio done total 100 %}%; background: var(--brand-primary);"></div>
+    <div class="progress-bar" role="progressbar" id="session-progress-bar" style="width: {% widthratio done total 100 %}%; background: var(--brand-primary);"></div>
 </div>
 {% endif %}
 
 <div class="d-flex flex-column gap-2 mb-4">
 {% for line in lines %}
-    <div class="card" style="border-radius: var(--bs-border-radius-lg); {% if line.state == 'done' %}opacity: 0.75;{% endif %}">
+    <div class="card line-card {% if line.state == 'done' %}is-done{% endif %}" id="line-card-{{ line.pk }}" style="border-radius: var(--bs-border-radius-lg);">
         <div class="card-body py-3 d-flex align-items-start gap-3">
-            <form method="post" class="mt-1">
+            <form method="post" class="mt-1 line-toggle-form">
                 {% csrf_token %}
                 <input type="hidden" name="line_id" value="{{ line.pk }}">
                 <input type="hidden" name="action" value="set_line_state">
-                <input type="hidden" name="state" value="{% if line.state == 'done' %}pending{% else %}done{% endif %}">
-                <button type="submit" class="line-done-toggle {% if line.state == 'done' %}is-done{% endif %}"
+                <input type="hidden" name="state" value="{% if line.state == 'done' %}pending{% else %}done{% endif %}" id="line-toggle-state-{{ line.pk }}">
+                <button type="submit" class="line-done-toggle {% if line.state == 'done' %}is-done{% endif %}" id="line-toggle-{{ line.pk }}"
                         aria-label="{% if line.state == 'done' %}Mark not done{% else %}Mark done{% endif %}"
                         title="{% if line.state == 'done' %}Mark not done{% else %}Mark done{% endif %}">
                     <i data-lucide="check" class="icon"></i>
                 </button>
             </form>
-            <form method="post" class="flex-grow-1">
+            <form method="post" class="flex-grow-1 line-detail-form">
                 {% csrf_token %}
                 <input type="hidden" name="line_id" value="{{ line.pk }}">
                 <div class="d-flex gap-2 align-items-start flex-wrap">
                     <div class="flex-grow-1">
-                        <div class="fw-medium" style="color: var(--ink-primary); {% if line.state == 'done' %}text-decoration: line-through; color: var(--ink-muted);{% endif %}">{{ line.label }}</div>
-                        {% if line.promoted_ticket_id %}
-                        <div class="small mt-1">
-                            <a href="{% url 'ticket_detail' line.promoted_ticket_id %}" class="text-decoration-none" style="color: var(--status-critical);">
+                        <div class="fw-medium line-label {% if line.state == 'done' %}is-done{% endif %}" id="line-label-{{ line.pk }}" style="color: var(--ink-primary);">{{ line.label }}</div>
+                        <div class="small mt-1" id="promoted-link-{{ line.pk }}" {% if not line.promoted_ticket_id %}hidden{% endif %}>
+                            <a href="{% if line.promoted_ticket_id %}{% url 'ticket_detail' line.promoted_ticket_id %}{% endif %}" class="text-decoration-none" style="color: var(--status-critical);">
                                 <i data-lucide="ticket" class="icon"></i> Promoted to ticket
                             </a>
                         </div>
-                        {% endif %}
                     </div>
                     <select name="state" class="form-select form-select-sm line-state-select" style="max-width: 170px;">
                         {% for value, label in state_choices %}
@@ -66,12 +64,9 @@
                 </div>
                 <div class="mt-2 d-flex gap-2">
                     <button type="submit" name="action" value="set_line_state" class="btn btn-sm btn-outline-primary">Save</button>
-                    {% if not line.promoted_ticket_id %}
-                    <button type="submit" name="action" value="promote" class="btn btn-sm btn-outline-danger"
-                            onclick="return confirm('Promote this line to a ticket? Use this when something is actually wrong, not for routine skips.');">
+                    <button type="submit" name="action" value="promote" class="btn btn-sm btn-outline-danger" id="promote-btn-{{ line.pk }}" {% if line.promoted_ticket_id %}hidden{% endif %}>
                         <i data-lucide="ticket" class="icon"></i> Promote to ticket
                     </button>
-                    {% endif %}
                 </div>
             </form>
         </div>
@@ -102,6 +97,13 @@
     border-color: var(--status-good);
     color: #fff;
 }
+.line-card.is-done {
+    opacity: 0.75;
+}
+.line-label.is-done {
+    text-decoration: line-through;
+    color: var(--ink-muted) !important;
+}
 </style>
 
 <div class="d-flex gap-2">
@@ -123,6 +125,83 @@ document.querySelectorAll('.line-state-select').forEach(function (select) {
     select.addEventListener('change', function () {
         var wrap = this.closest('form').querySelector('.skip-reason-wrap');
         wrap.hidden = (this.value !== 'skipped' && this.value !== 'not_applicable');
+    });
+});
+
+// Line-level actions (the done toggle, Save, Promote) submit via fetch
+// instead of a plain form POST — a real navigation reloads the whole page
+// and resets scroll to the top after every single click, which defeats
+// the point of a one-click toggle on a session with a lot of lines.
+function postLineAction(fd) {
+    fetch(window.location.pathname, {
+        method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'},
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var lineId = fd.get('line_id');
+            if (!data.success) {
+                alert(data.error || 'Something went wrong — try again.');
+                return;
+            }
+            if (data.state) applyLineState(lineId, data.state);
+            if (typeof data.done === 'number') applyProgress(data.done, data.total);
+            if (data.ticket_url) applyPromoted(lineId, data.ticket_url);
+        })
+        .catch(function () { alert('Network error — try again.'); });
+}
+
+function applyLineState(lineId, state) {
+    var isDone = state === 'done';
+    var card = document.getElementById('line-card-' + lineId);
+    var label = document.getElementById('line-label-' + lineId);
+    var toggleBtn = document.getElementById('line-toggle-' + lineId);
+    var toggleState = document.getElementById('line-toggle-state-' + lineId);
+    if (card) card.classList.toggle('is-done', isDone);
+    if (label) label.classList.toggle('is-done', isDone);
+    if (toggleBtn) {
+        toggleBtn.classList.toggle('is-done', isDone);
+        var nextLabel = isDone ? 'Mark not done' : 'Mark done';
+        toggleBtn.setAttribute('aria-label', nextLabel);
+        toggleBtn.setAttribute('title', nextLabel);
+    }
+    if (toggleState) toggleState.value = isDone ? 'pending' : 'done';
+}
+
+function applyProgress(done, total) {
+    var text = document.getElementById('session-progress-text');
+    if (text) text.textContent = done + ' of ' + total + ' resolved';
+    var bar = document.getElementById('session-progress-bar');
+    if (bar && total) bar.style.width = Math.round((done / total) * 100) + '%';
+}
+
+function applyPromoted(lineId, ticketUrl) {
+    var btn = document.getElementById('promote-btn-' + lineId);
+    if (btn) btn.hidden = true;
+    var linkWrap = document.getElementById('promoted-link-' + lineId);
+    if (linkWrap) {
+        var a = linkWrap.querySelector('a');
+        if (a) a.href = ticketUrl;
+        linkWrap.hidden = false;
+    }
+}
+
+document.querySelectorAll('.line-toggle-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        postLineAction(new FormData(form));
+    });
+});
+
+document.querySelectorAll('.line-detail-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var action = e.submitter ? e.submitter.value : 'set_line_state';
+        if (action === 'promote' && !confirm('Promote this line to a ticket? Use this when something is actually wrong, not for routine skips.')) {
+            return;
+        }
+        var fd = new FormData(form);
+        fd.set('action', action);
+        postLineAction(fd);
     });
 });
 </script>
