@@ -26,13 +26,24 @@
 <div class="d-flex flex-column gap-2 mb-4">
 {% for line in lines %}
     <div class="card" style="border-radius: var(--bs-border-radius-lg); {% if line.state == 'done' %}opacity: 0.75;{% endif %}">
-        <div class="card-body py-3">
-            <form method="post">
+        <div class="card-body py-3 d-flex align-items-start gap-3">
+            <form method="post" class="mt-1">
+                {% csrf_token %}
+                <input type="hidden" name="line_id" value="{{ line.pk }}">
+                <input type="hidden" name="action" value="set_line_state">
+                <input type="hidden" name="state" value="{% if line.state == 'done' %}pending{% else %}done{% endif %}">
+                <button type="submit" class="line-done-toggle {% if line.state == 'done' %}is-done{% endif %}"
+                        aria-label="{% if line.state == 'done' %}Mark not done{% else %}Mark done{% endif %}"
+                        title="{% if line.state == 'done' %}Mark not done{% else %}Mark done{% endif %}">
+                    <i data-lucide="check" class="icon"></i>
+                </button>
+            </form>
+            <form method="post" class="flex-grow-1">
                 {% csrf_token %}
                 <input type="hidden" name="line_id" value="{{ line.pk }}">
                 <div class="d-flex gap-2 align-items-start flex-wrap">
                     <div class="flex-grow-1">
-                        <div class="fw-medium" style="color: var(--ink-primary);">{{ line.label }}</div>
+                        <div class="fw-medium" style="color: var(--ink-primary); {% if line.state == 'done' %}text-decoration: line-through; color: var(--ink-muted);{% endif %}">{{ line.label }}</div>
                         {% if line.promoted_ticket_id %}
                         <div class="small mt-1">
                             <a href="{% url 'ticket_detail' line.promoted_ticket_id %}" class="text-decoration-none" style="color: var(--status-critical);">
@@ -43,7 +54,7 @@
                     </div>
                     <select name="state" class="form-select form-select-sm line-state-select" style="max-width: 170px;">
                         {% for value, label in state_choices %}
-                        <option value="{{ value }}" {% if value == line.state %}selected{% endif %}>{{ label }}</option>
+                        {% if value != 'done' %}<option value="{{ value }}" {% if value == line.state %}selected{% endif %}>{{ label }}</option>{% endif %}
                         {% endfor %}
                     </select>
                 </div>
@@ -67,6 +78,31 @@
     </div>
 {% endfor %}
 </div>
+
+<style>
+.line-done-toggle {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 2px solid var(--ink-muted);
+    background: transparent;
+    color: transparent;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.line-done-toggle:hover {
+    border-color: var(--status-good);
+}
+.line-done-toggle.is-done {
+    background: var(--status-good);
+    border-color: var(--status-good);
+    color: #fff;
+}
+</style>
 
 <div class="d-flex gap-2">
     {% if session.status == 'open' %}
