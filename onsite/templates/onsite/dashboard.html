@@ -83,6 +83,10 @@
                         <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--priority-urgent) 15%, white); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, white); font-size: 0.6rem;" title="Next guest checks in the same day">
                             <i data-lucide="log-in" class="icon" style="width: 10px; height: 10px;"></i> Same-day check-in
                         </span>
+                        {% elif visit.vacancy_days %}
+                        <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.6rem;" title="Days until the next guest checks in">
+                            <i data-lucide="calendar-x" class="icon" style="width: 10px; height: 10px;"></i> {{ visit.vacancy_days }}{% if visit.vacancy_days == 30 %}+{% endif %} day{{ visit.vacancy_days|pluralize }} vacant
+                        </span>
                         {% endif %}
                         {% if visit.booking.listing_name %}<div class="small" style="color: var(--ink-muted);">{{ visit.booking.listing_name }}</div>{% endif %}
                     </td>

@@ -423,6 +423,27 @@ class Visit(models.Model):
             return False
         return timezone.localtime(self.next_booking.check_in).date() == self.scheduled_date
 
+    def vacancy_days(self, cap=30):
+        """Days between this cleaning and the next guest's check-in,
+        capped at `cap` — the companion signal to is_same_day_checkin for
+        every cleaning that ISN'T same-day: an exact count much past the
+        cap isn't operationally useful (a property empty 3 days matters
+        for staffing in a way one empty 90 days doesn't), and no
+        next_booking at all (nothing on the books yet) reads the same as
+        a distant one from a "does this need attention soon" standpoint,
+        so both are represented as `cap`. Returns None only when this
+        visit has no scheduled_date at all to measure from (shouldn't
+        happen for a real turnover visit, but a manually-created one
+        could lack it)."""
+        if not self.scheduled_date:
+            return None
+        if not self.next_booking_id:
+            return cap
+        days = (timezone.localtime(self.next_booking.check_in).date() - self.scheduled_date).days
+        if days <= 0:
+            return 0
+        return min(days, cap)
+
     def rotate_access_token(self):
         self.access_token = uuid.uuid4()
         self.token_expires_at = timezone.now() + timedelta(days=settings.VENDOR_TOKEN_EXPIRY_DAYS)
