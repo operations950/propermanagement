@@ -48,7 +48,10 @@ def _visit_status(visit, now):
     return 'dirty'
 
 
-# Every range the board's tab strip can show. 'day' isn't a tab itself —
+# Every forward-looking range the board's tab strip can show, as an offset
+# from today. 'yesterday' isn't in here — it's the one backward-looking tab,
+# handled separately in dashboard() since it doesn't fit the
+# start=today/end=today+N shape the others share. 'day' isn't a tab at all —
 # it's what a single ?date= drill-in (e.g. from the calendar view) renders
 # as, with its own "back to Today + Tomorrow" link instead of a tab.
 _RANGE_SPANS = {
@@ -77,14 +80,24 @@ def dashboard(request):
         except ValueError:
             start = end = today
         range_key = 'day'
+    elif request.GET.get('range') == 'yesterday':
+        range_key = 'yesterday'
+        start = end = today - timedelta(days=1)
     else:
         range_key = request.GET.get('range') if request.GET.get('range') in _RANGE_SPANS else 'default'
         start = today
         end = today + timedelta(days=_RANGE_SPANS[range_key])
 
+    visits_qs = Visit.objects.filter(scheduled_date__gte=start, scheduled_date__lte=end)
+    if range_key != 'yesterday':
+        # Cancelled/skipped visits drop off the forward-looking board — they're
+        # resolved, not something to prepare for. Yesterday is a look-back, not
+        # a to-do list: what actually got skipped or cancelled is exactly the
+        # kind of thing worth seeing in a same-day review, so nothing is
+        # filtered out of it.
+        visits_qs = visits_qs.exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED])
     visits = list(
-        Visit.objects.filter(scheduled_date__gte=start, scheduled_date__lte=end)
-        .exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED])
+        visits_qs
         .select_related('property', 'visit_type', 'assigned_staff__user', 'assigned_contact', 'booking')
         .order_by('scheduled_date', 'ready_by')
     )
@@ -100,14 +113,17 @@ def dashboard(request):
     # exactly the confusing case an empty-but-visible Today/Tomorrow avoids.
     # A week/month view skips empty days instead — 30 "no visits" sections
     # would bury the days that actually matter.
-    show_empty_days = range_key in ('default', 'day')
+    show_empty_days = range_key in ('default', 'day', 'yesterday')
     board_days = []
     span = (end - start).days
     for offset in range(span + 1):
         day = start + timedelta(days=offset)
         day_visits = visits_by_date.get(day, [])
         if day_visits or show_empty_days:
-            board_days.append({'date': day, 'visits': day_visits, 'is_today': day == today})
+            board_days.append({
+                'date': day, 'visits': day_visits, 'is_today': day == today,
+                'is_yesterday': day == today - timedelta(days=1),
+            })
 
     todays_visits = visits_by_date.get(today, [])
     checkouts_today = (
