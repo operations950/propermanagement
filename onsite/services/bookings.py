@@ -147,6 +147,32 @@ def _find_next_booking(property, after_datetime, exclude_pk=None):
     return qs.first()
 
 
+def _refresh_next_bookings_for_property(property):
+    """Every branch below only ever recomputes next_booking/ready_by for
+    the ONE visit generated from the specific booking row being processed
+    — never for any OTHER visit at this property that might reference a
+    booking a few rows up or down in the same file. That leaves a real gap:
+    if guest B's reservation (which was visit A's "next" check-in) moves,
+    cancels, or a closer guest C gets added, visit A's next_booking/
+    ready_by/same-day-checkin badge silently goes stale — nothing else
+    re-derives it. Called once at the end of apply_bookings_for_property,
+    after every diff branch has run, so every active booking-linked visit
+    at this property reflects the current picture regardless of which row
+    actually changed."""
+    active_visits = (
+        Visit.objects.filter(property=property, booking__isnull=False)
+        .exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SUBMITTED, Visit.Status.VERIFIED])
+        .select_related('booking')
+    )
+    for visit in active_visits:
+        correct_next = _find_next_booking(property, visit.booking.check_out, exclude_pk=visit.booking_id)
+        correct_next_id = correct_next.id if correct_next else None
+        if correct_next_id != visit.next_booking_id:
+            visit.next_booking = correct_next
+            visit.ready_by = correct_next.check_in if correct_next else None
+            visit.save(update_fields=['next_booking', 'ready_by'])
+
+
 @transaction.atomic
 def apply_bookings_for_property(property, source, raw_bookings):
     """Writes the diff computed the same way diff_bookings does, for ONE
@@ -236,5 +262,7 @@ def apply_bookings_for_property(property, source, raw_bookings):
         booking.visits.filter(pk__in=[v.pk for v in active_visits]).update(status='cancelled')
         for visit in active_visits:
             transaction.on_commit(lambda visit=visit: delete_visit_event(visit))
+
+    _refresh_next_bookings_for_property(property)
 
     return len(diff['new']), len(diff['changed']), len(diff['reactivated']), len(diff['cancelled']), visit_note
