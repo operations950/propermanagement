@@ -79,6 +79,11 @@
                 <tr>
                     <td>
                         <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none">{{ visit.property.name }}</a>
+                        {% if visit.is_same_day_checkin %}
+                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--priority-urgent) 15%, white); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, white); font-size: 0.6rem;" title="Next guest checks in the same day">
+                            <i data-lucide="log-in" class="icon" style="width: 10px; height: 10px;"></i> Same-day check-in
+                        </span>
+                        {% endif %}
                         {% if visit.booking.listing_name %}<div class="small" style="color: var(--ink-muted);">{{ visit.booking.listing_name }}</div>{% endif %}
                     </td>
                     <td>{{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.6rem;">+ Deep clean</span>{% endif %}</td>

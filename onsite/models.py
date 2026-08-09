@@ -405,6 +405,24 @@ class Visit(models.Model):
             return f'{self.assigned_contact} (external)'
         return 'Unassigned'
 
+    def is_same_day_checkin(self):
+        """True when the next guest checks in the same calendar day this
+        cleaning is scheduled for — the tightest possible turnover, worth
+        its own signal rather than folding into ready_by/at_risk (those are
+        about lateness; this is about same-day tightness regardless of how
+        much time is actually left). Reads next_booking directly rather
+        than ready_by, since ready_by is deliberately overridable (see its
+        own field help_text) and shouldn't silently change what counts as
+        same-day.
+
+        Deliberately a plain method, not @property — this model has its
+        own `property` field (the FK to core.Property), which shadows the
+        builtin `property` decorator inside this class body. See
+        assignee_label just above for the same reason."""
+        if not self.next_booking_id or not self.scheduled_date:
+            return False
+        return timezone.localtime(self.next_booking.check_in).date() == self.scheduled_date
+
     def rotate_access_token(self):
         self.access_token = uuid.uuid4()
         self.token_expires_at = timezone.now() + timedelta(days=settings.VENDOR_TOKEN_EXPIRY_DAYS)
