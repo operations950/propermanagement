@@ -241,6 +241,79 @@ summary.chip-btn::-webkit-details-marker {
   display: block;
 }
 
+.checklist-photo-thumb {
+  position: relative;
+}
+
+/* Small play badge in the corner of a video thumbnail — the frame grab
+   already makes it look like a photo, this is what tells the two apart
+   at a glance. */
+.checklist-photo-thumb-video-badge {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checklist-photo-thumb-video-badge .icon {
+  width: 10px;
+  height: 10px;
+}
+
+/* Optimistic thumbnail states — shown immediately from a local preview
+   while the real upload happens in the background (see
+   checklist-actions.js), so attaching a photo never feels like a wait. */
+
+.checklist-photo-thumb-pending {
+  opacity: 0.55;
+}
+
+.checklist-photo-thumb-pending::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.65);
+  border-top-color: #fff;
+  animation: checklist-thumb-spin 0.7s linear infinite;
+}
+
+@keyframes checklist-thumb-spin {
+  to { transform: rotate(360deg); }
+}
+
+.checklist-photo-thumb-failed {
+  border-color: var(--status-critical, #d03b3b);
+  opacity: 0.85;
+}
+
+.checklist-photo-thumb-failed::after {
+  content: '!';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--status-critical, #d03b3b);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Skip-reason panel — deliberately NOT a tiny inline <details> box; a
    cleaner needs to actually notice this and type something real, so it
    gets full visual weight: its own bordered/tinted card, a real textarea
@@ -290,4 +363,35 @@ summary.chip-btn::-webkit-details-marker {
 
 .skip-panel-actions .btn {
   min-height: 40px;
+}
+
+/* Signature overlay (onsite's visit_public.html) — deliberately NOT part
+   of the normal scrollable page. It's hidden until "Submit visit" is
+   tapped, then fixed over everything else and centered, so signing never
+   fights the long checklist above it for scroll position. */
+
+.signature-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  background: rgba(43, 43, 46, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.signature-overlay[hidden] {
+  display: none;
+}
+
+.signature-overlay-card {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface-card, #fff);
+  border-radius: var(--bs-border-radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem;
 }

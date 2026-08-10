@@ -79,7 +79,22 @@
                     });
                     saveBtn.disabled = true;
                     fetch(root.dataset.uploadUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
-                        .then(function () { window.location.reload(); });
+                        .then(function (resp) {
+                            // The processes app (the original caller here) wants the
+                            // page to reload so the step picks up its new
+                            // completed/attachment state — that stays the default.
+                            // onsite's visit_public.html signs inside a modal that
+                            // still has its own "actually submit the visit" step
+                            // to chain afterward, so it opts out via this attribute
+                            // and listens for the event instead of getting reloaded
+                            // out from under that next step.
+                            if (root.hasAttribute('data-signature-no-reload')) {
+                                saveBtn.disabled = false;
+                                root.dispatchEvent(new CustomEvent('signature:saved', { bubbles: true, detail: { ok: resp.ok } }));
+                            } else {
+                                window.location.reload();
+                            }
+                        });
                 }, 'image/png');
             });
         }

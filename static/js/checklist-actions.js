@@ -112,30 +112,108 @@
     refreshIcons();
   }
 
-  function appendThumbs(itemEl, mediaList) {
+  // Reads a File into a data: URL for an instant local preview — used for
+  // photos directly, and as the fallback if a video's frame grab (below)
+  // fails for any reason (so a thumbnail still shows something rather than
+  // nothing while the real upload is in flight).
+  function readAsDataURL(file) {
+    return new Promise(function (resolve) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { resolve(null); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Videos have no server-independent thumbnail of their own — a bare
+  // <video> element often just renders black/blank until a frame has
+  // actually been decoded, and there's no guarantee of that happening
+  // before someone glances at the checklist. Grabbing one frame locally
+  // (from the file the cleaner just picked, before it's even uploaded)
+  // gives a real thumbnail image instantly, works the same regardless of
+  // storage backend, and needs no server support.
+  function generateVideoPoster(file) {
+    return new Promise(function (resolve) {
+      var objectUrl = URL.createObjectURL(file);
+      var video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.src = objectUrl;
+      var settled = false;
+
+      function finish(dataUrl) {
+        if (settled) return;
+        settled = true;
+        URL.revokeObjectURL(objectUrl);
+        resolve(dataUrl);
+      }
+      function drawFrame() {
+        try {
+          var canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 160;
+          canvas.height = video.videoHeight || 160;
+          canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+          finish(canvas.toDataURL('image/jpeg', 0.75));
+        } catch (e) {
+          finish(null);
+        }
+      }
+      video.addEventListener('loadeddata', function () {
+        try {
+          video.currentTime = Math.min(0.15, (video.duration || 1) / 2);
+        } catch (e) {
+          drawFrame();
+        }
+      });
+      video.addEventListener('seeked', drawFrame);
+      video.addEventListener('error', function () { finish(null); });
+      setTimeout(function () { finish(null); }, 4000); // never block on a stuck decode
+      video.load();
+    });
+  }
+
+  function updatePhotoStatus(itemEl) {
     var thumbsEl = itemEl.querySelector('[data-photo-thumbs]');
     var statusEl = itemEl.querySelector('[data-photo-status]');
-    if (thumbsEl) {
-      mediaList.forEach(function (m) {
-        var a = document.createElement('a');
-        a.href = m.url;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.className = 'checklist-photo-thumb';
-        var mediaEl = document.createElement(m.is_video ? 'video' : 'img');
-        mediaEl.src = m.url;
-        if (m.is_video) mediaEl.muted = true;
-        else mediaEl.alt = '';
-        a.appendChild(mediaEl);
-        thumbsEl.appendChild(a);
-      });
-    }
-    if (statusEl) {
-      var count = thumbsEl ? thumbsEl.children.length : mediaList.length;
+    if (!thumbsEl || !statusEl) return;
+    var settled = thumbsEl.querySelectorAll(
+      '.checklist-photo-thumb:not(.checklist-photo-thumb-pending):not(.checklist-photo-thumb-failed)',
+    ).length;
+    if (settled > 0) {
       statusEl.style.color = 'var(--status-good)';
-      statusEl.innerHTML = '<i data-lucide="check" class="icon"></i> ' + count + ' photo(s) attached';
+      statusEl.innerHTML = '<i data-lucide="check" class="icon"></i> ' + settled + ' photo(s) attached';
+      refreshIcons();
     }
-    refreshIcons();
+  }
+
+  function uploadOnePhoto(itemEl, itemId, file, thumbEl) {
+    var fd = new FormData();
+    fd.append('action', 'upload_item_photo');
+    fd.append('csrfmiddlewaretoken', getCsrfToken());
+    fd.append('item_id', itemId);
+    fd.append('photo', file);
+    fetch(window.location.pathname, {
+      method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.success || !data.media || !data.media.length) throw new Error(data.error || 'upload failed');
+        thumbEl.href = data.media[0].url;
+        thumbEl.classList.remove('checklist-photo-thumb-pending');
+        updatePhotoStatus(itemEl);
+      })
+      .catch(function () {
+        thumbEl.classList.remove('checklist-photo-thumb-pending');
+        thumbEl.classList.add('checklist-photo-thumb-failed');
+        thumbEl.title = 'Upload failed — tap to retry';
+        thumbEl.onclick = function (e) {
+          e.preventDefault();
+          thumbEl.classList.remove('checklist-photo-thumb-failed');
+          thumbEl.classList.add('checklist-photo-thumb-pending');
+          uploadOnePhoto(itemEl, itemId, file, thumbEl);
+        };
+      });
   }
 
   // --- Checklist item actions (done/undo/skip/note), delegated so newly
@@ -238,39 +316,55 @@
 
   // --- Photo upload: auto-fires on file selection (Take Photo / Choose
   // File are wired by photo-capture.js), no separate Upload tap needed.
-  // `multiple` on the input means one selection can carry several files,
-  // all sent together. ---
+  // `multiple` on the input means one selection can carry several files.
+  //
+  // Each file gets its own optimistic thumbnail — a locally-generated
+  // preview (instant, no network round trip) shown right away with a
+  // "pending" spinner overlay, while the real upload happens in the
+  // background. This is what makes attaching feel instant instead of
+  // "select a photo, then wait": the cleaner sees their photo attached
+  // immediately, they just don't yet know the server has it. Uploading
+  // one file per request (rather than the whole batch together) means
+  // one slow/failed file never blocks or fails the others, and each gets
+  // its own tap-to-retry if it does fail.
   document.querySelectorAll('[data-photo-input]').forEach(function (input) {
     input.addEventListener('change', function () {
-      var files = input.files;
-      if (!files || !files.length) return;
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
       var itemEl = input.closest('.checklist-item');
       if (!itemEl) return;
-      var uploadingEl = itemEl.querySelector('[data-photo-uploading]');
-      if (uploadingEl) uploadingEl.hidden = false;
+      var thumbsEl = itemEl.querySelector('[data-photo-thumbs]');
+      var itemId = itemEl.dataset.itemId;
 
-      var fd = new FormData();
-      fd.append('action', 'upload_item_photo');
-      fd.append('csrfmiddlewaretoken', getCsrfToken());
-      fd.append('item_id', itemEl.dataset.itemId);
-      for (var i = 0; i < files.length; i++) fd.append('photo', files[i]);
+      files.forEach(function (file) {
+        var isVideo = file.type.indexOf('video') === 0;
+        var previewPromise = isVideo ? generateVideoPoster(file).then(function (poster) {
+          return poster || readAsDataURL(file); // last-resort fallback if the frame grab failed
+        }) : readAsDataURL(file);
 
-      fetch(window.location.pathname, {
-        method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (uploadingEl) uploadingEl.hidden = true;
-          if (!data.success) return showError(itemEl, data.error);
-          appendThumbs(itemEl, data.media);
-        })
-        .catch(function () {
-          if (uploadingEl) uploadingEl.hidden = true;
-          showError(itemEl, 'Upload failed — check your connection and try again.');
-        })
-        .finally(function () {
-          input.value = ''; // lets the same file be picked again later if needed
+        previewPromise.then(function (previewSrc) {
+          var thumb = document.createElement('a');
+          thumb.href = '#';
+          thumb.target = '_blank';
+          thumb.rel = 'noopener';
+          thumb.className = 'checklist-photo-thumb checklist-photo-thumb-pending';
+          var img = document.createElement('img');
+          img.src = previewSrc || '';
+          img.alt = '';
+          thumb.appendChild(img);
+          if (isVideo) {
+            var badge = document.createElement('span');
+            badge.className = 'checklist-photo-thumb-video-badge';
+            badge.innerHTML = '<i data-lucide="play" class="icon"></i>';
+            thumb.appendChild(badge);
+          }
+          thumbsEl.appendChild(thumb);
+          refreshIcons();
+          uploadOnePhoto(itemEl, itemId, file, thumb);
         });
+      });
+
+      input.value = ''; // lets the same file be picked again later if needed
     });
   });
 
@@ -313,6 +407,49 @@
           submitBtn.disabled = false;
           showError(issueForm, 'Could not send — check your connection and try again.');
         });
+    });
+  }
+
+  // --- Signature overlay: hidden until "Submit visit" is tapped, then
+  // locked in place over the rest of the page instead of sitting inline
+  // in the normal scroll flow (a long checklist above it was fighting the
+  // signature card for scroll position). Signing successfully is what
+  // actually fires the real submit — see static/js/signature-pad.js's
+  // data-signature-no-reload branch, which dispatches 'signature:saved'
+  // here instead of reloading on its own. ---
+  var openSignatureBtn = document.getElementById('open-signature-btn');
+  var signatureOverlay = document.getElementById('signature-overlay');
+  var closeSignatureBtn = document.getElementById('close-signature-btn');
+
+  function openOverlay() {
+    signatureOverlay.hidden = false;
+    document.body.style.overflow = 'hidden';
+    refreshIcons();
+  }
+  function closeOverlay() {
+    signatureOverlay.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  if (openSignatureBtn && signatureOverlay) {
+    openSignatureBtn.addEventListener('click', openOverlay);
+  }
+  if (closeSignatureBtn && signatureOverlay) {
+    closeSignatureBtn.addEventListener('click', closeOverlay);
+  }
+  if (signatureOverlay) {
+    // Tapping the dimmed backdrop (not the card itself) closes it too —
+    // the usual modal convention.
+    signatureOverlay.addEventListener('click', function (e) {
+      if (e.target === signatureOverlay) closeOverlay();
+    });
+    signatureOverlay.addEventListener('signature:saved', function (e) {
+      if (!e.detail || !e.detail.ok) {
+        showError(signatureOverlay.querySelector('.signature-overlay-card'), 'Could not save signature — try again.');
+        return;
+      }
+      var submitForm = document.getElementById('submit-visit-form');
+      if (submitForm) submitForm.submit();
     });
   }
 })();

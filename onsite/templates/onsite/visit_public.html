@@ -90,12 +90,18 @@
                 <input type="file" accept="image/*,video/*" data-photo-input multiple hidden>
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-photo-take-btn><i data-lucide="camera" class="icon"></i> Take Photo</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-photo-choose-btn><i data-lucide="folder-open" class="icon"></i> Choose File</button>
-                <span class="small text-muted" data-photo-uploading hidden>Uploading…</span>
             </div>
             <div class="checklist-photo-thumbs" data-photo-thumbs>
                 {% for media in item.media.all %}
                 <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="checklist-photo-thumb">
-                    {% if media.media_type == 'video' %}<video src="{{ media.file.url }}" muted></video>{% else %}<img src="{{ media.file.url }}" alt="">{% endif %}
+                    {% if media.media_type == 'video' %}
+                    {# #t=0.1 makes the browser render that frame as the poster with no JS/canvas needed — #}
+                    {# freshly-attached videos this session get a real extracted-frame thumbnail instead #}
+                    {# (see checklist-actions.js's generateVideoPoster), this covers ones already on the #}
+                    {# visit from before (re-opening the link after attaching some earlier). #}
+                    <video src="{{ media.file.url }}#t=0.1" preload="metadata" muted playsinline></video>
+                    <span class="checklist-photo-thumb-video-badge"><i data-lucide="play" class="icon"></i></span>
+                    {% else %}<img src="{{ media.file.url }}" alt="">{% endif %}
                 </a>
                 {% endfor %}
             </div>
@@ -180,26 +186,35 @@
 </div></div>
 {% endif %}
 
-<div class="card my-3">
-    <div class="card-body p-4" data-signature-pad data-csrf="{{ csrf_token }}" data-upload-url="{% url 'onsite_visit_public_signature' visit.access_token %}">
-        <h6 class="card-title mb-2">Signature</h6>
-        {% if visit.signature_image %}
-        <p class="small text-success mb-2"><i data-lucide="check" class="icon"></i> Signed{% if visit.signed_name %} by {{ visit.signed_name }}{% endif %}</p>
-        {% endif %}
+<button type="button" class="btn btn-primary btn-lg w-100 my-4" id="open-signature-btn"><i data-lucide="send" class="icon"></i> Submit visit</button>
+
+{# The real, final submit — a plain POST+redirect on purpose (it swaps the #}
+{# whole page over to the "Submitted" thank-you state), just not one a tap #}
+{# fires directly: id="open-signature-btn" above opens the signature #}
+{# overlay instead, and only a successfully-saved signature submits this. #}
+<form method="post" id="submit-visit-form" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="submit">
+</form>
+
+{# Hidden until "Submit visit" is tapped — locked in place over the rest of #}
+{# the page (not part of the normal scroll flow) so signing doesn't fight #}
+{# with a long checklist underneath it for scroll position. #}
+<div class="signature-overlay" id="signature-overlay" hidden>
+    <div class="signature-overlay-card" data-signature-pad data-csrf="{{ csrf_token }}" data-signature-no-reload data-upload-url="{% url 'onsite_visit_public_signature' visit.access_token %}">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <h6 class="card-title mb-0">Sign to submit</h6>
+            <button type="button" class="btn-close" id="close-signature-btn" aria-label="Cancel"></button>
+        </div>
+        <p class="small text-muted mb-2">This finishes the visit — you won't be able to change checklist answers after this.</p>
         <input type="text" name="signed_name" data-signature-extra placeholder="Your name" class="form-control form-control-sm mb-2" value="{{ visit.signed_name }}">
         <canvas data-signature-canvas width="600" height="150" style="width: 100%; height: 150px; border: 1px solid var(--border-hairline); border-radius: 8px; touch-action: none;"></canvas>
-        <div class="d-flex gap-2 mt-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-signature-clear>Clear</button>
-            <button type="button" class="btn btn-outline-primary btn-sm" data-signature-save>Save signature</button>
+        <div class="d-flex gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary" data-signature-clear>Clear</button>
+            <button type="button" class="btn btn-primary flex-grow-1" data-signature-save>Sign &amp; submit</button>
         </div>
     </div>
 </div>
-
-<form method="post" class="my-4">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="submit">
-    <button class="btn btn-primary btn-lg w-100" type="submit"><i data-lucide="send" class="icon"></i> Submit visit</button>
-</form>
 {% endif %}
 <script src="{% static 'js/signature-pad.js' %}"></script>
 <script src="{% static 'js/checklist-actions.js' %}"></script>
