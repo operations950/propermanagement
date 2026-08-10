@@ -29,7 +29,6 @@ urlpatterns = [
     path('properties/new/', views.property_create, name='property_create'),
     path('properties/<int:pk>/', views.property_detail, name='property_detail'),
     path('properties/<int:pk>/edit/', views.property_edit, name='property_edit'),
-    path('properties/<int:pk>/recurring-tasks/', views.property_recurring_tasks, name='property_recurring_tasks'),
     path('properties/<int:pk>/followup/sms/', views.property_followup_sms, name='property_followup_sms'),
     path('properties/<int:pk>/followup/email/', views.property_followup_email, name='property_followup_email'),
     path('properties/<int:pk>/contacts/<int:contact_pk>/thread/', views.property_contact_thread, name='property_contact_thread'),

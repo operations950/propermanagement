@@ -18,11 +18,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
 from processes.models import ProcessTemplate
-from tickets.models import (
-    Frequency, FollowUpLog, PropertyPackage, PropertyTemplateOverride, TaskPackage, TaskPackageTemplate,
-    Ticket, TicketTemplate,
-)
-from tickets.services import applicability
+from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
 from . import app_settings, google_calendar, google_login, places, quickbooks, usps
@@ -1412,84 +1408,3 @@ def contact_duplicates_dismiss(request):
         messages.success(request, 'Marked as not duplicates.')
     return redirect('contact_duplicates')
 
-
-def _template_source_label(template, prop, override, assigned_attribute_ids):
-    """Human-readable reason a template shows up in this property's
-    effective set — purely explanatory, not used for any logic. A short
-    caption shown alongside the row's Inherited/Added/Excluded/Modified
-    state (see _row_state) — this is the "why", that's the "what"."""
-    if override and override.action == PropertyTemplateOverride.Action.INCLUDE:
-        if override.frequency or override.assigned_role or override.assigned_staff_id:
-            return 'Manual override'
-        return 'Manual add'
-    if template.target_type == TicketTemplate.TargetType.PROPERTY:
-        return 'Auto — direct assignment'
-    if template.target_type == TicketTemplate.TargetType.CONTACT:
-        return f'Auto — linked to {template.contact}' if template.contact_id else 'Auto — contact match'
-    package_step = TaskPackageTemplate.objects.filter(
-        template=template, package__is_active=True, package__property_assignments__property=prop,
-    ).select_related('package').first()
-    if package_step:
-        return f'Auto — package: {package_step.package.title}'
-    required_ids = set(template.required_attributes.values_list('id', flat=True))
-    if required_ids and required_ids <= assigned_attribute_ids:
-        return 'Auto — attribute match'
-    if template.property_types:
-        return 'Auto — type match'
-    return 'Auto — every type'
-
-
-class RowState:
-    """The 4 explicit states a Task Rule row can show for one property —
-    deliberately not a stored field: it's always derived fresh from
-    (override, base_match) so it can never drift from what the applicability
-    engine would actually do."""
-    INHERITED = 'inherited'
-    ADDED = 'added'
-    EXCLUDED = 'excluded'
-    MODIFIED = 'modified'
-
-
-ROW_STATE_LABELS = {
-    RowState.INHERITED: 'Inherited',
-    RowState.ADDED: 'Added directly',
-    RowState.EXCLUDED: 'Excluded locally',
-    RowState.MODIFIED: 'Modified locally',
-}
-
-
-def _row_state(override, base_match):
-    """Classifies one (template, property) pairing. Returns None when the
-    rule neither applies nor has any override at all — those don't get a
-    row. An EXCLUDE override always shows (even if the rule no longer
-    matches at all — e.g. its property_types changed since — surfaced for
-    transparency rather than silently pruned). An INCLUDE override that
-    changes nothing on a rule that already matches is treated as Inherited
-    (the override is a redundant no-op)."""
-    if override and override.action == PropertyTemplateOverride.Action.EXCLUDE:
-        return RowState.EXCLUDED
-    if override and override.action == PropertyTemplateOverride.Action.INCLUDE:
-        if not base_match:
-            return RowState.ADDED
-        field_changed = bool(
-            override.frequency or override.assigned_role or override.assigned_staff_id
-            or override.workday_of_month is not None
-        )
-        return RowState.MODIFIED if field_changed else RowState.INHERITED
-    return RowState.INHERITED if base_match else None
-
-
-@login_required
-def property_recurring_tasks(request, pk):
-    """Retired along with the rest of the TicketTemplate-based recurring
-    system — see the "Recurring work overhaul — sessions" build brief and
-    tickets/views.py's function_create/ticket_template_create for the same
-    retirement pattern. This screen's whole reason to exist was reviewing
-    TicketTemplate/PropertyTemplateOverride/TaskPackage applicability for
-    one property; all of those rows are gone from production (see
-    tickets.wipe_recurring_tickets), so there is nothing left for it to
-    show. Kept as a redirect rather than deleted so an old bookmarked link
-    still goes somewhere sensible instead of 404ing."""
-    get_object_or_404(Property, pk=pk)
-    messages.info(request, 'Recurring work now lives under Recurring, not on individual properties.')
-    return redirect('property_detail', pk=pk)
