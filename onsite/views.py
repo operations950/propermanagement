@@ -911,8 +911,18 @@ def _checklist_sections(checklist_items):
 @require_http_methods(['POST'])
 def visit_public_signature(request, token):
     """Upload target for static/js/signature-pad.js (already built for the
-    processes app) — generic multipart file+caption POST, reused as-is."""
-    if AccessAttempt.is_rate_limited(_client_ip(request)):
+    processes app) — generic multipart file+caption POST, reused as-is.
+
+    Same raised limit as visit_public itself, and for the same reason:
+    AccessAttempt.is_rate_limited counts by IP across every view that
+    calls it (there's no per-endpoint counter), so leaving this one at
+    the shared 30-requests/5-minutes default meant a cleaner who'd
+    already made 30+ AJAX checklist requests (trivial on a 40+ item
+    checklist under the per-action design) had this endpoint pre-tripped
+    by the time they reached Submit — surfacing as "Could not save
+    signature" right at the end of a visit, the worst possible place for
+    it to fail."""
+    if AccessAttempt.is_rate_limited(_client_ip(request), limit=600, window_minutes=5):
         return HttpResponse('Too many requests.', status=429)
 
     visit = get_object_or_404(Visit, access_token=token)
