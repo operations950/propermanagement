@@ -1,0 +1,318 @@
+/*
+ * Drives onsite's cleaner-facing checklist (visit_public.html): every
+ * per-item action (done/skip/undo/note/photo), the issue-report form, and
+ * the supply-reading buttons all submit via fetch and patch the DOM in
+ * place instead of a normal form POST + redirect. A plain POST/redirect
+ * flow means every single tap reloads the whole page and resets scroll to
+ * the top — brutal on a 40+ item checklist, and it's also what made the
+ * per-item photo upload need an explicit "Upload" button instead of
+ * attaching as soon as a file is picked. This file is loaded only by
+ * visit_public.html (see its own <script src> tag), not globally.
+ *
+ * Photo capture buttons (Take Photo / Choose File) are still wired by the
+ * shared static/js/photo-capture.js, loaded globally in
+ * vendorportal/base.html — this file only adds the auto-upload-on-select
+ * behavior on top of that, it doesn't replace it.
+ */
+(function () {
+  'use strict';
+
+  function getCsrfToken() {
+    var el = document.querySelector('[name=csrfmiddlewaretoken]');
+    return el ? el.value : '';
+  }
+
+  function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = s == null ? '' : s;
+    return div.innerHTML;
+  }
+
+  function truncate(s, n) {
+    return s && s.length > n ? s.slice(0, n) + '…' : (s || '');
+  }
+
+  function refreshIcons() {
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  // Small, non-blocking inline error — appended right inside whatever
+  // container is passed (an item, a form, a supply row), auto-clears
+  // itself so a transient network hiccup doesn't leave a permanent
+  // red message behind.
+  function showError(container, message) {
+    if (!container) return;
+    var el = container.querySelector('[data-inline-error]');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'small mt-1';
+      el.style.color = 'var(--status-critical)';
+      el.setAttribute('data-inline-error', '');
+      container.appendChild(el);
+    }
+    el.textContent = message || 'Something went wrong — try again.';
+    clearTimeout(el._clearTimer);
+    el._clearTimer = setTimeout(function () { el.remove(); }, 6000);
+  }
+
+  function postAction(fields) {
+    var fd = new FormData();
+    fd.append('csrfmiddlewaretoken', getCsrfToken());
+    Object.keys(fields).forEach(function (key) { fd.append(key, fields[key]); });
+    return fetch(window.location.pathname, {
+      method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return { success: false, error: 'Network error — check your connection and try again.' }; });
+  }
+
+  function updateProgress(done, total) {
+    var fill = document.getElementById('checklist-progress-fill');
+    var label = document.getElementById('checklist-progress-label');
+    if (fill && total) fill.style.width = Math.round((done / total) * 100) + '%';
+    if (label && typeof total === 'number') label.textContent = done + '/' + total;
+  }
+
+  // Recomputed from the DOM rather than sent back from the server — every
+  // item row already carries its own resolved/unresolved state visually,
+  // so counting what's actually on screen can never drift from it.
+  function recomputeSectionCount(itemEl) {
+    var section = itemEl.closest('[data-section]');
+    if (!section) return;
+    var items = section.querySelectorAll('.checklist-item');
+    var done = 0;
+    items.forEach(function (el) {
+      if (el.querySelector('.chip-btn-solid-done, .chip-btn-solid-skip')) done++;
+    });
+    var countEl = section.querySelector('[data-section-count]');
+    if (!countEl) return;
+    var allDone = done === items.length;
+    countEl.classList.toggle('checklist-section-count-done', allDone);
+    countEl.innerHTML = (allDone ? '<i data-lucide="check" class="icon"></i> ' : '') + done + '/' + items.length;
+    refreshIcons();
+  }
+
+  function renderItemState(stateEl, item) {
+    if (item.is_completed) {
+      stateEl.innerHTML =
+        '<button type="button" class="chip-btn chip-btn-solid-done" data-action="reopen_item">' +
+        '<i data-lucide="check" class="icon"></i> Done — tap to undo</button>';
+    } else if (item.skip_reason) {
+      stateEl.innerHTML =
+        '<button type="button" class="chip-btn chip-btn-solid-skip" data-action="reopen_item">' +
+        '<i data-lucide="skip-forward" class="icon"></i> <span data-skip-summary>Skipped: ' +
+        escapeHtml(truncate(item.skip_reason, 40)) + '</span> — tap to undo</button>';
+    } else {
+      stateEl.innerHTML =
+        '<div class="chip-row">' +
+        '<button type="button" class="chip-btn chip-btn-done" data-action="mark_item_done"><i data-lucide="check" class="icon"></i> Done</button>' +
+        '<button type="button" class="chip-btn chip-btn-skip" data-action="open_skip"><i data-lucide="skip-forward" class="icon"></i> Skip</button>' +
+        '</div>';
+    }
+    refreshIcons();
+  }
+
+  function appendThumbs(itemEl, mediaList) {
+    var thumbsEl = itemEl.querySelector('[data-photo-thumbs]');
+    var statusEl = itemEl.querySelector('[data-photo-status]');
+    if (thumbsEl) {
+      mediaList.forEach(function (m) {
+        var a = document.createElement('a');
+        a.href = m.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'checklist-photo-thumb';
+        var mediaEl = document.createElement(m.is_video ? 'video' : 'img');
+        mediaEl.src = m.url;
+        if (m.is_video) mediaEl.muted = true;
+        else mediaEl.alt = '';
+        a.appendChild(mediaEl);
+        thumbsEl.appendChild(a);
+      });
+    }
+    if (statusEl) {
+      var count = thumbsEl ? thumbsEl.children.length : mediaList.length;
+      statusEl.style.color = 'var(--status-good)';
+      statusEl.innerHTML = '<i data-lucide="check" class="icon"></i> ' + count + ' photo(s) attached';
+    }
+    refreshIcons();
+  }
+
+  // --- Checklist item actions (done/undo/skip/note), delegated so newly
+  // rendered buttons (e.g. after an undo) work without re-binding. ---
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.dataset.action;
+    var itemEl = btn.closest('.checklist-item');
+
+    if (action === 'mark_item_done' || action === 'reopen_item') {
+      if (!itemEl) return;
+      var itemId = itemEl.dataset.itemId;
+      btn.disabled = true;
+      postAction({ action: action, item_id: itemId }).then(function (data) {
+        btn.disabled = false;
+        if (!data.success) return showError(itemEl, data.error);
+        renderItemState(itemEl.querySelector('[data-item-state]'), data.item);
+        updateProgress(data.done, data.total);
+        recomputeSectionCount(itemEl);
+      });
+      return;
+    }
+
+    if (action === 'open_skip') {
+      if (!itemEl) return;
+      var panel = itemEl.querySelector('[data-skip-panel]');
+      panel.hidden = false;
+      panel.querySelector('[data-skip-input]').focus();
+      return;
+    }
+
+    if (action === 'cancel_skip') {
+      if (!itemEl) return;
+      var cancelPanel = itemEl.querySelector('[data-skip-panel]');
+      cancelPanel.hidden = true;
+      var input = cancelPanel.querySelector('[data-skip-input]');
+      input.value = '';
+      input.classList.remove('is-invalid');
+      return;
+    }
+
+    if (action === 'confirm_skip') {
+      if (!itemEl) return;
+      var confirmPanel = itemEl.querySelector('[data-skip-panel]');
+      var reasonInput = confirmPanel.querySelector('[data-skip-input]');
+      var reason = reasonInput.value.trim();
+      if (!reason) {
+        reasonInput.classList.add('is-invalid');
+        reasonInput.focus();
+        return;
+      }
+      reasonInput.classList.remove('is-invalid');
+      var skipItemId = itemEl.dataset.itemId;
+      btn.disabled = true;
+      postAction({ action: 'skip_item', item_id: skipItemId, skip_reason: reason }).then(function (data) {
+        btn.disabled = false;
+        if (!data.success) return showError(confirmPanel, data.error);
+        confirmPanel.hidden = true;
+        reasonInput.value = '';
+        renderItemState(itemEl.querySelector('[data-item-state]'), data.item);
+        updateProgress(data.done, data.total);
+        recomputeSectionCount(itemEl);
+      });
+      return;
+    }
+
+    if (action === 'save_note') {
+      if (!itemEl) return;
+      var noteInput = itemEl.querySelector('[data-note-input]');
+      var noteItemId = itemEl.dataset.itemId;
+      btn.disabled = true;
+      postAction({ action: 'note_item', item_id: noteItemId, note: noteInput.value.trim() }).then(function (data) {
+        btn.disabled = false;
+        if (!data.success) return showError(itemEl, data.error);
+        var summary = itemEl.querySelector('[data-note-summary]');
+        if (summary) summary.textContent = data.item.note ? ('Note: ' + truncate(data.item.note, 40)) : '+ Add a note';
+      });
+      return;
+    }
+
+    if (action === 'record_supply_reading') {
+      var row = btn.closest('[data-supply-row]');
+      if (!row) return;
+      var propertySupplyId = row.dataset.propertySupplyId;
+      var level = btn.dataset.level;
+      btn.disabled = true;
+      postAction({ action: 'record_supply_reading', property_supply_id: propertySupplyId, level: level }).then(function (data) {
+        btn.disabled = false;
+        if (!data.success) return showError(row, data.error);
+        var body = row.querySelector('[data-supply-body]');
+        var badgeClass = data.level === 'high' ? 'bg-success' : data.level === 'mid' ? 'bg-warning text-dark' : 'bg-danger';
+        body.innerHTML =
+          '<div class="small mt-1">You said: <span class="badge rounded-pill ' + badgeClass + '">' +
+          escapeHtml(data.level_display) + '</span></div>';
+      });
+      return;
+    }
+  });
+
+  // --- Photo upload: auto-fires on file selection (Take Photo / Choose
+  // File are wired by photo-capture.js), no separate Upload tap needed.
+  // `multiple` on the input means one selection can carry several files,
+  // all sent together. ---
+  document.querySelectorAll('[data-photo-input]').forEach(function (input) {
+    input.addEventListener('change', function () {
+      var files = input.files;
+      if (!files || !files.length) return;
+      var itemEl = input.closest('.checklist-item');
+      if (!itemEl) return;
+      var uploadingEl = itemEl.querySelector('[data-photo-uploading]');
+      if (uploadingEl) uploadingEl.hidden = false;
+
+      var fd = new FormData();
+      fd.append('action', 'upload_item_photo');
+      fd.append('csrfmiddlewaretoken', getCsrfToken());
+      fd.append('item_id', itemEl.dataset.itemId);
+      for (var i = 0; i < files.length; i++) fd.append('photo', files[i]);
+
+      fetch(window.location.pathname, {
+        method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (uploadingEl) uploadingEl.hidden = true;
+          if (!data.success) return showError(itemEl, data.error);
+          appendThumbs(itemEl, data.media);
+        })
+        .catch(function () {
+          if (uploadingEl) uploadingEl.hidden = true;
+          showError(itemEl, 'Upload failed — check your connection and try again.');
+        })
+        .finally(function () {
+          input.value = ''; // lets the same file be picked again later if needed
+        });
+    });
+  });
+
+  // --- Report an issue ---
+  var issueForm = document.getElementById('issue-form');
+  if (issueForm) {
+    issueForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var description = issueForm.querySelector('[name="description"]');
+      var photos = issueForm.querySelector('[name="photos"]');
+      if (!description.value.trim()) {
+        description.focus();
+        return;
+      }
+      var fd = new FormData();
+      fd.append('action', 'add_issue');
+      fd.append('csrfmiddlewaretoken', getCsrfToken());
+      fd.append('description', description.value.trim());
+      if (photos && photos.files) {
+        for (var i = 0; i < photos.files.length; i++) fd.append('photos', photos.files[i]);
+      }
+      var submitBtn = issueForm.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      fetch(window.location.pathname, {
+        method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          submitBtn.disabled = false;
+          if (!data.success) return showError(issueForm, data.error);
+          var row = document.createElement('div');
+          row.className = 'small border-top py-1';
+          row.textContent = data.description;
+          var list = document.getElementById('issue-list');
+          if (list) list.prepend(row);
+          description.value = '';
+          if (photos) photos.value = '';
+        })
+        .catch(function () {
+          submitBtn.disabled = false;
+          showError(issueForm, 'Could not send — check your connection and try again.');
+        });
+    });
+  }
+})();

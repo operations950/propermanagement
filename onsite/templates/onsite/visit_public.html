@@ -2,6 +2,7 @@
 {% load static %}
 {% block title %}{{ visit.property.name }} — {{ visit.visit_type }}{% endblock %}
 {% block content %}
+{% csrf_token %}
 <div class="card my-3">
     <div class="card-body p-4">
         <h5 class="page-title mb-1">{{ visit.property.name }}</h5>
@@ -41,99 +42,80 @@
     <h6 class="card-title mb-2">Checklist</h6>
     <div class="checklist-progress">
         <div class="checklist-progress-bar">
-            <div class="checklist-progress-fill" style="width: {% widthratio checklist_done_count checklist_total_count 100 %}%;"></div>
+            <div class="checklist-progress-fill" id="checklist-progress-fill" style="width: {% widthratio checklist_done_count checklist_total_count 100 %}%;"></div>
         </div>
-        <div class="checklist-progress-label">{{ checklist_done_count }}/{{ checklist_total_count }}</div>
+        <div class="checklist-progress-label" id="checklist-progress-label">{{ checklist_done_count }}/{{ checklist_total_count }}</div>
     </div>
 
     {% for section in checklist_sections %}
-    <details class="checklist-section" {% if section.done_count < section.total_count %}open{% endif %}>
+    <details class="checklist-section" id="section-{{ forloop.counter0 }}" data-section {% if section.done_count < section.total_count %}open{% endif %}>
         <summary>
             {{ section.name }}
-            <span class="checklist-section-count{% if section.done_count == section.total_count %} checklist-section-count-done{% endif %}">
+            <span class="checklist-section-count{% if section.done_count == section.total_count %} checklist-section-count-done{% endif %}" data-section-count>
                 {% if section.done_count == section.total_count %}<i data-lucide="check" class="icon"></i>{% endif %}
                 {{ section.done_count }}/{{ section.total_count }}
             </span>
         </summary>
         {% for item in section.items %}
-        <div class="checklist-item">
+        <div class="checklist-item" id="item-{{ item.pk }}" data-item-id="{{ item.pk }}">
             <div class="checklist-item-text">
                 {{ item.text }}{% if item.mandatory %} <span class="checklist-item-required">*</span>{% endif %}
                 {% if item.is_new_unreviewed %} <span class="badge bg-light text-muted border">New</span>{% endif %}
             </div>
 
-            {% if item.is_completed %}
-            <form method="post" class="d-inline">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="reopen_item">
-                <input type="hidden" name="item_id" value="{{ item.pk }}">
-                <button type="submit" class="chip-btn chip-btn-solid-done"><i data-lucide="check" class="icon"></i> Done — tap to undo</button>
-            </form>
-            {% elif item.skip_reason %}
-            <form method="post" class="d-inline">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="reopen_item">
-                <input type="hidden" name="item_id" value="{{ item.pk }}">
-                <button type="submit" class="chip-btn chip-btn-solid-skip"><i data-lucide="skip-forward" class="icon"></i> Skipped: {{ item.skip_reason|truncatechars:40 }} — tap to undo</button>
-            </form>
-            {% else %}
-            <div class="chip-row">
-                <form method="post">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="mark_item_done">
-                    <input type="hidden" name="item_id" value="{{ item.pk }}">
-                    <button type="submit" class="chip-btn chip-btn-done"><i data-lucide="check" class="icon"></i> Done</button>
-                </form>
-                <details>
-                    <summary class="chip-btn chip-btn-skip" style="list-style: none;"><i data-lucide="skip-forward" class="icon"></i> Skip</summary>
-                    <form method="post" class="mt-2 d-flex gap-2">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="skip_item">
-                        <input type="hidden" name="item_id" value="{{ item.pk }}">
-                        <input type="text" name="skip_reason" class="form-control form-control-sm" placeholder="Why are you skipping this?" required>
-                        <button type="submit" class="btn btn-sm btn-outline-secondary flex-shrink-0">Confirm</button>
-                    </form>
-                </details>
+            <div data-item-state>
+                {% if item.is_completed %}
+                <button type="button" class="chip-btn chip-btn-solid-done" data-action="reopen_item"><i data-lucide="check" class="icon"></i> Done — tap to undo</button>
+                {% elif item.skip_reason %}
+                <button type="button" class="chip-btn chip-btn-solid-skip" data-action="reopen_item"><i data-lucide="skip-forward" class="icon"></i> <span data-skip-summary>Skipped: {{ item.skip_reason|truncatechars:40 }}</span> — tap to undo</button>
+                {% else %}
+                <div class="chip-row">
+                    <button type="button" class="chip-btn chip-btn-done" data-action="mark_item_done"><i data-lucide="check" class="icon"></i> Done</button>
+                    <button type="button" class="chip-btn chip-btn-skip" data-action="open_skip"><i data-lucide="skip-forward" class="icon"></i> Skip</button>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
+
+            <div class="skip-panel" data-skip-panel hidden>
+                <label class="skip-panel-label">Why are you skipping this?</label>
+                <textarea class="skip-panel-input" data-skip-input rows="2" placeholder="e.g. no grill at this property"></textarea>
+                <div class="skip-panel-actions">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-action="cancel_skip">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-sm" data-action="confirm_skip">Confirm skip</button>
+                </div>
+            </div>
 
             {% if item.requires_photo %}
             <div class="checklist-photo-row" data-photo-capture>
-                <form method="post" enctype="multipart/form-data" class="d-flex align-items-center gap-2 flex-wrap">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="upload_item_photo">
-                    <input type="hidden" name="item_id" value="{{ item.pk }}">
-                    <input type="file" name="photo" accept="image/*,video/*" data-photo-input hidden>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-photo-take-btn><i data-lucide="camera" class="icon"></i> Take Photo</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-photo-choose-btn><i data-lucide="folder-open" class="icon"></i> Choose File</button>
-                    <span class="small text-muted" data-photo-filename></span>
-                    <button type="submit" class="btn btn-sm btn-primary">Upload</button>
-                </form>
-                {% with count=item.media.all|length %}
-                {% if count %}<div class="small text-success mt-1"><i data-lucide="check" class="icon"></i> {{ count }} photo(s) attached</div>
-                {% else %}<div class="small mt-1" style="color: var(--status-critical);">Photo required</div>{% endif %}
-                {% endwith %}
+                <input type="file" accept="image/*,video/*" data-photo-input multiple hidden>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-photo-take-btn><i data-lucide="camera" class="icon"></i> Take Photo</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-photo-choose-btn><i data-lucide="folder-open" class="icon"></i> Choose File</button>
+                <span class="small text-muted" data-photo-uploading hidden>Uploading…</span>
+            </div>
+            <div class="checklist-photo-thumbs" data-photo-thumbs>
+                {% for media in item.media.all %}
+                <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="checklist-photo-thumb">
+                    {% if media.media_type == 'video' %}<video src="{{ media.file.url }}" muted></video>{% else %}<img src="{{ media.file.url }}" alt="">{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            <div class="small mt-1" data-photo-status {% if item.media.all %}style="color: var(--status-good);"{% else %}style="color: var(--status-critical);"{% endif %}>
+                {% if item.media.all %}<i data-lucide="check" class="icon"></i> {{ item.media.all|length }} photo(s) attached{% else %}Photo required{% endif %}
             </div>
             {% endif %}
 
             {% if item.requires_note %}
-            <form method="post" class="mt-2 d-flex gap-2">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="note_item">
-                <input type="hidden" name="item_id" value="{{ item.pk }}">
-                <input type="text" name="note" class="form-control form-control-sm" placeholder="Note" value="{{ item.note }}">
-                <button type="submit" class="btn btn-sm btn-outline-secondary flex-shrink-0">Save</button>
-            </form>
+            <div class="mt-2 d-flex gap-2">
+                <input type="text" class="form-control form-control-sm" data-note-input placeholder="Note" value="{{ item.note }}">
+                <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" data-action="save_note">Save</button>
+            </div>
             {% else %}
             <details class="checklist-inline-disclosure">
-                <summary>{% if item.note %}Note: {{ item.note|truncatechars:40 }}{% else %}+ Add a note{% endif %}</summary>
-                <form method="post" class="d-flex gap-2">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="note_item">
-                    <input type="hidden" name="item_id" value="{{ item.pk }}">
-                    <input type="text" name="note" class="form-control form-control-sm" placeholder="Note (optional)" value="{{ item.note }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary flex-shrink-0">Save</button>
-                </form>
+                <summary data-note-summary>{% if item.note %}Note: {{ item.note|truncatechars:40 }}{% else %}+ Add a note{% endif %}</summary>
+                <div class="d-flex gap-2">
+                    <input type="text" class="form-control form-control-sm" data-note-input placeholder="Note (optional)" value="{{ item.note }}">
+                    <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" data-action="save_note">Save</button>
+                </div>
             </details>
             {% endif %}
         </div>
@@ -146,18 +128,14 @@
 <div class="card my-3"><div class="card-body p-4">
     <h6 class="card-title mb-2">Report an issue</h6>
     <p class="small text-muted">Something broken or worth flagging that isn't on the checklist? This creates a maintenance ticket.</p>
-    <form method="post" enctype="multipart/form-data">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="add_issue">
+    <form id="issue-form">
         <textarea name="description" class="form-control form-control-sm mb-2" rows="2" placeholder="What's wrong?"></textarea>
         <input type="file" name="photos" accept="image/*,video/*" multiple class="form-control form-control-sm mb-2">
         <button class="btn btn-outline-secondary btn-sm" type="submit">Report issue</button>
     </form>
-    {% if issues %}
-    <div class="mt-3">
+    <div class="mt-3" id="issue-list">
         {% for issue in issues %}<div class="small border-top py-1">{{ issue.description }}</div>{% endfor %}
     </div>
-    {% endif %}
 </div></div>
 
 {% if supply_rows %}
@@ -165,8 +143,9 @@
     <h6 class="card-title mb-1">Supplies</h6>
     <p class="small text-muted mb-3">Tap what you see right now for each item — no need to count or guess a quantity.</p>
     {% for row in supply_rows %}
-    <div class="border-top py-2">
+    <div class="border-top py-2" data-supply-row data-property-supply-id="{{ row.property_supply.pk }}">
         <div class="fw-medium">{{ row.property_supply.supply_item.name }}</div>
+        <div data-supply-body>
         {% if row.answered %}
             <div class="small mt-1">
                 You said:
@@ -189,15 +168,13 @@
                 {% endif %}
             </div>
         {% else %}
-            <form method="post" class="d-flex gap-2 mt-2">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="record_supply_reading">
-                <input type="hidden" name="property_supply_id" value="{{ row.property_supply.pk }}">
-                <button type="submit" name="level" value="high" class="btn btn-outline-success btn-sm flex-fill">High</button>
-                <button type="submit" name="level" value="mid" class="btn btn-outline-warning btn-sm flex-fill">Mid</button>
-                <button type="submit" name="level" value="low" class="btn btn-outline-danger btn-sm flex-fill">Low</button>
-            </form>
+            <div class="d-flex gap-2 mt-2">
+                <button type="button" class="btn btn-outline-success btn-sm flex-fill" data-action="record_supply_reading" data-level="high">High</button>
+                <button type="button" class="btn btn-outline-warning btn-sm flex-fill" data-action="record_supply_reading" data-level="mid">Mid</button>
+                <button type="button" class="btn btn-outline-danger btn-sm flex-fill" data-action="record_supply_reading" data-level="low">Low</button>
+            </div>
         {% endif %}
+        </div>
     </div>
     {% endfor %}
 </div></div>
@@ -225,4 +202,5 @@
 </form>
 {% endif %}
 <script src="{% static 'js/signature-pad.js' %}"></script>
+<script src="{% static 'js/checklist-actions.js' %}"></script>
 {% endblock %}

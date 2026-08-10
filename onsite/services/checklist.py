@@ -228,7 +228,12 @@ def submit_visit(visit):
     media_item_ids = set(visit.media.exclude(checklist_item__isnull=True).values_list('checklist_item_id', flat=True))
     missing_photos = [
         item.text for item in items
-        if item.requires_photo and item.id not in media_item_ids
+        # A skip_reason already exempts an item from the mandatory-completion
+        # check above; requires_photo needs the same exemption for the same
+        # reason — a cleaner who skipped an item (with a reason) shouldn't
+        # then be blocked from submitting because they never took a photo
+        # of something they didn't do.
+        if item.requires_photo and not item.skip_reason and item.id not in media_item_ids
     ]
     if missing or missing_photos:
         problems = []

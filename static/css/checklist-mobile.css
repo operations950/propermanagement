@@ -85,7 +85,7 @@
 /* Item row */
 
 .checklist-item {
-  padding: 0.6rem 0.25rem 0.9rem;
+  padding: 0.85rem 0.25rem 1.1rem;
   border-top: 1px solid var(--border-hairline);
 }
 
@@ -94,9 +94,11 @@
 }
 
 .checklist-item-text {
-  font-size: 0.95rem;
-  margin-bottom: 0.5rem;
-  line-height: 1.35;
+  font-size: 1.08rem;
+  font-weight: 500;
+  color: var(--ink-primary);
+  margin-bottom: 0.65rem;
+  line-height: 1.4;
 }
 
 .checklist-item-required {
@@ -208,4 +210,84 @@ summary.chip-btn::-webkit-details-marker {
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+/* Photo/video thumbnails attached to a checklist item — shown as soon as
+   an upload finishes, no reload needed to see what's already attached. */
+
+.checklist-photo-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.checklist-photo-thumb {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-page);
+  flex-shrink: 0;
+}
+
+.checklist-photo-thumb img,
+.checklist-photo-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Skip-reason panel — deliberately NOT a tiny inline <details> box; a
+   cleaner needs to actually notice this and type something real, so it
+   gets full visual weight: its own bordered/tinted card, a real textarea
+   (not a one-line input), and two full-size buttons. */
+
+.skip-panel {
+  margin-top: 0.6rem;
+  padding: 0.85rem;
+  border-radius: var(--bs-border-radius-lg);
+  background: color-mix(in srgb, var(--status-warning, #fab219) 10%, white);
+  border: 1.5px solid color-mix(in srgb, var(--status-warning, #fab219) 45%, white);
+}
+
+.skip-panel-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-primary);
+  margin-bottom: 0.5rem;
+}
+
+.skip-panel-input {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.6rem 0.7rem;
+  font-size: 1rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-hairline);
+  resize: vertical;
+}
+
+.skip-panel-input:focus {
+  outline: none;
+  border-color: var(--status-warning, #fab219);
+}
+
+.skip-panel-input.is-invalid {
+  border-color: var(--status-critical, #d03b3b);
+}
+
+.skip-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.skip-panel-actions .btn {
+  min-height: 40px;
 }

@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Max, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -702,18 +702,52 @@ def _client_ip(request):
     return request.META.get('REMOTE_ADDR', '0.0.0.0')
 
 
+def _item_payload(item):
+    """One VisitChecklistItem's state, as JSON — everything the page-local
+    script in visit_public.html needs to redraw an item's Done/Skip chip
+    and photo-required note in place, without a reload."""
+    return {
+        'id': item.pk,
+        'is_completed': item.is_completed,
+        'skip_reason': item.skip_reason,
+        'note': item.note,
+    }
+
+
+def _media_payload(media):
+    return {'id': media.pk, 'url': media.file.url, 'is_video': media.media_type == VisitMedia.MediaType.VIDEO}
+
+
 @require_http_methods(['GET', 'POST'])
 def visit_public(request, token):
     """The cleaner-facing no-login page — same shape as vendorportal's
     token-keyed ticket view. The checklist doesn't render until the visit
     is started (see ONSITE_DESIGN.md), which is what makes "Start" a real
-    signal rather than a formality."""
-    if AccessAttempt.is_rate_limited(_client_ip(request)):
+    signal rather than a formality.
+
+    Every per-item/per-row action (checklist done/skip/note/photo, issue
+    report, supply reading) is AJAX-only in practice — visit_public.html's
+    script always sends X-Requested-With — so a cleaner working through a
+    40+ item checklist never loses their scroll position to a full page
+    reload after every single tap. The non-AJAX branch below is kept only
+    as a plain-POST fallback; Start and Submit stay plain POST+redirect on
+    purpose, since those genuinely change what's on the whole page."""
+    # 30 requests / 5 minutes (the shared default) is calibrated for
+    # vendorportal's lighter completion-link flow, not a 40+ item checklist
+    # where marking items done/skipped and uploading several photos
+    # legitimately generates far more requests than that in normal use —
+    # this was the actual cause of the "Too many requests" errors cleaners
+    # were hitting. This endpoint only ever serves one real person at a
+    # time (whoever holds the token), so a much higher ceiling is still a
+    # meaningful guard against automated abuse without throttling normal work.
+    if AccessAttempt.is_rate_limited(_client_ip(request), limit=600, window_minutes=5):
         return HttpResponse('Too many requests. Please try again later.', status=429)
 
     visit = get_object_or_404(Visit, access_token=token)
     if not visit.is_access_token_valid():
         return render(request, 'onsite/visit_public_expired.html', status=410)
+
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -722,20 +756,23 @@ def visit_public(request, token):
             visit.started_at = timezone.now()
             visit.status = Visit.Status.IN_PROGRESS
             visit.save(update_fields=['started_at', 'status'])
+            return redirect('onsite_visit_public', token=token)
 
         elif action == 'mark_item_done':
-            # Each of these five actions touches only the field(s) it owns —
-            # deliberately NOT one shared "update_item" branch that overwrites
-            # note/skip_reason/is_completed from whatever happened to be in
-            # the POST body every time. This page now renders each of those
-            # as its own small independent form (see visit_public.html), so a
-            # single-purpose "Done" tap must never blank out a note or
-            # skip_reason that isn't part of that particular form.
+            # Each of these action branches touches only the field(s) it
+            # owns — deliberately NOT one shared "update_item" branch that
+            # overwrites note/skip_reason/is_completed from whatever
+            # happened to be in the POST body every time. This page renders
+            # each as its own small independent action, so a single-purpose
+            # "Done" tap must never blank out a note that isn't part of it.
             item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
             item.is_completed = True
             item.skip_reason = ''
             item.completed_at = timezone.now()
             item.save(update_fields=['is_completed', 'skip_reason', 'completed_at'])
+            if is_ajax:
+                done, total = _checklist_progress(visit)
+                return JsonResponse({'success': True, 'item': _item_payload(item), 'done': done, 'total': total})
 
         elif action == 'reopen_item':
             # Undoes either a Done tap or a Skip — one action, since both are
@@ -745,6 +782,9 @@ def visit_public(request, token):
             item.skip_reason = ''
             item.completed_at = None
             item.save(update_fields=['is_completed', 'skip_reason', 'completed_at'])
+            if is_ajax:
+                done, total = _checklist_progress(visit)
+                return JsonResponse({'success': True, 'item': _item_payload(item), 'done': done, 'total': total})
 
         elif action == 'skip_item':
             item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
@@ -754,20 +794,39 @@ def visit_public(request, token):
                 item.is_completed = False
                 item.completed_at = None
                 item.save(update_fields=['skip_reason', 'is_completed', 'completed_at'])
+                if is_ajax:
+                    done, total = _checklist_progress(visit)
+                    return JsonResponse({'success': True, 'item': _item_payload(item), 'done': done, 'total': total})
+            elif is_ajax:
+                return JsonResponse({'success': False, 'error': 'Enter a reason before confirming the skip.'})
 
         elif action == 'note_item':
             item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
             item.note = request.POST.get('note', '').strip()
             item.save(update_fields=['note'])
+            if is_ajax:
+                return JsonResponse({'success': True, 'item': _item_payload(item)})
 
         elif action == 'upload_item_photo':
             item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
-            photo = request.FILES.get('photo')
-            if photo:
-                VisitMedia.objects.create(
+            # getlist, not .get — the file input now allows selecting (or
+            # capturing) more than one photo/video at once, uploaded together
+            # as soon as they're picked rather than one at a time.
+            photos = request.FILES.getlist('photo')
+            created = []
+            for photo in photos:
+                media = VisitMedia.objects.create(
                     visit=visit, checklist_item=item, file=photo,
                     media_type=VisitMedia.MediaType.VIDEO if photo.content_type.startswith('video') else VisitMedia.MediaType.PHOTO,
                 )
+                created.append(media)
+            if is_ajax:
+                if not created:
+                    return JsonResponse({'success': False, 'error': 'No file received — try again.'})
+                return JsonResponse({
+                    'success': True, 'item_id': item.pk,
+                    'media': [_media_payload(m) for m in created],
+                })
 
         elif action == 'add_issue':
             description = request.POST.get('description', '').strip()
@@ -775,6 +834,10 @@ def visit_public(request, token):
                 issue = VisitIssue.objects.create(visit=visit, description=description)
                 for photo in request.FILES.getlist('photos'):
                     VisitMedia.objects.create(visit=visit, issue=issue, file=photo)
+                if is_ajax:
+                    return JsonResponse({'success': True, 'description': issue.description})
+            elif is_ajax:
+                return JsonResponse({'success': False, 'error': "Describe what's wrong first."})
 
         elif action == 'record_supply_reading':
             property_supply = get_object_or_404(
@@ -783,6 +846,13 @@ def visit_public(request, token):
             level = request.POST.get('level')
             if level in SupplyReading.Level.values:
                 supply_services.record_reading(visit, property_supply, level)
+                if is_ajax:
+                    return JsonResponse({
+                        'success': True, 'property_supply_id': property_supply.pk,
+                        'level': level, 'level_display': dict(SupplyReading.Level.choices)[level],
+                    })
+            elif is_ajax:
+                return JsonResponse({'success': False, 'error': 'Invalid level.'})
 
         elif action == 'submit':
             try:
@@ -791,6 +861,8 @@ def visit_public(request, token):
             except ValidationError as e:
                 messages.error(request, '; '.join(e.messages) if hasattr(e, 'messages') else str(e))
 
+        if is_ajax:
+            return JsonResponse({'success': False, 'error': 'Something went wrong — try again.'})
         return redirect('onsite_visit_public', token=token)
 
     checklist_items = list(visit.checklist_items.all())
@@ -803,6 +875,15 @@ def visit_public(request, token):
         'supply_rows': supply_services.supply_check_context(visit),
         'is_submitted': visit.status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED),
     })
+
+
+def _checklist_progress(visit):
+    """(done, total) for the AJAX action responses — a fresh query, not
+    whatever might already be loaded on `visit`, so it reflects the save
+    that just happened above it in the same request."""
+    items = list(visit.checklist_items.all())
+    done = sum(1 for i in items if i.is_completed or i.skip_reason)
+    return done, len(items)
 
 
 def _checklist_sections(checklist_items):
