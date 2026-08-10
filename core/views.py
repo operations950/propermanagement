@@ -32,7 +32,6 @@ from .forms import (
     ContactForm,
     EmailOrUsernameAuthenticationForm,
     PropertyForm,
-    PropertyTemplateOverrideForm,
     StaffCreateForm,
 )
 from .models import (
@@ -1482,123 +1481,15 @@ def _row_state(override, base_match):
 
 @login_required
 def property_recurring_tasks(request, pk):
-    """A property's operational profile: the recurring task templates the
-    applicability rule engine (tickets.services.applicability) currently
-    resolves for it, plus the controls to review/adjust that result — add
-    a one-off template, exclude an applied one, override its frequency/
-    department/assignee for this property only, or toggle which task
-    packages and characteristics apply. Computed live on every load, same
-    as generation itself — see the build plan for why this isn't cached."""
-    prop = get_object_or_404(Property, pk=pk)
-
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        template_id = request.POST.get('template_id')
-
-        if action == 'exclude' and template_id:
-            PropertyTemplateOverride.objects.update_or_create(
-                property=prop, template_id=template_id,
-                defaults={'action': PropertyTemplateOverride.Action.EXCLUDE, 'created_by': request.user},
-            )
-            messages.success(request, 'Excluded for this property.')
-        elif action == 'reset' and template_id:
-            PropertyTemplateOverride.objects.filter(property=prop, template_id=template_id).delete()
-            messages.success(request, 'Reset to default.')
-        elif action == 'adjust' and template_id:
-            form = PropertyTemplateOverrideForm(request.POST)
-            if form.is_valid():
-                PropertyTemplateOverride.objects.update_or_create(
-                    property=prop, template_id=template_id,
-                    defaults={
-                        'action': PropertyTemplateOverride.Action.INCLUDE,
-                        'frequency': form.cleaned_data['frequency'],
-                        'workday_of_month': form.cleaned_data['workday_of_month'],
-                        'assigned_role': form.cleaned_data['assigned_role'],
-                        'assigned_staff': form.cleaned_data['assigned_staff'],
-                        'created_by': request.user,
-                    },
-                )
-                messages.success(request, 'Adjustment saved.')
-            else:
-                messages.error(request, 'Could not save that adjustment.')
-        elif action == 'add_one_off' and template_id:
-            PropertyTemplateOverride.objects.update_or_create(
-                property=prop, template_id=template_id,
-                defaults={'action': PropertyTemplateOverride.Action.INCLUDE, 'created_by': request.user},
-            )
-            messages.success(request, 'Added.')
-        elif action == 'toggle_package':
-            package_id = request.POST.get('package_id')
-            existing = PropertyPackage.objects.filter(property=prop, package_id=package_id)
-            if existing.exists():
-                existing.delete()
-                messages.success(request, 'Package removed.')
-            else:
-                PropertyPackage.objects.create(property=prop, package_id=package_id)
-                messages.success(request, 'Package added.')
-        elif action == 'toggle_attribute':
-            attribute_id = request.POST.get('attribute_id')
-            existing = PropertyAttributeAssignment.objects.filter(property=prop, attribute_id=attribute_id)
-            if existing.exists():
-                existing.delete()
-                messages.success(request, 'Attribute removed.')
-            else:
-                PropertyAttributeAssignment.objects.create(property=prop, attribute_id=attribute_id)
-                messages.success(request, 'Attribute added.')
-        return redirect('property_recurring_tasks', pk=prop.pk)
-
-    overrides = {o.template_id: o for o in PropertyTemplateOverride.objects.filter(property=prop)}
-    assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
-    assigned_package_ids = set(prop.packages.values_list('package_id', flat=True))
-
-    # Every active, property-scopable template is a candidate row — not just
-    # the ones that currently apply — so an EXCLUDE override on a rule that
-    # WOULD otherwise match still shows up (as Excluded locally) instead of
-    # silently disappearing. COMPANY-target rules never scope to one
-    # property, so they're never candidates here at all.
-    candidates = (
-        TicketTemplate.objects.filter(is_active=True)
-        .exclude(target_type=TicketTemplate.TargetType.COMPANY)
-        .prefetch_related('required_attributes')
-    )
-
-    frequency_labels = dict(Frequency.choices)
-    role_labels = dict(StaffProfile.Role.choices)
-    rows = []
-    for t in candidates:
-        override = overrides.get(t.pk)
-        base_match = applicability.template_applies_to_property(t, prop, respect_overrides=False)
-        state = _row_state(override, base_match)
-        if state is None:
-            continue
-        effective = applicability.effective_settings(t, prop, override=override)
-        effective['frequency_display'] = frequency_labels.get(effective['frequency'], effective['frequency'])
-        effective['assigned_role_display'] = role_labels.get(effective['assigned_role'], 'Unassigned')
-        rows.append({
-            'template': t,
-            'override': override,
-            'state': state,
-            'state_label': ROW_STATE_LABELS[state],
-            'base_match': base_match,
-            'effective': effective,
-            'source': _template_source_label(t, prop, override, assigned_attribute_ids),
-        })
-    rows.sort(key=lambda r: r['template'].title)
-
-    return render(request, 'core/property_recurring_tasks.html', {
-        'property': prop,
-        'rows': rows,
-        'packages': TaskPackage.objects.filter(is_active=True),
-        'assigned_package_ids': assigned_package_ids,
-        'attributes': PropertyAttribute.objects.filter(is_active=True),
-        'assigned_attribute_ids': assigned_attribute_ids,
-        'addable_templates': (
-            TicketTemplate.objects.filter(is_active=True)
-            .exclude(target_type=TicketTemplate.TargetType.COMPANY)
-            .exclude(pk__in=[r['template'].pk for r in rows])
-            .order_by('title')
-        ),
-        'frequency_choices': Frequency.choices,
-        'role_choices': StaffProfile.Role.choices,
-        'staff_list': StaffProfile.objects.select_related('user'),
-    })
+    """Retired along with the rest of the TicketTemplate-based recurring
+    system — see the "Recurring work overhaul — sessions" build brief and
+    tickets/views.py's function_create/ticket_template_create for the same
+    retirement pattern. This screen's whole reason to exist was reviewing
+    TicketTemplate/PropertyTemplateOverride/TaskPackage applicability for
+    one property; all of those rows are gone from production (see
+    tickets.wipe_recurring_tickets), so there is nothing left for it to
+    show. Kept as a redirect rather than deleted so an old bookmarked link
+    still goes somewhere sensible instead of 404ing."""
+    get_object_or_404(Property, pk=pk)
+    messages.info(request, 'Recurring work now lives under Recurring, not on individual properties.')
+    return redirect('property_detail', pk=pk)

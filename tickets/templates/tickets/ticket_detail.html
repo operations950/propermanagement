@@ -155,37 +155,6 @@
                         });
                     })();
                 </script>
-                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="back_url" value="{{ back_url }}">
-                    <label class="form-label small fw-medium d-block">Status</label>
-                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="status" id="status-picker">
-                        <input type="hidden" name="status" data-bubble-input value="{{ ticket.status }}">
-                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a status"></div>
-                        <div class="bubble-pool" data-bubble-pool>
-                            {% for value, label in status_bubble_choices %}
-                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <div id="status-deferred-date" class="mb-2"{% if ticket.status != 'deferred' %} hidden{% endif %}>
-                        <label class="form-label small fw-medium d-block">New due date</label>
-                        <input type="date" name="new_due_date" class="form-control form-control-sm" value="{{ ticket.due_date|date:'Y-m-d' }}">
-                    </div>
-                    <div class="d-flex justify-content-end">
-                        <button class="btn btn-primary btn-sm" type="submit">Update</button>
-                    </div>
-                </form>
-                <script>
-                (function () {
-                    var picker = document.getElementById('status-picker');
-                    var deferredBox = document.getElementById('status-deferred-date');
-                    picker.addEventListener('bubble:lock', function (e) { deferredBox.hidden = e.detail.value !== 'deferred'; });
-                    picker.addEventListener('bubble:unlock', function () { deferredBox.hidden = true; });
-                })();
-                </script>
-
-                <hr>
                 <p class="small fw-medium mb-2" style="color: var(--ink-muted);">Status updates</p>
                 <div id="status-notes-thread" class="mb-2" style="max-height: 260px; overflow-y: auto;">
                     {% for note in status_notes %}
@@ -277,6 +246,37 @@
                                 input.focus();
                             });
                     });
+                })();
+                </script>
+
+                <hr>
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="back_url" value="{{ back_url }}">
+                    <label class="form-label small fw-medium d-block">Status</label>
+                    <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="status" id="status-picker">
+                        <input type="hidden" name="status" data-bubble-input value="{{ ticket.status }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a status"></div>
+                        <div class="bubble-pool" data-bubble-pool>
+                            {% for value, label in status_bubble_choices %}
+                                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div id="status-deferred-date" class="mb-2"{% if ticket.status != 'deferred' %} hidden{% endif %}>
+                        <label class="form-label small fw-medium d-block">New due date</label>
+                        <input type="date" name="new_due_date" class="form-control form-control-sm" value="{{ ticket.due_date|date:'Y-m-d' }}">
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-primary btn-sm" type="submit">Update</button>
+                    </div>
+                </form>
+                <script>
+                (function () {
+                    var picker = document.getElementById('status-picker');
+                    var deferredBox = document.getElementById('status-deferred-date');
+                    picker.addEventListener('bubble:lock', function (e) { deferredBox.hidden = e.detail.value !== 'deferred'; });
+                    picker.addEventListener('bubble:unlock', function () { deferredBox.hidden = true; });
                 })();
                 </script>
             </div>
