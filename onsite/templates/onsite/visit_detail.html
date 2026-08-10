@@ -207,15 +207,23 @@
                 </span>
             </div>
             {% if media %}
-            <div class="card-body d-flex flex-wrap gap-2">
+            <div class="card-body d-flex flex-wrap gap-3">
                 {% for m in media %}
-                <a href="{{ m.file.url }}" target="_blank">
-                    {% if m.media_type == 'photo' %}
-                    <img src="{{ m.file.url }}" alt="{{ m.caption }}" style="width: 72px; height: 72px; object-fit: cover; border-radius: 8px;">
-                    {% else %}
-                    <span class="btn btn-outline-secondary btn-sm"><i data-lucide="video" class="icon"></i></span>
-                    {% endif %}
-                </a>
+                {% with caption=m.checklist_item.text|default:'' %}
+                <button type="button" data-media-open data-media-index="{{ forloop.counter0 }}" style="border: 0; background: none; padding: 0; text-align: left; width: 84px; cursor: zoom-in;">
+                    <span style="display: block; width: 84px; height: 84px; border-radius: 8px; overflow: hidden; position: relative; background: var(--surface-page);">
+                        {% if m.media_type == 'photo' %}
+                        <img src="{{ m.file.url }}" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+                        {% else %}
+                        <video src="{{ m.file.url }}#t=0.1" preload="metadata" muted playsinline style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+                        <span style="position: absolute; bottom: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #fff; display: flex; align-items: center; justify-content: center;"><i data-lucide="play" class="icon" style="width: 10px; height: 10px;"></i></span>
+                        {% endif %}
+                    </span>
+                    <span class="d-block small mt-1" style="color: var(--ink-muted); line-height: 1.25;">
+                        {% if m.checklist_item %}{{ m.checklist_item.text|truncatechars:30 }}{% elif m.issue %}Issue: {{ m.issue.description|truncatechars:26 }}{% else %}General{% endif %}
+                    </span>
+                </button>
+                {% endwith %}
                 {% endfor %}
             </div>
             {% else %}
@@ -224,6 +232,98 @@
         </div>
     </div>
 </div>
+
+{% if media %}
+{{ media_gallery|json_script:"visit-media-gallery" }}
+<div class="d-none" data-media-lightbox style="position: fixed; inset: 0; z-index: 1060; background: rgba(0, 0, 0, 0.85); align-items: center; justify-content: center; padding: 2rem;">
+    <button type="button" data-media-close aria-label="Close" style="position: absolute; top: 1rem; right: 1.5rem; color: #fff; font-size: 1.75rem; line-height: 1; background: none; border: 0;">&times;</button>
+    <button type="button" data-media-prev aria-label="Previous photo" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #fff; background: rgba(255, 255, 255, 0.15); border: 0; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;"><i data-lucide="chevron-left" class="icon"></i></button>
+    <button type="button" data-media-next aria-label="Next photo" style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #fff; background: rgba(255, 255, 255, 0.15); border: 0; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;"><i data-lucide="chevron-right" class="icon"></i></button>
+    <div style="max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+        <div data-media-stage style="max-width: 90vw; max-height: 70vh; display: flex; align-items: center; justify-content: center;"></div>
+        <div style="text-align: center; color: #fff;">
+            <div data-media-caption style="font-size: 0.95rem; font-weight: 500;"></div>
+            <div data-media-counter class="small" style="color: rgba(255, 255, 255, 0.65); margin-top: 2px;"></div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var galleryEl = document.getElementById('visit-media-gallery');
+    var lightbox = document.querySelector('[data-media-lightbox]');
+    if (!galleryEl || !lightbox) return;
+    var gallery = JSON.parse(galleryEl.textContent);
+    if (!gallery.length) return;
+
+    var stage = lightbox.querySelector('[data-media-stage]');
+    var captionEl = lightbox.querySelector('[data-media-caption]');
+    var counterEl = lightbox.querySelector('[data-media-counter]');
+    var prevBtn = lightbox.querySelector('[data-media-prev]');
+    var nextBtn = lightbox.querySelector('[data-media-next]');
+    var current = 0;
+
+    if (gallery.length < 2) {
+        prevBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
+    }
+
+    function render() {
+        var item = gallery[current];
+        stage.innerHTML = '';
+        var el = document.createElement(item.is_video ? 'video' : 'img');
+        el.src = item.url;
+        if (item.is_video) {
+            el.controls = true;
+            el.autoplay = true;
+            el.playsInline = true;
+        }
+        el.style.maxWidth = '90vw';
+        el.style.maxHeight = '70vh';
+        el.style.borderRadius = '8px';
+        stage.appendChild(el);
+        captionEl.textContent = item.caption;
+        counterEl.textContent = gallery.length > 1 ? (current + 1) + ' of ' + gallery.length : '';
+    }
+
+    function open(index) {
+        current = index;
+        render();
+        lightbox.classList.remove('d-none');
+        lightbox.classList.add('d-flex');
+    }
+
+    function close() {
+        lightbox.classList.add('d-none');
+        lightbox.classList.remove('d-flex');
+        stage.innerHTML = '';
+    }
+
+    function nav(delta) {
+        current = (current + delta + gallery.length) % gallery.length;
+        render();
+    }
+
+    document.querySelectorAll('[data-media-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            open(parseInt(btn.dataset.mediaIndex, 10));
+        });
+    });
+
+    lightbox.querySelector('[data-media-close]').addEventListener('click', close);
+    prevBtn.addEventListener('click', function () { nav(-1); });
+    nextBtn.addEventListener('click', function () { nav(1); });
+    lightbox.addEventListener('click', function (e) {
+        if (e.target === lightbox) close();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (lightbox.classList.contains('d-none')) return;
+        if (e.key === 'Escape') close();
+        if (e.key === 'ArrowLeft') nav(-1);
+        if (e.key === 'ArrowRight') nav(1);
+    });
+})();
+</script>
+{% endif %}
 
 {% if visit.signed_name %}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">

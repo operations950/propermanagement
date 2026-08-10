@@ -683,11 +683,31 @@ def visit_detail(request, pk):
         | Q(pk=visit.assigned_contact_id),
     )
 
+    media_qs = list(visit.media.select_related('checklist_item', 'issue'))
+    # Plain-dict form for the lightbox's json_script blob — a queryset of
+    # model instances isn't JSON-serializable, and this is also where "which
+    # checklist line was this photo actually for" gets resolved into a
+    # caption, once, instead of re-deriving it in the template for both the
+    # thumbnail grid and the lightbox.
+    media_gallery = [
+        {
+            'url': m.file.url,
+            'is_video': m.media_type == VisitMedia.MediaType.VIDEO,
+            'caption': (
+                m.checklist_item.text if m.checklist_item_id
+                else f'Issue: {m.issue.description}' if m.issue_id
+                else 'General'
+            ),
+        }
+        for m in media_qs
+    ]
+
     return render(request, 'onsite/visit_detail.html', {
         'visit': visit,
         'status_choices': Visit.Status.choices,
         'checklist_items': list(visit.checklist_items.all()),
-        'media': visit.media.select_related('checklist_item', 'issue'),
+        'media': media_qs,
+        'media_gallery': media_gallery,
         'issues': visit.issues.select_related('created_ticket'),
         'staff_options': staff_options,
         'contact_options': contact_options,
