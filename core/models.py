@@ -104,11 +104,11 @@ class Property(models.Model):
 class PropertyListingName(models.Model):
     """A name/title this property answers to on a booking platform — used
     by the onsite module's portfolio-wide booking import to tie each
-    reservation row to the right property (see onsite/services/bookings.py).
-    A variable-length list rather than a single field on Property: a
-    multi-unit address (3 units, 1 Property record — this app hasn't
-    modeled individual units yet) commonly has a separate Airbnb/VRBO
-    listing per unit, all pointing at the same property. A given literal
+    reservation row to the right property (and, via `unit` below, the right
+    unit within it — see onsite/services/bookings.py). A variable-length
+    list rather than a single field on Property: a multi-unit building
+    commonly has a separate Airbnb/VRBO listing per unit, all pointing at
+    the same property (each pinned to its own `unit`). A given literal
     name still belongs to exactly one property (the unique constraint
     below) — it's the property side that's one-to-many, not the name
     side."""
@@ -117,6 +117,13 @@ class PropertyListingName(models.Model):
         VRBO = 'vrbo', 'VRBO'
 
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='listing_names')
+    unit = models.ForeignKey(
+        'Unit', on_delete=models.SET_NULL, null=True, blank=True, related_name='listing_names',
+        help_text='Which unit under the property this specific listing is for — the real fix for the '
+                   '"3 units, 1 property record" gap this model\'s own docstring above used to flag. '
+                   'Blank for a single-unit property, where the listing name resolves to the whole '
+                   'property as it always has.',
+    )
     platform = models.CharField(max_length=20, choices=Platform.choices)
     name = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)

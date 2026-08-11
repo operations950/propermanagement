@@ -18,7 +18,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 
-from core.models import Contact, Property, PropertyAttribute, StaffProfile
+from core.models import Contact, Property, PropertyAttribute, StaffProfile, Unit
 
 
 class VisitType(models.Model):
@@ -280,16 +280,20 @@ class Booking(models.Model):
         CANCELLED = 'cancelled', 'Cancelled'
 
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bookings')
+    unit = models.ForeignKey(
+        Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='bookings',
+        help_text='Which unit under the property this reservation is for — resolved from the matched '
+                   'PropertyListingName.unit at import time. Blank for a single-unit property.',
+    )
     source = models.CharField(max_length=20, choices=Source.choices)
     external_uid = models.CharField(max_length=200, help_text='UID from the ICS/CSV row — the idempotency key.')
     listing_name = models.CharField(
         max_length=200, blank=True,
         help_text="The platform's own listing title for this specific reservation (from the portfolio "
                    "CSV's listing/property column — see RawBooking.listing_name), e.g. \"800 Tropic - "
-                   'Wave (C)\". Property records a multi-unit address as ONE row (see '
-                   'PropertyListingName\'s docstring), so this is the only reliable way to tell which of '
-                   'several actual units at that address a given reservation — and its cleaning Visit — '
-                   'is for. Blank for a single-property .ics import, which has no listing column.',
+                   'Wave (C)\". Kept verbatim for reference/audit even now that `unit` above carries the '
+                   'actual resolved unit — useful when a listing name hasn\'t been pinned to a specific '
+                   'Unit yet. Blank for a single-property .ics import, which has no listing column.',
     )
     guest_name = models.CharField(max_length=200, blank=True)
     guest_phone_last4 = models.CharField(max_length=4, blank=True)
@@ -328,6 +332,12 @@ class Visit(models.Model):
         SKIPPED = 'skipped', 'Skipped'
 
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='visits')
+    unit = models.ForeignKey(
+        Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='visits',
+        help_text='Which unit under the property this visit is for, if any — carried over from the '
+                   'generating Booking. Checklist resolution stays property-level regardless (a shared '
+                   'building checklist); only the visit record itself is unit-aware.',
+    )
     visit_type = models.ForeignKey(VisitType, on_delete=models.PROTECT, related_name='visits')
     booking = models.ForeignKey(
         Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='visits',

@@ -40,8 +40,11 @@ def resolve_listing_names(raw_bookings, source):
     — unmatched is grouped by the exact listing_name string so a human
     resolves each distinct name once, not once per row. A property can
     have any number of listing names on file (e.g. several units at one
-    address, not yet modeled as separate Property rows) — the name side
-    is what's unique, not the property side."""
+    address) — the name side is what's unique, not the property side. Which
+    specific Unit a name maps to (if any) is resolved separately, per-row,
+    inside apply_bookings_for_property via PropertyListingName.unit — this
+    function only groups by Property, since that's still what a human needs
+    to confirm/resolve for an unmatched name."""
     names_seen = {r.listing_name for r in raw_bookings if r.listing_name}
     properties_by_name = {
         row.name: row.property
@@ -138,9 +141,15 @@ def diff_bookings(property, source, raw_bookings):
     return {'new': new_rows, 'changed': changed_rows, 'reactivated': reactivated_rows, 'cancelled': cancelled}
 
 
-def _find_next_booking(property, after_datetime, exclude_pk=None):
+def _find_next_booking(property, after_datetime, exclude_pk=None, unit=None):
+    """Scoped by `unit` when given (or explicitly to unit-less bookings when
+    not) — without this, two units sharing one Property would each see the
+    OTHER unit's check-ins as "the next booking," which is wrong. A
+    single-unit property (every Booking.unit stays None) behaves exactly as
+    before this parameter existed: `unit=None` still means "match rows with
+    no unit," which is every row it has."""
     qs = Booking.objects.filter(
-        property=property, status=Booking.Status.ACTIVE, check_in__gte=after_datetime,
+        property=property, unit=unit, status=Booking.Status.ACTIVE, check_in__gte=after_datetime,
     ).order_by('check_in')
     if exclude_pk:
         qs = qs.exclude(pk=exclude_pk)
@@ -165,7 +174,9 @@ def _refresh_next_bookings_for_property(property):
         .select_related('booking')
     )
     for visit in active_visits:
-        correct_next = _find_next_booking(property, visit.booking.check_out, exclude_pk=visit.booking_id)
+        correct_next = _find_next_booking(
+            property, visit.booking.check_out, exclude_pk=visit.booking_id, unit=visit.booking.unit,
+        )
         correct_next_id = correct_next.id if correct_next else None
         if correct_next_id != visit.next_booking_id:
             visit.next_booking = correct_next
@@ -187,20 +198,29 @@ def apply_bookings_for_property(property, source, raw_bookings):
         'Bookings were imported, but no active "Turnover" visit type exists yet — no visits were '
         'created. Run seed_checklist_templates, or create one manually, then re-import.'
     )
+    # Every listing name this property answers to on this platform, resolved
+    # to its Unit (or None) once up front rather than per-row — this is the
+    # actual fix for "3 units, 1 property record": a row's listing_name
+    # tells us which unit its Booking/Visit belongs to.
+    listing_unit_map = {
+        pln.name: pln.unit
+        for pln in PropertyListingName.objects.filter(property=property, platform=source)
+    }
 
     for row in diff['new']:
+        unit = listing_unit_map.get(row.listing_name)
         check_in_dt = _combine(property, row.check_in, 'check_in')
         check_out_dt = _combine(property, row.check_out, 'check_out')
         booking = Booking.objects.create(
-            property=property, source=source, external_uid=row.external_uid,
+            property=property, unit=unit, source=source, external_uid=row.external_uid,
             guest_name=row.guest_name, guest_phone_last4=row.guest_phone_last4,
             listing_name=row.listing_name,
             check_in=check_in_dt, check_out=check_out_dt, last_seen_at=timezone.now(),
         )
         if turnover_type:
-            next_booking = _find_next_booking(property, check_out_dt, exclude_pk=booking.pk)
+            next_booking = _find_next_booking(property, check_out_dt, exclude_pk=booking.pk, unit=unit)
             create_visit(
-                property, turnover_type, booking=booking, next_booking=next_booking,
+                property, turnover_type, unit=unit, booking=booking, next_booking=next_booking,
                 scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
             )
 
@@ -210,15 +230,17 @@ def apply_bookings_for_property(property, source, raw_bookings):
         booking.check_out = _combine(property, row.check_out, 'check_out')
         if row.listing_name:
             booking.listing_name = row.listing_name
+            booking.unit = listing_unit_map.get(row.listing_name)
         booking.last_seen_at = timezone.now()
-        booking.save(update_fields=['check_in', 'check_out', 'listing_name', 'last_seen_at'])
+        booking.save(update_fields=['check_in', 'check_out', 'listing_name', 'unit', 'last_seen_at'])
         visit = booking.visits.exclude(status__in=['submitted', 'verified', 'cancelled']).first()
         if visit:
-            next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk)
+            next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=booking.unit)
+            visit.unit = booking.unit
             visit.scheduled_date = booking.check_out.date()
             visit.next_booking = next_booking
             visit.ready_by = next_booking.check_in if next_booking else None
-            visit.save(update_fields=['scheduled_date', 'next_booking', 'ready_by'])
+            visit.save(update_fields=['unit', 'scheduled_date', 'next_booking', 'ready_by'])
             transaction.on_commit(lambda visit=visit: push_visit(visit))
 
     for row in diff['reactivated']:
@@ -228,10 +250,11 @@ def apply_bookings_for_property(property, source, raw_bookings):
         booking.check_out = _combine(property, row.check_out, 'check_out')
         if row.listing_name:
             booking.listing_name = row.listing_name
+            booking.unit = listing_unit_map.get(row.listing_name)
         booking.last_seen_at = timezone.now()
-        booking.save(update_fields=['status', 'check_in', 'check_out', 'listing_name', 'last_seen_at'])
+        booking.save(update_fields=['status', 'check_in', 'check_out', 'listing_name', 'unit', 'last_seen_at'])
 
-        next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk)
+        next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=booking.unit)
         cancelled_visit = booking.visits.filter(status=Visit.Status.CANCELLED).order_by('-pk').first()
         if cancelled_visit:
             # Bring the same Visit back rather than creating a duplicate —
@@ -242,16 +265,17 @@ def apply_bookings_for_property(property, source, raw_bookings):
                 if cancelled_visit.assigned_staff_id or cancelled_visit.assigned_contact_id
                 else Visit.Status.UNASSIGNED
             )
+            cancelled_visit.unit = booking.unit
             cancelled_visit.scheduled_date = booking.check_out.date()
             cancelled_visit.next_booking = next_booking
             cancelled_visit.ready_by = next_booking.check_in if next_booking else None
-            cancelled_visit.save(update_fields=['status', 'scheduled_date', 'next_booking', 'ready_by'])
+            cancelled_visit.save(update_fields=['unit', 'status', 'scheduled_date', 'next_booking', 'ready_by'])
             transaction.on_commit(lambda visit=cancelled_visit: push_visit(visit))
         elif turnover_type:
             # No Visit at all survived (shouldn't normally happen, but
             # don't leave a reactivated booking with no cleaning scheduled).
             create_visit(
-                property, turnover_type, booking=booking, next_booking=next_booking,
+                property, turnover_type, unit=booking.unit, booking=booking, next_booking=next_booking,
                 scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
             )
 
