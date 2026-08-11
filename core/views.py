@@ -776,8 +776,12 @@ def property_detail(request, pk):
             platform = request.POST.get('platform')
             name = request.POST.get('listing_name', '').strip()
             label = dict(PropertyListingName.Platform.choices).get(platform)
+            unit_id = request.POST.get('unit_id') or None
+            unit = prop.units.filter(pk=unit_id).first() if unit_id else None
             if not (label and name):
                 messages.error(request, 'Enter a listing name.')
+            elif unit_id and not unit:
+                messages.error(request, 'That unit doesn\'t belong to this property.')
             else:
                 other = PropertyListingName.objects.filter(platform=platform, name=name).exclude(property=prop).first()
                 if other:
@@ -787,8 +791,22 @@ def property_detail(request, pk):
                         'there first, or use a different name here.',
                     )
                 else:
-                    _, created = PropertyListingName.objects.get_or_create(property=prop, platform=platform, name=name)
-                    messages.success(request, f'Added "{name}" as a {label} listing name.' if created else 'That name is already on file for this property.')
+                    listing, created = PropertyListingName.objects.get_or_create(
+                        property=prop, platform=platform, name=name, defaults={'unit': unit},
+                    )
+                    if not created and listing.unit_id != (unit.pk if unit else None):
+                        # Re-submitting an existing name with a different unit
+                        # picked — e.g. fixing one that was added before this
+                        # property had units, or correcting a wrong pick.
+                        # Same "no separate edit control" UI as everywhere
+                        # else on this card (remove + re-add), just made to
+                        # actually update instead of silently no-op.
+                        listing.unit = unit
+                        listing.save(update_fields=['unit'])
+                    if created:
+                        messages.success(request, f'Added "{name}" as a {label} listing name.' + (f' → {unit.label}' if unit else ''))
+                    else:
+                        messages.success(request, f'Updated "{name}"\'s unit.' if unit else f'"{name}" is now unassigned to a specific unit.')
         elif action == 'remove_listing_name':
             PropertyListingName.objects.filter(pk=request.POST.get('listing_name_id'), property=prop).delete()
             messages.success(request, 'Removed.')
@@ -897,8 +915,8 @@ def property_detail(request, pk):
         'open_tickets': open_tickets,
         'system_locations': prop.system_locations.all(),
         'units': prop.units.all(),
-        'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB),
-        'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO),
+        'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB).select_related('unit'),
+        'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO).select_related('unit'),
         'documents': prop.documents.all(),
         'text_contact_groups': group_contacts_by_type([c for c in contacts if c.phone]),
         'email_contact_groups': group_contacts_by_type([c for c in contacts if c.email]),

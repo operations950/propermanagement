@@ -1,4 +1,5 @@
 import calendar as calendar_module
+import json
 from datetime import date, datetime, timedelta
 
 from django.contrib import messages
@@ -11,7 +12,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
-from core.models import Contact, Property, StaffProfile
+from core.models import Contact, Property, StaffProfile, Unit
 from core.views import _is_admin
 from supplies import services as supply_services
 from supplies.models import PropertySupply, SupplyReading
@@ -227,6 +228,7 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
             'sample_checkout': rows[0].check_out,
             'properties': all_properties,
             'posted_property_id': posted_property_id,
+            'posted_unit_id': (posted.get(f'unit_{i}') if posted else '') or '',
             'unresolved': posted is not None and not posted_property_id,
             'conflict': conflict,
         })
@@ -234,7 +236,20 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     return {
         'batch': batch, 'portfolio': True, 'source': source,
         'property_diffs': property_diffs, 'unmatched_groups': unmatched_groups,
+        'units_by_property_json': _units_by_property_json(),
     }
+
+
+def _units_by_property_json():
+    """{property_id: [{id, label}, ...]} for every property that has at
+    least one active Unit — fed into the unmatched-listing-name resolution
+    UI's per-group Unit picker, which shows/repopulates itself client-side
+    off this map as soon as a property is chosen for that group. Mirrors
+    tickets/views.py's identically-shaped helper for its own unit picker."""
+    grouped = {}
+    for unit in Unit.objects.filter(is_active=True).select_related('property').order_by('label'):
+        grouped.setdefault(str(unit.property_id), []).append({'id': unit.pk, 'label': unit.label})
+    return json.dumps(grouped)
 
 
 def _create_import_batch(user, source, uploaded_file, property=None):
@@ -467,13 +482,15 @@ def booking_import_apply(request, batch_id):
             blocked = True
             continue
         property = get_object_or_404(Property, pk=property_id)
+        unit_id = request.POST.get(f'unit_{i}') or None
+        unit = property.units.filter(pk=unit_id).first() if unit_id else None
         conflict = check_listing_name_conflict(property, batch.source, listing_name)
         if conflict and conflict['type'] == 'additional' and request.POST.get(f'confirm_{i}'):
             conflict = None
         if conflict:
             blocked = True
         else:
-            pending_mappings.append((listing_name, property, rows))
+            pending_mappings.append((listing_name, property, unit, rows))
 
     if blocked:
         messages.error(
@@ -483,8 +500,8 @@ def booking_import_apply(request, batch_id):
         context = _portfolio_preview_context(batch, raw_bookings, batch.source, posted=request.POST)
         return render(request, 'onsite/booking_import_preview.html', context)
 
-    for listing_name, property, rows in pending_mappings:
-        save_listing_name(property, batch.source, listing_name)
+    for listing_name, property, unit, rows in pending_mappings:
+        save_listing_name(property, batch.source, listing_name, unit=unit)
         matched[property] = matched.get(property, []) + rows
 
     total_new = total_changed = total_reactivated = total_cancelled = 0

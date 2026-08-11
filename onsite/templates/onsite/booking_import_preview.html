@@ -48,8 +48,81 @@
                         {% endfor %}
                     </div>
                 </div>
+                <div class="mt-2" id="unit-picker-wrap-{{ group.index }}" hidden>
+                    <label class="small text-muted d-block mb-1">Which unit is this listing for?</label>
+                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="unit_{{ group.index }}" id="unit-picker-{{ group.index }}">
+                        <input type="hidden" name="unit_{{ group.index }}" data-bubble-input value="{{ group.posted_unit_id }}">
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="No unit — leave blank if this covers the whole property"></div>
+                        <div class="bubble-pool" data-bubble-pool></div>
+                    </div>
+                </div>
             </div>
             {% endfor %}
+            <script type="application/json" id="units-by-property">{{ units_by_property_json|safe }}</script>
+            <script>
+            (function () {
+                // Mirrors ticket_form.html's Unit picker wiring, generalized to N
+                // independent property pickers (one per unmatched listing-name
+                // group on this page) instead of a single one. Each unit pool is
+                // populated synchronously here — before bubble-picker.js's own
+                // DOMContentLoaded init() runs — so its generic "pre-lock
+                // input.value against whatever bubbles already exist in the pool"
+                // logic rehydrates a previously-posted unit choice for free on a
+                // validation-error re-render, exactly like every other picker.
+                var unitsDataEl = document.getElementById('units-by-property');
+                if (!unitsDataEl) return;
+                var unitsByProperty = JSON.parse(unitsDataEl.textContent);
+
+                document.querySelectorAll('[data-bubble-picker][data-name^="map_"]').forEach(function (propertyPicker) {
+                    var index = propertyPicker.dataset.name.replace('map_', '');
+                    var unitWrap = document.getElementById('unit-picker-wrap-' + index);
+                    var unitPicker = document.getElementById('unit-picker-' + index);
+                    if (!unitWrap || !unitPicker) return;
+
+                    var unitPool = unitPicker.querySelector('[data-bubble-pool]');
+                    var unitInput = unitPicker.querySelector('[data-bubble-input]');
+
+                    function renderUnitPool(propertyId) {
+                        unitPool.innerHTML = '';
+                        var units = unitsByProperty[propertyId] || [];
+                        units.forEach(function (u) {
+                            var btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'bubble';
+                            btn.dataset.value = u.id;
+                            btn.dataset.label = u.label;
+                            btn.textContent = u.label;
+                            unitPool.appendChild(btn);
+                        });
+                        unitWrap.hidden = units.length === 0;
+                        return units.length > 0;
+                    }
+
+                    function clearUnitSelection() {
+                        var locked = unitPicker.querySelector('[data-bubble-slot] .bubble');
+                        if (locked && unitPicker._bubbleApi) {
+                            unitPicker._bubbleApi.unlock(locked);
+                        } else {
+                            unitInput.value = '';
+                            var slot = unitPicker.querySelector('[data-bubble-slot]');
+                            if (slot) slot.classList.remove('has-value');
+                            if (locked) locked.remove();
+                        }
+                    }
+
+                    renderUnitPool(propertyPicker.querySelector('[data-bubble-input]').value);
+
+                    propertyPicker.addEventListener('bubble:lock', function (e) {
+                        clearUnitSelection();
+                        renderUnitPool(e.detail.value);
+                    });
+                    propertyPicker.addEventListener('bubble:unlock', function () {
+                        clearUnitSelection();
+                        renderUnitPool('');
+                    });
+                });
+            })();
+            </script>
 
             <div class="border-top pt-3 mt-3">
                 <div class="small text-muted mb-2">Don't see the property? It's fine to add it now instead of cancelling this import.</div>

@@ -82,8 +82,13 @@ def check_listing_name_conflict(property, source, listing_name):
     return None
 
 
-def save_listing_name(property, source, listing_name):
-    PropertyListingName.objects.get_or_create(property=property, platform=source, name=listing_name)
+def save_listing_name(property, source, listing_name, unit=None):
+    listing, created = PropertyListingName.objects.get_or_create(
+        property=property, platform=source, name=listing_name, defaults={'unit': unit},
+    )
+    if not created and listing.unit_id != (unit.pk if unit else None):
+        listing.unit = unit
+        listing.save(update_fields=['unit'])
 
 
 def diff_bookings(property, source, raw_bookings):

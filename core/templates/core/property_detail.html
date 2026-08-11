@@ -347,7 +347,7 @@
                 <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Airbnb</div>
                 {% for ln in airbnb_listing_names %}
                 <div class="d-flex justify-content-between align-items-center py-1 border-top">
-                    <div class="small">{{ ln.name }}</div>
+                    <div class="small">{{ ln.name }}{% if ln.unit %} <span class="badge rounded-pill bg-light text-dark border">{{ ln.unit.label }}</span>{% elif units %} <span class="badge rounded-pill bg-light text-muted border" title="No unit assigned yet">No unit</span>{% endif %}</div>
                     <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="remove_listing_name">
@@ -363,13 +363,19 @@
                     <input type="hidden" name="action" value="add_listing_name">
                     <input type="hidden" name="platform" value="airbnb">
                     <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add an Airbnb listing name">
+                    {% if units %}
+                    <select name="unit_id" class="form-select form-select-sm" style="max-width: 140px;" title="Which unit is this listing for?">
+                        <option value="">— no unit —</option>
+                        {% for unit in units %}<option value="{{ unit.pk }}">{{ unit.label }}</option>{% endfor %}
+                    </select>
+                    {% endif %}
                     <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
                 </form>
 
                 <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">VRBO</div>
                 {% for ln in vrbo_listing_names %}
                 <div class="d-flex justify-content-between align-items-center py-1 border-top">
-                    <div class="small">{{ ln.name }}</div>
+                    <div class="small">{{ ln.name }}{% if ln.unit %} <span class="badge rounded-pill bg-light text-dark border">{{ ln.unit.label }}</span>{% elif units %} <span class="badge rounded-pill bg-light text-muted border" title="No unit assigned yet">No unit</span>{% endif %}</div>
                     <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="remove_listing_name">
@@ -385,6 +391,12 @@
                     <input type="hidden" name="action" value="add_listing_name">
                     <input type="hidden" name="platform" value="vrbo">
                     <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add a VRBO listing name">
+                    {% if units %}
+                    <select name="unit_id" class="form-select form-select-sm" style="max-width: 140px;" title="Which unit is this listing for?">
+                        <option value="">— no unit —</option>
+                        {% for unit in units %}<option value="{{ unit.pk }}">{{ unit.label }}</option>{% endfor %}
+                    </select>
+                    {% endif %}
                     <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
                 </form>
             </div>
