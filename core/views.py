@@ -33,7 +33,7 @@ from .forms import (
 from .models import (
     Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
     GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, PropertyDocument,
-    PropertyListingName, PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES,
+    PropertyListingName, PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES, Unit,
     creatable_contact_types, group_contacts_by_type, is_valid_phone, properties_by_type,
 )
 
@@ -820,6 +820,27 @@ def property_detail(request, pk):
         elif action == 'delete_system_location':
             PropertySystemLocation.objects.filter(pk=request.POST.get('system_location_id'), property=prop).delete()
             messages.success(request, 'Removed.')
+        elif action == 'add_unit':
+            label = request.POST.get('label', '').strip()
+            if not label:
+                messages.error(request, 'Enter a label for the unit.')
+            elif Unit.objects.filter(property=prop, label__iexact=label).exists():
+                messages.error(request, f'"{label}" is already a unit on this property.')
+            else:
+                Unit.objects.create(property=prop, label=label, notes=request.POST.get('notes', '').strip())
+                messages.success(request, f'Added unit "{label}".')
+        elif action == 'update_unit':
+            unit = get_object_or_404(Unit, pk=request.POST.get('unit_id'), property=prop)
+            label = request.POST.get('label', '').strip()
+            if label:
+                unit.label = label
+            unit.notes = request.POST.get('notes', '').strip()
+            unit.is_active = request.POST.get('is_active') == 'on'
+            unit.save()
+            messages.success(request, 'Unit updated.')
+        elif action == 'delete_unit':
+            Unit.objects.filter(pk=request.POST.get('unit_id'), property=prop).delete()
+            messages.success(request, 'Unit removed.')
         elif action == 'toggle_attribute':
             attribute_id = request.POST.get('attribute_id')
             existing = PropertyAttributeAssignment.objects.filter(property=prop, attribute_id=attribute_id)
@@ -875,6 +896,7 @@ def property_detail(request, pk):
         'email_contacts': [c for c in contacts if c.email],
         'open_tickets': open_tickets,
         'system_locations': prop.system_locations.all(),
+        'units': prop.units.all(),
         'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB),
         'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO),
         'documents': prop.documents.all(),

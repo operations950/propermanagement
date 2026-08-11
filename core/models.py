@@ -171,6 +171,33 @@ class PropertyDocument(models.Model):
         return f'{self.name} — {self.property}'
 
 
+class Unit(models.Model):
+    """A specific unit within a multi-unit Property — a bookable listing in
+    a multi-unit STR building, or an individually-owned condo/townhome
+    within an Association. Deliberately thin (just a label) at first:
+    STR-vs-Association behavior is already distinguished by the parent
+    Property.property_type, so unit-specific fields can be added later
+    without disruption once real usage shows what's actually needed.
+    A single-unit property simply has zero Unit rows — every FK that can
+    reference a Unit (Booking, Visit, Ticket, ...) keeps it nullable and
+    optional alongside its existing Property FK, never a replacement for
+    it."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='units')
+    label = models.CharField(max_length=100, help_text='e.g. "Bamboo", "3B", "Unit 204"')
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['label']
+        constraints = [
+            models.UniqueConstraint(fields=['property', 'label'], name='uniq_unit_label_per_property'),
+        ]
+
+    def __str__(self):
+        return f'{self.property.name} — {self.label}'
+
+
 def property_dropdown_queryset():
     """Properties ordered for a grouped dropdown: General, then Associations,
     Short-Term Rentals, Long-Term Rentals, Snowbird Oversight, Commercial —
