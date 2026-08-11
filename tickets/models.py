@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from core.models import Contact, Property, PropertyAttribute, StaffProfile
+from core.models import Contact, Property, PropertyAttribute, StaffProfile, Unit
 
 
 class Priority(models.TextChoices):
@@ -411,6 +411,12 @@ class Ticket(models.Model):
         Property, on_delete=models.PROTECT, related_name='tickets', null=True, blank=True,
         help_text='Blank when the source (e.g. a shared Quo phone line) can\'t determine which '
                    'property this is about — staff assigns it manually.',
+    )
+    unit = models.ForeignKey(
+        Unit, on_delete=models.PROTECT, related_name='tickets', null=True, blank=True,
+        help_text='Which unit under the property this is about, if the property has units and it\'s '
+                   'known — e.g. "AC broken in 3B." Optional even on a multi-unit property: a building-'
+                   'wide issue is still just filed against the property with no unit set.',
     )
 
     assigned_role = models.CharField(

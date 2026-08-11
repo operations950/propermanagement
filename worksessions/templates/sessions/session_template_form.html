@@ -126,13 +126,18 @@
                 {% endfor %}
             </div>
             <label class="form-label fw-medium d-block">Requires these attributes <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
-            <div class="d-flex flex-wrap gap-3">
+            <div class="d-flex flex-wrap gap-3 mb-3">
                 {% for attr in attributes %}
                 <div class="form-check">
                     <input class="form-check-input session-preview-input" type="checkbox" name="required_attributes" value="{{ attr.pk }}" id="attr-{{ attr.pk }}" {% if attr in form.required_attributes.value %}checked{% endif %}>
                     <label class="form-check-label" for="attr-{{ attr.pk }}">{{ attr.label }}</label>
                 </div>
                 {% endfor %}
+            </div>
+            <div class="form-check">
+                <input class="form-check-input session-preview-input" type="checkbox" name="query_by_unit" id="id_query_by_unit" {% if form.query_by_unit.value %}checked{% endif %}>
+                <label class="form-check-label" for="id_query_by_unit">One line per unit, not per property</label>
+                <div class="small" style="color: var(--ink-muted);">A matching property with Units (a multi-unit STR building or an association) produces one line per unit instead of one line for the whole property. A matching property with no units is unaffected either way.</div>
             </div>
         </div>
 

@@ -68,9 +68,12 @@ CONFLICT_SAFE_MODELS = [
 
 # Plain bulk-reassignable models — a `property` FK with no unique
 # constraint referencing it, so one .update() per source property is safe.
+# Ticket and SessionLine are handled alongside Booking/Visit/
+# PropertyListingName instead (see merge_group) since they also carry a
+# `unit` field to backfill, not just `property`.
 PLAIN_REASSIGN_MODELS = [
     PropertyChecklistItem, VisitRule, ImportBatch, SupplyOrder,
-    Ticket, TicketTemplate, SessionLine, ProcessRun, FollowUpLog,
+    TicketTemplate, ProcessRun, FollowUpLog,
 ]
 
 
@@ -173,13 +176,15 @@ def merge_group(base_name, properties):
         unit = units_by_property_id[prop.pk]
         summary['units'].append({'label': unit.label, 'source_property': original_names[prop.pk]})
 
-        # The only unit-aware models as of this writing — both `property`
-        # and `unit` reassigned. Also correct for prop == primary: its own
-        # existing bookings/visits/listing names get tagged with the new
-        # Unit representing what used to be its whole identity.
+        # The unit-aware models — both `property` and `unit` reassigned.
+        # Also correct for prop == primary: its own existing bookings/
+        # visits/tickets/listing names/session lines get tagged with the
+        # new Unit representing what used to be its whole identity.
         Booking.objects.filter(property=prop).update(property=primary, unit=unit)
         Visit.objects.filter(property=prop).update(property=primary, unit=unit)
         PropertyListingName.objects.filter(property=prop).update(property=primary, unit=unit)
+        Ticket.objects.filter(property=prop).update(property=primary, unit=unit)
+        SessionLine.objects.filter(property=prop).update(property=primary, unit=unit)
 
         # Everything below is a reassignment FROM a sibling TO the primary
         # — meaningless (and, for the conflict-safe models, actively wrong:

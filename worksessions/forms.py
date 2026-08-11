@@ -36,7 +36,7 @@ class SessionTemplateForm(forms.ModelForm):
             'name', 'description', 'owner', 'department',
             'frequency', 'workday_of_month', 'next_open_date', 'due_offset_days',
             'active_from', 'active_until', 'is_active',
-            'line_source', 'property_types', 'required_attributes',
+            'line_source', 'property_types', 'required_attributes', 'query_by_unit',
         ]
         widgets = {
             'required_attributes': forms.CheckboxSelectMultiple,

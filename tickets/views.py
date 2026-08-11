@@ -18,7 +18,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
 from core.models import (
-    Contact, Property, PropertyAttribute, StaffProfile, group_vendors_by_trade, is_valid_phone,
+    Contact, Property, PropertyAttribute, StaffProfile, Unit, group_vendors_by_trade, is_valid_phone,
     properties_by_type, property_dropdown_queryset,
 )
 from messaging.services import _followup_result_message, _group_followups, fetch_quo_conversation, send_followup_bulk
@@ -1527,7 +1527,21 @@ def ticket_create(request):
         'all_contacts_json': json.dumps(all_contacts),
         'selected_contractor_label': contact_label('assigned_contact'),
         'selected_reporter_label': contact_label('reporter_contact'),
+        'units_by_property_json': _units_by_property_json(),
     })
+
+
+def _units_by_property_json():
+    """{property_id: [{id, label}, ...]} for every property that has at
+    least one active Unit — fed into ticket_form.html's Unit bubble picker,
+    which shows/repopulates itself client-side off this map as soon as a
+    property with units is selected. Whole-map, not per-request-filtered:
+    the number of multi-unit properties is small enough that this is
+    cheaper than a per-property AJAX round trip."""
+    grouped = {}
+    for unit in Unit.objects.filter(is_active=True).select_related('property').order_by('label'):
+        grouped.setdefault(str(unit.property_id), []).append({'id': unit.pk, 'label': unit.label})
+    return json.dumps(grouped)
 
 
 def _attributes_by_category():

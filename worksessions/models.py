@@ -38,7 +38,7 @@ findings in this app's own investigation report:
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from core.models import Property, PropertyAttribute, StaffProfile
+from core.models import Property, PropertyAttribute, StaffProfile, Unit
 
 
 class Frequency(models.TextChoices):
@@ -111,6 +111,14 @@ class SessionTemplate(models.Model):
         PropertyAttribute, blank=True, related_name='required_by_session_templates',
         help_text='Only used when Line source is "Property query" — a matching property must have '
                    'ALL of these tags. Empty = no constraint.',
+    )
+    query_by_unit = models.BooleanField(
+        default=False,
+        help_text='Only used when Line source is "Property query" — when a matching property has '
+                   'Units, generate one line per Unit instead of one line for the whole property (a '
+                   'matching property with no units still gets a single property-level line either '
+                   'way). Off by default so existing property-query rules keep their exact current '
+                   'behavior unchanged.',
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -222,6 +230,11 @@ class SessionLine(models.Model):
     property = models.ForeignKey(
         Property, on_delete=models.SET_NULL, null=True, blank=True, related_name='session_lines',
         help_text='Set only for a query-driven line — the property it was generated for.',
+    )
+    unit = models.ForeignKey(
+        Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='session_lines',
+        help_text='Set only for a query-driven line generated per-unit rather than per-property — see '
+                   'SessionTemplate.line_source and generation.py::matching_targets.',
     )
     display_order = models.PositiveSmallIntegerField(default=0)
 

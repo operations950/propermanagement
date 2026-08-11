@@ -95,6 +95,29 @@ def matching_properties(template):
     return list(qs.distinct().order_by('name'))
 
 
+def matching_targets(template):
+    """Query-driven line targeting, expanded to units when
+    template.query_by_unit is set — a list of (label, property, unit)
+    tuples. A matching property with active Units produces one tuple per
+    unit instead of one for the whole property; a matching property with
+    no units (or query_by_unit off, the default) produces exactly the same
+    single property-level tuple this always has — existing rules keep
+    their exact current behavior unless this flag is deliberately turned
+    on."""
+    properties = matching_properties(template)
+    if not template.query_by_unit:
+        return [(str(prop), prop, None) for prop in properties]
+
+    targets = []
+    for prop in properties:
+        units = list(prop.units.filter(is_active=True).order_by('label'))
+        if units:
+            targets.extend((f'{prop} — {unit.label}', prop, unit) for unit in units)
+        else:
+            targets.append((str(prop), prop, None))
+    return targets
+
+
 def materialize_lines(session, template):
     """Snapshots the template's lines onto the new Session — the one place
     copying is correct, per this app's own build brief: once a Session
@@ -107,8 +130,8 @@ def materialize_lines(session, template):
         ]
     else:
         rows = [
-            SessionLine(session=session, label=str(prop), property=prop, display_order=i)
-            for i, prop in enumerate(matching_properties(template))
+            SessionLine(session=session, label=label, property=prop, unit=unit, display_order=i)
+            for i, (label, prop, unit) in enumerate(matching_targets(template))
         ]
     SessionLine.objects.bulk_create(rows)
     return rows

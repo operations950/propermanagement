@@ -24,10 +24,10 @@ class TicketForm(forms.ModelForm):
     class Meta:
         model = Ticket
         fields = [
-            'title', 'description', 'property', 'priority', 'due_date',
+            'title', 'description', 'property', 'unit', 'priority', 'due_date',
             'assigned_role', 'assigned_staff', 'assigned_contact',
         ]
-        labels = {'title': 'Title', 'property': 'Property (optional)'}
+        labels = {'title': 'Title', 'property': 'Property (optional)', 'unit': 'Unit (optional)'}
         widgets = {
             'title': forms.TextInput(attrs={'maxlength': 60}),
             'description': forms.Textarea(attrs={'rows': 3, 'maxlength': 200}),
@@ -57,6 +57,9 @@ class TicketForm(forms.ModelForm):
         cleaned = super().clean()
         if cleaned.get('assigned_staff') and cleaned.get('assigned_contact'):
             raise forms.ValidationError('Assign to staff OR a vendor contact, not both.')
+        unit = cleaned.get('unit')
+        if unit and unit.property_id != (cleaned.get('property') and cleaned['property'].pk):
+            raise forms.ValidationError('The selected unit doesn\'t belong to the selected property.')
         return cleaned
 
 

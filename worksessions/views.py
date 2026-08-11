@@ -192,6 +192,7 @@ def session_template_preview(request):
     line_source = request.POST.get('line_source', SessionTemplate.LineSource.STATIC)
     property_types = request.POST.getlist('property_types')
     required_attribute_ids = [v for v in request.POST.getlist('required_attributes') if v]
+    query_by_unit = request.POST.get('query_by_unit') == 'on'
 
     def _parse_date(raw):
         try:
@@ -219,9 +220,19 @@ def session_template_preview(request):
             qs = qs.filter(property_type__in=property_types)
         for attr_id in required_attribute_ids:
             qs = qs.filter(attribute_assignments__attribute_id=attr_id)
-        properties = list(qs.distinct().order_by('name').values_list('name', flat=True))
-        payload['line_count'] = len(properties)
-        payload['line_names'] = properties[:25]
+        properties = list(qs.distinct().order_by('name').prefetch_related('units'))
+        if query_by_unit:
+            labels = []
+            for prop in properties:
+                units = [u for u in prop.units.all() if u.is_active]
+                if units:
+                    labels.extend(f'{prop.name} — {u.label}' for u in sorted(units, key=lambda u: u.label))
+                else:
+                    labels.append(prop.name)
+        else:
+            labels = [prop.name for prop in properties]
+        payload['line_count'] = len(labels)
+        payload['line_names'] = labels[:25]
     else:
         static_labels = [l.strip() for l in request.POST.get('static_lines_text', '').split('\n') if l.strip()]
         payload['line_count'] = len(static_labels)
