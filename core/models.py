@@ -523,9 +523,9 @@ class StaffProfile(models.Model):
     )
     is_company_admin = models.BooleanField(
         default=False,
-        help_text='Sees the company-wide owner dashboard instead of the standard department dashboard. '
-                   'Orthogonal to role (a department/queue concept) and to User.is_superuser (Django-admin/'
-                   'Admin Tools access) — this is its own narrower permission.',
+        help_text='Full admin: the company-wide owner dashboard, checklist/property editing, staff creation, '
+                   'and Admin Tools (including API keys/secrets) — equivalent to User.is_superuser. '
+                   'Orthogonal to role, which is just a department/queue concept.',
     )
     phone = models.CharField(max_length=30, blank=True, validators=[phone_validator])
     timezone = models.CharField(

@@ -41,7 +41,16 @@ logger = logging.getLogger(__name__)
 
 
 def _is_admin(user):
-    return user.is_superuser
+    """True for a Django superuser OR a staff member flagged Company Admin
+    from /admin-tools/ — the two used to be separate concepts (Company
+    Admin only unlocked the owner dashboard), but that split meant toggling
+    someone "Company Admin" silently left them locked out of every other
+    admin-gated screen (checklist editing, property delete, staff
+    creation, Admin Tools itself). Unified at the user's explicit request:
+    Company Admin now means full admin, same as is_superuser."""
+    if user.is_superuser:
+        return True
+    return getattr(getattr(user, 'staff_profile', None), 'is_company_admin', False)
 
 
 def _safe_next(request, default='dashboard'):
@@ -1166,6 +1175,7 @@ def contact_review(request):
         'type_choices': creatable_contact_types(),
         'trade_choices': TRADE_CHOICES,
         'properties_by_type': properties_by_type(),
+        'is_admin': _is_admin(request.user),
     })
 
 

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Contacts to review{% endblock %}
 {% block content %}
-{% if request.user.is_superuser %}
+{% if is_admin %}
 <div class="card mb-4">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> One-time baseline pass</h6>

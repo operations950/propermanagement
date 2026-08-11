@@ -15,6 +15,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from core.views import _is_admin
+
 from . import gmail_auth
 from .models import GmailInboxToken, QuoMessage, QuoThreadState, QuoWebhookLog
 
@@ -37,10 +39,6 @@ def _quo_webhook_signing_key():
     return getattr(settings, 'QUO_WEBHOOK_SIGNING_KEY', '') or _QUO_WEBHOOK_SIGNING_KEY_FALLBACK
 
 _CONVERSATION_ID_RE = re.compile(r'/c/(CN[0-9a-f]+)')
-
-
-def _is_admin(user):
-    return user.is_superuser
 
 
 @login_required
