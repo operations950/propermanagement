@@ -295,7 +295,7 @@ height instead of wrapping onto two lines.
         <tbody data-row-edit>
             <tr>
                 <td><span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span></td>
-                <td class="text-truncate">{% if t.property %}{{ t.property.name }}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</td>
+                <td class="text-truncate">{% if t.property %}{{ t.property.name }}{% if t.unit %} <span class="text-muted small">— {{ t.unit.label }}</span>{% endif %}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</td>
                 <td class="text-truncate fw-medium">
                     <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none">{{ t.title }}</a>
                     {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
@@ -338,7 +338,7 @@ just laid out top-to-bottom rather than in cells.
                         <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body">{{ t.title }}</a>
                         {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
                     </div>
-                    <div class="small text-muted">{% if t.property %}{{ t.property.name }}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</div>
+                    <div class="small text-muted">{% if t.property %}{{ t.property.name }}{% if t.unit %} — {{ t.unit.label }}{% endif %}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</div>
                 </div>
                 <button type="button" class="btn btn-link btn-sm p-0 flex-shrink-0" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
             </div>

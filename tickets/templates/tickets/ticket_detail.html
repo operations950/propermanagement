@@ -8,7 +8,7 @@
         <h2 class="page-title">{{ ticket.title }}</h2>
         <p class="text-muted mb-0">
             <span class="badge" style="{{ ticket.assigned_role|department_badge_style }}">{{ ticket.get_assigned_role_display|default:'Unassigned' }}</span>
-            {{ ticket.property.name|default:'No property assigned' }} &middot;
+            {{ ticket.property.name|default:'No property assigned' }}{% if ticket.unit %} — {{ ticket.unit.label }}{% endif %} &middot;
             source: {{ ticket.get_source_display }}
         </p>
     </div>

@@ -3,7 +3,7 @@
     <tr>
         <td class="fw-medium">
             <i data-lucide="{{ p.property_type|property_type_icon }}" class="icon" style="color: var(--brand-slate);"></i>
-            <a href="{% url 'property_detail' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
+            <a href="{% url 'property_detail' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}{% if p.unit_count %} <span class="badge rounded-pill bg-light text-muted border" title="Units">{{ p.unit_count }} unit{{ p.unit_count|pluralize }}</span>{% endif %}
         </td>
         <td>
             <span class="badge rounded-pill bg-light text-dark border">{{ p.get_property_type_display }}</span>

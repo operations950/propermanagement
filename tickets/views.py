@@ -821,7 +821,7 @@ def ticket_list(request):
     stay hidden unless staff explicitly ask for them via the status filter
     ('complete' for the whole historical bucket, or a specific status like
     'cancelled' to drill into just one)."""
-    qs = Ticket.objects.select_related('property', 'assigned_staff__user', 'assigned_contact').all()
+    qs = Ticket.objects.select_related('property', 'unit', 'assigned_staff__user', 'assigned_contact').all()
     status = request.GET.get('status') or 'active'
     if status == 'active':
         qs = qs.filter(status__in=OPEN_STATUSES)
@@ -1293,7 +1293,7 @@ def _safe_back_url(request, exclude_path=None, fallback_view='ticket_list'):
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
         Ticket.objects.select_related(
-            'property', 'assigned_staff__user', 'assigned_contact', 'created_from_template',
+            'property', 'unit', 'assigned_staff__user', 'assigned_contact', 'created_from_template',
             'template_occurrence', 'package_run__package',
         ),
         pk=pk,

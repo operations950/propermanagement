@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, login as auth_login
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -391,7 +391,7 @@ def property_list(request):
     show_inactive = request.GET.get('show_inactive') == '1'
     if not show_inactive:
         qs = qs.filter(is_active=True)
-    qs = qs.order_by('property_type', '-is_general', 'name')
+    qs = qs.annotate(unit_count=Count('units', distinct=True)).order_by('property_type', '-is_general', 'name')
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({
