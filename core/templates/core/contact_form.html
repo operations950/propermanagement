@@ -109,6 +109,21 @@
                 </div>
             </div>
 
+            {% if all_units %}
+            <div class="mb-4">
+                <label class="form-label fw-medium d-block">Units <span class="fw-normal" style="color: var(--ink-muted);">(optional — which specific unit(s), if any of the properties above have them, e.g. which condo an Owner actually owns)</span></label>
+                <div class="d-flex flex-wrap gap-3">
+                    {% for unit in all_units %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="units" value="{{ unit.pk }}" id="unit-{{ unit.pk }}" {% if unit.pk in selected_unit_ids %}checked{% endif %}>
+                        <label class="form-check-label small" for="unit-{{ unit.pk }}">{{ unit.property.name }} — {{ unit.label }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if form.units.errors %}<div class="text-danger small mt-1">{{ form.units.errors|join:', ' }}</div>{% endif %}
+            </div>
+            {% endif %}
+
             <div class="mb-4">
                 <label class="form-label fw-medium" for="id_notes">Notes</label>
                 <textarea name="notes" id="id_notes" class="form-control" rows="3">{{ form.notes.value|default:'' }}</textarea>

@@ -93,8 +93,11 @@ class ContactForm(forms.ModelForm):
 
     class Meta:
         model = Contact
-        fields = ['name', 'contact_type', 'trade', 'phone', 'email', 'properties', 'notes']
-        labels = {'name': 'Name', 'contact_type': 'Type', 'properties': 'Properties (optional)'}
+        fields = ['name', 'contact_type', 'trade', 'phone', 'email', 'properties', 'units', 'notes']
+        labels = {
+            'name': 'Name', 'contact_type': 'Type', 'properties': 'Properties (optional)',
+            'units': 'Units (optional)',
+        }
         widgets = {
             'notes': forms.Textarea(attrs={'rows': 3}),
             'phone': forms.TextInput(attrs={'type': 'tel', 'placeholder': '555-123-4567'}),
@@ -122,6 +125,17 @@ class ContactForm(forms.ModelForm):
         # e.g. Owner/Board Member in practice.
         if cleaned.get('contact_type') in (Contact.ContactType.VENDOR, Contact.ContactType.STAFF_ADJACENT):
             cleaned['secondary_types'] = []
+        units = cleaned.get('units')
+        properties = cleaned.get('properties')
+        if units:
+            selected_property_ids = {p.pk for p in properties} if properties else set()
+            stray = [u for u in units if u.property_id not in selected_property_ids]
+            if stray:
+                self.add_error(
+                    'units',
+                    'Every selected unit\'s property must also be selected above: '
+                    + ', '.join(f'"{u.label}" ({u.property.name})' for u in stray),
+                )
         return cleaned
 
     def save(self, commit=True):

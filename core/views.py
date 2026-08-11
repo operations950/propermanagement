@@ -1092,11 +1092,14 @@ def contact_import_commit(request):
 
 def _contact_form_context(form, **extra):
     selected_ids = [str(v.pk if hasattr(v, 'pk') else v) for v in (form['properties'].value() or [])]
+    selected_unit_ids = [str(v.pk if hasattr(v, 'pk') else v) for v in (form['units'].value() or [])]
     trade_value = form['trade'].value() or ''
     selected_secondary_types = form['secondary_types'].value() or []
     return {
         'form': form, 'properties_by_type': properties_by_type(),
         'selected_property_ids': ','.join(selected_ids),
+        'all_units': Unit.objects.filter(is_active=True).select_related('property').order_by('property__name', 'label'),
+        'selected_unit_ids': [int(v) for v in selected_unit_ids],
         'trade_choices': TRADE_CHOICES,
         'trade_is_other': bool(trade_value) and trade_value not in TRADE_CHOICES,
         'selected_secondary_types': ','.join(selected_secondary_types),

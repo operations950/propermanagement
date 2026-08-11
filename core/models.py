@@ -355,6 +355,13 @@ class Contact(models.Model):
         help_text='The propert(y/ies) this contact is associated with — e.g. a tenant, an owner, or a '
                    'board member who may sit on more than one board.',
     )
+    units = models.ManyToManyField(
+        Unit, blank=True, related_name='contacts',
+        help_text='Specific unit(s) this contact owns/occupies, if the property has units and it\'s '
+                   'known — e.g. which condo an Owner actually owns. Independent of `properties` above, '
+                   'not a replacement for it: a Board Member is tied to the whole association via '
+                   '`properties` with no unit needed, while an individual unit Owner has both.',
+    )
     source = models.CharField(
         max_length=20, choices=Source.choices, default=Source.MANUAL,
         help_text='Where this contact came from — set automatically, kept for provenance/audit.',

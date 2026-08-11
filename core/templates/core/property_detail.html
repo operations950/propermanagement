@@ -71,6 +71,7 @@
                 <div>
                     <a href="{% url 'contact_edit' c.pk %}" class="text-decoration-none">{{ c.name }}</a>
                     {% if c.trade %}<span class="badge rounded-pill bg-light text-dark border ms-1">{{ c.trade }}</span>{% endif %}
+                    {% for u in c.units.all %}{% if u.property_id == property.pk %}<span class="badge rounded-pill bg-light text-dark border ms-1" title="Unit">{{ u.label }}</span>{% endif %}{% endfor %}
                     <span class="text-muted small ms-1">{{ c.phone }}{% if c.phone and c.email %} &middot; {% endif %}{{ c.email }}</span>
                 </div>
                 {% if c.pk in contacts_with_thread_ids %}
