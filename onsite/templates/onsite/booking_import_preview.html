@@ -3,6 +3,19 @@
 {% block content %}
 <a href="{% url 'onsite_booking_import' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Import bookings</a>
 
+{% if debug_last_import_error %}
+{# TEMPORARY — see the matching diagnostic try/except in
+   onsite/views.py::booking_import_apply. Remove this block once the
+   production-only Apply 500 this is chasing is found and fixed. #}
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg); border-color: var(--status-critical);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2" style="color: var(--status-critical);"><i data-lucide="bug" class="icon"></i> Diagnostic: the last Apply attempt crashed</h6>
+        <p class="text-muted small mb-2">Copy everything in the box below and send it over — this is exactly what's needed to find and fix it.</p>
+        <pre class="small p-2" style="background: var(--surface-page); border-radius: var(--bs-border-radius-sm); overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;">{{ debug_last_import_error }}</pre>
+    </div>
+</div>
+{% endif %}
+
 {% if portfolio %}
 <h2 class="page-title mb-1">Review import — portfolio-wide</h2>
 <p class="text-muted small mb-4">{{ batch.get_source_display }} · covers {{ batch.covers_start }} to {{ batch.covers_end }}. Nothing has been saved yet.</p>

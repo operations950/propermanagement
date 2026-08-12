@@ -1,5 +1,7 @@
 import calendar as calendar_module
 import json
+import logging
+import traceback
 from datetime import date, datetime, timedelta
 
 from django.contrib import messages
@@ -29,10 +31,16 @@ from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
 )
 
+logger = logging.getLogger(__name__)
+
 # How far ahead of ready_by a visit starts showing as at-risk — a heads-up
 # window, not just "already late". Not user-configurable; a fixed buffer is
 # enough for a company this size and avoids a settings screen for one number.
 AT_RISK_BUFFER_MINUTES = 90
+
+# TEMPORARY — see the diagnostic try/except in booking_import_apply. Remove
+# this along with that block once the production-only Apply 500 is found.
+DEBUG_LAST_IMPORT_ERROR_SESSION_KEY = 'booking_import_last_error_tb'
 
 
 def _visit_status(visit, now):
@@ -395,6 +403,10 @@ def booking_import_preview(request, batch_id):
     quick_add_property round trip) rather than only existing as an inline
     render of the upload POST."""
     batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
+    # TEMPORARY — see booking_import_apply's matching diagnostic try/except.
+    # Popped (not just read) so it only ever shows once, right after the
+    # crash that produced it.
+    debug_last_import_error = request.session.pop(DEBUG_LAST_IMPORT_ERROR_SESSION_KEY, None)
     try:
         raw_bookings = parse_booking_file(batch.raw_file)
     except BookingFileError as e:
@@ -405,11 +417,14 @@ def booking_import_preview(request, batch_id):
         diff = diff_bookings(batch.property, batch.source, raw_bookings)
         return render(request, 'onsite/booking_import_preview.html', {
             'batch': batch, 'property': batch.property, 'diff': diff, 'portfolio': False,
+            'debug_last_import_error': debug_last_import_error,
         })
 
+    context = _portfolio_preview_context(batch, raw_bookings, batch.source)
+    context['debug_last_import_error'] = debug_last_import_error
     return render(
         request, 'onsite/booking_import_preview.html',
-        _portfolio_preview_context(batch, raw_bookings, batch.source),
+        context,
     )
 
 
@@ -455,81 +470,96 @@ def booking_import_apply(request, batch_id):
         messages.error(request, f'Could not re-read the saved file: {e}')
         return redirect('onsite_booking_import')
 
-    if batch.property_id:
-        new_count, changed_count, reactivated_count, cancelled_count, visit_note = apply_bookings_for_property(
-            batch.property, batch.source, raw_bookings,
-        )
-        batch.new_count, batch.changed_count = new_count, changed_count
-        batch.reactivated_count, batch.cancelled_count = reactivated_count, cancelled_count
+    # TEMPORARY diagnostic wrap (see the matching block in booking_import_preview
+    # that reads DEBUG_LAST_IMPORT_ERROR_SESSION_KEY) — added while tracking down
+    # a production-only 500 on Apply that hasn't reproduced locally. Remove once
+    # that's found and fixed; this is not meant to be permanent app behavior.
+    try:
+        if batch.property_id:
+            new_count, changed_count, reactivated_count, cancelled_count, visit_note = apply_bookings_for_property(
+                batch.property, batch.source, raw_bookings,
+            )
+            batch.new_count, batch.changed_count = new_count, changed_count
+            batch.reactivated_count, batch.cancelled_count = reactivated_count, cancelled_count
+            batch.applied_at = timezone.now()
+            batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
+            _update_feed_health(batch.source, raw_bookings)
+            messages.success(
+                request,
+                f'Imported: {new_count} new, {changed_count} changed, {reactivated_count} reactivated, '
+                f'{cancelled_count} cancelled.',
+            )
+            if visit_note:
+                messages.warning(request, visit_note)
+            return redirect('onsite_dashboard')
+
+        matched, unmatched = resolve_listing_names(raw_bookings, batch.source)
+        pending_mappings = []
+        blocked = False
+        for i, (listing_name, rows) in enumerate(sorted(unmatched.items())):
+            property_id = request.POST.get(f'map_{i}')
+            if not property_id:
+                blocked = True
+                continue
+            property = get_object_or_404(Property, pk=property_id)
+            unit_id = request.POST.get(f'unit_{i}') or None
+            unit = property.units.filter(pk=unit_id).first() if unit_id else None
+            conflict = check_listing_name_conflict(property, batch.source, listing_name)
+            if conflict and conflict['type'] == 'additional' and request.POST.get(f'confirm_{i}'):
+                conflict = None
+            if conflict:
+                blocked = True
+            else:
+                pending_mappings.append((listing_name, property, unit, rows))
+
+        if blocked:
+            messages.error(
+                request,
+                'Every listing name needs to be mapped to a property (and any conflicts resolved) before this import can be applied.',
+            )
+            context = _portfolio_preview_context(batch, raw_bookings, batch.source, posted=request.POST)
+            return render(request, 'onsite/booking_import_preview.html', context)
+
+        for listing_name, property, unit, rows in pending_mappings:
+            save_listing_name(property, batch.source, listing_name, unit=unit)
+            matched[property] = matched.get(property, []) + rows
+
+        total_new = total_changed = total_reactivated = total_cancelled = 0
+        visit_notes = set()
+        for property, rows in matched.items():
+            n, c, r, x, note = apply_bookings_for_property(property, batch.source, rows)
+            total_new += n
+            total_changed += c
+            total_reactivated += r
+            total_cancelled += x
+            if note:
+                visit_notes.add(note)
+
+        batch.new_count, batch.changed_count = total_new, total_changed
+        batch.reactivated_count, batch.cancelled_count = total_reactivated, total_cancelled
         batch.applied_at = timezone.now()
         batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
         _update_feed_health(batch.source, raw_bookings)
+
+        property_word = 'property' if len(matched) == 1 else 'properties'
         messages.success(
             request,
-            f'Imported: {new_count} new, {changed_count} changed, {reactivated_count} reactivated, '
-            f'{cancelled_count} cancelled.',
+            f'Imported: {total_new} new, {total_changed} changed, {total_reactivated} reactivated, '
+            f'{total_cancelled} cancelled, across {len(matched)} {property_word}.',
         )
-        if visit_note:
-            messages.warning(request, visit_note)
+        for note in visit_notes:
+            messages.warning(request, note)
         return redirect('onsite_dashboard')
-
-    matched, unmatched = resolve_listing_names(raw_bookings, batch.source)
-    pending_mappings = []
-    blocked = False
-    for i, (listing_name, rows) in enumerate(sorted(unmatched.items())):
-        property_id = request.POST.get(f'map_{i}')
-        if not property_id:
-            blocked = True
-            continue
-        property = get_object_or_404(Property, pk=property_id)
-        unit_id = request.POST.get(f'unit_{i}') or None
-        unit = property.units.filter(pk=unit_id).first() if unit_id else None
-        conflict = check_listing_name_conflict(property, batch.source, listing_name)
-        if conflict and conflict['type'] == 'additional' and request.POST.get(f'confirm_{i}'):
-            conflict = None
-        if conflict:
-            blocked = True
-        else:
-            pending_mappings.append((listing_name, property, unit, rows))
-
-    if blocked:
+    except Exception:
+        tb = traceback.format_exc()
+        logger.exception('booking_import_apply crashed for batch %s', batch_id)
+        request.session[DEBUG_LAST_IMPORT_ERROR_SESSION_KEY] = tb
         messages.error(
             request,
-            'Every listing name needs to be mapped to a property (and any conflicts resolved) before this import can be applied.',
+            'Something went wrong applying this import. The full error is shown below the file review '
+            'on this page — please copy it and send it over so this can get fixed.',
         )
-        context = _portfolio_preview_context(batch, raw_bookings, batch.source, posted=request.POST)
-        return render(request, 'onsite/booking_import_preview.html', context)
-
-    for listing_name, property, unit, rows in pending_mappings:
-        save_listing_name(property, batch.source, listing_name, unit=unit)
-        matched[property] = matched.get(property, []) + rows
-
-    total_new = total_changed = total_reactivated = total_cancelled = 0
-    visit_notes = set()
-    for property, rows in matched.items():
-        n, c, r, x, note = apply_bookings_for_property(property, batch.source, rows)
-        total_new += n
-        total_changed += c
-        total_reactivated += r
-        total_cancelled += x
-        if note:
-            visit_notes.add(note)
-
-    batch.new_count, batch.changed_count = total_new, total_changed
-    batch.reactivated_count, batch.cancelled_count = total_reactivated, total_cancelled
-    batch.applied_at = timezone.now()
-    batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
-    _update_feed_health(batch.source, raw_bookings)
-
-    property_word = 'property' if len(matched) == 1 else 'properties'
-    messages.success(
-        request,
-        f'Imported: {total_new} new, {total_changed} changed, {total_reactivated} reactivated, '
-        f'{total_cancelled} cancelled, across {len(matched)} {property_word}.',
-    )
-    for note in visit_notes:
-        messages.warning(request, note)
-    return redirect('onsite_dashboard')
+        return redirect('onsite_booking_import_preview', batch_id=batch_id)
 
 
 @login_required
