@@ -23,7 +23,7 @@ from vendorportal.models import AccessAttempt
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
     Booking, BookingFeedHealth, DailyUploadSlot, ImportBatch, PropertyChecklistItem, StandardChecklistItem,
-    Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitType,
+    Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule, VisitType,
 )
 from .services import checklist as checklist_service
 from .services import notify as notify_service
@@ -567,10 +567,9 @@ def visit_create(request):
     """Manually schedule a one-off visit — an owner-requested extra
     cleaning, an ad-hoc inspection, anything not tied to a booking-file
     checkout. Booking import is still how the bulk of turnovers get
-    created; this is the escape hatch for everything else, since neither
-    Django admin's plain "Add Visit" form (bypasses create_visit entirely,
-    so it wouldn't get a checklist at all) nor VisitRule (no UI, and it's
-    for recurring generation, not a single ad-hoc visit) covers this."""
+    created; this is the escape hatch for everything else, since Django
+    admin's plain "Add Visit" form bypasses create_visit entirely (so it
+    wouldn't get a checklist at all)."""
     str_properties = Property.objects.filter(
         property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True,
     ).order_by('name')
@@ -582,6 +581,7 @@ def visit_create(request):
         Q(contact_type=Contact.ContactType.VENDOR, trade__icontains='clean')
         | Q(contact_type=Contact.ContactType.ON_SITE_STAFF),
     )
+    units_by_property_json = _units_by_property_json()
 
     if request.method == 'POST':
         prop = get_object_or_404(Property, pk=request.POST.get('property'), property_type=Property.Type.SHORT_TERM_RENTAL) \
@@ -594,9 +594,14 @@ def visit_create(request):
             return render(request, 'onsite/visit_create.html', {
                 'str_properties': str_properties, 'visit_types': visit_types,
                 'staff_options': staff_options, 'contact_options': contact_options,
+                'units_by_property_json': units_by_property_json,
             })
 
+        unit_id = request.POST.get('unit') or None
+        unit = prop.units.filter(pk=unit_id).first() if unit_id else None
+
         kwargs = {
+            'unit': unit,
             'scheduled_date': parse_date(request.POST.get('scheduled_date', '').strip()) or None,
             'scheduled_start': request.POST.get('scheduled_start', '').strip() or None,
             'notes': request.POST.get('notes', '').strip(),
@@ -625,12 +630,87 @@ def visit_create(request):
         )
         if visit.assigned_staff_id or visit.assigned_contact_id:
             notify_service.notify_assignee(visit, request)
-        messages.success(request, f'Visit scheduled for {prop.name}.')
+        messages.success(request, f'Visit scheduled for {prop.name}{f" — {unit.label}" if unit else ""}.')
         return redirect('onsite_visit_detail', pk=visit.pk)
 
     return render(request, 'onsite/visit_create.html', {
         'str_properties': str_properties, 'visit_types': visit_types,
         'staff_options': staff_options, 'contact_options': contact_options,
+        'units_by_property_json': units_by_property_json,
+    })
+
+
+@login_required
+def visit_rule_list(request):
+    """Staff-facing management screen for VisitRule — the recurring
+    generation path for deep cleans/inspections (see
+    generate_scheduled_visits). Previously reachable only through Django
+    admin's plain model form; this is the first real staff-facing UI for
+    it, built specifically so a multi-unit property can get one rule per
+    unit instead of being stuck with property-wide-only scheduling. A
+    single list-plus-inline-add-form page, matching property_detail.html's
+    Units/System Locations card pattern, rather than separate create/edit
+    pages — editing an existing rule's cadence/assignee isn't supported
+    yet (delete and re-add covers it for now); what was missing and asked
+    for is targeting a specific unit, which this does cover."""
+    str_properties = Property.objects.filter(
+        property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True,
+    ).order_by('name')
+    visit_types = VisitType.objects.filter(is_active=True, is_addon=False).order_by('name')
+    staff_options = StaffProfile.objects.select_related('user').filter(
+        user__is_active=True, role=StaffProfile.Role.CLEANER,
+    )
+    units_by_property_json = _units_by_property_json()
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_rule':
+            prop = get_object_or_404(
+                Property, pk=request.POST.get('property'), property_type=Property.Type.SHORT_TERM_RENTAL,
+            ) if request.POST.get('property') else None
+            visit_type = get_object_or_404(
+                VisitType, pk=request.POST.get('visit_type'), is_addon=False,
+            ) if request.POST.get('visit_type') else None
+            if not prop or not visit_type:
+                messages.error(request, 'Choose a property and a visit type.')
+                return redirect('onsite_visit_rule_list')
+
+            unit_id = request.POST.get('unit') or None
+            unit = prop.units.filter(pk=unit_id).first() if unit_id else None
+
+            interval_raw = request.POST.get('interval_months', '').strip()
+            interval_months = int(interval_raw) if interval_raw.isdigit() and int(interval_raw) > 0 else 3
+
+            default_assignee = None
+            kind, _, raw_id = request.POST.get('default_assignee', '').partition('-')
+            if kind == 'staff' and raw_id.isdigit():
+                default_assignee = StaffProfile.objects.filter(pk=raw_id).first()
+
+            VisitRule.objects.create(
+                property=prop, unit=unit, visit_type=visit_type,
+                interval_months=interval_months, default_assignee=default_assignee,
+            )
+            messages.success(
+                request,
+                f'Recurring rule added: {prop.name}{f" — {unit.label}" if unit else ""} — '
+                f'{visit_type.name} every {interval_months}mo.',
+            )
+        elif action == 'toggle_active':
+            rule = get_object_or_404(VisitRule, pk=request.POST.get('rule_id'))
+            rule.is_active = not rule.is_active
+            rule.save(update_fields=['is_active'])
+            messages.success(request, f'Rule {"resumed" if rule.is_active else "paused"}.')
+        elif action == 'delete_rule':
+            VisitRule.objects.filter(pk=request.POST.get('rule_id')).delete()
+            messages.success(request, 'Rule deleted.')
+        return redirect('onsite_visit_rule_list')
+
+    rules = VisitRule.objects.select_related('property', 'unit', 'visit_type', 'default_assignee__user').order_by(
+        'property__name', 'unit__label', 'visit_type__name',
+    )
+    return render(request, 'onsite/visit_rule_list.html', {
+        'rules': rules, 'str_properties': str_properties, 'visit_types': visit_types,
+        'staff_options': staff_options, 'units_by_property_json': units_by_property_json,
     })
 
 

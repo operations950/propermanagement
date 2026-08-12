@@ -24,7 +24,7 @@ class Command(BaseCommand):
         # generate ad-hoc Visits for.
         for rule in (
             VisitRule.objects.filter(is_active=True, visit_type__is_addon=False)
-            .select_related('property', 'visit_type')
+            .select_related('property', 'unit', 'visit_type')
         ):
             next_due = (
                 rule.last_generated_at + relativedelta(months=rule.interval_months)
@@ -34,7 +34,7 @@ class Command(BaseCommand):
                 continue
 
             create_visit(
-                rule.property, rule.visit_type,
+                rule.property, rule.visit_type, unit=rule.unit,
                 scheduled_date=today,
                 assigned_staff=rule.default_assignee,
                 status=Visit.Status.SCHEDULED if rule.default_assignee else Visit.Status.UNASSIGNED,

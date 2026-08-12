@@ -108,5 +108,5 @@ class VisitIssueAdmin(admin.ModelAdmin):
 
 @admin.register(VisitRule)
 class VisitRuleAdmin(admin.ModelAdmin):
-    list_display = ['property', 'visit_type', 'interval_months', 'default_assignee', 'is_active']
+    list_display = ['property', 'unit', 'visit_type', 'interval_months', 'default_assignee', 'is_active']
     list_filter = ['visit_type', 'is_active']

@@ -562,8 +562,20 @@ class PropertyChecklistReview(models.Model):
 class VisitRule(models.Model):
     """Recurring visit generation for inspections/deep cleans — modeled on
     tickets.TicketTemplate per CLAUDE.md's instruction to follow the
-    recurring path. See generate_scheduled_visits management command."""
+    recurring path. See generate_scheduled_visits management command.
+
+    Note the name collision this shares with the site-wide "Recurring"
+    nav item (worksessions app, mounted at /recurring/) — unrelated
+    systems that happen to both mean "happens on a schedule." This
+    model's own staff-facing screen is deliberately labeled "Recurring
+    visits" rather than just "Recurring" to stay unambiguous, since it
+    lives inside the On-Site section rather than the global nav."""
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='onsite_rules')
+    unit = models.ForeignKey(
+        Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='onsite_rules',
+        help_text='Which unit under the property this rule generates visits for. Blank means the '
+                   'whole property (or a single-unit property, where this always stays blank).',
+    )
     visit_type = models.ForeignKey(VisitType, on_delete=models.CASCADE, related_name='rules')
     interval_months = models.PositiveIntegerField(default=3)
     default_assignee = models.ForeignKey(
@@ -574,4 +586,5 @@ class VisitRule(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f'{self.property} — {self.visit_type} every {self.interval_months}mo'
+        target = f'{self.property} — {self.unit.label}' if self.unit_id else str(self.property)
+        return f'{target} — {self.visit_type} every {self.interval_months}mo'

@@ -26,6 +26,16 @@
                 </div>
             </div>
 
+            <div class="mb-4" id="unit-picker-wrap" hidden>
+                <label class="form-label fw-medium d-block">Unit <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+                <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="unit" id="unit-picker">
+                    <input type="hidden" name="unit" data-bubble-input value="">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Whole property — leave blank if this isn't unit-specific"></div>
+                    <div class="bubble-pool" data-bubble-pool></div>
+                </div>
+                <script type="application/json" id="units-by-property">{{ units_by_property_json|safe }}</script>
+            </div>
+
             <div class="mb-4">
                 <label class="form-label fw-medium d-block">Visit type</label>
                 <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="visit_type">
@@ -90,4 +100,61 @@
         </form>
     </div>
 </div>
+<script>
+(function () {
+    // Unit picker — shown only once a property with units is selected.
+    // Same synchronous-pre-DOMContentLoaded pool population as
+    // tickets/ticket_form.html's own Unit picker: this script runs during
+    // initial HTML parse, before bubble-picker.js's DOMContentLoaded init,
+    // so its "pre-lock input.value against whatever's already in the pool"
+    // logic rehydrates a validation-error re-render for free.
+    var propertyPicker = document.querySelector('[data-bubble-picker][data-name="property"]');
+    var unitWrap = document.getElementById('unit-picker-wrap');
+    var unitPicker = document.getElementById('unit-picker');
+    if (!propertyPicker || !unitWrap || !unitPicker) return;
+
+    var unitsByProperty = JSON.parse(document.getElementById('units-by-property').textContent);
+    var unitPool = unitPicker.querySelector('[data-bubble-pool]');
+    var unitInput = unitPicker.querySelector('[data-bubble-input]');
+
+    function renderUnitPool(propertyId) {
+        unitPool.innerHTML = '';
+        var units = unitsByProperty[propertyId] || [];
+        units.forEach(function (u) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'bubble';
+            btn.dataset.value = u.id;
+            btn.dataset.label = u.label;
+            btn.textContent = u.label;
+            unitPool.appendChild(btn);
+        });
+        unitWrap.hidden = units.length === 0;
+        return units.length > 0;
+    }
+
+    function clearUnitSelection() {
+        var locked = unitPicker.querySelector('[data-bubble-slot] .bubble');
+        if (locked && unitPicker._bubbleApi) {
+            unitPicker._bubbleApi.unlock(locked);
+        } else {
+            unitInput.value = '';
+            var slot = unitPicker.querySelector('[data-bubble-slot]');
+            if (slot) slot.classList.remove('has-value');
+            if (locked) locked.remove();
+        }
+    }
+
+    renderUnitPool(propertyPicker.querySelector('[data-bubble-input]').value);
+
+    propertyPicker.addEventListener('bubble:lock', function (e) {
+        clearUnitSelection();
+        renderUnitPool(e.detail.value);
+    });
+    propertyPicker.addEventListener('bubble:unlock', function () {
+        clearUnitSelection();
+        renderUnitPool('');
+    });
+})();
+</script>
 {% endblock %}
