@@ -113,21 +113,46 @@ def diff_bookings(property, source, raw_bookings):
     That means it's actually still active — most concretely, this is how a
     booking wrongly cancelled by the old absence-inference bug (before
     explicit-only detection existed) gets itself corrected: just re-upload
-    the file and its code reappears, no manual fix-up needed."""
+    the file and its code reappears, no manual fix-up needed.
+
+    Looked up by (source, external_uid) ONLY — never also property. That
+    pair is the real DB-level unique constraint (Booking.Meta), because an
+    Airbnb/VRBO confirmation code is unique to the platform, not to
+    whichever property we happened to file it under. If a listing name's
+    property/unit mapping ever changes after a reservation was first
+    imported (staff re-pointing it, or fixing a wrong pick — see the
+    Unit-model listing-name-to-unit work), the SAME confirmation code
+    shows up again under a DIFFERENT property. Scoping this lookup by
+    property too used to miss that existing row entirely, misclassify the
+    row as 'new', and crash with IntegrityError trying to INSERT a second
+    row for a (source, external_uid) the database already has — a real
+    production bug this comment is now guarding against. A moved
+    reservation is folded into 'changed' below (never 'new') specifically
+    so apply_bookings_for_property relocates the existing row instead of
+    attempting a duplicate insert."""
+    uids = {row.external_uid for row in raw_bookings}
     existing_by_uid = {
         b.external_uid: b
-        for b in Booking.objects.filter(property=property, source=source)
+        for b in Booking.objects.filter(source=source, external_uid__in=uids)
     }
     new_rows, changed_rows, reactivated_rows = [], [], []
     cancelled = []
     for row in raw_bookings:
         existing = existing_by_uid.get(row.external_uid)
         if row.is_cancelled:
-            if existing is not None and existing.status == Booking.Status.ACTIVE:
+            # Only this property's own row can be cancelled by a row it
+            # received — a reservation currently filed under some OTHER
+            # property is none of this property's business to touch.
+            if existing is not None and existing.property_id == property.pk and existing.status == Booking.Status.ACTIVE:
                 cancelled.append(existing)
             continue
         if existing is None:
             new_rows.append(row)
+        elif existing.property_id != property.pk:
+            # Same confirmation code, filed under a different property —
+            # see the docstring above. Routed through 'changed' so the
+            # apply side relocates (never duplicates) it.
+            changed_rows.append(row)
         elif existing.status == Booking.Status.CANCELLED:
             reactivated_rows.append(row)
         elif (
@@ -230,23 +255,65 @@ def apply_bookings_for_property(property, source, raw_bookings):
             )
 
     for row in diff['changed']:
-        booking = Booking.objects.get(property=property, source=source, external_uid=row.external_uid)
+        # Looked up by (source, external_uid) only, NOT also property — see
+        # diff_bookings' docstring. This row may currently be filed under a
+        # DIFFERENT property than `property` (a moved reservation, folded
+        # into 'changed' rather than 'new' specifically so this relocates
+        # the existing row instead of colliding with the DB's unique
+        # constraint on a duplicate insert).
+        booking = Booking.objects.get(source=source, external_uid=row.external_uid)
+        booking.property = property
         booking.check_in = _combine(property, row.check_in, 'check_in')
         booking.check_out = _combine(property, row.check_out, 'check_out')
+        # A 'changed' row is by construction never a cancelled one (those
+        # are filtered out earlier in diff_bookings) — always ACTIVE here,
+        # which also correctly revives a moved booking that was CANCELLED
+        # under its old property (diff_bookings routes that case through
+        # 'changed' too, since the property mismatch is checked first).
+        booking.status = Booking.Status.ACTIVE
         if row.listing_name:
             booking.listing_name = row.listing_name
             booking.unit = listing_unit_map.get(row.listing_name)
         booking.last_seen_at = timezone.now()
-        booking.save(update_fields=['check_in', 'check_out', 'listing_name', 'unit', 'last_seen_at'])
+        booking.save(update_fields=['property', 'status', 'check_in', 'check_out', 'listing_name', 'unit', 'last_seen_at'])
         visit = booking.visits.exclude(status__in=['submitted', 'verified', 'cancelled']).first()
         if visit:
             next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=booking.unit)
+            visit.property = property
             visit.unit = booking.unit
             visit.scheduled_date = booking.check_out.date()
             visit.next_booking = next_booking
             visit.ready_by = next_booking.check_in if next_booking else None
-            visit.save(update_fields=['unit', 'scheduled_date', 'next_booking', 'ready_by'])
+            visit.save(update_fields=['property', 'unit', 'scheduled_date', 'next_booking', 'ready_by'])
             transaction.on_commit(lambda visit=visit: push_visit(visit))
+        else:
+            # No active visit survived — either genuinely none was ever
+            # created, or (a moved-while-cancelled booking, per this loop's
+            # comment above) the only one on file is CANCELLED, which the
+            # exclude() above deliberately skips. Mirrors the 'reactivated'
+            # loop just below: revive the cancelled one (moving it here
+            # too) rather than leaving this booking with no cleaning
+            # scheduled, or creating a duplicate Visit.
+            next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=booking.unit)
+            cancelled_visit = booking.visits.filter(status=Visit.Status.CANCELLED).order_by('-pk').first()
+            if cancelled_visit:
+                cancelled_visit.status = (
+                    Visit.Status.SCHEDULED
+                    if cancelled_visit.assigned_staff_id or cancelled_visit.assigned_contact_id
+                    else Visit.Status.UNASSIGNED
+                )
+                cancelled_visit.property = property
+                cancelled_visit.unit = booking.unit
+                cancelled_visit.scheduled_date = booking.check_out.date()
+                cancelled_visit.next_booking = next_booking
+                cancelled_visit.ready_by = next_booking.check_in if next_booking else None
+                cancelled_visit.save(update_fields=['property', 'unit', 'status', 'scheduled_date', 'next_booking', 'ready_by'])
+                transaction.on_commit(lambda visit=cancelled_visit: push_visit(visit))
+            elif turnover_type:
+                create_visit(
+                    property, turnover_type, unit=booking.unit, booking=booking, next_booking=next_booking,
+                    scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
+                )
 
     for row in diff['reactivated']:
         booking = Booking.objects.get(property=property, source=source, external_uid=row.external_uid)
