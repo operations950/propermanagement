@@ -54,6 +54,68 @@
         .card { border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); border-radius: var(--bs-border-radius-lg); }
         .icon { width: 1em; height: 1em; stroke-width: 2; vertical-align: -0.15em; }
         .icon-lg { width: 1.6em; height: 1.6em; stroke-width: 1.75; }
+
+        /* Toast messages — mirrors templates/base.html's .toast-stack (same
+           shape, same static/js/toast-messages.js wiring); this portal
+           renders through its own base template, not the main site's, so
+           it needs its own copy. No sticky nav here to clear, so the stack
+           sits closer to the top. */
+        .toast-stack {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1080;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            width: min(360px, calc(100vw - 2rem));
+            pointer-events: none;
+        }
+        .toast-bubble {
+            pointer-events: auto;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            background: var(--surface-card);
+            border: 1px solid var(--border-hairline);
+            border-left: 4px solid var(--toast-accent, var(--brand-primary));
+            border-radius: var(--bs-border-radius);
+            box-shadow: var(--shadow-card);
+            padding: 0.75rem 0.9rem;
+            font-size: 0.9rem;
+            color: var(--ink-primary);
+            opacity: 0;
+            animation: toast-in 0.25s ease forwards;
+        }
+        .toast-bubble.toast-hiding { animation: toast-out 0.2s ease forwards; }
+        .toast-bubble[data-tag="success"] { --toast-accent: var(--status-good); }
+        .toast-bubble[data-tag="error"] { --toast-accent: var(--status-critical); }
+        .toast-bubble[data-tag="warning"] { --toast-accent: var(--status-warning); }
+        .toast-bubble[data-tag="info"], .toast-bubble[data-tag="debug"] { --toast-accent: var(--brand-primary); }
+        .toast-bubble .toast-icon { flex: none; margin-top: 0.1rem; color: var(--toast-accent, var(--brand-primary)); }
+        .toast-bubble .toast-text { flex: 1; line-height: 1.35; }
+        .toast-bubble .toast-close {
+            flex: none;
+            border: none;
+            background: none;
+            padding: 0;
+            color: var(--ink-muted);
+            line-height: 1;
+            cursor: pointer;
+            margin-top: 0.05rem;
+        }
+        .toast-bubble .toast-close:hover { color: var(--ink-primary); }
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes toast-out {
+            from { opacity: 1; transform: translateY(0) scale(1); }
+            to { opacity: 0; transform: translateY(-6px) scale(0.98); }
+        }
+        @media (max-width: 575.98px) {
+            .toast-stack { top: auto; bottom: 1rem; left: 0.75rem; right: 0.75rem; width: auto; }
+        }
     </style>
 </head>
 <body>
@@ -62,13 +124,20 @@
             <img src="{% static 'img/proper-realty-logo.png' %}" alt="Proper Realty" style="height: 36px;">
         </div>
         {% if messages %}
+        <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false">
             {% for message in messages %}
-                <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+            <div class="toast-bubble" data-tag="{{ message.tags|default:'info' }}" role="{% if message.tags == 'error' %}alert{% else %}status{% endif %}">
+                <i data-lucide="{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}alert-circle{% elif message.tags == 'warning' %}alert-triangle{% else %}info{% endif %}" class="icon icon-lg toast-icon"></i>
+                <div class="toast-text">{{ message }}</div>
+                <button type="button" class="toast-close" aria-label="Dismiss" data-toast-close><i data-lucide="x" class="icon"></i></button>
+            </div>
             {% endfor %}
+        </div>
         {% endif %}
         {% block content %}{% endblock %}
     </div>
     <script>lucide.createIcons();</script>
     <script src="{% static 'js/photo-capture.js' %}"></script>
+    <script src="{% static 'js/toast-messages.js' %}"></script>
 </body>
 </html>
