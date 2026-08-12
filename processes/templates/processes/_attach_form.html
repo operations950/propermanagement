@@ -10,5 +10,8 @@
             {% endfor %}
         </div>
     </div>
-    <button type="submit" class="btn btn-sm btn-outline-primary">Attach</button>
+    <div class="d-flex justify-content-between align-items-center">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Attach</button>
+        <a href="{% url 'process_template_list' %}" class="small text-decoration-none" style="color: var(--ink-muted);">Manage procedures <i data-lucide="arrow-up-right" class="icon"></i></a>
+    </div>
 </form>
