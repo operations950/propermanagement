@@ -93,8 +93,8 @@ def save_listing_name(property, source, listing_name, unit=None):
 
 def diff_bookings(property, source, raw_bookings):
     """Read-only preview diff — nothing written. Returns a dict with 'new'/
-    'changed'/'reactivated' (lists of RawBooking) and 'cancelled' (list of
-    existing Booking rows).
+    'changed'/'reactivated'/'missing_visit' (lists of RawBooking) and
+    'cancelled' (list of existing Booking rows).
 
     Cancellation is ALWAYS explicit — driven solely by the row's own Status
     column (RawBooking.is_cancelled, set by the importer as "the word
@@ -135,7 +135,7 @@ def diff_bookings(property, source, raw_bookings):
         b.external_uid: b
         for b in Booking.objects.filter(source=source, external_uid__in=uids)
     }
-    new_rows, changed_rows, reactivated_rows = [], [], []
+    new_rows, changed_rows, reactivated_rows, missing_visit_rows = [], [], [], []
     cancelled = []
     for row in raw_bookings:
         existing = existing_by_uid.get(row.external_uid)
@@ -167,8 +167,24 @@ def diff_bookings(property, source, raw_bookings):
             or (row.listing_name and existing.listing_name != row.listing_name)
         ):
             changed_rows.append(row)
+        elif not existing.visits.exclude(status=Visit.Status.CANCELLED).exists():
+            # Active booking, same property, nothing about the reservation
+            # itself changed — normally a pure no-op. EXCEPT its cleaning
+            # Visit can go missing independently of the Booking surviving
+            # (wipe_unfinished_visits deliberately deletes unfinished
+            # visits while preserving Booking history; a Visit can also be
+            # hand-deleted). Without this, re-uploading the exact same file
+            # looked identical to "nothing to do" and silently never
+            # re-scheduled the cleaning — this is the one signal staff have
+            # that a cleaning never got (re-)scheduled for an otherwise
+            # untouched reservation, so surface and act on it explicitly
+            # rather than assuming "unchanged" always means "nothing to do".
+            missing_visit_rows.append(row)
 
-    return {'new': new_rows, 'changed': changed_rows, 'reactivated': reactivated_rows, 'cancelled': cancelled}
+    return {
+        'new': new_rows, 'changed': changed_rows, 'reactivated': reactivated_rows,
+        'missing_visit': missing_visit_rows, 'cancelled': cancelled,
+    }
 
 
 def _find_next_booking(property, after_datetime, exclude_pk=None, unit=None):
@@ -252,6 +268,22 @@ def apply_bookings_for_property(property, source, raw_bookings):
             create_visit(
                 property, turnover_type, unit=unit, booking=booking, next_booking=next_booking,
                 scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
+            )
+
+    for row in diff['missing_visit']:
+        # See diff_bookings' docstring — an otherwise-untouched active
+        # booking whose cleaning Visit went missing independently (e.g.
+        # wipe_unfinished_visits, or a hand-deleted Visit). Re-checked here
+        # rather than trusted from the diff, since diff_bookings is called
+        # fresh at the top of this same function — this guard is just
+        # defensive, not covering any real staleness window.
+        booking = Booking.objects.get(source=source, external_uid=row.external_uid)
+        if turnover_type and not booking.visits.exclude(status=Visit.Status.CANCELLED).exists():
+            unit = listing_unit_map.get(row.listing_name) if row.listing_name else booking.unit
+            next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=unit)
+            create_visit(
+                property, turnover_type, unit=unit, booking=booking, next_booking=next_booking,
+                scheduled_date=booking.check_out.date(), ready_by=next_booking.check_in if next_booking else None,
             )
 
     for row in diff['changed']:

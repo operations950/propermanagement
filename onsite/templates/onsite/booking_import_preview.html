@@ -164,7 +164,7 @@
             <div class="col-md-6">
                 <div class="card h-100"><div class="card-body">
                     <div class="fw-medium mb-2">{{ row.property.name }}</div>
-                    <div class="small text-muted">{{ row.diff.new|length }} new · {{ row.diff.changed|length }} changed · {{ row.diff.reactivated|length }} reactivated · {{ row.diff.cancelled|length }} cancelled</div>
+                    <div class="small text-muted">{{ row.diff.new|length }} new · {{ row.diff.changed|length }} changed · {{ row.diff.reactivated|length }} reactivated · {{ row.diff.cancelled|length }} cancelled{% if row.diff.missing_visit %} · <span style="color: var(--status-warning);">{{ row.diff.missing_visit|length }} needs cleaning scheduled</span>{% endif %}</div>
                 </div></div>
             </div>
             {% endfor %}
@@ -180,7 +180,7 @@
 <p class="text-muted small mb-4">{{ batch.get_source_display }} · covers {{ batch.covers_start }} to {{ batch.covers_end }}. Nothing has been saved yet.</p>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3">
+    <div class="col-md">
         <div class="card h-100"><div class="card-body">
             <div class="small text-muted text-uppercase fw-bold mb-2">New ({{ diff.new|length }})</div>
             {% for row in diff.new %}
@@ -188,7 +188,7 @@
             {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md">
         <div class="card h-100"><div class="card-body">
             <div class="small text-muted text-uppercase fw-bold mb-2">Changed dates ({{ diff.changed|length }})</div>
             {% for row in diff.changed %}
@@ -196,7 +196,7 @@
             {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md">
         <div class="card h-100"><div class="card-body">
             <div class="small text-muted text-uppercase fw-bold mb-2">Reactivated ({{ diff.reactivated|length }})</div>
             {% for row in diff.reactivated %}
@@ -204,11 +204,19 @@
             {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
         </div></div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md">
         <div class="card h-100"><div class="card-body">
             <div class="small text-muted text-uppercase fw-bold mb-2">Cancelled ({{ diff.cancelled|length }})</div>
             {% for booking in diff.cancelled %}
             <div class="small py-1 border-top">{{ booking.check_out|date:'Y-m-d' }} checkout — file's Status column says cancelled</div>
+            {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
+        </div></div>
+    </div>
+    <div class="col-md">
+        <div class="card h-100"><div class="card-body">
+            <div class="small text-muted text-uppercase fw-bold mb-2">Needs cleaning ({{ diff.missing_visit|length }})</div>
+            {% for row in diff.missing_visit %}
+            <div class="small py-1 border-top">{{ row.external_uid }} — reservation unchanged, but its cleaning was deleted</div>
             {% empty %}<p class="text-muted small mb-0">None</p>{% endfor %}
         </div></div>
     </div>
