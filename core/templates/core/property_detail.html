@@ -411,7 +411,10 @@
                 {% for unit in units %}
                 <div class="d-flex justify-content-between align-items-start py-1 border-top">
                     <div style="min-width: 0;">
-                        <div class="fw-medium small {% if not unit.is_active %}text-decoration-line-through text-muted{% endif %}">{{ unit.label }}</div>
+                        <div class="fw-medium small {% if not unit.is_active %}text-decoration-line-through text-muted{% endif %}">
+                            {{ unit.label }}
+                            {% if unit.access_code %}<span class="badge rounded-pill bg-light text-dark border ms-1" title="Access code — revealed to a cleaner on the visit link only after they tap Get Code"><i data-lucide="key" class="icon"></i> {{ unit.access_code }}</span>{% endif %}
+                        </div>
                         {% if unit.notes %}<div class="small text-muted">{{ unit.notes }}</div>{% endif %}
                     </div>
                     <div class="d-flex gap-1 flex-shrink-0">
@@ -430,6 +433,7 @@
                         <input type="hidden" name="action" value="update_unit">
                         <input type="hidden" name="unit_id" value="{{ unit.pk }}">
                         <input type="text" name="label" class="form-control form-control-sm" style="max-width: 140px;" value="{{ unit.label }}">
+                        <input type="text" name="access_code" class="form-control form-control-sm" style="max-width: 120px;" placeholder="Access code" value="{{ unit.access_code }}">
                         <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)" value="{{ unit.notes }}">
                         <div class="form-check">
                             <input type="checkbox" name="is_active" class="form-check-input" id="unit-active-{{ unit.pk }}" {% if unit.is_active %}checked{% endif %}>
@@ -445,6 +449,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="action" value="add_unit">
                     <input type="text" name="label" class="form-control form-control-sm" placeholder="e.g. Bamboo, 3B, Unit 204">
+                    <input type="text" name="access_code" class="form-control form-control-sm" style="max-width: 120px;" placeholder="Access code (optional)">
                     <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
                 </form>
             </div>

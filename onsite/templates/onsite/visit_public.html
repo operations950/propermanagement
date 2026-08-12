@@ -1,11 +1,11 @@
 {% extends 'vendorportal/base.html' %}
 {% load static %}
-{% block title %}{{ visit.property.name }} — {{ visit.visit_type }}{% endblock %}
+{% block title %}{{ visit.property.name }}{% if visit.unit %} — {{ visit.unit.label }}{% endif %} — {{ visit.visit_type }}{% endblock %}
 {% block content %}
 {% csrf_token %}
 <div class="card my-3">
     <div class="card-body p-4">
-        <h5 class="page-title mb-1">{{ visit.property.name }}</h5>
+        <h5 class="page-title mb-1">{{ visit.property.name }}{% if visit.unit %} — {{ visit.unit.label }}{% endif %}</h5>
         <p class="text-muted small mb-2">
             {{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border">+ Deep clean</span>{% endif %}
             {% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"g:i A" }}{% endif %}
@@ -19,6 +19,15 @@
             {% if visit.property.access_notes %}<div class="mt-1">{{ visit.property.access_notes }}</div>{% endif %}
         </div>
         {% endif %}
+        {% if visit.started_at and visit.unit.access_code %}
+        {# Deliberately gated behind started_at — unlike the property-wide
+           codes above (always visible, since you need those just to get
+           onto the property), this unit's own code is the thing "Get Code"
+           exists to reveal, so it only appears once that's actually been
+           tapped. Stays visible afterward (not a one-time reveal) since a
+           cleaner may need to refer back to it later in the visit. #}
+        <div class="alert alert-success small py-2 mb-0"><i data-lucide="key" class="icon"></i> Unit {{ visit.unit.label }} access code: <strong>{{ visit.unit.access_code }}</strong></div>
+        {% endif %}
         {% if visit.notes %}<div class="alert alert-info small py-2 mb-0">{{ visit.notes }}</div>{% endif %}
     </div>
 </div>
@@ -27,7 +36,11 @@
 <form method="post" class="text-center my-5">
     {% csrf_token %}
     <input type="hidden" name="action" value="start">
+    {% if visit.unit.access_code %}
+    <button class="btn btn-primary btn-lg px-5" type="submit"><i data-lucide="key" class="icon"></i> Get Code</button>
+    {% else %}
     <button class="btn btn-primary btn-lg px-5" type="submit"><i data-lucide="play" class="icon"></i> Start</button>
+    {% endif %}
 </form>
 
 {% elif is_submitted %}

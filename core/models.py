@@ -191,6 +191,12 @@ class Unit(models.Model):
     it."""
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='units')
     label = models.CharField(max_length=100, help_text='e.g. "Bamboo", "3B", "Unit 204"')
+    access_code = models.CharField(
+        max_length=50, blank=True,
+        help_text="This unit's own door/lock code — separate from the property's gate/door/lockbox "
+                   'codes (those cover the whole building). Shown to a cleaner on the on-site visit '
+                   'link only once they tap "Get Code," which also marks the visit started.',
+    )
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

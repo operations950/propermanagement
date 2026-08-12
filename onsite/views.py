@@ -900,6 +900,12 @@ def visit_public(request, token):
         action = request.POST.get('action')
 
         if action == 'start' and not visit.started_at:
+            # The button reads "Get Code" (visit_public.html) whenever
+            # visit.unit.access_code is set — this single action still just
+            # marks the visit started; the template's own started_at check
+            # is what reveals that unit's code, tying "cleaner retrieved the
+            # code" and "cleaner started" together as one real signal
+            # instead of two separate, fakeable steps.
             visit.started_at = timezone.now()
             visit.status = Visit.Status.IN_PROGRESS
             visit.save(update_fields=['started_at', 'status'])

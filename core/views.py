@@ -845,13 +845,17 @@ def property_detail(request, pk):
             elif Unit.objects.filter(property=prop, label__iexact=label).exists():
                 messages.error(request, f'"{label}" is already a unit on this property.')
             else:
-                Unit.objects.create(property=prop, label=label, notes=request.POST.get('notes', '').strip())
+                Unit.objects.create(
+                    property=prop, label=label, notes=request.POST.get('notes', '').strip(),
+                    access_code=request.POST.get('access_code', '').strip(),
+                )
                 messages.success(request, f'Added unit "{label}".')
         elif action == 'update_unit':
             unit = get_object_or_404(Unit, pk=request.POST.get('unit_id'), property=prop)
             label = request.POST.get('label', '').strip()
             if label:
                 unit.label = label
+            unit.access_code = request.POST.get('access_code', '').strip()
             unit.notes = request.POST.get('notes', '').strip()
             unit.is_active = request.POST.get('is_active') == 'on'
             unit.save()
