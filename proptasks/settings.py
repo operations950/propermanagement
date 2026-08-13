@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     'processes',
     'onsite',
     'worksessions',
+    'portfolio',
 ]
 
 MIDDLEWARE = [
@@ -377,6 +378,11 @@ ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC
 # tickets, per the "Recurring work overhaul — sessions" build brief. Runs
 # once immediately on boot (see scheduler.py), same as the old job did.
 SESSION_GENERATE_INTERVAL_MINUTES = int(os.environ.get('SESSION_GENERATE_INTERVAL_MINUTES', '30'))
+
+# portfolio app (the private /portfolio/ multi-business dashboard) —
+# generates due BizTask rows from active BizRecurringRules, same shape as
+# SESSION_GENERATE_INTERVAL_MINUTES above.
+PORTFOLIO_GENERATE_INTERVAL_MINUTES = int(os.environ.get('PORTFOLIO_GENERATE_INTERVAL_MINUTES', '30'))
 
 # Owner Dashboard's "Gone quiet" panel thresholds — see
 # tickets/services/owner_dashboard.py::gone_quiet. Settings, not literals,

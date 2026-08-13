@@ -78,6 +78,10 @@ def _run_generate_sessions():
     _run_command('generate_sessions')
 
 
+def _run_generate_biz_tasks():
+    _run_command('generate_biz_tasks')
+
+
 def start():
     global _scheduler
     if _scheduler is not None:
@@ -114,6 +118,10 @@ def start():
     _scheduler.add_job(
         _run_generate_sessions, 'interval',
         minutes=settings.SESSION_GENERATE_INTERVAL_MINUTES, next_run_time=datetime.now(),
+    )
+    _scheduler.add_job(
+        _run_generate_biz_tasks, 'interval',
+        minutes=settings.PORTFOLIO_GENERATE_INTERVAL_MINUTES, next_run_time=datetime.now(),
     )
 
     _scheduler.start()

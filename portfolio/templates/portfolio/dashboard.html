@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block title %}My Businesses — Proper Management{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
+    <div>
+        <h2 class="page-title mb-0">My Businesses</h2>
+        <p class="mb-0" style="color: var(--ink-muted);">Everything you're on the hook for, across every business, in one place. Private to you.</p>
+    </div>
+</div>
+
+<div class="row row-cols-1 row-cols-lg-3 g-3 mb-4">
+    <div class="col">
+        <div class="card h-100" style="border-top: 4px solid {{ real_estate_box.color }}; border-radius: var(--bs-border-radius-lg);">
+            <a href="{{ real_estate_box.url }}" class="card-header d-flex justify-content-between align-items-center bg-white border-bottom py-3 text-decoration-none" style="cursor: pointer;">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: {{ real_estate_box.color }};">
+                    <i data-lucide="{{ real_estate_box.icon }}" class="icon"></i>
+                    {{ real_estate_box.name }}
+                </span>
+                <span class="d-flex align-items-center gap-2">
+                    {% if real_estate_box.overdue_count %}
+                    <span class="fw-semibold" style="font-size: 0.8rem; color: var(--status-critical);">{{ real_estate_box.overdue_count }} overdue</span>
+                    {% endif %}
+                    <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ real_estate_box.total }}</span>
+                </span>
+            </a>
+            {% if real_estate_box.top %}
+            <div class="list-group list-group-flush">
+            {% for t in real_estate_box.top %}
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-start gap-2" style="text-decoration: none;">
+                    <span class="fw-medium text-truncate" style="color: var(--ink-primary); min-width: 0;">{{ t.title|truncatechars:48 }}</span>
+                    <span class="text-nowrap text-end" style="font-size: 0.8rem; color: var(--ink-muted);">{% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}—{% endif %}</span>
+                </a>
+            {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
+                <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>
+                Nothing queued
+            </div>
+            {% endif %}
+            <a href="{{ real_estate_box.url }}" class="card-footer text-center text-decoration-none py-2" style="font-size: 0.85rem; color: {{ real_estate_box.color }};">
+                Open dashboard →
+            </a>
+        </div>
+    </div>
+
+    {% for box in business_boxes %}
+    <div class="col">
+        <div class="card h-100" style="border-top: 4px solid {{ box.color }}; border-radius: var(--bs-border-radius-lg);">
+            <a href="{{ box.url }}" class="card-header d-flex justify-content-between align-items-center bg-white border-bottom py-3 text-decoration-none" style="cursor: pointer;">
+                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: {{ box.color }};">
+                    <i data-lucide="{{ box.icon }}" class="icon"></i>
+                    {{ box.name }}
+                </span>
+                <span class="d-flex align-items-center gap-2">
+                    {% if box.overdue_count %}
+                    <span class="fw-semibold" style="font-size: 0.8rem; color: var(--status-critical);">{{ box.overdue_count }} overdue</span>
+                    {% endif %}
+                    <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ box.total }}</span>
+                </span>
+            </a>
+            {% if box.top %}
+            <div class="list-group list-group-flush">
+            {% for t in box.top %}
+                <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-start gap-2">
+                    <span class="fw-medium text-truncate" style="color: var(--ink-primary); min-width: 0;">{{ t.title|truncatechars:48 }}{% if t.amount %} <span style="color: var(--ink-muted); font-weight: 400;">(${{ t.amount }})</span>{% endif %}</span>
+                    <span class="text-nowrap text-end" style="font-size: 0.8rem; color: var(--ink-muted);">{% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}—{% endif %}</span>
+                </div>
+            {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
+                <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>
+                Nothing queued
+            </div>
+            {% endif %}
+            <a href="{{ box.url }}" class="card-footer text-center text-decoration-none py-2" style="font-size: 0.85rem; color: {{ box.color }};">
+                Open {{ box.name }} →
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

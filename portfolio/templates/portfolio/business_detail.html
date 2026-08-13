@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+{% block title %}{{ business.name }} — My Businesses{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
+    <div>
+        <a href="{% url 'portfolio_dashboard' %}" class="small text-decoration-none d-inline-block mb-1" style="color: var(--ink-muted);">&larr; My Businesses</a>
+        <h2 class="page-title mb-0 d-flex align-items-center gap-2">
+            <i data-lucide="{{ business.icon|default:'briefcase' }}" class="icon-lg" style="color: {{ business.color }};"></i>
+            {{ business.name }}
+        </h2>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="card-title mb-0">Tasks</h6>
+                    <div class="btn-group btn-group-sm">
+                        <a href="?show=open" class="btn btn-outline-secondary {% if show == 'open' %}active{% endif %}">Open</a>
+                        <a href="?show=done" class="btn btn-outline-secondary {% if show == 'done' %}active{% endif %}">Done</a>
+                        <a href="?show=all" class="btn btn-outline-secondary {% if show == 'all' %}active{% endif %}">All</a>
+                    </div>
+                </div>
+
+                {% if tasks %}
+                <div class="list-group list-group-flush mb-3">
+                {% for t in tasks %}
+                    <div class="list-group-item d-flex justify-content-between align-items-start gap-2 px-0">
+                        <form method="post" class="d-flex align-items-start gap-2" style="min-width: 0;">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="toggle_task">
+                            <input type="hidden" name="task_id" value="{{ t.pk }}">
+                            <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent mt-1" title="{% if t.status == 'done' %}Reopen{% else %}Mark done{% endif %}">
+                                <i data-lucide="{% if t.status == 'done' %}check-circle-2{% else %}circle{% endif %}" class="icon" style="color: {% if t.status == 'done' %}var(--status-good, #2e7d32){% else %}var(--ink-muted){% endif %};"></i>
+                            </button>
+                        </form>
+                        <div style="min-width: 0; flex: 1;">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="fw-medium" style="{% if t.status == 'done' %}text-decoration: line-through; color: var(--ink-muted);{% endif %}">{{ t.title }}</span>
+                                {% if t.category %}<span class="badge rounded-pill bg-light text-dark border">{{ t.category.name }}</span>{% endif %}
+                                {% if t.priority == 'urgent' %}<span class="badge" style="background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
+                                {% if t.amount %}<span class="small" style="color: var(--ink-muted);">${{ t.amount }}</span>{% endif %}
+                                {% if business.custom_field_label and t.custom_field_value %}<span class="small" style="color: var(--ink-muted);">{{ business.custom_field_label }}: {{ t.custom_field_value }}</span>{% endif %}
+                            </div>
+                            {% if t.notes %}<div class="small" style="color: var(--ink-muted);">{{ t.notes }}</div>{% endif %}
+                            {% if t.due_date %}
+                            <div class="small" style="color: {% if t.due_date < today and t.status == 'open' %}var(--status-critical);{% else %}var(--ink-muted);{% endif %}">Due {{ t.due_date|date:"M j, Y" }}</div>
+                            {% endif %}
+                        </div>
+                        <form method="post" onsubmit="return confirm('Delete this task?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_task">
+                            <input type="hidden" name="task_id" value="{{ t.pk }}">
+                            <button type="submit" class="btn btn-sm btn-link text-danger p-0"><i data-lucide="trash-2" class="icon"></i></button>
+                        </form>
+                    </div>
+                {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted small mb-3">Nothing here.</p>
+                {% endif %}
+
+                <hr>
+                <form method="post" class="row g-2 align-items-end">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_task">
+                    <div class="col-12">
+                        <label class="form-label small fw-medium mb-1">New task</label>
+                        <input type="text" name="title" class="form-control form-control-sm" placeholder="Title" required>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <select name="category" class="form-select form-select-sm">
+                            <option value="">No category</option>
+                            {% for c in categories %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <select name="priority" class="form-select form-select-sm">
+                            {% for value, label in priority_choices %}<option value="{{ value }}" {% if value == 'medium' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <input type="date" name="due_date" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <input type="number" step="0.01" name="amount" class="form-control form-control-sm" placeholder="Amount $">
+                    </div>
+                    {% if business.custom_field_label %}
+                    <div class="col-12 col-md-6">
+                        <input type="text" name="custom_field_value" class="form-control form-control-sm" placeholder="{{ business.custom_field_label }}">
+                    </div>
+                    {% endif %}
+                    <div class="col-12 col-md-6">
+                        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary btn-sm">Add task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Categories</h6>
+                {% for c in categories %}
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small">{{ c.name }}</span>
+                    <form method="post" onsubmit="return confirm('Delete category {{ c.name }}? Tasks keep their history but lose this label.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_category">
+                        <input type="hidden" name="category_id" value="{{ c.pk }}">
+                        <button type="submit" class="btn btn-sm btn-link text-danger p-0"><i data-lucide="x" class="icon"></i></button>
+                    </form>
+                </div>
+                {% empty %}
+                <p class="text-muted small">No categories yet.</p>
+                {% endfor %}
+                <form method="post" class="d-flex gap-2 mt-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_category">
+                    <input type="text" name="name" class="form-control form-control-sm" placeholder="New category">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm flex-shrink-0">Add</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Recurring</h6>
+                {% for r in rules %}
+                <div class="mb-2 pb-2" style="border-bottom: 1px solid var(--border-hairline);">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div style="min-width: 0;">
+                            <div class="fw-medium small {% if not r.is_active %}text-muted text-decoration-line-through{% endif %}">{{ r.title }}</div>
+                            <div class="small" style="color: var(--ink-muted);">{{ r.get_frequency_display }}{% if r.amount %} &middot; ${{ r.amount }}{% endif %}</div>
+                            <div class="small" style="color: var(--ink-muted);">Next: {{ r.next_occurrences_display }}</div>
+                        </div>
+                        <div class="d-flex flex-column gap-1">
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="toggle_rule">
+                                <input type="hidden" name="rule_id" value="{{ r.pk }}">
+                                <button type="submit" class="btn btn-sm btn-link p-0" title="{% if r.is_active %}Pause{% else %}Resume{% endif %}"><i data-lucide="{% if r.is_active %}pause{% else %}play{% endif %}" class="icon"></i></button>
+                            </form>
+                            <form method="post" onsubmit="return confirm('Delete this recurring rule? Already-generated tasks stay.');">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="delete_rule">
+                                <input type="hidden" name="rule_id" value="{{ r.pk }}">
+                                <button type="submit" class="btn btn-sm btn-link text-danger p-0"><i data-lucide="trash-2" class="icon"></i></button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-muted small">No recurring rules yet.</p>
+                {% endfor %}
+
+                <form method="post" class="row g-2 mt-1" id="rule-add-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_rule">
+                    <div class="col-12">
+                        <input type="text" name="rule_title" class="form-control form-control-sm" placeholder="Title (e.g. Pay rent)" required>
+                    </div>
+                    <div class="col-6">
+                        <select name="rule_category" class="form-select form-select-sm">
+                            <option value="">No category</option>
+                            {% for c in categories %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <select name="rule_priority" class="form-select form-select-sm">
+                            {% for value, label in priority_choices %}<option value="{{ value }}" {% if value == 'medium' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <select name="frequency" id="rule-frequency" class="form-select form-select-sm">
+                            {% for value, label in frequency_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6" id="rule-day-of-month-wrap">
+                        <input type="number" min="1" max="31" name="day_of_month" class="form-control form-control-sm" placeholder="Day of month (1-31)">
+                    </div>
+                    <div class="col-6" id="rule-workday-wrap" hidden>
+                        <input type="number" min="1" max="23" name="workday_of_month" class="form-control form-control-sm" placeholder="Nth business day">
+                    </div>
+                    <div class="col-6">
+                        <input type="number" step="0.01" name="rule_amount" class="form-control form-control-sm" placeholder="Amount $">
+                    </div>
+                    {% if business.custom_field_label %}
+                    <div class="col-12">
+                        <input type="text" name="rule_custom_field_value" class="form-control form-control-sm" placeholder="{{ business.custom_field_label }}">
+                    </div>
+                    {% endif %}
+                    <div class="col-12">
+                        <label class="form-label small mb-1">First occurrence</label>
+                        <input type="date" name="next_due_date" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary btn-sm w-100">Add recurring rule</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var freq = document.getElementById('rule-frequency');
+    var dayWrap = document.getElementById('rule-day-of-month-wrap');
+    var workdayWrap = document.getElementById('rule-workday-wrap');
+    if (!freq) return;
+    function sync() {
+        var isWorkday = freq.value === 'monthly_workday';
+        dayWrap.hidden = isWorkday;
+        workdayWrap.hidden = !isWorkday;
+    }
+    freq.addEventListener('change', sync);
+    sync();
+})();
+</script>
+{% endblock %}

@@ -574,6 +574,13 @@ class StaffProfile(models.Model):
                    'and Admin Tools (including API keys/secrets) — equivalent to User.is_superuser. '
                    'Orthogonal to role, which is just a department/queue concept.',
     )
+    is_portfolio_owner = models.BooleanField(
+        default=False,
+        help_text='Gates the private /portfolio/ multi-business dashboard (see the portfolio app) — '
+                   'deliberately a separate flag from is_company_admin, which is about the shared '
+                   'real-estate business and may be held by more than one person; this one is not '
+                   'meant to be. Not linked from the shared site nav.',
+    )
     phone = models.CharField(max_length=30, blank=True, validators=[phone_validator])
     timezone = models.CharField(
         max_length=40, choices=Timezone.choices, default=Timezone.EASTERN,
