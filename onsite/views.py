@@ -760,6 +760,15 @@ def visit_detail(request, pk):
             if new_status in Visit.Status.values:
                 visit.status = new_status
                 visit.save(update_fields=['status'])
+                # A manual override lands here instead of checklist_service.
+                # submit_visit() (that's the cleaner's own Submit tap on
+                # visit_public) — without this, pushing a visit straight to
+                # Submitted/Verified by hand silently skipped converting its
+                # reported issues into tickets. Safe to call regardless of
+                # which status it's headed to: create_issue_tickets only
+                # ever touches issues that don't already have one.
+                if new_status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED):
+                    checklist_service.create_issue_tickets(visit)
                 messages.success(request, f'Status updated to {visit.get_status_display()}.')
 
         elif action == 'toggle_checklist_item':

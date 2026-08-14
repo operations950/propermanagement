@@ -247,15 +247,23 @@ def submit_visit(visit):
     visit.submitted_at = timezone.now()
     visit.save(update_fields=['status', 'submitted_at'])
 
-    _create_issue_tickets(visit)
+    create_issue_tickets(visit)
     return visit
 
 
-def _create_issue_tickets(visit):
-    """Each VisitIssue becomes a real Ticket on submit — the bridge into
-    the existing ticket system (see ONSITE_DESIGN.md). Only issues that
-    don't already have one are converted, so a resubmit (shouldn't happen,
-    but the check is free) can't double-create tickets."""
+def create_issue_tickets(visit):
+    """Each VisitIssue becomes a real Ticket — the bridge into the
+    existing ticket system (see ONSITE_DESIGN.md). Only issues that don't
+    already have one are converted, so calling this more than once (a
+    resubmit, or a staff-side status override landing on Submitted/
+    Verified after the cleaner's own submit already ran it — see
+    onsite/views.py::visit_detail's set_status action) can't double-create
+    tickets. Public (not the old leading-underscore _create_issue_tickets)
+    because visit_detail's manual status override needs to call this too:
+    that path sets visit.status directly rather than going through
+    submit_visit() above, and issue->ticket conversion was silently
+    getting skipped whenever staff pushed a visit to Submitted/Verified by
+    hand instead of the cleaner tapping Submit on their own link."""
     from tickets.models import StaffProfile, Ticket
 
     for issue in visit.issues.filter(created_ticket__isnull=True):
