@@ -6,7 +6,7 @@ from django.views.decorators.http import require_http_methods
 from core.models import Property
 
 from . import services as supply_services
-from .models import PropertySupply, SupplyOrder, SupplyOrderLine
+from .models import PropertySupply, SupplyItem, SupplyOrder, SupplyOrderLine
 
 
 @login_required
@@ -111,6 +111,42 @@ def order_detail(request, pk):
     lines = order.lines.select_related('property_supply__supply_item')
     cart_urls = order.cart_url.split('\n') if order.cart_url else []
     return render(request, 'supplies/order_detail.html', {'order': order, 'lines': lines, 'cart_urls': cart_urls})
+
+
+@login_required
+def catalog(request):
+    """Staff-facing catalog management — add/edit/deactivate SupplyItem
+    rows without going through Django admin. No hard delete here: an item
+    is referenced by PropertySupply (CASCADE) at every property that
+    stocks it, and SupplyReading's whole history hangs off those rows —
+    is_active is the only way an item goes away, same as Property/Unit/
+    everything else in this app that's ever been stocked or ordered."""
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_item':
+            name = request.POST.get('name', '').strip()
+            if not name:
+                messages.error(request, 'Enter a name for the item.')
+            else:
+                SupplyItem.objects.create(
+                    name=name,
+                    unit_label=request.POST.get('unit_label', '').strip(),
+                    walmart_item_id=request.POST.get('walmart_item_id', '').strip(),
+                )
+                messages.success(request, f'Added "{name}" to the catalog.')
+        elif action == 'update_item':
+            item = get_object_or_404(SupplyItem, pk=request.POST.get('item_id'))
+            name = request.POST.get('name', '').strip()
+            if name:
+                item.name = name
+            item.unit_label = request.POST.get('unit_label', '').strip()
+            item.walmart_item_id = request.POST.get('walmart_item_id', '').strip()
+            item.is_active = request.POST.get('is_active') == 'on'
+            item.save()
+            messages.success(request, 'Item updated.')
+        return redirect('supplies:catalog')
+
+    return render(request, 'supplies/catalog.html', {'items': SupplyItem.objects.all()})
 
 
 @login_required

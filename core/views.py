@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, login as auth_login
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -867,6 +867,38 @@ def property_detail(request, pk):
         elif action == 'delete_unit':
             Unit.objects.filter(pk=request.POST.get('unit_id'), property=prop).delete()
             messages.success(request, 'Unit removed.')
+        elif action == 'add_property_supply':
+            from supplies.models import PropertySupply
+
+            supply_item_id = request.POST.get('supply_item_id')
+            reorder_quantity = request.POST.get('reorder_quantity') or 1
+            if not supply_item_id:
+                messages.error(request, 'Choose an item from the catalog first.')
+            elif PropertySupply.objects.filter(property=prop, supply_item_id=supply_item_id).exists():
+                messages.error(request, 'This property already stocks that item.')
+            else:
+                next_order = (
+                    PropertySupply.objects.filter(property=prop).aggregate(Max('display_order'))['display_order__max']
+                    or 0
+                ) + 1
+                PropertySupply.objects.create(
+                    property=prop, supply_item_id=supply_item_id,
+                    reorder_quantity=reorder_quantity, display_order=next_order,
+                )
+                messages.success(request, 'Added to this property\'s supply list.')
+        elif action == 'update_property_supply':
+            from supplies.models import PropertySupply
+
+            ps = get_object_or_404(PropertySupply, pk=request.POST.get('property_supply_id'), property=prop)
+            ps.reorder_quantity = request.POST.get('reorder_quantity') or ps.reorder_quantity
+            ps.is_active = request.POST.get('is_active') == 'on'
+            ps.save(update_fields=['reorder_quantity', 'is_active'])
+            messages.success(request, 'Supply item updated.')
+        elif action == 'delete_property_supply':
+            from supplies.models import PropertySupply
+
+            PropertySupply.objects.filter(pk=request.POST.get('property_supply_id'), property=prop).delete()
+            messages.success(request, 'Removed from this property\'s supply list.')
         elif action == 'toggle_attribute':
             attribute_id = request.POST.get('attribute_id')
             existing = PropertyAttributeAssignment.objects.filter(property=prop, attribute_id=attribute_id)
@@ -914,6 +946,12 @@ def property_detail(request, pk):
 
     assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
 
+    from supplies.models import SupplyItem
+    property_supplies = prop.supplies.select_related('supply_item').all()
+    available_supply_items = SupplyItem.objects.filter(is_active=True).exclude(
+        pk__in=property_supplies.values_list('supply_item_id', flat=True),
+    )
+
     return render(request, 'core/property_detail.html', {
         'property': prop,
         'contact_groups': contact_groups,
@@ -926,6 +964,8 @@ def property_detail(request, pk):
         'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB).select_related('unit'),
         'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO).select_related('unit'),
         'documents': prop.documents.all(),
+        'property_supplies': property_supplies,
+        'available_supply_items': available_supply_items,
         'text_contact_groups': group_contacts_by_type([c for c in contacts if c.phone]),
         'email_contact_groups': group_contacts_by_type([c for c in contacts if c.email]),
         'attributes': PropertyAttribute.objects.filter(is_active=True),

@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}Supply catalog{% endblock %}
+{% block content %}
+<h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="package" class="icon-lg"></i> Supply catalog</h2>
+<p class="text-muted">The shared list of purchasable items — one row per real-world product, used across every property. Product identity is resolved once here (the Walmart item id), so cart-building downstream never has to re-guess it. To assign an item to a property, open that <a href="{% url 'property_list' %}">property's own page</a>.</p>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Name</th><th>Unit</th><th>Walmart item id</th><th></th></tr></thead>
+                <tbody>
+                {% for item in items %}
+                <tr id="item-{{ item.pk }}" class="{% if not item.is_active %}text-muted{% endif %}">
+                    <td class="{% if not item.is_active %}text-decoration-line-through{% endif %}">{{ item.name }}</td>
+                    <td>{{ item.unit_label|default:'—' }}</td>
+                    <td>
+                        {% if item.walmart_item_id %}{{ item.walmart_item_id }}{% else %}<span style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> not set</span>{% endif %}
+                    </td>
+                    <td class="text-end">
+                        <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#edit-item-{{ item.pk }}"><i data-lucide="pencil" class="icon"></i></button>
+                    </td>
+                </tr>
+                <tr class="collapse" id="edit-item-{{ item.pk }}">
+                    <td colspan="4">
+                        <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="update_item">
+                            <input type="hidden" name="item_id" value="{{ item.pk }}">
+                            <div>
+                                <label class="form-label small text-muted mb-1">Name</label>
+                                <input type="text" name="name" class="form-control form-control-sm" value="{{ item.name }}">
+                            </div>
+                            <div>
+                                <label class="form-label small text-muted mb-1">Unit</label>
+                                <input type="text" name="unit_label" class="form-control form-control-sm" style="max-width: 90px;" placeholder="ct, ea, oz" value="{{ item.unit_label }}">
+                            </div>
+                            <div>
+                                <label class="form-label small text-muted mb-1">Walmart item id</label>
+                                <input type="text" name="walmart_item_id" class="form-control form-control-sm" style="max-width: 140px;" value="{{ item.walmart_item_id }}">
+                            </div>
+                            <div class="form-check mb-1">
+                                <input type="checkbox" name="is_active" class="form-check-input" id="item-active-{{ item.pk }}" {% if item.is_active %}checked{% endif %}>
+                                <label class="form-check-label small" for="item-active-{{ item.pk }}">Active</label>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-muted small">No items in the catalog yet — add one below.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <hr>
+        <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_item">
+            <div>
+                <label class="form-label small text-muted mb-1">Name</label>
+                <input type="text" name="name" class="form-control form-control-sm" placeholder="e.g. Toilet paper" required>
+            </div>
+            <div>
+                <label class="form-label small text-muted mb-1">Unit</label>
+                <input type="text" name="unit_label" class="form-control form-control-sm" style="max-width: 90px;" placeholder="ct, ea, oz">
+            </div>
+            <div>
+                <label class="form-label small text-muted mb-1">Walmart item id</label>
+                <input type="text" name="walmart_item_id" class="form-control form-control-sm" style="max-width: 140px;" placeholder="optional — can set later">
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="plus" class="icon"></i> Add item</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -39,7 +39,7 @@
                             <td>
                                 {{ ps.supply_item.name }}
                                 {% if not ps.supply_item.walmart_item_id %}
-                                <div class="small" style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> No Walmart id set — <a href="{% url 'admin:supplies_supplyitem_change' ps.supply_item.pk %}">fix in catalog</a></div>
+                                <div class="small" style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> No Walmart id set — <a href="{% url 'supplies:catalog' %}#item-{{ ps.supply_item.pk }}">fix in catalog</a></div>
                                 {% endif %}
                             </td>
                             <td>

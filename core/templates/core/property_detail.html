@@ -460,6 +460,76 @@
     </div>
 </div>
 
+<div class="card mb-3" id="supplies">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="package" class="icon"></i> Supplies</h6>
+                <p class="small text-muted mb-0">Which catalog items this property stocks, and how many to buy when a par check comes back low. New to the catalog? <a href="{% url 'supplies:catalog' %}">Add it there first</a>, then assign it here.</p>
+            </div>
+        </div>
+        {% if property_supplies %}
+        <div class="table-responsive mt-2">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Item</th><th>Reorder qty</th><th></th><th></th></tr></thead>
+                <tbody>
+                {% for ps in property_supplies %}
+                <tr class="{% if not ps.is_active %}text-muted{% endif %}">
+                    <td class="{% if not ps.is_active %}text-decoration-line-through{% endif %}">
+                        {{ ps.supply_item.name }}{% if ps.supply_item.unit_label %} <span class="text-muted small">({{ ps.supply_item.unit_label }})</span>{% endif %}
+                        {% if not ps.supply_item.walmart_item_id %}<i data-lucide="alert-circle" class="icon" style="color: var(--status-critical); width: 0.85rem; height: 0.85rem;" title="No Walmart id set on this catalog item yet"></i>{% endif %}
+                    </td>
+                    <td>{{ ps.reorder_quantity }}</td>
+                    <td class="text-end">
+                        <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#edit-property-supply-{{ ps.pk }}"><i data-lucide="pencil" class="icon"></i></button>
+                    </td>
+                    <td class="text-end">
+                        <form method="post" onsubmit="return confirm('Remove &quot;{{ ps.supply_item.name|escapejs }}&quot; from this property?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_property_supply">
+                            <input type="hidden" name="property_supply_id" value="{{ ps.pk }}">
+                            <button class="btn btn-link btn-sm text-danger p-0" type="submit"><i data-lucide="x" class="icon"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                <tr class="collapse" id="edit-property-supply-{{ ps.pk }}">
+                    <td colspan="4">
+                        <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="update_property_supply">
+                            <input type="hidden" name="property_supply_id" value="{{ ps.pk }}">
+                            <div>
+                                <label class="form-label small text-muted mb-1">Reorder qty</label>
+                                <input type="number" min="1" name="reorder_quantity" class="form-control form-control-sm" style="max-width: 90px;" value="{{ ps.reorder_quantity }}">
+                            </div>
+                            <div class="form-check mb-1">
+                                <input type="checkbox" name="is_active" class="form-check-input" id="ps-active-{{ ps.pk }}" {% if ps.is_active %}checked{% endif %}>
+                                <label class="form-check-label small" for="ps-active-{{ ps.pk }}">Active</label>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0 mt-2">No supplies assigned yet — see <a href="{% url 'supplies:blind_spots' %}">Supply blind spots</a> to clone the standard kit onto this property in one click.</p>
+        {% endif %}
+        <form method="post" class="d-flex gap-2 mt-2">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_property_supply">
+            <select name="supply_item_id" class="form-select form-select-sm">
+                <option value="">Choose an item…</option>
+                {% for item in available_supply_items %}<option value="{{ item.pk }}">{{ item.name }}</option>{% endfor %}
+            </select>
+            <input type="number" min="1" name="reorder_quantity" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Qty" value="1">
+            <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
+        </form>
+    </div>
+</div>
+
 <div class="card mb-3">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> Documents</h6>
