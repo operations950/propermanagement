@@ -761,7 +761,11 @@ def property_detail(request, pk):
 
     if request.method == 'POST':
         action = request.POST.get('action')
-        if action == 'save_access_info':
+        if action == 'save_notes':
+            prop.notes = request.POST.get('notes', '').strip()
+            prop.save(update_fields=['notes'])
+            messages.success(request, 'Notes saved.')
+        elif action == 'save_access_info':
             fields = [
                 'gate_code', 'door_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password',
                 'access_notes', 'board_meeting_address',

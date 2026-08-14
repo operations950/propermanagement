@@ -22,14 +22,17 @@
     </div>
 </div>
 
-{% if property.notes %}
 <div class="card mb-3">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sticky-note" class="icon"></i> Notes</h6>
-        <p class="mb-0" style="white-space: pre-wrap;">{{ property.notes }}</p>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_notes">
+            <textarea name="notes" class="form-control form-control-sm mb-2" rows="3" placeholder="General notes about this property — anything that doesn't fit access info, a system location, or a ticket.">{{ property.notes }}</textarea>
+            <button class="btn btn-outline-primary btn-sm" type="submit">Save notes</button>
+        </form>
     </div>
 </div>
-{% endif %}
 
 <div class="card mb-3">
     <div class="card-body">
