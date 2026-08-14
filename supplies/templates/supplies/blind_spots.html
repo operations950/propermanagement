@@ -18,7 +18,10 @@
                 {% for property in no_catalog %}
                 <tr>
                     <td>{{ property.name }}</td>
-                    <td class="text-end">
+                    <td class="text-end d-flex justify-content-end gap-2">
+                        <a href="{% url 'admin:supplies_propertysupply_changelist' %}?property__id__exact={{ property.pk }}" class="btn btn-sm btn-outline-secondary">
+                            <i data-lucide="list" class="icon"></i> Manage supplies
+                        </a>
                         <form method="post" action="{% url 'supplies:clone_kit' property.pk %}" class="d-inline">
                             {% csrf_token %}
                             <button class="btn btn-sm btn-outline-primary" type="submit">
@@ -44,13 +47,18 @@
         <p class="text-muted small">These properties have a catalog, but no item has been read recently — treat as unknown, not stocked.</p>
         <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Property</th><th>Last reading</th><th>Turnovers since</th></tr></thead>
+                <thead><tr><th>Property</th><th>Last reading</th><th>Turnovers since</th><th></th></tr></thead>
                 <tbody>
                 {% for row in stale %}
                 <tr>
                     <td>{{ row.property.name }}</td>
                     <td>{% if row.latest_reading_at %}{{ row.latest_reading_at|date:"M j, Y" }}{% else %}Never{% endif %}</td>
                     <td>{{ row.turnovers_since }}</td>
+                    <td class="text-end">
+                        <a href="{% url 'admin:supplies_propertysupply_changelist' %}?property__id__exact={{ row.property.pk }}" class="btn btn-sm btn-outline-secondary">
+                            <i data-lucide="list" class="icon"></i> Manage supplies
+                        </a>
+                    </td>
                 </tr>
                 {% endfor %}
                 </tbody>
@@ -60,5 +68,8 @@
     </div>
 </div>
 
-<p class="small text-muted">Item/Walmart id catalog management lives in <a href="{% url 'admin:supplies_supplyitem_changelist' %}">Admin</a>.</p>
+<div class="d-flex gap-2 flex-wrap">
+    <a href="{% url 'admin:supplies_supplyitem_changelist' %}" class="btn btn-sm btn-outline-secondary"><i data-lucide="package" class="icon"></i> Manage the supply catalog</a>
+    <a href="{% url 'admin:supplies_propertysupply_changelist' %}" class="btn btn-sm btn-outline-secondary"><i data-lucide="list" class="icon"></i> Manage all property supplies</a>
+</div>
 {% endblock %}
