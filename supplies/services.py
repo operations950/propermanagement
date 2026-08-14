@@ -209,6 +209,41 @@ def clone_kit_onto_property(property, default_reorder_quantity=4):
     return len(to_create)
 
 
+def push_item_to_adopted_properties(item, default_reorder_quantity=4):
+    """The other direction from clone_kit_onto_property: instead of one
+    property picking up every item, one new item flows out to every
+    property that's already "adopted" the standard kit — defined as
+    having at least one active PropertySupply row already, the same
+    signal blind_spots uses to distinguish a real property from one
+    that's never been set up. A property with zero supplies is left
+    alone (that's still what "Clone standard kit" on the blind spots page
+    is for) — this only ever adds to a list that already exists, never
+    starts one. Idempotent: skips any property that already stocks this
+    item, so calling it again (e.g. from a later manual "push to every
+    property" retry) is always safe."""
+    from core.models import Property
+
+    adopted_property_ids = (
+        PropertySupply.objects.filter(is_active=True).exclude(supply_item=item)
+        .values_list('property_id', flat=True).distinct()
+    )
+    already_has_it = set(
+        PropertySupply.objects.filter(supply_item=item).values_list('property_id', flat=True)
+    )
+    target_ids = set(adopted_property_ids) - already_has_it
+
+    to_create = []
+    for prop in Property.objects.filter(pk__in=target_ids, is_active=True):
+        next_order = (
+            PropertySupply.objects.filter(property=prop).aggregate(m=Max('display_order'))['m'] or -1
+        ) + 1
+        to_create.append(PropertySupply(
+            property=prop, supply_item=item, reorder_quantity=default_reorder_quantity, display_order=next_order,
+        ))
+    PropertySupply.objects.bulk_create(to_create)
+    return len(to_create)
+
+
 def flagged_orders():
     """Feeds the Owner Dashboard's on-site panel (see the build brief:
     "Items in the flagged state ... belong on the on-site panel — that's

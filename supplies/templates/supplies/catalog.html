@@ -2,7 +2,7 @@
 {% block title %}Supply catalog{% endblock %}
 {% block content %}
 <h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="package" class="icon-lg"></i> Supply catalog</h2>
-<p class="text-muted">The shared list of purchasable items — one row per real-world product, used across every property. Product identity is resolved once here (the Walmart item id), so cart-building downstream never has to re-guess it. To assign an item to a property, open that <a href="{% url 'property_list' %}">property's own page</a>.</p>
+<p class="text-muted">The shared list of purchasable items — one row per real-world product, used across every property. Product identity is resolved once here (the Walmart item id), so cart-building downstream never has to re-guess it. Adding a new item here automatically adds it to every property that already stocks the standard kit (reorder qty defaults to 4 — adjust per property afterward from that <a href="{% url 'property_list' %}">property's own page</a>). A property with nothing stocked yet is untouched — see <a href="{% url 'supplies:blind_spots' %}">Supply blind spots</a> to onboard one of those.</p>
 
 <div class="card mb-3">
     <div class="card-body">
@@ -17,7 +17,13 @@
                     <td>
                         {% if item.walmart_item_id %}{{ item.walmart_item_id }}{% else %}<span style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> not set</span>{% endif %}
                     </td>
-                    <td class="text-end">
+                    <td class="text-end d-flex justify-content-end gap-2">
+                        <form method="post" title="Add this item to every property that's already stocking the standard kit but doesn't have it yet">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="push_item">
+                            <input type="hidden" name="item_id" value="{{ item.pk }}">
+                            <button class="btn btn-link btn-sm p-0" type="submit"><i data-lucide="send" class="icon"></i></button>
+                        </form>
                         <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#edit-item-{{ item.pk }}"><i data-lucide="pencil" class="icon"></i></button>
                     </td>
                 </tr>

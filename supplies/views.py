@@ -128,12 +128,27 @@ def catalog(request):
             if not name:
                 messages.error(request, 'Enter a name for the item.')
             else:
-                SupplyItem.objects.create(
+                item = SupplyItem.objects.create(
                     name=name,
                     unit_label=request.POST.get('unit_label', '').strip(),
                     walmart_item_id=request.POST.get('walmart_item_id', '').strip(),
                 )
-                messages.success(request, f'Added "{name}" to the catalog.')
+                # Flows straight out to every property that's already
+                # adopted the standard kit (has at least one other active
+                # item) — see push_item_to_adopted_properties's own
+                # docstring for exactly what "adopted" means. A property
+                # with nothing stocked yet is untouched; that's still what
+                # "Clone standard kit" on the blind spots page is for.
+                pushed = supply_services.push_item_to_adopted_properties(item)
+                if pushed:
+                    messages.success(
+                        request,
+                        f'Added "{name}" to the catalog and to {pushed} propert{"y" if pushed == 1 else "ies"} '
+                        f'already stocking the standard kit (reorder qty defaulted to 4 — adjust per property '
+                        f'from that property\'s own page).',
+                    )
+                else:
+                    messages.success(request, f'Added "{name}" to the catalog.')
         elif action == 'update_item':
             item = get_object_or_404(SupplyItem, pk=request.POST.get('item_id'))
             name = request.POST.get('name', '').strip()
@@ -144,6 +159,17 @@ def catalog(request):
             item.is_active = request.POST.get('is_active') == 'on'
             item.save()
             messages.success(request, 'Item updated.')
+        elif action == 'push_item':
+            # Manual re-push — for an item added before this automation
+            # existed, or a property that was skipped (deactivated at the
+            # time, since re-activated). Same idempotent underlying call
+            # add_item already makes automatically.
+            item = get_object_or_404(SupplyItem, pk=request.POST.get('item_id'))
+            pushed = supply_services.push_item_to_adopted_properties(item)
+            if pushed:
+                messages.success(request, f'Pushed "{item.name}" to {pushed} more propert{"y" if pushed == 1 else "ies"}.')
+            else:
+                messages.info(request, f'Every property already stocking the standard kit already has "{item.name}".')
         return redirect('supplies:catalog')
 
     return render(request, 'supplies/catalog.html', {'items': SupplyItem.objects.all()})

@@ -3,7 +3,8 @@
 {% block content %}
 <h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="shopping-cart" class="icon-lg"></i> Today's supply cart</h2>
 <p class="text-muted">Every item currently reading below par, across every property with a supply catalog set up. Reviewed and sent per property — a Walmart order ships to one address, so there's no combined cart across properties.
-<a href="{% url 'supplies:blind_spots' %}" class="ms-2"><i data-lucide="eye-off" class="icon"></i> Blind spots</a></p>
+<a href="{% url 'supplies:blind_spots' %}" class="ms-2"><i data-lucide="eye-off" class="icon"></i> Blind spots</a>
+<a href="{% url 'supplies:catalog' %}" class="ms-2"><i data-lucide="package" class="icon"></i> Supply catalog</a></p>
 
 {% if not properties %}
 <div class="card">
