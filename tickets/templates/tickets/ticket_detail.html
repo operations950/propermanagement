@@ -1108,36 +1108,9 @@
     </div>
 </div>
 
-<div class="modal fade" id="closingStatusModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content" style="border-radius: var(--bs-border-radius-lg);">
-      <div class="modal-header">
-        <h5 class="modal-title d-flex align-items-center gap-2"><i data-lucide="flag" class="icon"></i> Closing status</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <p class="small mb-2" style="color: var(--ink-muted);">Moving this ticket to <strong data-closing-status-label></strong> — give a quick status update on how it was resolved before closing.</p>
-        <textarea class="form-control" rows="4" placeholder="What happened / how was this resolved…" data-closing-status-input></textarea>
-        <p class="text-danger small mt-1 mb-0" data-closing-status-error hidden>Write a closing status first.</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" data-closing-status-confirm>Confirm & Close</button>
-      </div>
-    </div>
-  </div>
-</div>
+{% include 'tickets/_closing_status_modal.html' %}
 <script>
 (function () {
-    var modalEl = document.getElementById('closingStatusModal');
-    if (!modalEl || !window.bootstrap) return;
-    var modal = new bootstrap.Modal(modalEl);
-    var input = modalEl.querySelector('[data-closing-status-input]');
-    var errorEl = modalEl.querySelector('[data-closing-status-error]');
-    var labelEl = modalEl.querySelector('[data-closing-status-label]');
-    var confirmBtn = modalEl.querySelector('[data-closing-status-confirm]');
-    var pendingForm = null;
-
     // Every status this ticket detail page can ever POST straight to
     // "closed" from — must match tickets/views.py's COMPLETE_STATUSES.
     var CLOSING_STATUSES = {
@@ -1145,70 +1118,34 @@
         skipped: 'Skipped', not_applicable: 'Not applicable',
     };
 
-    function openFor(form, statusValue) {
-        pendingForm = form;
-        input.value = '';
-        errorEl.hidden = true;
-        labelEl.textContent = CLOSING_STATUSES[statusValue] || statusValue;
-        modal.show();
-        modalEl.addEventListener('shown.bs.modal', function focusOnce() {
-            input.focus();
-            modalEl.removeEventListener('shown.bs.modal', focusOnce);
-        });
-    }
-
-    confirmBtn.addEventListener('click', function () {
-        var body = input.value.trim();
-        if (!body) {
-            errorEl.hidden = false;
-            return;
-        }
-        if (!pendingForm) return;
-        var hidden = pendingForm.querySelector('input[name="closing_note"]');
-        if (!hidden) {
-            hidden = document.createElement('input');
-            hidden.type = 'hidden';
-            hidden.name = 'closing_note';
-            pendingForm.appendChild(hidden);
-        }
-        hidden.value = body;
-        modal.hide();
-        pendingForm.submit();
-    });
-
-    // The status bubble-picker in the Update Status card.
-    var statusForm = document.getElementById('status-form');
-    if (statusForm) {
-        statusForm.addEventListener('submit', function (e) {
-            if (statusForm.querySelector('input[name="closing_note"]')) return;
-            var statusInput = statusForm.querySelector('[data-bubble-input]');
-            var value = statusInput ? statusInput.value : '';
-            if (CLOSING_STATUSES[value]) {
-                e.preventDefault();
-                openFor(statusForm, value);
+    // fixedStatus is set for the two single-purpose buttons (Approve,
+    // Mark Complete) that always POST the same status value; the
+    // bubble-picker's own form omits it and reads the locked-in value instead.
+    function wireClosingForm(form, fixedStatus) {
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+            if (form.querySelector('input[name="closing_note"]')) return;
+            var statusValue = fixedStatus;
+            if (!statusValue) {
+                var statusInput = form.querySelector('[data-bubble-input]');
+                statusValue = statusInput ? statusInput.value : '';
             }
+            if (!CLOSING_STATUSES[statusValue]) return;
+            e.preventDefault();
+            window.openClosingStatusModal(CLOSING_STATUSES[statusValue], function (body) {
+                var hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'closing_note';
+                hidden.value = body;
+                form.appendChild(hidden);
+                form.submit();
+            });
         });
     }
 
-    // The Approval-required card's Approve button (sets status=verified).
-    var approveForm = document.getElementById('approve-form');
-    if (approveForm) {
-        approveForm.addEventListener('submit', function (e) {
-            if (approveForm.querySelector('input[name="closing_note"]')) return;
-            e.preventDefault();
-            openFor(approveForm, 'verified');
-        });
-    }
-
-    // The standalone Mark Complete button.
-    var markCompleteForm = document.getElementById('mark-complete-form');
-    if (markCompleteForm) {
-        markCompleteForm.addEventListener('submit', function (e) {
-            if (markCompleteForm.querySelector('input[name="closing_note"]')) return;
-            e.preventDefault();
-            openFor(markCompleteForm, 'completed');
-        });
-    }
+    wireClosingForm(document.getElementById('status-form'));
+    wireClosingForm(document.getElementById('approve-form'), 'verified');
+    wireClosingForm(document.getElementById('mark-complete-form'), 'completed');
 })();
 </script>
 

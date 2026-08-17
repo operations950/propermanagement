@@ -74,7 +74,7 @@
         </div>
     {% else %}
         <div class="d-flex gap-2 mt-1" data-dashboard-item-actions>
-            <form method="post" action="{% url 'ticket_close_no_followup' t.pk %}" data-ajax-close data-confirm="Close this ticket without following up with the reporter?">
+            <form method="post" action="{% url 'ticket_close_no_followup' t.pk %}" data-ajax-close>
                 {% csrf_token %}
                 <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Close No Follow-Up</button>
             </form>

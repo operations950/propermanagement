@@ -2222,15 +2222,29 @@ def ticket_checklist_toggle(request, pk):
 
 @login_required
 def ticket_close_no_followup(request, pk):
-    """The department dashboard's daily-checklist "Close No Follow-Up"
-    action — completes a ticket without messaging the reporter. The
-    dashboard's fetch handler strikes the row through in place on success
-    (see _dashboard_item.html) rather than reloading — department_dashboard's
-    query only pulls OPEN_STATUSES, so a full page reload naturally drops
-    it instead of requiring special same-day-visibility handling."""
+    """The department dashboard's daily-checklist "Close"/"Close No
+    Follow-Up" action — completes a ticket without messaging the
+    reporter. The dashboard's fetch handler strikes the row through in
+    place on success (see _dashboard_item.html) rather than reloading —
+    department_dashboard's query only pulls OPEN_STATUSES, so a full page
+    reload naturally drops it instead of requiring special
+    same-day-visibility handling. Goes through the same closing_note
+    requirement as ticket_set_status (see its own comment) — this is a
+    separate view, not a bypass of it, so it has to enforce the same
+    rule itself rather than inheriting it for free."""
     ticket = get_object_or_404(Ticket, pk=pk)
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if request.method == 'POST':
+        closing_body = request.POST.get('closing_note', '').strip()
+        if not closing_body:
+            error = 'A closing status is required before this ticket can be closed.'
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': error})
+            messages.error(request, error)
+            if ticket.assigned_role in StaffProfile.Role.values:
+                return redirect('department_dashboard', role=ticket.assigned_role)
+            return redirect('dashboard')
+
         gate_error = process_gate_error_message(ticket)
         if gate_error:
             if is_ajax:
@@ -2240,6 +2254,9 @@ def ticket_close_no_followup(request, pk):
             ticket.status = Ticket.Status.COMPLETED
             ticket.completed_at = timezone.now()
             ticket.save()
+            TicketClosingNote.objects.create(
+                ticket=ticket, status=Ticket.Status.COMPLETED, body=closing_body, created_by=request.user,
+            )
             _link_vendor_to_property(ticket)
             if is_ajax:
                 return JsonResponse({'success': True})

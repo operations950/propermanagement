@@ -1,0 +1,65 @@
+<div class="modal fade" id="closingStatusModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius: var(--bs-border-radius-lg);">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2"><i data-lucide="flag" class="icon"></i> Closing status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-2" style="color: var(--ink-muted);">Moving this ticket to <strong data-closing-status-label></strong> — give a quick status update on how it was resolved before closing.</p>
+        <textarea class="form-control" rows="4" placeholder="What happened / how was this resolved…" data-closing-status-input></textarea>
+        <p class="text-danger small mt-1 mb-0" data-closing-status-error hidden>Write a closing status first.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" data-closing-status-confirm>Confirm & Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('closingStatusModal');
+    if (!modalEl || !window.bootstrap || modalEl.dataset.wired) return;
+    modalEl.dataset.wired = '1';
+    var modal = new bootstrap.Modal(modalEl);
+    var input = modalEl.querySelector('[data-closing-status-input]');
+    var errorEl = modalEl.querySelector('[data-closing-status-error]');
+    var labelEl = modalEl.querySelector('[data-closing-status-label]');
+    var confirmBtn = modalEl.querySelector('[data-closing-status-confirm]');
+    var pendingCallback = null;
+
+    // Shared across every page that can close a ticket (ticket_detail.html,
+    // department_dashboard.html) — see tickets/views.py's ticket_set_status
+    // and ticket_close_no_followup, which both now require a closing_note.
+    // This modal only collects the text; it has no opinion on how the
+    // caller submits it afterward. window.openClosingStatusModal(label,
+    // onConfirm) shows the modal labeled with the status being set
+    // ("Completed", "Verified", …) and calls onConfirm(bodyText) once the
+    // visitor confirms with a non-empty note.
+    window.openClosingStatusModal = function (label, onConfirm) {
+        pendingCallback = onConfirm;
+        input.value = '';
+        errorEl.hidden = true;
+        labelEl.textContent = label;
+        modal.show();
+        modalEl.addEventListener('shown.bs.modal', function focusOnce() {
+            input.focus();
+            modalEl.removeEventListener('shown.bs.modal', focusOnce);
+        });
+    };
+
+    confirmBtn.addEventListener('click', function () {
+        var body = input.value.trim();
+        if (!body) {
+            errorEl.hidden = false;
+            return;
+        }
+        if (!pendingCallback) return;
+        modal.hide();
+        var cb = pendingCallback;
+        pendingCallback = null;
+        cb(body);
+    });
+})();
+</script>
