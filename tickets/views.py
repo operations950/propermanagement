@@ -260,6 +260,7 @@ def _owner_dashboard(request):
         'quickbooks_configured': quickbooks_is_configured(),
         'office_latitude': settings.OFFICE_LATITUDE,
         'office_longitude': settings.OFFICE_LONGITUDE,
+        'office_location_name': settings.OFFICE_LOCATION_NAME,
     })
 
 

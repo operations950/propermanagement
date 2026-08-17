@@ -359,10 +359,14 @@ QUICKBOOKS_CLIENT_ID = os.environ.get('QUICKBOOKS_CLIENT_ID', '')
 QUICKBOOKS_CLIENT_SECRET = os.environ.get('QUICKBOOKS_CLIENT_SECRET', '')
 QUICKBOOKS_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUICKBOOKS_SYNC_INTERVAL_MINUTES', str(60 * 24)))
 
-# Local Weather box fallback location (used when the browser denies/lacks
-# geolocation) — the office at 1045 E Atlantic Ave, Delray Beach, FL 33483.
+# Local Weather box location — the office at 1045 E Atlantic Ave, Delray
+# Beach, FL 33483. Fixed, not browser geolocation: the widget used to ask
+# the visitor for their own location on every page load (a repeated mobile
+# permission prompt) and only fell back to these coordinates on denial —
+# now it always just uses the office directly.
 OFFICE_LATITUDE = float(os.environ.get('OFFICE_LATITUDE', '26.4618'))
 OFFICE_LONGITUDE = float(os.environ.get('OFFICE_LONGITUDE', '-80.0617'))
+OFFICE_LOCATION_NAME = os.environ.get('OFFICE_LOCATION_NAME', 'Delray Beach, FL')
 
 # Used by intake/thread_classifier.py to read a full Quo conversation thread
 # before deciding whether it's actionable. Blank = classification no-ops.

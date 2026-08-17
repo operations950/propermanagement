@@ -1,10 +1,14 @@
 // Local Weather box on the Owner Dashboard — zero-credential, entirely
-// client-side. Tries the browser's own geolocation first (a real
-// permission prompt), falling back to the office's fixed coordinates
-// (data-office-lat/lon, see tickets/owner_dashboard.html) on denial,
-// error, or an unsupported browser. Calls Open-Meteo's public forecast
-// API directly (api.open-meteo.com, no API key required) rather than
-// round-tripping through our own server.
+// client-side. Always renders the office's fixed coordinates/name
+// (data-office-lat/lon/name, see tickets/owner_dashboard.html) — it used
+// to ask the browser for the visitor's own location first via
+// navigator.geolocation.getCurrentPosition(), which is what triggered a
+// location-permission prompt on every single page load on mobile.
+// Nothing on this dashboard actually varies by visitor location, so that
+// prompt was pure friction; dropped in favor of just using the office
+// directly. Calls Open-Meteo's public forecast API directly
+// (api.open-meteo.com, no API key required) rather than round-tripping
+// through our own server.
 (function () {
     // WMO weather codes (https://open-meteo.com/en/docs, "Weather variable
     // documentation") -> one of this app's existing Lucide icons, so the
@@ -42,7 +46,7 @@
         return WMO_LABELS[code] || 'Unknown';
     }
 
-    function render(widget, lat, lon) {
+    function render(widget, lat, lon, placeName) {
         var status = widget.querySelector('[data-weather-status]');
         var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
             + '&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code'
@@ -59,11 +63,15 @@
                 var currentLabel = labelFor(current.weather_code);
                 var hi = Math.round(daily.temperature_2m_max[0]);
                 var lo = Math.round(daily.temperature_2m_min[0]);
+                var placeLine = placeName
+                    ? '<div class="small" style="color: var(--ink-muted);">' + placeName + '</div>'
+                    : '';
 
                 widget.innerHTML =
                     '<div class="d-flex align-items-center gap-3 mb-2">' +
                     '<i data-lucide="' + currentIcon + '" class="icon-lg" style="width: 2.5rem; height: 2.5rem; color: var(--brand-primary);"></i>' +
                     '<div>' +
+                    placeLine +
                     '<div class="fw-bold" style="font-size: 1.5rem; color: var(--ink-primary);">' + Math.round(current.temperature_2m) + '°F</div>' +
                     '<div class="small" style="color: var(--ink-muted);">' + currentLabel + '</div>' +
                     '</div>' +
@@ -78,28 +86,6 @@
     }
 
     document.querySelectorAll('[data-weather-widget]').forEach(function (widget) {
-        var officeLat = widget.dataset.officeLat;
-        var officeLon = widget.dataset.officeLon;
-        var status = widget.querySelector('[data-weather-status]');
-
-        function useOffice() {
-            render(widget, officeLat, officeLon);
-        }
-
-        if (!navigator.geolocation) {
-            useOffice();
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            function (position) {
-                render(widget, position.coords.latitude.toFixed(4), position.coords.longitude.toFixed(4));
-            },
-            function () {
-                useOffice();
-            },
-            { timeout: 8000, maximumAge: 15 * 60 * 1000 },
-        );
-        if (status) status.textContent = 'Getting your location…';
+        render(widget, widget.dataset.officeLat, widget.dataset.officeLon, widget.dataset.officeName);
     });
 })();
