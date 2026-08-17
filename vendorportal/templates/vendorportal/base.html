@@ -6,8 +6,8 @@
     <title>{% block title %}Job update — Proper Management{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <link href="{% static 'vendor/bootstrap5.3.3/css/bootstrap.min.css' %}" rel="stylesheet">
+    <script src="{% static 'vendor/lucide/lucide.min.js' %}"></script>
     <link href="{% static 'css/checklist-mobile.css' %}" rel="stylesheet">
     <style>
         :root {
