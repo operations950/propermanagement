@@ -4,6 +4,7 @@ import logging
 import traceback
 from datetime import date, datetime, timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -973,31 +974,82 @@ def visit_public(request, token):
             item = get_object_or_404(VisitChecklistItem, pk=request.POST.get('item_id'), visit=visit)
             # getlist, not .get — the file input now allows selecting (or
             # capturing) more than one photo/video at once, uploaded together
-            # as soon as they're picked rather than one at a time.
+            # as soon as they're picked rather than one at a time. In
+            # practice checklist-actions.js always sends exactly one per
+            # request (see uploadOnePhoto) so each gets its own independent
+            # pass/fail, but this handles a genuine multi-file POST too.
             photos = request.FILES.getlist('photo')
             created = []
+            errors = []
+            # Same limits as the vendor portal's own phone-camera upload —
+            # this is the same real situation (a cleaner's phone, JPEG/HEIC
+            # photos or a short video), and this endpoint had never had any
+            # size/type check at all: an oversized video (a full-length 4K
+            # walkthrough clip is easily 200MB+) or an odd content-type
+            # would previously just fail with no real error surfaced —
+            # exactly "photo upload doesn't work" with nothing to go on.
             for photo in photos:
-                media = VisitMedia.objects.create(
-                    visit=visit, checklist_item=item, file=photo,
-                    media_type=VisitMedia.MediaType.VIDEO if photo.content_type.startswith('video') else VisitMedia.MediaType.PHOTO,
-                )
+                if photo.content_type not in settings.VENDOR_UPLOAD_ALLOWED_CONTENT_TYPES:
+                    errors.append(f'{photo.name}: unsupported file type ({photo.content_type or "unknown"}).')
+                    continue
+                if photo.size > settings.VENDOR_UPLOAD_MAX_BYTES:
+                    max_mb = settings.VENDOR_UPLOAD_MAX_BYTES // (1024 * 1024)
+                    errors.append(f'{photo.name} is too large (max {max_mb}MB).')
+                    continue
+                try:
+                    media = VisitMedia.objects.create(
+                        visit=visit, checklist_item=item, file=photo,
+                        media_type=VisitMedia.MediaType.VIDEO if photo.content_type.startswith('video') else VisitMedia.MediaType.PHOTO,
+                    )
+                except Exception:
+                    # Whatever the actual cause (storage backend rejecting
+                    # it, a network blip talking to Cloudinary, etc.) — log
+                    # the real traceback for us, but never leave the cleaner
+                    # facing a bare 500 with an unparseable-as-JSON response
+                    # (that's what silently produced the old "tap to retry,
+                    # fails again, no explanation" loop).
+                    logger.exception('onsite upload_item_photo failed for visit %s item %s', visit.pk, item.pk)
+                    errors.append(f'{photo.name}: upload failed on our end — try again in a moment.')
+                    continue
                 created.append(media)
             if is_ajax:
                 if not created:
-                    return JsonResponse({'success': False, 'error': 'No file received — try again.'})
+                    return JsonResponse({
+                        'success': False,
+                        'error': errors[0] if errors else 'No file received — try again.',
+                    })
                 return JsonResponse({
                     'success': True, 'item_id': item.pk,
                     'media': [_media_payload(m) for m in created],
+                    'errors': errors,
                 })
 
         elif action == 'add_issue':
             description = request.POST.get('description', '').strip()
             if description:
                 issue = VisitIssue.objects.create(visit=visit, description=description)
+                issue_errors = []
+                # Same validation/error-handling as the checklist item photo
+                # upload above — same real risk (an oversized video, or a
+                # storage-backend hiccup) previously left with no check at all.
                 for photo in request.FILES.getlist('photos'):
-                    VisitMedia.objects.create(visit=visit, issue=issue, file=photo)
+                    if photo.content_type not in settings.VENDOR_UPLOAD_ALLOWED_CONTENT_TYPES:
+                        issue_errors.append(f'{photo.name}: unsupported file type ({photo.content_type or "unknown"}).')
+                        continue
+                    if photo.size > settings.VENDOR_UPLOAD_MAX_BYTES:
+                        max_mb = settings.VENDOR_UPLOAD_MAX_BYTES // (1024 * 1024)
+                        issue_errors.append(f'{photo.name} is too large (max {max_mb}MB).')
+                        continue
+                    try:
+                        VisitMedia.objects.create(
+                            visit=visit, issue=issue, file=photo,
+                            media_type=VisitMedia.MediaType.VIDEO if photo.content_type.startswith('video') else VisitMedia.MediaType.PHOTO,
+                        )
+                    except Exception:
+                        logger.exception('onsite add_issue photo upload failed for visit %s issue %s', visit.pk, issue.pk)
+                        issue_errors.append(f'{photo.name}: upload failed on our end — the issue itself was still reported.')
                 if is_ajax:
-                    return JsonResponse({'success': True, 'description': issue.description})
+                    return JsonResponse({'success': True, 'description': issue.description, 'errors': issue_errors})
             elif is_ajax:
                 return JsonResponse({'success': False, 'error': "Describe what's wrong first."})
 

@@ -198,15 +198,21 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (!data.success || !data.media || !data.media.length) throw new Error(data.error || 'upload failed');
+        if (!data.success || !data.media || !data.media.length) throw new Error(data.error || 'Upload failed — try again.');
         thumbEl.href = data.media[0].url;
         thumbEl.classList.remove('checklist-photo-thumb-pending');
         updatePhotoStatus(itemEl);
       })
-      .catch(function () {
+      .catch(function (err) {
         thumbEl.classList.remove('checklist-photo-thumb-pending');
         thumbEl.classList.add('checklist-photo-thumb-failed');
-        thumbEl.title = 'Upload failed — tap to retry';
+        // Show the ACTUAL reason (too large, wrong file type, server error,
+        // network) right on the item — previously this only set a hover
+        // title with no message on screen, so a failed upload looked
+        // identical no matter why it failed, giving nothing to act on.
+        var message = (err && err.message) || 'Upload failed — try again.';
+        thumbEl.title = message + ' (tap to retry)';
+        showError(itemEl, message);
         thumbEl.onclick = function (e) {
           e.preventDefault();
           thumbEl.classList.remove('checklist-photo-thumb-failed');
