@@ -1,15 +1,28 @@
 // Local Weather box on the Owner Dashboard — zero-credential, entirely
-// client-side. Always renders the office's fixed coordinates/name
-// (data-office-lat/lon/name, see tickets/owner_dashboard.html) — it used
-// to ask the browser for the visitor's own location first via
-// navigator.geolocation.getCurrentPosition(), which is what triggered a
-// location-permission prompt on every single page load on mobile.
-// Nothing on this dashboard actually varies by visitor location, so that
-// prompt was pure friction; dropped in favor of just using the office
-// directly. Calls Open-Meteo's public forecast API directly
-// (api.open-meteo.com, no API key required) rather than round-tripping
-// through our own server.
+// client-side. Uses the browser's own geolocation so the weather shown is
+// wherever the visitor actually is, but asks for permission at most ONCE
+// per browser: the result (device coordinates + reverse-geocoded place
+// name, or a flag that it fell back to the office) is cached in
+// localStorage, so every later page load reads the cache instead of
+// calling navigator.geolocation.getCurrentPosition() again. That's the
+// fix for "it always asks for location" — it used to call
+// getCurrentPosition() unconditionally on every single page load; now it
+// only ever does that once per browser, and after a denial/error it
+// falls back to the office's fixed coordinates (data-office-lat/lon/name,
+// see tickets/owner_dashboard.html) and remembers that too, so it won't
+// keep retrying. A small "Update location" link lets the visitor re-ask
+// at any time (e.g. after moving, or after fixing a prior denial).
+//
+// Calls two zero-credential public APIs directly from the browser, no
+// server round-trip: Open-Meteo (api.open-meteo.com) for the forecast,
+// and BigDataCloud's free reverse-geocode-client endpoint
+// (api.bigdatacloud.net — no key required, built for exactly this kind
+// of client-side lookup) to turn device coordinates into a "City, ST"
+// label. The office fallback already has its name from the server
+// (OFFICE_LOCATION_NAME), so it never needs reverse geocoding.
 (function () {
+    var CACHE_KEY = 'proptasks_weather_location_v1';
+
     // WMO weather codes (https://open-meteo.com/en/docs, "Weather variable
     // documentation") -> one of this app's existing Lucide icons, so the
     // widget matches the rest of the site's icon set instead of introducing
@@ -46,8 +59,38 @@
         return WMO_LABELS[code] || 'Unknown';
     }
 
-    function render(widget, lat, lon, placeName) {
-        var status = widget.querySelector('[data-weather-status]');
+    function readCache() {
+        try {
+            return JSON.parse(localStorage.getItem(CACHE_KEY));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeCache(value) {
+        try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify(value));
+        } catch (e) {
+            // Private browsing / storage disabled — just re-asks next load.
+        }
+    }
+
+    function reverseGeocode(lat, lon, done) {
+        var url = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat
+            + '&longitude=' + lon + '&localityLanguage=en';
+        fetch(url)
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                var city = data.city || data.locality || '';
+                var stateCode = data.principalSubdivisionCode
+                    ? data.principalSubdivisionCode.split('-').pop()
+                    : (data.principalSubdivision || '');
+                done([city, stateCode].filter(Boolean).join(', ') || null);
+            })
+            .catch(function () { done(null); });
+    }
+
+    function render(widget, lat, lon, placeName, showUpdateLink) {
         var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
             + '&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code'
             + '&temperature_unit=fahrenheit&timezone=auto';
@@ -76,16 +119,69 @@
                     '<div class="small" style="color: var(--ink-muted);">' + currentLabel + '</div>' +
                     '</div>' +
                     '</div>' +
-                    '<p class="small mb-0" style="color: var(--ink-secondary);">Today: H ' + hi + '° / L ' + lo + '°</p>';
+                    '<p class="small mb-0" style="color: var(--ink-secondary);">Today: H ' + hi + '° / L ' + lo + '°</p>' +
+                    (showUpdateLink
+                        ? '<button type="button" data-weather-update class="btn btn-link btn-sm p-0 mt-1" style="font-size: 0.75rem;">Not your location? Update</button>'
+                        : '');
 
                 if (window.lucide) lucide.createIcons();
+
+                var updateLink = widget.querySelector('[data-weather-update]');
+                if (updateLink) {
+                    updateLink.addEventListener('click', function () {
+                        writeCache(null);
+                        locate(widget, true);
+                    });
+                }
             })
             .catch(function () {
+                var status = widget.querySelector('[data-weather-status]');
                 if (status) status.textContent = 'Weather unavailable right now.';
             });
     }
 
+    function locate(widget, forcePrompt) {
+        var officeLat = widget.dataset.officeLat;
+        var officeLon = widget.dataset.officeLon;
+        var officeName = widget.dataset.officeName;
+
+        function useOffice() {
+            writeCache({ source: 'office' });
+            render(widget, officeLat, officeLon, officeName, !!navigator.geolocation);
+        }
+
+        if (!forcePrompt) {
+            var cached = readCache();
+            if (cached && cached.source === 'device' && cached.lat && cached.lon) {
+                render(widget, cached.lat, cached.lon, cached.name, true);
+                return;
+            }
+            if (cached && cached.source === 'office') {
+                render(widget, officeLat, officeLon, officeName, !!navigator.geolocation);
+                return;
+            }
+        }
+
+        if (!navigator.geolocation) {
+            useOffice();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            function (position) {
+                var lat = position.coords.latitude.toFixed(4);
+                var lon = position.coords.longitude.toFixed(4);
+                reverseGeocode(lat, lon, function (name) {
+                    writeCache({ source: 'device', lat: lat, lon: lon, name: name });
+                    render(widget, lat, lon, name, true);
+                });
+            },
+            function () { useOffice(); },
+            { timeout: 8000, maximumAge: 15 * 60 * 1000 },
+        );
+    }
+
     document.querySelectorAll('[data-weather-widget]').forEach(function (widget) {
-        render(widget, widget.dataset.officeLat, widget.dataset.officeLon, widget.dataset.officeName);
+        locate(widget, false);
     });
 })();
