@@ -28,7 +28,8 @@ from processes.models import ProcessTemplate
 from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
 from .models import (
     FollowUpLog, Priority, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket,
-    TicketAssignmentLog, TicketAttachment, TicketChecklistItem, TicketContact, TicketStatusNote, TicketTemplate,
+    TicketAssignmentLog, TicketAttachment, TicketChecklistItem, TicketClosingNote, TicketContact, TicketStatusNote,
+    TicketTemplate,
     TicketTemplateDocument, TicketView,
 )
 from .services import owner_dashboard as owner_dashboard_queries
@@ -1417,6 +1418,7 @@ def ticket_detail(request, pk):
         'quo_default_from_number': settings.QUO_DEFAULT_FROM_NUMBER,
         'vendor_link_cooldown_hours_left': vendor_link_cooldown_hours_left,
         'status_notes': ticket.status_notes.select_related('created_by'),
+        'closing_notes': ticket.closing_notes.select_related('created_by'),
         'now': timezone.now(),
     })
 
@@ -2131,6 +2133,20 @@ def ticket_set_status(request, pk):
                         return _list_redirect(request)
                     return redirect('ticket_detail', pk=ticket.pk)
 
+            # Closing a ticket (COMPLETE_STATUSES — see its own definition
+            # above) requires a stated closing status, collected by a popup
+            # on the ticket detail page and enforced here too, not just in
+            # the UI — every path that can set one of these statuses posts
+            # to this same view, so this one check covers all of them.
+            closing_body = ''
+            if new_status in COMPLETE_STATUSES:
+                closing_body = request.POST.get('closing_note', '').strip()
+                if not closing_body:
+                    messages.error(request, 'A closing status is required before this ticket can be closed.')
+                    if 'next_qs' in request.POST:
+                        return _list_redirect(request)
+                    return redirect('ticket_detail', pk=ticket.pk)
+
             ticket.status = new_status
             if new_status == Ticket.Status.DEFERRED:
                 _apply_due_date_change(ticket, new_due_date)
@@ -2138,8 +2154,12 @@ def ticket_set_status(request, pk):
                 ticket.completed_at = timezone.now()
             if new_status == Ticket.Status.CANCELLED:
                 ticket.cancelled_at = timezone.now()
-                ticket.cancelled_reason = request.POST.get('cancelled_reason', '')
+                ticket.cancelled_reason = closing_body[:300]
             ticket.save()
+            if new_status in COMPLETE_STATUSES:
+                TicketClosingNote.objects.create(
+                    ticket=ticket, status=new_status, body=closing_body, created_by=request.user,
+                )
             if new_status == Ticket.Status.COMPLETED:
                 _link_vendor_to_property(ticket)
             if new_status in Ticket.DEPENDENCY_SATISFYING_STATUSES:

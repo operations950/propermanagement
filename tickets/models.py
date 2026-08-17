@@ -784,6 +784,36 @@ class TicketStatusNote(models.Model):
         return f'{self.ticket} — {self.created_at:%Y-%m-%d %H:%M}'
 
 
+class TicketClosingNote(models.Model):
+    """The required closing/resolution status captured in a popup at the
+    moment a ticket actually moves into one of Ticket.COMPLETE_STATUSES
+    (tickets/views.py — completed, verified, cancelled, skipped, or not
+    applicable). Deliberately its own model, separate from the free-form
+    TicketStatusNote thread above it on the Update Status card: that log
+    is optional and ongoing (posting one never requires or triggers a
+    status change), this one is required and tied to a specific status
+    change — a record of why THIS is the final status, not a running
+    commentary. One row per closing, not an overwrite — a ticket that's
+    reopened and closed again (e.g. Completed -> reopened -> Verified)
+    gets a second row, so the history survives, the same reason
+    TicketStatusNote itself replaced the old one-shot resolution_notes/
+    status_reason fields. Enforced server-side in ticket_set_status, not
+    just in the UI."""
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='closing_notes')
+    status = models.CharField(max_length=20, choices=Ticket.Status.choices)
+    body = models.TextField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.ticket} — {self.get_status_display()} — {self.created_at:%Y-%m-%d %H:%M}'
+
+
 class TicketView(models.Model):
     """When a given staff user last opened this ticket's detail page —
     per-user, not global, since a shared dashboard used by several staff
