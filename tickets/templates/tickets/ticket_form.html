@@ -178,6 +178,23 @@
 
 <script>
 (function () {
+    // base.html's own scroll-position memory (see its bottom <script>) saves
+    // scrollY per exact pathname+search and restores it on the next load of
+    // that same URL — meant for "a form POST redirects back to the same
+    // page, keep the user where they were" (e.g. toggling a row on a long
+    // ticket list). /tickets/new/ has no query string, ever, so every visit
+    // shares one identical key: scroll to the bottom to hit "Create ticket"
+    // once, and every future "New ticket" — a fresh, empty form — silently
+    // reopens already scrolled to the bottom until something clears it.
+    // This page is never the kind of "same state, stay put" page that
+    // mechanism is for, so it opts out of it outright rather than trying to
+    // recreate the whole save/restore behavior clean for a case where the
+    // right answer is always just the top.
+    try {
+        sessionStorage.removeItem('scrollpos:' + window.location.pathname + window.location.search);
+    } catch (e) { /* sessionStorage unavailable (private mode, etc.) — nothing to clear */ }
+    if (window.scrollY) window.scrollTo(0, 0);
+
     document.querySelectorAll('[data-char-count]').forEach(function (field) {
         var max = parseInt(field.dataset.charCount, 10);
         var display = document.querySelector('[data-char-count-for="' + field.id + '"]');

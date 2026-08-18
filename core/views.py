@@ -19,7 +19,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
 from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
-from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
+from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
 from . import app_settings, google_calendar, google_login, places, quickbooks, usps
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
@@ -758,6 +758,14 @@ def property_detail(request, pk):
     send_followup_bulk/_group_followups machinery the ticket detail screen's
     Follow-Up card uses, and this property's open tickets/tasks."""
     prop = get_object_or_404(Property, pk=pk)
+    # Wherever the browser actually came from (a filtered property list, the
+    # dashboard, a ticket's own property link, ...) — see _safe_back_url's
+    # own docstring. exclude_path=request.path stops every in-page POST
+    # action here (save notes, add/remove an attribute, ...), which all
+    # redirect right back to this same page, from making "back" a no-op
+    # loop pointing at itself instead of at whatever the user actually
+    # navigated from.
+    back_url = _safe_back_url(request, exclude_path=request.path, fallback_view='property_list')
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -954,6 +962,7 @@ def property_detail(request, pk):
 
     return render(request, 'core/property_detail.html', {
         'property': prop,
+        'back_url': back_url,
         'contact_groups': contact_groups,
         'contacts_with_thread_ids': contacts_with_thread_ids,
         'text_contacts': [c for c in contacts if c.phone],
