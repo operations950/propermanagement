@@ -24,6 +24,19 @@ from ..models import (
 DEEP_CLEAN_ADDON_SLUG = 'deep-clean'
 
 
+class VisitSubmitBlocked(ValidationError):
+    """Same ValidationError submit_visit always raised — still catchable as
+    one anywhere that only cares about the message — but also carries the
+    actual item ids so the caller (onsite/views.py) can highlight exactly
+    which checklist rows are blocking submission, instead of just showing
+    the message text. missing_item_ids / missing_photo_item_ids can overlap
+    (an item can be both unmarked AND missing its photo)."""
+    def __init__(self, message, missing_item_ids, missing_photo_item_ids):
+        super().__init__(message)
+        self.missing_item_ids = missing_item_ids
+        self.missing_photo_item_ids = missing_photo_item_ids
+
+
 def resolve_checklist(property, visit_type):
     """Returns an ordered list of dicts describing what this property's
     checklist for this visit type looks like right now — the live,
@@ -218,16 +231,18 @@ def _push_to_calendar(visit):
 def submit_visit(visit):
     """Server-side gate: a visit can't be submitted until every mandatory
     checklist item is either completed or has a skip_reason, and every
-    requires_photo item has at least one VisitMedia. Raises ValidationError
-    listing what's missing rather than silently letting it through."""
+    requires_photo item has at least one VisitMedia. Raises
+    VisitSubmitBlocked (a ValidationError) carrying both a human message and
+    the actual blocking item ids, so the caller can highlight exactly which
+    checklist rows to look at rather than just showing text."""
     items = list(visit.checklist_items.all())
-    missing = [
-        item.text for item in items
+    missing_items = [
+        item for item in items
         if item.mandatory and not item.is_completed and not item.skip_reason
     ]
     media_item_ids = set(visit.media.exclude(checklist_item__isnull=True).values_list('checklist_item_id', flat=True))
-    missing_photos = [
-        item.text for item in items
+    missing_photo_items = [
+        item for item in items
         # A skip_reason already exempts an item from the mandatory-completion
         # check above; requires_photo needs the same exemption for the same
         # reason — a cleaner who skipped an item (with a reason) shouldn't
@@ -235,13 +250,23 @@ def submit_visit(visit):
         # of something they didn't do.
         if item.requires_photo and not item.skip_reason and item.id not in media_item_ids
     ]
-    if missing or missing_photos:
+    if missing_items or missing_photo_items:
         problems = []
-        if missing:
-            problems.append(f"{len(missing)} item(s) not completed or skipped: {', '.join(missing[:5])}")
-        if missing_photos:
-            problems.append(f"{len(missing_photos)} item(s) missing a required photo: {', '.join(missing_photos[:5])}")
-        raise ValidationError(' — '.join(problems))
+        if missing_items:
+            problems.append(
+                f"{len(missing_items)} item(s) not completed or skipped: "
+                f"{', '.join(i.text for i in missing_items[:5])}"
+            )
+        if missing_photo_items:
+            problems.append(
+                f"{len(missing_photo_items)} item(s) missing a required photo: "
+                f"{', '.join(i.text for i in missing_photo_items[:5])}"
+            )
+        raise VisitSubmitBlocked(
+            ' — '.join(problems),
+            missing_item_ids=[i.id for i in missing_items],
+            missing_photo_item_ids=[i.id for i in missing_photo_items],
+        )
 
     visit.status = Visit.Status.SUBMITTED
     visit.submitted_at = timezone.now()

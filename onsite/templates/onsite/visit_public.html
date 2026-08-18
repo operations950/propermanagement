@@ -61,7 +61,7 @@
     </div>
 
     {% for section in checklist_sections %}
-    <details class="checklist-section" id="section-{{ forloop.counter0 }}" data-section {% if section.done_count < section.total_count %}open{% endif %}>
+    <details class="checklist-section" id="section-{{ forloop.counter0 }}" data-section {% if section.done_count < section.total_count or section.has_blocking %}open{% endif %}>
         <summary>
             {{ section.name }}
             <span class="checklist-section-count{% if section.done_count == section.total_count %} checklist-section-count-done{% endif %}" data-section-count>
@@ -70,7 +70,7 @@
             </span>
         </summary>
         {% for item in section.items %}
-        <div class="checklist-item" id="item-{{ item.pk }}" data-item-id="{{ item.pk }}">
+        <div class="checklist-item{% if item.pk in blocking_item_ids %} checklist-item-error{% endif %}" id="item-{{ item.pk }}" data-item-id="{{ item.pk }}">
             <div class="checklist-item-text">
                 {{ item.text }}{% if item.mandatory %} <span class="checklist-item-required">*</span>{% endif %}
                 {% if item.is_new_unreviewed %} <span class="badge bg-light text-muted border">New</span>{% endif %}
@@ -118,8 +118,13 @@
                 </a>
                 {% endfor %}
             </div>
-            <div class="small mt-1" data-photo-status {% if item.media.all %}style="color: var(--status-good);"{% else %}style="color: var(--status-critical);"{% endif %}>
-                {% if item.media.all %}<i data-lucide="check" class="icon"></i> {{ item.media.all|length }} photo(s) attached{% else %}Photo required{% endif %}
+            <div class="small mt-1" data-photo-status
+                 {% if item.skip_reason %}style="color: var(--ink-muted);"
+                 {% elif item.media.all %}style="color: var(--status-good);"
+                 {% else %}style="color: var(--status-critical);"{% endif %}>
+                {% if item.skip_reason %}Skipped — photo not required
+                {% elif item.media.all %}<i data-lucide="check" class="icon"></i> {{ item.media.all|length }} photo(s) attached
+                {% else %}Photo required{% endif %}
             </div>
             {% endif %}
 

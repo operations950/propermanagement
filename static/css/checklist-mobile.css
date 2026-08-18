@@ -93,6 +93,19 @@
   border-top: none;
 }
 
+/* Applied on a failed Submit to whichever rows are actually blocking it
+   (see onsite/views.py's blocking_item_ids) — a 40+ item checklist makes
+   "3 items missing a photo" in a toast at the top nearly useless on its
+   own; this is what lets a cleaner actually find them. Cleared the moment
+   that row is acted on (done/skip/photo attached), not left stale. */
+.checklist-item-error {
+  margin: 0 -0.6rem;
+  padding-left: 0.85rem;
+  padding-right: 0.85rem;
+  border-left: 3px solid var(--status-critical, #d03b3b);
+  background: color-mix(in srgb, var(--status-critical, #d03b3b) 6%, transparent);
+}
+
 .checklist-item-text {
   font-size: 1.08rem;
   font-weight: 500;

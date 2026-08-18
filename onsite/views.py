@@ -1072,6 +1072,19 @@ def visit_public(request, token):
             try:
                 checklist_service.submit_visit(visit)
                 return redirect('onsite_visit_public', token=token)
+            except checklist_service.VisitSubmitBlocked as e:
+                # Rendered directly here (not the generic redirect below) so
+                # the blocking item ids — only available on this exception,
+                # only known right now — can flow straight into this same
+                # response instead of needing to survive a redirect (session
+                # flash storage, or similar, for what's really just a
+                # same-request rendering need).
+                messages.error(request, str(e))
+                return _render_visit_public(
+                    request, visit,
+                    blocking_item_ids=set(e.missing_item_ids) | set(e.missing_photo_item_ids),
+                    blocking_photo_item_ids=set(e.missing_photo_item_ids),
+                )
             except ValidationError as e:
                 messages.error(request, '; '.join(e.messages) if hasattr(e, 'messages') else str(e))
 
@@ -1079,15 +1092,23 @@ def visit_public(request, token):
             return JsonResponse({'success': False, 'error': 'Something went wrong — try again.'})
         return redirect('onsite_visit_public', token=token)
 
+    return _render_visit_public(request, visit)
+
+
+def _render_visit_public(request, visit, blocking_item_ids=None, blocking_photo_item_ids=None):
+    """Shared by the normal GET render and the submit-failed path above —
+    same context either way, the latter just adds which items to highlight."""
     checklist_items = list(visit.checklist_items.all())
     return render(request, 'onsite/visit_public.html', {
         'visit': visit,
-        'checklist_sections': _checklist_sections(checklist_items),
+        'checklist_sections': _checklist_sections(checklist_items, blocking_item_ids),
         'checklist_done_count': sum(1 for i in checklist_items if i.is_completed or i.skip_reason),
         'checklist_total_count': len(checklist_items),
         'issues': visit.issues.all(),
         'supply_rows': supply_services.supply_check_context(visit),
         'is_submitted': visit.status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED),
+        'blocking_item_ids': blocking_item_ids or set(),
+        'blocking_photo_item_ids': blocking_photo_item_ids or set(),
     })
 
 
@@ -1100,25 +1121,37 @@ def _checklist_progress(visit):
     return done, len(items)
 
 
-def _checklist_sections(checklist_items):
+def _checklist_sections(checklist_items, blocking_item_ids=None):
     """Groups an already section-ordered list of VisitChecklistItems (see
     VisitChecklistItem.Meta's ordering note) into
-    [{name, items, done_count, total_count}, ...] for visit_public.html's
-    collapsible-section layout — a "resolved" item (done OR skipped, same
-    definition submit_visit's gate uses) counts toward done_count so the
-    per-section badge and the top progress bar agree with what actually
-    blocks submission."""
+    [{name, items, done_count, total_count, has_blocking}, ...] for
+    visit_public.html's collapsible-section layout — a "resolved" item (done
+    OR skipped, same definition submit_visit's gate uses) counts toward
+    done_count so the per-section badge and the top progress bar agree with
+    what actually blocks submission.
+
+    has_blocking is separate from done_count on purpose: an item can be
+    marked Done (is_completed=True, counts toward done_count) while still
+    missing a required photo — nothing stops a cleaner from tapping Done
+    without attaching one. Without has_blocking, that section would look
+    fully resolved and default-collapse, hiding the very item a failed
+    Submit is complaining about. blocking_item_ids comes from
+    checklist_service.VisitSubmitBlocked, so this stays in sync with
+    submit_visit's own gate rather than recomputing it separately."""
+    blocking_item_ids = blocking_item_ids or set()
     sections = []
     current = None
     for item in checklist_items:
         name = item.section or 'Checklist'
         if current is None or current['name'] != name:
-            current = {'name': name, 'items': [], 'done_count': 0, 'total_count': 0}
+            current = {'name': name, 'items': [], 'done_count': 0, 'total_count': 0, 'has_blocking': False}
             sections.append(current)
         current['items'].append(item)
         current['total_count'] += 1
         if item.is_completed or item.skip_reason:
             current['done_count'] += 1
+        if item.pk in blocking_item_ids:
+            current['has_blocking'] = True
     return sections
 
 

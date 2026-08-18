@@ -187,6 +187,32 @@
     }
   }
 
+  // Keeps the "Photo required" note in sync with skip/undo — mirrors
+  // visit_public.html's own server-rendered logic (skipped items never
+  // need a photo, see onsite/services/checklist.py::submit_visit) so a
+  // skip doesn't leave a stale red "Photo required" showing for something
+  // that no longer actually blocks Submit. Runs after every done/skip/undo
+  // response since any of those can flip whether this item still requires
+  // a photo, and also clears the "was blocking a failed Submit" highlight —
+  // no reason to leave that showing once the cleaner has actually acted on it.
+  function updatePhotoRequiredState(itemEl, item) {
+    var statusEl = itemEl.querySelector('[data-photo-status]');
+    itemEl.classList.remove('checklist-item-error');
+    if (!statusEl) return;
+    var hasSettledPhoto = itemEl.querySelectorAll(
+      '.checklist-photo-thumb:not(.checklist-photo-thumb-pending):not(.checklist-photo-thumb-failed)',
+    ).length > 0;
+    if (item.skip_reason) {
+      statusEl.style.color = 'var(--ink-muted)';
+      statusEl.textContent = 'Skipped — photo not required';
+    } else if (hasSettledPhoto) {
+      updatePhotoStatus(itemEl);
+    } else {
+      statusEl.style.color = 'var(--status-critical)';
+      statusEl.textContent = 'Photo required';
+    }
+  }
+
   function uploadOnePhoto(itemEl, itemId, file, thumbEl) {
     var fd = new FormData();
     fd.append('action', 'upload_item_photo');
@@ -202,6 +228,7 @@
         thumbEl.href = data.media[0].url;
         thumbEl.classList.remove('checklist-photo-thumb-pending');
         updatePhotoStatus(itemEl);
+        itemEl.classList.remove('checklist-item-error');
       })
       .catch(function (err) {
         thumbEl.classList.remove('checklist-photo-thumb-pending');
@@ -238,6 +265,7 @@
         btn.disabled = false;
         if (!data.success) return showError(itemEl, data.error);
         renderItemState(itemEl.querySelector('[data-item-state]'), data.item);
+        updatePhotoRequiredState(itemEl, data.item);
         updateProgress(data.done, data.total);
         recomputeSectionCount(itemEl);
       });
@@ -281,6 +309,7 @@
         confirmPanel.hidden = true;
         reasonInput.value = '';
         renderItemState(itemEl.querySelector('[data-item-state]'), data.item);
+        updatePhotoRequiredState(itemEl, data.item);
         updateProgress(data.done, data.total);
         recomputeSectionCount(itemEl);
       });
@@ -457,5 +486,14 @@
       var submitForm = document.getElementById('submit-visit-form');
       if (submitForm) submitForm.submit();
     });
+  }
+
+  // A failed Submit re-renders this same page (see onsite/views.py's
+  // VisitSubmitBlocked handling) with the blocking rows already marked —
+  // their containing sections are also forced open (see the `has_blocking`
+  // context) so this always finds something real if it fires at all.
+  var firstBlockingItem = document.querySelector('.checklist-item-error');
+  if (firstBlockingItem) {
+    firstBlockingItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 })();
