@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     Booking,
     BookingFeedHealth,
+    CleaningPaymentBatch,
     DailyUploadSlot,
     ImportBatch,
     PropertyChecklistItem,
@@ -99,6 +100,12 @@ class VisitAdmin(admin.ModelAdmin):
     list_filter = ['visit_type', 'status']
     search_fields = ['property__name']
     inlines = [VisitChecklistItemInline, VisitMediaInline]
+
+
+@admin.register(CleaningPaymentBatch)
+class CleaningPaymentBatchAdmin(admin.ModelAdmin):
+    list_display = ['paid_at', 'paid_by', 'total_amount', 'note']
+    readonly_fields = ['paid_at']
 
 
 @admin.register(VisitIssue)

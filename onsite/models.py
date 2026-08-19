@@ -315,6 +315,28 @@ class Booking(models.Model):
         return f'{self.property} — {self.check_out:%Y-%m-%d} checkout'
 
 
+class CleaningPaymentBatch(models.Model):
+    """One payment run against the internal cleaner queue — what we
+    actually paid for a group of cleanings, made in one go (e.g. "$310 to
+    Maria via Venmo on the 15th"). Deliberately not "payroll": this is
+    per-cleaning-job pay, not an employee wage/salary record. total_amount
+    is stored rather than always summed live from its visits, because it's
+    the historical fact of what was paid — see Visit.paid_amount below for
+    why the per-visit amount is locked the same way."""
+    paid_at = models.DateTimeField(auto_now_add=True)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    note = models.CharField(max_length=300, blank=True, help_text='Optional — how it was paid, a check number, etc.')
+
+    class Meta:
+        ordering = ['-paid_at']
+
+    def __str__(self):
+        return f'${self.total_amount} paid {self.paid_at:%Y-%m-%d} ({self.visits.count()} cleaning(s))'
+
+
 class Visit(models.Model):
     """The center of this module — one person, one property, one ordered
     checklist. Assignment mirrors tickets.Ticket's dual-FK pattern
@@ -387,6 +409,19 @@ class Visit(models.Model):
     )
     created_from_rule = models.ForeignKey(
         'VisitRule', on_delete=models.SET_NULL, null=True, blank=True, related_name='generated_visits',
+    )
+
+    payment_batch = models.ForeignKey(
+        CleaningPaymentBatch, on_delete=models.SET_NULL, null=True, blank=True, related_name='visits',
+        help_text='Set once this cleaning has actually been paid for — see the Cleaning Payments '
+                   'screen. Null means still owed.',
+    )
+    paid_amount = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text="What was actually paid for this specific cleaning, locked in at the moment "
+                   "payment_batch was set — unlike cleaner_payout_amount() (used for what's still "
+                   "owed), this deliberately does NOT track later edits to the property/unit's price. "
+                   "A real payment already made shouldn't silently reprice itself.",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

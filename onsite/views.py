@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -24,8 +25,8 @@ from vendorportal.models import AccessAttempt
 
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
-    Booking, BookingFeedHealth, DailyUploadSlot, ImportBatch, PropertyChecklistItem, StandardChecklistItem,
-    Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule, VisitType,
+    Booking, BookingFeedHealth, CleaningPaymentBatch, DailyUploadSlot, ImportBatch, PropertyChecklistItem,
+    StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule, VisitType,
 )
 from .services import checklist as checklist_service
 from .services import notify as notify_service
@@ -1224,39 +1225,79 @@ def checklist_custom_items(request):
 
 
 @login_required
-def cleaner_payroll(request):
-    """Admin-only report: what to pay each internal cleaner for a date
-    range of completed turnovers. Scoped to assigned_staff visits whose
-    staff has role=CLEANER — an assigned_contact visit is an external/
-    contract cleaner paid a different way entirely, out of scope here.
-    Only SUBMITTED/VERIFIED visits count (nothing to pay for one still
-    scheduled or in progress). Each visit's amount comes from
+def cleaning_payments(request):
+    """Admin-only: what we still owe for completed internal-cleaner
+    cleanings, and a way to mark a batch of them paid. Deliberately NOT
+    payroll — this is per-cleaning-job pay (what the cleaning cost),
+    not an employee wage/salary record. Scoped to assigned_staff visits
+    whose staff has role=CLEANER — an assigned_contact visit is an
+    external/contract cleaner paid a different way entirely, out of scope
+    here. Only SUBMITTED/VERIFIED visits count (nothing owed for one still
+    scheduled or in progress).
+
+    Unpaid amounts (payment_batch is null) come from
     Visit.cleaner_payout_amount(), resolved live against today's Property/
-    Unit pricing rather than snapshotted — see that method's own docstring
-    for why. A visit with no price set anywhere in the chain shows as
-    "needs pricing" rather than silently counting as $0, so a missing
-    Property/Unit fee doesn't quietly shortchange a pay run."""
+    Unit pricing — an edited price changes what's still owed. Once a
+    cleaning is marked paid, its amount is locked into paid_amount at that
+    moment and never recomputed — a real payment already made shouldn't
+    silently reprice itself just because a property's rate changed later."""
     if not _is_admin(request.user):
         return redirect('onsite_dashboard')
 
-    today = timezone.localdate()
-    start = parse_date(request.GET.get('start', '')) or today.replace(day=1)
-    end = parse_date(request.GET.get('end', '')) or today
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'mark_paid':
+            visit_ids = request.POST.getlist('visit_ids')
+            unpaid = Visit.objects.filter(
+                pk__in=visit_ids, assigned_staff__role=StaffProfile.Role.CLEANER,
+                status__in=[Visit.Status.SUBMITTED, Visit.Status.VERIFIED], payment_batch__isnull=True,
+            ).select_related('property', 'unit')
+            if not unpaid:
+                messages.error(request, 'Nothing selected — pick at least one cleaning to mark as paid.')
+            else:
+                amounts = {v.pk: v.cleaner_payout_amount() for v in unpaid}
+                unpriced = [v for v in unpaid if amounts[v.pk] is None]
+                if unpriced:
+                    names = ', '.join(f'{v.property.name}{f" — {v.unit.label}" if v.unit else ""} ({v.scheduled_date:%b %d})' for v in unpriced[:5])
+                    messages.error(
+                        request,
+                        f'{len(unpriced)} selected cleaning(s) have no price set and can\'t be marked paid: {names}'
+                        + ('…' if len(unpriced) > 5 else '')
+                        + ' — set a Cleaning pay amount on the property (or unit) first, or deselect them.',
+                    )
+                else:
+                    total = sum(amounts.values(), Decimal('0'))
+                    note = request.POST.get('note', '').strip()
+                    with transaction.atomic():
+                        batch = CleaningPaymentBatch.objects.create(
+                            paid_by=request.user, total_amount=total, note=note,
+                        )
+                        for visit in unpaid:
+                            visit.payment_batch = batch
+                            visit.paid_amount = amounts[visit.pk]
+                        Visit.objects.bulk_update(unpaid, ['payment_batch', 'paid_amount'])
+                    messages.success(request, f'Marked {len(unpaid)} cleaning(s) as paid — ${total:.2f} total.')
+        elif action == 'undo_batch':
+            batch = get_object_or_404(CleaningPaymentBatch, pk=request.POST.get('batch_id'))
+            with transaction.atomic():
+                count = batch.visits.update(payment_batch=None, paid_amount=None)
+                batch.delete()
+            messages.success(request, f'Undone — {count} cleaning(s) are back in the unpaid queue.')
+        return redirect('onsite_cleaning_payments')
 
-    visits = (
+    unpaid_visits = (
         Visit.objects.filter(
             assigned_staff__role=StaffProfile.Role.CLEANER,
             status__in=[Visit.Status.SUBMITTED, Visit.Status.VERIFIED],
-            scheduled_date__gte=start, scheduled_date__lte=end,
+            payment_batch__isnull=True,
         )
         .select_related('property', 'unit', 'assigned_staff__user', 'visit_type')
         .order_by('assigned_staff__user__first_name', 'assigned_staff__user__last_name', 'scheduled_date')
     )
 
     by_staff = {}
-    grand_total = Decimal('0')
     unpriced_count = 0
-    for visit in visits:
+    for visit in unpaid_visits:
         amount = visit.cleaner_payout_amount()
         bucket = by_staff.setdefault(
             visit.assigned_staff_id, {'staff': visit.assigned_staff, 'rows': [], 'total': Decimal('0')},
@@ -1266,14 +1307,13 @@ def cleaner_payroll(request):
             unpriced_count += 1
         else:
             bucket['total'] += amount
-            grand_total += amount
 
     cleaner_rows = sorted(by_staff.values(), key=lambda b: str(b['staff']))
+    recent_batches = CleaningPaymentBatch.objects.select_related('paid_by').prefetch_related('visits')[:15]
 
-    return render(request, 'onsite/cleaner_payroll.html', {
-        'start': start, 'end': end, 'cleaner_rows': cleaner_rows,
-        'grand_total': grand_total, 'unpriced_count': unpriced_count,
-        'visit_count': len(visits),
+    return render(request, 'onsite/cleaning_payments.html', {
+        'cleaner_rows': cleaner_rows, 'unpriced_count': unpriced_count,
+        'visit_count': len(unpaid_visits), 'recent_batches': recent_batches,
     })
 
 

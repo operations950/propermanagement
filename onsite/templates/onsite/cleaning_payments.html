@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}Cleaning payments{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+<h2 class="page-title mb-1">Cleaning payments</h2>
+<p class="text-muted small mb-4">What we still owe our internal cleaners for completed turnovers — not employee payroll, this is per-cleaning pay based on each property's (or unit's) Cleaning pay / Deep clean pay. Only internal staff cleanings count; an external/contract cleaner is paid a different way and isn't included here. Check the cleanings you're paying right now, confirm the total, and mark them paid.</p>
+
+{% if unpriced_count %}
+<div class="alert alert-warning small d-flex align-items-center gap-2">
+    <i data-lucide="alert-triangle" class="icon flex-shrink-0"></i>
+    {{ unpriced_count }} cleaning{{ unpriced_count|pluralize }} below {{ unpriced_count|pluralize:"has,have" }} no price set and can't be selected — set a Cleaning pay / Deep clean pay amount on the property (or unit) to include {{ unpriced_count|pluralize:"it,them" }}.
+</div>
+{% endif %}
+
+<form method="post" id="mark-paid-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="mark_paid">
+
+    {% for row in cleaner_rows %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="card-title mb-0 d-flex align-items-center gap-2">
+                    <input type="checkbox" class="form-check-input select-all" data-staff="{{ row.staff.pk }}" title="Select all of {{ row.staff }}'s unpaid cleanings">
+                    {{ row.staff }}
+                </h6>
+                <span class="small" style="color: var(--ink-muted);">{{ row.rows|length }} unpaid — ${{ row.total|floatformat:2 }} owed</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th></th><th>Date</th><th>Property</th><th>Type</th><th class="text-end">Amount</th></tr></thead>
+                    <tbody>
+                    {% for r in row.rows %}
+                    <tr>
+                        <td>
+                            {% if r.amount is not None %}
+                            <input type="checkbox" class="form-check-input visit-checkbox" name="visit_ids" value="{{ r.visit.pk }}" data-staff="{{ row.staff.pk }}" data-amount="{{ r.amount }}">
+                            {% else %}
+                            <input type="checkbox" class="form-check-input" disabled title="No price set — can't be marked paid yet">
+                            {% endif %}
+                        </td>
+                        <td class="small">{{ r.visit.scheduled_date|date:"M j" }}</td>
+                        <td class="small">
+                            <a href="{% url 'onsite_visit_detail' r.visit.pk %}" class="text-decoration-none">{{ r.visit.property.name }}{% if r.visit.unit %} — {{ r.visit.unit.label }}{% endif %}</a>
+                        </td>
+                        <td class="small">{{ r.visit.visit_type.name }}{% if r.visit.is_deep_clean %} <span class="badge rounded-pill bg-light text-dark border">Deep clean</span>{% endif %}</td>
+                        <td class="text-end small">
+                            {% if r.amount is not None %}${{ r.amount|floatformat:2 }}{% else %}<a href="{% url 'property_detail' r.visit.property.pk %}" class="text-danger text-decoration-none">Needs pricing</a>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-muted">Nothing unpaid right now — every completed internal-cleaner cleaning has been marked paid.</p>
+    {% endfor %}
+
+    {% if cleaner_rows %}
+    <div class="card mb-4" style="position: sticky; bottom: 1rem; border: 1px solid var(--status-good);">
+        <div class="card-body d-flex flex-wrap align-items-center gap-2">
+            <div class="me-auto">
+                <span id="selected-summary" class="fw-bold">0 selected — $0.00</span>
+            </div>
+            <input type="text" name="note" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Note (optional) — how paid, check #, ...">
+            <button type="submit" id="mark-paid-btn" class="btn btn-success btn-sm" disabled>
+                <i data-lucide="check" class="icon"></i> Mark selected as paid
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</form>
+
+<h6 class="d-flex align-items-center gap-2 mt-4 mb-2"><i data-lucide="history" class="icon"></i> Recent payments</h6>
+{% for batch in recent_batches %}
+<div class="card mb-2">
+    <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="small">
+                <span class="fw-bold">${{ batch.total_amount|floatformat:2 }}</span>
+                — {{ batch.paid_at|date:"M j, Y g:i A" }}{% if batch.paid_by %} by {{ batch.paid_by.get_full_name|default:batch.paid_by.username }}{% endif %}
+                · {{ batch.visits.count }} cleaning{{ batch.visits.count|pluralize }}
+                {% if batch.note %}· <span class="text-muted">{{ batch.note }}</span>{% endif %}
+            </div>
+            <form method="post" onsubmit="return confirm('Undo this payment? These cleanings will go back into the unpaid queue.');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="undo_batch">
+                <input type="hidden" name="batch_id" value="{{ batch.pk }}">
+                <button class="btn btn-link btn-sm text-danger p-0" type="submit">Undo</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted small">No payments recorded yet.</p>
+{% endfor %}
+
+<script>
+(function () {
+    var checkboxes = Array.from(document.querySelectorAll('.visit-checkbox'));
+    var summary = document.getElementById('selected-summary');
+    var btn = document.getElementById('mark-paid-btn');
+
+    function refresh() {
+        var selected = checkboxes.filter(function (cb) { return cb.checked; });
+        var total = selected.reduce(function (sum, cb) { return sum + parseFloat(cb.dataset.amount || '0'); }, 0);
+        if (summary) summary.textContent = selected.length + ' selected — $' + total.toFixed(2);
+        if (btn) btn.disabled = selected.length === 0;
+        // Keep each cleaner's "select all" checkbox in sync with its own group.
+        Array.from(document.querySelectorAll('.select-all')).forEach(function (all) {
+            var group = checkboxes.filter(function (cb) { return cb.dataset.staff === all.dataset.staff; });
+            all.checked = group.length > 0 && group.every(function (cb) { return cb.checked; });
+        });
+    }
+
+    checkboxes.forEach(function (cb) { cb.addEventListener('change', refresh); });
+    Array.from(document.querySelectorAll('.select-all')).forEach(function (all) {
+        all.addEventListener('change', function () {
+            checkboxes.filter(function (cb) { return cb.dataset.staff === all.dataset.staff; })
+                .forEach(function (cb) { cb.checked = all.checked; });
+            refresh();
+        });
+    });
+
+    refresh();
+})();
+</script>
+{% endblock %}
