@@ -11,6 +11,7 @@ for administrative staff at a computer; this is a flat, ordered, mandatory
 checklist completed on a phone by someone standing in a house."""
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -315,6 +316,34 @@ class Booking(models.Model):
         return f'{self.property} — {self.check_out:%Y-%m-%d} checkout'
 
 
+class CleaningPricingSettings(models.Model):
+    """Singleton (always exactly one row — see get()) holding the one
+    number that controls deep-clean pricing across the whole portfolio: a
+    deep clean pays this percent of whatever the property/unit's normal
+    cleaning_fee already is, rather than a separate fee set per property.
+    Previously Property/Unit each had their own deep_clean_fee field —
+    replaced by this after real usage showed that's not how the business
+    actually prices a deep clean (a fixed multiple of the standard rate,
+    controlled in one place, not an independent per-listing number to keep
+    in sync). Deliberately its own tiny model rather than living in
+    core.AppSetting — that store is explicitly scoped to secrets/API keys
+    (see its own docstring), not general business config."""
+    deep_clean_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=1, default=Decimal('150.0'),
+        help_text='A deep clean pays this percent of the normal cleaning fee — 150 means 1.5x the '
+                   'standard rate. Applied in Visit.cleaner_payout_amount().',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.deep_clean_fee_percent}% deep-clean markup'
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
 class CleaningPaymentBatch(models.Model):
     """One payment run against the internal cleaner queue — what we
     actually paid for a group of cleanings, made in one go (e.g. "$310 to
@@ -454,27 +483,27 @@ class Visit(models.Model):
         """What we pay ourselves for this turnover, resolved live from
         today's Property/Unit pricing (not snapshotted onto the visit — an
         edited price is meant to apply retroactively here, by design).
-        Checked fee-type-first: for a deep clean, the unit's own
-        deep_clean_fee wins, then the property's deep_clean_fee, and only
-        once neither exists does it degrade to a standard cleaning_fee
-        (unit's, then property's) — a unit's ordinary turnover rate is
-        never substituted for a missing deep-clean rate ahead of the
-        property's own deep-clean rate, which is the more specific
-        "this job type, this building" signal. A non-deep-clean visit just
-        checks cleaning_fee, unit then property. None means unpriced
-        (nothing set anywhere in the chain) rather than free — callers
-        should treat that as "needs pricing," not $0. Deliberately a plain
-        method, not @property — see assignee_label's own comment on why
-        (this model's own `property` FK shadows the builtin)."""
-        fee_names = ('deep_clean_fee', 'cleaning_fee') if self.is_deep_clean else ('cleaning_fee',)
-        for fee_name in fee_names:
-            for source in (self.unit, self.property):
-                if source is None:
-                    continue
-                amount = getattr(source, fee_name)
-                if amount is not None:
-                    return amount
-        return None
+        Unit's cleaning_fee wins over the property's when set; that's
+        always the base rate, deep clean or not. A deep clean pays a
+        percentage of that base rate — CleaningPricingSettings.get()
+        .deep_clean_fee_percent, controlled in one place across the whole
+        portfolio, not a separate fee set per property/unit. None means
+        unpriced (no base cleaning_fee anywhere in the chain) rather than
+        free — callers should treat that as "needs pricing," not $0.
+        Deliberately a plain method, not @property — see assignee_label's
+        own comment on why (this model's own `property` FK shadows the
+        builtin)."""
+        base = None
+        for source in (self.unit, self.property):
+            if source is not None and source.cleaning_fee is not None:
+                base = source.cleaning_fee
+                break
+        if base is None:
+            return None
+        if not self.is_deep_clean:
+            return base
+        percent = CleaningPricingSettings.get().deep_clean_fee_percent
+        return (base * percent / Decimal('100')).quantize(Decimal('0.01'))
 
     def is_same_day_checkin(self):
         """True when the next guest checks in the same calendar day this

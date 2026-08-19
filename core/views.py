@@ -798,10 +798,8 @@ def property_detail(request, pk):
                 setattr(prop, field, request.POST.get(field, '').strip())
             for time_field in ('default_check_in_time', 'default_check_out_time'):
                 setattr(prop, time_field, request.POST.get(time_field) or None)
-            fee_fields = ('cleaning_fee', 'deep_clean_fee')
-            for fee_field in fee_fields:
-                setattr(prop, fee_field, _parse_decimal(request.POST.get(fee_field)))
-            prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time'] + list(fee_fields))
+            prop.cleaning_fee = _parse_decimal(request.POST.get('cleaning_fee'))
+            prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time', 'cleaning_fee'])
             messages.success(request, 'Access info saved.')
         elif action == 'add_listing_name':
             platform = request.POST.get('platform')
@@ -880,7 +878,6 @@ def property_detail(request, pk):
                     property=prop, label=label, notes=request.POST.get('notes', '').strip(),
                     access_code=request.POST.get('access_code', '').strip(),
                     cleaning_fee=_parse_decimal(request.POST.get('cleaning_fee')),
-                    deep_clean_fee=_parse_decimal(request.POST.get('deep_clean_fee')),
                 )
                 messages.success(request, f'Added unit "{label}".')
         elif action == 'update_unit':
@@ -892,7 +889,6 @@ def property_detail(request, pk):
             unit.notes = request.POST.get('notes', '').strip()
             unit.is_active = request.POST.get('is_active') == 'on'
             unit.cleaning_fee = _parse_decimal(request.POST.get('cleaning_fee'))
-            unit.deep_clean_fee = _parse_decimal(request.POST.get('deep_clean_fee'))
             unit.save()
             messages.success(request, 'Unit updated.')
         elif action == 'delete_unit':

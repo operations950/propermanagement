@@ -4,6 +4,7 @@ from .models import (
     Booking,
     BookingFeedHealth,
     CleaningPaymentBatch,
+    CleaningPricingSettings,
     DailyUploadSlot,
     ImportBatch,
     PropertyChecklistItem,
@@ -100,6 +101,16 @@ class VisitAdmin(admin.ModelAdmin):
     list_filter = ['visit_type', 'status']
     search_fields = ['property__name']
     inlines = [VisitChecklistItemInline, VisitMediaInline]
+
+
+@admin.register(CleaningPricingSettings)
+class CleaningPricingSettingsAdmin(admin.ModelAdmin):
+    list_display = ['deep_clean_fee_percent', 'updated_at']
+
+    def has_add_permission(self, request):
+        # Singleton — get() creates the one row lazily; no reason to ever
+        # add a second one from here.
+        return not CleaningPricingSettings.objects.exists()
 
 
 @admin.register(CleaningPaymentBatch)

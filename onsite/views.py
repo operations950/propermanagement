@@ -18,15 +18,16 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
 from core.models import Contact, Property, StaffProfile, Unit
-from core.views import _is_admin
+from core.views import _is_admin, _parse_decimal
 from supplies import services as supply_services
 from supplies.models import PropertySupply, SupplyReading
 from vendorportal.models import AccessAttempt
 
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
-    Booking, BookingFeedHealth, CleaningPaymentBatch, DailyUploadSlot, ImportBatch, PropertyChecklistItem,
-    StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule, VisitType,
+    Booking, BookingFeedHealth, CleaningPaymentBatch, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
+    PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule,
+    VisitType,
 )
 from .services import checklist as checklist_service
 from .services import notify as notify_service
@@ -1283,6 +1284,15 @@ def cleaning_payments(request):
                 count = batch.visits.update(payment_batch=None, paid_amount=None)
                 batch.delete()
             messages.success(request, f'Undone — {count} cleaning(s) are back in the unpaid queue.')
+        elif action == 'update_deep_clean_percent':
+            percent = _parse_decimal(request.POST.get('deep_clean_fee_percent'))
+            if percent is None or percent < 0:
+                messages.error(request, 'Enter a percent of 0 or higher.')
+            else:
+                pricing = CleaningPricingSettings.get()
+                pricing.deep_clean_fee_percent = percent
+                pricing.save(update_fields=['deep_clean_fee_percent'])
+                messages.success(request, f'Deep clean pay is now {percent}% of the normal cleaning fee.')
         return redirect('onsite_cleaning_payments')
 
     unpaid_visits = (
@@ -1314,6 +1324,7 @@ def cleaning_payments(request):
     return render(request, 'onsite/cleaning_payments.html', {
         'cleaner_rows': cleaner_rows, 'unpriced_count': unpriced_count,
         'visit_count': len(unpaid_visits), 'recent_batches': recent_batches,
+        'deep_clean_fee_percent': CleaningPricingSettings.get().deep_clean_fee_percent,
     })
 
 

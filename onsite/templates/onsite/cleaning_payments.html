@@ -3,12 +3,26 @@
 {% block content %}
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
 <h2 class="page-title mb-1">Cleaning payments</h2>
-<p class="text-muted small mb-4">What we still owe our internal cleaners for completed turnovers — not employee payroll, this is per-cleaning pay based on each property's (or unit's) Cleaning pay / Deep clean pay. Only internal staff cleanings count; an external/contract cleaner is paid a different way and isn't included here. Check the cleanings you're paying right now, confirm the total, and mark them paid.</p>
+<p class="text-muted small mb-3">What we still owe our internal cleaners for completed turnovers — not employee payroll, this is per-cleaning pay based on each property's (or unit's) Cleaning pay. Only internal staff cleanings count; an external/contract cleaner is paid a different way and isn't included here. Check the cleanings you're paying right now, confirm the total, and mark them paid.</p>
+
+<div class="card mb-3">
+    <div class="card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2">
+        <i data-lucide="percent" class="icon flex-shrink-0" style="color: var(--ink-muted);"></i>
+        <span class="small">Deep clean pay is set centrally, as a percent of each property's (or unit's) normal Cleaning pay — not a separate per-property amount.</span>
+        <form method="post" class="d-flex align-items-center gap-2 ms-auto">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_deep_clean_percent">
+            <input type="number" step="0.1" min="0" name="deep_clean_fee_percent" class="form-control form-control-sm" style="max-width: 90px;" value="{{ deep_clean_fee_percent }}">
+            <span class="small text-muted">%</span>
+            <button class="btn btn-outline-secondary btn-sm" type="submit">Save</button>
+        </form>
+    </div>
+</div>
 
 {% if unpriced_count %}
 <div class="alert alert-warning small d-flex align-items-center gap-2">
     <i data-lucide="alert-triangle" class="icon flex-shrink-0"></i>
-    {{ unpriced_count }} cleaning{{ unpriced_count|pluralize }} below {{ unpriced_count|pluralize:"has,have" }} no price set and can't be selected — set a Cleaning pay / Deep clean pay amount on the property (or unit) to include {{ unpriced_count|pluralize:"it,them" }}.
+    {{ unpriced_count }} cleaning{{ unpriced_count|pluralize }} below {{ unpriced_count|pluralize:"has,have" }} no price set and can't be selected — set a Cleaning pay amount on the property (or unit) to include {{ unpriced_count|pluralize:"it,them" }}.
 </div>
 {% endif %}
 

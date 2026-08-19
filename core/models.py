@@ -90,14 +90,11 @@ class Property(models.Model):
     cleaning_fee = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text='What we pay ourselves for a standard internal-cleaner turnover here — not what '
-                   "the owner is billed. Used by the Cleaner Payroll report. Blank means unpriced; "
+                   "the owner is billed. Used by the Cleaning Payments screen. Blank means unpriced; "
                    'primarily relevant to Short-Term Rentals but not restricted to them. A specific '
-                   "Unit's own cleaning_fee overrides this when set.",
-    )
-    deep_clean_fee = models.DecimalField(
-        max_digits=8, decimal_places=2, null=True, blank=True,
-        help_text='Same as cleaning_fee, but for a turnover flagged Visit.is_deep_clean. Blank falls '
-                   'back to cleaning_fee, same as a standard turnover.',
+                   "Unit's own cleaning_fee overrides this when set. A deep-clean turnover's pay is "
+                   'a percentage of this, controlled centrally — see onsite.CleaningPricingSettings — '
+                   'not a separate per-property field.',
     )
 
     class Meta:
@@ -212,12 +209,9 @@ class Unit(models.Model):
     cleaning_fee = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text="Overrides the property's own cleaning_fee for this specific unit (e.g. a studio vs. "
-                   'a 3-bedroom under the same building) — blank means "use the property\'s price."',
-    )
-    deep_clean_fee = models.DecimalField(
-        max_digits=8, decimal_places=2, null=True, blank=True,
-        help_text="Same override, for a deep-clean turnover — blank means \"use the property's "
-                   'deep_clean_fee (or its cleaning_fee, if that\'s blank too)."',
+                   'a 3-bedroom under the same building) — blank means "use the property\'s price." '
+                   "A deep clean is a percentage of whichever of these applies, set centrally — see "
+                   'onsite.CleaningPricingSettings.',
     )
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
