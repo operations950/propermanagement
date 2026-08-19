@@ -3,6 +3,7 @@ import json
 import logging
 import traceback
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib import messages
@@ -1220,6 +1221,60 @@ def checklist_custom_items(request):
 
     rows = sorted(groups.values(), key=lambda g: (-len(g['items']), g['visit_type'].name, g['text']))
     return render(request, 'onsite/checklist_custom_items.html', {'rows': rows})
+
+
+@login_required
+def cleaner_payroll(request):
+    """Admin-only report: what to pay each internal cleaner for a date
+    range of completed turnovers. Scoped to assigned_staff visits whose
+    staff has role=CLEANER — an assigned_contact visit is an external/
+    contract cleaner paid a different way entirely, out of scope here.
+    Only SUBMITTED/VERIFIED visits count (nothing to pay for one still
+    scheduled or in progress). Each visit's amount comes from
+    Visit.cleaner_payout_amount(), resolved live against today's Property/
+    Unit pricing rather than snapshotted — see that method's own docstring
+    for why. A visit with no price set anywhere in the chain shows as
+    "needs pricing" rather than silently counting as $0, so a missing
+    Property/Unit fee doesn't quietly shortchange a pay run."""
+    if not _is_admin(request.user):
+        return redirect('onsite_dashboard')
+
+    today = timezone.localdate()
+    start = parse_date(request.GET.get('start', '')) or today.replace(day=1)
+    end = parse_date(request.GET.get('end', '')) or today
+
+    visits = (
+        Visit.objects.filter(
+            assigned_staff__role=StaffProfile.Role.CLEANER,
+            status__in=[Visit.Status.SUBMITTED, Visit.Status.VERIFIED],
+            scheduled_date__gte=start, scheduled_date__lte=end,
+        )
+        .select_related('property', 'unit', 'assigned_staff__user', 'visit_type')
+        .order_by('assigned_staff__user__first_name', 'assigned_staff__user__last_name', 'scheduled_date')
+    )
+
+    by_staff = {}
+    grand_total = Decimal('0')
+    unpriced_count = 0
+    for visit in visits:
+        amount = visit.cleaner_payout_amount()
+        bucket = by_staff.setdefault(
+            visit.assigned_staff_id, {'staff': visit.assigned_staff, 'rows': [], 'total': Decimal('0')},
+        )
+        bucket['rows'].append({'visit': visit, 'amount': amount})
+        if amount is None:
+            unpriced_count += 1
+        else:
+            bucket['total'] += amount
+            grand_total += amount
+
+    cleaner_rows = sorted(by_staff.values(), key=lambda b: str(b['staff']))
+
+    return render(request, 'onsite/cleaner_payroll.html', {
+        'start': start, 'end': end, 'cleaner_rows': cleaner_rows,
+        'grand_total': grand_total, 'unpriced_count': unpriced_count,
+        'visit_count': len(visits),
+    })
 
 
 @login_required

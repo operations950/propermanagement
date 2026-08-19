@@ -415,6 +415,32 @@ class Visit(models.Model):
             return f'{self.assigned_contact} (external)'
         return 'Unassigned'
 
+    def cleaner_payout_amount(self):
+        """What we pay ourselves for this turnover, resolved live from
+        today's Property/Unit pricing (not snapshotted onto the visit — an
+        edited price is meant to apply retroactively here, by design).
+        Checked fee-type-first: for a deep clean, the unit's own
+        deep_clean_fee wins, then the property's deep_clean_fee, and only
+        once neither exists does it degrade to a standard cleaning_fee
+        (unit's, then property's) — a unit's ordinary turnover rate is
+        never substituted for a missing deep-clean rate ahead of the
+        property's own deep-clean rate, which is the more specific
+        "this job type, this building" signal. A non-deep-clean visit just
+        checks cleaning_fee, unit then property. None means unpriced
+        (nothing set anywhere in the chain) rather than free — callers
+        should treat that as "needs pricing," not $0. Deliberately a plain
+        method, not @property — see assignee_label's own comment on why
+        (this model's own `property` FK shadows the builtin)."""
+        fee_names = ('deep_clean_fee', 'cleaning_fee') if self.is_deep_clean else ('cleaning_fee',)
+        for fee_name in fee_names:
+            for source in (self.unit, self.property):
+                if source is None:
+                    continue
+                amount = getattr(source, fee_name)
+                if amount is not None:
+                    return amount
+        return None
+
     def is_same_day_checkin(self):
         """True when the next guest checks in the same calendar day this
         cleaning is scheduled for — the tightest possible turnover, worth

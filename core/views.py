@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings as django_settings
 from django.contrib import messages
@@ -38,6 +39,21 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_decimal(value):
+    """A blank/missing/non-numeric money-field input means "leave this
+    unpriced" (None), not $0 — an empty cleaning-fee box shouldn't quietly
+    price a turnover at zero. Used wherever a plain (non-ModelForm) POST
+    handler writes straight into a DecimalField, same role _parse_date/
+    _parse_quo_timestamp play for their own field types elsewhere."""
+    value = (value or '').strip()
+    if not value:
+        return None
+    try:
+        return Decimal(value)
+    except InvalidOperation:
+        return None
 
 
 def _is_admin(user):
@@ -782,7 +798,10 @@ def property_detail(request, pk):
                 setattr(prop, field, request.POST.get(field, '').strip())
             for time_field in ('default_check_in_time', 'default_check_out_time'):
                 setattr(prop, time_field, request.POST.get(time_field) or None)
-            prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time'])
+            fee_fields = ('cleaning_fee', 'deep_clean_fee')
+            for fee_field in fee_fields:
+                setattr(prop, fee_field, _parse_decimal(request.POST.get(fee_field)))
+            prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time'] + list(fee_fields))
             messages.success(request, 'Access info saved.')
         elif action == 'add_listing_name':
             platform = request.POST.get('platform')
@@ -860,6 +879,8 @@ def property_detail(request, pk):
                 Unit.objects.create(
                     property=prop, label=label, notes=request.POST.get('notes', '').strip(),
                     access_code=request.POST.get('access_code', '').strip(),
+                    cleaning_fee=_parse_decimal(request.POST.get('cleaning_fee')),
+                    deep_clean_fee=_parse_decimal(request.POST.get('deep_clean_fee')),
                 )
                 messages.success(request, f'Added unit "{label}".')
         elif action == 'update_unit':
@@ -870,6 +891,8 @@ def property_detail(request, pk):
             unit.access_code = request.POST.get('access_code', '').strip()
             unit.notes = request.POST.get('notes', '').strip()
             unit.is_active = request.POST.get('is_active') == 'on'
+            unit.cleaning_fee = _parse_decimal(request.POST.get('cleaning_fee'))
+            unit.deep_clean_fee = _parse_decimal(request.POST.get('deep_clean_fee'))
             unit.save()
             messages.success(request, 'Unit updated.')
         elif action == 'delete_unit':

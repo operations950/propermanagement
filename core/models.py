@@ -87,6 +87,18 @@ class Property(models.Model):
         null=True, blank=True,
         help_text='Same as check-in, for the checkout side of a turnover.',
     )
+    cleaning_fee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='What we pay ourselves for a standard internal-cleaner turnover here — not what '
+                   "the owner is billed. Used by the Cleaner Payroll report. Blank means unpriced; "
+                   'primarily relevant to Short-Term Rentals but not restricted to them. A specific '
+                   "Unit's own cleaning_fee overrides this when set.",
+    )
+    deep_clean_fee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Same as cleaning_fee, but for a turnover flagged Visit.is_deep_clean. Blank falls '
+                   'back to cleaning_fee, same as a standard turnover.',
+    )
 
     class Meta:
         verbose_name_plural = 'properties'
@@ -196,6 +208,16 @@ class Unit(models.Model):
         help_text="This unit's own door/lock code — separate from the property's gate/door/lockbox "
                    'codes (those cover the whole building). Shown to a cleaner on the on-site visit '
                    'link only once they tap "Get Code," which also marks the visit started.',
+    )
+    cleaning_fee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text="Overrides the property's own cleaning_fee for this specific unit (e.g. a studio vs. "
+                   'a 3-bedroom under the same building) — blank means "use the property\'s price."',
+    )
+    deep_clean_fee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text="Same override, for a deep-clean turnover — blank means \"use the property's "
+                   'deep_clean_fee (or its cleaning_fee, if that\'s blank too)."',
     )
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)

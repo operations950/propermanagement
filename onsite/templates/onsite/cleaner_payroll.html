@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Cleaner payroll{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+<h2 class="page-title mb-1">Cleaner payroll</h2>
+<p class="text-muted small mb-4">What to pay each internal cleaner for completed turnovers in this date range — not what owners are billed. Only visits assigned to internal staff count; an external/contract cleaner (assigned to a Contact) is paid a different way and isn't included here. Prices are pulled from each property's (or unit's) Cleaning pay / Deep clean pay, set on that property's detail page — editing a price applies to every visit in range, past or future, the moment you change it.</p>
+
+<form method="get" class="card mb-3">
+    <div class="card-body d-flex flex-wrap align-items-end gap-2">
+        <div>
+            <label class="form-label small text-muted mb-1">From</label>
+            <input type="date" name="start" class="form-control form-control-sm" value="{{ start|date:'Y-m-d' }}">
+        </div>
+        <div>
+            <label class="form-label small text-muted mb-1">To</label>
+            <input type="date" name="end" class="form-control form-control-sm" value="{{ end|date:'Y-m-d' }}">
+        </div>
+        <button class="btn btn-outline-primary btn-sm" type="submit">Update</button>
+        <div class="ms-auto text-end">
+            <div class="small text-muted">{{ visit_count }} visit{{ visit_count|pluralize }}</div>
+            <div class="fw-bold fs-5">${{ grand_total|floatformat:2 }}</div>
+        </div>
+    </div>
+</form>
+
+{% if unpriced_count %}
+<div class="alert alert-warning small d-flex align-items-center gap-2">
+    <i data-lucide="alert-triangle" class="icon flex-shrink-0"></i>
+    {{ unpriced_count }} visit{{ unpriced_count|pluralize }} below {{ unpriced_count|pluralize:"has,have" }} no price set (blank on both the unit and the property) and {{ unpriced_count|pluralize:"isn't,aren't" }} counted in the total above — set a Cleaning pay / Deep clean pay amount on the property (or unit) to price {{ unpriced_count|pluralize:"it,them" }}.
+</div>
+{% endif %}
+
+{% for row in cleaner_rows %}
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="card-title mb-0">{{ row.staff }}</h6>
+            <span class="fw-bold">${{ row.total|floatformat:2 }}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Date</th><th>Property</th><th>Type</th><th class="text-end">Pay</th></tr></thead>
+                <tbody>
+                {% for r in row.rows %}
+                <tr>
+                    <td class="small">{{ r.visit.scheduled_date|date:"M j" }}</td>
+                    <td class="small">
+                        <a href="{% url 'onsite_visit_detail' r.visit.pk %}" class="text-decoration-none">{{ r.visit.property.name }}{% if r.visit.unit %} — {{ r.visit.unit.label }}{% endif %}</a>
+                    </td>
+                    <td class="small">{{ r.visit.visit_type.name }}{% if r.visit.is_deep_clean %} <span class="badge rounded-pill bg-light text-dark border">Deep clean</span>{% endif %}</td>
+                    <td class="text-end small">
+                        {% if r.amount is not None %}${{ r.amount|floatformat:2 }}{% else %}<span class="text-danger" title="No Cleaning pay set on this property or unit">Needs pricing</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted">No completed visits assigned to an internal cleaner in this range.</p>
+{% endfor %}
+{% endblock %}

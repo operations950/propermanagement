@@ -245,6 +245,20 @@
                             <label class="form-label small text-muted mb-1">Check-out time</label>
                             <input type="time" name="default_check_out_time" class="form-control form-control-sm" value="{{ property.default_check_out_time|time:'H:i' }}">
                         </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1" title="What we pay ourselves for a standard internal-cleaner turnover here — not what the owner is billed.">Cleaning pay</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">$</span>
+                                <input type="number" step="0.01" min="0" name="cleaning_fee" class="form-control form-control-sm" value="{{ property.cleaning_fee|default_if_none:'' }}">
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1" title="Pay for a deep-clean turnover. Leave blank to use Cleaning pay for those too.">Deep clean pay</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">$</span>
+                                <input type="number" step="0.01" min="0" name="deep_clean_fee" class="form-control form-control-sm" value="{{ property.deep_clean_fee|default_if_none:'' }}">
+                            </div>
+                        </div>
                     </div>
                     <label class="form-label small text-muted mb-1">Board meeting address</label>
                     <input type="text" name="board_meeting_address" class="form-control form-control-sm mb-2" placeholder="Where this association normally holds board meetings" value="{{ property.board_meeting_address }}">
@@ -417,6 +431,7 @@
                         <div class="fw-medium small {% if not unit.is_active %}text-decoration-line-through text-muted{% endif %}">
                             {{ unit.label }}
                             {% if unit.access_code %}<span class="badge rounded-pill bg-light text-dark border ms-1" title="Access code — revealed to a cleaner on the visit link only after they tap Get Code"><i data-lucide="key" class="icon"></i> {{ unit.access_code }}</span>{% endif %}
+                            {% if unit.cleaning_fee is not None %}<span class="badge rounded-pill bg-light text-dark border ms-1" title="Overrides the property's own Cleaning pay for this unit">${{ unit.cleaning_fee }}</span>{% endif %}
                         </div>
                         {% if unit.notes %}<div class="small text-muted">{{ unit.notes }}</div>{% endif %}
                     </div>
@@ -437,6 +452,14 @@
                         <input type="hidden" name="unit_id" value="{{ unit.pk }}">
                         <input type="text" name="label" class="form-control form-control-sm" style="max-width: 140px;" value="{{ unit.label }}">
                         <input type="text" name="access_code" class="form-control form-control-sm" style="max-width: 120px;" placeholder="Access code" value="{{ unit.access_code }}">
+                        <div class="input-group input-group-sm" style="max-width: 110px;" title="Overrides the property's Cleaning pay for this unit — leave blank to use the property's price.">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" min="0" name="cleaning_fee" class="form-control form-control-sm" placeholder="Cleaning" value="{{ unit.cleaning_fee|default_if_none:'' }}">
+                        </div>
+                        <div class="input-group input-group-sm" style="max-width: 120px;" title="Overrides the property's Deep clean pay for this unit — leave blank to use the property's price.">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" min="0" name="deep_clean_fee" class="form-control form-control-sm" placeholder="Deep clean" value="{{ unit.deep_clean_fee|default_if_none:'' }}">
+                        </div>
                         <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)" value="{{ unit.notes }}">
                         <div class="form-check">
                             <input type="checkbox" name="is_active" class="form-check-input" id="unit-active-{{ unit.pk }}" {% if unit.is_active %}checked{% endif %}>
@@ -455,6 +478,7 @@
                     <input type="text" name="access_code" class="form-control form-control-sm" style="max-width: 120px;" placeholder="Access code (optional)">
                     <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
                 </form>
+                <p class="text-muted small mb-0 mt-1">Set a unit's cleaning pay by editing it (<i data-lucide="pencil" class="icon" style="width:0.7rem;height:0.7rem;"></i>) after adding it.</p>
             </div>
         </div>
     </div>

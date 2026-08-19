@@ -8,6 +8,7 @@
         <a href="{% url 'onsite_checklist_templates' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="clipboard-list" class="icon"></i> Checklist templates</a>
         {% if is_admin %}
         <a href="{% url 'onsite_checklist_custom_items' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="list-checks" class="icon"></i> Custom checklist items</a>
+        <a href="{% url 'onsite_cleaner_payroll' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="dollar-sign" class="icon"></i> Cleaner payroll</a>
         {% endif %}
         <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="upload" class="icon"></i> Import bookings</a>
         <a href="{% url 'onsite_visit_rule_list' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> Recurring visits</a>
