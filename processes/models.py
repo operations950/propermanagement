@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from core.models import Contact, Property, StaffProfile
+from core.storage import DocumentStorage
 from tickets.models import Ticket
 
 VIDEO_EXTENSIONS = ('.mp4', '.mov', '.webm', '.m4v')
@@ -146,7 +147,7 @@ class ProcessTemplateAttachment(models.Model):
     template_step = models.ForeignKey(
         ProcessTemplateStep, on_delete=models.CASCADE, null=True, blank=True, related_name='attachments',
     )
-    file = models.FileField(upload_to='process_template_attachments/%Y/%m/')
+    file = models.FileField(upload_to='process_template_attachments/%Y/%m/', storage=DocumentStorage())
     caption = models.CharField(max_length=200, blank=True)
     sequence_order = models.PositiveSmallIntegerField(default=0)
 
@@ -267,7 +268,7 @@ class ProcessAttachment(models.Model):
     settings.PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES) since these are
     often scanned documents, not photos."""
     run_step = models.ForeignKey(ProcessRunStep, on_delete=models.CASCADE, related_name='attachments')
-    file = models.FileField(upload_to='process_attachments/%Y/%m/')
+    file = models.FileField(upload_to='process_attachments/%Y/%m/', storage=DocumentStorage())
     caption = models.CharField(max_length=200, blank=True)
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',

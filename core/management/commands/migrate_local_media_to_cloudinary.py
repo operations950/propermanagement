@@ -17,22 +17,32 @@ already been confirmed to exist.
 Covers every FileField/ImageField in the app as of this build:
 PropertyDocument.file, ContactDocument.file, TicketTemplateDocument.file,
 TicketAttachment.file, ImportBatch.raw_file, Visit.signature_image,
-VisitMedia.file, ProcessTemplateAttachment.file, ProcessAttachment.file."""
+VisitMedia.file, ProcessTemplateAttachment.file, ProcessAttachment.file.
+
+Each field is migrated to the SAME storage alias its model field actually
+uses today (see core/storage.py's DocumentStorage and settings.py's
+STORAGES) — 'default' (image-typed) for the one true ImageField,
+Visit.signature_image; 'documents' (raw-typed) for every plain FileField.
+Originally this used default_storage unconditionally for all nine, which
+silently 'failed' (caught below, not a crash, but never actually copied)
+every non-image row, since Cloudinary rejects a non-image upload sent
+with the image resource type — the exact bug fixed model-side in the
+same change that added the 'documents' alias."""
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.core.files.storage import FileSystemStorage, default_storage
+from django.core.files.storage import FileSystemStorage, storages
 from django.core.management.base import BaseCommand, CommandError
 
 FILE_FIELDS = [
-    ('core', 'PropertyDocument', 'file'),
-    ('core', 'ContactDocument', 'file'),
-    ('tickets', 'TicketTemplateDocument', 'file'),
-    ('tickets', 'TicketAttachment', 'file'),
-    ('onsite', 'ImportBatch', 'raw_file'),
-    ('onsite', 'Visit', 'signature_image'),
-    ('onsite', 'VisitMedia', 'file'),
-    ('processes', 'ProcessTemplateAttachment', 'file'),
-    ('processes', 'ProcessAttachment', 'file'),
+    ('core', 'PropertyDocument', 'file', 'documents'),
+    ('core', 'ContactDocument', 'file', 'documents'),
+    ('tickets', 'TicketTemplateDocument', 'file', 'documents'),
+    ('tickets', 'TicketAttachment', 'file', 'documents'),
+    ('onsite', 'ImportBatch', 'raw_file', 'documents'),
+    ('onsite', 'Visit', 'signature_image', 'default'),
+    ('onsite', 'VisitMedia', 'file', 'documents'),
+    ('processes', 'ProcessTemplateAttachment', 'file', 'documents'),
+    ('processes', 'ProcessAttachment', 'file', 'documents'),
 ]
 
 
@@ -66,10 +76,11 @@ class Command(BaseCommand):
 
         totals = {'seen': 0, 'blank': 0, 'already_migrated': 0, 'missing_locally': 0, 'copied': 0, 'failed': 0, 'deleted': 0}
 
-        for app_label, model_name, field_name in FILE_FIELDS:
+        for app_label, model_name, field_name, storage_alias in FILE_FIELDS:
             model = apps.get_model(app_label, model_name)
+            cloud_storage = storages[storage_alias]
             qs = model.objects.exclude(**{field_name: ''}).exclude(**{f'{field_name}__isnull': True})
-            self.stdout.write(f'\n{model.__name__}.{field_name}: {qs.count()} row(s) with a value')
+            self.stdout.write(f"\n{model.__name__}.{field_name} ('{storage_alias}'): {qs.count()} row(s) with a value")
 
             for obj in qs.iterator():
                 field_file = getattr(obj, field_name)
@@ -85,7 +96,7 @@ class Command(BaseCommand):
                 # would otherwise still find the (untouched) local file and
                 # copy it again under a suffixed name, silently duplicating
                 # it on Cloudinary every time the command is re-run.
-                if default_storage.exists(name):
+                if cloud_storage.exists(name):
                     totals['already_migrated'] += 1
                     continue
 
@@ -104,7 +115,7 @@ class Command(BaseCommand):
                 try:
                     with local_storage.open(name, 'rb') as f:
                         data = f.read()
-                    new_name = default_storage.save(name, ContentFile(data))
+                    new_name = cloud_storage.save(name, ContentFile(data))
                 except Exception as exc:
                     totals['failed'] += 1
                     self.stderr.write(f'  FAILED {name}: {exc}')

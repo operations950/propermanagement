@@ -198,14 +198,32 @@ CLOUDINARY_STORAGE = {
 # left blank, this falls back to plain local FileSystemStorage exactly as
 # before, which is fine for local dev but loses uploads on every production
 # deploy/restart until those vars are set.
+#
+# Two Cloudinary aliases, not one: 'default' (MediaCloudinaryStorage) is
+# hardcoded to resource_type='image' — fine for the app's one true
+# ImageField (Visit.signature_image), but Cloudinary's API rejects a
+# non-image upload (a .csv/.ics booking file, a PDF document, ...) sent
+# with resource_type='image' outright, which surfaced as an unhandled 500
+# on every plain FileField the moment Cloudinary got turned on (booking
+# import, property/contact documents, ticket/process attachments, ...) —
+# none of those were ever actually images. 'documents' (RawMediaCloudinary
+# Storage, resource_type='raw') is what every plain FileField below is
+# pointed at instead — 'raw' serves any content type byte-for-byte with no
+# server-side processing, which is also perfectly fine for the handful of
+# these fields that usually do hold a photo (e.g. VisitMedia.file): this
+# app never uses Cloudinary's URL-based image transformations, so there's
+# no feature lost, just the one hardcoded resource type that was silently
+# wrong for anything that wasn't a photo.
 if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
     STORAGES = {
         'default': {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'},
+        'documents': {'BACKEND': 'cloudinary_storage.storage.RawMediaCloudinaryStorage'},
         'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
     }
 else:
     STORAGES = {
         'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
         'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
     }
 

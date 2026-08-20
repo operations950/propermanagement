@@ -5,6 +5,8 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Case, IntegerField, Value, When
 
+from .storage import DocumentStorage
+
 PHONE_REGEX = re.compile(r'^\d{3}-\d{3}-\d{4}$')
 phone_validator = RegexValidator(PHONE_REGEX.pattern, 'Enter phone as XXX-XXX-XXXX.')
 
@@ -174,7 +176,7 @@ class PropertyDocument(models.Model):
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='documents')
     name = models.CharField(max_length=200)
     category = models.CharField(max_length=100, blank=True)
-    file = models.FileField(upload_to='property_documents/%Y/%m/')
+    file = models.FileField(upload_to='property_documents/%Y/%m/', storage=DocumentStorage())
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
@@ -430,7 +432,7 @@ class ContactDocument(models.Model):
     PropertyDocument (manually named, no fixed doc-type schema)."""
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='documents')
     name = models.CharField(max_length=200)
-    file = models.FileField(upload_to='contact_documents/%Y/%m/')
+    file = models.FileField(upload_to='contact_documents/%Y/%m/', storage=DocumentStorage())
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )

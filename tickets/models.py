@@ -7,6 +7,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import Contact, Property, PropertyAttribute, StaffProfile, Unit
+from core.storage import DocumentStorage
 
 
 class Priority(models.TextChoices):
@@ -145,7 +146,7 @@ class TicketTemplateDocument(models.Model):
     core.models.PropertyDocument/ContactDocument."""
     template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='documents')
     name = models.CharField(max_length=200)
-    file = models.FileField(upload_to='ticket_template_documents/%Y/%m/')
+    file = models.FileField(upload_to='ticket_template_documents/%Y/%m/', storage=DocumentStorage())
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
@@ -707,7 +708,7 @@ class TicketContact(models.Model):
 
 class TicketAttachment(models.Model):
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='attachments')
-    file = models.FileField(upload_to='ticket_attachments/%Y/%m/')
+    file = models.FileField(upload_to='ticket_attachments/%Y/%m/', storage=DocumentStorage())
     caption = models.CharField(max_length=200, blank=True)
     uploaded_by_user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',

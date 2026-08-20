@@ -20,6 +20,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from core.models import Contact, Property, PropertyAttribute, StaffProfile, Unit
+from core.storage import DocumentStorage
 
 
 class VisitType(models.Model):
@@ -156,7 +157,7 @@ class ImportBatch(models.Model):
         Property, on_delete=models.CASCADE, related_name='onsite_import_batches', null=True, blank=True,
     )
     source = models.CharField(max_length=20, choices=Source.choices)
-    raw_file = models.FileField(upload_to='onsite_import_batches/%Y/%m/')
+    raw_file = models.FileField(upload_to='onsite_import_batches/%Y/%m/', storage=DocumentStorage())
     covers_start = models.DateField(help_text='Earliest checkout date this file actually covers.')
     covers_end = models.DateField(help_text='Latest checkout date this file actually covers.')
     new_count = models.PositiveIntegerField(default=0)
@@ -608,7 +609,7 @@ class VisitMedia(models.Model):
         'VisitIssue', on_delete=models.SET_NULL, null=True, blank=True, related_name='media',
         help_text='Set when this photo was attached to a reported issue rather than a checklist item.',
     )
-    file = models.FileField(upload_to='onsite_visit_media/%Y/%m/')
+    file = models.FileField(upload_to='onsite_visit_media/%Y/%m/', storage=DocumentStorage())
     media_type = models.CharField(max_length=10, choices=MediaType.choices, default=MediaType.PHOTO)
     caption = models.CharField(max_length=200, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
