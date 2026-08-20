@@ -37,7 +37,7 @@ NEW_CATALOG = [
     'Coffee pods', 'Sugar / sweetener', 'Shampoo', 'Conditioner', 'Body wash',
 ]
 
-DEFAULT_REORDER_QUANTITY = 4
+DEFAULT_REORDER_QUANTITY = 1
 
 
 class Command(BaseCommand):

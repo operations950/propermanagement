@@ -181,7 +181,7 @@ WALMART_ADD_TO_CART_URL = 'https://www.walmart.com/sc/cart/addToCart'
 WALMART_CART_URL_MAX_LENGTH = 1800
 
 
-def clone_kit_onto_property(property, default_reorder_quantity=4):
+def clone_kit_onto_property(property, default_reorder_quantity=1):
     """The one-click side of "someone has to enter ~20 items ... this
     never gets set up if manual per property" (the build brief's own
     framing of the adoption risk). SupplyItem is already a single shared
@@ -209,7 +209,7 @@ def clone_kit_onto_property(property, default_reorder_quantity=4):
     return len(to_create)
 
 
-def push_item_to_adopted_properties(item, default_reorder_quantity=4):
+def push_item_to_adopted_properties(item, default_reorder_quantity=1):
     """The other direction from clone_kit_onto_property: instead of one
     property picking up every item, one new item flows out to every
     property that's already "adopted" the standard kit — defined as
