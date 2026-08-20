@@ -213,24 +213,43 @@ recurring path, not the dead reactive one.
 
 ## Booking import
 
-Staff download the reservation export from Airbnb/VRBO and drop the file on the
-dashboard. Parsing is pluggable — `.ics` (calendar export, the common case) and
-`.csv` (reservation report, richer) both supported, source auto-detected from
-file shape.
+Staff drop a portfolio-wide reservation report onto one of the two daily
+upload slots (Airbnb, VRBO — see `DailyUploadSlot`) on the booking-import
+screen. Format (`.ics` single-listing calendar export vs. `.csv` reservation
+report) is detected from the file itself; which platform is NOT auto-detected
+from content — it's implicit in which of the two slots the file was dropped
+on (or picked explicitly on the single-property fallback form for an `.ics`
+or a listing-column-less `.csv`).
+
+A portfolio `.csv` covers many listings in one file; each row's listing name
+is resolved against stored `PropertyListingName` rows to find its property
+(and unit, for a multi-unit building) automatically. A listing name never
+seen before is surfaced on the preview screen for staff to map once — every
+later import with that same name resolves automatically from then on.
 
 The import is **two-phase, never silent**:
 
 1. **Preview.** Parse into an `ImportBatch`, diff against existing `Booking`
    rows by `(source, external_uid)`, and render: N new bookings, N changed
-   dates, N disappeared from the feed. Nothing is written to `Booking` yet.
+   (dates, or moved to a different property/unit), N reactivated, N
+   cancelled. Nothing is written to `Booking` yet.
 2. **Apply.** Staff confirm. New bookings create `Visit` rows in `unassigned`
    status. Changed dates move the linked visit and re-push the calendar event.
-   Bookings absent from the feed are marked `cancelled` and their visits go to
-   `cancelled` — which deletes the calendar event.
+   Cancelled bookings mark their visits `cancelled`, which deletes the
+   calendar event.
 
-Cancellation detection compares `last_seen_at` against the batch timestamp, and
-only within the date range the file actually covers, so a partial export can't
-wipe out next month.
+Cancellation detection is **explicit, from the row's own Status column**
+(e.g. Airbnb's "Canceled by guest," VRBO's "Canceled") — never inferred from
+a booking simply being absent from a re-uploaded file. An earlier
+absence-based version caused two real production incidents (a booking on
+one page of a paginated/partial export looked cancelled purely because it
+wasn't in *that* file) and was replaced with this explicit-only approach;
+see `onsite/services/bookings.py::diff_bookings`'s own docstring for the
+full detail. One platform asymmetry worth knowing operationally: Airbnb
+ships cancellations as a separate export from its regular reservations
+report (VRBO includes both in one file) — both get dropped onto the same
+Airbnb slot, at different times, so cancellation detection only works if
+that separate export is actually part of the regular pull.
 
 `ImportBatch` retains the raw file and the applied diff. When someone asks why
 a cleaning vanished, that's the answer.

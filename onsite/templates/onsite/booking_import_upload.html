@@ -4,10 +4,11 @@
 {% block content %}
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
 <h2 class="page-title mb-1">Import bookings</h2>
-<p class="text-muted small mb-3">Drag today's file onto its slot, or click a slot to browse. Nothing is saved until you review and confirm the changes on the next screen.</p>
+<p class="text-muted small mb-1">Drag today's Airbnb or VRBO export onto its box below, or click to browse. One file covers your whole portfolio — new reservations, date/detail changes, and cancellations are all handled from the same drop, and each row is matched to the right property automatically (a listing name it hasn't seen before will ask you to confirm it once, then remembers it from then on). Nothing is saved until you review and confirm the changes on the next screen.</p>
+<p class="text-muted small mb-3">Airbnb ships cancellations as a <em>separate</em> export from its regular reservations report — both get dropped onto the same Airbnb box below, just at different times, so make sure both are part of the regular pull.</p>
 
 {% if slots %}
-<div class="upload-slot-grid mb-4">
+<div class="upload-slot-grid mb-2">
     {% for slot in slots %}
     <div class="upload-slot" data-upload-slot>
         <form method="post" action="{% url 'onsite_upload_slot' slot.pk %}" enctype="multipart/form-data">
@@ -22,21 +23,21 @@
     </div>
     {% endfor %}
 </div>
+<p class="text-muted small mb-4" style="font-size: 0.8rem;">Each box takes any report for that platform covering multiple properties — there's nothing else to pick.</p>
 {% endif %}
 
 <details class="mb-3">
-    <summary class="text-muted small" style="cursor: pointer;">Something else? Upload a different file</summary>
+    <summary class="text-muted small" style="cursor: pointer;">Uploading for just one property instead?</summary>
     <div class="card mt-2" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
         <div class="card-body p-4">
-            <p class="text-muted small">Upload a calendar export (.ics) for one property, or a portfolio-wide reservation report (.csv) covering many properties/listings at once from Airbnb or VRBO.</p>
+            <p class="text-muted small">Only needed for a single-listing file — a property's own calendar export (.ics), or a reservation report scoped to just one property with no listing/property column. The boxes above already handle a portfolio-wide report on their own; this is for the one-property case, where the system needs to be told which property since the file itself won't say.</p>
             <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="mb-4">
                     <label class="form-label fw-medium d-block">Property</label>
-                    <p class="text-muted small mb-2">Only needed for a single-property .ics file, or a .csv with no listing/property column. Leave blank for a portfolio-wide .csv — every row's listing name will be matched to a property automatically, and anything unrecognized will ask you on the next screen.</p>
                     <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
                         <input type="hidden" name="property" data-bubble-input value="">
-                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property (optional for portfolio .csv)"></div>
+                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose the property this file is for"></div>
                         <div class="bubble-pool" data-bubble-pool>
                             {% for prop in properties %}
                             <button type="button" class="bubble" data-value="{{ prop.pk }}" data-label="{{ prop.name }}">{{ prop.name }}</button>
