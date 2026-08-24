@@ -13,6 +13,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateformat import format as format_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.dateparse import parse_date, parse_datetime
 
@@ -912,7 +913,14 @@ def ticket_list(request):
     due_labels = {
         'overdue': 'Overdue', 'today': 'Today', 'tomorrow': 'Tomorrow',
         'week': 'Next 7 days', 'month': 'Next 30 days', 'none': 'No due date',
-        'custom': due_on.strftime('%b %-d, %Y') if due_on else 'Custom date',
+        # format_date (Django's own dateformat, not C strftime) — %-d isn't
+        # portable: it's a glibc extension, absent on Windows and on
+        # musl-libc Linux images, so it crashed outright wherever that flag
+        # actually reaches an unsupported strftime() with a real ValueError,
+        # not a silently-wrong date. 'M j, Y' is the format-letter
+        # equivalent of "%b %-d, %Y" (no leading zero on the day) and
+        # doesn't touch the C library at all.
+        'custom': format_date(due_on, 'M j, Y') if due_on else 'Custom date',
     }
 
     q = request.GET.get('q', '').strip()
