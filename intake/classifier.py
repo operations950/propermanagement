@@ -1,9 +1,11 @@
 import logging
 from datetime import date, datetime
 
+from django.db.models import Q
 from django.utils import timezone
 
-from core.models import Contact, Property, StaffProfile
+from core.models import Contact, ContactImportCandidate, Property, StaffProfile
+from messaging.services import _to_dash_format
 from tickets.models import Ticket, TicketContact
 
 from . import duplicate_classifier
@@ -71,33 +73,90 @@ def _get_property(name):
     return prop
 
 
+# event.source values mirror tickets.Ticket.Source (see RawEvent's own
+# docstring) — mapped here to whichever Contact.Source a staged review
+# candidate should carry. Best-effort, not exhaustive: anything unmapped
+# falls back to QUO, since that's overwhelmingly what reaches this
+# function today (the phone-based reactive intake line).
+_EVENT_SOURCE_TO_CONTACT_SOURCE = {
+    'quo': Contact.Source.QUO,
+    'email': Contact.Source.GMAIL,
+}
+
+
 def _get_reporter_contact(event: RawEvent):
+    """Resolves — never creates outright — the Contact who reported this
+    event. Someone already on file (matched by normalized phone or email
+    against an existing, already-reviewed Contact) is returned directly.
+    Anyone NOT already on file is staged as a ContactImportCandidate for
+    human review instead of being written straight into the real Contact
+    table — see core.models.ContactImportCandidate's own docstring:
+    "nothing from an import is usable anywhere in the app ... until it's
+    promoted."
+
+    This function used to violate that guarantee: it called
+    Contact.objects.get_or_create() directly for every live Quo/Gmail
+    event, bypassing the whole review queue that already gated the batch
+    Quo contact sync (see intake/management/commands/sync_quo_contacts.py).
+    That's how duplicate, malformed-phone (Quo's API returns E.164, e.g.
+    "+15551234567", never this app's XXX-XXX-XXXX — see
+    messaging.services._to_dash_format), and nameless Contact rows leaked
+    straight into the real pool with zero review.
+
+    Returning None here is always safe for every caller: each one already
+    tolerates "no reporter yet" (see the `if reporter:` guards around
+    every TicketContact.objects.get_or_create call in this module) — the
+    ticket just goes out without a linked reporter until someone approves
+    the staged candidate, which then flows into the ticket the normal way
+    on the reporter's next message once they're recognized."""
     if not (event.reporter_email or event.reporter_phone):
         return None
-    lookup = {'email': event.reporter_email} if event.reporter_email else {'phone': event.reporter_phone}
-    company = event.extra.get('contact_company', '')
+    phone = _to_dash_format(event.reporter_phone) if event.reporter_phone else ''
+    email = (event.reporter_email or '').strip().lower()
+
+    lookup = Q()
+    if phone:
+        lookup |= Q(phone=phone)
+    if email:
+        lookup |= Q(email__iexact=email)
+    if lookup:
+        existing = Contact.objects.filter(lookup).first()
+        if existing:
+            return existing
+
+    # Not on file. Reuse an existing PENDING or REJECTED candidate for the
+    # same phone/email rather than staging a fresh duplicate every time
+    # this same unresolved sender messages again before someone reviews
+    # the queue — REJECTED is deliberately respected, not re-staged, since
+    # a human already looked at this one and said no.
+    if lookup and ContactImportCandidate.objects.filter(lookup).exclude(
+        status=ContactImportCandidate.Status.APPROVED,
+    ).exists():
+        return None
+
     # is_known_contact is only ever set by adapters that actually look up
     # caller identity against a contacts API (currently just Quo) — its
     # absence means "this source doesn't know," not "unverified," so the
     # unverified-sender note below only applies when the key is present.
+    company = event.extra.get('contact_company', '')
     knows_contact_status = 'is_known_contact' in event.extra
     is_known = event.extra.get('is_known_contact', False)
-    # A saved-with-a-company Quo contact reads as a business relationship
-    # (vendor), not a random guest — a heuristic, not certainty; staff can
-    # correct the type via admin if it's wrong. An unrecognized number gets
-    # a note so its lack of verification stays visible on the ticket, since
-    # the shared line has no access control — anyone can text it.
-    defaults = {
-        'name': event.reporter_name or event.reporter_email or event.reporter_phone,
-        'contact_type': Contact.ContactType.VENDOR if company else Contact.ContactType.GUEST,
-        'phone': event.reporter_phone,
-    }
+    notes_bits = []
     if company:
-        defaults['notes'] = f'Company (from Quo contact): {company}'
+        notes_bits.append(f'Company (from Quo contact): {company}')
     elif knows_contact_status and not is_known:
-        defaults['notes'] = 'Not a saved Quo contact as of first contact — unverified sender.'
-    contact, _ = Contact.objects.get_or_create(**lookup, defaults=defaults)
-    return contact
+        notes_bits.append('Not a saved Quo contact as of first contact — unverified sender.')
+
+    ContactImportCandidate.objects.create(
+        source=_EVENT_SOURCE_TO_CONTACT_SOURCE.get(event.source, Contact.Source.QUO),
+        name=event.reporter_name or '', phone=phone, email=event.reporter_email or '',
+        # A saved-with-a-company Quo contact reads as a business
+        # relationship (vendor), not a random guest — a heuristic, not
+        # certainty; staff can correct the type on the review screen.
+        suggested_contact_type=Contact.ContactType.VENDOR if company else Contact.ContactType.GUEST,
+        raw_context='\n'.join(notes_bits) or f'First contact via {event.source or "intake"}.',
+    )
+    return None
 
 
 def process_event(event: RawEvent):

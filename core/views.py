@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model, login as auth_login
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Count, Max, Q
+from django.db.models.functions import Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -1282,9 +1283,60 @@ def contact_delete(request, pk):
     return redirect('contact_edit', pk=pk)
 
 
+def _flag_candidate_duplicates(candidates):
+    """Attaches a `possible_duplicates` list (of plain description strings,
+    ready to render) to each candidate — surfaced on the review screen so
+    a reviewer can catch "this person's probably already in here" before
+    approving a second row for the same real person. Flags on an exact
+    name match (case-insensitive) or exact phone match, against both the
+    real Contact pool and every OTHER pending candidate (two Quo events
+    for the same not-yet-reviewed person can stage two separate candidate
+    rows before this check existed, or before a reviewer gets to either).
+    Two batched queries total, not one pair per candidate."""
+    names = {c.name.strip().lower() for c in candidates if c.name.strip()}
+    phones = {c.phone for c in candidates if c.phone}
+    if not names and not phones:
+        for c in candidates:
+            c.possible_duplicates = []
+        return
+
+    contacts_by_name, contacts_by_phone = {}, {}
+    for contact in Contact.objects.annotate(name_lower=Lower('name')).filter(
+        Q(name_lower__in=names) | Q(phone__in=phones),
+    ):
+        if contact.name_lower in names:
+            contacts_by_name.setdefault(contact.name_lower, []).append(contact)
+        if contact.phone in phones:
+            contacts_by_phone.setdefault(contact.phone, []).append(contact)
+
+    candidates_by_name, candidates_by_phone = {}, {}
+    for cand in candidates:
+        if cand.name.strip():
+            candidates_by_name.setdefault(cand.name.strip().lower(), []).append(cand)
+        if cand.phone:
+            candidates_by_phone.setdefault(cand.phone, []).append(cand)
+
+    for cand in candidates:
+        name_key = cand.name.strip().lower()
+        reasons = []
+        for contact in contacts_by_name.get(name_key, []):
+            reasons.append(f'Same name as existing contact "{contact.name}" ({contact.get_contact_type_display()})')
+        for contact in contacts_by_phone.get(cand.phone, []):
+            if all(contact.pk != c.pk for c in contacts_by_name.get(name_key, [])):
+                reasons.append(f'Same phone as existing contact "{contact.name}"')
+        for sibling in candidates_by_name.get(name_key, []):
+            if sibling.pk != cand.pk:
+                reasons.append(f'Same name as another pending candidate ("{sibling.phone or sibling.email or "no contact info"}")')
+        for sibling in candidates_by_phone.get(cand.phone, []):
+            if sibling.pk != cand.pk and sibling.pk not in [s.pk for s in candidates_by_name.get(name_key, [])]:
+                reasons.append(f'Same phone as another pending candidate ("{sibling.name or "no name"}")')
+        cand.possible_duplicates = reasons
+
+
 @login_required
 def contact_review(request):
-    candidates = ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING)
+    candidates = list(ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING))
+    _flag_candidate_duplicates(candidates)
     update_candidates = ContactUpdateCandidate.objects.filter(
         status=ContactUpdateCandidate.Status.PENDING,
     ).select_related('contact')

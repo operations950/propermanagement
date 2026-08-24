@@ -96,12 +96,23 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
 <p class="text-muted">Imported from Quo/Gmail — not usable anywhere in the app (ticket pickers, property pages) until approved. Edit any field before approving if the import got something wrong. Mark Approve/Reject on as many as you like, then Save Changes once — nothing happens until then.</p>
 
 {% for c in candidates %}
-<div class="card mb-3" data-review-card data-kind="candidate" data-pk="{{ c.pk }}">
+<div class="card mb-3" data-review-card data-kind="candidate" data-pk="{{ c.pk }}" {% if c.possible_duplicates %}style="border-left: 4px solid var(--status-warning);"{% endif %}>
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-2">
             <span class="badge rounded-pill bg-light text-dark border">{{ c.get_source_display }}</span>
             <span class="text-muted small">{{ c.created_at|date:"M j, Y" }}</span>
         </div>
+        {% if c.possible_duplicates %}
+        <div class="alert alert-warning small py-2 px-3 mb-2 d-flex align-items-start gap-2">
+            <i data-lucide="alert-triangle" class="icon flex-shrink-0 mt-1"></i>
+            <div>
+                <strong>Possible duplicate</strong>
+                <ul class="mb-0 ps-3">
+                    {% for reason in c.possible_duplicates %}<li>{{ reason }}</li>{% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
         {% if c.raw_context %}<p class="text-muted small mb-2">{{ c.raw_context|linebreaksbr }}</p>{% endif %}
         <div class="row g-2 mb-3">
             <div class="col-md-4">
