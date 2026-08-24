@@ -109,7 +109,7 @@ def order_detail(request, pk):
     order = get_object_or_404(
         SupplyOrder.objects.select_related('property', 'created_by'), pk=pk,
     )
-    lines = order.lines.select_related('property_supply__supply_item')
+    lines = order.lines.select_related('property_supply__supply_item', 'property_supply__unit')
     cart_urls = order.cart_url.split('\n') if order.cart_url else []
     return render(request, 'supplies/order_detail.html', {'order': order, 'lines': lines, 'cart_urls': cart_urls})
 

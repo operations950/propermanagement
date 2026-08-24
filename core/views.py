@@ -900,28 +900,46 @@ def property_detail(request, pk):
 
             supply_item_id = request.POST.get('supply_item_id')
             reorder_quantity = request.POST.get('reorder_quantity') or 1
+            unit_id = request.POST.get('unit_id') or None
+            unit = prop.units.filter(pk=unit_id).first() if unit_id else None
             if not supply_item_id:
                 messages.error(request, 'Choose an item from the catalog first.')
-            elif PropertySupply.objects.filter(property=prop, supply_item_id=supply_item_id).exists():
-                messages.error(request, 'This property already stocks that item.')
+            elif unit_id and not unit:
+                messages.error(request, 'That unit doesn\'t belong to this property.')
+            elif PropertySupply.objects.filter(property=prop, unit=unit, supply_item_id=supply_item_id).exists():
+                messages.error(
+                    request,
+                    f'{unit.label if unit else "This property"} already stocks that item.',
+                )
             else:
                 next_order = (
-                    PropertySupply.objects.filter(property=prop).aggregate(Max('display_order'))['display_order__max']
+                    PropertySupply.objects.filter(property=prop, unit=unit)
+                    .aggregate(Max('display_order'))['display_order__max']
                     or 0
                 ) + 1
                 PropertySupply.objects.create(
-                    property=prop, supply_item_id=supply_item_id,
+                    property=prop, unit=unit, supply_item_id=supply_item_id,
                     reorder_quantity=reorder_quantity, display_order=next_order,
                 )
-                messages.success(request, 'Added to this property\'s supply list.')
+                messages.success(request, f'Added to {unit.label if unit else "this property"}\'s supply list.')
         elif action == 'update_property_supply':
             from supplies.models import PropertySupply
 
             ps = get_object_or_404(PropertySupply, pk=request.POST.get('property_supply_id'), property=prop)
-            ps.reorder_quantity = request.POST.get('reorder_quantity') or ps.reorder_quantity
-            ps.is_active = request.POST.get('is_active') == 'on'
-            ps.save(update_fields=['reorder_quantity', 'is_active'])
-            messages.success(request, 'Supply item updated.')
+            unit_id = request.POST.get('unit_id') or None
+            unit = prop.units.filter(pk=unit_id).first() if unit_id else None
+            if unit_id and not unit:
+                messages.error(request, 'That unit doesn\'t belong to this property.')
+            elif PropertySupply.objects.filter(
+                property=prop, unit=unit, supply_item_id=ps.supply_item_id,
+            ).exclude(pk=ps.pk).exists():
+                messages.error(request, f'{unit.label if unit else "This property"} already stocks that item.')
+            else:
+                ps.unit = unit
+                ps.reorder_quantity = request.POST.get('reorder_quantity') or ps.reorder_quantity
+                ps.is_active = request.POST.get('is_active') == 'on'
+                ps.save(update_fields=['unit', 'reorder_quantity', 'is_active'])
+                messages.success(request, 'Supply item updated.')
         elif action == 'delete_property_supply':
             from supplies.models import PropertySupply
 
@@ -975,10 +993,16 @@ def property_detail(request, pk):
     assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
 
     from supplies.models import SupplyItem
-    property_supplies = prop.supplies.select_related('supply_item').all()
-    available_supply_items = SupplyItem.objects.filter(is_active=True).exclude(
-        pk__in=property_supplies.values_list('supply_item_id', flat=True),
-    )
+    property_supplies = prop.supplies.select_related('supply_item', 'unit').all()
+    # Deliberately NOT pre-excluding items the property already stocks —
+    # now that a row can be scoped to one specific unit, "already stocked"
+    # depends on which unit (if any) gets picked in the add form, which
+    # isn't known until submission. The add_property_supply action itself
+    # is what actually enforces "no duplicate (property, unit, item)," with
+    # a clear error naming which unit already has it — simpler than trying
+    # to keep this dropdown dynamically in sync with whichever unit a
+    # plain <select> happens to have chosen client-side.
+    available_supply_items = SupplyItem.objects.filter(is_active=True)
 
     return render(request, 'core/property_detail.html', {
         'property': prop,

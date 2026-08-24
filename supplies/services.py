@@ -20,7 +20,7 @@ anywhere and can't have suppressed or triggered anything.
 Deliberately no AI, no free text, no priority tier — see the brief's "Do
 not" list."""
 from django.conf import settings
-from django.db.models import Max, OuterRef, Subquery
+from django.db.models import Max, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from .models import PropertySupply, SupplyOrderLine, SupplyReading
@@ -89,7 +89,7 @@ def cart_state_for(property_supply_qs, now=None):
     now = now or timezone.now()
     supplies = list(
         _annotate_latest_reading_and_order_line(property_supply_qs)
-        .select_related('property', 'supply_item')
+        .select_related('property', 'unit', 'supply_item')
     )
 
     reading_ids = {s.latest_reading_id for s in supplies if s.latest_reading_id}
@@ -118,10 +118,17 @@ def cart_state_for_property(property, now=None):
 
 def supply_check_context(visit):
     """Feeds visit_public.html's Supplies card. For every active
-    PropertySupply at visit.property: whether THIS visit already recorded
-    a reading for it (readings are never updated, so once answered it's
-    locked — no re-tap), and only once answered, the history to reveal —
-    the reading from before this one, and the order/flag info from
+    PropertySupply the cleaner should be checking on THIS visit — at
+    visit.property, scoped to visit.unit when the visit has one: that
+    unit's own rows PLUS every property-wide (unit=None) row, since a
+    multi-unit building can mix both ("each unit tracks its own kitchen
+    supplies" alongside "one shared laundry detergent for the building").
+    A visit with no unit (single-unit property) sees only the property-
+    wide rows — identical to how every property behaved before per-unit
+    tracking existed. Whether THIS visit already recorded a reading for
+    each row (readings are never updated, so once answered it's locked —
+    no re-tap), and only once answered, the history to reveal — the
+    reading from before this one, and the order/flag info from
     cart_state_for_property. History is deliberately withheld pre-tap (see
     the build brief): showing the previous reading first would anchor the
     cleaner into just re-tapping it instead of forming an independent
@@ -129,7 +136,8 @@ def supply_check_context(visit):
     independent."""
     supplies = list(
         PropertySupply.objects.filter(property=visit.property, is_active=True)
-        .select_related('supply_item').order_by('display_order')
+        .filter(Q(unit=visit.unit_id) | Q(unit__isnull=True))
+        .select_related('supply_item', 'unit').order_by('unit__label', 'display_order')
     )
     state_by_ps_id = {row['property_supply'].pk: row for row in cart_state_for_property(visit.property)}
     this_visit_readings = {
@@ -181,26 +189,31 @@ WALMART_ADD_TO_CART_URL = 'https://www.walmart.com/sc/cart/addToCart'
 WALMART_CART_URL_MAX_LENGTH = 1800
 
 
-def clone_kit_onto_property(property, default_reorder_quantity=1):
+def clone_kit_onto_property(property, unit=None, default_reorder_quantity=1):
     """The one-click side of "someone has to enter ~20 items ... this
     never gets set up if manual per property" (the build brief's own
     framing of the adoption risk). SupplyItem is already a single shared
     catalog across every property (see its docstring — identity resolved
     once, not per property), so "the reusable item set" doesn't need a
     separate model: this just bulk-creates a PropertySupply for every
-    active SupplyItem this property doesn't already stock, in catalog
-    order. Existing PropertySupply rows are left untouched — safe to run
-    again after adding more items to the catalog later, or after a
-    property already has a partial/adjusted list."""
+    active SupplyItem this property (or, when unit is given, this specific
+    unit) doesn't already stock, in catalog order. Existing PropertySupply
+    rows are left untouched — safe to run again after adding more items to
+    the catalog later, or after a property/unit already has a partial/
+    adjusted list. unit=None clones onto the property-wide list exactly as
+    before this parameter existed; pass a Unit to seed that unit's own
+    list instead — the two are independent (existing_item_ids is scoped
+    to the same unit=None/unit as what's being created, so cloning onto
+    Unit B doesn't skip an item just because Unit A already has it)."""
     from .models import SupplyItem
 
-    existing = PropertySupply.objects.filter(property=property)
+    existing = PropertySupply.objects.filter(property=property, unit=unit)
     existing_item_ids = set(existing.values_list('supply_item_id', flat=True))
     next_order = (existing.aggregate(m=Max('display_order'))['m'] or -1) + 1
 
     to_create = [
         PropertySupply(
-            property=property, supply_item=item, reorder_quantity=default_reorder_quantity,
+            property=property, unit=unit, supply_item=item, reorder_quantity=default_reorder_quantity,
             display_order=next_order + i,
         )
         for i, item in enumerate(SupplyItem.objects.filter(is_active=True).exclude(id__in=existing_item_ids))
@@ -220,7 +233,15 @@ def push_item_to_adopted_properties(item, default_reorder_quantity=1):
     is for) — this only ever adds to a list that already exists, never
     starts one. Idempotent: skips any property that already stocks this
     item, so calling it again (e.g. from a later manual "push to every
-    property" retry) is always safe."""
+    property" retry) is always safe.
+
+    Deliberately still property-wide only (unit=None) even now that
+    per-unit PropertySupply rows exist — "adopted" here means "has ANY
+    active row," so a multi-unit property with only per-unit rows still
+    counts as adopted, and the pushed item lands at the property level
+    alongside them rather than being guessed onto one specific unit. A
+    unit that specifically needs the new item still gets it added there
+    manually, the same one-time way its other unit-specific items were."""
     from core.models import Property
 
     adopted_property_ids = (

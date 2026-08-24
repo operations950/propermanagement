@@ -484,7 +484,7 @@
         {% if property_supplies %}
         <div class="table-responsive mt-2">
             <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Item</th><th>Reorder qty</th><th></th><th></th></tr></thead>
+                <thead><tr><th>Item</th><th>Unit</th><th>Reorder qty</th><th></th><th></th></tr></thead>
                 <tbody>
                 {% for ps in property_supplies %}
                 <tr class="{% if not ps.is_active %}text-muted{% endif %}">
@@ -492,6 +492,7 @@
                         {{ ps.supply_item.name }}{% if ps.supply_item.unit_label %} <span class="text-muted small">({{ ps.supply_item.unit_label }})</span>{% endif %}
                         {% if not ps.supply_item.walmart_item_id %}<i data-lucide="alert-circle" class="icon" style="color: var(--status-critical); width: 0.85rem; height: 0.85rem;" title="No Walmart id set on this catalog item yet"></i>{% endif %}
                     </td>
+                    <td>{% if ps.unit %}<span class="badge rounded-pill bg-light text-dark border">{{ ps.unit.label }}</span>{% else %}<span class="text-muted small">{% if units %}Building-wide{% else %}—{% endif %}</span>{% endif %}</td>
                     <td>{{ ps.reorder_quantity }}</td>
                     <td class="text-end">
                         <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#edit-property-supply-{{ ps.pk }}"><i data-lucide="pencil" class="icon"></i></button>
@@ -506,11 +507,20 @@
                     </td>
                 </tr>
                 <tr class="collapse" id="edit-property-supply-{{ ps.pk }}">
-                    <td colspan="4">
+                    <td colspan="5">
                         <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="update_property_supply">
                             <input type="hidden" name="property_supply_id" value="{{ ps.pk }}">
+                            {% if units %}
+                            <div>
+                                <label class="form-label small text-muted mb-1">Unit</label>
+                                <select name="unit_id" class="form-select form-select-sm">
+                                    <option value="">Building-wide</option>
+                                    {% for unit in units %}<option value="{{ unit.pk }}" {% if ps.unit_id == unit.pk %}selected{% endif %}>{{ unit.label }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            {% endif %}
                             <div>
                                 <label class="form-label small text-muted mb-1">Reorder qty</label>
                                 <input type="number" min="1" name="reorder_quantity" class="form-control form-control-sm" style="max-width: 90px;" value="{{ ps.reorder_quantity }}">
@@ -537,6 +547,12 @@
                 <option value="">Choose an item…</option>
                 {% for item in available_supply_items %}<option value="{{ item.pk }}">{{ item.name }}</option>{% endfor %}
             </select>
+            {% if units %}
+            <select name="unit_id" class="form-select form-select-sm" style="max-width: 160px;" title="Which unit is this for? Leave as Building-wide to share across every unit.">
+                <option value="">Building-wide</option>
+                {% for unit in units %}<option value="{{ unit.pk }}">{{ unit.label }}</option>{% endfor %}
+            </select>
+            {% endif %}
             <input type="number" min="1" name="reorder_quantity" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Qty" value="1">
             <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
         </form>

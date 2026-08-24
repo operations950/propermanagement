@@ -33,9 +33,9 @@ class SupplyItemAdmin(admin.ModelAdmin):
 
 @admin.register(PropertySupply)
 class PropertySupplyAdmin(admin.ModelAdmin):
-    list_display = ['property', 'supply_item', 'reorder_quantity', 'display_order', 'is_active']
+    list_display = ['property', 'unit', 'supply_item', 'reorder_quantity', 'display_order', 'is_active']
     list_filter = ['property', 'is_active']
-    search_fields = ['property__name', 'supply_item__name']
+    search_fields = ['property__name', 'unit__label', 'supply_item__name']
 
 
 @admin.register(SupplyReading)

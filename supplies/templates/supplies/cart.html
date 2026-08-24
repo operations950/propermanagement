@@ -39,6 +39,7 @@
                         <tr>
                             <td>
                                 {{ ps.supply_item.name }}
+                                {% if ps.unit %}<span class="badge rounded-pill bg-light text-dark border">{{ ps.unit.label }}</span>{% endif %}
                                 {% if not ps.supply_item.walmart_item_id %}
                                 <div class="small" style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> No Walmart id set — <a href="{% url 'supplies:catalog' %}#item-{{ ps.supply_item.pk }}">fix in catalog</a></div>
                                 {% endif %}

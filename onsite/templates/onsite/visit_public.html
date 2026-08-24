@@ -168,7 +168,10 @@
     <p class="small text-muted mb-3">Tap what you see right now for each item — no need to count or guess a quantity.</p>
     {% for row in supply_rows %}
     <div class="border-top py-2" data-supply-row data-property-supply-id="{{ row.property_supply.pk }}">
-        <div class="fw-medium">{{ row.property_supply.supply_item.name }}</div>
+        <div class="fw-medium">
+            {{ row.property_supply.supply_item.name }}
+            {% if visit.unit and not row.property_supply.unit %}<span class="badge rounded-pill bg-light text-dark border" title="Shared across the whole building, not just this unit">Building-wide</span>{% endif %}
+        </div>
         <div data-supply-body>
         {% if row.answered %}
             <div class="small mt-1">

@@ -1057,8 +1057,15 @@ def visit_public(request, token):
                 return JsonResponse({'success': False, 'error': "Describe what's wrong first."})
 
         elif action == 'record_supply_reading':
+            # Scoped to this visit's own unit (plus every property-wide,
+            # unit=None row) — matches supply_check_context's own scoping
+            # exactly, so a tampered property_supply_id from a DIFFERENT
+            # unit at the same property (not just a different property
+            # entirely, already guarded by property=visit.property) can't
+            # sneak a reading onto a row this visit was never shown.
             property_supply = get_object_or_404(
-                PropertySupply, pk=request.POST.get('property_supply_id'), property=visit.property, is_active=True,
+                PropertySupply.objects.filter(Q(unit=visit.unit_id) | Q(unit__isnull=True)),
+                pk=request.POST.get('property_supply_id'), property=visit.property, is_active=True,
             )
             level = request.POST.get('level')
             if level in SupplyReading.Level.values:
