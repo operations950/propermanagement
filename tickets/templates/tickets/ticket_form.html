@@ -217,14 +217,22 @@
         });
         customInput.addEventListener('change', function () {
             if (!customInput.value) return;
+            var label = new Date(customInput.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
             customBubble.dataset.value = customInput.value;
-            customBubble.dataset.label = new Date(customInput.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            customBubble.dataset.label = label;
+            // dataset.label only feeds the bubble:lock event detail — the
+            // bubble's own visible text is whatever's actually in the DOM,
+            // which was never touched, so it silently kept reading the
+            // literal word "Custom" forever after picking a real date. Both
+            // this handler and the rehydration one below had the bug.
+            customBubble.textContent = label;
             dueDatePicker._bubbleApi.lock(customBubble);
             customInput.hidden = true;
         });
         dueDatePicker.addEventListener('bubble:unlock', function () {
             customInput.hidden = true;
             customInput.value = '';
+            customBubble.textContent = 'Custom';
         });
 
         // Validation-error re-render with a due_date that isn't one of the
@@ -237,8 +245,10 @@
             var input = dueDatePicker.querySelector('[data-bubble-input]');
             var alreadyLocked = dueDatePicker.querySelector('[data-bubble-slot] .bubble');
             if (input.value && !alreadyLocked) {
+                var label = new Date(input.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                 customBubble.dataset.value = input.value;
-                customBubble.dataset.label = new Date(input.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                customBubble.dataset.label = label;
+                customBubble.textContent = label;
                 dueDatePicker._bubbleApi.lock(customBubble, 0);
             }
         });

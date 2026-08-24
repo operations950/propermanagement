@@ -376,14 +376,21 @@
         });
         customInput.addEventListener('change', function () {
             if (!customInput.value) return;
+            var label = new Date(customInput.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
             customBubble.dataset.value = customInput.value;
-            customBubble.dataset.label = new Date(customInput.value + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            customBubble.dataset.label = label;
+            // dataset.label only feeds the bubble:lock event detail — the
+            // bubble's own visible text is whatever's actually in the DOM,
+            // which was never touched, so it silently kept reading the
+            // literal word "Custom" forever after picking a real date.
+            customBubble.textContent = label;
             picker._bubbleApi.lock(customBubble);
             customInput.hidden = true;
         });
         picker.addEventListener('bubble:unlock', function () {
             customInput.hidden = true;
             customInput.value = '';
+            customBubble.textContent = 'Custom';
         });
     });
 })();
