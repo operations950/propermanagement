@@ -237,15 +237,27 @@
             {% if movement.closed_reactive or movement.closed_recurring %}
             <div class="list-group list-group-flush">
             {% for t in movement.closed_reactive %}
-                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center text-decoration-none">
-                    <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
-                    <span class="badge rounded-pill flex-shrink-0" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good);">Reactive</span>
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
+                    <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                        <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
+                        <span class="badge rounded-pill flex-shrink-0" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good);">Reactive</span>
+                    </div>
+                    {% if t.closing_note %}
+                    <div class="small" style="color: var(--ink-secondary);">{{ t.closing_note.get_status_display }} — {{ t.closing_note.body|truncatechars:140 }}</div>
+                    <div class="small" style="color: var(--ink-muted);">— {{ t.closing_note.created_by.get_full_name|default:t.closing_note.created_by.username|default:'System' }}</div>
+                    {% endif %}
                 </a>
             {% endfor %}
             {% for t in movement.closed_recurring %}
-                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center text-decoration-none">
-                    <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
-                    <span class="badge rounded-pill flex-shrink-0" style="background: var(--surface-page); color: var(--ink-secondary);">Recurring</span>
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
+                    <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                        <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
+                        <span class="badge rounded-pill flex-shrink-0" style="background: var(--surface-page); color: var(--ink-secondary);">Recurring</span>
+                    </div>
+                    {% if t.closing_note %}
+                    <div class="small" style="color: var(--ink-secondary);">{{ t.closing_note.get_status_display }} — {{ t.closing_note.body|truncatechars:140 }}</div>
+                    <div class="small" style="color: var(--ink-muted);">— {{ t.closing_note.created_by.get_full_name|default:t.closing_note.created_by.username|default:'System' }}</div>
+                    {% endif %}
                 </a>
             {% endfor %}
             </div>

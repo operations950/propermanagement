@@ -19,7 +19,7 @@ from django.db.models import Exists, Max, OuterRef, Subquery
 from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
-from ..models import Priority, Ticket, TicketAssignmentLog, TicketStatusNote, TicketView
+from ..models import Priority, Ticket, TicketAssignmentLog, TicketClosingNote, TicketStatusNote, TicketView
 
 OPEN_STATUSES = [
     Ticket.Status.OPEN, Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS, Ticket.Status.BLOCKED,
@@ -217,7 +217,12 @@ def movement_today():
     """Panel 5 — updated notes (actual text + author, not just "something
     changed") and closed-today counted separately by reactive vs.
     recurring, so a morning of ticked recurring checkboxes doesn't inflate
-    the one number meant to prove real reactive work got done."""
+    the one number meant to prove real reactive work got done. Each closed
+    ticket also carries its own closing_note — the required why-this-is-
+    the-final-status text from TicketClosingNote (see that model's own
+    docstring) — as row.closing_note, mirroring updated_notes' own
+    note.body/note.created_by shape so the template can render both the
+    same way."""
     today = timezone.localdate()
 
     updated_notes = list(
@@ -226,10 +231,24 @@ def movement_today():
         .order_by('-created_at')
     )
 
-    closed_today = (
+    closed_today = list(
         Ticket.objects.filter(status__in=Ticket.TRUE_COMPLETION_STATUSES, completed_at__date=today)
         .select_related('property')
     )
+    # One extra query total, not one per ticket: ordered so the FIRST note
+    # seen per ticket_id in the loop below is that ticket's most recent —
+    # a ticket reopened and closed again keeps every past TicketClosingNote
+    # (see that model's own docstring), so "most recent" is what actually
+    # explains the CURRENT status, not an arbitrary one.
+    latest_closing_note_by_ticket = {}
+    for note in (
+        TicketClosingNote.objects.filter(ticket_id__in=[t.pk for t in closed_today])
+        .select_related('created_by').order_by('ticket_id', '-created_at')
+    ):
+        latest_closing_note_by_ticket.setdefault(note.ticket_id, note)
+    for t in closed_today:
+        t.closing_note = latest_closing_note_by_ticket.get(t.pk)
+
     closed_reactive = [t for t in closed_today if t.source != Ticket.Source.RECURRING]
     closed_recurring = [t for t in closed_today if t.source == Ticket.Source.RECURRING]
 
