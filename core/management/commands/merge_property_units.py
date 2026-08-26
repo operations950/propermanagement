@@ -18,7 +18,8 @@ timestamped JSON file first, dry-run by default" shape.
 
 For every model with a unique constraint that includes `property` (a
 sibling and the new primary could each already have a conflicting row —
-e.g. both already have a PropertySupply row for the same SupplyItem), the
+e.g. both already have a PropertySupplyOverride row for the same unit+
+SupplyItem), the
 sibling's row is dropped rather than raised on, exactly like
 merge_contacts's TicketContact special case: the primary's existing row
 already covers it, nothing is lost.
@@ -43,7 +44,7 @@ from onsite.models import (
     PropertyChecklistReview, Visit, VisitRule,
 )
 from processes.models import ProcessRun
-from supplies.models import PropertySupply, SupplyOrder, SupplyOrderBatch, SupplyRequest
+from supplies.models import PropertySupplyOverride, SupplyOrder, SupplyOrderBatch, SupplyRequest
 from tickets.models import FollowUpLog, PropertyPackage, PropertyTemplateOverride, Ticket, TicketTemplate
 from worksessions.models import SessionLine
 
@@ -59,7 +60,7 @@ _SUFFIX_RE = re.compile(r'\s*\([^)]*\)\s*$')
 CONFLICT_SAFE_MODELS = [
     (SupplyRequest, ['source_reference', 'item_guess']),
     (SupplyOrderBatch, ['date']),
-    (PropertySupply, ['supply_item']),
+    (PropertySupplyOverride, ['unit', 'supply_item']),
     (PropertyPackage, ['package']),
     (PropertyTemplateOverride, ['template']),
     (PropertyChecklistOverride, ['standard_item']),

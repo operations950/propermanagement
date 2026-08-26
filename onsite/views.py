@@ -20,7 +20,7 @@ from django.views.decorators.http import require_http_methods
 from core.models import Contact, Property, StaffProfile, Unit
 from core.views import _is_admin, _parse_decimal
 from supplies import services as supply_services
-from supplies.models import PropertySupply, SupplyReading
+from supplies.models import SupplyItem, SupplyReading
 from vendorportal.models import AccessAttempt
 
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
@@ -1057,22 +1057,25 @@ def visit_public(request, token):
                 return JsonResponse({'success': False, 'error': "Describe what's wrong first."})
 
         elif action == 'record_supply_reading':
-            # Scoped to this visit's own unit (plus every property-wide,
-            # unit=None row) — matches supply_check_context's own scoping
-            # exactly, so a tampered property_supply_id from a DIFFERENT
-            # unit at the same property (not just a different property
-            # entirely, already guarded by property=visit.property) can't
-            # sneak a reading onto a row this visit was never shown.
-            property_supply = get_object_or_404(
-                PropertySupply.objects.filter(Q(unit=visit.unit_id) | Q(unit__isnull=True)),
-                pk=request.POST.get('property_supply_id'), property=visit.property, is_active=True,
+            # Validated against this visit's own resolved supply list
+            # (resolve_supplies(visit.property, visit.unit)) rather than
+            # trusting the posted id directly — a tampered supply_item_id
+            # for an item this property/unit doesn't actually resolve to
+            # (hidden by an override, or just never on the standard list)
+            # can't sneak a reading onto a row this visit was never shown.
+            resolved_item_ids = {
+                r['supply_item'].pk for r in supply_services.resolve_supplies(visit.property, visit.unit)
+            }
+            supply_item = get_object_or_404(
+                SupplyItem.objects.filter(pk__in=resolved_item_ids),
+                pk=request.POST.get('supply_item_id'), is_active=True,
             )
             level = request.POST.get('level')
             if level in SupplyReading.Level.values:
-                supply_services.record_reading(visit, property_supply, level)
+                supply_services.record_reading(visit, supply_item, level)
                 if is_ajax:
                     return JsonResponse({
-                        'success': True, 'property_supply_id': property_supply.pk,
+                        'success': True, 'supply_item_id': supply_item.pk,
                         'level': level, 'level_display': dict(SupplyReading.Level.choices)[level],
                     })
             elif is_ajax:

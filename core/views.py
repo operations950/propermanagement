@@ -895,56 +895,69 @@ def property_detail(request, pk):
         elif action == 'delete_unit':
             Unit.objects.filter(pk=request.POST.get('unit_id'), property=prop).delete()
             messages.success(request, 'Unit removed.')
-        elif action == 'add_property_supply':
-            from supplies.models import PropertySupply
+        elif action == 'add_supply_override':
+            # An exception to the portfolio-wide standard list, scoped to
+            # this property (unit=None) or one specific unit — see
+            # supplies.services.resolve_supplies for how this gets
+            # combined with the standard list at read time. Covers all
+            # three shapes: hide a standard item, override its quantity,
+            # or add a non-standard extra (any catalog item not already
+            # is_standard=True works for all three — the checkbox/qty
+            # fields decide which shape this particular override is).
+            from supplies.models import PropertySupplyOverride
 
             supply_item_id = request.POST.get('supply_item_id')
-            reorder_quantity = request.POST.get('reorder_quantity') or 1
             unit_id = request.POST.get('unit_id') or None
             unit = prop.units.filter(pk=unit_id).first() if unit_id else None
+            is_hidden = request.POST.get('is_hidden') == 'on'
+            raw_qty = request.POST.get('reorder_quantity', '').strip()
+            reorder_quantity = int(raw_qty) if raw_qty.isdigit() and int(raw_qty) > 0 else None
+
             if not supply_item_id:
                 messages.error(request, 'Choose an item from the catalog first.')
             elif unit_id and not unit:
                 messages.error(request, 'That unit doesn\'t belong to this property.')
-            elif PropertySupply.objects.filter(property=prop, unit=unit, supply_item_id=supply_item_id).exists():
+            elif PropertySupplyOverride.objects.filter(property=prop, unit=unit, supply_item_id=supply_item_id).exists():
                 messages.error(
                     request,
-                    f'{unit.label if unit else "This property"} already stocks that item.',
+                    f'{unit.label if unit else "This property"} already has an exception for that item.',
                 )
             else:
                 next_order = (
-                    PropertySupply.objects.filter(property=prop, unit=unit)
+                    PropertySupplyOverride.objects.filter(property=prop, unit=unit)
                     .aggregate(Max('display_order'))['display_order__max']
                     or 0
                 ) + 1
-                PropertySupply.objects.create(
-                    property=prop, unit=unit, supply_item_id=supply_item_id,
+                PropertySupplyOverride.objects.create(
+                    property=prop, unit=unit, supply_item_id=supply_item_id, is_hidden=is_hidden,
                     reorder_quantity=reorder_quantity, display_order=next_order,
                 )
-                messages.success(request, f'Added to {unit.label if unit else "this property"}\'s supply list.')
-        elif action == 'update_property_supply':
-            from supplies.models import PropertySupply
+                messages.success(request, f'Added an exception for {unit.label if unit else "this property"}.')
+        elif action == 'update_supply_override':
+            from supplies.models import PropertySupplyOverride
 
-            ps = get_object_or_404(PropertySupply, pk=request.POST.get('property_supply_id'), property=prop)
+            override = get_object_or_404(PropertySupplyOverride, pk=request.POST.get('override_id'), property=prop)
             unit_id = request.POST.get('unit_id') or None
             unit = prop.units.filter(pk=unit_id).first() if unit_id else None
             if unit_id and not unit:
                 messages.error(request, 'That unit doesn\'t belong to this property.')
-            elif PropertySupply.objects.filter(
-                property=prop, unit=unit, supply_item_id=ps.supply_item_id,
-            ).exclude(pk=ps.pk).exists():
-                messages.error(request, f'{unit.label if unit else "This property"} already stocks that item.')
+            elif PropertySupplyOverride.objects.filter(
+                property=prop, unit=unit, supply_item_id=override.supply_item_id,
+            ).exclude(pk=override.pk).exists():
+                messages.error(request, f'{unit.label if unit else "This property"} already has an exception for that item.')
             else:
-                ps.unit = unit
-                ps.reorder_quantity = request.POST.get('reorder_quantity') or ps.reorder_quantity
-                ps.is_active = request.POST.get('is_active') == 'on'
-                ps.save(update_fields=['unit', 'reorder_quantity', 'is_active'])
-                messages.success(request, 'Supply item updated.')
-        elif action == 'delete_property_supply':
-            from supplies.models import PropertySupply
+                raw_qty = request.POST.get('reorder_quantity', '').strip()
+                override.unit = unit
+                override.is_hidden = request.POST.get('is_hidden') == 'on'
+                override.reorder_quantity = int(raw_qty) if raw_qty.isdigit() and int(raw_qty) > 0 else None
+                override.is_active = request.POST.get('is_active') == 'on'
+                override.save(update_fields=['unit', 'is_hidden', 'reorder_quantity', 'is_active'])
+                messages.success(request, 'Exception updated.')
+        elif action == 'delete_supply_override':
+            from supplies.models import PropertySupplyOverride
 
-            PropertySupply.objects.filter(pk=request.POST.get('property_supply_id'), property=prop).delete()
-            messages.success(request, 'Removed from this property\'s supply list.')
+            PropertySupplyOverride.objects.filter(pk=request.POST.get('override_id'), property=prop).delete()
+            messages.success(request, 'Exception removed.')
         elif action == 'toggle_attribute':
             attribute_id = request.POST.get('attribute_id')
             existing = PropertyAttributeAssignment.objects.filter(property=prop, attribute_id=attribute_id)
@@ -992,17 +1005,42 @@ def property_detail(request, pk):
 
     assigned_attribute_ids = set(prop.attribute_assignments.values_list('attribute_id', flat=True))
 
-    from supplies.models import SupplyItem
-    property_supplies = prop.supplies.select_related('supply_item', 'unit').all()
-    # Deliberately NOT pre-excluding items the property already stocks —
-    # now that a row can be scoped to one specific unit, "already stocked"
-    # depends on which unit (if any) gets picked in the add form, which
-    # isn't known until submission. The add_property_supply action itself
+    from supplies import services as supply_services
+    from supplies.models import PropertySupplyOverride, SupplyItem
+
+    # "Following the standard list (N items)" + a short Exceptions list,
+    # per unit (or once for the property itself if it has none) — see
+    # resolve_supplies's own docstring for the resolution rule this
+    # mirrors. Property-wide exceptions (unit=None) are shown once,
+    # separately, since they apply underneath every unit's own scope.
+    property_wide_overrides = list(
+        PropertySupplyOverride.objects.filter(property=prop, unit__isnull=True, is_active=True)
+        .select_related('supply_item').order_by('display_order', 'supply_item__name')
+    )
+    supply_units = list(prop.units.filter(is_active=True))
+    supply_unit_scopes = []
+    for unit in supply_units:
+        unit_overrides = list(
+            PropertySupplyOverride.objects.filter(property=prop, unit=unit, is_active=True)
+            .select_related('supply_item').order_by('display_order', 'supply_item__name')
+        )
+        supply_unit_scopes.append({
+            'unit': unit,
+            'resolved_count': len(supply_services.resolve_supplies(prop, unit)),
+            'overrides': unit_overrides,
+        })
+    # Single-unit property (no Unit rows) — its own resolved count, so the
+    # template can show "Following the standard list (N items)" the same
+    # way a unit-scoped property does.
+    property_resolved_count = None if supply_units else len(supply_services.resolve_supplies(prop, None))
+
+    # Deliberately NOT pre-excluding items already overridden here — now
+    # that an exception can be scoped to one specific unit, "already has
+    # an exception" depends on which unit (if any) gets picked in the add
+    # form, which isn't known until submission. add_supply_override itself
     # is what actually enforces "no duplicate (property, unit, item)," with
-    # a clear error naming which unit already has it — simpler than trying
-    # to keep this dropdown dynamically in sync with whichever unit a
-    # plain <select> happens to have chosen client-side.
-    available_supply_items = SupplyItem.objects.filter(is_active=True)
+    # a clear error naming which unit already has it.
+    available_supply_items = SupplyItem.objects.filter(is_active=True).order_by('name')
 
     return render(request, 'core/property_detail.html', {
         'property': prop,
@@ -1017,7 +1055,10 @@ def property_detail(request, pk):
         'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB).select_related('unit'),
         'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO).select_related('unit'),
         'documents': prop.documents.all(),
-        'property_supplies': property_supplies,
+        'supply_standard_count': SupplyItem.objects.filter(is_standard=True, is_active=True).count(),
+        'property_wide_supply_overrides': property_wide_overrides,
+        'supply_unit_scopes': supply_unit_scopes,
+        'property_resolved_supply_count': property_resolved_count,
         'available_supply_items': available_supply_items,
         'text_contact_groups': group_contacts_by_type([c for c in contacts if c.phone]),
         'email_contact_groups': group_contacts_by_type([c for c in contacts if c.email]),

@@ -2,7 +2,7 @@
 {% block title %}Today's supply cart{% endblock %}
 {% block content %}
 <h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="shopping-cart" class="icon-lg"></i> Today's supply cart</h2>
-<p class="text-muted">Every item currently reading below par, across every property with a supply catalog set up. Reviewed and sent per property — a Walmart order ships to one address, so there's no combined cart across properties.
+<p class="text-muted">Every item currently reading below par, across the whole portfolio. Reviewed and sent per property — a Walmart order ships to one address, so there's no combined cart across properties.
 <a href="{% url 'supplies:blind_spots' %}" class="ms-2"><i data-lucide="eye-off" class="icon"></i> Blind spots</a>
 <a href="{% url 'supplies:catalog' %}" class="ms-2"><i data-lucide="package" class="icon"></i> Supply catalog</a></p>
 
@@ -35,13 +35,12 @@
                     </tr></thead>
                     <tbody>
                     {% for row in entry.rows %}
-                        {% with ps=row.property_supply %}
                         <tr>
                             <td>
-                                {{ ps.supply_item.name }}
-                                {% if ps.unit %}<span class="badge rounded-pill bg-light text-dark border">{{ ps.unit.label }}</span>{% endif %}
-                                {% if not ps.supply_item.walmart_item_id %}
-                                <div class="small" style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> No Walmart id set — <a href="{% url 'supplies:catalog' %}#item-{{ ps.supply_item.pk }}">fix in catalog</a></div>
+                                {{ row.supply_item.name }}
+                                {% if row.unit %}<span class="badge rounded-pill bg-light text-dark border">{{ row.unit.label }}</span>{% endif %}
+                                {% if not row.supply_item.walmart_item_id %}
+                                <div class="small" style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> No Walmart id set — <a href="{% url 'supplies:catalog' %}#item-{{ row.supply_item.pk }}">fix in catalog</a></div>
                                 {% endif %}
                             </td>
                             <td>
@@ -51,7 +50,7 @@
                                 <span class="small" style="color: var(--ink-muted);"> · {{ row.reading.read_at|date:"M j" }}</span>
                             </td>
                             <td style="max-width: 90px;">
-                                <input type="number" name="qty_{{ ps.pk }}" class="form-control form-control-sm" value="{{ ps.reorder_quantity }}" min="1">
+                                <input type="number" name="qty_{{ row.row_key }}" class="form-control form-control-sm" value="{{ row.reorder_quantity }}" min="1">
                             </td>
                             <td class="small" style="color: var(--ink-muted);">
                                 {% if row.order_line %}{{ row.order_line.order.sent_at|date:"M j" }} ({{ row.order_line.quantity }}){% else %}Never{% endif %}
@@ -62,7 +61,6 @@
                                 {% endif %}
                             </td>
                         </tr>
-                        {% endwith %}
                     {% endfor %}
                     </tbody>
                 </table>

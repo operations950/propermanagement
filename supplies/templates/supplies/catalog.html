@@ -2,13 +2,13 @@
 {% block title %}Supply catalog{% endblock %}
 {% block content %}
 <h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="package" class="icon-lg"></i> Supply catalog</h2>
-<p class="text-muted">The shared list of purchasable items — one row per real-world product, used across every property. Product identity is resolved once here (the Walmart item id), so cart-building downstream never has to re-guess it. Adding a new item here automatically adds it to every property that already stocks the standard kit (reorder qty defaults to 4 — adjust per property afterward from that <a href="{% url 'property_list' %}">property's own page</a>). A property with nothing stocked yet is untouched — see <a href="{% url 'supplies:blind_spots' %}">Supply blind spots</a> to onboard one of those.</p>
+<p class="text-muted">The shared list of purchasable items — one row per real-world product, used across every property. Product identity (the Walmart item id) is resolved once here, so cart-building downstream never has to re-guess it. Check <strong>Standard</strong> to put an item on every property/unit's supply list automatically — no per-property setup needed. Leave it unchecked to add the item only where a specific property needs it, from that <a href="{% url 'property_list' %}">property's own page</a>.</p>
 
 <div class="card mb-3">
     <div class="card-body">
         <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Name</th><th>Unit</th><th>Walmart item id</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Unit</th><th>Walmart item id</th><th>Standard</th><th>Default qty</th><th></th></tr></thead>
                 <tbody>
                 {% for item in items %}
                 <tr id="item-{{ item.pk }}" class="{% if not item.is_active %}text-muted{% endif %}">
@@ -17,18 +17,14 @@
                     <td>
                         {% if item.walmart_item_id %}{{ item.walmart_item_id }}{% else %}<span style="color: var(--status-critical);"><i data-lucide="alert-circle" class="icon"></i> not set</span>{% endif %}
                     </td>
-                    <td class="text-end d-flex justify-content-end gap-2">
-                        <form method="post" title="Add this item to every property that's already stocking the standard kit but doesn't have it yet">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="push_item">
-                            <input type="hidden" name="item_id" value="{{ item.pk }}">
-                            <button class="btn btn-link btn-sm p-0" type="submit"><i data-lucide="send" class="icon"></i></button>
-                        </form>
+                    <td>{% if item.is_standard %}<span class="badge rounded-pill bg-light text-dark border">Standard</span>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
+                    <td>{{ item.standard_reorder_quantity }}</td>
+                    <td class="text-end">
                         <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#edit-item-{{ item.pk }}"><i data-lucide="pencil" class="icon"></i></button>
                     </td>
                 </tr>
                 <tr class="collapse" id="edit-item-{{ item.pk }}">
-                    <td colspan="4">
+                    <td colspan="6">
                         <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="update_item">
@@ -45,6 +41,14 @@
                                 <label class="form-label small text-muted mb-1">Walmart item id</label>
                                 <input type="text" name="walmart_item_id" class="form-control form-control-sm" style="max-width: 140px;" value="{{ item.walmart_item_id }}">
                             </div>
+                            <div>
+                                <label class="form-label small text-muted mb-1">Default qty</label>
+                                <input type="number" min="1" name="standard_reorder_quantity" class="form-control form-control-sm" style="max-width: 90px;" value="{{ item.standard_reorder_quantity }}">
+                            </div>
+                            <div class="form-check mb-1">
+                                <input type="checkbox" name="is_standard" class="form-check-input" id="item-standard-{{ item.pk }}" {% if item.is_standard %}checked{% endif %}>
+                                <label class="form-check-label small" for="item-standard-{{ item.pk }}">Standard (every property)</label>
+                            </div>
                             <div class="form-check mb-1">
                                 <input type="checkbox" name="is_active" class="form-check-input" id="item-active-{{ item.pk }}" {% if item.is_active %}checked{% endif %}>
                                 <label class="form-check-label small" for="item-active-{{ item.pk }}">Active</label>
@@ -54,7 +58,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="4" class="text-muted small">No items in the catalog yet — add one below.</td></tr>
+                <tr><td colspan="6" class="text-muted small">No items in the catalog yet — add one below.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -75,6 +79,14 @@
             <div>
                 <label class="form-label small text-muted mb-1">Walmart item id</label>
                 <input type="text" name="walmart_item_id" class="form-control form-control-sm" style="max-width: 140px;" placeholder="optional — can set later">
+            </div>
+            <div>
+                <label class="form-label small text-muted mb-1">Default qty</label>
+                <input type="number" min="1" name="standard_reorder_quantity" class="form-control form-control-sm" style="max-width: 90px;" value="1">
+            </div>
+            <div class="form-check mb-1">
+                <input type="checkbox" name="is_standard" class="form-check-input" id="item-standard-new">
+                <label class="form-check-label small" for="item-standard-new">Standard (every property)</label>
             </div>
             <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="plus" class="icon"></i> Add item</button>
         </form>

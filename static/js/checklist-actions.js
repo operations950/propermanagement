@@ -333,10 +333,10 @@
     if (action === 'record_supply_reading') {
       var row = btn.closest('[data-supply-row]');
       if (!row) return;
-      var propertySupplyId = row.dataset.propertySupplyId;
+      var supplyItemId = row.dataset.supplyItemId;
       var level = btn.dataset.level;
       btn.disabled = true;
-      postAction({ action: 'record_supply_reading', property_supply_id: propertySupplyId, level: level }).then(function (data) {
+      postAction({ action: 'record_supply_reading', supply_item_id: supplyItemId, level: level }).then(function (data) {
         btn.disabled = false;
         if (!data.success) return showError(row, data.error);
         var body = row.querySelector('[data-supply-body]');

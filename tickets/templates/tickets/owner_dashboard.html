@@ -109,7 +109,7 @@
             </div>
             {% for row in onsite.flagged_supply_orders %}
             <div class="d-flex justify-content-between align-items-center py-1 border-top small">
-                <span>{{ row.property_supply.property.name }} — {{ row.property_supply.supply_item.name }}</span>
+                <span>{{ row.property.name }}{% if row.unit %} ({{ row.unit.label }}){% endif %} — {{ row.supply_item.name }}</span>
                 <a href="{% url 'supplies:order_detail' row.order_line.order_id %}" class="text-decoration-none" style="color: var(--status-critical);">
                     Ordered {{ row.order_line.order.sent_at|timesince }} ago, still {{ row.reading.get_level_display }}
                 </a>

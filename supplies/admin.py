@@ -1,13 +1,13 @@
 from django.contrib import admin
 
 from .models import (
+    PropertySupplyOverride,
     SupplyItem,
     SupplyOrder,
     SupplyOrderBatch,
     SupplyOrderLine,
     SupplyReading,
     SupplyRequest,
-    PropertySupply,
 )
 
 
@@ -26,23 +26,23 @@ class SupplyOrderBatchAdmin(admin.ModelAdmin):
 
 @admin.register(SupplyItem)
 class SupplyItemAdmin(admin.ModelAdmin):
-    list_display = ['name', 'unit_label', 'walmart_item_id', 'is_active']
-    list_filter = ['is_active']
+    list_display = ['name', 'unit_label', 'walmart_item_id', 'is_standard', 'standard_reorder_quantity', 'is_active']
+    list_filter = ['is_standard', 'is_active']
     search_fields = ['name', 'walmart_item_id']
 
 
-@admin.register(PropertySupply)
-class PropertySupplyAdmin(admin.ModelAdmin):
-    list_display = ['property', 'unit', 'supply_item', 'reorder_quantity', 'display_order', 'is_active']
-    list_filter = ['property', 'is_active']
+@admin.register(PropertySupplyOverride)
+class PropertySupplyOverrideAdmin(admin.ModelAdmin):
+    list_display = ['property', 'unit', 'supply_item', 'is_hidden', 'reorder_quantity', 'is_active']
+    list_filter = ['property', 'is_hidden', 'is_active']
     search_fields = ['property__name', 'unit__label', 'supply_item__name']
 
 
 @admin.register(SupplyReading)
 class SupplyReadingAdmin(admin.ModelAdmin):
-    list_display = ['property_supply', 'level', 'read_at', 'visit']
+    list_display = ['property', 'unit', 'supply_item', 'level', 'read_at', 'visit']
     list_filter = ['level']
-    search_fields = ['property_supply__property__name', 'property_supply__supply_item__name']
+    search_fields = ['property__name', 'unit__label', 'supply_item__name']
 
 
 class SupplyOrderLineInline(admin.TabularInline):
