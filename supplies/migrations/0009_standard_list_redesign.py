@@ -5,30 +5,17 @@
 # default for the new non-nullable FKs, and there's no sane universal
 # default for "which supply item is this row for").
 #
-# Per the user's explicit go-ahead for this rebuild ("we're still in the
-# testing phase... not too worried about history... the only thing I
-# want preserved is the Walmart IDs"), this migration clears the
-# operational history that can't be mapped forward (existing
-# SupplyReading/SupplyOrder/SupplyOrderLine/PropertySupply rows) FIRST,
-# then adds the new required fields as nullable and immediately tightens
-# them to NOT NULL — safe specifically because the table is already
-# empty by that point. SupplyItem itself (name/unit_label/
-# walmart_item_id/is_active) is only ever gaining fields here, never
-# recreated, so every existing item — Walmart IDs included — passes
-# through untouched.
+# Depends on 0008 (a separate migration/transaction) having already
+# cleared PropertySupply/SupplyReading/SupplyOrder/SupplyOrderLine rows —
+# see that migration's own comment for why the data-clear and the schema
+# changes below can't share one transaction on Postgres. By the time this
+# runs, every table this touches is already empty, so adding the new
+# required fields nullable-then-NOT-NULL below never has real rows to
+# violate. SupplyItem itself (name/unit_label/walmart_item_id/is_active)
+# is only ever gaining fields here, never recreated, so every existing
+# item — Walmart IDs included — passes through untouched.
 import django.db.models.deletion
 from django.db import migrations, models
-
-
-def _clear_operational_supply_data(apps, schema_editor):
-    apps.get_model('supplies', 'SupplyOrderLine').objects.all().delete()
-    apps.get_model('supplies', 'SupplyOrder').objects.all().delete()
-    apps.get_model('supplies', 'SupplyReading').objects.all().delete()
-    apps.get_model('supplies', 'PropertySupply').objects.all().delete()
-
-
-def _noop(apps, schema_editor):
-    pass
 
 
 class Migration(migrations.Migration):
@@ -36,12 +23,10 @@ class Migration(migrations.Migration):
     dependencies = [
         ('core', '0039_alter_contactdocument_file_and_more'),
         ('onsite', '0013_booking_listing_name'),
-        ('supplies', '0007_alter_propertysupply_options_and_more'),
+        ('supplies', '0008_clear_supply_operational_data'),
     ]
 
     operations = [
-        migrations.RunPython(_clear_operational_supply_data, _noop),
-
         migrations.AddField(
             model_name='supplyitem',
             name='is_standard',
