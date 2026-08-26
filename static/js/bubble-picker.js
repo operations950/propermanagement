@@ -161,7 +161,14 @@
     pools.forEach(function (pool) {
       pool.addEventListener('click', function (e) {
         const bubble = e.target.closest('.bubble');
-        if (!bubble) return;
+        if (!bubble || bubble.classList.contains('bubble-locked')) return;
+        // A group-tier header (e.g. "Tenant" in a contact-type-grouped
+        // picker — see initGroupTiers below) is a reveal-the-real-options
+        // toggle, not a selectable value itself: it has no data-value and
+        // must never lock into the slot as if it were a real contact. Every
+        // other picker mode already guards this same attribute for the
+        // same reason (see initSinglePicker); multi mode was missing it.
+        if (bubble.hasAttribute('data-no-autolock')) return;
         lock(bubble);
       });
     });

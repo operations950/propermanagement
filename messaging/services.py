@@ -340,6 +340,14 @@ def send_followup_bulk(
 
     from core.models import Contact
 
+    # Defensive against a malformed id reaching here (e.g. a group-tier
+    # bubble-picker header that isn't itself a real contact, or any other
+    # future non-numeric value) — pk__in would otherwise raise ValueError
+    # on the first bad entry and 500 the whole send, silently dropping
+    # every legitimately-selected recipient in the same submission along
+    # with it. Matches this function's own "silently dropped" philosophy
+    # for recipients missing the channel's field, just one step earlier.
+    contact_ids = [cid for cid in contact_ids if str(cid).isdigit()]
     contacts = list(Contact.objects.filter(pk__in=contact_ids))
     if channel == FollowUpLog.Channel.SMS:
         contacts = [c for c in contacts if c.phone]
