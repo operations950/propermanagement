@@ -3,6 +3,8 @@ the recurring path for deep cleans/inspections, mirroring
 tickets.generate_recurring_tickets' shape per CLAUDE.md's guidance to model
 new automation on the recurring pattern rather than the reversed reactive
 one."""
+from datetime import timedelta
+
 from dateutil.relativedelta import relativedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -26,10 +28,12 @@ class Command(BaseCommand):
             VisitRule.objects.filter(is_active=True, visit_type__is_addon=False)
             .select_related('property', 'unit', 'visit_type')
         ):
-            next_due = (
-                rule.last_generated_at + relativedelta(months=rule.interval_months)
-                if rule.last_generated_at else today
-            )
+            if not rule.last_generated_at:
+                next_due = today
+            elif rule.interval_days:
+                next_due = rule.last_generated_at + timedelta(days=rule.interval_days)
+            else:
+                next_due = rule.last_generated_at + relativedelta(months=rule.interval_months)
             if next_due > today:
                 continue
 

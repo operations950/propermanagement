@@ -209,6 +209,17 @@ def _str_properties():
     return Property.objects.filter(property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True).order_by('name')
 
 
+def _visit_eligible_properties():
+    """Every active property, any type — the manual "schedule a visit"
+    and "recurring rule" screens are the exception-basis escape hatch
+    (commercial common-area cleans, a one-off house cleaning that isn't a
+    turnover, etc.), unlike booking import which is inherently an STR/
+    checkout concept and stays scoped to _str_properties() above. Ordered
+    by type then name so same-type properties cluster in the bubble
+    picker even though it isn't visually grouped."""
+    return Property.objects.filter(is_active=True).order_by('property_type', 'name')
+
+
 def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     """Builds the preview context for a portfolio-wide .csv: which rows
     auto-matched an existing Property (with their diff), and which distinct
@@ -570,13 +581,13 @@ def booking_import_apply(request, batch_id):
 def visit_create(request):
     """Manually schedule a one-off visit — an owner-requested extra
     cleaning, an ad-hoc inspection, anything not tied to a booking-file
-    checkout. Booking import is still how the bulk of turnovers get
-    created; this is the escape hatch for everything else, since Django
-    admin's plain "Add Visit" form bypasses create_visit entirely (so it
-    wouldn't get a checklist at all)."""
-    str_properties = Property.objects.filter(
-        property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True,
-    ).order_by('name')
+    checkout, for ANY property type (not just STR) — a commercial
+    common-area clean or a non-turnover house cleaning goes through here
+    exactly the same way. Booking import is still how the bulk of STR
+    turnovers get created; this is the escape hatch for everything else,
+    since Django admin's plain "Add Visit" form bypasses create_visit
+    entirely (so it wouldn't get a checklist at all)."""
+    properties = _visit_eligible_properties()
     visit_types = VisitType.objects.filter(is_active=True, is_addon=False).order_by('name')
     staff_options = StaffProfile.objects.select_related('user').filter(
         user__is_active=True, role=StaffProfile.Role.CLEANER,
@@ -588,7 +599,7 @@ def visit_create(request):
     units_by_property_json = _units_by_property_json()
 
     if request.method == 'POST':
-        prop = get_object_or_404(Property, pk=request.POST.get('property'), property_type=Property.Type.SHORT_TERM_RENTAL) \
+        prop = get_object_or_404(Property, pk=request.POST.get('property'), is_active=True) \
             if request.POST.get('property') else None
         visit_type = get_object_or_404(VisitType, pk=request.POST.get('visit_type'), is_addon=False) \
             if request.POST.get('visit_type') else None
@@ -596,7 +607,7 @@ def visit_create(request):
         if not prop or not visit_type:
             messages.error(request, 'Choose a property and a visit type.')
             return render(request, 'onsite/visit_create.html', {
-                'str_properties': str_properties, 'visit_types': visit_types,
+                'properties': properties, 'visit_types': visit_types,
                 'staff_options': staff_options, 'contact_options': contact_options,
                 'units_by_property_json': units_by_property_json,
             })
@@ -638,7 +649,7 @@ def visit_create(request):
         return redirect('onsite_visit_detail', pk=visit.pk)
 
     return render(request, 'onsite/visit_create.html', {
-        'str_properties': str_properties, 'visit_types': visit_types,
+        'properties': properties, 'visit_types': visit_types,
         'staff_options': staff_options, 'contact_options': contact_options,
         'units_by_property_json': units_by_property_json,
     })
@@ -656,10 +667,12 @@ def visit_rule_list(request):
     Units/System Locations card pattern, rather than separate create/edit
     pages — editing an existing rule's cadence/assignee isn't supported
     yet (delete and re-add covers it for now); what was missing and asked
-    for is targeting a specific unit, which this does cover."""
-    str_properties = Property.objects.filter(
-        property_type=Property.Type.SHORT_TERM_RENTAL, is_active=True,
-    ).order_by('name')
+    for is targeting a specific unit, which this does cover.
+
+    Open to any active property type, not just STR — a weekly commercial
+    common-area clean is exactly what this is for, alongside the
+    STR-focused deep-clean/inspection rules it originally shipped with."""
+    properties = _visit_eligible_properties()
     visit_types = VisitType.objects.filter(is_active=True, is_addon=False).order_by('name')
     staff_options = StaffProfile.objects.select_related('user').filter(
         user__is_active=True, role=StaffProfile.Role.CLEANER,
@@ -669,9 +682,8 @@ def visit_rule_list(request):
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'add_rule':
-            prop = get_object_or_404(
-                Property, pk=request.POST.get('property'), property_type=Property.Type.SHORT_TERM_RENTAL,
-            ) if request.POST.get('property') else None
+            prop = get_object_or_404(Property, pk=request.POST.get('property'), is_active=True) \
+                if request.POST.get('property') else None
             visit_type = get_object_or_404(
                 VisitType, pk=request.POST.get('visit_type'), is_addon=False,
             ) if request.POST.get('visit_type') else None
@@ -682,22 +694,32 @@ def visit_rule_list(request):
             unit_id = request.POST.get('unit') or None
             unit = prop.units.filter(pk=unit_id).first() if unit_id else None
 
-            interval_raw = request.POST.get('interval_months', '').strip()
-            interval_months = int(interval_raw) if interval_raw.isdigit() and int(interval_raw) > 0 else 3
+            raw_value = request.POST.get('interval_value', '').strip()
+            interval_value = int(raw_value) if raw_value.isdigit() and int(raw_value) > 0 else 3
+            # "Every N weeks" is stored as interval_days (N*7) — see
+            # VisitRule.interval_days's own docstring for why relativedelta
+            # months can't express this. interval_months always keeps a
+            # valid value regardless (the model field isn't nullable) but
+            # is simply ignored by generate_scheduled_visits whenever
+            # interval_days is set.
+            if request.POST.get('interval_unit') == 'weeks':
+                interval_kwargs = {'interval_days': interval_value * 7, 'interval_months': 3}
+            else:
+                interval_kwargs = {'interval_days': None, 'interval_months': interval_value}
 
             default_assignee = None
             kind, _, raw_id = request.POST.get('default_assignee', '').partition('-')
             if kind == 'staff' and raw_id.isdigit():
                 default_assignee = StaffProfile.objects.filter(pk=raw_id).first()
 
-            VisitRule.objects.create(
+            rule = VisitRule.objects.create(
                 property=prop, unit=unit, visit_type=visit_type,
-                interval_months=interval_months, default_assignee=default_assignee,
+                default_assignee=default_assignee, **interval_kwargs,
             )
             messages.success(
                 request,
                 f'Recurring rule added: {prop.name}{f" — {unit.label}" if unit else ""} — '
-                f'{visit_type.name} every {interval_months}mo.',
+                f'{visit_type.name} every {rule.cadence_display()}.',
             )
         elif action == 'toggle_active':
             rule = get_object_or_404(VisitRule, pk=request.POST.get('rule_id'))
@@ -713,7 +735,7 @@ def visit_rule_list(request):
         'property__name', 'unit__label', 'visit_type__name',
     )
     return render(request, 'onsite/visit_rule_list.html', {
-        'rules': rules, 'str_properties': str_properties, 'visit_types': visit_types,
+        'rules': rules, 'properties': properties, 'visit_types': visit_types,
         'staff_options': staff_options, 'units_by_property_json': units_by_property_json,
     })
 

@@ -669,6 +669,13 @@ class VisitRule(models.Model):
     )
     visit_type = models.ForeignKey(VisitType, on_delete=models.CASCADE, related_name='rules')
     interval_months = models.PositiveIntegerField(default=3)
+    interval_days = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Day-based cadence (e.g. 7 for weekly, 14 for biweekly) — takes precedence over '
+                   'interval_months when set. Leave blank for a month-based cadence like a quarterly '
+                   'deep clean/inspection. Exists because relativedelta(months=...) has no way to express '
+                   'anything shorter than a month, which a weekly commercial common-area clean needs.',
+    )
     default_assignee = models.ForeignKey(
         StaffProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='onsite_rules',
     )
@@ -676,6 +683,19 @@ class VisitRule(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # A plain method, not @property — this class already has a field
+    # literally named `property` (the FK above), which shadows the
+    # builtin `property` decorator for the rest of the class body.
+    # Django templates call a zero-arg method exactly like a property, so
+    # `{{ rule.cadence_display }}` still works fine either way.
+    def cadence_display(self):
+        if self.interval_days:
+            weeks, remainder_days = divmod(self.interval_days, 7)
+            if weeks and not remainder_days:
+                return f'{weeks} week{"s" if weeks != 1 else ""}'
+            return f'{self.interval_days} day{"s" if self.interval_days != 1 else ""}'
+        return f'{self.interval_months} month{"s" if self.interval_months != 1 else ""}'
+
     def __str__(self):
         target = f'{self.property} — {self.unit.label}' if self.unit_id else str(self.property)
-        return f'{target} — {self.visit_type} every {self.interval_months}mo'
+        return f'{target} — {self.visit_type} every {self.cadence_display()}'

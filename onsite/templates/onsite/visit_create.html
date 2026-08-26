@@ -18,10 +18,10 @@
                     <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property"></div>
                     <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
                     <div class="bubble-pool" data-bubble-pool>
-                        {% for p in str_properties %}
-                        <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                        {% for p in properties %}
+                        <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }} <span class="text-muted small">({{ p.get_property_type_display }})</span></button>
                         {% endfor %}
-                        {% if not str_properties %}<span class="small" style="color: var(--ink-muted);">No active short-term rental properties.</span>{% endif %}
+                        {% if not properties %}<span class="small" style="color: var(--ink-muted);">No active properties.</span>{% endif %}
                     </div>
                 </div>
             </div>

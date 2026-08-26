@@ -4,7 +4,7 @@
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
 
 <h2 class="page-title mb-1">Recurring visits</h2>
-<p class="text-muted small mb-4">Standing rules for deep cleans and inspections — each generates a new visit automatically once its interval elapses (see the property's own checklist for what's on it). For a multi-unit property, add one rule per unit — leave unit blank for a rule that covers the whole property.</p>
+<p class="text-muted small mb-4">Standing rules for anything that happens on its own schedule — deep cleans, inspections, a weekly commercial common-area clean, whatever doesn't come from a booking file. Each generates a new visit automatically once its interval elapses (see the visit type's own checklist for what's on it). For a multi-unit property, add one rule per unit — leave unit blank for a rule that covers the whole property.</p>
 
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
@@ -21,8 +21,8 @@
                         <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property"></div>
                         <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
                         <div class="bubble-pool" data-bubble-pool>
-                            {% for p in str_properties %}
-                            <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% for p in properties %}
+                            <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }} <span class="text-muted small">({{ p.get_property_type_display }})</span></button>
                             {% endfor %}
                         </div>
                     </div>
@@ -54,8 +54,11 @@
                 <div class="col-md-4">
                     <label class="form-label small text-muted mb-1">Every</label>
                     <div class="input-group input-group-sm">
-                        <input type="number" name="interval_months" class="form-control" min="1" value="3">
-                        <span class="input-group-text">month(s)</span>
+                        <input type="number" name="interval_value" class="form-control" min="1" value="3" style="max-width: 90px;">
+                        <select name="interval_unit" class="form-select">
+                            <option value="months" selected>month(s)</option>
+                            <option value="weeks">week(s)</option>
+                        </select>
                     </div>
                 </div>
                 <div class="col-md-8">
@@ -103,7 +106,7 @@
                         <td class="small">{{ rule.property.name }}</td>
                         <td class="small">{% if rule.unit %}<span class="badge rounded-pill bg-light text-dark border">{{ rule.unit.label }}</span>{% else %}<span style="color: var(--ink-muted);">— whole property —</span>{% endif %}</td>
                         <td class="small">{{ rule.visit_type.name }}</td>
-                        <td class="small">{{ rule.interval_months }}mo</td>
+                        <td class="small">{{ rule.cadence_display }}</td>
                         <td class="small">{{ rule.default_assignee.user.get_full_name|default:rule.default_assignee.user.username|default:"Unassigned" }}</td>
                         <td class="small">{{ rule.last_generated_at|default:"Never" }}</td>
                         <td class="small">
