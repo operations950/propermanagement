@@ -1,0 +1,13 @@
+{% comment %}
+Shared between dashboard.html's desktop table and mobile cards so the
+status-color logic lives in exactly one place. Expects: visit.
+{% endcomment %}
+{% if visit.derived_status == 'at_risk' %}
+<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-critical) 15%, white); color: var(--status-critical); border: 1px solid color-mix(in srgb, var(--status-critical) 35%, white);">At risk</span>
+{% elif visit.derived_status == 'in_progress' %}
+<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">In progress</span>
+{% elif visit.derived_status == 'submitted' or visit.derived_status == 'verified' %}
+<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">{{ visit.get_status_display }}</span>
+{% else %}
+<span class="badge rounded-pill bg-light text-muted border">{{ visit.get_status_display }}</span>
+{% endif %}

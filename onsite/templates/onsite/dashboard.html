@@ -71,7 +71,7 @@
             {% if day.is_yesterday %}<span class="badge rounded-pill bg-light text-muted border">Yesterday</span>{% endif %}
         </h6>
         {% if day.visits %}
-        <div class="table-responsive">
+        <div class="d-none d-md-block table-responsive">
             <table class="table table-sm align-middle">
                 <thead><tr>
                     <th>Property</th><th>Type</th><th>Status</th><th>Assignee</th><th>Ready by</th>
@@ -93,23 +93,47 @@
                         {% if visit.booking.listing_name %}<div class="small" style="color: var(--ink-muted);">{{ visit.booking.listing_name }}</div>{% endif %}
                     </td>
                     <td>{{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.6rem;">+ Deep clean</span>{% endif %}</td>
-                    <td>
-                        {% if visit.derived_status == 'at_risk' %}
-                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-critical) 15%, white); color: var(--status-critical); border: 1px solid color-mix(in srgb, var(--status-critical) 35%, white);">At risk</span>
-                        {% elif visit.derived_status == 'in_progress' %}
-                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">In progress</span>
-                        {% elif visit.derived_status == 'submitted' or visit.derived_status == 'verified' %}
-                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">{{ visit.get_status_display }}</span>
-                        {% else %}
-                        <span class="badge rounded-pill bg-light text-muted border">{{ visit.get_status_display }}</span>
-                        {% endif %}
-                    </td>
+                    <td>{% include 'onsite/_visit_status_badge.html' with visit=visit %}</td>
                     <td class="small">{{ visit.assignee_label }}</td>
                     <td class="small text-nowrap">{% if visit.ready_by %}{{ visit.ready_by|time:"g:i A" }}{% else %}—{% endif %}</td>
                 </tr>
                 {% endfor %}
                 </tbody>
             </table>
+        </div>
+
+        {% comment %}
+        Mobile: this table has 5 columns plus badges/subtitles that
+        genuinely need the width a phone doesn't have — same stacked-card
+        treatment as ticket_list.html's own d-md-none split.
+        {% endcomment %}
+        <div class="d-md-none">
+        {% for visit in day.visits %}
+            <div class="card mb-2">
+                <div class="card-body p-3">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none fw-semibold">{{ visit.property.name }}</a>
+                            <div class="small text-muted">{{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.6rem;">+ Deep clean</span>{% endif %}</div>
+                        </div>
+                        {% include 'onsite/_visit_status_badge.html' with visit=visit %}
+                    </div>
+                    {% if visit.is_same_day_checkin %}
+                    <span class="badge rounded-pill mt-2" style="background: color-mix(in srgb, var(--priority-urgent) 15%, white); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, white); font-size: 0.6rem;" title="Next guest checks in the same day">
+                        <i data-lucide="log-in" class="icon" style="width: 10px; height: 10px;"></i> Same-day check-in
+                    </span>
+                    {% elif visit.vacancy_days %}
+                    <span class="badge rounded-pill bg-light text-muted border mt-2" style="font-size: 0.6rem;" title="Days until the next guest checks in">
+                        <i data-lucide="calendar-x" class="icon" style="width: 10px; height: 10px;"></i> {{ visit.vacancy_days }}{% if visit.vacancy_days == 30 %}+{% endif %} day{{ visit.vacancy_days|pluralize }} vacant
+                    </span>
+                    {% endif %}
+                    {% if visit.booking.listing_name %}<div class="small mt-1" style="color: var(--ink-muted);">{{ visit.booking.listing_name }}</div>{% endif %}
+                    <div class="small text-muted mt-2">
+                        {{ visit.assignee_label }}{% if visit.ready_by %} &middot; Ready by {{ visit.ready_by|time:"g:i A" }}{% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
         </div>
         {% else %}
         <p class="text-muted small mb-0">No visits scheduled.</p>

@@ -1,0 +1,29 @@
+{% comment %}
+Shared between visit_rule_list.html's desktop table row and mobile card
+so the edit form only exists in one place. Expects: rule, staff_options.
+{% endcomment %}
+<form method="post" class="d-flex flex-wrap gap-2 align-items-end">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="update_rule">
+    <input type="hidden" name="rule_id" value="{{ rule.pk }}">
+    <div>
+        <label class="form-label small text-muted mb-1">Every</label>
+        <div class="input-group input-group-sm">
+            <input type="number" name="interval_value" class="form-control" min="1" style="max-width: 80px;" value="{{ rule.interval_value }}">
+            <select name="interval_unit" class="form-select">
+                <option value="months" {% if rule.interval_unit == 'months' %}selected{% endif %}>month(s)</option>
+                <option value="weeks" {% if rule.interval_unit == 'weeks' %}selected{% endif %}>week(s)</option>
+            </select>
+        </div>
+    </div>
+    <div>
+        <label class="form-label small text-muted mb-1">Default assignee</label>
+        <select name="default_assignee" class="form-select form-select-sm">
+            <option value="">Unassigned</option>
+            {% for sp in staff_options %}
+            <option value="staff-{{ sp.pk }}" {% if rule.default_assignee_id == sp.pk %}selected{% endif %}>{{ sp.user.get_full_name|default:sp.user.username }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+</form>
