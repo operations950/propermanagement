@@ -63,6 +63,7 @@ def merge_contacts(primary, loser):
 
     with transaction.atomic():
         primary.properties.add(*loser.properties.all())
+        primary.units.add(*loser.units.all())
 
         for tc in TicketContact.objects.filter(contact=loser):
             if TicketContact.objects.filter(ticket=tc.ticket, contact=primary, role=tc.role).exists():

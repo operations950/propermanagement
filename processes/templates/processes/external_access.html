@@ -20,6 +20,12 @@
     <h4 class="mb-1">{{ run.process_template.name }}</h4>
     <p class="text-muted small mb-4">Complete the steps below. You don't need an account — this link is just for you.</p>
 
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert {% if message.tags == 'error' %}alert-danger{% elif message.tags == 'success' %}alert-success{% else %}alert-info{% endif %} py-2 small">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
+
     {% for step in steps %}
     <div class="card mb-3">
         <div class="card-body">
@@ -34,6 +40,9 @@
                         {% csrf_token %}
                         <input type="hidden" name="step_id" value="{{ step.pk }}">
                         {% if step.step_type == 'checkbox' %}
+                        {% if step.requires_upload %}
+                        <input type="file" name="file" class="form-control form-control-sm mb-1" required>
+                        {% endif %}
                         <button type="submit" class="btn btn-sm btn-primary">Mark complete</button>
                         {% elif step.step_type == 'checklist' %}
                         {% for item in step.config.items %}
@@ -42,9 +51,15 @@
                             <label class="form-check-label small" for="ext-{{ step.pk }}-{{ forloop.counter }}">{{ item }}</label>
                         </div>
                         {% endfor %}
+                        {% if step.requires_upload %}
+                        <input type="file" name="file" class="form-control form-control-sm mb-1 mt-1" required>
+                        {% endif %}
                         <button type="submit" class="btn btn-sm btn-primary mt-1">Save</button>
                         {% elif step.step_type == 'short_text' or step.step_type == 'long_text' %}
                         <input type="text" name="value" class="form-control form-control-sm mb-1">
+                        {% if step.requires_upload %}
+                        <input type="file" name="file" class="form-control form-control-sm mb-1" required>
+                        {% endif %}
                         <button type="submit" class="btn btn-sm btn-primary">Save</button>
                         {% elif step.step_type == 'digital_signature' or step.step_type == 'document_upload' or step.step_type == 'photo_video_upload' %}
                         <input type="hidden" name="action" value="upload">

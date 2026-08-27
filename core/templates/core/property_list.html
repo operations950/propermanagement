@@ -60,12 +60,21 @@
         fetch('{% url "property_list" %}?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })
-            .then(function (resp) { return resp.json(); })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('bad response');
+                return resp.json();
+            })
             .then(function (data) {
                 desktopBody.innerHTML = data.desktop;
                 mobileBody.innerHTML = data.mobile;
                 if (window.lucide) lucide.createIcons();
                 history.replaceState(null, '', '?' + params.toString());
+            })
+            .catch(function () {
+                // A 500 (or any non-JSON response) would otherwise throw
+                // inside resp.json() with no visible sign anything went
+                // wrong — the list just silently stops updating.
+                console.error('Property search failed');
             });
     }
 

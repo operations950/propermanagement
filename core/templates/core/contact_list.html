@@ -65,12 +65,18 @@
         fetch('{% url "contact_list" %}?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })
-            .then(function (resp) { return resp.json(); })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('bad response');
+                return resp.json();
+            })
             .then(function (data) {
                 tbody.innerHTML = data.desktop;
                 mobileCards.innerHTML = data.mobile;
                 if (window.lucide) lucide.createIcons();
                 history.replaceState(null, '', '?' + params.toString());
+            })
+            .catch(function () {
+                console.error('Contact search failed');
             });
     }
 

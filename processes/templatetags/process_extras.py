@@ -42,6 +42,15 @@ def evaluate_formula(step):
         expr = formula.format(**{k: v for k, v in values.items()})
     except KeyError:
         return 'Waiting on an earlier step'
+    except (ValueError, IndexError):
+        # A malformed formula (stray/unbalanced brace, an empty or
+        # positional "{}" placeholder) — str.format() raises these for
+        # bad TEMPLATE SYNTAX, as opposed to KeyError above (valid syntax,
+        # just referencing a step_key that hasn't answered yet). Either
+        # way this filter renders on ticket/property/contact detail pages
+        # for every viewer, not just whoever wrote the formula, so a typo
+        # here must degrade to a message, never a 500.
+        return 'Invalid formula — check for a stray { or }'
 
     ops = {
         ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,

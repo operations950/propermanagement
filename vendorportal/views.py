@@ -59,10 +59,22 @@ def vendor_ticket_view(request, token):
                 ticket.save()
                 return redirect('vendorportal:ticket', token=token)
 
+    # Only photos/videos — the internal "Documents" card (contracts,
+    # invoices, board affidavits, anything PDF/Word/Excel) shares the same
+    # TicketAttachment model and FK, but was never meant to be reachable
+    # from this unauthenticated, token-only public link. is_document is
+    # purely extension-based (see TicketAttachment's own properties), so
+    # this stops every PDF/Word/Excel leak; it can't distinguish an image
+    # staff uploaded through the Documents card from a real photo-gallery
+    # photo, since neither the model nor either upload view records which
+    # card an image came through — that's a real gap, flagged separately,
+    # not something this filter alone can close.
+    attachments = [a for a in ticket.attachments.all().order_by('-created_at') if not a.is_document]
+
     return render(request, 'vendorportal/ticket_detail.html', {
         'ticket': ticket,
         'is_closed': is_closed,
         'complete_form': complete_form,
         'upload_form': upload_form,
-        'attachments': ticket.attachments.all().order_by('-created_at'),
+        'attachments': attachments,
     })

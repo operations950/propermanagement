@@ -514,11 +514,50 @@ def process_external_access(request, token):
                 attachment = form.save(commit=False)
                 attachment.run_step = step
                 attachment.save()
+                # Unlike the staff-side flow (process_run_step_upload +
+                # a separate process_run_step_complete_upload confirm),
+                # external_access.html gives DOCUMENT_UPLOAD/
+                # PHOTO_VIDEO_UPLOAD the exact same single-button "Upload"
+                # form as DIGITAL_SIGNATURE, with no second step to mark
+                # it done — so without this, those two step types could
+                # never actually complete through an external link: the
+                # same upload form just re-rendered forever since
+                # is_complete never became True. No `response` set for
+                # these two (matching process_run_step_complete_upload's
+                # own convention — attachments.exists() is the proof,
+                # nothing else needs recording), unlike digital_signature,
+                # which does store which attachment IS the signature.
                 if step.step_type == StepType.DIGITAL_SIGNATURE:
                     step.response = {'attachment_id': attachment.pk}
                     step.mark_complete()
+                elif step.step_type in (StepType.DOCUMENT_UPLOAD, StepType.PHOTO_VIDEO_UPLOAD):
+                    step.mark_complete()
                 messages.success(request, 'File attached.')
-        elif not step.requires_upload or step.attachments.exists():
+        elif step.requires_upload and not step.attachments.exists() and not request.FILES.get('file'):
+            # CHECKBOX/CHECKLIST/SHORT_TEXT/LONG_TEXT can have
+            # requires_upload set too (any step type can, per
+            # ProcessRunStep.requires_upload's own docstring) — but this
+            # template renders their answer AND proof-of-completion file
+            # in one combined form (no separate upload step like DOCUMENT_
+            # UPLOAD/PHOTO_VIDEO_UPLOAD/DIGITAL_SIGNATURE get), so without
+            # this branch a requires_upload step of these types could
+            # never actually complete externally: the old code just fell
+            # through this elif with no attachment ever having been
+            # possible to create, silently re-rendering the same form
+            # forever with no explanation.
+            messages.error(request, 'Attach a file to confirm this step.')
+        elif not step.requires_upload or step.attachments.exists() or request.FILES.get('file'):
+            if request.FILES.get('file'):
+                upload_form = ProcessAttachmentUploadForm(request.POST, request.FILES)
+                if upload_form.is_valid():
+                    attachment = upload_form.save(commit=False)
+                    attachment.run_step = step
+                    attachment.save()
+                else:
+                    messages.error(request, ' '.join(
+                        error for errors in upload_form.errors.values() for error in errors
+                    ) or 'Could not attach that file.')
+                    return redirect('process_external_access', token=token)
             if step.step_type == StepType.CHECKBOX:
                 step.response = {'checked': True}
             elif step.step_type == StepType.CHECKLIST:

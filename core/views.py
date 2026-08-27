@@ -1456,7 +1456,11 @@ def _approve_candidate(candidate, user, name, phone, email, contact_type, trade,
     phone = phone.strip()
     email = email.strip()
     contact_type = contact_type or candidate.suggested_contact_type
-    trade = trade.strip()
+    # Trade only ever means anything for a Vendor — matches the document-
+    # import commit path and ContactForm.clean(), both of which scrub this
+    # the same way, so a candidate resolved to some other type never ends
+    # up with a stray, mismatched trade value.
+    trade = trade.strip() if contact_type == Contact.ContactType.VENDOR else ''
 
     if not is_valid_phone(phone):
         return False, 'Phone must be in XXX-XXX-XXXX format.', False

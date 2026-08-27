@@ -202,9 +202,21 @@
     var secondaryTypesField = document.getElementById('secondary-types-field');
 
     function applyType(value) {
+        var wasVendor = !tradeField.hidden;
         tradeField.hidden = value !== 'vendor';
         // Vendor/Contractor stays single-type — see ContactForm.clean().
         secondaryTypesField.hidden = value === 'vendor';
+        // Clear a previously-picked trade the moment Type moves away from
+        // Vendor — otherwise the hidden input keeps carrying the old trade
+        // value even though the field is invisible, and submitting saves
+        // it onto a non-vendor contact (ContactForm.clean() now also
+        // scrubs this server-side as a second line of defense, but the
+        // picker should never visually look cleared while still holding a
+        // stale value either).
+        if (wasVendor && value !== 'vendor' && window.BubblePicker) {
+            window.BubblePicker.unlock(tradePicker);
+            otherInput.hidden = true;
+        }
     }
     typePicker.addEventListener('bubble:lock', function (e) { applyType(e.detail.value); });
     typePicker.addEventListener('bubble:unlock', function () { applyType(''); });

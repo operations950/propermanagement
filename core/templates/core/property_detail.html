@@ -669,13 +669,23 @@
             }
             btn.disabled = true;
             fetch(btn.dataset.threadUrl)
-                .then(function (resp) { return resp.text(); })
+                .then(function (resp) {
+                    // A non-2xx response (e.g. the live Quo API call
+                    // failing server-side) is an HTML error page, not the
+                    // thread partial — never innerHTML that in directly.
+                    if (!resp.ok) throw new Error('bad response');
+                    return resp.text();
+                })
                 .then(function (html) {
                     container.innerHTML = html;
                     container.hidden = false;
                     container.scrollTop = container.scrollHeight;
                     setTimeout(function () { container.scrollTop = container.scrollHeight; }, 0);
                     btn.dataset.loaded = '1';
+                })
+                .catch(function () {
+                    container.innerHTML = '<p class="small text-danger p-2 mb-0">Couldn\'t load this conversation — try again.</p>';
+                    container.hidden = false;
                 })
                 .finally(function () { btn.disabled = false; });
         });

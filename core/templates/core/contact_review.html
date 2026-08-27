@@ -251,7 +251,18 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
         if (!typePicker || !tradeField) return;
 
         function applyType(value) {
+            var wasVendor = !tradeField.hidden;
             tradeField.hidden = value !== 'vendor';
+            // Same fix as contact_form.html's applyType() — clear a
+            // previously-picked trade the moment Type moves away from
+            // Vendor, so the hidden field can't keep carrying a stale
+            // value once it's invisible (server-side, _approve_candidate
+            // already scrubs this regardless — this is the picker
+            // visually matching what actually gets saved).
+            if (wasVendor && value !== 'vendor' && tradePicker && window.BubblePicker) {
+                window.BubblePicker.unlock(tradePicker);
+                if (otherInput) otherInput.hidden = true;
+            }
         }
         typePicker.addEventListener('bubble:lock', function (e) { applyType(e.detail.value); });
         typePicker.addEventListener('bubble:unlock', function () { applyType(''); });

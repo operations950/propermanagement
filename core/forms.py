@@ -125,6 +125,16 @@ class ContactForm(forms.ModelForm):
         # e.g. Owner/Board Member in practice.
         if cleaned.get('contact_type') in (Contact.ContactType.VENDOR, Contact.ContactType.STAFF_ADJACENT):
             cleaned['secondary_types'] = []
+        # Trade only means anything for a Vendor — the field hides itself
+        # client-side the moment Type changes away from Vendor (see
+        # contact_form.html's applyType()), but nothing ever blanked the
+        # POSTED value once it was picked, so switching an existing
+        # Vendor's type to Owner/Tenant/etc. silently kept the old trade
+        # around as a stray, mismatched value. Matches how the document-
+        # import path (core/views.py's commit handler) already scrubs
+        # this for the exact same reason.
+        if cleaned.get('contact_type') != Contact.ContactType.VENDOR:
+            cleaned['trade'] = ''
         units = cleaned.get('units')
         properties = cleaned.get('properties')
         if units:
