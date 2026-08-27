@@ -2,12 +2,19 @@
 equivalent of worksessions/services/generation.py, same catch-up-safe
 cursor-walk shape: generate_for_rule walks the cursor forward one
 occurrence at a time from rule.next_due_date up through today, so a missed
-period always still gets its own task (never fast-forwarded past), and
-running this twice in a row creates nothing extra the second time (no
-uniqueness constraint needed the way Session has one — a duplicate run
-would just create a same-day second task, which the day-guard in
-generate_for_rule below prevents by stopping once cursor > today rather
-than ever re-deriving an already-passed occurrence)."""
+period always still gets its own task (never fast-forwarded past).
+
+Does now carry a real uniqueness constraint (BizTask.uniq_biztask_rule_due_date
+on (recurring_rule, due_date)), same as Session has for worksessions —
+get_or_create keyed on it makes a duplicate run of generate_for_rule for
+the same rule/occurrence a genuine no-op, including under real concurrency
+(two overlapping calls to generate_due_tasks, e.g. a slow scheduled run
+still in flight when the next one fires, or a manual management-command
+run overlapping the scheduler). The day-guard alone (stop once cursor >
+today) only prevented re-deriving an *already-advanced* rule.next_due_date
+on a second, later run — it did nothing for two runs racing on the SAME
+still-stale rule.next_due_date at the same time, which would previously
+create two BizTask rows for the identical occurrence."""
 from datetime import date, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -80,18 +87,21 @@ def generate_for_rule(rule, today=None):
 
     while cursor <= today:
         with transaction.atomic():
-            BizTask.objects.create(
-                business=rule.business,
-                category=rule.category,
+            _, created = BizTask.objects.get_or_create(
                 recurring_rule=rule,
-                title=rule.title,
-                notes=rule.notes,
-                priority=rule.priority,
-                amount=rule.amount,
-                custom_field_value=rule.custom_field_value,
                 due_date=cursor,
+                defaults={
+                    'business': rule.business,
+                    'category': rule.category,
+                    'title': rule.title,
+                    'notes': rule.notes,
+                    'priority': rule.priority,
+                    'amount': rule.amount,
+                    'custom_field_value': rule.custom_field_value,
+                },
             )
-            created_count += 1
+            if created:
+                created_count += 1
         cursor = advance(cursor, rule.frequency, rule.day_of_month, rule.workday_of_month)
 
     if cursor != rule.next_due_date:

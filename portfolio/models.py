@@ -173,6 +173,18 @@ class BizTask(models.Model):
 
     class Meta:
         ordering = ['business', 'due_date', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['recurring_rule', 'due_date'],
+                name='uniq_biztask_rule_due_date',
+                # NULL-safe by ordinary SQL semantics (NULL never equals
+                # NULL in a unique constraint on Postgres or SQLite), so
+                # one-off tasks (recurring_rule left blank) never collide
+                # with each other — this only dedupes actual generated
+                # occurrences of the same rule on the same due date. See
+                # portfolio/services/generation.py::generate_for_rule.
+            ),
+        ]
 
     def __str__(self):
         return self.title

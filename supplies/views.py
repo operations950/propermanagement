@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -64,43 +65,60 @@ def send_order(request, property_id):
     are excluded from the generated URL (one bad/blank id would take down
     the WHOLE cart link, confirmed empirically) but still get an order
     line and a visible warning — a catalog problem to go fix, not a
-    silent drop."""
-    prop = get_object_or_404(Property, pk=property_id)
-    rows = supply_services.cart_state_for_property(prop)
-    cart_rows = [r for r in rows if r['state'] in (supply_services.IN_CART, supply_services.IN_CART_FLAGGED)]
+    silent drop.
 
-    if not cart_rows:
-        messages.info(request, f'{prop.name}: nothing to order right now.')
-        return redirect('supplies:cart')
+    Wrapped in one atomic transaction, with the Property row locked via
+    select_for_update() for its duration (a real row lock on Postgres in
+    production; a documented no-op on SQLite in local dev, where
+    connection.features.has_select_for_update is False and the compiler
+    just skips the FOR UPDATE clause — same "stricter on Postgres" gap
+    already accepted elsewhere in this app, e.g. the migration-splitting
+    fix for the trigger-events crash). Without this, two near-simultaneous
+    sends for the same property (a double-click, or a slow request plus an
+    accidental resubmit) both read the same still-not-yet-sent cart state
+    and each create their own full SupplyOrder — a real duplicate-order
+    bug, and if staff click through both generated Walmart links, a real
+    duplicate purchase. Locking the property row means the second send
+    blocks until the first one's transaction (which sets order.sent_at)
+    commits, so it re-reads a cart state that already reflects the first
+    order and finds nothing left to send."""
+    with transaction.atomic():
+        prop = get_object_or_404(Property.objects.select_for_update(), pk=property_id)
+        rows = supply_services.cart_state_for_property(prop)
+        cart_rows = [r for r in rows if r['state'] in (supply_services.IN_CART, supply_services.IN_CART_FLAGGED)]
 
-    order = SupplyOrder.objects.create(property=prop, created_by=request.user)
-    cart_pairs = []
-    missing_id_names = []
-    for row in cart_rows:
-        item = row['supply_item']
-        raw_qty = request.POST.get(f'qty_{_row_key(row)}', '').strip()
-        quantity = int(raw_qty) if raw_qty.isdigit() and int(raw_qty) > 0 else row['reorder_quantity']
-        SupplyOrderLine.objects.create(
-            order=order, unit=row['unit'], supply_item=item, quantity=quantity,
-            triggered_by_reading=row['reading'],
-        )
-        if item.walmart_item_id:
-            cart_pairs.append((item.walmart_item_id, quantity))
-        else:
-            missing_id_names.append(item.name)
+        if not cart_rows:
+            messages.info(request, f'{prop.name}: nothing to order right now.')
+            return redirect('supplies:cart')
 
-    if not cart_pairs:
-        order.delete()
-        messages.error(
-            request,
-            f'{prop.name}: every item in the cart is missing a Walmart item id — nothing to send. '
-            'Fix the catalog first.',
-        )
-        return redirect('supplies:cart')
+        order = SupplyOrder.objects.create(property=prop, created_by=request.user)
+        cart_pairs = []
+        missing_id_names = []
+        for row in cart_rows:
+            item = row['supply_item']
+            raw_qty = request.POST.get(f'qty_{_row_key(row)}', '').strip()
+            quantity = int(raw_qty) if raw_qty.isdigit() and int(raw_qty) > 0 else row['reorder_quantity']
+            SupplyOrderLine.objects.create(
+                order=order, unit=row['unit'], supply_item=item, quantity=quantity,
+                triggered_by_reading=row['reading'],
+            )
+            if item.walmart_item_id:
+                cart_pairs.append((item.walmart_item_id, quantity))
+            else:
+                missing_id_names.append(item.name)
 
-    order.cart_url = '\n'.join(supply_services.build_walmart_cart_urls(cart_pairs))
-    order.sent_at = timezone.now()
-    order.save(update_fields=['cart_url', 'sent_at'])
+        if not cart_pairs:
+            order.delete()
+            messages.error(
+                request,
+                f'{prop.name}: every item in the cart is missing a Walmart item id — nothing to send. '
+                'Fix the catalog first.',
+            )
+            return redirect('supplies:cart')
+
+        order.cart_url = '\n'.join(supply_services.build_walmart_cart_urls(cart_pairs))
+        order.sent_at = timezone.now()
+        order.save(update_fields=['cart_url', 'sent_at'])
 
     if missing_id_names:
         messages.warning(
