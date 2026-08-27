@@ -1,0 +1,58 @@
+{% load ticket_extras %}
+{% comment %}
+Desktop table body (thead + one <tbody> per ticket) — factored out of
+ticket_list.html so the AJAX search (see that template's own script) can
+re-render just this and _ticket_mobile_cards.html via
+render_to_string(), exactly like core/_property_table_rows.html already
+does for the Properties list. Expects: tickets, sort_columns, now (same
+names ticket_list's own context already uses, so no renaming needed at
+either call site).
+{% endcomment %}
+<colgroup>
+    <col style="width: 10%;"><col style="width: 14%;"><col style="width: 25%;">
+    <col style="width: 9%;"><col style="width: 10%;"><col style="width: 13%;">
+    <col style="width: 13%;"><col style="width: 6%;">
+</colgroup>
+<thead><tr>
+    {% for col in sort_columns %}
+    <th class="p-0">
+        <a href="{% querystring sort=col.next_sort %}"
+           class="d-flex align-items-center gap-1 px-2 py-2 text-decoration-none w-100"
+           style="color: {% if col.is_active %}var(--ink-primary){% else %}var(--ink-secondary){% endif %}; font-weight: {% if col.is_active %}600{% else %}inherit{% endif %};"
+           title="Sort by {{ col.label }}">
+            {{ col.label }}
+            <i data-lucide="{% if col.is_active %}{% if col.is_desc %}chevron-down{% else %}chevron-up{% endif %}{% else %}chevrons-up-down{% endif %}"
+               class="icon" style="width: 0.85rem; height: 0.85rem; {% if not col.is_active %}opacity: 0.35;{% endif %} flex-shrink: 0;"></i>
+        </a>
+    </th>
+    {% endfor %}
+    <th></th>
+</tr></thead>
+{% for t in tickets %}
+    <tbody data-row-edit>
+        <tr>
+            <td><span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span></td>
+            <td class="text-truncate">{% if t.property %}{{ t.property.name }}{% if t.unit %} <span class="text-muted small">— {{ t.unit.label }}</span>{% endif %}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</td>
+            <td class="text-truncate fw-medium">
+                <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none">{{ t.title }}</a>
+                {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
+            </td>
+            <td class="text-nowrap {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}">{{ t.due_date|date:'M j, Y'|default:'—' }}</td>
+            <td><span class="badge rounded-pill" style="{{ t|status_badge_style }}">{{ t.get_status_display }}</span></td>
+            <td class="text-truncate">{{ t.assigned_staff|default:'—' }}</td>
+            <td class="text-truncate">{{ t.assigned_contact|default:'—' }}</td>
+            <td class="text-nowrap">
+                <button type="button" class="btn btn-link btn-sm p-0 me-2" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
+                <form method="post" action="{% url 'ticket_delete' t.pk %}" class="d-inline"
+                      onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
+                    <button class="btn btn-link btn-sm text-danger p-0" type="submit" title="Delete"><i data-lucide="trash-2" class="icon"></i></button>
+                </form>
+            </td>
+        </tr>
+        <tr data-row-edit-panel hidden>
+            <td colspan="8">{% include 'tickets/_ticket_row_edit_fields.html' with t=t %}</td>
+        </tr>
+    </tbody>
+{% empty %}<tbody><tr><td colspan="8" class="text-muted text-center py-4"><i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>No tickets.</td></tr></tbody>{% endfor %}

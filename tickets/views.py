@@ -11,6 +11,7 @@ from django.core.management import call_command
 from django.db.models import Count, F, Max, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateformat import format as format_date
@@ -573,7 +574,11 @@ def department_dashboard(request, role):
         'later_ticket_count': later_ticket_count,
         'ticket_total': len(needs_date_tickets) + len(today_tickets) + len(soon_tickets) + later_ticket_count,
         'department_sessions': department_sessions,
-        'ticket_list_url': f"{reverse('ticket_list')}?role={role}&source=reactive",
+        # &due=later reproduces exactly what later_ticket_count above
+        # counted (due_date > today+2) — previously this only carried
+        # role+source, so "N more later" opened the whole open queue for
+        # the department instead of the N tickets it claimed.
+        'ticket_list_url': f"{reverse('ticket_list')}?role={role}&source=reactive&due=later",
         'now': now,
         'calendar_configured': calendar_is_configured(),
         'calendar_token': calendar_token,
@@ -904,6 +909,12 @@ def ticket_list(request):
         qs = qs.filter(due_date__gte=today, due_date__lte=today + timedelta(days=7))
     elif due == 'month':
         qs = qs.filter(due_date__gte=today, due_date__lte=today + timedelta(days=30))
+    elif due == 'later':
+        # Mirrors department_dashboard's own soon_cutoff exactly (today +
+        # 2 days) — this is what "N more later" on that dashboard actually
+        # counts, so its link needs a bucket that reproduces the same set,
+        # not just role+source (which used to open the WHOLE queue).
+        qs = qs.filter(due_date__gt=today + timedelta(days=2))
     elif due == 'none':
         qs = qs.filter(due_date__isnull=True)
     elif due == 'custom' and due_on:
@@ -912,7 +923,7 @@ def ticket_list(request):
         due = ''
     due_labels = {
         'overdue': 'Overdue', 'today': 'Today', 'tomorrow': 'Tomorrow',
-        'week': 'Next 7 days', 'month': 'Next 30 days', 'none': 'No due date',
+        'week': 'Next 7 days', 'month': 'Next 30 days', 'later': 'Due later', 'none': 'No due date',
         # format_date (Django's own dateformat, not C strftime) — %-d isn't
         # portable: it's a glibc extension, absent on Windows and on
         # musl-libc Linux images, so it crashed outright wherever that flag
@@ -929,7 +940,7 @@ def ticket_list(request):
 
     qs = qs.order_by(*_ticket_sort_order(request.GET.get('sort', '')))
 
-    return render(request, 'tickets/ticket_list.html', {
+    context = {
         'tickets': qs,
         'now': timezone.now(),
         'status_choices': Ticket.Status.choices,
@@ -945,6 +956,7 @@ def ticket_list(request):
         'selected_scheduled_for': scheduled_for,
         'selected_property': selected_property,
         'selected_assigned_staff': selected_assigned_staff,
+        'selected_assigned_staff_id': assigned_staff_id,
         'selected_assigned_contact': selected_assigned_contact,
         'selected_due': due,
         'selected_due_on': due_on.isoformat() if due_on else '',
@@ -956,7 +968,20 @@ def ticket_list(request):
         ),
         'properties_by_type': properties_by_type(),
         'sort_columns': _ticket_sort_columns(request.GET.get('sort', '')),
-    })
+    }
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        # The search box's own AJAX re-render (see ticket_list.html's
+        # script) — same partial-swap shape as core.views.property_list,
+        # just two fragments (desktop table + mobile cards) instead of
+        # one, since ticket_list keeps its own responsive split rather
+        # than sharing one queryset-to-markup path.
+        return JsonResponse({
+            'desktop': render_to_string('tickets/_ticket_table_rows.html', context, request=request),
+            'mobile': render_to_string('tickets/_ticket_mobile_cards.html', context, request=request),
+        })
+
+    return render(request, 'tickets/ticket_list.html', context)
 
 
 def _list_redirect(request):

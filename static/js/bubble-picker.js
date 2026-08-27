@@ -589,6 +589,12 @@
       const bubble = slot && slot.querySelector('.bubble');
       if (bubble && root._bubbleApi) root._bubbleApi.unlock(bubble);
     },
+    // Re-scan for [data-bubble-picker] elements — call after replacing a
+    // chunk of the page's HTML (e.g. an AJAX search re-render) so newly
+    // injected pickers get wired up. Safe to call repeatedly: each call
+    // only finds pickers that exist in the DOM right now, so a previous
+    // render's already-removed elements can never end up double-wired.
+    init: init,
   };
   window.ContactFilter = {
     clear: function (root) {

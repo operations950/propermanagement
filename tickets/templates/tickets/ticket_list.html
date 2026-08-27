@@ -22,7 +22,10 @@
 <div class="d-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
      style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">
     <span>Showing tasks from: <strong>{{ selected_template.title }}</strong>{% if selected_scheduled_for %} &middot; {{ selected_scheduled_for }}{% endif %}</span>
-    <a href="{% url 'ticket_template_detail' selected_template.pk %}" class="small" style="color: var(--brand-primary);">View rule</a>
+    <span class="d-flex align-items-center gap-3">
+        <a href="{% url 'ticket_template_detail' selected_template.pk %}" class="small" style="color: var(--brand-primary);">View rule</a>
+        <a href="{% querystring template=None scheduled_for=None %}" class="small" style="color: var(--brand-primary);" title="Clear this filter — every other filter bubble preserves it otherwise">&times; Clear</a>
+    </span>
 </div>
 {% endif %}
 
@@ -43,16 +46,54 @@
 </div>
 <script>
 (function () {
+    // AJAX partial fetch + history.replaceState, matching Properties/
+    // Contacts search (see core/templates/core/property_list.html) —
+    // this used to be a full `window.location.search = ...` navigation
+    // per 500ms-debounced keystroke pause, which felt heavier than the
+    // rest of the app AND pushed a new history entry on every pause (Back
+    // only undid the last keystroke pause, not the whole search). Every
+    // OTHER filter (status/role/property/due/staff/contractor) preserves
+    // its own value automatically via {% querystring %} links, which
+    // don't touch this at all — only free-text search needed this fix.
     var input = document.getElementById('ticket-search-input');
     var timer = null;
+
+    function runSearch() {
+        // Looked up here, not at script-parse time — #ticket-table/
+        // #ticket-mobile-cards are defined further down the page than
+        // this script block (same as before this AJAX rewrite, when
+        // nothing here needed a DOM reference to them at all), so an
+        // outer-scope getElementById would always resolve to null.
+        var desktopTable = document.getElementById('ticket-table');
+        var mobileCards = document.getElementById('ticket-mobile-cards');
+        var params = new URLSearchParams(window.location.search);
+        if (input.value) params.set('q', input.value);
+        else params.delete('q');
+        fetch('{% url "ticket_list" %}?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                desktopTable.innerHTML = data.desktop;
+                mobileCards.innerHTML = data.mobile;
+                if (window.lucide) lucide.createIcons();
+                // Re-wire the freshly-injected rows — their old DOM nodes
+                // (and whatever listeners were attached to them) are gone,
+                // so the per-row edit toggle and every bubble-picker inside
+                // _ticket_row_edit_fields.html need to attach fresh. Both
+                // re-scans are safe to call repeatedly: they only ever
+                // find CURRENTLY-existing [data-row-edit]/[data-bubble-
+                // picker] elements, and the previous render's elements no
+                // longer exist to double-register.
+                if (window.RowEdit) window.RowEdit.init();
+                if (window.BubblePicker) window.BubblePicker.init();
+                history.replaceState(null, '', '?' + params.toString());
+            });
+    }
+
     input.addEventListener('input', function () {
         clearTimeout(timer);
-        timer = setTimeout(function () {
-            var params = new URLSearchParams(window.location.search);
-            if (input.value) params.set('q', input.value);
-            else params.delete('q');
-            window.location.search = params.toString();
-        }, 500);
+        timer = setTimeout(runSearch, 250);
     });
 })();
 </script>
@@ -84,8 +125,8 @@
         <button type="button" class="bubble" data-filter-toggle="due">+ Add Due Date Filter</button>
     {% endif %}
 
-    {% if selected_assigned_staff %}
-        <a href="{% querystring assigned_staff=None %}" class="bubble bubble-locked">{{ selected_assigned_staff }}</a>
+    {% if selected_assigned_staff_id %}
+        <a href="{% querystring assigned_staff=None %}" class="bubble bubble-locked">{% if selected_assigned_staff_id == 'none' %}Unassigned{% else %}{{ selected_assigned_staff }}{% endif %}</a>
     {% else %}
         <button type="button" class="bubble" data-filter-toggle="staff">+ Add Assigned Staff Filter</button>
     {% endif %}
@@ -163,6 +204,7 @@
         <a href="{% querystring due='tomorrow' due_on=None %}" class="bubble{% if selected_due == 'tomorrow' %} bubble-locked{% endif %}">Tomorrow</a>
         <a href="{% querystring due='week' due_on=None %}" class="bubble{% if selected_due == 'week' %} bubble-locked{% endif %}">Next 7 days</a>
         <a href="{% querystring due='month' due_on=None %}" class="bubble{% if selected_due == 'month' %} bubble-locked{% endif %}">Next 30 days</a>
+        <a href="{% querystring due='later' due_on=None %}" class="bubble{% if selected_due == 'later' %} bubble-locked{% endif %}">Due later</a>
         <a href="{% querystring due='none' due_on=None %}" class="bubble{% if selected_due == 'none' %} bubble-locked{% endif %}">No due date</a>
         <input type="date" class="form-control form-control-sm" style="width: auto;" data-due-custom-input value="{{ selected_due_on }}">
         <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
@@ -173,6 +215,7 @@
     <input type="text" class="form-control form-control-sm mb-2" style="max-width: 240px;" placeholder="Filter…" data-pool-filter-input>
     <div class="d-flex flex-wrap gap-2">
         <a href="{% querystring assigned_staff=None %}" class="bubble{% if not selected_assigned_staff %} bubble-locked{% endif %}">All staff</a>
+        <a href="{% querystring assigned_staff='none' %}" class="bubble{% if selected_assigned_staff_id == 'none' %} bubble-locked{% endif %}">Unassigned</a>
         {% for sp in staff_list %}
             <a href="{% querystring assigned_staff=sp.id %}" class="bubble{% if selected_assigned_staff.id == sp.id %} bubble-locked{% endif %}" data-pool-filter-item>{{ sp.user.get_full_name|default:sp.user.username }}</a>
         {% endfor %}
@@ -270,55 +313,8 @@ height instead of wrapping onto two lines.
 {% endcomment %}
 <div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
 <div class="table-responsive">
-<table class="table bg-white align-middle mb-0" style="table-layout: fixed;">
-    <colgroup>
-        <col style="width: 10%;"><col style="width: 14%;"><col style="width: 25%;">
-        <col style="width: 9%;"><col style="width: 10%;"><col style="width: 13%;">
-        <col style="width: 13%;"><col style="width: 6%;">
-    </colgroup>
-    <thead><tr>
-        {% for col in sort_columns %}
-        <th class="p-0">
-            <a href="{% querystring sort=col.next_sort %}"
-               class="d-flex align-items-center gap-1 px-2 py-2 text-decoration-none w-100"
-               style="color: {% if col.is_active %}var(--ink-primary){% else %}var(--ink-secondary){% endif %}; font-weight: {% if col.is_active %}600{% else %}inherit{% endif %};"
-               title="Sort by {{ col.label }}">
-                {{ col.label }}
-                <i data-lucide="{% if col.is_active %}{% if col.is_desc %}chevron-down{% else %}chevron-up{% endif %}{% else %}chevrons-up-down{% endif %}"
-                   class="icon" style="width: 0.85rem; height: 0.85rem; {% if not col.is_active %}opacity: 0.35;{% endif %} flex-shrink: 0;"></i>
-            </a>
-        </th>
-        {% endfor %}
-        <th></th>
-    </tr></thead>
-    {% for t in tickets %}
-        <tbody data-row-edit>
-            <tr>
-                <td><span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span></td>
-                <td class="text-truncate">{% if t.property %}{{ t.property.name }}{% if t.unit %} <span class="text-muted small">— {{ t.unit.label }}</span>{% endif %}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</td>
-                <td class="text-truncate fw-medium">
-                    <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none">{{ t.title }}</a>
-                    {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
-                </td>
-                <td class="text-nowrap {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}">{{ t.due_date|date:'M j, Y'|default:'—' }}</td>
-                <td><span class="badge rounded-pill" style="{{ t|status_badge_style }}">{{ t.get_status_display }}</span></td>
-                <td class="text-truncate">{{ t.assigned_staff|default:'—' }}</td>
-                <td class="text-truncate">{{ t.assigned_contact|default:'—' }}</td>
-                <td class="text-nowrap">
-                    <button type="button" class="btn btn-link btn-sm p-0 me-2" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
-                    <form method="post" action="{% url 'ticket_delete' t.pk %}" class="d-inline"
-                          onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
-                        {% csrf_token %}
-                        <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                        <button class="btn btn-link btn-sm text-danger p-0" type="submit" title="Delete"><i data-lucide="trash-2" class="icon"></i></button>
-                    </form>
-                </td>
-            </tr>
-            <tr data-row-edit-panel hidden>
-                <td colspan="8">{% include 'tickets/_ticket_row_edit_fields.html' with t=t %}</td>
-            </tr>
-        </tbody>
-    {% empty %}<tbody><tr><td colspan="8" class="text-muted text-center py-4"><i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>No tickets.</td></tr></tbody>{% endfor %}
+<table class="table bg-white align-middle mb-0" style="table-layout: fixed;" id="ticket-table">
+{% include 'tickets/_ticket_table_rows.html' %}
 </table>
 </div>
 </div>
@@ -328,42 +324,7 @@ Mobile: a table can't fit this many editable fields readably at phone
 widths, so each ticket becomes a stacked card instead — same forms/views,
 just laid out top-to-bottom rather than in cells.
 {% endcomment %}
-<div class="d-md-none">
-{% for t in tickets %}
-    <div class="card mb-2" data-row-edit>
-        <div class="card-body p-3">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <div>
-                    <div class="fw-semibold d-flex align-items-center gap-1">
-                        <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none text-body">{{ t.title }}</a>
-                        {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
-                    </div>
-                    <div class="small text-muted">{% if t.property %}{{ t.property.name }}{% if t.unit %} — {{ t.unit.label }}{% endif %}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</div>
-                </div>
-                <button type="button" class="btn btn-link btn-sm p-0 flex-shrink-0" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
-            </div>
-
-            <div class="d-flex flex-wrap gap-2 mb-2">
-                <span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span>
-                <span class="badge rounded-pill" style="{{ t|status_badge_style }}">{{ t.get_status_display }}</span>
-            </div>
-            <div class="small text-muted mb-2">
-                Due {{ t.due_date|date:'M j, Y'|default:'—' }}{% if t|is_overdue:now %} <span class="text-danger fw-semibold">(overdue)</span>{% endif %}
-                {% if t.assigned_staff %}&middot; Staff: {{ t.assigned_staff }}{% elif t.assigned_contact %}&middot; Contractor: {{ t.assigned_contact }}{% endif %}
-            </div>
-
-            <div data-row-edit-panel hidden class="mt-2">
-                {% include 'tickets/_ticket_row_edit_fields.html' with t=t %}
-            </div>
-
-            <form method="post" action="{% url 'ticket_delete' t.pk %}" class="mt-2"
-                  onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
-                {% csrf_token %}
-                <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                <button class="btn btn-link btn-sm text-danger p-0" type="submit">Delete</button>
-            </form>
-        </div>
-    </div>
-{% empty %}<p class="text-muted">No tickets.</p>{% endfor %}
+<div class="d-md-none" id="ticket-mobile-cards">
+{% include 'tickets/_ticket_mobile_cards.html' %}
 </div>
 {% endblock %}

@@ -50,4 +50,10 @@
   } else {
     init();
   }
+
+  // Re-scan for [data-row-edit] elements — call after replacing a chunk
+  // of the page's HTML (e.g. ticket_list.html's AJAX search re-render) so
+  // newly injected rows get their toggle wired up. Safe to call
+  // repeatedly for the same reason bubble-picker.js's own init export is.
+  window.RowEdit = { init: init };
 })();
