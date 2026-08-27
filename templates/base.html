@@ -299,6 +299,9 @@
                     <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site</a>
                     <a class="nav-link" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i> Recurring</a>
                     <a class="nav-link" href="{% url 'supplies:cart' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
+                    {% if request.user.staff_profile.is_portfolio_owner %}
+                    <a class="nav-link" href="{% url 'portfolio_dashboard' %}"><i data-lucide="briefcase" class="icon"></i> Portfolio</a>
+                    {% endif %}
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
 
                     <div class="dropdown mx-lg-2 my-2 my-lg-0">
