@@ -1519,7 +1519,10 @@ def ticket_create(request):
             )
             if ticket.assigned_staff_id or ticket.assigned_contact_id:
                 ticket.status = Ticket.Status.ASSIGNED
-            ticket.full_clean()
+            # See TicketForm.clean()'s matching comment — a department-only
+            # ticket legitimately has both assignee fields blank at this
+            # point; Ticket.save()'s auto-assign fallback resolves it.
+            ticket.full_clean(validate_constraints=False)
             ticket.save()
             reporter = form.cleaned_data.get('reporter_contact')
             if reporter:

@@ -7,7 +7,6 @@ urlpatterns = [
     path('templates/new/', views.process_template_create, name='process_template_create'),
     path('templates/<int:pk>/', views.process_template_edit, name='process_template_edit'),
     path('templates/<int:pk>/preview/', views.process_template_preview, name='process_template_preview'),
-    path('templates/<int:pk>/toggle-active/', views.process_template_toggle_active, name='process_template_toggle_active'),
     path('templates/<int:template_pk>/steps/add/', views.process_template_step_add, name='process_template_step_add'),
     path('steps/<int:step_pk>/edit/', views.process_template_step_edit, name='process_template_step_edit'),
     path('steps/<int:step_pk>/delete/', views.process_template_step_delete, name='process_template_step_delete'),

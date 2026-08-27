@@ -55,8 +55,9 @@ def merge_contacts(primary, loser):
     (ticket, contact, role) row primary already has is dropped instead of
     raising — primary is already linked to that ticket in that role, so
     nothing is lost."""
-    from core.models import ContactImportCandidate, ContactUpdateCandidate
+    from core.models import ContactDocument, ContactImportCandidate, ContactUpdateCandidate
     from intake.models import Reservation
+    from processes.models import ProcessRun
     from tickets.models import (
         FollowUpLog, Ticket, TicketAssignmentLog, TicketAttachment, TicketContact, TicketTemplate,
     )
@@ -81,6 +82,14 @@ def merge_contacts(primary, loser):
         TicketAssignmentLog.objects.filter(from_contact=loser).update(from_contact=primary)
         TicketAssignmentLog.objects.filter(to_contact=loser).update(to_contact=primary)
         FollowUpLog.objects.filter(contact=loser).update(contact=primary)
+        # Both on_delete=CASCADE from Contact — without reassigning these
+        # first, loser.delete() below silently destroys any document
+        # (W9, insurance cert, ...) or in-progress process run (with all
+        # its steps/attachments) attached to the losing side, the same
+        # bug class as the units/properties fix above, for two relations
+        # added after that fix landed.
+        ContactDocument.objects.filter(contact=loser).update(contact=primary)
+        ProcessRun.objects.filter(contact=loser).update(contact=primary)
 
         loser.delete()
 

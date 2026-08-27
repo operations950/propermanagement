@@ -53,6 +53,25 @@
         {% endfor %}
     </ul>
 
+    {% with links=run.external_links.all %}
+    {% if links %}
+    <div class="small mb-2" style="color: var(--ink-muted);">
+        {% for link in links %}
+        <div class="d-flex align-items-center gap-1 flex-wrap">
+            <i data-lucide="link" class="icon"></i>
+            {% if link.is_valid %}
+            <a href="{% url 'process_external_access' link.token %}" target="_blank" rel="noopener">{{ request.scheme }}://{{ request.get_host }}{% url 'process_external_access' link.token %}</a>
+            {% else %}
+            <span class="text-decoration-line-through">{{ request.scheme }}://{{ request.get_host }}{% url 'process_external_access' link.token %}</span>
+            <span class="badge bg-light text-dark border">Expired</span>
+            {% endif %}
+            {% if link.external_contact %}<span>— {{ link.external_contact }}</span>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
     <form method="post" action="{% url 'process_run_external_link_create' run.pk %}" class="mt-2" onsubmit="return confirm('Create a secure external link for this process?');">
         {% csrf_token %}
         <button type="submit" class="btn btn-sm btn-outline-secondary"><i data-lucide="link" class="icon"></i> Create external link</button>

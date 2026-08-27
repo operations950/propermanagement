@@ -1516,48 +1516,6 @@ def _dismiss_update(update, user):
 
 
 @login_required
-def contact_review_approve(request, pk):
-    candidate = get_object_or_404(ContactImportCandidate, pk=pk, status=ContactImportCandidate.Status.PENDING)
-    if request.method == 'POST':
-        ok, error, linked_existing = _approve_candidate(
-            candidate, request.user,
-            request.POST.get('name', ''), request.POST.get('phone', ''), request.POST.get('email', ''),
-            request.POST.get('contact_type', ''), request.POST.get('trade', ''),
-            request.POST.get('property_id') or None,
-        )
-        if ok:
-            messages.success(
-                request,
-                f'Approved — {"linked to existing" if linked_existing else "created"} '
-                f'contact "{candidate.resolved_contact.name}".',
-            )
-        else:
-            messages.error(request, f'{error} — nothing was approved.')
-    return redirect('contact_review')
-
-
-@login_required
-def contact_review_reject(request, pk):
-    candidate = get_object_or_404(ContactImportCandidate, pk=pk, status=ContactImportCandidate.Status.PENDING)
-    if request.method == 'POST':
-        _reject_candidate(candidate, request.user)
-        messages.success(request, f'Rejected "{candidate.name}".')
-    return redirect('contact_review')
-
-
-@login_required
-def contact_update_apply(request, pk):
-    update = get_object_or_404(
-        ContactUpdateCandidate, pk=pk, status=ContactUpdateCandidate.Status.PENDING,
-    )
-    if request.method == 'POST':
-        contact_name = update.contact.name
-        _apply_update(update, request.user)
-        messages.success(request, f'Updated "{contact_name}" from Quo.')
-    return redirect('contact_review')
-
-
-@login_required
 def contact_review_bulk_save(request):
     """The review screen's floating "Save Changes" button — every
     approve/reject/apply/dismiss decision is marked client-side only (no
@@ -1618,17 +1576,6 @@ def contact_review_bulk_save(request):
         'success': True, 'approved': approved, 'rejected': rejected,
         'applied': applied, 'dismissed': dismissed, 'errors': errors,
     })
-
-
-@login_required
-def contact_update_dismiss(request, pk):
-    update = get_object_or_404(
-        ContactUpdateCandidate, pk=pk, status=ContactUpdateCandidate.Status.PENDING,
-    )
-    if request.method == 'POST':
-        _dismiss_update(update, request.user)
-        messages.success(request, f'Dismissed the proposed update for "{update.contact.name}".')
-    return redirect('contact_review')
 
 
 @login_required

@@ -55,6 +55,23 @@ class TicketForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        # super().clean() (BaseModelForm.clean()) just turned constraint
+        # validation back on for _post_clean() — turn it back off.
+        # ticket_exactly_one_assignee (tickets/models.py) is deliberately
+        # allowed to be unsatisfied on a brand-new, department-only ticket:
+        # assigned_role is the only required field on this form, and
+        # Ticket.save()'s own auto-assign fallback (see its docstring) is
+        # what's actually meant to guarantee a real assignee before the row
+        # reaches the DB — not this pre-save form validation. Without this,
+        # is_valid() rejects the ticket outright the moment both
+        # assigned_staff/assigned_contact are left blank, before save() ever
+        # gets a chance to run — the exact "Unassigned" flow the New Ticket
+        # UI itself explicitly supports (assigned_staff/assigned_contact
+        # aren't required fields here). Same fix as ticket_quick_edit/
+        # ticket_reassign/ticket_assign_contractor's validate_constraints=
+        # False, just at the form layer since this is the one assignment
+        # path that goes through a ModelForm instead of a bare view.
+        self._validate_constraints = False
         if cleaned.get('assigned_staff') and cleaned.get('assigned_contact'):
             raise forms.ValidationError('Assign to staff OR a vendor contact, not both.')
         unit = cleaned.get('unit')

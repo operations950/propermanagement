@@ -91,16 +91,6 @@ def process_template_edit(request, pk):
 
 
 @login_required
-def process_template_toggle_active(request, pk):
-    template = get_object_or_404(ProcessTemplate, pk=pk)
-    if request.method == 'POST':
-        template.is_active = not template.is_active
-        template.save(update_fields=['is_active'])
-        messages.success(request, f'{"Activated" if template.is_active else "Deactivated"} "{template.name}".')
-    return redirect('process_template_edit', pk=template.pk)
-
-
-@login_required
 def process_template_preview(request, pk):
     template = get_object_or_404(ProcessTemplate, pk=pk)
     return render(request, 'processes/template_preview.html', {'template': template, 'steps': template.steps.all()})
