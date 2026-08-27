@@ -729,6 +729,12 @@ class TicketAttachment(models.Model):
         help_text='Set when an external vendor uploaded this via the completion link.',
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    visible_to_vendor = models.BooleanField(
+        help_text="Whether this can appear on the public, unauthenticated vendor completion link. "
+                   "False for internal-only uploads like the Documents card, regardless of file type — "
+                   "deliberately has no model-level default, so every creation site must decide explicitly "
+                   "rather than leaking a new upload path by accident.",
+    )
 
     VIDEO_EXTENSIONS = ('.mp4', '.mov', '.webm', '.m4v')
     IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif')

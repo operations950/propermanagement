@@ -2316,7 +2316,9 @@ def _save_new_followup_attachments(request, ticket):
         if f.size > settings.VENDOR_UPLOAD_MAX_BYTES:
             max_mb = settings.VENDOR_UPLOAD_MAX_BYTES // (1024 * 1024)
             return [], f'{f.name} is too large (max {max_mb}MB).'
-        attachment = TicketAttachment.objects.create(ticket=ticket, file=f, uploaded_by_user=request.user)
+        attachment = TicketAttachment.objects.create(
+            ticket=ticket, file=f, uploaded_by_user=request.user, visible_to_vendor=True,
+        )
         new_pks.append(attachment.pk)
     return new_pks, ''
 
@@ -2341,6 +2343,7 @@ def ticket_document_upload(request, pk):
         else:
             TicketAttachment.objects.create(
                 ticket=ticket, file=f, caption=request.POST.get('name', '').strip(), uploaded_by_user=request.user,
+                visible_to_vendor=False,
             )
             messages.success(request, 'Document added.')
     return redirect('ticket_detail', pk=ticket.pk)
