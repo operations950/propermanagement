@@ -135,11 +135,13 @@
                     {% if is_new %}Create contact{% else %}Save changes{% endif %}
                 </button>
                 {% if not is_new %}
+                {% with doc_count=documents|length run_count=process_runs|length %}
                 <button class="btn btn-outline-danger btn-sm ms-auto" type="submit" formmethod="post"
                         formaction="{% url 'contact_delete' contact.pk %}" formnovalidate
-                        onclick="return confirm('Delete {{ contact.name|escapejs }}? This can\'t be undone.');">
+                        onclick="return confirm('Delete {{ contact.name|escapejs }}? This can\'t be undone.{% if doc_count %} This will also permanently delete {{ doc_count }} document{{ doc_count|pluralize }} uploaded for this contact.{% endif %}{% if run_count %} This will also permanently delete {{ run_count }} process{{ run_count|pluralize:"es" }} run against this contact (steps, attachments, and all).{% endif %}');">
                     <i data-lucide="trash-2" class="icon"></i> Delete contact
                 </button>
+                {% endwith %}
                 {% endif %}
             </div>
         </form>

@@ -2,11 +2,14 @@
 Django settings for proptasks project.
 """
 
+import hashlib
+import logging
 import os
 import socket
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,9 +43,43 @@ def env_bool(name, default=False):
     return value.strip().lower() in ('1', 'true', 'yes', 'on')
 
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-key-change-me')
+# Defaults to False, not True — an unset DEBUG env var (a typo, a forgotten
+# var on a new/cloned Railway environment) must fail safe. The old default
+# of True meant that exact mistake would silently run production with full
+# tracebacks (source, local variables, settings) exposed on every error
+# page. Local dev sets DEBUG=True explicitly via .env (see .env.example),
+# so this change has no effect there.
+DEBUG = env_bool('DEBUG', False)
 
-DEBUG = env_bool('DEBUG', True)
+_secret_key_env = os.environ.get('SECRET_KEY')
+if _secret_key_env:
+    SECRET_KEY = _secret_key_env
+elif DEBUG:
+    # Dev-only convenience default. Never reachable in production: DEBUG
+    # defaults to False now (above), and .env.example documents setting a
+    # real SECRET_KEY for local dev too (this is just a second safety net,
+    # not the expected path).
+    SECRET_KEY = 'django-insecure-dev-key-change-me'
+elif os.environ.get('DATABASE_URL'):
+    # DEBUG=False but SECRET_KEY was never set — a real deploy
+    # misconfiguration. Rather than crash the whole site outright (which
+    # would fully take down production on a redeploy over a single missing
+    # env var, with no one watching to fix it), derive a fallback that's at
+    # least NOT a fixed string baked into git history (the old behavior):
+    # DATABASE_URL is always set by Railway's Postgres plugin and contains
+    # a real, non-public password, so this is stable across restarts and
+    # not guessable from the source code the way the old fallback was.
+    # This is a safety net, not a fix — set a real SECRET_KEY env var.
+    SECRET_KEY = hashlib.sha256(f'proptasks-secret-key-fallback:{os.environ["DATABASE_URL"]}'.encode()).hexdigest()
+    logging.getLogger(__name__).critical(
+        'SECRET_KEY is not set — falling back to a key derived from DATABASE_URL. '
+        'Set a real SECRET_KEY environment variable as soon as possible.'
+    )
+else:
+    # DEBUG=False, no SECRET_KEY, and no DATABASE_URL to derive a fallback
+    # from either — nothing safe to fall back to. Fail loudly and
+    # immediately rather than silently running unprotected.
+    raise ImproperlyConfigured('SECRET_KEY environment variable is required when DEBUG is False.')
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',') if h.strip()]
 
@@ -60,6 +97,22 @@ CSRF_TRUSTED_ORIGINS = [f'https://{h}' for h in ALLOWED_HOSTS if h not in ('127.
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Force plain-HTTP requests to HTTPS — SECURE_PROXY_SSL_HEADER above is
+    # what lets Django correctly recognize a Railway-forwarded HTTPS request
+    # as secure in the first place; this is what actually redirects a
+    # request that arrived over plain HTTP instead of just tolerating it.
+    SECURE_SSL_REDIRECT = True
+    # Conservative starting value (1 hour), not Django's own recommended
+    # one-year production default — this is the first time HSTS has been
+    # enabled here, and a wrong ALLOWED_HOSTS/proxy setting discovered
+    # AFTER browsers have cached a long HSTS policy would lock users out
+    # of plain HTTP for that entire duration with no way to undo it
+    # remotely. Safe to raise once this has run cleanly for a while.
+    # SECURE_HSTS_INCLUDE_SUBDOMAINS/PRELOAD are deliberately left off —
+    # both are broader, harder-to-reverse commitments (preload especially:
+    # it's a submission to browsers' built-in preload lists) that should be
+    # a deliberate future choice, not a side effect of this pass.
+    SECURE_HSTS_SECONDS = 3600
 
 
 INSTALLED_APPS = [

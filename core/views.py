@@ -82,7 +82,13 @@ class StaffLoginView(auth_views.LoginView):
     per-request rather than baked in at urls.py import time — the
     GOOGLE_OAUTH_CLIENT_ID/SECRET pair can change at runtime via
     /admin-tools/ (see core/app_settings.py), so a static extra_context
-    would go stale until the next deploy/restart."""
+    would go stale until the next deploy/restart.
+
+    Brute-force protection lives in core.auth_backends
+    .EmailOrUsernameModelBackend.authenticate() (raises PermissionDenied,
+    which django.contrib.auth.authenticate() treats as "stop trying
+    backends immediately") rather than here, so it covers Django's own
+    /admin/ login too — not just this view."""
     template_name = 'registration/login.html'
     authentication_form = EmailOrUsernameAuthenticationForm
 
@@ -1189,6 +1195,19 @@ def contact_import_parse(request):
     upload = request.FILES.get('file')
     if not upload:
         return JsonResponse({'success': False, 'error': 'No file received.'}, status=400)
+    # Unlike the app's other upload endpoints, extract_contacts_from_document
+    # supports several content types (PDF/image/CSV/Excel/plain text) that
+    # don't map onto one existing ALLOWED_CONTENT_TYPES list, and its own
+    # unsupported-type rejection in _file_to_content_blocks already covers
+    # type-checking (just after a full read — acceptable, since the actual
+    # risk here is unbounded size, not type). Reusing
+    # PROCESS_ATTACHMENT_MAX_BYTES as the size cap for consistency with
+    # every other "general document" upload elsewhere in the app — without
+    # this, an arbitrarily large file was read entirely into memory,
+    # base64-encoded, and sent to the Anthropic API before any check ran.
+    if upload.size > django_settings.PROCESS_ATTACHMENT_MAX_BYTES:
+        max_mb = django_settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
+        return JsonResponse({'success': False, 'error': f'File is too large (max {max_mb}MB).'}, status=400)
     try:
         contacts = extract_contacts_from_document(upload)
     except DocumentImportError as e:
@@ -1331,12 +1350,27 @@ def contact_edit(request, pk):
 
 @login_required
 def contact_delete(request, pk):
-    """Deleting a Contact is safe by design — every relationship that
-    matters (Ticket.assigned_contact, FollowUpLog.from_contact/to_contact,
-    TicketAttachment.uploaded_by_contact) is on_delete=SET_NULL, so real
-    tickets/attachments/follow-ups stay intact and simply lose the
-    assignment; only pure link/audit rows (TicketContact, duplicate-
-    dismissal pairs, pending update candidates) cascade away with them.
+    """Deleting a Contact mostly is safe by design — every relationship
+    that matters most (Ticket.assigned_contact, FollowUpLog.from_contact/
+    to_contact, TicketAttachment.uploaded_by_contact) is on_delete=
+    SET_NULL, so real tickets/attachments/follow-ups stay intact and
+    simply lose the assignment; pure link/audit rows (TicketContact,
+    duplicate-dismissal pairs, pending update candidates) cascade away
+    with them, which is fine — they're meaningless without the contact.
+
+    Two relations are NOT safe, though (this comment previously and
+    incorrectly claimed otherwise — see the audit that caught it):
+    ContactDocument (core/models.py) and ProcessRun (processes/models.py)
+    are both on_delete=CASCADE, so any uploaded document or in-progress
+    process run tied to this specific contact is permanently destroyed
+    right along with it, with no "primary" contact to reassign onto the
+    way core/duplicates.py::merge_contacts has for the merge case. Rather
+    than silently allow that or block deletion outright, contact_form.html
+    Delete button's confirm() dialog is told the real counts (via
+    `documents`/`process_runs` already in this view's own template
+    context) so a staff member sees exactly what's about to be lost and
+    can back out — same "warn clearly, let a human decide" pattern this
+    app already uses for its other permanently-destructive actions.
 
     One wrinkle since Ticket's assignment CheckConstraint requires exactly
     one of assigned_staff/assigned_contact: Django's SET_NULL cascade is a
