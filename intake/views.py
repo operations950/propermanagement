@@ -318,66 +318,6 @@ def _run_command_in_background(name, *args):
 
 @login_required
 @user_passes_test(_is_admin)
-def gmail_lookback_trigger(request):
-    """Admin-only: force a one-off re-check of a connected mailbox's last
-    N days of threads, ignoring the normal poll cursor — for "did we miss
-    anything" without waiting for (or being limited by) the incremental
-    poll. No Railway shell access, so this is the only way to run it on
-    production. See intake/management/commands/gmail_lookback.py."""
-    if request.method == 'POST':
-        mailbox_id = request.POST.get('mailbox_id')
-        token = GmailInboxToken.objects.filter(pk=mailbox_id).first()
-        days = request.POST.get('days', '2')
-        if not token:
-            messages.error(request, 'Mailbox not found.')
-        else:
-            _run_command_in_background('gmail_lookback', '--mailbox', token.mailbox_email, '--days', str(days))
-            messages.success(
-                request,
-                f'Looking back {days} day(s) on {token.mailbox_email} in the background — '
-                'check Railway logs for progress and results.',
-            )
-    return redirect('admin_tools')
-
-
-@login_required
-@user_passes_test(_is_admin)
-def audit_airbnb_tickets_trigger(request):
-    """Admin-only: runs audit_airbnb_tickets in the background — a
-    read-only report (Railway logs only, nothing is changed) of existing
-    Airbnb cleaning tickets Claude would now flag as not a real booking
-    confirmation, after the Subject-aware prompt fix. No Railway shell
-    access, so this is the only way to run it on production."""
-    if request.method == 'POST':
-        _run_command_in_background('audit_airbnb_tickets')
-        messages.success(request, 'Airbnb ticket audit started in the background — check Railway logs for results.')
-    return redirect('admin_tools')
-
-
-@login_required
-@user_passes_test(_is_admin)
-def flag_duplicate_tickets_trigger(request):
-    """Admin-only: runs flag_duplicate_tickets in the background — checks
-    existing open tickets against each other (grouped by property) for the
-    same "different threads, same real-world issue" pattern the live
-    intake pipeline now catches on every new ticket going forward (see
-    intake/duplicate_classifier.py). Unlike the Airbnb audit, this one DOES
-    write to the database — it flags matches via
-    Ticket.possible_duplicate_of so they show up in the Pending screen's
-    "Possible duplicate" queue, but never auto-cancels or merges anything.
-    No Railway shell access, so this is the only way to run it on
-    production."""
-    if request.method == 'POST':
-        _run_command_in_background('flag_duplicate_tickets')
-        messages.success(
-            request, 'Duplicate-ticket sweep started in the background — flagged matches will appear on '
-                      'the Pending screen shortly.',
-        )
-    return redirect('admin_tools')
-
-
-@login_required
-@user_passes_test(_is_admin)
 def quo_backfill_trigger(request):
     """Admin-only: kicks off backfill_quo_messages in the background — the
     one-time (safe to re-run) historical sync so classify_quo_conversations

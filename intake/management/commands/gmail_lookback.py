@@ -9,8 +9,11 @@ logic changes (e.g. the Airbnb-booking detection this was built for).
 GmailThreadState still gets updated the normal way, so the next regular
 poll doesn't immediately redo this same work.
 
-Triggered from Admin Tools (see intake/views.py::gmail_lookback_trigger) —
-no Railway shell access, so this is the only way to run it on production."""
+Previously had an Admin Tools web trigger (intake/views.py::
+gmail_lookback_trigger, removed 2026-08-27 as unreachable/unused — the
+scheduled Gmail-polling pipeline this served was itself already fully
+reversed, see proptasks/scheduler.py). Runnable directly as a management
+command if ever needed again."""
 import logging
 from datetime import timedelta
 
