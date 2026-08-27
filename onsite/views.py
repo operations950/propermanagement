@@ -210,14 +210,22 @@ def _str_properties():
 
 
 def _visit_eligible_properties():
-    """Every active property, any type — the manual "schedule a visit"
-    and "recurring rule" screens are the exception-basis escape hatch
-    (commercial common-area cleans, a one-off house cleaning that isn't a
-    turnover, etc.), unlike booking import which is inherently an STR/
-    checkout concept and stays scoped to _str_properties() above. Ordered
-    by type then name so same-type properties cluster in the bubble
-    picker even though it isn't visually grouped."""
-    return Property.objects.filter(is_active=True).order_by('property_type', 'name')
+    """(str_properties, other_properties) for the manual "schedule a
+    visit" and "recurring rule" screens. STR is the default-visible pool
+    — on-site visits are overwhelmingly STR turnovers/deep-cleans/
+    inspections, so that's what the picker should show without asking
+    first. `other_properties` (every other active type) stays reachable
+    behind an explicit "show other property types" toggle in the
+    template — the escape hatch for the real but rare exception case
+    (a commercial common-area clean, a one-off non-turnover house
+    cleaning), never the default view. See _str_properties() above for
+    the (unrelated) booking-import property list, which stays STR-only
+    outright since a booking file is inherently an STR/checkout concept
+    with no exception case to expand into."""
+    properties = Property.objects.filter(is_active=True).order_by('property_type', 'name')
+    str_properties = [p for p in properties if p.property_type == Property.Type.SHORT_TERM_RENTAL]
+    other_properties = [p for p in properties if p.property_type != Property.Type.SHORT_TERM_RENTAL]
+    return str_properties, other_properties
 
 
 def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
@@ -586,8 +594,11 @@ def visit_create(request):
     exactly the same way. Booking import is still how the bulk of STR
     turnovers get created; this is the escape hatch for everything else,
     since Django admin's plain "Add Visit" form bypasses create_visit
-    entirely (so it wouldn't get a checklist at all)."""
-    properties = _visit_eligible_properties()
+    entirely (so it wouldn't get a checklist at all). STR is the
+    default-visible property pool (the overwhelming common case); every
+    other type is one tap away behind "show other property types" —
+    see _visit_eligible_properties()."""
+    str_properties, other_properties = _visit_eligible_properties()
     visit_types = VisitType.objects.filter(is_active=True, is_addon=False).order_by('name')
     staff_options = StaffProfile.objects.select_related('user').filter(
         user__is_active=True, role=StaffProfile.Role.CLEANER,
@@ -607,7 +618,7 @@ def visit_create(request):
         if not prop or not visit_type:
             messages.error(request, 'Choose a property and a visit type.')
             return render(request, 'onsite/visit_create.html', {
-                'properties': properties, 'visit_types': visit_types,
+                'str_properties': str_properties, 'other_properties': other_properties, 'visit_types': visit_types,
                 'staff_options': staff_options, 'contact_options': contact_options,
                 'units_by_property_json': units_by_property_json,
             })
@@ -649,7 +660,7 @@ def visit_create(request):
         return redirect('onsite_visit_detail', pk=visit.pk)
 
     return render(request, 'onsite/visit_create.html', {
-        'properties': properties, 'visit_types': visit_types,
+        'str_properties': str_properties, 'other_properties': other_properties, 'visit_types': visit_types,
         'staff_options': staff_options, 'contact_options': contact_options,
         'units_by_property_json': units_by_property_json,
     })
@@ -665,14 +676,17 @@ def visit_rule_list(request):
     unit instead of being stuck with property-wide-only scheduling. A
     single list-plus-inline-add-form page, matching property_detail.html's
     Units/System Locations card pattern, rather than separate create/edit
-    pages — editing an existing rule's cadence/assignee isn't supported
-    yet (delete and re-add covers it for now); what was missing and asked
-    for is targeting a specific unit, which this does cover.
+    pages. A rule's cadence/assignee can be edited inline (see
+    update_rule below); property/unit/visit_type stay fixed once created
+    — delete-and-re-add is still the clearer path for changing those,
+    since it's a bigger structural change (different checklist scope).
 
     Open to any active property type, not just STR — a weekly commercial
     common-area clean is exactly what this is for, alongside the
-    STR-focused deep-clean/inspection rules it originally shipped with."""
-    properties = _visit_eligible_properties()
+    STR-focused deep-clean/inspection rules it originally shipped with.
+    STR is the default-visible property pool; everything else is behind
+    "show other property types" (see _visit_eligible_properties())."""
+    str_properties, other_properties = _visit_eligible_properties()
     visit_types = VisitType.objects.filter(is_active=True, is_addon=False).order_by('name')
     staff_options = StaffProfile.objects.select_related('user').filter(
         user__is_active=True, role=StaffProfile.Role.CLEANER,
@@ -721,6 +735,26 @@ def visit_rule_list(request):
                 f'Recurring rule added: {prop.name}{f" — {unit.label}" if unit else ""} — '
                 f'{visit_type.name} every {rule.cadence_display()}.',
             )
+        elif action == 'update_rule':
+            # Cadence/assignee are the two fields staff actually need to
+            # change day-to-day (e.g. bump a commercial clean from weekly
+            # to biweekly, or reassign it) — property/unit/visit_type stay
+            # fixed here since changing those is a big enough structural
+            # change (different checklist, different scope) that delete-
+            # and-re-add is still the clearer path for it.
+            rule = get_object_or_404(VisitRule, pk=request.POST.get('rule_id'))
+            raw_value = request.POST.get('interval_value', '').strip()
+            interval_value = int(raw_value) if raw_value.isdigit() and int(raw_value) > 0 else 3
+            if request.POST.get('interval_unit') == 'weeks':
+                rule.interval_days, rule.interval_months = interval_value * 7, 3
+            else:
+                rule.interval_days, rule.interval_months = None, interval_value
+            kind, _, raw_id = request.POST.get('default_assignee', '').partition('-')
+            rule.default_assignee = (
+                StaffProfile.objects.filter(pk=raw_id).first() if kind == 'staff' and raw_id.isdigit() else None
+            )
+            rule.save(update_fields=['interval_days', 'interval_months', 'default_assignee'])
+            messages.success(request, f'Rule updated — now every {rule.cadence_display()}.')
         elif action == 'toggle_active':
             rule = get_object_or_404(VisitRule, pk=request.POST.get('rule_id'))
             rule.is_active = not rule.is_active
@@ -735,7 +769,7 @@ def visit_rule_list(request):
         'property__name', 'unit__label', 'visit_type__name',
     )
     return render(request, 'onsite/visit_rule_list.html', {
-        'rules': rules, 'properties': properties, 'visit_types': visit_types,
+        'rules': rules, 'str_properties': str_properties, 'other_properties': other_properties, 'visit_types': visit_types,
         'staff_options': staff_options, 'units_by_property_json': units_by_property_json,
     })
 
@@ -794,7 +828,7 @@ def visit_detail(request, pk):
                 # which status it's headed to: create_issue_tickets only
                 # ever touches issues that don't already have one.
                 if new_status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED):
-                    checklist_service.create_issue_tickets(visit)
+                    checklist_service.create_issue_tickets(visit, created_by=request.user)
                 messages.success(request, f'Status updated to {visit.get_status_display()}.')
 
         elif action == 'toggle_checklist_item':

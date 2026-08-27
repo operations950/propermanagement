@@ -407,6 +407,17 @@ class Ticket(models.Model):
         max_length=200, blank=True,
         help_text='Stable external id (e.g. reservation confirmation code, email message id).',
     )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='The staff user who was actually at the keyboard when this ticket was created, if '
+                   'any — set from the New Ticket form, a process-step task assignment, a promoted '
+                   'session line, or a staff-side visit status override that converted a reported '
+                   'issue. Orthogonal to `source` (which workflow produced the ticket): a fully '
+                   'automated origin (email/Quo/booking-triggered/recurring template/a cleaner\'s own '
+                   'token-link submit) has no human author at creation time, so this stays blank there '
+                   '— that absence IS the answer for "who created this," not a data gap to fill in '
+                   'later.',
+    )
 
     property = models.ForeignKey(
         Property, on_delete=models.PROTECT, related_name='tickets', null=True, blank=True,

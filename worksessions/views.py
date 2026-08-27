@@ -93,7 +93,9 @@ def session_detail(request, pk):
 
         if action == 'promote':
             line = get_object_or_404(SessionLine, pk=request.POST.get('line_id'), session=session)
-            ticket = lifecycle_service.promote_to_ticket(line, description=request.POST.get('description', ''))
+            ticket = lifecycle_service.promote_to_ticket(
+                line, description=request.POST.get('description', ''), created_by=request.user,
+            )
             if is_ajax:
                 return JsonResponse({
                     'success': True,

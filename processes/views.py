@@ -346,6 +346,7 @@ def process_run_step_assign_task(request, step_pk):
             title=step.label, description=f'Created from process step "{step.label}" ({run.process_template.name}).',
             property=run.property or (run.ticket.property if run.ticket else None),
             assigned_role=role if role in StaffProfile.Role.values else '', due_date=due_date,
+            created_by=request.user,
         )
         step.response = {'ticket_id': ticket.pk}
         step.save(update_fields=['response'])

@@ -16,13 +16,25 @@
                 <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
                     <input type="hidden" name="property" data-bubble-input value="">
                     <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property"></div>
-                    <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
-                    <div class="bubble-pool" data-bubble-pool>
-                        {% for p in properties %}
+                    <div class="bubble-pool" data-bubble-pool data-group-tier>
+                        <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
+                        {% for p in str_properties %}
+                        <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                        {% endfor %}
+                        {% if not str_properties %}<span class="small" style="color: var(--ink-muted);">No active short-term rental properties.</span>{% endif %}
+                        {% if other_properties %}
+                        <button type="button" class="bubble" data-no-autolock data-group-toggle="other-property-types">+ Other property types</button>
+                        {% endif %}
+                    </div>
+                    {% if other_properties %}
+                    <div class="bubble-pool mt-2" data-bubble-pool data-group="other-property-types" hidden>
+                        <button type="button" class="bubble" data-no-autolock data-back>← Short-term rentals</button>
+                        <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
+                        {% for p in other_properties %}
                         <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }} <span class="text-muted small">({{ p.get_property_type_display }})</span></button>
                         {% endfor %}
-                        {% if not properties %}<span class="small" style="color: var(--ink-muted);">No active properties.</span>{% endif %}
                     </div>
+                    {% endif %}
                 </div>
             </div>
 

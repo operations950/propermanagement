@@ -48,11 +48,16 @@ def reopen_session(session):
     return session
 
 
-def promote_to_ticket(line, *, description=''):
+def promote_to_ticket(line, *, description='', created_by=None):
     """A line that went wrong becomes a real Ticket, carrying the line's
     property (if it has one) — mirrors onsite's VisitIssue -> Ticket bridge
     on submit. Idempotent: calling this again on an already-promoted line
-    just returns the existing ticket rather than creating a second one."""
+    just returns the existing ticket rather than creating a second one.
+
+    created_by is the staff user who clicked Promote, when there is one —
+    source stays SESSION either way (that's the workflow this came from);
+    created_by is the separate, orthogonal "which human was at the
+    keyboard" question."""
     from tickets.models import Ticket
 
     if line.promoted_ticket_id:
@@ -66,6 +71,7 @@ def promote_to_ticket(line, *, description=''):
         assigned_role=session.department,
         assigned_staff=session.owner if session.owner_id else None,
         source=Ticket.Source.SESSION,
+        created_by=created_by,
     )
     line.promoted_ticket = ticket
     line.save(update_fields=['promoted_ticket'])

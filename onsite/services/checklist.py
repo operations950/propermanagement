@@ -276,7 +276,7 @@ def submit_visit(visit):
     return visit
 
 
-def create_issue_tickets(visit):
+def create_issue_tickets(visit, created_by=None):
     """Each VisitIssue becomes a real Ticket — the bridge into the
     existing ticket system (see ONSITE_DESIGN.md). Only issues that don't
     already have one are converted, so calling this more than once (a
@@ -288,7 +288,12 @@ def create_issue_tickets(visit):
     that path sets visit.status directly rather than going through
     submit_visit() above, and issue->ticket conversion was silently
     getting skipped whenever staff pushed a visit to Submitted/Verified by
-    hand instead of the cleaner tapping Submit on their own link."""
+    hand instead of the cleaner tapping Submit on their own link.
+
+    created_by stays None from the cleaner's own token-link submit
+    (anonymous, no Django auth session at all) and is only ever passed
+    from visit_detail's manual override, where a real logged-in staff
+    user made the call."""
     from tickets.models import StaffProfile, Ticket
 
     for issue in visit.issues.filter(created_ticket__isnull=True):
@@ -298,6 +303,7 @@ def create_issue_tickets(visit):
             property=visit.property,
             assigned_role=StaffProfile.Role.MAINTENANCE,
             source=Ticket.Source.ONSITE,
+            created_by=created_by,
         )
         for media in issue.media.all():
             ticket.attachments.create(file=media.file)

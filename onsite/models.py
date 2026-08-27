@@ -696,6 +696,16 @@ class VisitRule(models.Model):
             return f'{self.interval_days} day{"s" if self.interval_days != 1 else ""}'
         return f'{self.interval_months} month{"s" if self.interval_months != 1 else ""}'
 
+    def interval_value(self):
+        """The plain number to pre-fill the "Every [N] [weeks/months]" edit
+        form with — interval_days / 7 when day-based (it's only ever set
+        as a whole number of weeks in the first place), otherwise
+        interval_months. Paired with interval_unit() below."""
+        return self.interval_days // 7 if self.interval_days else self.interval_months
+
+    def interval_unit(self):
+        return 'weeks' if self.interval_days else 'months'
+
     def __str__(self):
         target = f'{self.property} — {self.unit.label}' if self.unit_id else str(self.property)
         return f'{target} — {self.visit_type} every {self.cadence_display()}'

@@ -19,12 +19,24 @@
                     <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
                         <input type="hidden" name="property" data-bubble-input value="">
                         <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a property"></div>
-                        <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
-                        <div class="bubble-pool" data-bubble-pool>
-                            {% for p in properties %}
+                        <div class="bubble-pool" data-bubble-pool data-group-tier>
+                            <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
+                            {% for p in str_properties %}
+                            <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }}</button>
+                            {% endfor %}
+                            {% if other_properties %}
+                            <button type="button" class="bubble" data-no-autolock data-group-toggle="other-property-types">+ Other property types</button>
+                            {% endif %}
+                        </div>
+                        {% if other_properties %}
+                        <div class="bubble-pool mt-2" data-bubble-pool data-group="other-property-types" hidden>
+                            <button type="button" class="bubble" data-no-autolock data-back>← Short-term rentals</button>
+                            <input type="text" class="form-control form-control-sm bubble-filter mb-2" placeholder="Type to narrow…" data-bubble-filter>
+                            {% for p in other_properties %}
                             <button type="button" class="bubble" data-value="{{ p.pk }}" data-label="{{ p.name }}">{{ p.name }} <span class="text-muted small">({{ p.get_property_type_display }})</span></button>
                             {% endfor %}
                         </div>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="col-md-4" id="rule-unit-picker-wrap" hidden>
@@ -107,7 +119,7 @@
                         <td class="small">{% if rule.unit %}<span class="badge rounded-pill bg-light text-dark border">{{ rule.unit.label }}</span>{% else %}<span style="color: var(--ink-muted);">— whole property —</span>{% endif %}</td>
                         <td class="small">{{ rule.visit_type.name }}</td>
                         <td class="small">{{ rule.cadence_display }}</td>
-                        <td class="small">{{ rule.default_assignee.user.get_full_name|default:rule.default_assignee.user.username|default:"Unassigned" }}</td>
+                        <td class="small">{% if rule.default_assignee %}{{ rule.default_assignee.user.get_full_name|default:rule.default_assignee.user.username }}{% else %}Unassigned{% endif %}</td>
                         <td class="small">{{ rule.last_generated_at|default:"Never" }}</td>
                         <td class="small">
                             {% if rule.is_active %}
@@ -117,6 +129,7 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
+                            <button class="btn btn-link btn-sm p-0 me-2" type="button" data-bs-toggle="collapse" data-bs-target="#edit-rule-{{ rule.pk }}"><i data-lucide="pencil" class="icon"></i></button>
                             <form method="post" class="d-inline">
                                 {% csrf_token %}
                                 <input type="hidden" name="action" value="toggle_active">
@@ -128,6 +141,35 @@
                                 <input type="hidden" name="action" value="delete_rule">
                                 <input type="hidden" name="rule_id" value="{{ rule.pk }}">
                                 <button class="btn btn-outline-danger btn-sm" type="submit"><i data-lucide="trash-2" class="icon"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr class="collapse" id="edit-rule-{{ rule.pk }}">
+                        <td colspan="8">
+                            <form method="post" class="d-flex flex-wrap gap-2 align-items-end">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="update_rule">
+                                <input type="hidden" name="rule_id" value="{{ rule.pk }}">
+                                <div>
+                                    <label class="form-label small text-muted mb-1">Every</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" name="interval_value" class="form-control" min="1" style="max-width: 80px;" value="{{ rule.interval_value }}">
+                                        <select name="interval_unit" class="form-select">
+                                            <option value="months" {% if rule.interval_unit == 'months' %}selected{% endif %}>month(s)</option>
+                                            <option value="weeks" {% if rule.interval_unit == 'weeks' %}selected{% endif %}>week(s)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-muted mb-1">Default assignee</label>
+                                    <select name="default_assignee" class="form-select form-select-sm">
+                                        <option value="">Unassigned</option>
+                                        {% for sp in staff_options %}
+                                        <option value="staff-{{ sp.pk }}" {% if rule.default_assignee_id == sp.pk %}selected{% endif %}>{{ sp.user.get_full_name|default:sp.user.username }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
                             </form>
                         </td>
                     </tr>

@@ -1474,6 +1474,7 @@ def ticket_create(request):
         if not phone_error and form.is_valid():
             ticket = form.save(commit=False)
             ticket.source = Ticket.Source.MANUAL
+            ticket.created_by = request.user
             raw_due_date = form.cleaned_data.get('due_date')
             # due_date is a plain (day-only) DateField on the form — combine
             # to a timezone-aware midnight explicitly rather than relying on

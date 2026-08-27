@@ -551,7 +551,11 @@
     input.addEventListener('input', function () {
       const q = input.value.trim().toLowerCase();
       pool.querySelectorAll('.bubble').forEach(function (b) {
-        if (b.hasAttribute('data-back')) return; // always reachable, never a search match
+        // always reachable, never a search match — neither has a real
+        // data-label to filter against (data-group-toggle bubbles like
+        // "+ Other property types" would throw on the .toLowerCase()
+        // below without this guard, same reason data-back is excluded).
+        if (b.hasAttribute('data-back') || b.hasAttribute('data-group-toggle')) return;
         b.hidden = Boolean(q) && b.dataset.label.toLowerCase().indexOf(q) === -1;
       });
     });
