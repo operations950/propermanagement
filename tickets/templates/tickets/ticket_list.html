@@ -72,7 +72,10 @@
         fetch('{% url "ticket_list" %}?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })
-            .then(function (resp) { return resp.json(); })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('bad response');
+                return resp.json();
+            })
             .then(function (data) {
                 desktopTable.innerHTML = data.desktop;
                 mobileCards.innerHTML = data.mobile;
@@ -88,7 +91,8 @@
                 if (window.RowEdit) window.RowEdit.init();
                 if (window.BubblePicker) window.BubblePicker.init();
                 history.replaceState(null, '', '?' + params.toString());
-            });
+            })
+            .catch(function () { console.error('Ticket search failed to load.'); });
     }
 
     input.addEventListener('input', function () {

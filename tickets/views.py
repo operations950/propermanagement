@@ -1044,7 +1044,15 @@ def ticket_quick_edit(request, pk):
         if ticket.status == Ticket.Status.OPEN and (ticket.assigned_staff_id or ticket.assigned_contact_id):
             ticket.status = Ticket.Status.ASSIGNED
 
-        ticket.full_clean()
+        # validate_constraints=False: ticket_exactly_one_assignee is allowed
+        # to be transiently violated right here — clearing the assignee down
+        # to "Unassigned" via this row-edit is a normal, supported action,
+        # and Ticket.save() (see its own comment) guarantees a real assignee
+        # is back in place via the auto-assign fallback before the row
+        # actually reaches the DB. Validating the constraint against this
+        # in-memory object BEFORE save() gets that chance would reject a
+        # perfectly normal clear-the-assignee edit.
+        ticket.full_clean(validate_constraints=False)
         ticket.save()
         messages.success(request, 'Ticket updated.')
     return _list_redirect(request)
@@ -1305,7 +1313,6 @@ def ticket_contractor_thread_refresh(request, pk):
     return render(request, 'tickets/_contractor_thread_entries.html', thread)
 
 
-@login_required
 def _safe_back_url(request, exclude_path=None, fallback_view='ticket_list'):
     """Wherever the browser actually navigated from (dashboard, a filtered
     ticket list, a property page, the pending screen, ...), so the ticket
@@ -1325,6 +1332,7 @@ def _safe_back_url(request, exclude_path=None, fallback_view='ticket_list'):
     return referer
 
 
+@login_required
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
         Ticket.objects.select_related(
@@ -1912,7 +1920,11 @@ def ticket_reassign(request, pk):
             ticket.assigned_role = form.cleaned_data['assigned_role']
             if ticket.status == Ticket.Status.OPEN:
                 ticket.status = Ticket.Status.ASSIGNED
-            ticket.full_clean()
+            # See ticket_quick_edit's matching comment — leaving a ticket
+            # unassigned here is a normal, supported action; save()'s
+            # auto-assign fallback (not this pre-save validation) is what's
+            # actually meant to guarantee ticket_exactly_one_assignee.
+            ticket.full_clean(validate_constraints=False)
             ticket.save()
             messages.success(request, 'Ticket reassigned.')
         else:
@@ -1980,7 +1992,12 @@ def ticket_assign_contractor(request, pk):
             ticket.assigned_contact = new_contact
             if new_contact and ticket.status == Ticket.Status.OPEN:
                 ticket.status = Ticket.Status.ASSIGNED
-            ticket.full_clean()
+            # See ticket_quick_edit's matching comment — clearing the
+            # contractor down to "Unassigned" here is a normal, supported
+            # action; save()'s auto-assign fallback is what's actually
+            # meant to guarantee ticket_exactly_one_assignee, not this
+            # pre-save validation.
+            ticket.full_clean(validate_constraints=False)
             ticket.save()
             messages.success(request, 'Contractor updated.')
         elif not phone_error:

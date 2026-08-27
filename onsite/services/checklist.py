@@ -306,6 +306,10 @@ def create_issue_tickets(visit, created_by=None):
             created_by=created_by,
         )
         for media in issue.media.all():
-            ticket.attachments.create(file=media.file)
+            # visible_to_vendor=True: a photo of the reported issue itself
+            # (e.g. what's actually broken) is exactly what a vendor needs
+            # to see on the completion link to do the job — unlike the
+            # Documents card, this isn't an internal-only attachment.
+            ticket.attachments.create(file=media.file, visible_to_vendor=True)
         issue.created_ticket = ticket
         issue.save(update_fields=['created_ticket'])

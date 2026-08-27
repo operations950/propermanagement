@@ -88,7 +88,10 @@
                     body: formData,
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 })
-                    .then(function (resp) { return resp.json(); })
+                    .then(function (resp) {
+                        if (!resp.ok) throw new Error('bad response');
+                        return resp.json();
+                    })
                     .then(function (data) {
                         if (!data.success) {
                             if (data.error) alert(data.error);
@@ -107,7 +110,8 @@
                         actions.style.color = 'var(--status-good)';
                         actions.classList.add('d-flex', 'align-items-center', 'gap-1');
                         if (window.lucide) lucide.createIcons();
-                    });
+                    })
+                    .catch(function () { alert("Couldn't close this — try again."); });
             });
         });
     });
