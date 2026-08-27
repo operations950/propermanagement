@@ -1,5 +1,4 @@
 import calendar as calendar_module
-import json
 import logging
 import traceback
 from datetime import date, datetime, timedelta
@@ -17,6 +16,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
+from core.json_utils import dumps_for_script
 from core.models import Contact, Property, StaffProfile, Unit
 from core.views import _is_admin, _parse_decimal
 from supplies import services as supply_services
@@ -280,7 +280,7 @@ def _units_by_property_json():
     grouped = {}
     for unit in Unit.objects.filter(is_active=True).select_related('property').order_by('label'):
         grouped.setdefault(str(unit.property_id), []).append({'id': unit.pk, 'label': unit.label})
-    return json.dumps(grouped)
+    return dumps_for_script(grouped)
 
 
 def _create_import_batch(user, source, uploaded_file, property=None):

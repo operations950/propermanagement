@@ -843,14 +843,19 @@ def property_detail(request, pk):
         elif action == 'add_document':
             name = request.POST.get('name', '').strip()
             file = request.FILES.get('file')
-            if name and file:
+            if not (name and file):
+                messages.error(request, 'A name and a file are both required.')
+            elif file.content_type not in django_settings.PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES:
+                messages.error(request, 'That file type isn\'t allowed — photos, PDFs, Word, or Excel files only.')
+            elif file.size > django_settings.PROCESS_ATTACHMENT_MAX_BYTES:
+                max_mb = django_settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
+                messages.error(request, f'File is too large (max {max_mb}MB).')
+            else:
                 PropertyDocument.objects.create(
                     property=prop, name=name, category=request.POST.get('category', '').strip(),
                     file=file, uploaded_by=request.user,
                 )
                 messages.success(request, 'Document added.')
-            else:
-                messages.error(request, 'A name and a file are both required.')
         elif action == 'delete_document':
             PropertyDocument.objects.filter(pk=request.POST.get('document_id'), property=prop).delete()
             messages.success(request, 'Removed.')
@@ -1294,11 +1299,16 @@ def contact_edit(request, pk):
         if action == 'add_document':
             name = request.POST.get('name', '').strip()
             file = request.FILES.get('file')
-            if name and file:
+            if not (name and file):
+                messages.error(request, 'A name and a file are both required.')
+            elif file.content_type not in django_settings.PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES:
+                messages.error(request, 'That file type isn\'t allowed — photos, PDFs, Word, or Excel files only.')
+            elif file.size > django_settings.PROCESS_ATTACHMENT_MAX_BYTES:
+                max_mb = django_settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
+                messages.error(request, f'File is too large (max {max_mb}MB).')
+            else:
                 ContactDocument.objects.create(contact=contact, name=name, file=file, uploaded_by=request.user)
                 messages.success(request, 'Document added.')
-            else:
-                messages.error(request, 'A name and a file are both required.')
             return redirect('contact_edit', pk=contact.pk)
         elif action == 'delete_document':
             ContactDocument.objects.filter(pk=request.POST.get('document_id'), contact=contact).delete()

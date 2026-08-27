@@ -6,6 +6,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from core.models import Contact, Property, StaffProfile
 from tickets.models import Ticket
@@ -235,7 +236,15 @@ def process_run_attach(request):
             )
         messages.success(request, f'Attached "{template.name}".')
     if run is None:
-        return redirect(request.META.get('HTTP_REFERER') or 'dashboard')
+        # Same open-redirect guard as tickets/views.py::_safe_back_url —
+        # HTTP_REFERER is attacker-controlled (a form on any external page
+        # can make a victim's browser send whatever Referer it likes to
+        # this endpoint), so it must be validated to stay on-site before
+        # ever being trusted as a redirect target.
+        referer = request.META.get('HTTP_REFERER', '')
+        if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}):
+            return redirect(referer)
+        return redirect('dashboard')
     return _run_redirect(run)
 
 

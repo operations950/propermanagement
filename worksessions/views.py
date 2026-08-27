@@ -132,13 +132,26 @@ def session_detail(request, pk):
 
 @login_required
 def session_template_list(request):
-    templates = SessionTemplate.objects.select_related('owner__user').order_by('name')
+    templates = list(SessionTemplate.objects.select_related('owner__user').order_by('name'))
+
+    # One query for every template's recent sessions instead of one query
+    # per template (was a real N+1 — this page lists every template).
+    # Fetch-once-then-group-in-Python, same shape (and same reason —
+    # portability over a Postgres-only DISTINCT ON or a window-function
+    # subquery) as supplies/services.py::_attach_cart_state already uses
+    # for an identical "latest N per group" resolution.
+    recent_by_template = {}
+    sessions = Session.objects.filter(template_id__in=[t.pk for t in templates]).order_by('template_id', '-opens_at')
+    for session in sessions:
+        bucket = recent_by_template.setdefault(session.template_id, [])
+        if len(bucket) < 5:
+            bucket.append(session)
+
     rows = []
     for template in templates:
-        recent = list(template.sessions.order_by('-opens_at')[:5])
         rows.append({
             'template': template,
-            'recent_sessions': recent,
+            'recent_sessions': recent_by_template.get(template.pk, []),
             'next_occurrences': generation_service.preview_next_occurrences(template, count=1),
         })
     return render(request, 'sessions/session_template_list.html', {'rows': rows})

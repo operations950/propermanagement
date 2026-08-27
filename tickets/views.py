@@ -1,4 +1,3 @@
-import json
 import zlib
 from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta
@@ -19,6 +18,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
+from core.json_utils import dumps_for_script
 from core.models import (
     Contact, Property, PropertyAttribute, StaffProfile, Unit, group_vendors_by_trade, is_valid_phone,
     properties_by_type, property_dropdown_queryset,
@@ -1412,21 +1412,21 @@ def ticket_detail(request, pk):
         'contractor_ids': contact_pools['contractor_ids'],
         'additional_contacts': contact_pools['additional_contacts'],
         'additional_ids': contact_pools['additional_ids'],
-        'owner_contacts_json': json.dumps([
+        'owner_contacts_json': dumps_for_script([
             {'id': c.id, 'label': str(c), 'has_phone': bool(c.phone), 'has_email': bool(c.email)}
             for c in Contact.objects.filter(contact_type__in=[
                 Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER,
                 Contact.ContactType.ASSOCIATION_MEMBER, Contact.ContactType.TENANT,
             ])
         ]),
-        'contractor_search_json': json.dumps([
+        'contractor_search_json': dumps_for_script([
             {'id': c.id, 'label': str(c), 'has_phone': bool(c.phone), 'has_email': bool(c.email)}
             for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
         ]),
         # Additional contacts has no type restriction on who can be added —
         # search finds anyone, including a vendor or owner also tracked
         # elsewhere on the ticket.
-        'additional_contacts_json': json.dumps([
+        'additional_contacts_json': dumps_for_script([
             {'id': c.id, 'label': str(c), 'has_phone': bool(c.phone), 'has_email': bool(c.email)}
             for c in Contact.objects.all()
         ]),
@@ -1451,7 +1451,7 @@ def ticket_detail(request, pk):
             if v != Ticket.Status.COMPLETED or ticket.status == Ticket.Status.COMPLETED
         ],
         'properties_by_type': properties_by_type(),
-        'vendor_contacts_json': json.dumps([
+        'vendor_contacts_json': dumps_for_script([
             {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(contact_type=Contact.ContactType.VENDOR)
         ]),
         'selected_contractor_label': str(ticket.assigned_contact) if ticket.assigned_contact_id else '',
@@ -1571,8 +1571,8 @@ def ticket_create(request):
         'today': today.isoformat(),
         'due_date_presets': _due_date_presets(today),
         'properties_by_type': properties_by_type(),
-        'vendor_contacts_json': json.dumps(vendor_contacts),
-        'all_contacts_json': json.dumps(all_contacts),
+        'vendor_contacts_json': dumps_for_script(vendor_contacts),
+        'all_contacts_json': dumps_for_script(all_contacts),
         'selected_contractor_label': contact_label('assigned_contact'),
         'selected_reporter_label': contact_label('reporter_contact'),
         'units_by_property_json': _units_by_property_json(),
@@ -1589,7 +1589,7 @@ def _units_by_property_json():
     grouped = {}
     for unit in Unit.objects.filter(is_active=True).select_related('property').order_by('label'):
         grouped.setdefault(str(unit.property_id), []).append({'id': unit.pk, 'label': unit.label})
-    return json.dumps(grouped)
+    return dumps_for_script(grouped)
 
 
 def _attributes_by_category():
@@ -1607,7 +1607,7 @@ def _attributes_by_category():
 
 
 def _rule_target_contacts_json():
-    return json.dumps([
+    return dumps_for_script([
         {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(
             contact_type__in=[
                 Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER, Contact.ContactType.ASSOCIATION_MEMBER,
@@ -1874,11 +1874,16 @@ def ticket_template_detail(request, pk):
         if action == 'add_document':
             name = request.POST.get('name', '').strip()
             file = request.FILES.get('file')
-            if name and file:
+            if not (name and file):
+                messages.error(request, 'A name and a file are both required.')
+            elif file.content_type not in settings.PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES:
+                messages.error(request, 'That file type isn\'t allowed — photos, PDFs, Word, or Excel files only.')
+            elif file.size > settings.PROCESS_ATTACHMENT_MAX_BYTES:
+                max_mb = settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
+                messages.error(request, f'File is too large (max {max_mb}MB).')
+            else:
                 TicketTemplateDocument.objects.create(template=template, name=name, file=file, uploaded_by=request.user)
                 messages.success(request, 'Document added.')
-            else:
-                messages.error(request, 'A name and a file are both required.')
         elif action == 'delete_document':
             TicketTemplateDocument.objects.filter(pk=request.POST.get('document_id'), template=template).delete()
             messages.success(request, 'Removed.')

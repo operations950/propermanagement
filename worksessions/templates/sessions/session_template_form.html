@@ -186,6 +186,21 @@
         applyLineSource(lineSourcePicker.querySelector('[data-bubble-input]').value || 'static');
     }
 
+    function escapeHtml(s) {
+        // data.line_names/o.label come straight from Property.name/
+        // Unit.label or the raw static_lines_text textarea — all
+        // staff-enterable free text — and this whole function builds its
+        // result via raw string concatenation into innerHTML, unlike
+        // every other .innerHTML assignment in the app (which uses
+        // Django's auto-escaping render_to_string output). Escape before
+        // interpolating so a property/unit/line named e.g.
+        // "<img src=x onerror=...>" renders as inert text instead of
+        // executing.
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+    }
+
     function runPreview() {
         var fd = new FormData(form);
         fetch('{% url "session_template_preview" %}', {method: 'POST', body: fd})
@@ -194,16 +209,16 @@
                 var html = '';
                 if (data.occurrences && data.occurrences.length) {
                     html += '<div class="small fw-semibold mb-1">Next occurrences</div><ul class="list-unstyled small mb-3">';
-                    data.occurrences.forEach(function (o) { html += '<li>' + o.label + ' <span style="color: var(--ink-muted);">(' + o.date + ')</span></li>'; });
+                    data.occurrences.forEach(function (o) { html += '<li>' + escapeHtml(o.label) + ' <span style="color: var(--ink-muted);">(' + escapeHtml(o.date) + ')</span></li>'; });
                     html += '</ul>';
                 } else {
                     html += '<div class="small mb-3" style="color: var(--ink-muted);">Set a frequency and first open date to see occurrences.</div>';
                 }
                 if (typeof data.line_count === 'number') {
-                    var firstDate = (data.occurrences && data.occurrences[0]) ? data.occurrences[0].label : 'the first occurrence';
+                    var firstDate = (data.occurrences && data.occurrences[0]) ? escapeHtml(data.occurrences[0].label) : 'the first occurrence';
                     html += '<div class="small fw-semibold mb-1">This will open on ' + firstDate + ' with ' + data.line_count + ' line' + (data.line_count === 1 ? '' : 's') + '</div>';
                     if (data.line_names && data.line_names.length) {
-                        html += '<div class="small" style="color: var(--ink-muted);">' + data.line_names.join(', ') + (data.line_count > data.line_names.length ? ', &hellip;' : '') + '</div>';
+                        html += '<div class="small" style="color: var(--ink-muted);">' + data.line_names.map(escapeHtml).join(', ') + (data.line_count > data.line_names.length ? ', &hellip;' : '') + '</div>';
                     }
                 }
                 previewBody.innerHTML = html;
