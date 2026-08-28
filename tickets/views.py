@@ -1092,9 +1092,19 @@ def ticket_set_due_date(request, pk):
 def ticket_delete(request, pk):
     """Permanently removes a ticket — unlike a status change to Cancelled
     (which keeps the record for the audit trail), this is for genuinely
-    wrong/duplicate/junk entries staff want gone entirely."""
+    wrong/duplicate/junk entries staff want gone entirely. Admin-only,
+    matching onsite's visit_detail 'delete' action's identical "Only an
+    admin can delete a &lt;record&gt;" gate for the same class of permanent,
+    unrecoverable action — this one was missing it. Local import to avoid
+    a circular import (core.views already imports several names from this
+    module)."""
+    from core.views import _is_admin
+
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
+        if not _is_admin(request.user):
+            messages.error(request, 'Only an admin can delete a ticket.')
+            return redirect('ticket_detail', pk=ticket.pk)
         title = ticket.title
         ticket.delete()
         messages.success(request, f'Permanently deleted "{title}".')

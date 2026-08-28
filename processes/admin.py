@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from core.admin_utils import mask_secret
+
 from .models import (
     ProcessAttachment,
     ProcessRun,
@@ -49,5 +51,14 @@ class ProcessAttachmentAdmin(admin.ModelAdmin):
 
 @admin.register(ProcessRunExternalAccess)
 class ProcessRunExternalAccessAdmin(admin.ModelAdmin):
-    list_display = ['run', 'token', 'token_expires_at', 'external_contact', 'created_at']
-    readonly_fields = ['token']
+    # token is the bearer credential for this run's public, unauthenticated
+    # access link — masked in both the list and the change form rather
+    # than shown in full (list_display previously rendered it in the raw,
+    # even more exposed than the change-page-only fields fixed alongside
+    # this one in core/intake/tickets' admin.py).
+    list_display = ['run', 'token_masked', 'token_expires_at', 'external_contact', 'created_at']
+    readonly_fields = ['token_masked']
+
+    @admin.display(description='Token')
+    def token_masked(self, obj):
+        return mask_secret(obj.token)

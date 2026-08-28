@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, login as auth_login
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, ProtectedError, Q
 from django.db.models.functions import Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -904,8 +904,19 @@ def property_detail(request, pk):
             unit.save()
             messages.success(request, 'Unit updated.')
         elif action == 'delete_unit':
-            Unit.objects.filter(pk=request.POST.get('unit_id'), property=prop).delete()
-            messages.success(request, 'Unit removed.')
+            # Ticket.unit is on_delete=PROTECT (tickets/models.py) — a unit
+            # still referenced by any ticket raises ProtectedError here,
+            # uncaught before this fix, producing a bare 500 instead of a
+            # normal error message.
+            try:
+                Unit.objects.filter(pk=request.POST.get('unit_id'), property=prop).delete()
+                messages.success(request, 'Unit removed.')
+            except ProtectedError:
+                messages.error(
+                    request,
+                    'Can\'t remove this unit — a ticket is still assigned to it. Reassign or clear that '
+                    'ticket\'s unit first.',
+                )
         elif action == 'add_supply_override':
             # An exception to the portfolio-wide standard list, scoped to
             # this property (unit=None) or one specific unit — see

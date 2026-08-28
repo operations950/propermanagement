@@ -430,7 +430,7 @@
                     </div>
                     <div class="d-flex gap-1 flex-shrink-0">
                         <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#edit-unit-{{ unit.pk }}"><i data-lucide="pencil" class="icon"></i></button>
-                        <form method="post" onsubmit="return confirm('Remove unit &quot;{{ unit.label|escapejs }}&quot;?');">
+                        <form method="post" onsubmit="return confirm('Remove unit &quot;{{ unit.label|escapejs }}&quot;? This also permanently deletes any supply-level readings taken for this unit. A unit still referenced by a ticket can\'t be removed until that ticket is reassigned.');">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="delete_unit">
                             <input type="hidden" name="unit_id" value="{{ unit.pk }}">

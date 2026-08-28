@@ -44,7 +44,7 @@ either call site).
             <td class="text-nowrap">
                 <button type="button" class="btn btn-link btn-sm p-0 me-2" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
                 <form method="post" action="{% url 'ticket_delete' t.pk %}" class="d-inline"
-                      onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
+                      onsubmit="return confirm('This will permanently delete this ticket AND all of its attachments, notes, and history — none of it can be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
                     {% csrf_token %}
                     <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
                     <button class="btn btn-link btn-sm text-danger p-0" type="submit" title="Delete"><i data-lucide="trash-2" class="icon"></i></button>

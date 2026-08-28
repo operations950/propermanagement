@@ -1247,6 +1247,18 @@ def visit_public_signature(request, token):
 
     file = request.FILES.get('file')
     if file:
+        # Same VENDOR_UPLOAD_* limits/allow-list as upload_item_photo/
+        # add_issue just above — this endpoint had the same "never had any
+        # size/type check at all" gap they were already fixed for, just
+        # missed at the time since it's a separate view. signature_image
+        # is a plain ImageField with no DocumentStorage validation and
+        # Model.save() doesn't run full_clean(), so nothing else in the
+        # stack would have caught an oversized or wrong-type upload here.
+        if file.content_type not in settings.VENDOR_UPLOAD_ALLOWED_CONTENT_TYPES:
+            return HttpResponse(f'Unsupported file type ({file.content_type or "unknown"}).', status=400)
+        if file.size > settings.VENDOR_UPLOAD_MAX_BYTES:
+            max_mb = settings.VENDOR_UPLOAD_MAX_BYTES // (1024 * 1024)
+            return HttpResponse(f'File is too large (max {max_mb}MB).', status=400)
         visit.signature_image = file
         visit.signed_name = request.POST.get('signed_name', '').strip()
         visit.signed_at = timezone.now()

@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from .admin_utils import mask_secret
 from .models import (
     Contact, ContactImportCandidate, GoogleCalendarToken, Property, PropertyAttribute,
     PropertyAttributeAssignment, PropertyListingName, PropertySystemLocation, StaffProfile, Unit,
@@ -84,4 +85,21 @@ class StaffProfileAdmin(admin.ModelAdmin):
 @admin.register(GoogleCalendarToken)
 class GoogleCalendarTokenAdmin(admin.ModelAdmin):
     list_display = ['staff', 'google_email', 'connected_at', 'updated_at']
-    readonly_fields = ['refresh_token', 'access_token', 'access_token_expires_at', 'connected_at', 'updated_at']
+    # exclude, not just readonly_fields: readonly_fields alone only swaps a
+    # field's edit widget for read-only text — the real refresh_token/
+    # access_token model fields would still otherwise render in the form
+    # (as plain EDITABLE text inputs, arguably worse) since they're not
+    # otherwise excluded. The masked *_masked methods below are the only
+    # representation of these two fields shown in admin now.
+    exclude = ['refresh_token', 'access_token']
+    readonly_fields = [
+        'refresh_token_masked', 'access_token_masked', 'access_token_expires_at', 'connected_at', 'updated_at',
+    ]
+
+    @admin.display(description='Refresh token')
+    def refresh_token_masked(self, obj):
+        return mask_secret(obj.refresh_token)
+
+    @admin.display(description='Access token')
+    def access_token_masked(self, obj):
+        return mask_secret(obj.access_token)

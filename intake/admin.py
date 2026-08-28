@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from core.admin_utils import mask_secret
+
 from .models import GmailInboxToken, GmailThreadState, PollCursor, QuoMessage, QuoThreadState, Reservation
 
 
@@ -32,7 +34,21 @@ class QuoMessageAdmin(admin.ModelAdmin):
 @admin.register(GmailInboxToken)
 class GmailInboxTokenAdmin(admin.ModelAdmin):
     list_display = ['mailbox_email', 'is_send_from', 'connected_at', 'updated_at']
-    readonly_fields = ['refresh_token', 'access_token', 'access_token_expires_at', 'connected_at', 'updated_at']
+    # See core.admin.GoogleCalendarTokenAdmin's matching comment — exclude
+    # is required alongside readonly_fields, not just readonly_fields
+    # alone, or the real token fields still render as plain editable text.
+    exclude = ['refresh_token', 'access_token']
+    readonly_fields = [
+        'refresh_token_masked', 'access_token_masked', 'access_token_expires_at', 'connected_at', 'updated_at',
+    ]
+
+    @admin.display(description='Refresh token')
+    def refresh_token_masked(self, obj):
+        return mask_secret(obj.refresh_token)
+
+    @admin.display(description='Access token')
+    def access_token_masked(self, obj):
+        return mask_secret(obj.access_token)
 
 
 @admin.register(GmailThreadState)

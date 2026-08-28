@@ -135,8 +135,17 @@ class Command(BaseCommand):
         profiles = {}
         created_creds = []
         for username, display_name in STAFF.items():
+            # is_staff was previously (and unintentionally) set True here —
+            # the app's real staff-creation path (core/views.py::
+            # staff_create, User.objects.create_user with no is_staff kwarg)
+            # never grants Django-admin login access, and this one-time
+            # backfill command shouldn't either. Fixed going forward; any
+            # already-created account from a prior run of this command
+            # needs is_staff corrected directly (Django admin's own user
+            # list, or a one-off shell command) since this fix can't reach
+            # back and change data that already exists.
             user, created = User.objects.get_or_create(
-                username=username, defaults={'first_name': display_name, 'is_staff': True},
+                username=username, defaults={'first_name': display_name},
             )
             if created:
                 password = secrets.token_urlsafe(9)

@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib import admin
 
+from core.admin_utils import mask_secret
 from core.models import Property
 
 from .models import (
@@ -47,8 +48,22 @@ class TicketAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'priority', 'source', 'property', 'assigned_role', 'assignment_source']
     search_fields = ['title', 'description', 'raw_context', 'source_reference']
-    readonly_fields = ['completion_token', 'completion_token_expires_at', 'created_at', 'updated_at']
+    # completion_token is the bearer token for the unauthenticated public
+    # vendor completion link (/vendor/t/<token>/, grants mark-complete +
+    # photo upload on this ticket) — masked here rather than shown in
+    # full the way readonly_fields normally would, same as the OAuth
+    # token fields in core/intake's admin.py. No `exclude` needed for
+    # this one specifically: completion_token is editable=False on the
+    # model itself, so Django's admin never auto-includes it as an
+    # editable widget in the first place — only listing it in
+    # readonly_fields makes it visible at all, and it's now the masked
+    # method instead of the raw field.
+    readonly_fields = ['completion_token_masked', 'completion_token_expires_at', 'created_at', 'updated_at']
     inlines = [TicketContactInline, TicketAttachmentInline, TicketChecklistItemInline]
+
+    @admin.display(description='Completion token')
+    def completion_token_masked(self, obj):
+        return mask_secret(obj.completion_token)
 
 
 @admin.register(DepartmentDefaultAssignee)

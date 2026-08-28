@@ -32,7 +32,7 @@ tickets, now.
             </div>
 
             <form method="post" action="{% url 'ticket_delete' t.pk %}" class="mt-2"
-                  onsubmit="return confirm('This will be permanently deleted and cannot be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
+                  onsubmit="return confirm('This will permanently delete this ticket AND all of its attachments, notes, and history — none of it can be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
                 {% csrf_token %}
                 <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
                 <button class="btn btn-link btn-sm text-danger p-0" type="submit">Delete</button>
