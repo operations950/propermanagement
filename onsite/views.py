@@ -1515,7 +1515,22 @@ def checklist_template_detail(request, type_id):
 
         return redirect('onsite_checklist_template_detail', type_id=visit_type.pk)
 
-    items = list(visit_type.standard_items.order_by('section', 'order'))
+    # order alone, NOT ('section', 'order') — see StandardChecklistItem.
+    # Meta.ordering's own comment: sorting by section name would alphabetize
+    # the sections (Bathrooms before Kitchen before... Final Walkthrough
+    # would jump ahead of Kitchen), scrambling the deliberate room-by-room
+    # flow the data is seeded in. Sections still come out grouped correctly
+    # because each section's rows are seeded as a contiguous order range —
+    # a single 'order' sort preserves both the grouping and the intended
+    # sequence, matching resolve_checklist()'s identical choice. Sorting by
+    # ('section', 'order') here (the previous bug) re-alphabetized the
+    # sections on this admin page specifically, so an item move's real
+    # effect (still correctly section-scoped) landed somewhere that didn't
+    # match this page's own scrambled display order, on top of visibly
+    # disagreeing with the real room-by-room order used everywhere else —
+    # read by whoever reported "reordering doesn't seem to work" as the
+    # feature being broken.
+    items = list(visit_type.standard_items.order_by('order'))
     sections = list(dict.fromkeys(item.section for item in items if item.section))
     return render(request, 'onsite/checklist_template_detail.html', {
         'visit_type': visit_type, 'items': items, 'sections': sections, 'is_admin': is_admin,
