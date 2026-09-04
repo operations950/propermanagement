@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -1400,7 +1400,13 @@ def cleaning_payments(request):
             bucket['total'] += amount
 
     cleaner_rows = sorted(by_staff.values(), key=lambda b: str(b['staff']))
-    recent_batches = CleaningPaymentBatch.objects.select_related('paid_by').prefetch_related('visits')[:15]
+    recent_batches = CleaningPaymentBatch.objects.select_related('paid_by').prefetch_related(
+        Prefetch(
+            'visits',
+            queryset=Visit.objects.select_related('property', 'unit', 'visit_type', 'assigned_staff__user')
+            .order_by('scheduled_date'),
+        ),
+    )[:15]
 
     return render(request, 'onsite/cleaning_payments.html', {
         'cleaner_rows': cleaner_rows, 'unpriced_count': unpriced_count,
