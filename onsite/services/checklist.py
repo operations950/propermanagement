@@ -3,6 +3,8 @@ checklist model" section for the full rationale — a property's checklist is
 never stored; it's computed from the standard reservoir plus that
 property's overrides/additions, and only materialized (copied) once, at
 Visit creation, into VisitChecklistItem rows."""
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
@@ -37,13 +39,54 @@ class VisitSubmitBlocked(ValidationError):
         self.missing_photo_item_ids = missing_photo_item_ids
 
 
+def _resolve_multiplier(property, unit, scales_by):
+    """The number a checklist item's per-unit `minutes` gets multiplied by
+    for one specific property/unit, based on its scales_by choice. Unit's
+    own value wins over the property's when set — the same fallback every
+    other per-unit override in this app already uses (access codes,
+    cleaning price). FLAT is always 1 (minutes apply once, regardless of
+    property size). A property/unit that hasn't had its bed/bathroom/sqft
+    count filled in yet resolves to 0, not a guessed default — this makes
+    an incomplete estimate honestly visible (a suspiciously low or zero
+    estimated_minutes) rather than fabricating a number that looks
+    trustworthy but isn't."""
+    ScalesBy = StandardChecklistItem.ScalesBy
+    if scales_by == ScalesBy.BEDROOMS:
+        value = unit.bedroom_count if unit and unit.bedroom_count is not None else property.bedroom_count
+        return value or 0
+    if scales_by == ScalesBy.BEDS:
+        value = unit.bed_count if unit and unit.bed_count is not None else property.bed_count
+        return value or 0
+    if scales_by == ScalesBy.BATHROOMS:
+        value = unit.bathroom_count if unit and unit.bathroom_count is not None else property.bathroom_count
+        return value if value is not None else Decimal('0')
+    if scales_by == ScalesBy.SQFT:
+        value = unit.square_footage if unit and unit.square_footage is not None else property.square_footage
+        return (Decimal(value) / Decimal('1000')) if value else Decimal('0')
+    return 1  # FLAT
+
+
+def _item_minutes(property, unit, minutes, scales_by):
+    """A checklist item's actual minutes for one specific visit — its raw
+    per-unit `minutes` times _resolve_multiplier(), rounded to a whole
+    minute for VisitChecklistItem.minutes (a PositiveIntegerField)."""
+    return int(round(minutes * _resolve_multiplier(property, unit, scales_by)))
+
+
 def resolve_checklist(property, visit_type):
     """Returns an ordered list of dicts describing what this property's
     checklist for this visit type looks like right now — the live,
     computed view (not yet tied to any particular Visit). Each dict has:
     source ('standard'/'property'), section, order, text, mandatory,
-    requires_photo, requires_note, is_new_unreviewed, and (for 'standard'
-    items) standard_item for the caller to look up its override.
+    requires_photo, requires_note, is_new_unreviewed, minutes, scales_by,
+    and (for 'standard' items) standard_item for the caller to look up its
+    override.
+
+    minutes/scales_by here are the item's own RAW, per-unit values — not
+    yet multiplied by any property/unit's bed/bathroom/sqft count, since
+    this function only knows the property, not which specific Unit (if
+    any) a given Visit is for. create_visit() below is what actually
+    applies _resolve_multiplier() once it knows both.
 
     Resolution order: active StandardChecklistItems whose required_attributes
     are all present on the property, minus anything hidden by a
@@ -84,6 +127,8 @@ def resolve_checklist(property, visit_type):
             'requires_photo': item.requires_photo,
             'requires_note': item.requires_note,
             'is_new_unreviewed': reviewed_at is None or item.created_at > reviewed_at,
+            'minutes': item.minutes,
+            'scales_by': item.scales_by,
         })
 
     # Property-specific additions always sort after every standard item —
@@ -103,6 +148,8 @@ def resolve_checklist(property, visit_type):
             'requires_photo': item.requires_photo,
             'requires_note': False,
             'is_new_unreviewed': False,
+            'minutes': item.minutes,
+            'scales_by': item.scales_by,
         })
 
     # Sorted by 'order' alone, NOT (section, order) — see
@@ -131,7 +178,11 @@ def _deep_clean_checklist_items(visit, property, order_offset):
     under one flat 'Deep Clean Extras' section regardless of whatever
     section the addon's own StandardChecklistItems are tagged with — this
     is one extra bucket layered onto a normal turnover, not a second
-    room-by-room breakdown, so it doesn't need its own sub-sections.
+    room-by-room breakdown, so it doesn't need its own sub-sections. Each
+    item's own minutes/scales_by is resolved against visit.unit/property
+    exactly like a turnover item — a deep clean now prices from its own
+    checklist time (see Visit.effective_price()) rather than the old flat
+    percentage-of-cleaning_fee markup.
 
     order_offset MUST push every one of these past every item already on
     (or about to be added to) the visit — resolve_checklist(addon_type)
@@ -156,6 +207,7 @@ def _deep_clean_checklist_items(visit, property, order_offset):
             requires_photo=row['requires_photo'],
             requires_note=row['requires_note'],
             is_new_unreviewed=row['is_new_unreviewed'],
+            minutes=_item_minutes(property, visit.unit, row['minutes'], row['scales_by']),
         )
         for row in resolved
     ]
@@ -184,6 +236,7 @@ def create_visit(property, visit_type, is_deep_clean=False, **visit_kwargs):
             requires_photo=row['requires_photo'],
             requires_note=row['requires_note'],
             is_new_unreviewed=row['is_new_unreviewed'],
+            minutes=_item_minutes(property, visit.unit, row['minutes'], row['scales_by']),
         )
         for row in resolved
     ]

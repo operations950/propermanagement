@@ -57,6 +57,17 @@ def _parse_decimal(value):
         return None
 
 
+def _parse_int(value):
+    """Same "blank/non-numeric means leave this unset (None), not 0" rule
+    as _parse_decimal, for a plain (non-ModelForm) integer field POST
+    handler — e.g. a property's bed_count. A blank bed-count box shouldn't
+    quietly zero out a checklist item's per-bed time estimate."""
+    value = (value or '').strip()
+    if not value.isdigit():
+        return None
+    return int(value)
+
+
 def _is_admin(user):
     """True for a Django superuser OR a staff member flagged Company Admin
     from /admin-tools/ — the two used to be separate concepts (Company
@@ -805,8 +816,21 @@ def property_detail(request, pk):
                 setattr(prop, field, request.POST.get(field, '').strip())
             for time_field in ('default_check_in_time', 'default_check_out_time'):
                 setattr(prop, time_field, request.POST.get(time_field) or None)
-            prop.cleaning_fee = _parse_decimal(request.POST.get('cleaning_fee'))
-            prop.save(update_fields=fields + ['default_check_in_time', 'default_check_out_time', 'cleaning_fee'])
+            fields += ['default_check_in_time', 'default_check_out_time']
+            prop.bedroom_count = _parse_int(request.POST.get('bedroom_count'))
+            prop.bed_count = _parse_int(request.POST.get('bed_count'))
+            prop.bathroom_count = _parse_decimal(request.POST.get('bathroom_count'))
+            prop.square_footage = _parse_int(request.POST.get('square_footage'))
+            fields += ['bedroom_count', 'bed_count', 'bathroom_count', 'square_footage']
+            # turnover_price_override is admin-only, both to see and to set —
+            # a raw POST from a non-admin (bypassing the template's own
+            # {% if is_admin %} guard around the input) is silently ignored
+            # rather than erroring, same as every other admin-only field
+            # elsewhere in this app just doesn't touch the value at all.
+            if _is_admin(request.user):
+                prop.turnover_price_override = _parse_decimal(request.POST.get('turnover_price_override'))
+                fields.append('turnover_price_override')
+            prop.save(update_fields=fields)
             messages.success(request, 'Access info saved.')
         elif action == 'add_listing_name':
             platform = request.POST.get('platform')
@@ -886,11 +910,17 @@ def property_detail(request, pk):
             elif Unit.objects.filter(property=prop, label__iexact=label).exists():
                 messages.error(request, f'"{label}" is already a unit on this property.')
             else:
-                Unit.objects.create(
+                new_unit = Unit.objects.create(
                     property=prop, label=label, notes=request.POST.get('notes', '').strip(),
                     access_code=request.POST.get('access_code', '').strip(),
-                    cleaning_fee=_parse_decimal(request.POST.get('cleaning_fee')),
+                    bedroom_count=_parse_int(request.POST.get('bedroom_count')),
+                    bed_count=_parse_int(request.POST.get('bed_count')),
+                    bathroom_count=_parse_decimal(request.POST.get('bathroom_count')),
+                    square_footage=_parse_int(request.POST.get('square_footage')),
                 )
+                if _is_admin(request.user):
+                    new_unit.turnover_price_override = _parse_decimal(request.POST.get('turnover_price_override'))
+                    new_unit.save(update_fields=['turnover_price_override'])
                 messages.success(request, f'Added unit "{label}".')
         elif action == 'update_unit':
             unit = get_object_or_404(Unit, pk=request.POST.get('unit_id'), property=prop)
@@ -900,7 +930,12 @@ def property_detail(request, pk):
             unit.access_code = request.POST.get('access_code', '').strip()
             unit.notes = request.POST.get('notes', '').strip()
             unit.is_active = request.POST.get('is_active') == 'on'
-            unit.cleaning_fee = _parse_decimal(request.POST.get('cleaning_fee'))
+            unit.bedroom_count = _parse_int(request.POST.get('bedroom_count'))
+            unit.bed_count = _parse_int(request.POST.get('bed_count'))
+            unit.bathroom_count = _parse_decimal(request.POST.get('bathroom_count'))
+            unit.square_footage = _parse_int(request.POST.get('square_footage'))
+            if _is_admin(request.user):
+                unit.turnover_price_override = _parse_decimal(request.POST.get('turnover_price_override'))
             unit.save()
             messages.success(request, 'Unit updated.')
         elif action == 'delete_unit':
@@ -1090,6 +1125,7 @@ def property_detail(request, pk):
         'process_runs': prop.process_runs.select_related('process_template').prefetch_related('steps__attachments'),
         'attachable_process_templates': ProcessTemplate.objects.filter(is_active=True),
         'now': timezone.now(),
+        'is_admin': _is_admin(request.user),
     })
 
 

@@ -89,14 +89,33 @@ class Property(models.Model):
         null=True, blank=True,
         help_text='Same as check-in, for the checkout side of a turnover.',
     )
-    cleaning_fee = models.DecimalField(
+    # --- Cleaning size/pricing — replaces the old flat cleaning_fee model
+    # (removed). A cleaning's price is now built entirely from time: each
+    # on-site checklist item carries its own minutes and an optional
+    # multiplier (see onsite.StandardChecklistItem.ScalesBy), and these four
+    # counts are what that multiplier reads — "make all beds" x 12 min,
+    # multiplied by bed_count, for example. A specific Unit's own value
+    # overrides these when set (same fallback pattern as access codes
+    # below), for a multi-unit building where each unit's actual size
+    # differs. Primarily relevant to Short-Term Rentals but not restricted
+    # to them. Blank means this multiplier contributes nothing to any
+    # checklist item scaled by it — see onsite.Visit.estimated_minutes().
+    bedroom_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    bed_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    bathroom_count = models.DecimalField(
+        max_digits=3, decimal_places=1, null=True, blank=True,
+        help_text='Supports a half bath, e.g. 2.5.',
+    )
+    square_footage = models.PositiveIntegerField(null=True, blank=True)
+    turnover_price_override = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
-        help_text='What we pay ourselves for a standard internal-cleaner turnover here — not what '
-                   "the owner is billed. Used by the Cleaning Payments screen. Blank means unpriced; "
-                   'primarily relevant to Short-Term Rentals but not restricted to them. A specific '
-                   "Unit's own cleaning_fee overrides this when set. A deep-clean turnover's pay is "
-                   'a percentage of this, controlled centrally — see onsite.CleaningPricingSettings — '
-                   'not a separate per-property field.',
+        help_text='A negotiated flat price for a standard Turnover Clean at this property, replacing '
+                   'the checklist-computed time x rate estimate for that one visit type specifically '
+                   '(deep clean and other visit types are unaffected and still price from their own '
+                   "checklist time). The estimate itself is still computed and shown even when this "
+                   "is set — useful for checking whether the negotiated price still roughly matches "
+                   'how long the job actually takes. Admin-only: never shown to regular staff. A '
+                   "specific Unit's own value overrides this when set.",
     )
 
     class Meta:
@@ -208,12 +227,18 @@ class Unit(models.Model):
                    'codes (those cover the whole building). Shown to a cleaner on the on-site visit '
                    'link only once they tap "Get Code," which also marks the visit started.',
     )
-    cleaning_fee = models.DecimalField(
+    # Overrides the property's own value for this specific unit (e.g. a
+    # studio vs. a 3-bedroom under the same building) when set — blank
+    # means "use the property's value." See Property's matching fields for
+    # the full explanation of how these feed checklist time estimates.
+    bedroom_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    bed_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    bathroom_count = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    square_footage = models.PositiveIntegerField(null=True, blank=True)
+    turnover_price_override = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
-        help_text="Overrides the property's own cleaning_fee for this specific unit (e.g. a studio vs. "
-                   'a 3-bedroom under the same building) — blank means "use the property\'s price." '
-                   "A deep clean is a percentage of whichever of these applies, set centrally — see "
-                   'onsite.CleaningPricingSettings.',
+        help_text="Overrides the property's own turnover_price_override for this specific unit. "
+                   'Admin-only: never shown to regular staff.',
     )
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)

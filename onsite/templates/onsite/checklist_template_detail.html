@@ -71,6 +71,7 @@
                         {% if item.requires_photo %} · photo required{% endif %}
                         {% if item.requires_note %} · note required{% endif %}
                         {% if not item.is_active %} · inactive{% endif %}
+                        {% if item.minutes %} · {{ item.minutes }} min {{ item.get_scales_by_display|lower }}{% endif %}
                     </div>
                 </div>
                 {% if is_admin %}
@@ -112,6 +113,18 @@
                     <div class="col-sm-3">
                         <label class="form-label small text-muted mb-1">Section</label>
                         <input type="text" name="section" class="form-control form-control-sm" value="{{ item.section }}" list="sections-list" placeholder="e.g. Kitchen">
+                    </div>
+                    <div class="col-sm-2">
+                        <label class="form-label small text-muted mb-1">Minutes</label>
+                        <input type="number" step="1" min="0" name="minutes" class="form-control form-control-sm" value="{{ item.minutes }}">
+                    </div>
+                    <div class="col-sm-2">
+                        <label class="form-label small text-muted mb-1">Scales by</label>
+                        <select name="scales_by" class="form-select form-select-sm">
+                            {% for value, label in scales_by_choices %}
+                            <option value="{{ value }}" {% if item.scales_by == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="col-sm-4 d-flex gap-2 flex-wrap">
                         <div class="form-check">
@@ -163,6 +176,18 @@
             <div class="col-sm-3">
                 <label class="form-label small text-muted mb-1">Section</label>
                 <input type="text" name="section" class="form-control form-control-sm" list="sections-list" placeholder="e.g. Kitchen">
+            </div>
+            <div class="col-sm-2">
+                <label class="form-label small text-muted mb-1">Minutes</label>
+                <input type="number" step="1" min="0" name="minutes" class="form-control form-control-sm" value="0">
+            </div>
+            <div class="col-sm-2">
+                <label class="form-label small text-muted mb-1">Scales by</label>
+                <select name="scales_by" class="form-select form-select-sm">
+                    {% for value, label in scales_by_choices %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="col-sm-4 d-flex gap-2 flex-wrap">
                 <div class="form-check">

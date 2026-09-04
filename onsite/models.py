@@ -22,6 +22,14 @@ from django.utils.text import slugify
 from core.models import Contact, Property, PropertyAttribute, StaffProfile, Unit
 from core.storage import DocumentStorage
 
+# Visit.effective_price()'s turnover_price_override only applies to a real
+# Turnover Clean visit — this slug is the seeded, stable identifier for it
+# (see onsite/management/commands/seed_checklist_templates.py), same
+# lookup-by-slug idiom onsite/services/checklist.py's
+# DEEP_CLEAN_ADDON_SLUG already uses for the identical reason (a display
+# name can be renamed freely; the slug is what code keys off of).
+TURNOVER_VISIT_TYPE_SLUG = 'turnover'
+
 
 class VisitType(models.Model):
     """A kind of on-site work (turnover clean, deep clean, inspection) — a
@@ -69,7 +77,22 @@ class StandardChecklistItem(models.Model):
     """The reservoir for a VisitType — the living standard checklist. Never
     copied onto a property; see onsite/services/checklist.py for how a
     property's actual list is resolved from this plus its overrides/
-    additions."""
+    additions.
+
+    minutes/scales_by are how a visit's price gets built — see
+    Visit.estimated_minutes()/effective_price(): "make all beds" might be
+    12 minutes PER_BED, multiplied by the property/unit's own bed_count at
+    the moment a visit is created (and then frozen onto that visit's own
+    VisitChecklistItem.minutes, same as everything else about a snapshotted
+    checklist). FLAT means it doesn't scale — a fixed cost regardless of
+    property size (e.g. a final walkthrough)."""
+    class ScalesBy(models.TextChoices):
+        FLAT = 'flat', 'Flat (once per visit)'
+        BEDROOMS = 'bedrooms', 'Per bedroom'
+        BEDS = 'beds', 'Per bed'
+        BATHROOMS = 'bathrooms', 'Per bathroom'
+        SQFT = 'sqft', 'Per 1,000 sq ft'
+
     visit_type = models.ForeignKey(VisitType, on_delete=models.CASCADE, related_name='standard_items')
     section = models.CharField(max_length=100, blank=True, help_text='e.g. "Kitchen", "Bathrooms" — for grouping.')
     order = models.PositiveIntegerField(default=0)
@@ -77,6 +100,11 @@ class StandardChecklistItem(models.Model):
     mandatory = models.BooleanField(default=True)
     requires_photo = models.BooleanField(default=False)
     requires_note = models.BooleanField(default=False)
+    minutes = models.PositiveIntegerField(
+        default=0, help_text='How long this step takes, in minutes — per occurrence when scales_by is '
+                              'FLAT, or per bed/bedroom/bathroom/1,000 sq ft otherwise.',
+    )
+    scales_by = models.CharField(max_length=10, choices=ScalesBy.choices, default=ScalesBy.FLAT)
     required_attributes = models.ManyToManyField(
         PropertyAttribute, blank=True, related_name='onsite_checklist_items',
         help_text='This item only resolves at properties tagged with ALL of these attributes '
@@ -132,6 +160,13 @@ class PropertyChecklistItem(models.Model):
     mandatory = models.BooleanField(default=True)
     requires_photo = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
+    # Same meaning as StandardChecklistItem's matching fields — this item
+    # contributes to the visit's estimated time too, since it's just as
+    # real a checklist step, only property-specific instead of shared.
+    minutes = models.PositiveIntegerField(default=0)
+    scales_by = models.CharField(
+        max_length=10, choices=StandardChecklistItem.ScalesBy.choices, default=StandardChecklistItem.ScalesBy.FLAT,
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -319,25 +354,32 @@ class Booking(models.Model):
 
 class CleaningPricingSettings(models.Model):
     """Singleton (always exactly one row — see get()) holding the one
-    number that controls deep-clean pricing across the whole portfolio: a
-    deep clean pays this percent of whatever the property/unit's normal
-    cleaning_fee already is, rather than a separate fee set per property.
-    Previously Property/Unit each had their own deep_clean_fee field —
-    replaced by this after real usage showed that's not how the business
-    actually prices a deep clean (a fixed multiple of the standard rate,
-    controlled in one place, not an independent per-listing number to keep
-    in sync). Deliberately its own tiny model rather than living in
-    core.AppSetting — that store is explicitly scoped to secrets/API keys
-    (see its own docstring), not general business config."""
-    deep_clean_fee_percent = models.DecimalField(
-        max_digits=5, decimal_places=1, default=Decimal('150.0'),
-        help_text='A deep clean pays this percent of the normal cleaning fee — 150 means 1.5x the '
-                   'standard rate. Applied in Visit.cleaner_payout_amount().',
+    number that controls cleaning pricing across the whole portfolio: the
+    dollar rate a visit's estimated time (see Visit.estimated_minutes(),
+    built from its checklist items' minutes x their bed/bathroom/sqft
+    multiplier) gets converted into. Deliberately admin-only, everywhere —
+    the whole point is that a regular cleaner can use the entire on-site
+    screen without ever seeing what a cleaning costs. Deliberately its own
+    tiny model rather than living in core.AppSetting — that store is
+    explicitly scoped to secrets/API keys (see its own docstring), not
+    general business config.
+
+    Previously held deep_clean_fee_percent (a flat markup applied to
+    Property/Unit.cleaning_fee) — removed once deep cleans got their own
+    checklist (with their own per-item minutes) instead: a deep clean's
+    price is now just its own checklist time at this same hourly_rate,
+    added on top of a visit's turnover time, not a separate percentage of
+    a separate number."""
+    hourly_rate = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Dollars per hour, used to translate any visit\'s estimated_minutes() into a price. '
+                   'Blank means no rate has been set yet — a visit with no Property/Unit.'
+                   'turnover_price_override is unpriced until this is.',
     )
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f'{self.deep_clean_fee_percent}% deep-clean markup'
+        return f'${self.hourly_rate}/hr' if self.hourly_rate is not None else 'no rate set'
 
     @classmethod
     def get(cls):
@@ -449,9 +491,9 @@ class Visit(models.Model):
     paid_amount = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text="What was actually paid for this specific cleaning, locked in at the moment "
-                   "payment_batch was set — unlike cleaner_payout_amount() (used for what's still "
-                   "owed), this deliberately does NOT track later edits to the property/unit's price. "
-                   "A real payment already made shouldn't silently reprice itself.",
+                   "payment_batch was set — unlike effective_price() (used for what's still owed), "
+                   "this deliberately does NOT track a later rate change or override edit. A real "
+                   "payment already made shouldn't silently reprice itself.",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -480,31 +522,83 @@ class Visit(models.Model):
             return f'{self.assigned_contact} (external)'
         return 'Unassigned'
 
-    def cleaner_payout_amount(self):
-        """What we pay ourselves for this turnover, resolved live from
-        today's Property/Unit pricing (not snapshotted onto the visit — an
-        edited price is meant to apply retroactively here, by design).
-        Unit's cleaning_fee wins over the property's when set; that's
-        always the base rate, deep clean or not. A deep clean pays a
-        percentage of that base rate — CleaningPricingSettings.get()
-        .deep_clean_fee_percent, controlled in one place across the whole
-        portfolio, not a separate fee set per property/unit. None means
-        unpriced (no base cleaning_fee anywhere in the chain) rather than
-        free — callers should treat that as "needs pricing," not $0.
+    def estimated_minutes(self):
+        """This visit's total estimated time, in minutes — the sum of its
+        own (already property/unit-multiplied and frozen) checklist items'
+        minutes. See VisitChecklistItem.minutes and create_visit()'s
+        computation of it. Includes deep-clean addon items when present —
+        callers that need the turnover portion alone (e.g. effective_price
+        applying a turnover_price_override) filter checklist_items by
+        source themselves rather than this method taking a flag, since
+        most callers just want the whole visit's time.
+
+        Sums over checklist_items.all() in Python rather than
+        .aggregate(Sum(...)) deliberately — .aggregate()/.filter() on a
+        related manager always issues its own fresh query even when
+        checklist_items was prefetch_related'd, silently reintroducing an
+        N+1 for any caller (e.g. cleaning_payments, listing many visits at
+        once) that prefetched specifically to avoid one; .all() is what
+        actually reads from the prefetch cache."""
+        return sum((item.minutes for item in self.checklist_items.all()), 0)
+
+    def actual_minutes(self):
+        """How long this cleaning actually took, wall-clock, from the
+        cleaner's own tap of Start (started_at) to Submit (submitted_at) —
+        both set from the public visit link, see onsite/views.py::
+        visit_public. None until both are recorded (e.g. mid-visit, or a
+        visit staff pushed straight to a status without going through the
+        real start/submit flow). Meant to be compared against
+        estimated_minutes() to check whether the checklist's own time
+        estimates are realistic — see effective_price()'s docstring."""
+        if not self.started_at or not self.submitted_at:
+            return None
+        return round((self.submitted_at - self.started_at).total_seconds() / 60)
+
+    def effective_price(self):
+        """What this visit is priced at. Turnover Clean visits specifically
+        (VisitType.slug == 'turnover') can carry a negotiated flat
+        turnover_price_override on the Property (Unit's own value wins when
+        set) — set only by/visible only to an admin, since this is
+        client-specific negotiated pricing, not something a regular
+        cleaner needs to see. When that override applies and this same
+        visit is ALSO a deep clean, the deep-clean checklist's own time
+        (VisitChecklistItem.source=DEEP_CLEAN) is priced normally at the
+        hourly rate and added on top — the override covers the negotiated
+        turnover scope, not extra work beyond it. Every other case (no
+        override, or a non-turnover visit type like Deep Clean scheduled on
+        its own or a Property Inspection) is priced from
+        estimated_minutes() x CleaningPricingSettings.get().hourly_rate.
+
+        Returns None when unpriced (no override applies and no hourly_rate
+        is set yet) — callers should treat that as "needs pricing," not
+        $0. estimated_minutes()/actual_minutes() are deliberately still
+        computed regardless of whether an override applies — comparing
+        estimate vs. actual is how a renegotiated flat price gets checked
+        against reality over time, not just how an automatic price does.
+
         Deliberately a plain method, not @property — see assignee_label's
         own comment on why (this model's own `property` FK shadows the
         builtin)."""
-        base = None
-        for source in (self.unit, self.property):
-            if source is not None and source.cleaning_fee is not None:
-                base = source.cleaning_fee
-                break
-        if base is None:
+        rate = CleaningPricingSettings.get().hourly_rate
+        override = None
+        if self.visit_type_id and self.visit_type.slug == TURNOVER_VISIT_TYPE_SLUG:
+            for source in (self.unit, self.property):
+                if source is not None and source.turnover_price_override is not None:
+                    override = source.turnover_price_override
+                    break
+        if override is not None:
+            if self.is_deep_clean and rate is not None:
+                # .all() (not .filter()), same prefetch-cache reason as
+                # estimated_minutes() above.
+                deep_clean_minutes = sum(
+                    (item.minutes for item in self.checklist_items.all() if item.source == VisitChecklistItem.Source.DEEP_CLEAN),
+                    0,
+                )
+                override = override + (Decimal(deep_clean_minutes) / Decimal('60') * rate).quantize(Decimal('0.01'))
+            return override
+        if rate is None:
             return None
-        if not self.is_deep_clean:
-            return base
-        percent = CleaningPricingSettings.get().deep_clean_fee_percent
-        return (base * percent / Decimal('100')).quantize(Decimal('0.01'))
+        return (Decimal(self.estimated_minutes()) / Decimal('60') * rate).quantize(Decimal('0.01'))
 
     def is_same_day_checkin(self):
         """True when the next guest checks in the same calendar day this
@@ -575,6 +669,15 @@ class VisitChecklistItem(models.Model):
     mandatory = models.BooleanField(default=True)
     requires_photo = models.BooleanField(default=False)
     requires_note = models.BooleanField(default=False)
+    minutes = models.PositiveIntegerField(
+        default=0,
+        help_text="This step's estimated minutes for THIS visit specifically — already multiplied by "
+                   "the property/unit's bed/bathroom/sqft count at the moment this visit was created "
+                   "(see onsite/services/checklist.py::create_visit), then frozen here same as "
+                   'everything else about a snapshotted checklist. A later edit to the property\'s bed '
+                   "count or the standard item's per-unit minutes never changes an already-created "
+                   "visit's estimate.",
+    )
     is_new_unreviewed = models.BooleanField(
         default=False, help_text='Added to the standard list after this property was last reviewed.',
     )

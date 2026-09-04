@@ -18,7 +18,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.json_utils import dumps_for_script
 from core.models import Contact, Property, StaffProfile, Unit
-from core.views import _is_admin, _parse_decimal
+from core.views import _is_admin, _parse_decimal, _parse_int
 from supplies import services as supply_services
 from supplies.models import SupplyItem, SupplyReading
 from vendorportal.models import AccessAttempt
@@ -1315,11 +1315,12 @@ def cleaning_payments(request):
     scheduled or in progress).
 
     Unpaid amounts (payment_batch is null) come from
-    Visit.cleaner_payout_amount(), resolved live against today's Property/
-    Unit pricing — an edited price changes what's still owed. Once a
+    Visit.effective_price(), resolved live against today's checklist-based
+    estimate/hourly rate (or a property's turnover_price_override) — a
+    rate change or a newly-set override changes what's still owed. Once a
     cleaning is marked paid, its amount is locked into paid_amount at that
     moment and never recomputed — a real payment already made shouldn't
-    silently reprice itself just because a property's rate changed later."""
+    silently reprice itself just because the rate changed later."""
     if not _is_admin(request.user):
         return redirect('onsite_dashboard')
 
@@ -1330,11 +1331,11 @@ def cleaning_payments(request):
             unpaid = Visit.objects.filter(
                 pk__in=visit_ids, assigned_staff__role=StaffProfile.Role.CLEANER,
                 status__in=[Visit.Status.SUBMITTED, Visit.Status.VERIFIED], payment_batch__isnull=True,
-            ).select_related('property', 'unit')
+            ).select_related('property', 'unit', 'visit_type')
             if not unpaid:
                 messages.error(request, 'Nothing selected — pick at least one cleaning to mark as paid.')
             else:
-                amounts = {v.pk: v.cleaner_payout_amount() for v in unpaid}
+                amounts = {v.pk: v.effective_price() for v in unpaid}
                 unpriced = [v for v in unpaid if amounts[v.pk] is None]
                 if unpriced:
                     names = ', '.join(f'{v.property.name}{f" — {v.unit.label}" if v.unit else ""} ({v.scheduled_date:%b %d})' for v in unpriced[:5])
@@ -1342,7 +1343,8 @@ def cleaning_payments(request):
                         request,
                         f'{len(unpriced)} selected cleaning(s) have no price set and can\'t be marked paid: {names}'
                         + ('…' if len(unpriced) > 5 else '')
-                        + ' — set a Cleaning pay amount on the property (or unit) first, or deselect them.',
+                        + ' — set an hourly rate (Cleaning Payments settings below) or a turnover price '
+                          'override on the property/unit first, or deselect them.',
                     )
                 else:
                     total = sum(amounts.values(), Decimal('0'))
@@ -1362,15 +1364,15 @@ def cleaning_payments(request):
                 count = batch.visits.update(payment_batch=None, paid_amount=None)
                 batch.delete()
             messages.success(request, f'Undone — {count} cleaning(s) are back in the unpaid queue.')
-        elif action == 'update_deep_clean_percent':
-            percent = _parse_decimal(request.POST.get('deep_clean_fee_percent'))
-            if percent is None or percent < 0:
-                messages.error(request, 'Enter a percent of 0 or higher.')
+        elif action == 'update_hourly_rate':
+            rate = _parse_decimal(request.POST.get('hourly_rate'))
+            if rate is None or rate < 0:
+                messages.error(request, 'Enter an hourly rate of 0 or higher.')
             else:
                 pricing = CleaningPricingSettings.get()
-                pricing.deep_clean_fee_percent = percent
-                pricing.save(update_fields=['deep_clean_fee_percent'])
-                messages.success(request, f'Deep clean pay is now {percent}% of the normal cleaning fee.')
+                pricing.hourly_rate = rate
+                pricing.save(update_fields=['hourly_rate'])
+                messages.success(request, f'Cleaning rate is now ${rate}/hr.')
         return redirect('onsite_cleaning_payments')
 
     unpaid_visits = (
@@ -1380,17 +1382,18 @@ def cleaning_payments(request):
             payment_batch__isnull=True,
         )
         .select_related('property', 'unit', 'assigned_staff__user', 'visit_type')
+        .prefetch_related('checklist_items')
         .order_by('assigned_staff__user__first_name', 'assigned_staff__user__last_name', 'scheduled_date')
     )
 
     by_staff = {}
     unpriced_count = 0
     for visit in unpaid_visits:
-        amount = visit.cleaner_payout_amount()
+        amount = visit.effective_price()
         bucket = by_staff.setdefault(
             visit.assigned_staff_id, {'staff': visit.assigned_staff, 'rows': [], 'total': Decimal('0')},
         )
-        bucket['rows'].append({'visit': visit, 'amount': amount})
+        bucket['rows'].append({'visit': visit, 'amount': amount, 'estimated_minutes': visit.estimated_minutes()})
         if amount is None:
             unpriced_count += 1
         else:
@@ -1402,7 +1405,7 @@ def cleaning_payments(request):
     return render(request, 'onsite/cleaning_payments.html', {
         'cleaner_rows': cleaner_rows, 'unpriced_count': unpriced_count,
         'visit_count': len(unpaid_visits), 'recent_batches': recent_batches,
-        'deep_clean_fee_percent': CleaningPricingSettings.get().deep_clean_fee_percent,
+        'hourly_rate': CleaningPricingSettings.get().hourly_rate,
     })
 
 
@@ -1471,6 +1474,7 @@ def checklist_template_detail(request, type_id):
         elif action == 'add_item':
             text = request.POST.get('text', '').strip()
             section = request.POST.get('section', '').strip()
+            scales_by = request.POST.get('scales_by', '')
             if text:
                 max_order = visit_type.standard_items.filter(section=section).aggregate(Max('order'))['order__max'] or 0
                 StandardChecklistItem.objects.create(
@@ -1478,6 +1482,8 @@ def checklist_template_detail(request, type_id):
                     mandatory=request.POST.get('mandatory') == 'on',
                     requires_photo=request.POST.get('requires_photo') == 'on',
                     requires_note=request.POST.get('requires_note') == 'on',
+                    minutes=_parse_int(request.POST.get('minutes')) or 0,
+                    scales_by=scales_by if scales_by in StandardChecklistItem.ScalesBy.values else StandardChecklistItem.ScalesBy.FLAT,
                 )
                 messages.success(request, 'Item added.')
             else:
@@ -1493,6 +1499,9 @@ def checklist_template_detail(request, type_id):
             item.requires_photo = request.POST.get('requires_photo') == 'on'
             item.requires_note = request.POST.get('requires_note') == 'on'
             item.is_active = request.POST.get('is_active') == 'on'
+            item.minutes = _parse_int(request.POST.get('minutes')) or 0
+            scales_by = request.POST.get('scales_by', '')
+            item.scales_by = scales_by if scales_by in StandardChecklistItem.ScalesBy.values else StandardChecklistItem.ScalesBy.FLAT
             item.save()
             messages.success(request, 'Item updated.')
 
@@ -1534,4 +1543,5 @@ def checklist_template_detail(request, type_id):
     sections = list(dict.fromkeys(item.section for item in items if item.section))
     return render(request, 'onsite/checklist_template_detail.html', {
         'visit_type': visit_type, 'items': items, 'sections': sections, 'is_admin': is_admin,
+        'scales_by_choices': StandardChecklistItem.ScalesBy.choices,
     })

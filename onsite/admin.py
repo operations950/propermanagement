@@ -35,7 +35,7 @@ class VisitTypeAdmin(admin.ModelAdmin):
 
 @admin.register(StandardChecklistItem)
 class StandardChecklistItemAdmin(admin.ModelAdmin):
-    list_display = ['visit_type', 'section', 'text', 'mandatory', 'requires_photo', 'is_active']
+    list_display = ['visit_type', 'section', 'text', 'minutes', 'scales_by', 'mandatory', 'requires_photo', 'is_active']
     list_filter = ['visit_type', 'section', 'mandatory', 'is_active']
 
 
@@ -47,7 +47,7 @@ class PropertyChecklistOverrideAdmin(admin.ModelAdmin):
 
 @admin.register(PropertyChecklistItem)
 class PropertyChecklistItemAdmin(admin.ModelAdmin):
-    list_display = ['property', 'visit_type', 'text', 'mandatory', 'is_active']
+    list_display = ['property', 'visit_type', 'text', 'minutes', 'scales_by', 'mandatory', 'is_active']
     list_filter = ['visit_type', 'is_active']
 
 
@@ -105,7 +105,7 @@ class VisitAdmin(admin.ModelAdmin):
 
 @admin.register(CleaningPricingSettings)
 class CleaningPricingSettingsAdmin(admin.ModelAdmin):
-    list_display = ['deep_clean_fee_percent', 'updated_at']
+    list_display = ['hourly_rate', 'updated_at']
 
     def has_add_permission(self, request):
         # Singleton — get() creates the one row lazily; no reason to ever

@@ -146,6 +146,10 @@
         <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
             <i data-lucide="list-checks" class="icon"></i> Checklist ({{ checklist_items|length }})
         </span>
+        <span class="small mt-1 d-block" style="color: var(--ink-muted); font-weight: normal; letter-spacing: normal; text-transform: none;">
+            Estimated {{ visit.estimated_minutes }} min
+            {% with actual=visit.actual_minutes %}{% if actual %} · actually took {{ actual }} min{% endif %}{% endwith %}
+        </span>
     </div>
     {% if checklist_items %}
     <div class="list-group list-group-flush">
@@ -336,6 +340,24 @@
 {% endif %}
 
 {% if is_admin %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="dollar-sign" class="icon"></i> Price <span class="badge rounded-pill bg-light text-muted border">Admin only</span></h6>
+        {% with price=visit.effective_price %}
+        {% if price is not None %}
+        <p class="mb-1">${{ price|floatformat:2 }}</p>
+        {% else %}
+        <p class="small mb-1" style="color: var(--ink-muted);">Not priced yet — set a cleaning rate on the <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a> screen, or a turnover price override on this property.</p>
+        {% endif %}
+        {% endwith %}
+        <p class="small mb-0" style="color: var(--ink-muted);">
+            Estimated {{ visit.estimated_minutes }} min
+            {% with actual=visit.actual_minutes %}{% if actual %} · actually took {{ actual }} min{% endif %}{% endwith %}
+            — comparing the two over time is how to check whether the checklist's own time estimates are realistic.
+        </p>
+    </div>
+</div>
+
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-critical) 35%, white);">
     <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
