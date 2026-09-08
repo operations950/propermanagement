@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Max, Prefetch, Q
+from django.db.models import Count, F, Max, Prefetch, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -1482,9 +1482,45 @@ def checklist_template_detail(request, type_id):
             section = request.POST.get('section', '').strip()
             scales_by = request.POST.get('scales_by', '')
             if text:
-                max_order = visit_type.standard_items.filter(section=section).aggregate(Max('order'))['order__max'] or 0
+                # Was: max_order computed PER SECTION, new item placed at
+                # that + 1 — correct only when this section already holds
+                # the highest order values in the whole list. Any other
+                # section positioned later in the intended flow (e.g.
+                # adding to "Exterior" when "Final Walkthrough" already
+                # occupies higher order numbers, or a section whose exact
+                # string never matched any existing item — a stray space
+                # or a genuinely new section both hit this) landed the new
+                # item's order INSIDE or BEFORE another section's block
+                # instead of after its own — order=1 when the section had
+                # zero existing items is the worst case, jumping the new
+                # item to the very front of the entire checklist. This
+                # broke both display order (StandardChecklistItem.Meta's
+                # own "single order sort keeps sections contiguous"
+                # invariant) and, less obviously, every OTHER section's own
+                # up/down reordering from that point on, since move_item's
+                # neighbor lookup depends on that same contiguity to find
+                # anything sensible to swap with. Traced from a real user
+                # report of "the arrows don't move items" — see
+                # core/migrations/0043 for the one-time fix to data
+                # already corrupted by this before today.
+                #
+                # Now: insert_at is still "right after this section's
+                # current last item" (or, for a genuinely new section,
+                # right after the LAST item in the whole list — never a
+                # low number) — but every item at or past that position,
+                # in ANY section, is shifted up by one first, so the new
+                # item's own section stays exactly where it already was in
+                # the flow instead of jumping elsewhere.
+                section_items = visit_type.standard_items.filter(section=section)
+                existing_max = section_items.aggregate(Max('order'))['order__max']
+                if existing_max is not None:
+                    insert_at = existing_max + 1
+                else:
+                    overall_max = visit_type.standard_items.aggregate(Max('order'))['order__max']
+                    insert_at = (overall_max + 1) if overall_max is not None else 0
+                visit_type.standard_items.filter(order__gte=insert_at).update(order=F('order') + 1)
                 StandardChecklistItem.objects.create(
-                    visit_type=visit_type, text=text, section=section, order=max_order + 1,
+                    visit_type=visit_type, text=text, section=section, order=insert_at,
                     mandatory=request.POST.get('mandatory') == 'on',
                     requires_photo=request.POST.get('requires_photo') == 'on',
                     requires_note=request.POST.get('requires_note') == 'on',
