@@ -345,7 +345,7 @@
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="dollar-sign" class="icon"></i> Price <span class="badge rounded-pill bg-light text-muted border">Admin only</span></h6>
         {% with price=visit.effective_price %}
         {% if price is not None %}
-        <p class="mb-1">${{ price|floatformat:2 }}</p>
+        <p class="mb-1">${{ price|floatformat:2 }}{% if visit.manual_price_override is not None %} <span class="badge rounded-pill bg-light text-muted border">Manual override</span>{% endif %}</p>
         {% else %}
         <p class="small mb-1" style="color: var(--ink-muted);">Not priced yet — set a cleaning rate on the <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a> screen, or a turnover price override on this property.</p>
         {% endif %}
@@ -355,6 +355,38 @@
             {% with actual=visit.actual_minutes %}{% if actual %} · actually took {{ actual }} min{% endif %}{% endwith %}
             — comparing the two over time is how to check whether the checklist's own time estimates are realistic.
         </p>
+
+        {% if visit.payment_batch_id %}
+        <p class="small mt-2 mb-0" style="color: var(--ink-muted);">
+            This visit is already paid — ${{ visit.paid_amount|floatformat:2 }} was locked in and won't change here.
+            Undo the payment batch on <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a> first if that amount needs correcting.
+        </p>
+        {% else %}
+        <div class="d-flex align-items-end gap-2 mt-2 flex-wrap">
+            <form method="post" class="d-flex align-items-end gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="set_price_override">
+                <div>
+                    <label class="form-label small mb-1" for="manual_price_override">Manual price override</label>
+                    <div class="input-group input-group-sm" style="max-width: 160px;">
+                        <span class="input-group-text">$</span>
+                        <input type="number" step="0.01" min="0" class="form-control" id="manual_price_override" name="manual_price_override"
+                               value="{% if visit.manual_price_override is not None %}{{ visit.manual_price_override }}{% endif %}" placeholder="e.g. 85.00">
+                    </div>
+                </div>
+                <button class="btn btn-outline-secondary btn-sm" type="submit">Save</button>
+            </form>
+            {% if visit.manual_price_override is not None %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="set_price_override">
+                <input type="hidden" name="manual_price_override" value="">
+                <button class="btn btn-link btn-sm text-danger p-0" type="submit">Clear override</button>
+            </form>
+            {% endif %}
+        </div>
+        <p class="small mt-1 mb-0" style="color: var(--ink-muted);">Forces this one visit's price to an exact amount, bypassing the property's turnover price override and the hourly-rate calculation. Leave blank and save to clear it.</p>
+        {% endif %}
     </div>
 </div>
 

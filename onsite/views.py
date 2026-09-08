@@ -848,6 +848,21 @@ def visit_detail(request, pk):
             except ValidationError as e:
                 messages.error(request, '; '.join(e.messages) if hasattr(e, 'messages') else str(e))
 
+        elif action == 'set_price_override':
+            if not is_admin:
+                messages.error(request, 'Only an admin can override a visit\'s price.')
+                return redirect('onsite_visit_detail', pk=visit.pk)
+            raw = request.POST.get('manual_price_override', '').strip()
+            override = _parse_decimal(raw)
+            if raw and override is None:
+                messages.error(request, 'Enter a valid dollar amount, or leave it blank to clear the override.')
+            elif override is not None and override < 0:
+                messages.error(request, 'The price override can\'t be negative.')
+            else:
+                visit.manual_price_override = override
+                visit.save(update_fields=['manual_price_override'])
+                messages.success(request, f'Price override set to ${override:.2f}.' if override is not None else 'Price override cleared.')
+
         elif action == 'delete':
             if not is_admin:
                 messages.error(request, 'Only an admin can delete a visit.')

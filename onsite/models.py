@@ -495,6 +495,16 @@ class Visit(models.Model):
                    "this deliberately does NOT track a later rate change or override edit. A real "
                    "payment already made shouldn't silently reprice itself.",
     )
+    manual_price_override = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text="Set to force this ONE visit's price to an exact amount, bypassing both the "
+                   "property/unit turnover_price_override and the checklist-time/hourly-rate "
+                   "calculation entirely — see effective_price(). For the rare one-off correction "
+                   "(a negotiated exception, a mistake in the checklist-based estimate) that "
+                   "shouldn't change every other visit at this property. Admin-only. Has no effect "
+                   "once the visit is already paid — paid_amount is what was actually locked in; "
+                   "undo that payment batch first if a paid amount needs correcting.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -555,19 +565,32 @@ class Visit(models.Model):
         return round((self.submitted_at - self.started_at).total_seconds() / 60)
 
     def effective_price(self):
-        """What this visit is priced at. Turnover Clean visits specifically
-        (VisitType.slug == 'turnover') can carry a negotiated flat
-        turnover_price_override on the Property (Unit's own value wins when
-        set) — set only by/visible only to an admin, since this is
-        client-specific negotiated pricing, not something a regular
-        cleaner needs to see. When that override applies and this same
-        visit is ALSO a deep clean, the deep-clean checklist's own time
-        (VisitChecklistItem.source=DEEP_CLEAN) is priced normally at the
-        hourly rate and added on top — the override covers the negotiated
-        turnover scope, not extra work beyond it. Every other case (no
-        override, or a non-turnover visit type like Deep Clean scheduled on
-        its own or a Property Inspection) is priced from
-        estimated_minutes() x CleaningPricingSettings.get().hourly_rate.
+        """What this visit is priced at. Checked in order:
+
+        1. manual_price_override — a one-off admin correction for THIS
+           visit alone. Wins outright over everything below, including the
+           deep-clean-on-top addition the property/unit override gets
+           (see #2) — this is a full manual override of the whole visit's
+           price, not a scoped override of the turnover portion, so there's
+           nothing to add on top of it. Has no effect once paid (see its
+           own field help_text) — the two never conflict since paid_amount
+           already returns from effective_price's caller's perspective as
+           locked-in, never recomputed once payment_batch is set (see
+           cleaning_payments' own docstring).
+        2. Turnover Clean visits specifically (VisitType.slug ==
+           'turnover') can carry a negotiated flat turnover_price_override
+           on the Property (Unit's own value wins when set) — set only
+           by/visible only to an admin, since this is client-specific
+           negotiated pricing, not something a regular cleaner needs to
+           see. When that override applies and this same visit is ALSO a
+           deep clean, the deep-clean checklist's own time
+           (VisitChecklistItem.source=DEEP_CLEAN) is priced normally at the
+           hourly rate and added on top — the override covers the
+           negotiated turnover scope, not extra work beyond it.
+        3. Every other case (no override, or a non-turnover visit type like
+           Deep Clean scheduled on its own or a Property Inspection) is
+           priced from estimated_minutes() x
+           CleaningPricingSettings.get().hourly_rate.
 
         Returns None when unpriced (no override applies and no hourly_rate
         is set yet) — callers should treat that as "needs pricing," not
@@ -579,6 +602,8 @@ class Visit(models.Model):
         Deliberately a plain method, not @property — see assignee_label's
         own comment on why (this model's own `property` FK shadows the
         builtin)."""
+        if self.manual_price_override is not None:
+            return self.manual_price_override
         rate = CleaningPricingSettings.get().hourly_rate
         override = None
         if self.visit_type_id and self.visit_type.slug == TURNOVER_VISIT_TYPE_SLUG:
