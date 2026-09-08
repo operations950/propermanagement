@@ -58,20 +58,25 @@
         </span>
     </div>
     {% if items %}
-    <div class="list-group list-group-flush">
+    <div class="list-group list-group-flush" id="checklist-items-list" data-reorder-url="{% url 'onsite_checklist_template_detail' visit_type.pk %}">
     {% for item in items %}
-        <div class="list-group-item py-2 px-3">
+        <div class="list-group-item py-2 px-3" data-item-id="{{ item.pk }}" data-section="{{ item.section }}">
             <div class="d-flex justify-content-between align-items-start gap-2">
-                <div style="min-width: 0;">
-                    <div class="{% if not item.is_active %}text-decoration-line-through text-muted{% endif %}">
-                        {% if item.section %}<span class="small text-muted">{{ item.section }} —</span> {% endif %}{{ item.text }}
-                    </div>
-                    <div class="small" style="color: var(--ink-muted);">
-                        {% if item.mandatory %}Required{% else %}Optional{% endif %}
-                        {% if item.requires_photo %} · photo required{% endif %}
-                        {% if item.requires_note %} · note required{% endif %}
-                        {% if not item.is_active %} · inactive{% endif %}
-                        {% if item.minutes %} · {{ item.minutes }} min {{ item.get_scales_by_display|lower }}{% endif %}
+                <div class="d-flex align-items-start gap-2" style="min-width: 0;">
+                    {% if is_admin %}
+                    <i data-lucide="grip-vertical" class="icon mt-1 flex-shrink-0" draggable="true" data-drag-handle title="Drag to reorder within this section" style="cursor: grab; color: var(--ink-muted);"></i>
+                    {% endif %}
+                    <div>
+                        <div class="{% if not item.is_active %}text-decoration-line-through text-muted{% endif %}">
+                            {% if item.section %}<span class="small text-muted">{{ item.section }} —</span> {% endif %}{{ item.text }}
+                        </div>
+                        <div class="small" style="color: var(--ink-muted);">
+                            {% if item.mandatory %}Required{% else %}Optional{% endif %}
+                            {% if item.requires_photo %} · photo required{% endif %}
+                            {% if item.requires_note %} · note required{% endif %}
+                            {% if not item.is_active %} · inactive{% endif %}
+                            {% if item.minutes %} · {{ item.minutes }} min {{ item.get_scales_by_display|lower }}{% endif %}
+                        </div>
                     </div>
                 </div>
                 {% if is_admin %}
@@ -209,5 +214,83 @@
         </form>
     </div>
 </div>
+{% endif %}
+
+{% if is_admin %}
+<script>
+(function () {
+    // Native HTML5 drag-and-drop for reordering — the up/down arrows
+    // above stay as-is, both for keyboard/screen-reader access and
+    // because native drag-and-drop has weak/inconsistent touch support
+    // on mobile browsers without extra polyfill work not worth it here.
+    var container = document.getElementById('checklist-items-list');
+    if (!container) return;
+    var reorderUrl = container.dataset.reorderUrl;
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    var draggingRow = null;
+
+    container.addEventListener('dragstart', function (e) {
+        var handle = e.target.closest('[data-drag-handle]');
+        if (!handle) return;
+        draggingRow = handle.closest('.list-group-item');
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox in particular requires setData to be called for the
+        // drag to actually start at all.
+        e.dataTransfer.setData('text/plain', draggingRow.dataset.itemId);
+        draggingRow.style.opacity = '0.4';
+    });
+
+    container.addEventListener('dragover', function (e) {
+        if (!draggingRow) return;
+        var target = e.target.closest('.list-group-item');
+        if (!target || target === draggingRow) return;
+        // Only within the SAME section as the dragged item — matches the
+        // up/down arrows' own existing section-scoping (see move_item),
+        // and avoids reintroducing the order-collision bug class already
+        // fixed twice this session for cross-section moves.
+        if (target.dataset.section !== draggingRow.dataset.section) return;
+        e.preventDefault();
+        var rect = target.getBoundingClientRect();
+        var after = (e.clientY - rect.top) > rect.height / 2;
+        target.parentNode.insertBefore(draggingRow, after ? target.nextSibling : target);
+    });
+
+    container.addEventListener('dragend', function () {
+        if (!draggingRow) return;
+        draggingRow.style.opacity = '';
+        var section = draggingRow.dataset.section;
+        var rows = Array.from(container.querySelectorAll('.list-group-item')).filter(function (r) {
+            return r.dataset.section === section;
+        });
+        var itemIds = rows.map(function (r) { return r.dataset.itemId; });
+        draggingRow = null;
+
+        fetch(reorderUrl, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'action=reorder_items&section=' + encodeURIComponent(section) + '&item_ids=' + encodeURIComponent(JSON.stringify(itemIds)),
+        })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('bad response');
+                return resp.json();
+            })
+            .then(function (data) {
+                if (!data.success) throw new Error(data.error || 'save failed');
+            })
+            .catch(function () {
+                // The DOM was already reordered optimistically during
+                // dragover — if the save itself failed, reload rather
+                // than leave the page showing an order that was never
+                // actually persisted.
+                alert("Couldn't save the new order — reloading to show what's actually saved.");
+                window.location.reload();
+            });
+    });
+})();
+</script>
 {% endif %}
 {% endblock %}

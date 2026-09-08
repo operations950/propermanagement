@@ -1,4 +1,5 @@
 import calendar as calendar_module
+import json
 import logging
 import traceback
 from datetime import date, datetime, timedelta
@@ -1591,6 +1592,42 @@ def checklist_template_detail(request, type_id):
                     item.order, neighbor.order = neighbor.order, item.order
                     item.save(update_fields=['order'])
                     neighbor.save(update_fields=['order'])
+
+        elif action == 'reorder_items':
+            # Drag-and-drop reorder, scoped to a single section — same
+            # constraint move_item already has, and for the same reason:
+            # only ever reassigning order values within one section's own
+            # already-contiguous range means no other section's items ever
+            # need to shift, so this can't reintroduce the cross-section
+            # order-collision bug class fixed in add_item above. Returns
+            # JSON directly (unlike every other action here) since it's
+            # driven by fetch() from the drag handler, not a form submit.
+            section = request.POST.get('section', '')
+            try:
+                submitted_ids = [int(pk) for pk in json.loads(request.POST.get('item_ids', '[]'))]
+            except (ValueError, TypeError):
+                return JsonResponse({'success': False, 'error': 'Invalid item list.'}, status=400)
+
+            with transaction.atomic():
+                section_items = list(
+                    visit_type.standard_items.select_for_update().filter(section=section).order_by('order')
+                )
+                # Defense in depth against a tampered client payload: the
+                # submitted id list must be exactly this section's current
+                # items, just reordered — nothing added, removed, or from
+                # another section/visit_type.
+                if {i.pk for i in section_items} != set(submitted_ids) or len(submitted_ids) != len(section_items):
+                    return JsonResponse({'success': False, 'error': 'Item list does not match this section.'}, status=400)
+
+                orders = sorted(i.order for i in section_items)
+                items_by_id = {i.pk: i for i in section_items}
+                for new_order, item_id in zip(orders, submitted_ids):
+                    item = items_by_id[item_id]
+                    if item.order != new_order:
+                        item.order = new_order
+                        item.save(update_fields=['order'])
+
+            return JsonResponse({'success': True})
 
         return redirect('onsite_checklist_template_detail', type_id=visit_type.pk)
 
