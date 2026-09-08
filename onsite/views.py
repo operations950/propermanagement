@@ -1501,7 +1501,7 @@ def checklist_template_detail(request, type_id):
                 # neighbor lookup depends on that same contiguity to find
                 # anything sensible to swap with. Traced from a real user
                 # report of "the arrows don't move items" — see
-                # core/migrations/0043 for the one-time fix to data
+                # onsite/migrations/0025 for the one-time fix to data
                 # already corrupted by this before today.
                 #
                 # Now: insert_at is still "right after this section's
@@ -1510,23 +1510,30 @@ def checklist_template_detail(request, type_id):
                 # low number) — but every item at or past that position,
                 # in ANY section, is shifted up by one first, so the new
                 # item's own section stays exactly where it already was in
-                # the flow instead of jumping elsewhere.
-                section_items = visit_type.standard_items.filter(section=section)
-                existing_max = section_items.aggregate(Max('order'))['order__max']
-                if existing_max is not None:
-                    insert_at = existing_max + 1
-                else:
-                    overall_max = visit_type.standard_items.aggregate(Max('order'))['order__max']
-                    insert_at = (overall_max + 1) if overall_max is not None else 0
-                visit_type.standard_items.filter(order__gte=insert_at).update(order=F('order') + 1)
-                StandardChecklistItem.objects.create(
-                    visit_type=visit_type, text=text, section=section, order=insert_at,
-                    mandatory=request.POST.get('mandatory') == 'on',
-                    requires_photo=request.POST.get('requires_photo') == 'on',
-                    requires_note=request.POST.get('requires_note') == 'on',
-                    minutes=_parse_int(request.POST.get('minutes')) or 0,
-                    scales_by=scales_by if scales_by in StandardChecklistItem.ScalesBy.values else StandardChecklistItem.ScalesBy.FLAT,
-                )
+                # the flow instead of jumping elsewhere. Locked + atomic
+                # for the same reason move_item is now (see its own
+                # comment) — this read-then-shift-then-create sequence
+                # racing against a concurrent add_item or move_item call on
+                # the same visit_type could otherwise recreate the exact
+                # duplicate-order corruption this fix exists to prevent.
+                with transaction.atomic():
+                    visit_type_items = visit_type.standard_items.select_for_update()
+                    section_items = visit_type_items.filter(section=section)
+                    existing_max = section_items.aggregate(Max('order'))['order__max']
+                    if existing_max is not None:
+                        insert_at = existing_max + 1
+                    else:
+                        overall_max = visit_type_items.aggregate(Max('order'))['order__max']
+                        insert_at = (overall_max + 1) if overall_max is not None else 0
+                    visit_type_items.filter(order__gte=insert_at).update(order=F('order') + 1)
+                    StandardChecklistItem.objects.create(
+                        visit_type=visit_type, text=text, section=section, order=insert_at,
+                        mandatory=request.POST.get('mandatory') == 'on',
+                        requires_photo=request.POST.get('requires_photo') == 'on',
+                        requires_note=request.POST.get('requires_note') == 'on',
+                        minutes=_parse_int(request.POST.get('minutes')) or 0,
+                        scales_by=scales_by if scales_by in StandardChecklistItem.ScalesBy.values else StandardChecklistItem.ScalesBy.FLAT,
+                    )
                 messages.success(request, 'Item added.')
             else:
                 messages.error(request, 'Enter the item text.')
@@ -1552,17 +1559,38 @@ def checklist_template_detail(request, type_id):
             messages.success(request, 'Item deleted.')
 
         elif action == 'move_item':
-            item = get_object_or_404(StandardChecklistItem, pk=request.POST.get('item_id'), visit_type=visit_type)
-            direction = request.POST.get('direction')
-            neighbors = visit_type.standard_items.filter(section=item.section)
-            neighbor = (
-                neighbors.filter(order__lt=item.order).order_by('-order').first() if direction == 'up'
-                else neighbors.filter(order__gt=item.order).order_by('order').first()
-            )
-            if neighbor:
-                item.order, neighbor.order = neighbor.order, item.order
-                item.save(update_fields=['order'])
-                neighbor.save(update_fields=['order'])
+            # Locked + atomic: was a plain read-swap-write with no
+            # protection at all against two overlapping move_item requests
+            # (a double-click, or several rapid clicks repositioning a
+            # freshly-added item) interleaving — each reading the same
+            # pre-swap order values and writing back a result that leaves
+            # two rows sharing one order value. Once that happens, every
+            # move_item call touching either of those rows behaves
+            # unpredictably from then on: order__lt/order__gt against a
+            # tied value can miss a real neighbor entirely (reads as "can't
+            # move up/down") or match past more than one row in a single
+            # swap (reads as "moved two positions in one click") — both
+            # real user reports this traces back to. select_for_update()
+            # (a real row lock on Postgres in production; a no-op on
+            # SQLite in local dev, same already-accepted gap as other
+            # locked writes elsewhere in this app) serializes concurrent
+            # attempts on the same visit_type's items so this can't happen
+            # again.
+            with transaction.atomic():
+                item = get_object_or_404(
+                    StandardChecklistItem.objects.select_for_update(),
+                    pk=request.POST.get('item_id'), visit_type=visit_type,
+                )
+                direction = request.POST.get('direction')
+                neighbors = visit_type.standard_items.select_for_update().filter(section=item.section)
+                neighbor = (
+                    neighbors.filter(order__lt=item.order).order_by('-order').first() if direction == 'up'
+                    else neighbors.filter(order__gt=item.order).order_by('order').first()
+                )
+                if neighbor:
+                    item.order, neighbor.order = neighbor.order, item.order
+                    item.save(update_fields=['order'])
+                    neighbor.save(update_fields=['order'])
 
         return redirect('onsite_checklist_template_detail', type_id=visit_type.pk)
 
