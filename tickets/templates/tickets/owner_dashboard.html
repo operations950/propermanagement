@@ -11,12 +11,27 @@
 </div>
 
 {# ============================== 1. OFF TRACK — reactive tickets looking backward ============================== #}
+{# Collapsed by default — this section can list every blocked/overdue/delayed #}
+{# ticket across the whole company, which routinely dwarfed every other card #}
+{# on the page. Uses a plain Bootstrap collapse (matching the payment-batch- #}
+{# detail toggle in cleaning_payments.html) rather than anything stateful — #}
+{# it re-collapses on every fresh page load, which is fine here since the #}
+{# count badge in the header (never hidden) is what actually needs to be #}
+{# glanceable, not the expanded list. #}
+<style>
+    [data-bs-toggle="collapse"] .collapse-chevron { transition: transform 0.15s ease; }
+    [data-bs-toggle="collapse"].collapsed .collapse-chevron { transform: rotate(-90deg); }
+</style>
 <div class="card mb-3" style="border-top: 4px solid var(--status-critical); border-radius: var(--bs-border-radius-lg);">
-    <div class="card-header bg-white border-bottom py-3">
+    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
         <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--status-critical);">
             <i data-lucide="circle-alert" class="icon"></i> Off track ({{ off_track|length }})
         </span>
+        <button class="btn btn-link btn-sm p-0 text-decoration-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#offTrackBody" aria-expanded="false" aria-controls="offTrackBody" title="Show/hide off-track tickets">
+            <i data-lucide="chevron-down" class="icon collapse-chevron"></i>
+        </button>
     </div>
+    <div class="collapse" id="offTrackBody">
     {% if off_track %}
     <div class="list-group list-group-flush">
     {% for row in off_track %}
@@ -42,6 +57,7 @@
         <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Nothing off track
     </div>
     {% endif %}
+    </div>
 </div>
 
 {# ============================== 2. ON-SITE — next 48 hours, looking forward ============================== #}
