@@ -19,7 +19,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 
-from core.models import Contact, Property, PropertyAttribute, StaffProfile, Unit
+from core.models import Contact, Property, StaffProfile, Unit
 from core.storage import DocumentStorage
 
 # Visit.effective_price()'s turnover_price_override only applies to a real
@@ -105,11 +105,6 @@ class StandardChecklistItem(models.Model):
                               'FLAT, or per bed/bedroom/bathroom/1,000 sq ft otherwise.',
     )
     scales_by = models.CharField(max_length=10, choices=ScalesBy.choices, default=ScalesBy.FLAT)
-    required_attributes = models.ManyToManyField(
-        PropertyAttribute, blank=True, related_name='onsite_checklist_items',
-        help_text='This item only resolves at properties tagged with ALL of these attributes '
-                   '(e.g. "has_grill") — leave empty to apply everywhere.',
-    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

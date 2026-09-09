@@ -101,14 +101,22 @@ Three stored things resolve into one list:
 
 The reservoir, per `VisitType`. Fields: `visit_type`, `section`, `order`,
 `text`, `mandatory` (default **True**), `requires_photo`, `requires_note`,
-`is_active`, and:
+`is_active`, `minutes`, `scales_by`.
 
-- **`required_attributes`** — M2M to the existing `PropertyAttribute` tags.
-  An item tagged `has_grill` simply never resolves at properties without that
-  attribute. This is what makes a large reservoir workable: the default state
-  of an uncurated property is *approximately right* rather than "every task we
-  have ever thought of, all blocking." Attribute scoping does the bulk
-  filtering; manual hiding handles the genuine oddities.
+**Removed (2026-09-09): `required_attributes`** — used to be an M2M to
+`PropertyAttribute` tags (e.g. an item tagged `Pool` only resolving at
+properties tagged `Pool`), meant to keep a large reservoir workable
+without every property drowning in irrelevant items. Removed after
+direct user feedback found the real-world failure mode: zero properties
+had ever actually been tagged with any amenity, so 8 real items —
+including "Strip all beds and start laundry" — silently never resolved
+at ANY property, with no way to see why from the checklist screen staff
+actually use day-to-day (the gating only ever showed up in Django
+admin). The standard list is now the same for every property,
+unconditionally; a property that genuinely needs something different
+(or doesn't need a standard item) uses a `PropertyChecklistItem`
+addition or a `PropertyChecklistOverride` hide instead — both visible
+and editable from the screens staff actually use.
 
 ### PropertyChecklistOverride
 
@@ -138,8 +146,8 @@ turns drift into a signal instead of a mess.
 
 Resolution order for a `(property, visit_type)` pair:
 
-1. Active `StandardChecklistItem`s for the type, filtered by
-   `required_attributes` against the property's tags
+1. Every active `StandardChecklistItem` for the type — the same list for
+   every property (see the removed `required_attributes` note above)
 2. Minus anything with `is_hidden=True`
 3. Plus that property's `PropertyChecklistItem`s
 4. Plus one-offs, at visit creation only
@@ -183,7 +191,8 @@ in front of a locked room.
 A reservoir grows. If it reaches 120 items and a condo hides 60, the cleaner
 still faces 60 checkboxes on a phone. There is a length past which people stop
 reading and start speed-tapping, and that destroys exactly the data quality
-this module exists to produce. Attribute scoping and sections hold it off;
+this module exists to produce. With attribute scoping gone, per-property
+`PropertyChecklistOverride` hides are the only thing holding this off now —
 median resolved checklist length is worth putting on the admin screen as a
 number someone actually looks at.
 

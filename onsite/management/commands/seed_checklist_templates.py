@@ -14,70 +14,81 @@ duplicates) is a real data migration
 (onsite/migrations/0007_refresh_checklist_content.py), not something this
 command does — a migration runs exactly once per environment, which is
 what a one-time content swap actually needs; this command runs forever.
+
+Every item spec used to carry a 6th "required attribute keys" element that
+gated it to only resolve at properties tagged with a matching
+core.PropertyAttribute (e.g. only show the pool item at Pool-tagged
+properties) — removed per direct user feedback after it turned out zero
+properties had ever actually been tagged with any amenity, so it was
+silently dropping 8 real items (including "Strip all beds and start
+laundry") from every cleaner's checklist everywhere. See
+onsite/services/checklist.py::resolve_checklist's docstring for the full
+story. The standard list is the same for every property now; a property
+that genuinely needs something different gets a PropertyChecklistItem
+addition or a PropertyChecklistOverride hide instead.
 """
 from django.core.management.base import BaseCommand
 
-from core.models import PropertyAttribute
 from onsite.models import StandardChecklistItem, VisitType
 
-# (section, text, mandatory, requires_photo, requires_note, required_attribute_keys)
+# (section, text, mandatory, requires_photo, requires_note)
 TURNOVER_ITEMS = [
     # Entry & safety
-    ('Entry & Safety', 'Confirm the property is empty and the previous guest has checked out', True, False, False, ()),
-    ('Entry & Safety', 'Check smoke detectors are present and undamaged', True, False, False, ()),
-    ('Entry & Safety', 'Check carbon monoxide detector is present and undamaged', True, False, False, ()),
-    ('Entry & Safety', 'Test that all light switches and lamps work', False, False, False, ()),
+    ('Entry & Safety', 'Confirm the property is empty and the previous guest has checked out', True, False, False),
+    ('Entry & Safety', 'Check smoke detectors are present and undamaged', True, False, False),
+    ('Entry & Safety', 'Check carbon monoxide detector is present and undamaged', True, False, False),
+    ('Entry & Safety', 'Test that all light switches and lamps work', False, False, False),
 
     # Kitchen
-    ('Kitchen', 'Wash, dry, and put away all dishes, pots, and pans', True, True, False, ()),
-    ('Kitchen', 'Wipe down countertops and backsplash', True, False, False, ()),
-    ('Kitchen', 'Clean stovetop and range hood', True, False, False, ()),
-    ('Kitchen', 'Empty refrigerator/freezer of guest food and wipe down inside', True, False, False, ()),
-    ('Kitchen', 'Clean microwave inside and out', True, False, False, ()),
-    ('Kitchen', 'Empty dishwasher and check/clean the filter', False, False, False, ()),
-    ('Kitchen', 'Wipe down small appliances (coffee maker, toaster, kettle)', False, False, False, ()),
-    ('Kitchen', 'Restock coffee, tea, and dish soap per house standard', True, False, False, ()),
-    ('Kitchen', 'Take out kitchen trash and replace the liner', True, False, False, ()),
-    ('Kitchen', 'Wipe down dining table and chairs', True, False, False, ()),
+    ('Kitchen', 'Wash, dry, and put away all dishes, pots, and pans', True, True, False),
+    ('Kitchen', 'Wipe down countertops and backsplash', True, False, False),
+    ('Kitchen', 'Clean stovetop and range hood', True, False, False),
+    ('Kitchen', 'Empty refrigerator/freezer of guest food and wipe down inside', True, False, False),
+    ('Kitchen', 'Clean microwave inside and out', True, False, False),
+    ('Kitchen', 'Empty dishwasher and check/clean the filter', False, False, False),
+    ('Kitchen', 'Wipe down small appliances (coffee maker, toaster, kettle)', False, False, False),
+    ('Kitchen', 'Restock coffee, tea, and dish soap per house standard', True, False, False),
+    ('Kitchen', 'Take out kitchen trash and replace the liner', True, False, False),
+    ('Kitchen', 'Wipe down dining table and chairs', True, False, False),
 
     # Bathrooms
-    ('Bathrooms', 'Clean and disinfect toilet, inside and out', True, True, False, ()),
-    ('Bathrooms', 'Clean shower/tub, removing hair and soap scum', True, True, False, ()),
-    ('Bathrooms', 'Clean sink, counter, and mirror', True, False, False, ()),
-    ('Bathrooms', 'Restock toilet paper, hand soap, and shampoo per house standard', True, False, False, ()),
-    ('Bathrooms', 'Replace bath and hand towels with clean ones', True, False, False, ()),
-    ('Bathrooms', 'Empty bathroom trash and replace the liner', True, False, False, ()),
+    ('Bathrooms', 'Clean and disinfect toilet, inside and out', True, True, False),
+    ('Bathrooms', 'Clean shower/tub, removing hair and soap scum', True, True, False),
+    ('Bathrooms', 'Clean sink, counter, and mirror', True, False, False),
+    ('Bathrooms', 'Restock toilet paper, hand soap, and shampoo per house standard', True, False, False),
+    ('Bathrooms', 'Replace bath and hand towels with clean ones', True, False, False),
+    ('Bathrooms', 'Empty bathroom trash and replace the liner', True, False, False),
 
     # Bedrooms
-    ('Bedrooms', 'Strip all beds and start laundry', True, False, False, ('washer_dryer_in_unit',)),
-    ('Bedrooms', 'Remake all beds with clean linens', True, True, False, ()),
-    ('Bedrooms', 'Fluff and arrange pillows and throw blankets', False, False, False, ()),
-    ('Bedrooms', 'Check under beds, in closets, and in drawers for guest belongings left behind', True, False, False, ()),
-    ('Bedrooms', 'Dust nightstands and dressers', False, False, False, ()),
+    ('Bedrooms', 'Strip all beds and start laundry', True, False, False),
+    ('Bedrooms', 'Remake all beds with clean linens', True, True, False),
+    ('Bedrooms', 'Fluff and arrange pillows and throw blankets', False, False, False),
+    ('Bedrooms', 'Check under beds, in closets, and in drawers for guest belongings left behind', True, False, False),
+    ('Bedrooms', 'Dust nightstands and dressers', False, False, False),
 
     # Living areas
-    ('Living Areas', 'Vacuum all carpets and rugs', True, False, False, ()),
-    ('Living Areas', 'Sweep and mop all hard floors', True, False, False, ()),
-    ('Living Areas', 'Dust surfaces, shelves, and electronics', False, False, False, ()),
-    ('Living Areas', 'Fluff couch cushions and fold throw blankets', False, False, False, ()),
-    ('Living Areas', 'Wipe down TV, remotes, and light switches', False, False, False, ()),
-    ('Living Areas', 'Check remotes have working batteries', False, False, False, ()),
-    ('Living Areas', 'Empty all trash cans and replace liners', True, False, False, ()),
+    ('Living Areas', 'Vacuum all carpets and rugs', True, False, False),
+    ('Living Areas', 'Sweep and mop all hard floors', True, False, False),
+    ('Living Areas', 'Dust surfaces, shelves, and electronics', False, False, False),
+    ('Living Areas', 'Fluff couch cushions and fold throw blankets', False, False, False),
+    ('Living Areas', 'Wipe down TV, remotes, and light switches', False, False, False),
+    ('Living Areas', 'Check remotes have working batteries', False, False, False),
+    ('Living Areas', 'Empty all trash cans and replace liners', True, False, False),
 
-    # Laundry — only asked when the property actually has an in-unit washer/dryer
-    ('Laundry', 'Finish and put away all used linens and towels before leaving', True, False, False, ('washer_dryer_in_unit',)),
-    ('Laundry', 'Wipe down washer and dryer exterior', False, False, False, ('washer_dryer_in_unit',)),
+    # Laundry
+    ('Laundry', 'Finish and put away all used linens and towels before leaving', True, False, False),
+    ('Laundry', 'Wipe down washer and dryer exterior', False, False, False),
 
-    # Exterior — gated to properties that actually have these amenities
-    ('Exterior', 'Sweep patio/balcony and straighten outdoor furniture', False, False, False, ('balcony_patio',)),
-    ('Exterior', 'Check pool area is clean, gate secured, and skimmer basket emptied', True, False, False, ('pool',)),
-    ('Exterior', 'Check hot tub area is clean, cover secured, and chemical levels look normal', True, False, False, ('hot_tub_spa',)),
+    # Exterior
+    ('Exterior', 'Sweep patio/balcony and straighten outdoor furniture', False, False, False),
+    ('Exterior', 'Check pool area is clean, gate secured, and skimmer basket emptied', True, False, False),
+    ('Exterior', 'Check hot tub area is clean, cover secured, and chemical levels look normal', True, False, False),
 
     # Final walkthrough
-    ('Final Walkthrough', 'Set thermostat to house standard temperature', True, False, False, ()),
-    ('Final Walkthrough', 'Turn off all lights except any exterior/porch light', True, False, False, ()),
-    ('Final Walkthrough', 'Do a final walkthrough of every room', True, False, False, ()),
-    ('Final Walkthrough', 'Confirm all doors and windows are locked before leaving', True, False, False, ()),
+    ('Final Walkthrough', 'Set thermostat to house standard temperature', True, False, False),
+    ('Final Walkthrough', 'Turn off all lights except any exterior/porch light', True, False, False),
+    ('Final Walkthrough', 'Do a final walkthrough of every room', True, False, False),
+    ('Final Walkthrough', 'Confirm all doors and windows are locked before leaving', True, False, False),
 ]
 
 # Layered onto a turnover when Visit.is_deep_clean is set (see
@@ -85,26 +96,26 @@ TURNOVER_ITEMS = [
 # not a repeat of the turnover list above, since the addon is always added
 # on top of a full turnover, never done standalone.
 DEEP_CLEAN_ITEMS = [
-    ('Kitchen', 'Clean inside of oven', True, True, False, ()),
-    ('Kitchen', 'Clean inside of refrigerator and freezer, including shelves and drawers', True, True, False, ()),
-    ('Kitchen', 'Clean inside and outside of all cabinets', False, False, False, ()),
-    ('Kitchen', 'Descale coffee maker and clean out the coffee grounds trap', False, False, False, ()),
-    ('Kitchen', 'Clean inside of dishwasher; run a cleaning cycle if needed', False, False, False, ()),
-    ('Bathrooms', 'Scrub grout and tile', True, True, False, ()),
-    ('Bathrooms', 'Clean exhaust fan and vent covers', False, False, False, ()),
-    ('Bathrooms', 'Wash shower curtain/liner, or replace if needed', False, False, True, ()),
-    ('Bedrooms', 'Rotate or flip mattresses', False, False, False, ()),
-    ('Bedrooms', 'Wash all pillows, mattress protectors, and duvets (not just top sheets)', True, False, False, ('washer_dryer_in_unit',)),
-    ('Bedrooms', 'Vacuum under beds and behind furniture', True, False, False, ()),
-    ('Living Areas', 'Wash baseboards and door frames throughout', True, False, False, ()),
-    ('Living Areas', 'Clean interior windows and window tracks', True, False, False, ()),
-    ('Living Areas', 'Dust and wipe down ceiling fans and light fixtures', True, False, False, ()),
-    ('Living Areas', 'Vacuum upholstered furniture, including under cushions', False, False, False, ()),
-    ('Living Areas', 'Dust blinds and wipe down curtains', False, False, False, ()),
-    ('Living Areas', 'Spot-clean walls and light switches for scuffs and marks', False, False, False, ()),
-    ('General', 'Wash trash cans inside and out', True, False, False, ()),
-    ('General', 'Replace batteries in remotes, smoke detectors, and thermostats if low', False, False, False, ()),
-    ('General', 'Deep-clean washer drum and wipe down dryer lint trap housing', False, False, False, ('washer_dryer_in_unit',)),
+    ('Kitchen', 'Clean inside of oven', True, True, False),
+    ('Kitchen', 'Clean inside of refrigerator and freezer, including shelves and drawers', True, True, False),
+    ('Kitchen', 'Clean inside and outside of all cabinets', False, False, False),
+    ('Kitchen', 'Descale coffee maker and clean out the coffee grounds trap', False, False, False),
+    ('Kitchen', 'Clean inside of dishwasher; run a cleaning cycle if needed', False, False, False),
+    ('Bathrooms', 'Scrub grout and tile', True, True, False),
+    ('Bathrooms', 'Clean exhaust fan and vent covers', False, False, False),
+    ('Bathrooms', 'Wash shower curtain/liner, or replace if needed', False, False, True),
+    ('Bedrooms', 'Rotate or flip mattresses', False, False, False),
+    ('Bedrooms', 'Wash all pillows, mattress protectors, and duvets (not just top sheets)', True, False, False),
+    ('Bedrooms', 'Vacuum under beds and behind furniture', True, False, False),
+    ('Living Areas', 'Wash baseboards and door frames throughout', True, False, False),
+    ('Living Areas', 'Clean interior windows and window tracks', True, False, False),
+    ('Living Areas', 'Dust and wipe down ceiling fans and light fixtures', True, False, False),
+    ('Living Areas', 'Vacuum upholstered furniture, including under cushions', False, False, False),
+    ('Living Areas', 'Dust blinds and wipe down curtains', False, False, False),
+    ('Living Areas', 'Spot-clean walls and light switches for scuffs and marks', False, False, False),
+    ('General', 'Wash trash cans inside and out', True, False, False),
+    ('General', 'Replace batteries in remotes, smoke detectors, and thermostats if low', False, False, False),
+    ('General', 'Deep-clean washer drum and wipe down dryer lint trap housing', False, False, False),
 ]
 
 INSPECTION_ITEMS = [
@@ -122,14 +133,12 @@ class Command(BaseCommand):
     help = 'Seeds the default VisitTypes and adds any standard checklist items that are missing (never deletes — see this file\'s module docstring).'
 
     def handle(self, *args, **options):
-        attrs_by_key = {a.key: a for a in PropertyAttribute.objects.all()}
-
         turnover, created = VisitType.objects.get_or_create(
             slug='turnover',
             defaults={'name': 'Turnover Clean', 'default_duration_minutes': 90, 'requires_deadline': True},
         )
         self.stdout.write(f'{"Created" if created else "Found"} VisitType: {turnover.name}')
-        self._add_items(turnover, TURNOVER_ITEMS, attrs_by_key)
+        self._add_items(turnover, TURNOVER_ITEMS)
 
         deep_clean, created = VisitType.objects.get_or_create(
             slug='deep-clean',
@@ -139,28 +148,19 @@ class Command(BaseCommand):
             deep_clean.is_addon = True
             deep_clean.save(update_fields=['is_addon'])
         self.stdout.write(f'{"Created" if created else "Found"} VisitType: {deep_clean.name} (addon bundle)')
-        self._add_items(deep_clean, DEEP_CLEAN_ITEMS, attrs_by_key)
+        self._add_items(deep_clean, DEEP_CLEAN_ITEMS)
 
         inspection, created = VisitType.objects.get_or_create(
             slug='inspection',
             defaults={'name': 'Property Inspection', 'default_duration_minutes': 60, 'requires_deadline': False},
         )
         self.stdout.write(f'{"Created" if created else "Found"} VisitType: {inspection.name}')
-        for order, (section, text, mandatory, requires_photo, requires_note) in enumerate(INSPECTION_ITEMS):
-            item, item_created = StandardChecklistItem.objects.get_or_create(
-                visit_type=inspection, text=text,
-                defaults={
-                    'section': section, 'order': order, 'mandatory': mandatory,
-                    'requires_photo': requires_photo, 'requires_note': requires_note,
-                },
-            )
-            if item_created:
-                self.stdout.write(f'  + {text}')
+        self._add_items(inspection, INSPECTION_ITEMS)
 
         self.stdout.write(self.style.SUCCESS('Checklist templates seeded.'))
 
-    def _add_items(self, visit_type, spec, attrs_by_key):
-        for order, (section, text, mandatory, requires_photo, requires_note, attr_keys) in enumerate(spec):
+    def _add_items(self, visit_type, spec):
+        for order, (section, text, mandatory, requires_photo, requires_note) in enumerate(spec):
             item, item_created = StandardChecklistItem.objects.get_or_create(
                 visit_type=visit_type, text=text,
                 defaults={
@@ -168,14 +168,5 @@ class Command(BaseCommand):
                     'requires_photo': requires_photo, 'requires_note': requires_note,
                 },
             )
-            if attr_keys and (item_created or not item.required_attributes.exists()):
-                found = [attrs_by_key[k] for k in attr_keys if k in attrs_by_key]
-                missing = [k for k in attr_keys if k not in attrs_by_key]
-                if missing:
-                    self.stdout.write(self.style.WARNING(
-                        f'  ! "{text}" references unknown PropertyAttribute key(s): {missing} — skipped for gating.',
-                    ))
-                if found:
-                    item.required_attributes.set(found)
             if item_created:
                 self.stdout.write(f'  + {text}')

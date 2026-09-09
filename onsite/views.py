@@ -1467,11 +1467,13 @@ def checklist_template_detail(request, type_id):
     admin-only mutation gating; GET stays open to any logged-in staff so
     non-admins can still see what a checklist actually contains.
 
-    Deliberately does NOT expose StandardChecklistItem.required_attributes
-    (the property-tag gating) — a narrower, less time-critical feature that
-    still exists via Django admin for the rare case it's needed; everything
-    staff touch day-to-day (add/edit/reorder/delete an item, tweak the
-    visit type itself) is covered here."""
+    The standard list here is now the same for every property — see
+    resolve_checklist()'s own docstring for why the old per-property
+    "amenity" gating (StandardChecklistItem.required_attributes) was
+    removed rather than fixed. A property that genuinely needs something
+    different uses a PropertyChecklistItem addition or a
+    PropertyChecklistOverride hide (property_detail.html), not gating on
+    the shared standard list."""
     visit_type = get_object_or_404(VisitType, pk=type_id)
     is_admin = _is_admin(request.user)
 

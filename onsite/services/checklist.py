@@ -88,13 +88,23 @@ def resolve_checklist(property, visit_type):
     any) a given Visit is for. create_visit() below is what actually
     applies _resolve_multiplier() once it knows both.
 
-    Resolution order: active StandardChecklistItems whose required_attributes
-    are all present on the property, minus anything hidden by a
+    Resolution order: every active StandardChecklistItem — the SAME list
+    for every property, deliberately, minus anything hidden by a
     PropertyChecklistOverride, with mandatory/order overridden where set;
-    then that property's own PropertyChecklistItems appended."""
-    property_attribute_ids = set(
-        property.attribute_assignments.values_list('attribute_id', flat=True)
-    )
+    then that property's own PropertyChecklistItems appended.
+
+    Used to also filter standard items by a per-property "amenity" tag
+    (StandardChecklistItem.required_attributes, e.g. "only show the pool
+    item at properties tagged Pool") — removed per direct user feedback:
+    with zero properties ever actually tagged with any amenity, this
+    silently dropped 8 real checklist items (including "Strip all beds
+    and start laundry") from every single cleaner's checklist, with no
+    way to see why from the screen staff actually use to edit checklists
+    (the gating only ever showed up in Django admin). The standard list
+    is now the same everywhere; a property that genuinely needs something
+    different gets a PropertyChecklistItem addition or a
+    PropertyChecklistOverride hide instead — both of which ARE visible
+    and editable from the checklist screens staff actually use."""
     overrides_by_item = {
         o.standard_item_id: o
         for o in PropertyChecklistOverride.objects.filter(property=property, visit_type=visit_type)
@@ -106,14 +116,8 @@ def resolve_checklist(property, visit_type):
         reviewed_at = None
 
     resolved = []
-    standard_items = (
-        StandardChecklistItem.objects.filter(visit_type=visit_type, is_active=True)
-        .prefetch_related('required_attributes')
-    )
+    standard_items = StandardChecklistItem.objects.filter(visit_type=visit_type, is_active=True)
     for item in standard_items:
-        required_ids = {a.id for a in item.required_attributes.all()}
-        if required_ids and not required_ids.issubset(property_attribute_ids):
-            continue
         override = overrides_by_item.get(item.id)
         if override and override.is_hidden:
             continue
