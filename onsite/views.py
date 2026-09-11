@@ -1610,6 +1610,27 @@ def checklist_template_detail(request, type_id):
                     item.save(update_fields=['order'])
                     neighbor.save(update_fields=['order'])
 
+            # AJAX branch: the template's JS intercepts this form's submit to
+            # swap the two rows in place instead of a full page reload+
+            # scroll-reset — on a long checklist (the turnover list alone is
+            # 40+ items) a full reload made a move easy to lose track of,
+            # which read as "the button doesn't work" even when the swap
+            # itself was correct. Tells the client exactly which two item
+            # ids to swap (or that there was no neighbor to swap with, i.e.
+            # already at the top/bottom of its section) rather than having
+            # the client guess from its own possibly-stale DOM order.
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': True,
+                    'moved': neighbor is not None,
+                    'item_id': item.pk,
+                    'neighbor_id': neighbor.pk if neighbor else None,
+                })
+            if neighbor:
+                messages.success(request, f'Moved "{item.text}" {direction}.')
+            else:
+                messages.info(request, f'"{item.text}" is already at the {"top" if direction == "up" else "bottom"} of its section.')
+
         elif action == 'reorder_items':
             # Drag-and-drop reorder, scoped to a single section — same
             # constraint move_item already has, and for the same reason:
@@ -1665,7 +1686,21 @@ def checklist_template_detail(request, type_id):
     # feature being broken.
     items = list(visit_type.standard_items.order_by('order'))
     sections = list(dict.fromkeys(item.section for item in items if item.section))
+    # Which items sit at the top/bottom of their own section — used to
+    # disable that item's Move up/down button rather than leave it clickable
+    # and silently do nothing. A silent no-op at a section boundary (the
+    # button IS working correctly — there's just no neighbor to swap with —
+    # but nothing visibly happens) read as "the button doesn't work" to
+    # whoever clicked it without knowing they'd hit the edge of a section.
+    first_in_section_ids = set()
+    last_in_section_ids = set()
+    for idx, item in enumerate(items):
+        if idx == 0 or item.section != items[idx - 1].section:
+            first_in_section_ids.add(item.pk)
+        if idx == len(items) - 1 or item.section != items[idx + 1].section:
+            last_in_section_ids.add(item.pk)
     return render(request, 'onsite/checklist_template_detail.html', {
         'visit_type': visit_type, 'items': items, 'sections': sections, 'is_admin': is_admin,
         'scales_by_choices': StandardChecklistItem.ScalesBy.choices,
+        'first_in_section_ids': first_in_section_ids, 'last_in_section_ids': last_in_section_ids,
     })

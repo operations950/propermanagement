@@ -60,11 +60,13 @@
     {% if items %}
     <div class="list-group list-group-flush" id="checklist-items-list" data-reorder-url="{% url 'onsite_checklist_template_detail' visit_type.pk %}">
     {% for item in items %}
-        <div class="list-group-item py-2 px-3" data-item-id="{{ item.pk }}" data-section="{{ item.section }}">
+        <div class="list-group-item py-2 px-3 checklist-item-row" data-item-id="{{ item.pk }}" data-section="{{ item.section }}">
             <div class="d-flex justify-content-between align-items-start gap-2">
                 <div class="d-flex align-items-start gap-2" style="min-width: 0;">
                     {% if is_admin %}
-                    <i data-lucide="grip-vertical" class="icon mt-1 flex-shrink-0" draggable="true" data-drag-handle title="Drag to reorder within this section" style="cursor: grab; color: var(--ink-muted);"></i>
+                    <span data-drag-handle title="Drag to reorder within this section" class="d-inline-flex align-items-center justify-content-center flex-shrink-0" style="cursor: grab; width: 32px; height: 32px; margin: -4px 0; touch-action: none;">
+                        <i data-lucide="grip-vertical" class="icon" style="color: var(--ink-muted); pointer-events: none;"></i>
+                    </span>
                     {% endif %}
                     <div>
                         <div class="{% if not item.is_active %}text-decoration-line-through text-muted{% endif %}">
@@ -80,28 +82,32 @@
                     </div>
                 </div>
                 {% if is_admin %}
-                <div class="d-flex gap-1 flex-shrink-0">
-                    <form method="post">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="move_item">
-                        <input type="hidden" name="item_id" value="{{ item.pk }}">
-                        <input type="hidden" name="direction" value="up">
-                        <button class="btn btn-outline-secondary btn-sm" type="submit" title="Move up"><i data-lucide="chevron-up" class="icon"></i></button>
-                    </form>
-                    <form method="post">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="move_item">
-                        <input type="hidden" name="item_id" value="{{ item.pk }}">
-                        <input type="hidden" name="direction" value="down">
-                        <button class="btn btn-outline-secondary btn-sm" type="submit" title="Move down"><i data-lucide="chevron-down" class="icon"></i></button>
-                    </form>
-                    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#edit-item-{{ item.pk }}"><i data-lucide="pencil" class="icon"></i></button>
-                    <form method="post" onsubmit="return confirm('Delete this checklist item?');">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="delete_item">
-                        <input type="hidden" name="item_id" value="{{ item.pk }}">
-                        <button class="btn btn-outline-danger btn-sm" type="submit"><i data-lucide="trash-2" class="icon"></i></button>
-                    </form>
+                <div class="d-flex align-items-center gap-3 flex-shrink-0">
+                    <div class="d-flex gap-1">
+                        <form method="post" class="move-item-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="move_item">
+                            <input type="hidden" name="item_id" value="{{ item.pk }}">
+                            <input type="hidden" name="direction" value="up">
+                            <button class="btn btn-outline-secondary btn-sm" type="submit" data-move-up title="Move up" {% if item.pk in first_in_section_ids %}disabled{% endif %}><i data-lucide="chevron-up" class="icon"></i></button>
+                        </form>
+                        <form method="post" class="move-item-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="move_item">
+                            <input type="hidden" name="item_id" value="{{ item.pk }}">
+                            <input type="hidden" name="direction" value="down">
+                            <button class="btn btn-outline-secondary btn-sm" type="submit" data-move-down title="Move down" {% if item.pk in last_in_section_ids %}disabled{% endif %}><i data-lucide="chevron-down" class="icon"></i></button>
+                        </form>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#edit-item-{{ item.pk }}"><i data-lucide="pencil" class="icon"></i></button>
+                        <form method="post" onsubmit="return confirm('Delete this checklist item?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_item">
+                            <input type="hidden" name="item_id" value="{{ item.pk }}">
+                            <button class="btn btn-outline-danger btn-sm" type="submit"><i data-lucide="trash-2" class="icon"></i></button>
+                        </form>
+                    </div>
                 </div>
                 {% endif %}
             </div>
@@ -217,53 +223,195 @@
 {% endif %}
 
 {% if is_admin %}
+<style>
+    /* Briefly highlights a row right after it's been moved — the visible
+       confirmation that a click/drag actually did something, since these
+       reorder actions no longer reload the page (see the script below). */
+    .checklist-item-row.just-moved { background-color: color-mix(in srgb, var(--brand-primary, #0d6efd) 12%, white); }
+    .checklist-item-row { transition: background-color 1.4s ease; }
+    [data-move-up]:disabled, [data-move-down]:disabled { opacity: 0.35; }
+</style>
 <script>
 (function () {
-    // Native HTML5 drag-and-drop for reordering — the up/down arrows
-    // above stay as-is, both for keyboard/screen-reader access and
-    // because native drag-and-drop has weak/inconsistent touch support
-    // on mobile browsers without extra polyfill work not worth it here.
     var container = document.getElementById('checklist-items-list');
     if (!container) return;
     var reorderUrl = container.dataset.reorderUrl;
     var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-    var draggingRow = null;
 
-    container.addEventListener('dragstart', function (e) {
-        var handle = e.target.closest('[data-drag-handle]');
-        if (!handle) return;
-        draggingRow = handle.closest('.list-group-item');
-        e.dataTransfer.effectAllowed = 'move';
-        // Firefox in particular requires setData to be called for the
-        // drag to actually start at all.
-        e.dataTransfer.setData('text/plain', draggingRow.dataset.itemId);
-        draggingRow.style.opacity = '0.4';
+    function rowsInSection(section) {
+        return Array.from(container.querySelectorAll('.list-group-item')).filter(function (r) {
+            return r.dataset.section === section;
+        });
+    }
+
+    // After ANY successful reorder (a drag, or an up/down swap) — re-derives
+    // which row is first/last in its section from the CURRENT DOM order and
+    // disables that row's up/down button accordingly. Re-scanning the whole
+    // section rather than special-casing "the two rows that just swapped" is
+    // what makes this correct for both move_item (always exactly 2 rows
+    // affected) and a drag (which can reshuffle the whole section) with one
+    // function.
+    function updateBoundaryButtons(section) {
+        var rows = rowsInSection(section);
+        rows.forEach(function (row, idx) {
+            var upBtn = row.querySelector('[data-move-up]');
+            var downBtn = row.querySelector('[data-move-down]');
+            if (upBtn) upBtn.disabled = (idx === 0);
+            if (downBtn) downBtn.disabled = (idx === rows.length - 1);
+        });
+    }
+
+    function flash(row) {
+        row.classList.add('just-moved');
+        window.setTimeout(function () { row.classList.remove('just-moved'); }, 1200);
+    }
+
+    // ---- Up/down buttons: AJAX-enhanced, no full page reload ----
+    // Was a plain form POST -> redirect -> full page reload. On a 40+ item
+    // checklist that reload made a successful move easy to lose track of —
+    // nothing visibly changed near where you were looking (or the page
+    // even lost your scroll position), which reads as "the button doesn't
+    // work" even when the swap itself was applied correctly. Real form
+    // submit is kept as the fallback if this fetch fails for any reason —
+    // see the catch below — so this is a pure enhancement, never a
+    // dependency.
+    container.addEventListener('submit', function (e) {
+        var form = e.target.closest('.move-item-form');
+        if (!form) return;
+        e.preventDefault();
+        var button = form.querySelector('button[type=submit]');
+        if (button) button.disabled = true;
+
+        fetch(reorderUrl, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(form),
+        })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('bad response');
+                return resp.json();
+            })
+            .then(function (data) {
+                if (!data.success) throw new Error(data.error || 'move failed');
+                var row = container.querySelector('.list-group-item[data-item-id="' + data.item_id + '"]');
+                if (data.moved && data.neighbor_id && row) {
+                    var neighborRow = container.querySelector('.list-group-item[data-item-id="' + data.neighbor_id + '"]');
+                    var direction = form.querySelector('input[name=direction]').value;
+                    if (neighborRow) {
+                        // move_item only ever swaps with the immediately
+                        // adjacent item in the same section, so row and
+                        // neighborRow are guaranteed adjacent siblings here
+                        // — moving "up" means row should end up right
+                        // before neighborRow (it was right after it);
+                        // "down" is the mirror image.
+                        if (direction === 'up') {
+                            neighborRow.parentNode.insertBefore(row, neighborRow);
+                        } else {
+                            neighborRow.parentNode.insertBefore(neighborRow, row);
+                        }
+                        updateBoundaryButtons(row.dataset.section);
+                        flash(row);
+                    }
+                }
+                if (button) button.disabled = false;
+            })
+            .catch(function () {
+                // Real fallback, not just a reload — actually submit the
+                // form for real so the move still happens even if the
+                // fetch itself failed (a flaky connection, an unexpected
+                // response shape, etc).
+                if (button) button.disabled = false;
+                HTMLFormElement.prototype.submit.call(form);
+            });
     });
 
-    container.addEventListener('dragover', function (e) {
+    // ---- Drag-and-drop: reorder within a section by dragging the handle ----
+    // The up/down buttons above are the reliable, always-works path (and
+    // the only one with keyboard/screen-reader support); this is an
+    // additional, faster way to do the same thing for a mouse/trackpad/
+    // touch user reordering several items in a row.
+    //
+    // Built on pointer events, NOT native HTML5 drag-and-drop
+    // (dragstart/dragover/drop) — two real problems with the native
+    // approach, found the hard way:
+    //   1. Native drag requires the dragged element itself to be a real
+    //      HTMLElement with draggable="true". This was set directly on
+    //      the <i data-lucide="grip-vertical"> tag, but Lucide's own JS
+    //      replaces that <i> with a freshly created inline <svg> at
+    //      render time — and an SVGSVGElement does NOT inherit the
+    //      draggable IDL the way an HTMLElement does (confirmed directly:
+    //      element.draggable read back as undefined, not true/false). The
+    //      drag never engaged in Chromium, full stop, regardless of
+    //      anything else here — this alone was the root cause of "there's
+    //      a drag icon but you can't actually drag anything."
+    //   2. Native drag-and-drop has always had weak/inconsistent touch
+    //      support across browsers on top of that.
+    // Pointer events sidestep both: they're just a regular HTMLElement
+    // event (no special native-drag engagement to silently fail), and
+    // they unify mouse/touch/pen into one API, so this now genuinely
+    // works on a phone too, not just a desktop mouse.
+    var handleEl = null;
+    var draggingRow = null;
+    var dragStartY = 0;
+    var isDragging = false;
+    var DRAG_THRESHOLD_PX = 4; // ignore tiny jitter so a plain tap/click on the handle isn't mistaken for a drag
+
+    function findRowUnderPoint(x, y) {
+        var el = document.elementFromPoint(x, y);
+        return el ? el.closest('.list-group-item') : null;
+    }
+
+    container.addEventListener('pointerdown', function (e) {
+        var handle = e.target.closest('[data-drag-handle]');
+        if (!handle) return;
+        handleEl = handle;
+        draggingRow = handle.closest('.list-group-item');
+        dragStartY = e.clientY;
+        isDragging = false;
+        handle.setPointerCapture(e.pointerId);
+    });
+
+    container.addEventListener('pointermove', function (e) {
         if (!draggingRow) return;
-        var target = e.target.closest('.list-group-item');
+        if (!isDragging) {
+            if (Math.abs(e.clientY - dragStartY) < DRAG_THRESHOLD_PX) return;
+            isDragging = true;
+            draggingRow.style.opacity = '0.5';
+            draggingRow.style.cursor = 'grabbing';
+        }
+        e.preventDefault();
+        // Pointer capture keeps e.target pinned to the handle for the rest
+        // of the gesture, so ask the document directly what's under the
+        // pointer right now instead.
+        var target = findRowUnderPoint(e.clientX, e.clientY);
         if (!target || target === draggingRow) return;
         // Only within the SAME section as the dragged item — matches the
         // up/down arrows' own existing section-scoping (see move_item),
         // and avoids reintroducing the order-collision bug class already
         // fixed twice this session for cross-section moves.
         if (target.dataset.section !== draggingRow.dataset.section) return;
-        e.preventDefault();
         var rect = target.getBoundingClientRect();
         var after = (e.clientY - rect.top) > rect.height / 2;
         target.parentNode.insertBefore(draggingRow, after ? target.nextSibling : target);
     });
 
-    container.addEventListener('dragend', function () {
+    function finishDrag(e) {
         if (!draggingRow) return;
-        draggingRow.style.opacity = '';
-        var section = draggingRow.dataset.section;
-        var rows = Array.from(container.querySelectorAll('.list-group-item')).filter(function (r) {
-            return r.dataset.section === section;
-        });
-        var itemIds = rows.map(function (r) { return r.dataset.itemId; });
+        if (handleEl) {
+            try { handleEl.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+        }
+        var movedRow = draggingRow;
+        var wasDragging = isDragging;
+        movedRow.style.opacity = '';
+        movedRow.style.cursor = '';
         draggingRow = null;
+        handleEl = null;
+        isDragging = false;
+        if (!wasDragging) return; // just a click/tap on the handle — never crossed the drag threshold, nothing to save
+
+        var section = movedRow.dataset.section;
+        var rows = rowsInSection(section);
+        var itemIds = rows.map(function (r) { return r.dataset.itemId; });
 
         fetch(reorderUrl, {
             method: 'POST',
@@ -280,16 +428,21 @@
             })
             .then(function (data) {
                 if (!data.success) throw new Error(data.error || 'save failed');
+                updateBoundaryButtons(section);
+                flash(movedRow);
             })
             .catch(function () {
-                // The DOM was already reordered optimistically during
-                // dragover — if the save itself failed, reload rather
-                // than leave the page showing an order that was never
-                // actually persisted.
+                // The DOM was already reordered optimistically during the
+                // drag — if the save itself failed, reload rather than
+                // leave the page showing an order that was never actually
+                // persisted.
                 alert("Couldn't save the new order — reloading to show what's actually saved.");
                 window.location.reload();
             });
-    });
+    }
+
+    container.addEventListener('pointerup', finishDrag);
+    container.addEventListener('pointercancel', finishDrag);
 })();
 </script>
 {% endif %}
