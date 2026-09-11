@@ -24,6 +24,7 @@ from supplies import services as supply_services
 from supplies.models import SupplyItem, SupplyReading
 from vendorportal.models import AccessAttempt
 
+from .google_calendar_push import delete_visit_event
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
     Booking, BookingFeedHealth, CleaningPaymentBatch, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
@@ -819,6 +820,7 @@ def visit_detail(request, pk):
         elif action == 'set_status':
             new_status = request.POST.get('status')
             if new_status in Visit.Status.values:
+                was_active = visit.status not in (Visit.Status.CANCELLED, Visit.Status.SKIPPED)
                 visit.status = new_status
                 visit.save(update_fields=['status'])
                 # A manual override lands here instead of checklist_service.
@@ -830,6 +832,15 @@ def visit_detail(request, pk):
                 # ever touches issues that don't already have one.
                 if new_status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED):
                     checklist_service.create_issue_tickets(visit, created_by=request.user)
+                # Manually setting Cancelled/Skipped used to leave the
+                # calendar event sitting there untouched — the only path
+                # that ever cleaned it up was the automatic one where the
+                # underlying Airbnb/VRBO reservation itself got cancelled
+                # (see onsite/services/bookings.py's diff['cancelled']
+                # handling). Mirrored here so a manual cancel behaves the
+                # same way regardless of which path triggered it.
+                if was_active and new_status in (Visit.Status.CANCELLED, Visit.Status.SKIPPED):
+                    transaction.on_commit(lambda visit=visit: delete_visit_event(visit))
                 messages.success(request, f'Status updated to {visit.get_status_display()}.')
 
         elif action == 'toggle_checklist_item':
@@ -978,6 +989,23 @@ def visit_public(request, token):
     visit = get_object_or_404(Visit, access_token=token)
     if not visit.is_access_token_valid():
         return render(request, 'onsite/visit_public_expired.html', status=410)
+    if visit.status in (Visit.Status.CANCELLED, Visit.Status.SKIPPED):
+        # Used to keep working exactly as before a cancel — nothing here
+        # checked status at all, so a cleaner who still had the link could
+        # tap Start and work through a checklist for a visit staff had
+        # already called off. Blocked the same way an expired token already
+        # is (same template, different wording) — covers both a plain page
+        # load AND every AJAX action this page's own JS fires (checklist
+        # taps, photo uploads, issue reports), since they all come through
+        # this same view.
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'error': 'This visit is no longer active.'}, status=410)
+        return render(request, 'onsite/visit_public_expired.html', {
+            'heading': 'This visit is no longer active',
+            'message': f'It was marked {visit.get_status_display().lower()} and this link no longer works — '
+                       'contact the office if this seems wrong.',
+            'icon': 'calendar-x',
+        }, status=410)
 
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
@@ -1260,6 +1288,8 @@ def visit_public_signature(request, token):
     visit = get_object_or_404(Visit, access_token=token)
     if not visit.is_access_token_valid():
         return HttpResponse('Link expired.', status=410)
+    if visit.status in (Visit.Status.CANCELLED, Visit.Status.SKIPPED):
+        return HttpResponse('This visit is no longer active.', status=410)
 
     file = request.FILES.get('file')
     if file:
