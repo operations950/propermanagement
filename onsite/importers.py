@@ -11,7 +11,14 @@ Two shapes, handled differently:
   host manages, each row carrying that platform's own listing name/title.
   No property is picked upfront; every row's `listing_name` is resolved
   against stored `core.PropertyListingName` rows by the caller
-  (see `onsite/services/bookings.py::resolve_listing_names`).
+  (see `onsite/services/bookings.py::resolve_listing_names`). Airbnb also
+  has a "transactions/earnings" .csv variant with an extra `Type` column —
+  a row per FINANCIAL LINE ITEM rather than per reservation (the same
+  confirmation code repeats: a 'Reservation' row, a separate 'Pass Through
+  Tot' row, sometimes a 'Resolution Payout' row, and — for a long stay paid
+  out in installments — one more 'Reservation' row per month). parse_csv
+  collapses that back down to one row per actual reservation; see
+  `_is_non_reservation_row` and the uid-dedup pass inside parse_csv.
 
 Format is detected from the file extension; which platform (Airbnb vs VRBO)
 is picked by staff on the upload form rather than sniffed from content —
@@ -144,8 +151,12 @@ _CSV_FIELD_ALIASES = {
     'check_out': ['end date', 'end_date', 'check-out date', 'check-out', 'check_out', 'checkout', 'departure'],
     # Airbnb's single combined column. VRBO instead splits first/last name
     # into two columns — see guest_first_name/guest_last_name below, which
-    # parse_csv falls back to combining when this one isn't found.
-    'guest_name': ['guest name', 'guest_name', 'name'],
+    # parse_csv falls back to combining when this one isn't found. 'guest'
+    # on its own is the header Airbnb's newer "transactions/earnings"-style
+    # export uses (see transaction_type below) — added after a real file in
+    # that format imported with every guest name blank, since 'guest' alone
+    # didn't match any alias here.
+    'guest_name': ['guest name', 'guest_name', 'name', 'guest'],
     'guest_first_name': ['guest first name', 'first name'],
     'guest_last_name': ['guest last name', 'last name'],
     # 'contact' is Airbnb's real header for the phone column; 'guest phone'
@@ -166,7 +177,35 @@ _CSV_FIELD_ALIASES = {
     # for onsite.BookingFeedHealth. 'booked or inquired on' is VRBO's own
     # header; Airbnb's is just 'booked'. Some exports have neither.
     'booked_at': ['booked', 'booked date', 'booked_date', 'date booked', 'booking date', 'reservation date', 'booked or inquired on'],
+    # Not required — only present on Airbnb's newer "transactions/earnings"
+    # export (its own header is just 'type'), which is a row per FINANCIAL
+    # LINE ITEM rather than a row per reservation: the same confirmation
+    # code shows up multiple times — once as the actual 'Reservation' row,
+    # plus a separate 'Pass Through Tot' (pass-through tax) row, a
+    # 'Resolution Payout' row, and — for a long stay paid out in
+    # installments — one more 'Reservation' row per month, all sharing the
+    # same confirmation code and stay dates. See _is_non_reservation_row and
+    # the uid-dedup pass below in parse_csv for how this gets collapsed back
+    # down to one row per actual reservation. A row with no recognizable
+    # Type value (every other supported export) is always treated as a real
+    # reservation — this column only ever narrows, never requires.
+    'transaction_type': ['type'],
 }
+
+# Denylist, not an allowlist: only known non-reservation financial line item
+# types from Airbnb's transactions export are excluded (matched as a
+# case-insensitive substring, to tolerate minor wording drift like "Pass
+# Through Total" vs "Pass Through Tot"); anything else — including a
+# genuinely new Type value neither platform has been observed using yet, or
+# literally 'Reservation' — is treated as a real reservation by default.
+# Mirrors this module's existing "never assume, only explicit signals
+# matter" convention (see RawBooking.is_cancelled's own comment).
+_NON_RESERVATION_TYPE_KEYWORDS = ('pass through', 'resolution', 'payout', 'adjustment')
+
+
+def _is_non_reservation_row(type_value):
+    lowered = type_value.strip().lower()
+    return any(keyword in lowered for keyword in _NON_RESERVATION_TYPE_KEYWORDS)
 
 
 def _find_column(fieldnames, aliases):
@@ -202,10 +241,30 @@ def parse_csv(file_bytes):
         )
 
     bookings = []
+    seen_uids = set()
     for row in reader:
         uid = (row.get(columns['external_uid']) or '').strip()
         if not uid:
             continue
+        if columns['transaction_type']:
+            type_value = (row.get(columns['transaction_type']) or '').strip()
+            if type_value and _is_non_reservation_row(type_value):
+                continue
+        if uid in seen_uids:
+            # A confirmation code that legitimately repeats within one file
+            # — Airbnb's transactions export, in particular, gives a long
+            # stay one 'Reservation' row PER MONTH it pays out, all sharing
+            # the same code and the same stay dates (only the transaction
+            # date/amount differ). Every duplicate carries the same
+            # reservation-defining data (guest, dates, listing), so keeping
+            # just the first one encountered is enough — this is purely
+            # about not trying to INSERT the same (source, external_uid)
+            # twice, which the database's own uniqueness rule on Booking
+            # would otherwise reject outright, aborting the whole import for
+            # that property partway through (a real, confirmed failure mode
+            # this guards against, not a hypothetical one).
+            continue
+        seen_uids.add(uid)
         phone = (row.get(columns['guest_phone']) or '').strip() if columns['guest_phone'] else ''
         digits = re.sub(r'\D', '', phone)
         booked_at = None
