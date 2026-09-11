@@ -1573,8 +1573,33 @@ def checklist_template_detail(request, type_id):
             messages.success(request, 'Item updated.')
 
         elif action == 'delete_item':
-            StandardChecklistItem.objects.filter(pk=request.POST.get('item_id'), visit_type=visit_type).delete()
-            messages.success(request, 'Item deleted.')
+            # Soft-delete (is_active=False), NOT a real row delete — two real
+            # reasons, found the hard way from a genuine bug report ("I
+            # deleted items and they came back"):
+            #   1. seed_checklist_templates runs on EVERY deploy (it's in
+            #      the Procfile) and get_or_create()s each of its hardcoded
+            #      items by (visit_type, text). A real delete makes the row
+            #      not exist; the NEXT deploy's seed run can't tell that
+            #      apart from "never created yet" and recreates it — a
+            #      staff-deleted item silently resurrecting on the very
+            #      next push, with no way to tell why.
+            #   2. A real delete CASCADEs and destroys any
+            #      PropertyChecklistOverride rows pointing at this item —
+            #      quietly losing a property's own hide/order-override
+            #      settings for it, which nothing here warns about.
+            # Mirrors the exact same "hide, never delete, one-click restore"
+            # philosophy PropertyChecklistOverride already uses for a
+            # per-property hide — see that model's own docstring. The item
+            # stays visible (struck through) in this same list below;
+            # toggling "Active" back on in its edit form restores it.
+            item = get_object_or_404(StandardChecklistItem, pk=request.POST.get('item_id'), visit_type=visit_type)
+            item.is_active = False
+            item.save(update_fields=['is_active'])
+            messages.success(
+                request,
+                f'"{item.text}" removed from checklists — it stays listed below (inactive) in case you want it back, '
+                'and unlike a real delete, it will NOT come back on its own after a future deploy.',
+            )
 
         elif action == 'move_item':
             # Locked + atomic: was a plain read-swap-write with no
