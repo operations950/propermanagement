@@ -33,7 +33,7 @@
 
                     {% if not step.is_complete %}
                     <div class="mt-1">
-                        {% include "processes/steps/"|add:step.step_type|add:".html" with step=step %}
+                        {% include step.step_template_names with step=step %}
                     </div>
                     {% else %}
                     <div class="small text-muted mt-1">{{ step|step_response_summary }}</div>

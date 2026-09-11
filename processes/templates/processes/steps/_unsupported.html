@@ -1,0 +1,11 @@
+{# Fallback when step.step_type doesn't match any real template under
+   processes/steps/ — see ProcessRunStep.step_template_names' own docstring
+   for exactly how a row ends up here and the crash this replaces. Shown
+   instead of the step's real input widget; the step can still be marked
+   complete some other way (e.g. reassigning/cancelling the run), it just
+   can't render its own control. #}
+<div class="small" style="color: var(--status-critical, #dc3545);">
+    <i data-lucide="alert-triangle" class="icon"></i>
+    Unsupported step type ("{{ step.step_type }}") — this step can't render its own control.
+    An admin can check this process template in Django admin.
+</div>

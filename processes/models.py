@@ -250,6 +250,25 @@ class ProcessRunStep(models.Model):
     def __str__(self):
         return self.label
 
+    def step_template_names(self):
+        """Candidate templates for rendering this step's input widget, most
+        specific first — a real, reproduced production bug: step_type is a
+        plain CharField with `choices`, which Django only enforces via
+        ModelForm.full_clean(), never on a bare .save() — so a stale value
+        left over from a step-type rename (or any other way a row ends up
+        holding something outside StepType's current 17 values) has always
+        been possible. The template that used to render this
+        (processes/_run_card.html) built a single hardcoded path string
+        from step_type and included exactly that, with no fallback — a bad
+        value meant Django's {% include %} raised TemplateDoesNotExist,
+        which crashed the ENTIRE ticket/property/contact detail page this
+        step happened to be attached to, not just this one step. Passing a
+        LIST here instead (Django's {% include %} tries each in order,
+        raising only if none exist — see IncludeNode/select_template) means
+        an unrecognized step_type now falls back to a plain "unsupported
+        step type" notice instead of taking down the whole page."""
+        return [f'processes/steps/{self.step_type}.html', 'processes/steps/_unsupported.html']
+
     def mark_complete(self, user=None):
         # response is included here because every caller sets it just
         # before calling mark_complete() — a narrower update_fields would
