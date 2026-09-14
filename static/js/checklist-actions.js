@@ -55,6 +55,31 @@
     el._clearTimer = setTimeout(function () { el.remove(); }, 6000);
   }
 
+  // A generic network-level failure (the request never reached the server
+  // at all — no signal, airplane mode, a dropped connection mid-upload)
+  // throws a browser-internal TypeError whose .message is NOT meant for an
+  // end user — and it isn't even consistent across browsers: Chrome calls
+  // it "Failed to fetch", Firefox "NetworkError when attempting to fetch
+  // resource", and Safari/WebKit (what most cleaners are actually on,
+  // uploading from a phone) just "Load failed" — a real message a cleaner
+  // hit mid-cleaning, on a real ticket, with no indication it was even
+  // about the photo upload. uploadOnePhoto's catch handler deliberately
+  // shows the ACTUAL failure reason when there is one (wrong file type,
+  // too large, a real server-side error) — this only catches the narrower
+  // case where the failure has no useful reason to show in the first
+  // place, same fallback wording postAction's own .catch() already uses
+  // for the exact same underlying situation.
+  var GENERIC_NETWORK_ERROR_MESSAGES = [
+    'load failed', 'failed to fetch', 'networkerror when attempting to fetch resource', 'network request failed',
+  ];
+  function friendlyErrorMessage(err) {
+    var raw = (err && err.message) || '';
+    if (!raw || GENERIC_NETWORK_ERROR_MESSAGES.indexOf(raw.toLowerCase()) !== -1) {
+      return 'Could not reach the server — check your connection and try again.';
+    }
+    return raw;
+  }
+
   function postAction(fields) {
     var fd = new FormData();
     fd.append('csrfmiddlewaretoken', getCsrfToken());
@@ -237,7 +262,12 @@
         // network) right on the item — previously this only set a hover
         // title with no message on screen, so a failed upload looked
         // identical no matter why it failed, giving nothing to act on.
-        var message = (err && err.message) || 'Upload failed — try again.';
+        // friendlyErrorMessage translates a generic network-level failure
+        // (a browser-internal string like Safari's own "Load failed" —
+        // meaningless to whoever's reading it) into something a cleaner can
+        // actually act on; a real server-reported reason passes through
+        // unchanged.
+        var message = friendlyErrorMessage(err);
         thumbEl.title = message + ' (tap to retry)';
         showError(itemEl, message);
         thumbEl.onclick = function (e) {
