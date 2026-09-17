@@ -36,7 +36,18 @@ def report(apps, schema_editor):
     counts = {}
     for ticket in Ticket.objects.filter(created_by__isnull=False).select_related('created_by'):
         user = ticket.created_by
-        label = user.get_full_name() or user.username
+        # Plain field access, not user.get_full_name() — apps.get_model()
+        # returns a HISTORICAL model reconstructed only from migration
+        # state, which carries fields/relations but none of the real
+        # model class's own Python methods (get_full_name() comes from
+        # Django's AbstractUser, not from any migration). This crashed
+        # the first attempt at this exact migration with AttributeError:
+        # 'User' object has no attribute 'get_full_name' — caught only
+        # against real production data, since local testing had zero
+        # tickets with a creator set, so this code path never actually
+        # ran locally the first time.
+        full_name = f'{user.first_name} {user.last_name}'.strip()
+        label = full_name or user.username
         counts[label] = counts.get(label, 0) + 1
 
     if not counts:
