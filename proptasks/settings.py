@@ -464,6 +464,11 @@ PORTFOLIO_GENERATE_INTERVAL_MINUTES = int(os.environ.get('PORTFOLIO_GENERATE_INT
 # per that panel's own design brief.
 OWNER_DASHBOARD_QUIET_DAYS = int(os.environ.get('OWNER_DASHBOARD_QUIET_DAYS', '7'))
 OWNER_DASHBOARD_BLOCKED_QUIET_DAYS = int(os.environ.get('OWNER_DASHBOARD_BLOCKED_QUIET_DAYS', '30'))
+# How close to its own due date a dated ticket has to be before staleness
+# (no activity in OWNER_DASHBOARD_QUIET_DAYS) is actually worth flagging —
+# see gone_quiet's own comment on why a ticket due 2 months out sitting
+# untouched for a week is expected, not quiet.
+OWNER_DASHBOARD_QUIET_DUE_WITHIN_DAYS = int(os.environ.get('OWNER_DASHBOARD_QUIET_DUE_WITHIN_DAYS', '30'))
 
 # Supply reorder cart-state thresholds — see supplies/services.py's cart
 # state table (build brief: "Supply reorder redesign"). Settings, not

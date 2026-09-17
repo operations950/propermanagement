@@ -266,9 +266,17 @@ def gone_quiet(now=None):
     - no activity (max of updated_at / latest status note / latest
       reassignment) in OWNER_DASHBOARD_QUIET_DAYS, excluding statuses
       that are SUPPOSED to sit (upcoming, deferred) and already-closed work
+      — AND due (or overdue) within OWNER_DASHBOARD_QUIET_DUE_WITHIN_DAYS.
+      Reported directly: a ticket genuinely not due for two months sitting
+      untouched for a week is normal, not quiet — nothing is "supposed to
+      be worked on" yet, so staleness alone isn't a signal for it. A
+      ticket with no due date at all is handled by its own separate
+      condition below instead, never this one.
     - blocked beyond OWNER_DASHBOARD_BLOCKED_QUIET_DAYS — its own bucket
       since a normally-blocked ticket sitting 30+ days is the worst thing
-      on the board and appears nowhere else
+      on the board and appears nowhere else (unconditional on due_date —
+      a blocked ticket is actively supposed to be moving regardless of
+      how far off its own due date is)
     - auto-assigned and the assignee has never opened it (TicketView)
     - no due date and no recent activity
     A ticket can match more than one condition; every match is kept so the
@@ -276,6 +284,7 @@ def gone_quiet(now=None):
     now = now or timezone.now()
     quiet_cutoff = now - timedelta(days=settings.OWNER_DASHBOARD_QUIET_DAYS)
     blocked_cutoff = now - timedelta(days=settings.OWNER_DASHBOARD_BLOCKED_QUIET_DAYS)
+    quiet_due_within_cutoff = now + timedelta(days=settings.OWNER_DASHBOARD_QUIET_DUE_WITHIN_DAYS)
 
     last_note_sq = (
         TicketStatusNote.objects.filter(ticket=OuterRef('pk'))
@@ -313,7 +322,7 @@ def gone_quiet(now=None):
             since = t.status_changed_at or t.created_at
             if since <= blocked_cutoff:
                 reasons.append({'reason': 'blocked_long', 'since': since})
-        elif t.last_activity_at <= quiet_cutoff:
+        elif t.last_activity_at <= quiet_cutoff and t.due_date and t.due_date <= quiet_due_within_cutoff:
             reasons.append({'reason': 'no_activity', 'since': t.last_activity_at})
 
         if t.assignment_source == Ticket.AssignmentSource.AUTO and t.assigned_staff_id and not t.viewed_by_assignee:
