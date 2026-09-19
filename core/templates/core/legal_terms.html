@@ -1,0 +1,53 @@
+{% extends 'vendorportal/base.html' %}
+{% block title %}End User License Agreement — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="card my-4">
+    <div class="card-body p-4">
+        <h1 class="page-title h3 mb-1">End User License Agreement</h1>
+        <p class="text-muted small mb-4">{{ app_name }} · Effective {{ effective_date }}</p>
+
+        <p>This agreement governs use of {{ app_name }}, the internal property-management system operated by {{ company_name }} ("we," "us"). By signing in, or by opening and using a private link we send you, you agree to these terms. If you do not agree, do not use the system.</p>
+
+        <h2 class="h5 mt-4">1. License</h2>
+        <p>We grant you a limited, non-exclusive, non-transferable, revocable right to use the system, solely for work you are authorized to do on our behalf or with us, and only through the account or link we gave you. The system is licensed to you, not sold. We retain all rights in the software and its design.</p>
+
+        <h2 class="h5 mt-4">2. Who may use it</h2>
+        <p>The system is for our staff and for vendors, cleaners, and other partners we invite. Accounts and links are personal to you. Do not share your login or forward a private link to anyone else.</p>
+
+        <h2 class="h5 mt-4">3. Acceptable use</h2>
+        <ul>
+            <li>Use the system only for legitimate work related to the properties we manage.</li>
+            <li>Enter accurate information, and upload only content you have the right to share.</li>
+            <li>Do not attempt to access data or areas you are not authorized to see, interfere with the system, or use it to break the law.</li>
+            <li>Do not copy, reverse engineer, or resell the software.</li>
+        </ul>
+
+        <h2 class="h5 mt-4">4. Your content and our data</h2>
+        <p>Information you enter or upload remains subject to the rights of its owner, and you give us permission to store, display, and use it to run our business. We handle personal information as described in our <a href="{% url 'privacy_policy' %}">Privacy Policy</a>.</p>
+
+        <h2 class="h5 mt-4">5. Third-party services</h2>
+        <p>The system connects to services such as QuickBooks Online, Google, and others. Your use of those services is subject to their own terms. Where we connect QuickBooks, the system reads company financial summary data only.</p>
+
+        <h2 class="h5 mt-4">6. Availability and changes</h2>
+        <p>We may change, suspend, or discontinue any part of the system at any time, and we do not guarantee it will always be available or error-free.</p>
+
+        <h2 class="h5 mt-4">7. Disclaimer of warranties</h2>
+        <p>The system is provided "as is" and "as available," without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement.</p>
+
+        <h2 class="h5 mt-4">8. Limitation of liability</h2>
+        <p>To the fullest extent permitted by law, we are not liable for indirect, incidental, special, consequential, or punitive damages, or for lost profits or data, arising from your use of the system. Our total liability for any claim relating to the system is limited to the greater of $100 or the amount you paid us for access to it, if any.</p>
+
+        <h2 class="h5 mt-4">9. Termination</h2>
+        <p>We may suspend or end your access at any time. You may stop using the system at any time. Sections that by their nature should survive termination will survive.</p>
+
+        <h2 class="h5 mt-4">10. Governing law</h2>
+        <p>This agreement is governed by the laws of the State of Florida, without regard to conflict-of-law rules. Disputes will be brought in the state or federal courts located in Palm Beach County, Florida.</p>
+
+        <h2 class="h5 mt-4">11. Changes to these terms</h2>
+        <p>We may update this agreement from time to time. The effective date above shows when it last changed. Continued use after a change means you accept the updated terms.</p>
+
+        <h2 class="h5 mt-4">12. Contact</h2>
+        <p class="mb-0">{{ company_name }}<br>{{ company_address }}<br><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+    </div>
+</div>
+{% endblock %}

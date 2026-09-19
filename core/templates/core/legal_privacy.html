@@ -1,0 +1,51 @@
+{% extends 'vendorportal/base.html' %}
+{% block title %}Privacy Policy — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="card my-4">
+    <div class="card-body p-4">
+        <h1 class="page-title h3 mb-1">Privacy Policy</h1>
+        <p class="text-muted small mb-4">{{ app_name }} · Effective {{ effective_date }}</p>
+
+        <p>{{ app_name }} is the internal property-management system operated by {{ company_name }} ("we," "us"). It is used by our staff, and by vendors, cleaners, and other partners we send secure links to, to run day-to-day work on the properties we manage. This policy explains what information the system handles and how it is used. It is not a consumer product and is not offered to the general public.</p>
+
+        <h2 class="h5 mt-4">Information we handle</h2>
+        <ul>
+            <li><strong>Staff accounts:</strong> name, email address, role, and sign-in details (including Google sign-in if used).</li>
+            <li><strong>Contacts:</strong> names, email addresses, phone numbers, and roles of property owners, board members, tenants, vendors, and others we work with.</li>
+            <li><strong>Property and work records:</strong> property details (including access and system information), tickets, notes, checklists, on-site visit records, and supply requests.</li>
+            <li><strong>Uploads:</strong> photos, videos, documents, and signatures that staff, cleaners, and vendors attach to work records.</li>
+            <li><strong>Communications:</strong> a log of follow-up emails and text messages sent through the system.</li>
+            <li><strong>Calendar data:</strong> events from a staff member's Google Calendar, only if that staff member chooses to connect it.</li>
+            <li><strong>Financial summary:</strong> if we connect QuickBooks (see below), summary totals from our own company's books.</li>
+            <li><strong>Technical data:</strong> IP addresses and timestamps in access logs, used for security and abuse prevention.</li>
+        </ul>
+
+        <h2 class="h5 mt-4">How we use it</h2>
+        <p>Only to operate our property-management business: tracking and completing work, scheduling on-site visits, communicating with owners, vendors, and staff, and keeping records. We do not sell personal information and we do not use it for third-party advertising.</p>
+
+        <h2 class="h5 mt-4">QuickBooks</h2>
+        <p>If we connect QuickBooks Online, we do so only for our own company file, and only to show year-to-date financial totals (revenue, expenses, and net income from the Profit and Loss report) on an internal dashboard. The system reads that report; it does not create, change, or delete anything in QuickBooks. We store those three totals and the secure connection credentials Intuit issues to us. Disconnecting QuickBooks inside the system immediately deletes those credentials, and the connection can also be revoked from your Intuit account at any time. Use of QuickBooks is also subject to Intuit's own terms and privacy statement.</p>
+
+        <h2 class="h5 mt-4">Service providers</h2>
+        <p>We use third-party services to run the system, and they process data on our behalf: hosting and database (Railway), media file storage (Cloudinary), Google (sign-in, calendar, and sending email), Intuit (QuickBooks), Quo (phone and text messaging), USPS and Google Places (address lookup and verification), and Anthropic (automated analysis of text and uploaded documents, for example to extract contact details or sort incoming items). We share with each only what is needed for that purpose.</p>
+
+        <h2 class="h5 mt-4">Retention</h2>
+        <p>We keep records for as long as they are needed for our business and legal obligations, then delete or anonymize them. Financial connection credentials are deleted as soon as a connection is disconnected.</p>
+
+        <h2 class="h5 mt-4">Security</h2>
+        <p>Access requires a staff login or a private, unguessable link issued for a specific task. Data is transmitted over encrypted connections. No system is perfectly secure, but we take reasonable measures to protect the information we hold.</p>
+
+        <h2 class="h5 mt-4">Your choices</h2>
+        <p>If you are a contact, owner, or vendor and want to see, correct, or delete information we hold about you, or you have questions about this policy, contact us using the details below.</p>
+
+        <h2 class="h5 mt-4">Children</h2>
+        <p>The system is a business tool and is not directed to children.</p>
+
+        <h2 class="h5 mt-4">Changes</h2>
+        <p>We may update this policy from time to time. The effective date above shows when it last changed.</p>
+
+        <h2 class="h5 mt-4">Contact</h2>
+        <p class="mb-0">{{ company_name }}<br>{{ company_address }}<br><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+    </div>
+</div>
+{% endblock %}

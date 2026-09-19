@@ -313,6 +313,30 @@ def quickbooks_disconnect(request):
     return redirect('admin_tools')
 
 
+# The two public legal pages below are deliberately NOT login_required —
+# Intuit's Developer portal (needed to get production QuickBooks keys)
+# requires a publicly reachable privacy policy URL and end-user license
+# agreement URL, and third parties (Intuit's reviewers, Google's OAuth
+# consent screen if it ever asks for the same) have to be able to open
+# them without an account. Rendered through the same login-free layout
+# the vendor/cleaner token pages use.
+LEGAL_CONTEXT = {
+    'company_name': 'Proper Realty',
+    'app_name': 'Proper Management',
+    'company_address': '1045 E Atlantic Ave, Delray Beach, FL 33483',
+    'contact_email': 'justin@proper-realty.com',
+    'effective_date': 'September 19, 2026',
+}
+
+
+def privacy_policy(request):
+    return render(request, 'core/legal_privacy.html', LEGAL_CONTEXT)
+
+
+def terms_of_service(request):
+    return render(request, 'core/legal_terms.html', LEGAL_CONTEXT)
+
+
 def _parse_calendar_event_form(request):
     """Shared POST parsing for calendar_event_create/update — raises
     ValueError with a user-facing message on anything unusable, rather
