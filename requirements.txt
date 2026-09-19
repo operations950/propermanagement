@@ -1,4 +1,4 @@
-Django==6.0.7
+Django==6.0.8
 python-dotenv==1.2.2
 APScheduler==3.11.3
 python-dateutil==2.9.0.post0
@@ -17,3 +17,7 @@ gunicorn==26.0.0
 whitenoise==6.12.0
 dj-database-url==3.1.2
 psycopg[binary]==3.3.4
+
+# AES encryption for stored OAuth tokens (core/fields.py). Was already installed
+# transitively via google-auth; pinned explicitly because the app now imports it directly.
+cryptography==49.0.0

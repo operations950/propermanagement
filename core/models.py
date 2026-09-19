@@ -5,6 +5,7 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Case, IntegerField, Value, When
 
+from .fields import EncryptedTextField
 from .storage import DocumentStorage
 
 PHONE_REGEX = re.compile(r'^\d{3}-\d{3}-\d{4}$')
@@ -705,9 +706,12 @@ class QuickBooksToken(models.Model):
     QuickBooks on every page load — refreshed by the daily
     sync_quickbooks_financials job. QuickBooks refresh tokens expire after
     ~100 days (unlike Google's), so periodic reconnection is expected."""
-    realm_id = models.CharField(max_length=50, help_text='The QuickBooks company ID this token authorizes access to.')
-    access_token = models.TextField(blank=True)
-    refresh_token = models.TextField()
+    # All three encrypted at rest (AES, see core/fields.py) per Intuit's
+    # security requirements — realm_id was a 50-char CharField before, but
+    # ciphertext is longer than the value it wraps, so it's a text column now.
+    realm_id = EncryptedTextField(help_text='The QuickBooks company ID this token authorizes access to.')
+    access_token = EncryptedTextField(blank=True)
+    refresh_token = EncryptedTextField()
     access_token_expires_at = models.DateTimeField(null=True, blank=True)
     refresh_token_expires_at = models.DateTimeField(null=True, blank=True)
     connected_by = models.ForeignKey(

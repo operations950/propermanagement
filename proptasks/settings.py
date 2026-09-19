@@ -97,6 +97,13 @@ CSRF_TRUSTED_ORIGINS = [f'https://{h}' for h in ALLOWED_HOSTS if h not in ('127.
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Django's own default leaves the CSRF cookie readable by page scripts.
+    # Intuit's QuickBooks security requirements ask for Secure + HttpOnly
+    # on the app's cookies, and nothing in this app reads that cookie from
+    # JavaScript (every fetch() reads the token from the hidden
+    # csrfmiddlewaretoken input in the page instead — confirmed by a grep of
+    # static/js and every template before turning this on).
+    CSRF_COOKIE_HTTPONLY = True
     # Force plain-HTTP requests to HTTPS — SECURE_PROXY_SSL_HEADER above is
     # what lets Django correctly recognize a Railway-forwarded HTTPS request
     # as secure in the first place; this is what actually redirects a
@@ -153,6 +160,7 @@ MIDDLEWARE = [
     'core.middleware.TimezoneMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.NoStoreHtmlMiddleware',
 ]
 
 ROOT_URLCONF = 'proptasks.urls'
@@ -426,6 +434,11 @@ USPS_CLIENT_SECRET = os.environ.get('USPS_CLIENT_SECRET', '')
 # Company Financials on the Owner Dashboard (core/quickbooks.py, core/views.py).
 # Blank = the box shows a "Connect QuickBooks" prompt instead of erroring,
 # same future-integration pattern as the keys above.
+# Key for encrypting stored OAuth tokens at rest (see core/fields.py). Any
+# long random string works. Optional: left blank, a key is derived from
+# SECRET_KEY instead, so encryption is on either way. Set it to give the
+# token key its own lifecycle independent of SECRET_KEY.
+TOKEN_ENCRYPTION_KEY = os.environ.get('TOKEN_ENCRYPTION_KEY', '')
 QUICKBOOKS_CLIENT_ID = os.environ.get('QUICKBOOKS_CLIENT_ID', '')
 QUICKBOOKS_CLIENT_SECRET = os.environ.get('QUICKBOOKS_CLIENT_SECRET', '')
 QUICKBOOKS_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUICKBOOKS_SYNC_INTERVAL_MINUTES', str(60 * 24)))
