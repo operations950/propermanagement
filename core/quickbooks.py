@@ -115,9 +115,10 @@ def exchange_code(request, code):
             timeout=10,
         )
         resp.raise_for_status()
+        logger.info('QuickBooks token exchange ok (intuit_tid=%s)', _intuit_tid(resp))
         return resp.json()
-    except Exception:
-        logger.exception('QuickBooks token exchange failed')
+    except Exception as exc:
+        logger.error('QuickBooks token exchange failed: %s', _failure_summary(exc))
         return None
 
 
@@ -133,6 +134,43 @@ def _status_code(exc):
     return getattr(getattr(exc, 'response', None), 'status_code', None)
 
 
+def _intuit_tid(response):
+    """The intuit_tid response header — Intuit's per-request trace ID, the
+    first thing their support asks for when troubleshooting a call."""
+    tid = (getattr(response, 'headers', None) or {}).get('intuit_tid', '')
+    return tid if isinstance(tid, str) else ''
+
+
+def _error_code(response):
+    """Intuit's own short error code from a failed response body (the
+    OAuth 'error' string, e.g. invalid_grant, or the first QuickBooks Fault
+    code) — nothing else from the body, which can carry company data."""
+    try:
+        body = response.json()
+        code = body.get('error') or body['Fault']['Error'][0].get('code')
+        return code[:60] if isinstance(code, str) else ''
+    except Exception:
+        return ''
+
+
+def _failure_summary(exc):
+    """A log-safe one-liner for a failed QuickBooks request: exception
+    type, HTTP status, intuit_tid and Intuit's error code. Deliberately
+    NOT str(exc)/a traceback: requests puts the full request URL in that
+    message, and the report URL contains the company ID (realmId), which
+    is stored encrypted and must not end up readable in the logs. Intuit's
+    requirements also forbid logging credentials or QuickBooks data."""
+    response = getattr(exc, 'response', None)
+    parts = [type(exc).__name__]
+    if _status_code(exc):
+        parts.append(f'HTTP {_status_code(exc)}')
+    if _intuit_tid(response):
+        parts.append(f'intuit_tid={_intuit_tid(response)}')
+    if _error_code(response):
+        parts.append(f'error={_error_code(response)}')
+    return ' '.join(parts)
+
+
 def _refresh_if_needed(token, force=False):
     expired = not token.access_token or not token.access_token_expires_at or token.access_token_expires_at <= timezone.now()
     if not (expired or force):
@@ -146,6 +184,7 @@ def _refresh_if_needed(token, force=False):
             timeout=10,
         )
         resp.raise_for_status()
+        logger.info('QuickBooks token refresh ok (intuit_tid=%s)', _intuit_tid(resp))
         data = resp.json()
         token.access_token = data['access_token']
         token.refresh_token = data.get('refresh_token', token.refresh_token)
@@ -155,7 +194,7 @@ def _refresh_if_needed(token, force=False):
         token.save(update_fields=['access_token', 'refresh_token', 'access_token_expires_at', 'refresh_token_expires_at'])
         return REFRESH_OK
     except Exception as exc:
-        logger.exception('QuickBooks token refresh failed')
+        logger.error('QuickBooks token refresh failed: %s', _failure_summary(exc))
         return REFRESH_REJECTED if _status_code(exc) in (400, 401) else REFRESH_FAILED
 
 
@@ -190,6 +229,7 @@ def _read_profit_and_loss(token):
         timeout=15,
     )
     resp.raise_for_status()
+    logger.info('QuickBooks Profit & Loss read ok (intuit_tid=%s)', _intuit_tid(resp))
     rows = resp.json().get('Rows', {}).get('Row', [])
     revenue = _find_report_total(rows, 'Income') or 0
     expenses = _find_report_total(rows, 'Expenses') or 0
@@ -206,8 +246,8 @@ def fetch_profit_and_loss(token):
         return None
     try:
         return _read_profit_and_loss(token)
-    except Exception:
-        logger.exception('QuickBooks Profit & Loss fetch failed')
+    except Exception as exc:
+        logger.error('QuickBooks Profit & Loss fetch failed: %s', _failure_summary(exc))
         return None
 
 
@@ -236,7 +276,7 @@ def _fetch_with_retry(token):
     try:
         return _read_profit_and_loss(token), ''
     except Exception as exc:
-        logger.warning('QuickBooks Profit & Loss fetch failed, retrying once', exc_info=True)
+        logger.warning('QuickBooks Profit & Loss fetch failed, retrying once: %s', _failure_summary(exc))
         if _status_code(exc) == 401:
             outcome = _refresh_if_needed(token, force=True)
             if outcome == REFRESH_REJECTED:
@@ -247,8 +287,8 @@ def _fetch_with_retry(token):
             time.sleep(RETRY_DELAY_SECONDS)
     try:
         return _read_profit_and_loss(token), ''
-    except Exception:
-        logger.exception('QuickBooks Profit & Loss fetch failed after retry')
+    except Exception as exc:
+        logger.error('QuickBooks Profit & Loss fetch failed after retry: %s', _failure_summary(exc))
         return None, FETCH_ERROR
 
 
