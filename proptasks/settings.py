@@ -483,10 +483,18 @@ ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC
 # Airbnb/VRBO calendar links (onsite.BookingFeed) — how often each is polled,
 # and how many polls in a row an upcoming reservation must be missing from
 # its feed before it's treated as cancelled (see onsite/services/feeds.py).
-# The link a cleaner needs is sent the day before their visit, from this hour
-# (local time, settings.TIME_ZONE) on; a visit created later than that — or
-# dated today — is sent straight away. See onsite/services/notify.py.
-ONSITE_LINK_SEND_HOUR = int(os.environ.get('ONSITE_LINK_SEND_HOUR', '8'))
+# The link a cleaner needs is sent the evening BEFORE their visit, from this
+# hour (24-hour, local time, settings.TIME_ZONE) on; a visit created later than
+# that — or dated today — is sent straight away. 8 PM, not the morning: a text
+# arriving at 8 AM reads as "today's cleanings" to someone starting her day.
+# See onsite/services/notify.py.
+ONSITE_LINK_SEND_HOUR = int(os.environ.get('ONSITE_LINK_SEND_HOUR', '20'))
+
+# Short-term rental Today board (onsite/services/str_board.py): the cushion
+# wanted between a cleaning finishing and the next guest arriving, and how much
+# slack an early check-in needs after the unit is expected to be ready.
+STR_BOARD_BUFFER_MINUTES = int(os.environ.get('STR_BOARD_BUFFER_MINUTES', '30'))
+STR_BOARD_EARLY_READY_MARGIN_MINUTES = int(os.environ.get('STR_BOARD_EARLY_READY_MARGIN_MINUTES', '15'))
 ONSITE_LINK_SEND_INTERVAL_MINUTES = int(os.environ.get('ONSITE_LINK_SEND_INTERVAL_MINUTES', '30'))
 # How often upcoming, not-yet-started visits are re-synced to the current
 # checklist (they also re-sync at startup and the moment a cleaner starts one).

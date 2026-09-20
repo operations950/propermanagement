@@ -13,6 +13,7 @@ from django.db import transaction
 from django.db.models import Count, F, Max, Prefetch, Q
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
@@ -28,13 +29,14 @@ from . import google_calendar_push
 from .google_calendar_push import delete_visit_event
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
-    Booking, BookingFeed, BookingFeedHealth, CleaningPaymentBatch, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
+    Booking, BookingFeed, BookingFeedHealth, CleaningPaymentBatch, GuestRequest, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
     PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule,
     VisitType,
 )
 from .services import checklist as checklist_service
 from .services import feeds as feed_service
 from .services import recurring as recurring_service
+from .services import str_board
 from .services import notify as notify_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
@@ -744,6 +746,49 @@ def booking_feeds(request):
         'attention_only': request.GET.get('show') == 'attention',
         'poll_minutes': settings.BOOKING_FEED_POLL_INTERVAL_MINUTES,
         'missing_polls': settings.BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL,
+    })
+
+
+@login_required
+def str_today(request):
+    """The short-term rental Today board — see onsite/services/str_board.py.
+    Open to any logged-in staff: it's what whoever is watching the rentals
+    that day keeps open. The only writes are the hand-logged guest requests
+    (early check-in / late checkout) and approving or declining them."""
+    from django.utils.dateparse import parse_time
+
+    today = timezone.localdate()
+    day = parse_date(request.GET.get('date', '') or request.POST.get('day', '')) or today
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'log_request':
+                booking = get_object_or_404(Booking, pk=request.POST.get('booking_id'))
+                requested = parse_time(request.POST.get('requested_time', '').strip() or '')
+                guest_request = str_board.record_request(
+                    booking, request.POST.get('kind', ''), requested, request.POST.get('note', ''), request.user,
+                )
+                t = guest_request.requested_time
+                messages.success(request, f'Logged: {guest_request.get_kind_display().lower()} at {t.hour % 12 or 12}:{t:%M} {"AM" if t.hour < 12 else "PM"}.')
+            elif action == 'decide_request':
+                guest_request = get_object_or_404(GuestRequest, pk=request.POST.get('request_id'))
+                decision = request.POST.get('decision', '')
+                str_board.decide_request(guest_request, decision, request.user)
+                messages.success(request, f'Request {"approved" if decision == "approve" else "declined"}.')
+            elif action == 'delete_request':
+                get_object_or_404(GuestRequest, pk=request.POST.get('request_id')).delete()
+                messages.success(request, 'Request removed.')
+        except str_board.RequestError as e:
+            messages.error(request, str(e))
+        target = reverse('onsite_str_today')
+        return redirect(f'{target}?date={day.isoformat()}' if day != today else target)
+
+    board = str_board.build_board(day)
+    return render(request, 'onsite/str_today.html', {
+        'board': board, 'day': day, 'today': today,
+        'previous_day': day - timedelta(days=1), 'next_day': day + timedelta(days=1),
+        'is_admin': _is_admin(request.user),
     })
 
 

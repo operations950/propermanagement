@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path('', views.dashboard, name='onsite_dashboard'),
+    path('today/', views.str_today, name='onsite_str_today'),
     path('calendar/', views.calendar_view, name='onsite_calendar'),
     path('import/', views.booking_import_upload, name='onsite_booking_import'),
     path('import/slot/<int:slot_id>/', views.upload_slot, name='onsite_upload_slot'),

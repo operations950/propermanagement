@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+{% block title %}Rentals — {% if board.is_today %}today{% else %}{{ day|date:"D, M j" }}{% endif %}{% endblock %}
+{% block content %}
+<style>
+    .str-pill { display: inline-block; font-size: 0.78rem; padding: 2px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; text-decoration: none; }
+    .str-pill.neutral { background: var(--bs-light, #f8f9fa); color: var(--ink-secondary); border-color: var(--bs-border-color, #dee2e6); }
+    .str-pill.good { background: color-mix(in srgb, var(--status-good) 14%, white); color: color-mix(in srgb, var(--status-good) 75%, black); }
+    .str-pill.warning { background: color-mix(in srgb, var(--status-warning) 18%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); }
+    .str-pill.critical { background: color-mix(in srgb, var(--status-critical) 14%, white); color: color-mix(in srgb, var(--status-critical) 75%, black); }
+    .str-pill.info { background: color-mix(in srgb, var(--role-admin, #3b6fd4) 12%, white); color: var(--ink-primary); }
+    .str-arrow { color: var(--ink-muted); }
+    .str-item { border-top: 1px solid var(--bs-border-color, #e5e7eb); padding: 10px 0; }
+    .str-item:first-child { border-top: 0; }
+    .str-req { font-size: 0.82rem; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+    <div>
+        <h2 class="page-title mb-0">Rentals — {% if board.is_today %}today{% else %}{{ day|date:"l" }}{% endif %}</h2>
+        <p class="mb-0 small" style="color: var(--ink-muted);">{{ day|date:"l, F j" }}{% if board.is_today %} · updated {{ board.now|date:"g:i A" }}{% endif %}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="?date={{ previous_day|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Previous day"><i data-lucide="chevron-left" class="icon"></i></a>
+        {% if not board.is_today %}<a href="{% url 'onsite_str_today' %}" class="btn btn-outline-secondary btn-sm">Today</a>{% endif %}
+        <a href="?date={{ next_day|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Next day"><i data-lucide="chevron-right" class="icon"></i></a>
+        <a href="{% url 'onsite_dashboard' %}" class="btn btn-outline-secondary btn-sm">On-site visits</a>
+    </div>
+</div>
+
+{% if board.calendar_gaps %}
+<div class="alert alert-warning d-flex align-items-start gap-2 py-2" role="alert">
+    <i data-lucide="calendar-x" class="icon mt-1"></i>
+    <div class="small">
+        <strong>{{ board.calendar_gaps|length }} Airbnb/VRBO calendar line{{ board.calendar_gaps|length|pluralize }} aren't connected or need attention</strong> — reservations from those listings may be missing from this board.
+        {% if is_admin %}<a href="{% url 'onsite_booking_feeds' %}" class="alert-link">Booking calendars</a>{% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="row row-cols-2 row-cols-md-4 g-2 mb-3">
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small" style="color: var(--ink-muted);">Checking out</div><div class="fs-4 fw-semibold">{{ board.counts.checkouts }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small" style="color: var(--ink-muted);">Checking in</div><div class="fs-4 fw-semibold">{{ board.counts.checkins }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small" style="color: var(--ink-muted);">Cleanings done</div><div class="fs-4 fw-semibold">{{ board.counts.cleanings_done }} of {{ board.counts.cleanings_total }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="border-radius: 10px; background: {% if board.counts.attention %}color-mix(in srgb, var(--status-critical) 10%, white){% else %}color-mix(in srgb, var(--status-good) 10%, white){% endif %};"><div class="small" style="color: var(--ink-muted);">Need you</div><div class="fs-4 fw-semibold" style="color: {% if board.counts.attention %}var(--status-critical){% else %}var(--status-good){% endif %};">{{ board.counts.attention }}{% if board.counts.pending_requests %} <span class="fs-6 fw-normal">+ {{ board.counts.pending_requests }} request{{ board.counts.pending_requests|pluralize }}</span>{% endif %}</div></div></div>
+</div>
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); {% if board.items %}border-top: 3px solid var(--status-critical);{% endif %}">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-2"><i data-lucide="siren" class="icon"></i> What needs you {% if board.is_today %}now{% else %}that day{% endif %}</h6>
+        {% for item in board.items %}
+        <div class="str-item d-flex gap-3 align-items-start flex-wrap justify-content-between">
+            <div class="d-flex gap-2 align-items-start flex-wrap" style="min-width: 0; flex: 1 1 320px;">
+                <span class="str-pill {{ item.tone }} mt-1">{{ item.title }}</span>
+                <div class="small" style="flex: 1 1 240px;">{{ item.text }} <a href="#row-{{ item.row.key }}" class="ms-1">Jump to unit</a>{% if item.visit %} · <a href="{% url 'onsite_visit_detail' item.visit.pk %}">Open visit</a>{% endif %}</div>
+            </div>
+            {% if item.request %}
+            <div class="d-flex gap-1 flex-shrink-0">
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="decide_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="request_id" value="{{ item.request.pk }}"><input type="hidden" name="decision" value="approve">
+                    <button class="btn btn-sm {% if item.tone == 'good' %}btn-success{% else %}btn-outline-secondary{% endif %}">Approve</button></form>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="decide_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="request_id" value="{{ item.request.pk }}"><input type="hidden" name="decision" value="decline">
+                    <button class="btn btn-sm btn-outline-secondary">Decline</button></form>
+            </div>
+            {% endif %}
+        </div>
+        {% empty %}
+        <p class="text-muted small mb-0"><i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i> Nothing needs a decision right now.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<h6 class="text-uppercase small fw-bold mb-2" style="letter-spacing: 0.06em; color: var(--ink-muted);">By unit</h6>
+{% for row in board.rows %}
+<div class="card mb-2" id="row-{{ row.key }}" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body py-3">
+        <div class="d-flex flex-wrap gap-3 align-items-start">
+            <div style="min-width: 170px;">
+                <div class="fw-semibold">{{ row.label }}</div>
+                {% if row.turnover %}<div class="small" style="color: var(--ink-muted);">Same-day turnover{% if row.gap_minutes is not None %} · {{ row.gap_minutes }} min gap{% endif %}</div>{% endif %}
+            </div>
+            <div style="flex: 1 1 380px; min-width: 0;">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    {% if row.checkout %}
+                    <span class="str-pill neutral">Out {{ row.checkout_at|time:"g:i A" }}{% if row.late_checkout_moved %} <span title="Late checkout approved (normally {{ row.scheduled_checkout_at|time:'g:i A' }})">· late</span>{% endif %}</span>
+                    <span class="str-arrow">→</span>
+                    {% with c=row.cleaning %}
+                    {% if c.visit %}<a href="{% url 'onsite_visit_detail' c.visit.pk %}" class="str-pill {{ c.tone }}">{{ c.label }}</a>{% else %}<span class="str-pill {{ c.tone }}">{{ c.label }}</span>{% endif %}
+                    {% endwith %}
+                    <span class="str-arrow">→</span>
+                    {% endif %}
+                    {% if row.checkin %}
+                    <span class="str-pill neutral">In {{ row.checkin_at|time:"g:i A" }}{% if row.early_checkin_moved %} <span title="Early check-in approved (normally {{ row.scheduled_checkin_at|time:'g:i A' }})">· early</span>{% endif %}</span>
+                    {% else %}
+                    <span class="str-pill neutral">No arrival {% if board.is_today %}today{% else %}that day{% endif %}</span>
+                    {% endif %}
+                </div>
+
+                {% for entry in row.requests %}
+                <div class="str-req mt-2 d-flex align-items-start gap-2 flex-wrap">
+                    <span class="str-pill {% if entry.request.status == 'approved' %}good{% elif entry.verdict == 'ok' or entry.verdict == 'moot' %}good{% elif entry.verdict == 'tight' or entry.verdict == 'unknown' %}warning{% else %}critical{% endif %}">
+                        {{ entry.request.get_kind_display }} · {{ entry.at|time:"g:i A" }} · {{ entry.request.get_status_display }}
+                    </span>
+                    <span style="color: var(--ink-secondary);">{% if entry.request.note %}“{{ entry.request.note }}” · {% endif %}{% if entry.request.status == 'pending' %}{{ entry.text }}{% endif %}</span>
+                    {% if entry.request.status != 'pending' %}
+                    <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="request_id" value="{{ entry.request.pk }}">
+                        <button class="btn btn-link btn-sm p-0 text-danger">Remove</button></form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+
+                {% if row.checkout or row.checkin %}
+                <details class="mt-2">
+                    <summary class="small" style="cursor: pointer; color: var(--ink-muted);">Log an early check-in / late checkout request</summary>
+                    <div class="d-flex flex-wrap gap-2 align-items-end mt-2">
+                        {% if row.checkout %}
+                        <form method="post" class="d-flex gap-2 align-items-end flex-wrap">
+                            {% csrf_token %}<input type="hidden" name="action" value="log_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="booking_id" value="{{ row.checkout.pk }}"><input type="hidden" name="kind" value="late_checkout">
+                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Late checkout until</label><input type="time" name="requested_time" class="form-control form-control-sm" required></div>
+                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Note</label><input type="text" name="note" maxlength="200" class="form-control form-control-sm" placeholder="optional"></div>
+                            <button class="btn btn-outline-secondary btn-sm">Log late checkout</button>
+                        </form>
+                        {% endif %}
+                        {% if row.checkin %}
+                        <form method="post" class="d-flex gap-2 align-items-end flex-wrap">
+                            {% csrf_token %}<input type="hidden" name="action" value="log_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="booking_id" value="{{ row.checkin.pk }}"><input type="hidden" name="kind" value="early_checkin">
+                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Early check-in from</label><input type="time" name="requested_time" class="form-control form-control-sm" required></div>
+                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Note</label><input type="text" name="note" maxlength="200" class="form-control form-control-sm" placeholder="optional"></div>
+                            <button class="btn btn-outline-secondary btn-sm">Log early check-in</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted small">No check-ins or checkouts {% if board.is_today %}today{% else %}on this day{% endif %}.</p>
+{% endfor %}
+
+{% if board.in_house or board.vacant %}
+<details class="mt-3">
+    <summary class="small fw-semibold" style="cursor: pointer; color: var(--ink-secondary);">
+        {{ board.in_house|length }} guest{{ board.in_house|length|pluralize }} staying through · {{ board.vacant|length }} unit{{ board.vacant|length|pluralize }} vacant
+    </summary>
+    <div class="row mt-2 small">
+        <div class="col-md-6">
+            <div class="fw-semibold mb-1">In house</div>
+            {% for h in board.in_house %}<div>{{ h.label }} <span style="color: var(--ink-muted);">— out {{ h.booking.check_out|date:"D M j" }}</span></div>{% empty %}<div style="color: var(--ink-muted);">None</div>{% endfor %}
+        </div>
+        <div class="col-md-6">
+            <div class="fw-semibold mb-1">Vacant</div>
+            {% for v in board.vacant %}<div>{{ v.label }}</div>{% empty %}<div style="color: var(--ink-muted);">None</div>{% endfor %}
+        </div>
+    </div>
+</details>
+{% endif %}
+
+{% if board.tomorrow %}
+<div class="card mt-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="card-title mb-0">Tomorrow — {{ board.tomorrow.day|date:"l, M j" }}</h6>
+            <a href="?date={{ board.tomorrow.day|date:'Y-m-d' }}" class="small">Open tomorrow's board</a>
+        </div>
+        <p class="small mb-2" style="color: var(--ink-secondary);">{{ board.tomorrow.counts.checkouts }} checkout{{ board.tomorrow.counts.checkouts|pluralize }} · {{ board.tomorrow.counts.checkins }} check-in{{ board.tomorrow.counts.checkins|pluralize }} · {{ board.tomorrow.counts.pending_requests }} pending request{{ board.tomorrow.counts.pending_requests|pluralize }}</p>
+        {% for item in board.tomorrow.items %}
+        <div class="small py-1 border-top d-flex gap-2"><span class="str-pill {{ item.tone }}">{{ item.title }}</span><span>{{ item.text }}</span></div>
+        {% empty %}
+        <p class="small mb-0" style="color: var(--ink-muted);">Nothing flagged for tomorrow yet.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if board.is_today %}
+<script>
+    // Keep the board live: reload every minute unless someone is typing.
+    setTimeout(function refresh() {
+        var typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].indexOf(document.activeElement.tagName) !== -1;
+        var open = document.querySelector('details[open]');
+        if (typing || open) { setTimeout(refresh, 15000); return; }
+        window.location.reload();
+    }, 60000);
+</script>
+{% endif %}
+{% endblock %}

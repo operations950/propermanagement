@@ -439,6 +439,40 @@ class Booking(models.Model):
         return f'{self.property} — {self.check_out:%Y-%m-%d} checkout'
 
 
+class GuestRequest(models.Model):
+    """An early check-in or late checkout a guest has asked for, logged by
+    hand by whoever is watching the short-term rentals (the request itself
+    arrives in the platform's guest messages, which the app can't see).
+    The Today board (onsite/services/str_board.py) turns each pending one
+    into a yes/no answer — can we say yes without colliding with the
+    cleaning and the next guest — and an APPROVED one moves that booking's
+    effective checkout/check-in time on the board."""
+    class Kind(models.TextChoices):
+        EARLY_CHECKIN = 'early_checkin', 'Early check-in'
+        LATE_CHECKOUT = 'late_checkout', 'Late checkout'
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        APPROVED = 'approved', 'Approved'
+        DECLINED = 'declined', 'Declined'
+
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='guest_requests')
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    requested_time = models.TimeField(help_text='The time of day the guest asked for, on the check-in / checkout day.')
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.get_kind_display()} {self.requested_time:%H:%M} — {self.booking} ({self.get_status_display()})'
+
+
 class CleaningPricingSettings(models.Model):
     """Singleton (always exactly one row — see get()) holding the one
     number that controls cleaning pricing across the whole portfolio: the
