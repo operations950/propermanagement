@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Rental performance{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_str_today' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Rentals today</a>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title mb-0">Rental performance</h2>
+        <p class="text-muted small mb-0">As of {{ report.as_of|date:"F j, Y" }} · {{ report.scope.units }} unit{{ report.scope.units|pluralize }} across {{ report.scope.properties }} propert{{ report.scope.properties|pluralize:"y,ies" }}{% if report.scope.data_from %} · reservations on record since {{ report.scope.data_from|date:"M j, Y" }}{% endif %}</p>
+    </div>
+    <form method="get"><select name="property" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">All rentals</option>
+        {% for p in properties %}<option value="{{ p.pk }}" {% if property_id == p.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select></form>
+</div>
+
+{% if report.scope.excluded %}
+<div class="alert alert-warning small py-2">
+    <strong>{{ report.scope.excluded|length }} unit{{ report.scope.excluded|length|pluralize }} not counted</strong> — no reservations on record and no connected Airbnb/VRBO calendar, so there is nothing to measure:
+    {{ report.scope.excluded|join:", " }}. <a href="{% url 'onsite_booking_feeds' %}" class="alert-link">Booking calendars</a>
+</div>
+{% endif %}
+
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> Looking ahead — what's booked</h6>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+            <thead><tr class="small text-muted text-uppercase"><th>Window</th><th class="text-end">Occupancy</th><th class="text-end">Nights booked</th><th class="text-end">Open nights</th><th class="text-end">Vacancy gaps</th><th class="text-end">Short gaps (1–2 nights)</th></tr></thead>
+            <tbody>
+            {% for w in report.ahead %}
+            <tr>
+                <td class="fw-semibold">Next {{ w.days }} days</td>
+                <td class="text-end fw-semibold">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}</td>
+                <td class="text-end">{{ w.booked }} of {{ w.available }}</td>
+                <td class="text-end">{{ w.open_nights }}</td>
+                <td class="text-end">{{ w.gaps }}{% if w.gap_nights %} <span class="text-muted small">({{ w.gap_nights }} nights)</span>{% endif %}</td>
+                <td class="text-end">{% if w.short_gaps %}<span style="color: var(--status-warning); font-weight: 600;">{{ w.short_gaps }}</span>{% else %}0{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        <p class="text-muted small mt-2 mb-0">A <em>vacancy gap</em> is a stretch of empty nights between two reservations at the same unit; <em>open</em> nights have nothing booked after them yet.</p>
+    </div>
+</div>
+
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="history" class="icon"></i> Looking back</h6>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+            <thead><tr class="small text-muted text-uppercase">
+                <th>Window</th><th class="text-end">Occupancy</th><th class="text-end">Avg. stay</th><th class="text-end">Cancellation rate</th>
+                {% if is_admin %}<th class="text-end">Avg. nightly rate</th><th class="text-end">Revenue / available night</th>{% endif %}
+            </tr></thead>
+            <tbody>
+            {% for w in report.back %}
+            <tr>
+                <td class="fw-semibold">Last {{ w.days }} days</td>
+                <td class="text-end fw-semibold">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}<div class="text-muted small fw-normal">{{ w.booked }} of {{ w.available }} nights</div></td>
+                <td class="text-end">{% if w.alos is not None %}{{ w.alos|floatformat:1 }} nights<div class="text-muted small">{{ w.stays }} stay{{ w.stays|pluralize }}</div>{% else %}—{% endif %}</td>
+                <td class="text-end">{% if w.cancel_rate is not None %}{{ w.cancel_rate|floatformat:0 }}%<div class="text-muted small">{{ w.cancelled }} of {{ w.arrivals }}</div>{% else %}—{% endif %}</td>
+                {% if is_admin %}
+                <td class="text-end">{% if w.adr is not None %}${{ w.adr|floatformat:0 }}<div class="text-muted small">{{ w.stays_with_revenue }} of {{ w.stays }} stays have amounts</div>{% else %}<span class="text-muted">no amounts yet</span>{% endif %}</td>
+                <td class="text-end">{% if w.revpar is not None %}${{ w.revpar|floatformat:0 }}{% if w.revenue_coverage < 100 %}<div class="text-muted small">estimate</div>{% endif %}{% else %}—{% endif %}</td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        {% if is_admin %}<p class="text-muted small mt-2 mb-0">Rates come from the amounts in the Airbnb/VRBO reports you upload (and in-house reservations you enter), with cleaning and other fees taken out. Stays without an amount are left out of the rate, so the rate gets more reliable as more reports go in.</p>{% endif %}
+    </div>
+</div>
+
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title">By property — next 30 / 60 / 90 days</h6>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+            <thead><tr class="small text-muted text-uppercase"><th>Property</th><th class="text-end">30 days</th><th class="text-end">60 days</th><th class="text-end">90 days</th><th class="text-end">Gaps (90 days)</th></tr></thead>
+            <tbody>
+            {% for r in report.by_property %}
+            <tr>
+                <td>{{ r.property.name }}{% if r.units > 1 %} <span class="text-muted small">({{ r.units }} units)</span>{% endif %}</td>
+                <td class="text-end">{% if r.occ30 is not None %}{{ r.occ30|floatformat:0 }}%{% else %}—{% endif %}</td>
+                <td class="text-end">{% if r.occ60 is not None %}{{ r.occ60|floatformat:0 }}%{% else %}—{% endif %}</td>
+                <td class="text-end">{% if r.occ90 is not None %}{{ r.occ90|floatformat:0 }}%{% else %}—{% endif %}</td>
+                <td class="text-end">{{ r.gaps90 }}{% if r.short_gaps90 %} <span style="color: var(--status-warning);" class="small">({{ r.short_gaps90 }} short)</span>{% endif %}</td>
+            </tr>
+            {% empty %}<tr><td colspan="5" class="text-muted small">No data yet.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
+<div class="card" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title">Vacancy gaps to fill — next 90 days</h6>
+        {% for g in report.gaps %}
+        <div class="d-flex justify-content-between border-top py-1 small">
+            <span>{{ g.label }}</span>
+            <span>{{ g.start|date:"D M j" }} → {{ g.end|date:"D M j" }} · <strong>{{ g.length }} night{{ g.length|pluralize }}</strong>{% if g.short %} <span style="color: var(--status-warning);">· hard to fill</span>{% endif %}</span>
+        </div>
+        {% empty %}<p class="text-muted small mb-0">No gaps between reservations in the next 90 days.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

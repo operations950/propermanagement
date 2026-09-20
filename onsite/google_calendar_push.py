@@ -41,6 +41,8 @@ from django.utils import dateformat, timezone
 from core.google_calendar import GoogleCalendarWriteError, create_event, delete_event, update_event
 from core.models import GoogleCalendarToken
 
+from .services import times
+
 logger = logging.getLogger(__name__)
 
 # The app runs as a single process (see the Procfile), but request threads
@@ -91,12 +93,16 @@ def desired_event(visit):
     summary = f'{visit.visit_type} — {visit.property.name}'
     if visit.unit_id:
         summary += f' ({visit.unit.label})'
-    lines = []
-    if visit.ready_by:
-        lines.append('Ready by ' + dateformat.format(timezone.localtime(visit.ready_by), 'D M j, g:i A') + ' (next check-in)')
+    # The agreed guest times (checkout, next check-in — with any approved
+    # early/late change) are what a cleaner plans the day around; the link is
+    # the backup for the text message that carries it, which isn't always seen.
+    lines = list(times.visit_time_lines(visit))
+    if visit.ready_by and not visit.next_booking_id:
+        lines.append('Ready by ' + dateformat.format(timezone.localtime(visit.ready_by), 'D M j, g:i A'))
     lines.append(f'Assigned to: {visit.assignee_label()}')
     if visit.is_deep_clean:
         lines.append('Deep clean')
+    lines.append(f'Cleaner link: {times.visit_link(visit)}')
     email = _assignee_email(visit)
     return {
         'summary': summary,
@@ -108,6 +114,15 @@ def desired_event(visit):
 
 def _fingerprint(desired, calendar_id):
     payload = json.dumps({**desired, 'date': desired['date'].isoformat(), 'calendar': calendar_id}, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _notify_fingerprint(desired, calendar_id):
+    """Just what changes the invitation itself: title, day, invitees."""
+    payload = json.dumps({
+        'summary': desired['summary'], 'date': desired['date'].isoformat(),
+        'attendees': desired['attendees'], 'calendar': calendar_id,
+    }, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -207,7 +222,8 @@ def _sync(pk):
     if not token:
         return
     visit = (
-        Visit.objects.select_related('property', 'unit', 'visit_type', 'assigned_staff__user', 'assigned_contact')
+        Visit.objects.select_related('property', 'unit', 'visit_type', 'assigned_staff__user', 'assigned_contact', 'booking', 'next_booking')
+        .prefetch_related('booking__guest_requests', 'next_booking__guest_requests')
         .filter(pk=pk).first()
     )
     if visit is None:
@@ -226,12 +242,22 @@ def _sync(pk):
 
     start = desired['date']
     end = start + timedelta(days=1)  # Google's all-day end date is exclusive
+    notify_fp = _notify_fingerprint(desired, calendar_id)
     fields = dict(all_day=True, description=desired['description'], attendees=desired['attendees'], send_updates='all')
+    # Emailing the invitees is for changes to the invitation (day, title,
+    # who is invited). A description-only change — the agreed times, the
+    # link — is written quietly. An event with no recorded state yet (made
+    # before this was tracked) is treated as unchanged the first time, so
+    # deploying it doesn't email every cleaner about every upcoming visit.
+    quiet = bool(visit.google_event_id) and (not visit.google_notify_state or visit.google_notify_state == notify_fp)
     try:
         event = None
         if visit.google_event_id:
             try:
-                event = update_event(token, calendar_id, visit.google_event_id, desired['summary'], start, end, **fields)
+                event = update_event(
+                    token, calendar_id, visit.google_event_id, desired['summary'], start, end,
+                    **{**fields, 'send_updates': 'none' if quiet else 'all'},
+                )
             except GoogleCalendarWriteError as e:
                 if e.status_code not in GONE_STATUS_CODES:
                     raise
@@ -245,8 +271,9 @@ def _sync(pk):
             raise GoogleCalendarWriteError("Google Calendar didn't return an ID for the event it created.")
         visit.google_event_id = event_id
         visit.google_synced_state = fingerprint
+        visit.google_notify_state = notify_fp
         visit.google_sync_pending = False
-        visit.save(update_fields=['google_event_id', 'google_synced_state', 'google_sync_pending'])
+        visit.save(update_fields=['google_event_id', 'google_synced_state', 'google_notify_state', 'google_sync_pending'])
         _record_success()
     except GoogleCalendarWriteError as e:
         logger.warning('Onsite calendar push failed for visit %s (%s) — will retry.', pk, e)
@@ -267,8 +294,9 @@ def _delete_event_for(visit, token, calendar_id):
             return
     visit.google_event_id = ''
     visit.google_synced_state = ''
+    visit.google_notify_state = ''
     visit.google_sync_pending = False
-    visit.save(update_fields=['google_event_id', 'google_synced_state', 'google_sync_pending'])
+    visit.save(update_fields=['google_event_id', 'google_synced_state', 'google_notify_state', 'google_sync_pending'])
     _record_success()
 
 

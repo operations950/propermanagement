@@ -161,6 +161,30 @@ def update_feed_health(source, raw_bookings):
     health.save(update_fields=update_fields)
 
 
+def _save_amounts(source, raw_bookings):
+    """Stores the money a report carried onto the bookings it describes. A
+    value only ever moves UP: a long stay's payout report lists just the
+    installments still pending, so a later, partial file must never shrink a
+    figure an earlier one gave in full. Fields the file left blank are left
+    alone."""
+    for row in raw_bookings:
+        if row.is_cancelled or not row.has_amounts():
+            continue
+        booking = Booking.objects.filter(source=source, external_uid=row.external_uid).first()
+        if booking is None:
+            continue
+        changed = []
+        for field in ('gross_amount', 'payout_amount', 'cleaning_fee', 'other_fees'):
+            new_value = getattr(row, field)
+            old_value = getattr(booking, field)
+            if new_value is not None and (old_value is None or new_value > old_value):
+                setattr(booking, field, new_value)
+                changed.append(field)
+        if changed:
+            booking.amount_source = 'csv upload'
+            booking.save(update_fields=changed + ['amount_source'])
+
+
 def diff_bookings(property, source, raw_bookings, default_unit=None):
     """Read-only preview diff — nothing written. Returns a dict with 'new'/
     'changed'/'reactivated'/'missing_visit' (lists of RawBooking) and
@@ -458,6 +482,8 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
                 property, turnover_type, unit=booking.unit, booking=booking, next_booking=next_booking,
                 scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
             )
+
+    _save_amounts(source, raw_bookings)
 
     for booking in diff['cancelled']:
         booking.status = Booking.Status.CANCELLED

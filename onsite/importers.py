@@ -29,6 +29,7 @@ import io
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 
 
 class BookingFileError(Exception):
@@ -67,6 +68,15 @@ class RawBooking:
     # this is used instead of (or alongside) inferring a cancellation from
     # a booking simply vanishing off a later re-upload.
     is_cancelled: bool = False
+    # Money from the report, when it has any (see Booking's money fields for
+    # what each means). None = the file didn't say, never $0.
+    gross_amount: Decimal | None = None
+    payout_amount: Decimal | None = None
+    cleaning_fee: Decimal | None = None
+    other_fees: Decimal | None = None
+
+    def has_amounts(self):
+        return any(v is not None for v in (self.gross_amount, self.payout_amount, self.cleaning_fee, self.other_fees))
 
 
 def detect_format(filename):
@@ -190,7 +200,37 @@ _CSV_FIELD_ALIASES = {
     # Type value (every other supported export) is always treated as a real
     # reservation — this column only ever narrows, never requires.
     'transaction_type': ['type'],
+    # Money. Airbnb's transactions export: 'Amount' is the host payout for that
+    # row and 'Gross earnings' is what the guest paid before Airbnb's host fee
+    # (cleaning fee inside it, taxes separate); its reservations report has a
+    # single 'Earnings'. VRBO's names are best guesses at its report headers.
+    'gross_amount': ['gross earnings', 'total rental amount', 'rental amount', 'gross'],
+    'payout_amount': ['amount', 'earnings', 'host payout', 'total payout', 'payout'],
+    'cleaning_fee': ['cleaning fee'],
+    'resort_fee': ['resort fee'],
+    'pet_fee': ['pet fee'],
 }
+
+
+def _money(value):
+    """A report's money cell as a Decimal, or None when blank/unreadable.
+    Tolerates $, thousands separators and (accounting-style negatives)."""
+    text = (value or '').strip().replace('$', '').replace(',', '').replace(' ', '')
+    if not text:
+        return None
+    negative = text.startswith('(') and text.endswith(')')
+    text = text.strip('()')
+    try:
+        amount = Decimal(text)
+    except InvalidOperation:
+        return None
+    return -amount if negative else amount
+
+
+def _add_money(current, extra):
+    if extra is None:
+        return current
+    return extra if current is None else current + extra
 
 # Denylist, not an allowlist: only known non-reservation financial line item
 # types from Airbnb's transactions export are excluded (matched as a
@@ -242,6 +282,7 @@ def parse_csv(file_bytes):
 
     bookings = []
     seen_uids = set()
+    by_uid = {}
     for row in reader:
         uid = (row.get(columns['external_uid']) or '').strip()
         if not uid:
@@ -263,6 +304,13 @@ def parse_csv(file_bytes):
             # would otherwise reject outright, aborting the whole import for
             # that property partway through (a real, confirmed failure mode
             # this guards against, not a hypothetical one).
+            #
+            # The MONEY on those repeat rows is different: each month's row
+            # carries that month's installment, so they are added together.
+            first = by_uid[uid]
+            first.gross_amount = _add_money(first.gross_amount, _money(row.get(columns['gross_amount']) if columns['gross_amount'] else ''))
+            first.payout_amount = _add_money(first.payout_amount, _money(row.get(columns['payout_amount']) if columns['payout_amount'] else ''))
+            first.cleaning_fee = _add_money(first.cleaning_fee, _money(row.get(columns['cleaning_fee']) if columns['cleaning_fee'] else ''))
             continue
         seen_uids.add(uid)
         phone = (row.get(columns['guest_phone']) or '').strip() if columns['guest_phone'] else ''
@@ -287,7 +335,13 @@ def parse_csv(file_bytes):
 
         status_value = (row.get(columns['status']) or '').strip() if columns['status'] else ''
 
-        bookings.append(RawBooking(
+        def cell(key):
+            return _money(row.get(columns[key])) if columns[key] else None
+
+        other_fees = None
+        for fee_key in ('resort_fee', 'pet_fee'):
+            other_fees = _add_money(other_fees, cell(fee_key))
+        raw = RawBooking(
             external_uid=uid,
             check_in=_parse_csv_date(row[columns['check_in']]),
             check_out=_parse_csv_date(row[columns['check_out']]),
@@ -296,7 +350,11 @@ def parse_csv(file_bytes):
             listing_name=(row.get(columns['listing_name']) or '').strip() if columns['listing_name'] else '',
             booked_at=booked_at,
             is_cancelled='cancel' in status_value.lower(),
-        ))
+            gross_amount=cell('gross_amount'), payout_amount=cell('payout_amount'),
+            cleaning_fee=cell('cleaning_fee'), other_fees=other_fees,
+        )
+        by_uid[uid] = raw
+        bookings.append(raw)
 
     if not bookings:
         raise BookingFileError('No reservation rows found in this file.')

@@ -36,7 +36,10 @@ from .models import (
 from .services import checklist as checklist_service
 from .services import feeds as feed_service
 from .services import recurring as recurring_service
+from .services import performance as performance_service
+from .services import reservations as reservation_service
 from .services import str_board
+from .services import times as times_service
 from .services import notify as notify_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
@@ -749,6 +752,134 @@ def booking_feeds(request):
     })
 
 
+def _reservation_form_values(post, booking=None):
+    """The form fields as typed (for redisplay after an error) or, editing,
+    as stored."""
+    if post:
+        return {k: post.get(k, '') for k in (
+            'listing', 'guest_name', 'phone', 'email', 'check_in', 'check_out', 'check_in_time', 'check_out_time',
+            'lodging_total', 'cleaning_fee', 'notes')}
+    if booking is None:
+        return {}
+    ci, co = timezone.localtime(booking.check_in), timezone.localtime(booking.check_out)
+    return {
+        'listing': f'u-{booking.unit_id}' if booking.unit_id else f'p-{booking.property_id}',
+        'guest_name': booking.guest_name, 'phone': booking.guest_phone, 'email': booking.guest_email,
+        'check_in': ci.date().isoformat(), 'check_out': co.date().isoformat(),
+        'check_in_time': ci.strftime('%H:%M'), 'check_out_time': co.strftime('%H:%M'),
+        'lodging_total': '' if booking.gross_amount is None else (booking.gross_amount - (booking.cleaning_fee or 0)),
+        'cleaning_fee': '' if booking.cleaning_fee is None else booking.cleaning_fee, 'notes': booking.notes,
+    }
+
+
+def _reservation_args(post):
+    """Parsed form fields for the reservation service (raises nothing —
+    a bad time/amount just becomes None and the service explains)."""
+    from django.utils.dateparse import parse_time
+
+    return {
+        'guest_name': post.get('guest_name', ''),
+        'check_in_date': parse_date(post.get('check_in', '').strip() or ''),
+        'check_out_date': parse_date(post.get('check_out', '').strip() or ''),
+        'check_in_time': parse_time(post.get('check_in_time', '').strip() or ''),
+        'check_out_time': parse_time(post.get('check_out_time', '').strip() or ''),
+        'phone': post.get('phone', ''), 'email': post.get('email', ''), 'notes': post.get('notes', ''),
+        'lodging_total': _parse_decimal(post.get('lodging_total')), 'cleaning_fee': _parse_decimal(post.get('cleaning_fee')),
+    }
+
+
+@login_required
+def performance(request):
+    """Occupancy, vacancy gaps, forward occupancy, length of stay and
+    cancellations for the short-term rentals — and, for admins only, average
+    nightly rate and revenue per available night from the uploaded
+    reservation reports. See onsite/services/performance.py for definitions."""
+    raw = request.GET.get('property', '')
+    property_id = int(raw) if raw.isdigit() else None
+    report = performance_service.build_performance(property_id=property_id)
+    return render(request, 'onsite/performance.html', {
+        'report': report, 'property_id': property_id, 'is_admin': _is_admin(request.user),
+        'properties': list(str_board.eligible_properties()),
+    })
+
+
+@login_required
+def reservation_list(request):
+    """Every reservation — Airbnb, VRBO and in-house — in one list. In-house
+    ("offline") ones can be added, edited and cancelled here."""
+    today = timezone.localdate()
+    when = request.GET.get('when', 'upcoming')
+    source = request.GET.get('source', '')
+    show = request.GET.get('show', 'active')
+    q = request.GET.get('q', '').strip()
+    bookings = Booking.objects.select_related('property', 'unit').filter(property__is_general=False)
+    start_of_today = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+    if when == 'past':
+        bookings = bookings.filter(check_out__lt=start_of_today).order_by('-check_in')
+    elif when == 'all':
+        bookings = bookings.order_by('-check_in')
+    else:
+        when = 'upcoming'
+        bookings = bookings.filter(check_out__gte=start_of_today).order_by('check_in')
+    bookings = bookings.filter(status=Booking.Status.CANCELLED if show == 'cancelled' else Booking.Status.ACTIVE)
+    if source in Booking.Source.values:
+        bookings = bookings.filter(source=source)
+    if q:
+        bookings = bookings.filter(Q(guest_name__icontains=q) | Q(property__name__icontains=q) | Q(external_uid__icontains=q))
+    rows = list(bookings[:300])
+    return render(request, 'onsite/reservation_list.html', {
+        'rows': rows, 'when': when, 'source': source, 'show': show, 'q': q, 'sources': Booking.Source.choices,
+        'truncated': len(rows) == 300, 'today': today, 'is_admin': _is_admin(request.user),
+    })
+
+
+@login_required
+def reservation_create(request):
+    options = reservation_service.listing_options()
+    values = _reservation_form_values(request.POST if request.method == 'POST' else None)
+    if request.method == 'POST':
+        listing = reservation_service.resolve_listing(request.POST.get('listing', ''))
+        if listing is None:
+            messages.error(request, 'Choose which rental this is for.')
+        else:
+            prop, unit = listing
+            try:
+                booking = reservation_service.create_reservation(prop, unit, user=request.user, **_reservation_args(request.POST))
+            except reservation_service.ReservationError as e:
+                messages.error(request, str(e))
+            else:
+                visit = booking.visits.exclude(status=Visit.Status.CANCELLED).first()
+                messages.success(request, f'Reservation added for {booking.guest_name}.' + (' A turnover cleaning was scheduled for the checkout day.' if visit else ''))
+                return redirect('onsite_reservation_list')
+    return render(request, 'onsite/reservation_form.html', {
+        'options': [(v, label, *(t.strftime('%H:%M') for t in reservation_service.default_times(prop))) for v, label, prop, _u in options],
+        'values': values, 'booking': None,
+    })
+
+
+@login_required
+def reservation_edit(request, pk):
+    booking = get_object_or_404(Booking, pk=pk)
+    if booking.source != Booking.Source.MANUAL:
+        messages.info(request, 'That reservation came from a platform — change it there. Only in-house reservations can be edited here.')
+        return redirect('onsite_reservation_list')
+    if request.method == 'POST':
+        if request.POST.get('action') == 'cancel':
+            reservation_service.cancel_reservation(booking)
+            messages.success(request, 'Reservation cancelled and its cleaning removed.')
+            return redirect('onsite_reservation_list')
+        try:
+            reservation_service.update_reservation(booking, **_reservation_args(request.POST))
+        except reservation_service.ReservationError as e:
+            messages.error(request, str(e))
+        else:
+            messages.success(request, 'Reservation updated.')
+            return redirect('onsite_reservation_list')
+    values = _reservation_form_values(request.POST if request.method == 'POST' else None, booking)
+    listing_label = f'{booking.property.name} — {booking.unit.label}' if booking.unit_id else booking.property.name
+    return render(request, 'onsite/reservation_form.html', {'options': [], 'values': values, 'booking': booking, 'listing_label': listing_label})
+
+
 @login_required
 def str_today(request):
     """The short-term rental Today board — see onsite/services/str_board.py.
@@ -1369,6 +1500,7 @@ def _render_visit_public(request, visit, blocking_item_ids=None, blocking_photo_
         'issues': visit.issues.all(),
         'supply_rows': supply_services.supply_check_context(visit),
         'is_submitted': visit.status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED),
+        'guest_time_lines': times_service.visit_time_lines(visit),
         'blocking_item_ids': blocking_item_ids or set(),
         'blocking_photo_item_ids': blocking_photo_item_ids or set(),
     })

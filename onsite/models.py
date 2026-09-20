@@ -390,7 +390,7 @@ class Booking(models.Model):
     class Source(models.TextChoices):
         AIRBNB = 'airbnb', 'Airbnb'
         VRBO = 'vrbo', 'VRBO'
-        MANUAL = 'manual', 'Manual'
+        MANUAL = 'manual', 'In-house'
 
     class Status(models.TextChoices):
         ACTIVE = 'active', 'Active'
@@ -422,6 +422,29 @@ class Booking(models.Model):
         help_text='Updated on every import that still contains this UID — a row not touched by an '
                    "import covering its date range is presumed cancelled off the guest's platform.",
     )
+    # --- Contact details (for offline / in-house reservations, where there is no
+    # platform to hold them) and free-form notes.
+    guest_phone = models.CharField(max_length=30, blank=True)
+    guest_email = models.EmailField(blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    # --- Money, taken from the platform reports staff upload (or typed in for an
+    # offline reservation) — deliberately the reservation-side record, so it can
+    # later be checked against what got booked in QuickBooks. All in USD.
+    #   gross_amount   what the guest paid the platform for the stay, incl. the
+    #                  cleaning/other fees but before the platform's own host
+    #                  fee and before taxes (Airbnb "Gross earnings")
+    #   payout_amount  what the host is paid out (Airbnb "Amount"/"Earnings")
+    #   cleaning_fee, other_fees (resort/pet)  the fee portions inside gross
+    # lodging_revenue() strips the fees back out — the number an average
+    # nightly rate should be built from. Any of these can be blank.
+    gross_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payout_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cleaning_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    other_fees = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    amount_source = models.CharField(max_length=60, blank=True, help_text='Where the amounts came from (e.g. "csv upload", "entered by hand").')
+
     from_feed = models.BooleanField(
         default=False,
         help_text="Created by polling a BookingFeed (an .ics link), which can only see the calendar's own "
@@ -437,6 +460,17 @@ class Booking(models.Model):
 
     def __str__(self):
         return f'{self.property} — {self.check_out:%Y-%m-%d} checkout'
+
+    def nights(self):
+        return max((timezone.localtime(self.check_out).date() - timezone.localtime(self.check_in).date()).days, 0)
+
+    def lodging_revenue(self):
+        """The stay's revenue with cleaning and other fees taken back out
+        (gross_amount - cleaning_fee - other_fees), or None when there's no
+        gross figure. What an average nightly rate should be computed from."""
+        if self.gross_amount is None:
+            return None
+        return self.gross_amount - (self.cleaning_fee or Decimal('0')) - (self.other_fees or Decimal('0'))
 
 
 class GuestRequest(models.Model):
@@ -600,6 +634,11 @@ class Visit(models.Model):
     # changed assignee/date/status gets noticed no matter which code path
     # (a form, a booking import, a queryset .update()) made the change.
     google_synced_state = models.CharField(max_length=64, blank=True)
+    # Same idea for the part of the event a guest-of-the-event cares about being
+    # EMAILED about: title, date and who's invited. A change to only the
+    # description (agreed times, link) updates the event quietly; a change to
+    # one of these sends Google's invite/update emails.
+    google_notify_state = models.CharField(max_length=64, blank=True)
 
     signature_image = models.ImageField(upload_to='onsite_signatures/%Y/%m/', null=True, blank=True)
     signed_name = models.CharField(max_length=200, blank=True)

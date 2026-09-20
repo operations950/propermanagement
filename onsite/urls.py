@@ -5,6 +5,10 @@ from . import views
 urlpatterns = [
     path('', views.dashboard, name='onsite_dashboard'),
     path('today/', views.str_today, name='onsite_str_today'),
+    path('performance/', views.performance, name='onsite_performance'),
+    path('reservations/', views.reservation_list, name='onsite_reservation_list'),
+    path('reservations/new/', views.reservation_create, name='onsite_reservation_create'),
+    path('reservations/<int:pk>/', views.reservation_edit, name='onsite_reservation_edit'),
     path('calendar/', views.calendar_view, name='onsite_calendar'),
     path('import/', views.booking_import_upload, name='onsite_booking_import'),
     path('import/slot/<int:slot_id>/', views.upload_slot, name='onsite_upload_slot'),

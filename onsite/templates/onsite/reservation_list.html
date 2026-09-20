@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Reservations{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_str_today' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Rentals today</a>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title mb-0">Reservations</h2>
+        <p class="text-muted small mb-0">Every stay from Airbnb, VRBO and booked directly. In-house reservations are added, edited and cancelled here; platform ones change on the platform.</p>
+    </div>
+    <a href="{% url 'onsite_reservation_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New in-house reservation</a>
+</div>
+
+<form method="get" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div class="btn-group btn-group-sm" role="group" aria-label="When">
+        <a href="?when=upcoming&source={{ source }}&show={{ show }}&q={{ q|urlencode }}" class="btn {% if when == 'upcoming' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Upcoming</a>
+        <a href="?when=past&source={{ source }}&show={{ show }}&q={{ q|urlencode }}" class="btn {% if when == 'past' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Past</a>
+        <a href="?when=all&source={{ source }}&show={{ show }}&q={{ q|urlencode }}" class="btn {% if when == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">All</a>
+    </div>
+    <input type="hidden" name="when" value="{{ when }}">
+    <div>
+        <select name="source" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">All sources</option>
+            {% for value, label in sources %}<option value="{{ value }}" {% if source == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+    <div>
+        <select name="show" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="active" {% if show == 'active' %}selected{% endif %}>Active</option>
+            <option value="cancelled" {% if show == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        </select>
+    </div>
+    <div class="d-flex gap-1"><input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Guest or property"><button class="btn btn-outline-secondary btn-sm">Search</button></div>
+</form>
+
+<div class="card" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr class="small text-muted text-uppercase"><th>Stay</th><th>Rental</th><th>Guest</th><th>Source</th>{% if is_admin %}<th class="text-end">Revenue</th>{% endif %}<th></th></tr>
+            </thead>
+            <tbody>
+                {% for b in rows %}
+                <tr>
+                    <td class="small">{{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }}<div class="text-muted">{{ b.nights }} night{{ b.nights|pluralize }}</div></td>
+                    <td class="small">{{ b.property.name }}{% if b.unit %}<div class="text-muted">{{ b.unit.label }}</div>{% endif %}</td>
+                    <td class="small">{{ b.guest_name|default:"—" }}{% if b.guest_phone %}<div class="text-muted">{{ b.guest_phone }}</div>{% endif %}</td>
+                    <td class="small"><span class="badge rounded-pill {% if b.source == 'manual' %}bg-primary-subtle text-primary-emphasis{% else %}bg-light text-dark border{% endif %}">{{ b.get_source_display }}</span></td>
+                    {% if is_admin %}<td class="small text-end">{% with rev=b.lodging_revenue %}{% if rev is not None %}${{ rev|floatformat:2 }}{% if b.nights %}<div class="text-muted">${{ b.gross_amount|floatformat:0 }} gross</div>{% endif %}{% elif b.payout_amount is not None %}${{ b.payout_amount|floatformat:2 }}<div class="text-muted">payout</div>{% else %}<span class="text-muted">—</span>{% endif %}{% endwith %}</td>{% endif %}
+                    <td class="text-end">{% if b.source == 'manual' and b.status == 'active' %}<a href="{% url 'onsite_reservation_edit' b.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-muted small p-3">No reservations match.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% if truncated %}<p class="text-muted small mt-2">Showing the first 300 — narrow the search to see others.</p>{% endif %}
+{% endblock %}

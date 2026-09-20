@@ -168,6 +168,56 @@ def _label(prop, unit):
     return f'{prop.name} — {unit.label}' if unit else prop.name
 
 
+# --- vacant units: are they clean, and when were they last cleaned -----------------
+
+def _vacancy_details(vacant, property_ids, ref, now, add_item):
+    """Enriches each vacant unit with its cleaning state: whether it is clean,
+    when it was last cleaned, when the last guest left, and when the next one
+    arrives. "Clean" means a cleaning was submitted/verified at or after the
+    last checkout. A vacant unit that is NOT clean, has no cleaning lined up
+    and has a guest arriving within 3 days is flagged."""
+    bookings = list(Booking.objects.filter(status=Booking.Status.ACTIVE, property_id__in=property_ids)
+                    .values('property_id', 'unit_id', 'check_in', 'check_out'))
+    visits = list(Visit.objects.filter(property_id__in=property_ids)
+                  .exclude(status__in=(Visit.Status.CANCELLED, Visit.Status.SKIPPED))
+                  .values('pk', 'property_id', 'unit_id', 'status', 'submitted_at', 'verified_at', 'scheduled_date'))
+    for entry in vacant:
+        pid, uid = entry['property'].pk, entry['unit'].pk if entry['unit'] else None
+        mine_b = [b for b in bookings if b['property_id'] == pid and b['unit_id'] == uid]
+        mine_v = [v for v in visits if v['property_id'] == pid and v['unit_id'] == uid]
+        past = [b['check_out'] for b in mine_b if b['check_out'] <= ref]
+        future = [b['check_in'] for b in mine_b if b['check_in'] > ref]
+        last_out = max(past) if past else None
+        next_in = min(future) if future else None
+        done = [v['verified_at'] or v['submitted_at'] for v in mine_v
+                if v['status'] in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED) and (v['verified_at'] or v['submitted_at'])]
+        last_cleaned = max(done) if done else None
+        open_visits = [v for v in mine_v if v['status'] in (Visit.Status.SCHEDULED, Visit.Status.UNASSIGNED, Visit.Status.IN_PROGRESS)]
+
+        if last_cleaned and (last_out is None or last_cleaned >= last_out):
+            state, label, tone = 'clean', 'Clean', GOOD
+        elif last_out is None:
+            state, label, tone = 'unknown', 'No stays on record', INFO
+        elif open_visits:
+            state, label, tone = 'pending', 'Cleaning lined up', INFO
+        else:
+            state, label, tone = 'dirty', 'Not clean — no cleaning scheduled', WARNING
+        soon = next_in is not None and next_in - now <= timedelta(days=3)
+        if state == 'dirty' and soon:
+            tone = CRITICAL
+        entry.update({
+            'state': state, 'state_label': label, 'tone': tone, 'last_cleaned_at': last_cleaned, 'last_checkout_at': last_out,
+            'next_checkin_at': next_in, 'key': f'v-{pid}-{uid or 0}',
+            'days_since_clean': (timezone.localtime(now).date() - timezone.localtime(last_cleaned).date()).days if last_cleaned else None,
+            'days_vacant': (timezone.localtime(now).date() - timezone.localtime(last_out).date()).days if last_out else None,
+        })
+        if state == 'dirty' and soon:
+            pseudo = {'key': entry['key'], 'label': entry['label'], 'visit': None, 'sort_at': timezone.localtime(next_in)}
+            add_item(CRITICAL, 'Vacant unit not clean',
+                     f'{entry["label"]} is empty and hasn\'t been cleaned since the last guest left, with no cleaning scheduled — '
+                     f'a guest arrives {_fmt(next_in)} on {timezone.localtime(next_in):%a %b} {timezone.localtime(next_in).day}.', pseudo)
+
+
 # --- the board -----------------------------------------------------------------
 
 def build_board(day=None, now=None, include_tomorrow=True):
@@ -313,6 +363,8 @@ def build_board(day=None, now=None, include_tomorrow=True):
             if (prop.pk, unit.pk if unit else None) not in covered and (prop.pk, None) not in covered:
                 vacant.append({'label': _label(prop, unit), 'property': prop, 'unit': unit})
     vacant.sort(key=lambda v: v['label'])
+    _vacancy_details(vacant, [p.pk for p in properties], max(now, day_start), now, add_item)
+    items.sort(key=lambda i: (i['rank'], i['row']['sort_at'] or day_end, i['row']['label']))
 
     outs = [r for r in rows if r['checkout']]
     board = {

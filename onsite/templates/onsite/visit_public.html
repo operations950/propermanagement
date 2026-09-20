@@ -10,6 +10,11 @@
             {{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border">+ Deep clean</span>{% endif %}
             {% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"g:i A" }}{% endif %}
         </p>
+        {% if guest_time_lines %}
+        <div class="alert alert-light border small py-2 mb-2">
+            {% for line in guest_time_lines %}<div><i data-lucide="clock" class="icon"></i> {{ line }}</div>{% endfor %}
+        </div>
+        {% endif %}
         {% if visit.property.gate_code or visit.property.door_code or visit.property.lockbox_code or visit.property.wifi_network or visit.property.access_notes %}
         <div class="small mb-2">
             {% if visit.property.gate_code %}<div>Gate code: <strong>{{ visit.property.gate_code }}</strong></div>{% endif %}

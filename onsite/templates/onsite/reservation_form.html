@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}{% if booking %}Edit reservation{% else %}New in-house reservation{% endif %}{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_reservation_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Reservations</a>
+
+<h2 class="page-title mb-1">{% if booking %}Edit in-house reservation{% else %}New in-house reservation{% endif %}</h2>
+<p class="text-muted small mb-4">For a stay booked directly (phone, text, a friend of the owner) that isn't on Airbnb or VRBO. It works like any other reservation: a turnover cleaning is scheduled for the checkout day, the cleaner is sent the link, and it counts toward occupancy.</p>
+
+<form method="post" class="card" style="border-radius: var(--bs-border-radius-lg);">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label small text-muted mb-1">Rental</label>
+                {% if booking %}
+                <div class="form-control form-control-sm bg-light">{{ listing_label }}</div>
+                {% else %}
+                <select name="listing" id="listing" class="form-select form-select-sm" required>
+                    <option value="">Choose…</option>
+                    {% for value, label, t_in, t_out in options %}<option value="{{ value }}" data-in="{{ t_in }}" data-out="{{ t_out }}" {% if values.listing == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small text-muted mb-1">Guest name</label>
+                <input type="text" name="guest_name" class="form-control form-control-sm" value="{{ values.guest_name }}" required>
+            </div>
+            <div class="col-md-3"><label class="form-label small text-muted mb-1">Check-in date</label><input type="date" name="check_in" class="form-control form-control-sm" value="{{ values.check_in }}" required></div>
+            <div class="col-md-3"><label class="form-label small text-muted mb-1">Check-in time</label><input type="time" name="check_in_time" id="check_in_time" class="form-control form-control-sm" value="{{ values.check_in_time }}"></div>
+            <div class="col-md-3"><label class="form-label small text-muted mb-1">Check-out date</label><input type="date" name="check_out" class="form-control form-control-sm" value="{{ values.check_out }}" required></div>
+            <div class="col-md-3"><label class="form-label small text-muted mb-1">Check-out time</label><input type="time" name="check_out_time" id="check_out_time" class="form-control form-control-sm" value="{{ values.check_out_time }}"></div>
+            <div class="col-md-4"><label class="form-label small text-muted mb-1">Phone</label><input type="tel" name="phone" class="form-control form-control-sm" value="{{ values.phone }}"></div>
+            <div class="col-md-4"><label class="form-label small text-muted mb-1">Email</label><input type="email" name="email" class="form-control form-control-sm" value="{{ values.email }}"></div>
+            <div class="col-md-2"><label class="form-label small text-muted mb-1">Lodging total $</label><input type="number" step="0.01" min="0" name="lodging_total" class="form-control form-control-sm" value="{{ values.lodging_total }}" placeholder="what they pay for the stay"></div>
+            <div class="col-md-2"><label class="form-label small text-muted mb-1">Cleaning fee $</label><input type="number" step="0.01" min="0" name="cleaning_fee" class="form-control form-control-sm" value="{{ values.cleaning_fee }}"></div>
+            <div class="col-12"><label class="form-label small text-muted mb-1">Notes</label><textarea name="notes" rows="2" class="form-control form-control-sm">{{ values.notes }}</textarea></div>
+        </div>
+        <p class="text-muted small mt-2 mb-0">Leave the times blank to use the rental's usual check-in and check-out times. The lodging total is what feeds the average nightly rate, so enter it if you know it.</p>
+    </div>
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+        <div><button class="btn btn-primary btn-sm" type="submit">{% if booking %}Save changes{% else %}Add reservation{% endif %}</button>
+            <a href="{% url 'onsite_reservation_list' %}" class="btn btn-link btn-sm">Cancel</a></div>
+        {% if booking %}
+        <button class="btn btn-outline-danger btn-sm" type="submit" name="action" value="cancel" formnovalidate onclick="return confirm('Cancel this reservation? Its turnover cleaning will be removed too.');">Cancel reservation</button>
+        {% endif %}
+    </div>
+</form>
+
+{% if not booking %}
+<script>
+    // Default the times to the chosen rental's usual ones, unless typed over.
+    (function () {
+        var sel = document.getElementById('listing'), tin = document.getElementById('check_in_time'), tout = document.getElementById('check_out_time');
+        if (!sel) return;
+        var typedIn = !!tin.value, typedOut = !!tout.value;
+        tin.addEventListener('input', function () { typedIn = true; });
+        tout.addEventListener('input', function () { typedOut = true; });
+        function apply() {
+            var opt = sel.options[sel.selectedIndex];
+            if (!opt || !opt.dataset.in) return;
+            if (!typedIn) tin.value = opt.dataset.in;
+            if (!typedOut) tout.value = opt.dataset.out;
+        }
+        sel.addEventListener('change', apply); apply();
+    })();
+</script>
+{% endif %}
+{% endblock %}
