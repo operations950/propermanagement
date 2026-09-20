@@ -638,9 +638,11 @@ def visit_create(request):
         visit = checklist_service.create_visit(
             prop, visit_type, is_deep_clean=request.POST.get('is_deep_clean') == '1', **kwargs,
         )
+        link_note = ''
         if visit.assigned_staff_id or visit.assigned_contact_id:
-            notify_service.notify_assignee(visit, request)
-        messages.success(request, f'Visit scheduled for {prop.name}{f" — {unit.label}" if unit else ""}.')
+            if notify_service.dispatch_link(visit, request) == notify_service.SCHEDULED:
+                link_note = f' The cleaner will be sent the link {notify_service.link_send_description(visit)}.'
+        messages.success(request, f'Visit scheduled for {prop.name}{f" — {unit.label}" if unit else ""}.{link_note}')
         return redirect('onsite_visit_detail', pk=visit.pk)
 
     return render(request, 'onsite/visit_create.html', {
@@ -896,9 +898,11 @@ def visit_detail(request, pk):
                 visit.status = Visit.Status.SCHEDULED
             visit.full_clean()
             visit.save()
+            link_note = ''
             if visit.assigned_staff_id or visit.assigned_contact_id:
-                notify_service.notify_assignee(visit, request)
-            messages.success(request, 'Visit reassigned.')
+                if notify_service.dispatch_link(visit, request) == notify_service.SCHEDULED:
+                    link_note = f' The cleaner will be sent the link {notify_service.link_send_description(visit)}.'
+            messages.success(request, f'Visit reassigned.{link_note}')
 
         elif action == 'save_schedule':
             raw_date = request.POST.get('scheduled_date', '').strip()
@@ -907,6 +911,8 @@ def visit_detail(request, pk):
             visit.scheduled_start = raw_start or None
             visit.notes = request.POST.get('notes', '').strip()
             visit.save(update_fields=['scheduled_date', 'scheduled_start', 'notes'])
+            if visit.assigned_staff_id or visit.assigned_contact_id:
+                notify_service.dispatch_link(visit, request)  # no-op unless the date/assignee is new to them
             messages.success(request, 'Visit updated.')
 
         elif action == 'set_status':
@@ -1111,6 +1117,12 @@ def visit_public(request, token):
             # is what reveals that unit's code, tying "cleaner retrieved the
             # code" and "cleaner started" together as one real signal
             # instead of two separate, fakeable steps.
+            # The checklist doesn't render until now, so this is the last
+            # moment it can change without anyone noticing: re-take it from
+            # the current templates, so a visit created weeks ago never
+            # goes out with an old list. (Skipped if staff already ticked
+            # something on it.)
+            checklist_service.refresh_checklist(visit)
             visit.started_at = timezone.now()
             visit.status = Visit.Status.IN_PROGRESS
             visit.save(update_fields=['started_at', 'status'])

@@ -552,6 +552,12 @@ class Visit(models.Model):
     access_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     token_expires_at = models.DateTimeField(null=True, blank=True)
 
+    # What the cleaner has already been sent the link for: "<assignee>|<date>".
+    # A different assignee or a moved date is a new key, so they get told
+    # again; the same key is never re-sent. See services/notify.py.
+    link_notified_key = models.CharField(max_length=60, blank=True)
+    link_notified_at = models.DateTimeField(null=True, blank=True)
+
     google_event_id = models.CharField(max_length=200, blank=True)
     google_sync_pending = models.BooleanField(default=False)
     # Fingerprint of what the calendar event was last successfully made to

@@ -483,6 +483,14 @@ ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC
 # Airbnb/VRBO calendar links (onsite.BookingFeed) — how often each is polled,
 # and how many polls in a row an upcoming reservation must be missing from
 # its feed before it's treated as cancelled (see onsite/services/feeds.py).
+# The link a cleaner needs is sent the day before their visit, from this hour
+# (local time, settings.TIME_ZONE) on; a visit created later than that — or
+# dated today — is sent straight away. See onsite/services/notify.py.
+ONSITE_LINK_SEND_HOUR = int(os.environ.get('ONSITE_LINK_SEND_HOUR', '8'))
+ONSITE_LINK_SEND_INTERVAL_MINUTES = int(os.environ.get('ONSITE_LINK_SEND_INTERVAL_MINUTES', '30'))
+# How often upcoming, not-yet-started visits are re-synced to the current
+# checklist (they also re-sync at startup and the moment a cleaner starts one).
+ONSITE_CHECKLIST_REFRESH_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CHECKLIST_REFRESH_INTERVAL_MINUTES', str(6 * 60)))
 BOOKING_FEED_POLL_INTERVAL_MINUTES = int(os.environ.get('BOOKING_FEED_POLL_INTERVAL_MINUTES', '30'))
 BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL = int(os.environ.get('BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL', '2'))
 

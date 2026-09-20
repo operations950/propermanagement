@@ -74,6 +74,19 @@ def _run_sync_onsite_calendar():
     _run_command('sync_onsite_calendar')
 
 
+def _run_send_visit_links():
+    _run_command('send_visit_links')
+
+
+def _run_refresh_visit_checklists():
+    from django.core.management import call_command
+
+    try:
+        call_command('refresh_visit_checklists', apply=True)
+    except Exception:
+        logger.exception('refresh_visit_checklists failed')
+
+
 def _run_poll_booking_feeds():
     _run_command('poll_booking_feeds')
 
@@ -123,6 +136,14 @@ def start():
     _scheduler.add_job(
         _run_sync_onsite_calendar, 'interval',
         minutes=settings.ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES, next_run_time=datetime.now(),
+    )
+    _scheduler.add_job(
+        _run_send_visit_links, 'interval',
+        minutes=settings.ONSITE_LINK_SEND_INTERVAL_MINUTES, next_run_time=datetime.now(),
+    )
+    _scheduler.add_job(
+        _run_refresh_visit_checklists, 'interval',
+        minutes=settings.ONSITE_CHECKLIST_REFRESH_INTERVAL_MINUTES, next_run_time=datetime.now(),
     )
     _scheduler.add_job(
         _run_poll_booking_feeds, 'interval',

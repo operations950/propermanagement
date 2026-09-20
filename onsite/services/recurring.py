@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from ..models import Visit
 from .checklist import create_visit
-from .notify import notify_assignee
+from .notify import dispatch_link
 
 MAX_LOOKAHEAD_DAYS = 7
 
@@ -62,8 +62,9 @@ def generate_for_rule(rule, today=None):
     rule.next_due = advance(rule, scheduled)
     rule.save(update_fields=['last_generated_at', 'next_due'])
     # A rule's default assignee is assigned at creation, and nothing else
-    # would ever tell them — the visit screen only notifies on a manual
-    # assignment. Best-effort (never raises).
+    # would ever tell them. dispatch_link sends the link now if the visit is
+    # due (today, or tomorrow past the send hour) and otherwise leaves it for
+    # the timer to send the day before. Best-effort (never raises).
     if visit.assigned_staff_id or visit.assigned_contact_id:
-        notify_assignee(visit)
+        dispatch_link(visit)
     return visit

@@ -233,7 +233,19 @@ def create_visit(property, visit_type, is_deep_clean=False, **visit_kwargs):
         # property") is a bucket, not somewhere anyone can go.
         raise ValidationError(f'"{property.name}" is a general placeholder, not a real property — on-site visits can\'t be scheduled for it.')
     visit = Visit.objects.create(property=property, visit_type=visit_type, is_deep_clean=is_deep_clean, **visit_kwargs)
-    resolved = resolve_checklist(property, visit_type)
+    VisitChecklistItem.objects.bulk_create(build_checklist_items(visit))
+    # The Google Calendar event for this visit is created by the post_save
+    # signal in onsite/signals.py — no explicit push needed here.
+    return visit
+
+
+def build_checklist_items(visit):
+    """Unsaved VisitChecklistItems for what this visit's checklist should be
+    RIGHT NOW: the property's resolved list for its visit type (each item's
+    minutes multiplied by this property/unit's own counts), plus the
+    deep-clean bundle when the visit is one. Shared by create_visit (the
+    snapshot at creation) and refresh_checklist (re-taking it later)."""
+    resolved = resolve_checklist(visit.property, visit.visit_type)
     items = [
         VisitChecklistItem(
             visit=visit,
@@ -245,17 +257,64 @@ def create_visit(property, visit_type, is_deep_clean=False, **visit_kwargs):
             requires_photo=row['requires_photo'],
             requires_note=row['requires_note'],
             is_new_unreviewed=row['is_new_unreviewed'],
-            minutes=_item_minutes(property, visit.unit, row['minutes'], row['scales_by']),
+            minutes=_item_minutes(visit.property, visit.unit, row['minutes'], row['scales_by']),
         )
         for row in resolved
     ]
-    if is_deep_clean:
+    if visit.is_deep_clean:
         offset = max((i.order for i in items), default=-1) + 1
-        items += _deep_clean_checklist_items(visit, property, offset)
-    VisitChecklistItem.objects.bulk_create(items)
-    # The Google Calendar event for this visit is created by the post_save
-    # signal in onsite/signals.py — no explicit push needed here.
-    return visit
+        items += _deep_clean_checklist_items(visit, visit.property, offset)
+    return items
+
+
+# A visit can be re-synced to the current checklist only while nothing has
+# happened on it: not started, not finished, not cancelled.
+REFRESHABLE_STATUSES = (Visit.Status.UNASSIGNED, Visit.Status.SCHEDULED)
+
+
+def _checklist_signature(item):
+    return (item.source, item.section, item.order, item.text, item.mandatory, item.requires_photo, item.requires_note, item.minutes)
+
+
+def refresh_checklist(visit, apply=True):
+    """Replaces this visit's snapshotted checklist with the CURRENT one, so a
+    visit created weeks ago — before the standard checklist was edited —
+    doesn't send a cleaner out with the old list. Returns one of:
+      'refreshed'         the checklist was replaced (with apply=False:
+                          'would_refresh' — nothing changed)
+      'unchanged'         it already matched
+      'skipped_status'    started/finished/cancelled/skipped: a record of
+                          what was actually done is never rewritten
+      'skipped_progress'  someone already ticked, noted, skipped or
+                          photographed an item — their work isn't thrown away
+    One-off items staff added by hand are kept (moved after the rest);
+    everything derived from the templates is rebuilt. Called for every
+    upcoming visit by the timer and the refresh_visit_checklists command,
+    and for a visit the moment its cleaner starts it — which is what makes
+    "every visit goes out with the current checklist" true, not just true
+    at creation."""
+    visit = Visit.objects.select_related('property', 'unit', 'visit_type').get(pk=visit.pk)
+    if visit.started_at is not None or visit.status not in REFRESHABLE_STATUSES:
+        return 'skipped_status'
+    existing = list(visit.checklist_items.all())
+    if any(i.is_completed or i.note or i.skip_reason for i in existing) or visit.media.exists():
+        return 'skipped_progress'
+
+    fresh = build_checklist_items(visit)
+    managed = [i for i in existing if i.source != VisitChecklistItem.Source.ONEOFF]
+    if [_checklist_signature(i) for i in managed] == [_checklist_signature(i) for i in fresh]:
+        return 'unchanged'
+    if not apply:
+        return 'would_refresh'
+
+    with transaction.atomic():
+        VisitChecklistItem.objects.filter(pk__in=[i.pk for i in managed]).delete()
+        base = max((i.order for i in fresh), default=-1) + 1
+        for offset, item in enumerate(sorted((i for i in existing if i.source == VisitChecklistItem.Source.ONEOFF), key=lambda i: i.order)):
+            item.order = base + offset
+            item.save(update_fields=['order'])
+        VisitChecklistItem.objects.bulk_create(fresh)
+    return 'refreshed'
 
 
 def set_deep_clean(visit, enabled):
