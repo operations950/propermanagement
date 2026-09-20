@@ -10,7 +10,7 @@ Deliberately not built on the `processes` app — that's a step-type engine
 for administrative staff at a computer; this is a flat, ordered, mandatory
 checklist completed on a phone by someone standing in a house."""
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import ROUND_FLOOR, Decimal
 
 from django.conf import settings
@@ -631,6 +631,20 @@ class CleaningPaymentBatch(models.Model):
 
     class Meta:
         ordering = ['-paid_at']
+
+    # A payment can be undone only while the books for its month are still open:
+    # the month it was made in, plus this many days after that month ends.
+    EDIT_GRACE_DAYS = 7
+
+    def edit_deadline(self):
+        """The last day this payment can still be undone: seven days after the
+        end of the month it was made in."""
+        paid = timezone.localtime(self.paid_at).date()
+        first_of_next = date(paid.year + (paid.month == 12), paid.month % 12 + 1, 1)
+        return first_of_next - timedelta(days=1) + timedelta(days=self.EDIT_GRACE_DAYS)
+
+    def is_locked(self, today=None):
+        return (today or timezone.localdate()) > self.edit_deadline()
 
     def __str__(self):
         return f'${self.total_amount} paid {self.paid_at:%Y-%m-%d} ({self.visits.count()} cleaning(s))'

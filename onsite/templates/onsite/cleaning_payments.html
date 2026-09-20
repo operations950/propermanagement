@@ -103,12 +103,21 @@
                 · {{ batch.visits.all|length }} cleaning{{ batch.visits.all|length|pluralize }}
                 {% if batch.note %}· <span class="text-muted">{{ batch.note }}</span>{% endif %}
             </div>
-            <form method="post" onsubmit="return confirm('Undo this payment? These cleanings will go back into the unpaid queue.');">
+            {% if batch.is_locked %}
+            <span class="small text-muted" title="Payments can only be undone in the month they were made and for 7 days after that month ends. This one was locked after {{ batch.edit_deadline|date:'M j, Y' }}."><i data-lucide="lock" class="icon"></i> Locked</span>
+            {% else %}
+            <form method="post" class="d-flex align-items-center gap-2" onsubmit="return confirm('Only undo this payment if it was marked paid by mistake and the money did NOT actually go out.
+
+If the cleaner really was paid, do not undo it: these cleanings would go back into the unpaid queue and could be paid a second time, and your records would stop matching what was actually paid.
+
+Undo this payment anyway?');">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="undo_batch">
                 <input type="hidden" name="batch_id" value="{{ batch.pk }}">
+                <span class="small text-muted d-none d-sm-inline">Can be undone through {{ batch.edit_deadline|date:"M j" }}</span>
                 <button class="btn btn-link btn-sm text-danger p-0" type="submit">Undo</button>
             </form>
+            {% endif %}
         </div>
         <div class="collapse mt-2" id="batch-detail-{{ batch.pk }}">
             <table class="table table-sm mb-0">

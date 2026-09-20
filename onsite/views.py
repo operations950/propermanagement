@@ -890,8 +890,6 @@ def performance_property(request, property_id):
                          'series': [{'name': 'Average nightly rate', 'color': '#3d6178', 'values': [None if m['adr'] is None else round(m['adr'], 2) for m in months]}]}
         charts['revenue'] = {'type': 'bar', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] + (' (to date)' if m['partial'] else '') for m in months],
                              'series': [{'name': 'Lodging revenue', 'color': '#3d6178', 'values': [None if m['revenue'] is None else round(m['revenue'], 2) for m in months]}]}
-        charts['payouts'] = {'type': 'bar', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] for m in months],
-                             'series': [{'name': 'Payouts received', 'color': '#6e95b2', 'values': [round(m['payouts'], 2) if m['payout_count'] else None for m in months]}]}
     return render(request, 'onsite/performance_property.html', {
         'data': data, 'charts': charts, 'is_admin': is_admin, 'property': prop,
     })
@@ -1825,10 +1823,19 @@ def cleaning_payments(request):
                     messages.success(request, f'Marked {len(unpaid)} cleaning(s) as paid — ${total:.2f} total.')
         elif action == 'undo_batch':
             batch = get_object_or_404(CleaningPaymentBatch, pk=request.POST.get('batch_id'))
-            with transaction.atomic():
-                count = batch.visits.update(payment_batch=None, paid_amount=None)
-                batch.delete()
-            messages.success(request, f'Undone — {count} cleaning(s) are back in the unpaid queue.')
+            if batch.is_locked():
+                deadline = batch.edit_deadline()
+                messages.error(
+                    request,
+                    f'That payment is locked. A payment can only be undone in the month it was made and for '
+                    f'{CleaningPaymentBatch.EDIT_GRACE_DAYS} days after that month ends — this one could be undone through '
+                    f'{deadline:%b} {deadline.day}, {deadline.year}.',
+                )
+            else:
+                with transaction.atomic():
+                    count = batch.visits.update(payment_batch=None, paid_amount=None)
+                    batch.delete()
+                messages.success(request, f'Undone — {count} cleaning(s) are back in the unpaid queue.')
         elif action == 'update_hourly_rate':
             rate = _parse_decimal(request.POST.get('hourly_rate'))
             if rate is None or rate < 0:

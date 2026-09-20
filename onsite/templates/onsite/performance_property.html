@@ -40,7 +40,6 @@
     {% if is_admin %}
     <div class="col"><div class="kpi"><div class="lbl">Average nightly rate</div><div class="val">{% if t.adr is not None %}${{ t.adr|floatformat:0 }}{% else %}—{% endif %}</div><div class="sub">{% if t.coverage is not None %}from {{ t.coverage|floatformat:0 }}% of booked nights{% else %}no amounts yet{% endif %}</div></div></div>
     <div class="col"><div class="kpi"><div class="lbl">Lodging revenue</div><div class="val">{% if t.revenue is not None %}${{ t.revenue|floatformat:"0g" }}{% else %}—{% endif %}</div><div class="sub">{% if t.revpar is not None %}${{ t.revpar|floatformat:"0g" }} per available night{% else %}&nbsp;{% endif %}</div></div></div>
-    <div class="col"><div class="kpi"><div class="lbl">Payouts received</div><div class="val">{% if t.payout_count %}${{ t.payouts|floatformat:"0g" }}{% else %}—{% endif %}</div><div class="sub">{% if t.payout_count %}{{ t.payout_count }} payout{{ t.payout_count|pluralize }} with a date{% else %}no payout reports yet{% endif %}</div></div></div>
     {% endif %}
     <div class="col"><div class="kpi"><div class="lbl">Average stay</div><div class="val">{% if t.alos is not None %}{{ t.alos|floatformat:1 }}<span class="fs-6 fw-normal"> nights</span>{% else %}—{% endif %}</div><div class="sub">{{ t.arrivals }} stay{{ t.arrivals|pluralize }}</div></div></div>
     <div class="col"><div class="kpi"><div class="lbl">Cancellation rate</div><div class="val">{% if t.cancel_rate is not None %}{{ t.cancel_rate|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ t.cancelled }} cancelled</div></div></div>
@@ -65,12 +64,6 @@
         <div class="mini-chart" data-src="chart-revenue"></div>
         {{ charts.revenue|json_script:"chart-revenue" }}
         <p class="text-muted small mb-0 mt-1">Each stay's revenue is spread over the nights it covers, so a stay across two months is split between them.</p>
-    </div></div></div>
-    <div class="col-12 col-lg-6"><div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-        <h6 class="card-title">Payouts received</h6>
-        <div class="mini-chart" data-src="chart-payouts"></div>
-        {{ charts.payouts|json_script:"chart-payouts" }}
-        <p class="text-muted small mb-0 mt-1">Cash, by the month the platform paid it out — the figure to tie to QuickBooks deposits.</p>
     </div></div></div>
     {% endif %}
     <div class="col-12 col-lg-6"><div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
@@ -106,7 +99,7 @@
     {% for b in data.upcoming %}
     <div class="d-flex justify-content-between gap-2 flex-wrap border-top py-1 small">
         <span>{{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }} · {{ b.nights }} night{{ b.nights|pluralize }}{% if b.unit %} · {{ b.unit.label }}{% endif %}</span>
-        <span class="text-muted">{{ b.guest_name|default:"guest" }} · {{ b.get_source_display }}{% if is_admin and b.payout_amount is not None %} · ${{ b.payout_amount|floatformat:2 }} payout{% endif %}</span>
+        <span class="text-muted">{{ b.guest_name|default:"guest" }} · {{ b.get_source_display }}</span>
     </div>
     {% endfor %}
     {% endif %}
@@ -120,12 +113,12 @@
         <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
             <div class="d-flex justify-content-between align-items-baseline"><span class="fw-semibold">{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}</span><span class="fs-5 fw-semibold">{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></div>
             <div class="small text-muted">{{ m.booked }} of {{ m.available }} nights · {{ m.arrivals }} stay{{ m.arrivals|pluralize }}{% if m.alos is not None %} · avg {{ m.alos|floatformat:1 }} nights{% endif %}{% if m.cancelled %} · {{ m.cancelled }} cancelled{% endif %}</div>
-            {% if is_admin %}<div class="small">{% if m.adr is not None %}Rate <strong>${{ m.adr|floatformat:0 }}</strong> · revenue <strong>${{ m.revenue|floatformat:"0g" }}</strong>{% else %}<span class="text-muted">no amounts</span>{% endif %}{% if m.payout_count %} · paid out <strong>${{ m.payouts|floatformat:"0g" }}</strong>{% endif %}</div>{% endif %}
+            {% if is_admin %}<div class="small">{% if m.adr is not None %}Rate <strong>${{ m.adr|floatformat:0 }}</strong> · revenue <strong>${{ m.revenue|floatformat:"0g" }}</strong>{% else %}<span class="text-muted">no amounts</span>{% endif %}</div>{% endif %}
         </div>
         {% endfor %}
     </div>
     <div class="table-responsive d-none d-md-block"><table class="table table-sm align-middle mb-0">
-        <thead><tr class="small text-muted text-uppercase"><th>Month</th><th class="text-end">Occupancy</th><th class="text-end">Nights</th><th class="text-end">Stays</th><th class="text-end">Avg. stay</th><th class="text-end">Cancelled</th>{% if is_admin %}<th class="text-end">Avg. rate</th><th class="text-end">Revenue</th><th class="text-end">Payouts</th>{% endif %}</tr></thead>
+        <thead><tr class="small text-muted text-uppercase"><th>Month</th><th class="text-end">Occupancy</th><th class="text-end">Nights</th><th class="text-end">Stays</th><th class="text-end">Avg. stay</th><th class="text-end">Cancelled</th>{% if is_admin %}<th class="text-end">Avg. rate</th><th class="text-end">Revenue</th>{% endif %}</tr></thead>
         <tbody>
         {% for m in data.months reversed %}
         <tr>
@@ -138,7 +131,6 @@
             {% if is_admin %}
             <td class="text-end">{% if m.adr is not None %}${{ m.adr|floatformat:0 }}{% else %}—{% endif %}</td>
             <td class="text-end">{% if m.revenue is not None %}${{ m.revenue|floatformat:"0g" }}{% if m.coverage is not None and m.coverage < 100 %}<div class="text-muted small">{{ m.coverage|floatformat:0 }}% of nights</div>{% endif %}{% else %}—{% endif %}</td>
-            <td class="text-end">{% if m.payout_count %}${{ m.payouts|floatformat:"0g" }}{% else %}—{% endif %}</td>
             {% endif %}
         </tr>
         {% endfor %}
