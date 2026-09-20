@@ -7,7 +7,10 @@ from django.core.management.base import BaseCommand
 
 from core.models import StaffProfile
 
-QUALIFYING_USERNAMES = ['admin']
+# The generic 'admin' bootstrap login used to be listed here so it was re-granted on
+# every deploy. It's being retired, so access is now tied to a real person's email
+# only (anything already granted stays until someone revokes it).
+QUALIFYING_USERNAMES = []
 QUALIFYING_EMAILS = ['justin@proper-realty.com']
 
 

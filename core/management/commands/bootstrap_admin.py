@@ -22,6 +22,12 @@ class Command(BaseCommand):
             return
 
         username = os.environ.get('ADMIN_USERNAME', 'admin')
+        existing = User.objects.filter(username=username).first()
+        if existing is not None and not existing.is_active:
+            # Someone deactivated this login on purpose. Recreating its
+            # privileges and password on every deploy would quietly undo that.
+            self.stdout.write(f'Admin login {username!r} is deactivated — leaving it retired.')
+            return
         user, _ = User.objects.get_or_create(username=username)
         user.is_staff = True
         user.is_superuser = True
