@@ -102,6 +102,12 @@
             <i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i>
             Connected — last synced {{ quickbooks_token.last_synced_at|date:"M j, Y g:i A"|default:"never yet" }}.
         </p>
+        {% if quickbooks_token.last_sync_error %}
+        <p class="small mb-2 d-flex align-items-start gap-2">
+            <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
+            <span>Latest sync failed ({{ quickbooks_token.last_sync_attempt_at|date:"M j, Y g:i A" }}): {{ quickbooks_token.last_sync_error }}</span>
+        </p>
+        {% endif %}
         <a href="{% url 'quickbooks_connect' %}" class="btn btn-outline-secondary btn-sm">Reconnect</a>
         <form method="post" action="{% url 'quickbooks_disconnect' %}" class="d-inline" onsubmit="return confirm('Disconnect QuickBooks?');">
             {% csrf_token %}

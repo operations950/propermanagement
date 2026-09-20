@@ -1,12 +1,12 @@
-"""Daily refresh of the QuickBooks YTD Profit & Loss snapshot the Owner
-Dashboard's Company Financials box reads (see core/quickbooks.py). A
-no-op if QuickBooks isn't connected — same degrade-gracefully shape as
-every other optional integration in this app."""
+"""Refreshes the QuickBooks YTD Profit & Loss snapshot the Owner Dashboard's
+Company Financials box reads (see core/quickbooks.py). Run daily and once at
+startup by the scheduler, and once right after connecting. A no-op if
+QuickBooks isn't connected — same degrade-gracefully shape as every other
+optional integration in this app."""
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from core.models import QuickBooksToken
-from core.quickbooks import fetch_profit_and_loss
+from core.quickbooks import sync_snapshot
 
 
 class Command(BaseCommand):
@@ -18,14 +18,9 @@ class Command(BaseCommand):
             self.stdout.write('No QuickBooks connection — skipping sync.')
             return
 
-        result = fetch_profit_and_loss(token)
-        if not result:
-            self.stdout.write(self.style.WARNING('QuickBooks sync failed — keeping last known snapshot.'))
-            return
-
-        token.ytd_revenue = result['revenue']
-        token.ytd_expenses = result['expenses']
-        token.ytd_net_income = result['net_income']
-        token.last_synced_at = timezone.now()
-        token.save(update_fields=['ytd_revenue', 'ytd_expenses', 'ytd_net_income', 'last_synced_at'])
-        self.stdout.write(self.style.SUCCESS('QuickBooks financial snapshot synced.'))
+        if sync_snapshot(token):
+            self.stdout.write(self.style.SUCCESS('QuickBooks financial snapshot synced.'))
+        else:
+            self.stdout.write(self.style.WARNING(
+                f'QuickBooks sync failed ({token.last_sync_error}) — keeping last known snapshot.'
+            ))

@@ -105,8 +105,12 @@ def start():
     _scheduler.add_job(
         _run_resume_expired_wait_steps, 'interval', minutes=settings.PROCESS_WAIT_CHECK_INTERVAL_MINUTES,
     )
+    # next_run_time=now: an interval job's timer restarts on every deploy/
+    # restart, so without an immediate first run a once-a-day job never
+    # fires if the app restarts more often than that.
     _scheduler.add_job(
-        _run_sync_quickbooks_financials, 'interval', minutes=settings.QUICKBOOKS_SYNC_INTERVAL_MINUTES,
+        _run_sync_quickbooks_financials, 'interval',
+        minutes=settings.QUICKBOOKS_SYNC_INTERVAL_MINUTES, next_run_time=datetime.now(),
     )
     _scheduler.add_job(
         _run_generate_scheduled_visits, 'interval',

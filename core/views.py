@@ -289,7 +289,7 @@ def quickbooks_callback(request):
     # Exactly one company connection exists at a time — a new connect
     # replaces whatever was there before (see QuickBooksToken's docstring).
     QuickBooksToken.objects.all().delete()
-    QuickBooksToken.objects.create(
+    new_token = QuickBooksToken.objects.create(
         realm_id=realm_id,
         access_token=token_data.get('access_token', ''),
         refresh_token=token_data.get('refresh_token', ''),
@@ -300,7 +300,19 @@ def quickbooks_callback(request):
         ),
         connected_by=request.user,
     )
-    messages.success(request, 'QuickBooks connected.')
+    # Pull the first snapshot now so the dashboard box fills in immediately
+    # rather than waiting for the next scheduled sync. sync_snapshot records
+    # its own failure on the row; the guard is only so nothing unexpected
+    # can turn a successful connect into an error page.
+    try:
+        synced = quickbooks.sync_snapshot(new_token)
+    except Exception:
+        logger.exception('QuickBooks first sync after connect failed')
+        synced = False
+    if synced:
+        messages.success(request, 'QuickBooks connected and synced.')
+    else:
+        messages.success(request, 'QuickBooks connected. The first sync did not complete — it will retry automatically.')
     return redirect('admin_tools')
 
 

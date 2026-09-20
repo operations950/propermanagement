@@ -341,8 +341,21 @@
                     <span class="fw-bold tabular-nums" style="color: var(--ink-primary);">${{ quickbooks_token.ytd_net_income|floatformat:0 }}</span>
                 </div>
                 <p class="small mb-0" style="color: var(--ink-muted);">Last synced {{ quickbooks_token.last_synced_at|date:"M j, Y g:i A" }}</p>
+                {% if quickbooks_token.last_sync_error %}
+                <p class="small mt-2 mb-0 d-flex align-items-start gap-2" style="color: var(--status-warning);">
+                    <i data-lucide="circle-alert" class="icon"></i>
+                    <span>Latest sync failed, so these numbers may be out of date. {{ quickbooks_token.last_sync_error }}</span>
+                </p>
+                {% endif %}
                 {% elif quickbooks_token %}
+                {% if quickbooks_token.last_sync_error %}
+                <p class="small mb-0 d-flex align-items-start gap-2" style="color: var(--status-warning);">
+                    <i data-lucide="circle-alert" class="icon"></i>
+                    <span>Connected, but the first sync failed. {{ quickbooks_token.last_sync_error }}</span>
+                </p>
+                {% else %}
                 <p class="text-muted small mb-0">Connected — first sync hasn't run yet.</p>
+                {% endif %}
                 {% elif quickbooks_configured %}
                 <p class="text-muted small mb-3">Not connected yet.</p>
                 <a href="{% url 'quickbooks_connect' %}" class="btn btn-outline-primary btn-sm">

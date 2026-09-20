@@ -138,3 +138,36 @@ def fetch_profit_and_loss(token):
     except Exception:
         logger.exception('QuickBooks Profit & Loss fetch failed')
         return None
+
+
+RECONNECT_ERROR = 'QuickBooks rejected the saved connection — reconnect QuickBooks in Admin Tools.'
+FETCH_ERROR = "Couldn't read the financials from QuickBooks — will retry on the next sync."
+
+
+def sync_snapshot(token):
+    """Refreshes the token if needed, pulls the YTD Profit & Loss, and
+    stores it (or the reason it failed) on the QuickBooksToken row. Used by
+    the scheduled job, the startup run, and the post-connect sync so all
+    three behave identically. Returns True on success. A failure keeps the
+    last good numbers and only records last_sync_error."""
+    token.last_sync_attempt_at = timezone.now()
+    result = None
+    if not is_configured():
+        error = 'QuickBooks client ID/secret are not set — add them in Admin Tools.'
+    elif not _refresh_if_needed(token):
+        error = RECONNECT_ERROR
+    else:
+        result = fetch_profit_and_loss(token)
+        error = '' if result else FETCH_ERROR
+
+    if result:
+        token.ytd_revenue = result['revenue']
+        token.ytd_expenses = result['expenses']
+        token.ytd_net_income = result['net_income']
+        token.last_synced_at = timezone.now()
+    token.last_sync_error = error
+    token.save(update_fields=[
+        'ytd_revenue', 'ytd_expenses', 'ytd_net_income', 'last_synced_at',
+        'last_sync_attempt_at', 'last_sync_error',
+    ])
+    return bool(result)

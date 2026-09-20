@@ -704,7 +704,8 @@ class QuickBooksToken(models.Model):
     connect (see core/quickbooks.py). Also caches the last-synced YTD
     financial snapshot the Owner Dashboard reads, rather than calling
     QuickBooks on every page load — refreshed by the daily
-    sync_quickbooks_financials job. QuickBooks refresh tokens expire after
+    sync_quickbooks_financials job (also run at startup and right after
+    connecting; see quickbooks.sync_snapshot). QuickBooks refresh tokens expire after
     ~100 days (unlike Google's), so periodic reconnection is expected."""
     # All three encrypted at rest (AES, see core/fields.py) per Intuit's
     # security requirements — realm_id was a 50-char CharField before, but
@@ -719,6 +720,11 @@ class QuickBooksToken(models.Model):
     )
     connected_at = models.DateTimeField(auto_now_add=True)
     last_synced_at = models.DateTimeField(null=True, blank=True)
+    # Most recent sync attempt and, if it failed, a plain-language reason the
+    # dashboard/Admin Tools show — otherwise a dead connection (e.g. refresh
+    # token expired or revoked) just leaves the numbers quietly going stale.
+    last_sync_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_sync_error = models.CharField(max_length=255, blank=True)
     ytd_revenue = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     ytd_expenses = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     ytd_net_income = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
