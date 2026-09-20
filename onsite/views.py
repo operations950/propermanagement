@@ -1614,8 +1614,21 @@ def checklist_template_detail(request, type_id):
                 visit_type.default_duration_minutes = int(raw_duration)
             visit_type.requires_deadline = request.POST.get('requires_deadline') == 'on'
             visit_type.is_active = request.POST.get('is_active') == 'on'
+            raw_price = request.POST.get('fixed_price', '').strip()
+            price_ok = True
+            if not raw_price:
+                visit_type.fixed_price = None
+            else:
+                price = _parse_decimal(raw_price)
+                if price is None or not price.is_finite() or price < 0 or price > Decimal('999999.99'):
+                    price_ok = False
+                else:
+                    visit_type.fixed_price = price
             visit_type.save()
-            messages.success(request, 'Visit type updated.')
+            if price_ok:
+                messages.success(request, 'Visit type updated.')
+            else:
+                messages.error(request, "Visit type saved, but the fixed price wasn't a valid amount — it was left as it was.")
 
         elif action == 'add_item':
             text = request.POST.get('text', '').strip()

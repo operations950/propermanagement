@@ -25,6 +25,13 @@
                 <label class="form-label small text-muted mb-1">Default duration (minutes)</label>
                 <input type="number" name="default_duration_minutes" class="form-control form-control-sm" value="{{ visit_type.default_duration_minutes }}" min="1">
             </div>
+            <div class="col-sm-3">
+                <label class="form-label small text-muted mb-1">Fixed price <span style="color: var(--ink-muted);">(agreed charge — replaces the calculation)</span></label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">$</span>
+                    <input type="number" step="0.01" min="0" name="fixed_price" class="form-control" placeholder="Calculate from checklist" value="{% if visit_type.fixed_price is not None %}{{ visit_type.fixed_price }}{% endif %}">
+                </div>
+            </div>
             <div class="col-sm-2">
                 <div class="form-check mt-4">
                     <input type="checkbox" name="requires_deadline" class="form-check-input" id="requires_deadline" {% if visit_type.requires_deadline %}checked{% endif %}>
@@ -39,6 +46,12 @@
             </div>
             <div class="col-sm-1">
                 <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+            </div>
+            <div class="col-12">
+                <p class="small mb-0" style="color: var(--ink-muted);">
+                    {% if visit_type.fixed_price is not None %}<strong>Every {{ visit_type.name }} visit is charged ${{ visit_type.fixed_price }}</strong> regardless of the checklist's time (the time is still tracked, to compare estimate vs. actual). A single visit's manual price override{% if visit_type.slug == 'turnover' %}, or a property's negotiated turnover price,{% endif %} still wins over this.
+                    {% else %}Priced from this checklist's time × the hourly rate. Set a fixed price to charge an agreed amount instead.{% endif %}
+                </p>
             </div>
         </form>
         {% else %}

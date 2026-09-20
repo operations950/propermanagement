@@ -345,7 +345,7 @@
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="dollar-sign" class="icon"></i> Price <span class="badge rounded-pill bg-light text-muted border">Admin only</span></h6>
         {% with price=visit.effective_price %}
         {% if price is not None %}
-        <p class="mb-1">${{ price|floatformat:2 }}{% if visit.manual_price_override is not None %} <span class="badge rounded-pill bg-light text-muted border">Manual override</span>{% endif %}</p>
+        <p class="mb-1">${{ price|floatformat:2 }}{% if visit.manual_price_override is not None %} <span class="badge rounded-pill bg-light text-muted border">Manual override</span>{% elif visit.price_source == 'checklist' %} <span class="badge rounded-pill bg-light text-muted border">Fixed price for this checklist</span>{% elif visit.price_source == 'property' %} <span class="badge rounded-pill bg-light text-muted border">Negotiated turnover price</span>{% endif %}</p>
         {% else %}
         <p class="small mb-1" style="color: var(--ink-muted);">Not priced yet — set a cleaning rate on the <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a> screen, or a turnover price override on this property.</p>
         {% endif %}
