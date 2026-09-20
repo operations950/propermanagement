@@ -11,7 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, F, Max, Prefetch, Q
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -28,15 +28,17 @@ from . import google_calendar_push
 from .google_calendar_push import delete_visit_event
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
-    Booking, BookingFeedHealth, CleaningPaymentBatch, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
+    Booking, BookingFeed, BookingFeedHealth, CleaningPaymentBatch, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
     PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule,
     VisitType,
 )
 from .services import checklist as checklist_service
+from .services import feeds as feed_service
 from .services import notify as notify_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
 )
+from .services.bookings import update_feed_health as _update_feed_health
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +167,7 @@ def dashboard(request):
         'is_admin': _is_admin(request.user),
         # Admins only: a banner when visits aren't reaching the shared Google Calendar.
         'calendar_status': google_calendar_push.status() if _is_admin(request.user) else None,
+        'feeds_attention': feed_service.feeds_needing_attention() if _is_admin(request.user) else [],
     })
 
 
@@ -312,31 +315,6 @@ def _create_import_batch(user, source, uploaded_file, property=None):
         covers_start=covers_start, covers_end=covers_end, imported_by=user,
     )
     return batch, None
-
-
-def _update_feed_health(source, raw_bookings):
-    """Called once a batch for `source` actually applies successfully —
-    see BookingFeedHealth's docstring for what each field means and why
-    they're kept separate. All three only ever move forward."""
-    health, _ = BookingFeedHealth.objects.get_or_create(source=source)
-    update_fields = ['last_upload_at']
-    health.last_upload_at = timezone.now()
-
-    booked_dates = [r.booked_at for r in raw_bookings if r.booked_at]
-    if booked_dates:
-        newest = max(booked_dates)
-        if not health.newest_booked_date or newest > health.newest_booked_date:
-            health.newest_booked_date = newest
-            update_fields.append('newest_booked_date')
-
-    checkouts = [r.check_out for r in raw_bookings]
-    if checkouts:
-        furthest = max(checkouts)
-        if not health.coverage_through or furthest > health.coverage_through:
-            health.coverage_through = furthest
-            update_fields.append('coverage_through')
-
-    health.save(update_fields=update_fields)
 
 
 @login_required
@@ -668,6 +646,79 @@ def visit_create(request):
         'str_properties': str_properties, 'other_properties': other_properties, 'visit_types': visit_types,
         'staff_options': staff_options, 'contact_options': contact_options,
         'units_by_property_json': units_by_property_json,
+    })
+
+
+@login_required
+def booking_feeds(request):
+    """Admin screen for BookingFeed — the Airbnb/VRBO calendar links the app
+    polls (see onsite/services/feeds.py). Admin-only because the links are
+    secrets: anyone holding one can read that listing's calendar."""
+    if not _is_admin(request.user):
+        return HttpResponseForbidden('Admins only.')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_feed':
+            kind, _, raw_id = request.POST.get('listing', '').partition('-')
+            source = request.POST.get('source', '')
+            url = request.POST.get('url', '').strip()
+            prop = unit = None
+            if kind == 'p' and raw_id.isdigit():
+                prop = Property.objects.filter(pk=raw_id, is_active=True).first()
+                if prop and prop.units.filter(is_active=True).exists():
+                    prop = None  # a property with units needs one feed per unit
+            elif kind == 'u' and raw_id.isdigit():
+                unit = Unit.objects.filter(pk=raw_id, is_active=True, property__is_active=True).select_related('property').first()
+                prop = unit.property if unit else None
+            if not prop:
+                messages.error(request, 'Choose which listing this calendar is for (a property with units needs one calendar per unit).')
+            elif source not in ImportBatch.Source.values:
+                messages.error(request, 'Choose Airbnb or VRBO.')
+            elif not url.lower().startswith(('http://', 'https://', 'webcal://')):
+                messages.error(request, 'Paste the calendar link — it should start with https://.')
+            elif BookingFeed.objects.filter(property=prop, unit=unit, source=source, is_active=True).exists():
+                messages.error(request, 'That listing already has an active calendar for this platform — pause or delete it first.')
+            else:
+                if url.lower().startswith('webcal://'):
+                    url = 'https://' + url[len('webcal://'):]
+                feed = BookingFeed.objects.create(property=prop, unit=unit, source=source, url=url)
+                feed_service.poll_feed(feed)
+                if feed.last_error:
+                    messages.warning(request, f'Calendar added, but the first check failed: {feed.last_error}')
+                else:
+                    messages.success(request, f'Calendar added. {feed.last_summary}')
+        else:
+            feed = get_object_or_404(BookingFeed, pk=request.POST.get('feed_id'))
+            if action == 'poll_now':
+                feed_service.poll_feed(feed)
+                messages.success(request, f'Checked {feed.label()}. {feed.last_error or feed.last_summary}')
+            elif action == 'confirm_cancellations':
+                feed_service.poll_feed(feed, allow_mass_cancel=True)
+                messages.success(request, f'Checked {feed.label()}. {feed.last_error or feed.last_summary}')
+            elif action == 'toggle_active':
+                feed.is_active = not feed.is_active
+                feed.save(update_fields=['is_active'])
+                messages.success(request, f'Calendar {"resumed" if feed.is_active else "paused"}.')
+            elif action == 'delete_feed':
+                feed.delete()
+                messages.success(request, 'Calendar removed. Existing reservations and visits were left as they are.')
+        return redirect('onsite_booking_feeds')
+
+    properties = Property.objects.filter(is_active=True).order_by('name').prefetch_related('units')
+    listing_options = []
+    for prop in properties:
+        units = [u for u in prop.units.all() if u.is_active]
+        if units:
+            listing_options += [(f'u-{u.pk}', f'{prop.name} — {u.label}') for u in units]
+        else:
+            listing_options.append((f'p-{prop.pk}', prop.name))
+    return render(request, 'onsite/booking_feeds.html', {
+        'feeds': BookingFeed.objects.select_related('property', 'unit'),
+        'listing_options': listing_options,
+        'sources': ImportBatch.Source.choices,
+        'poll_minutes': settings.BOOKING_FEED_POLL_INTERVAL_MINUTES,
+        'missing_polls': settings.BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL,
     })
 
 

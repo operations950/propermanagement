@@ -464,6 +464,11 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 # pending Google Calendar pushes.
 ONSITE_GENERATE_VISITS_INTERVAL_MINUTES = int(os.environ.get('ONSITE_GENERATE_VISITS_INTERVAL_MINUTES', str(60 * 24)))
 ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES = int(os.environ.get('ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES', '30'))
+# Airbnb/VRBO calendar links (onsite.BookingFeed) — how often each is polled,
+# and how many polls in a row an upcoming reservation must be missing from
+# its feed before it's treated as cancelled (see onsite/services/feeds.py).
+BOOKING_FEED_POLL_INTERVAL_MINUTES = int(os.environ.get('BOOKING_FEED_POLL_INTERVAL_MINUTES', '30'))
+BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL = int(os.environ.get('BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL', '2'))
 
 # Sessions module (sessions app) — replaces the old TicketTemplate-based
 # recurring-ticket generation for routine work that fans out to lines, not

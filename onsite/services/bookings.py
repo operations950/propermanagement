@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
-from ..models import Booking, Visit, VisitType
+from ..models import Booking, BookingFeedHealth, Visit, VisitType
 from core.models import PropertyListingName
 
 TURNOVER_SLUG = 'turnover'
@@ -91,7 +91,77 @@ def save_listing_name(property, source, listing_name, unit=None):
         listing.save(update_fields=['unit'])
 
 
-def diff_bookings(property, source, raw_bookings):
+def _listing_unit_map(property, source):
+    """Every listing name this property answers to on this platform, mapped
+    to its Unit (or None) — see apply_bookings_for_property."""
+    return {
+        pln.name: pln.unit
+        for pln in PropertyListingName.objects.filter(property=property, platform=source).select_related('unit')
+    }
+
+
+def _feed_twin(property, source, row, listing_unit_map, default_unit=None):
+    """The booking a feed poll already created for this same reservation
+    under a different key. A polled calendar (onsite/services/feeds.py) can
+    only key a booking by the calendar's own UID unless it can recover the
+    platform's confirmation code; a later CSV report then arrives with the
+    real code for the same stay. Same property, same platform, same unit,
+    same check-in and check-out dates, and exactly one such booking, means
+    it is the same reservation — never a second one to clean. (The unit
+    matters: two units of one building often check out the same day.) None
+    when there's no candidate or it's ambiguous."""
+    if row.is_cancelled:
+        return None
+    unit = listing_unit_map.get(row.listing_name, default_unit)
+    matches = [
+        b for b in Booking.objects.filter(
+            property=property, source=source, from_feed=True, status=Booking.Status.ACTIVE,
+            unit=unit,
+        ).exclude(external_uid=row.external_uid)
+        if timezone.localtime(b.check_in).date() == row.check_in and timezone.localtime(b.check_out).date() == row.check_out
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _adopt_feed_twins(property, source, raw_bookings, listing_unit_map, default_unit=None):
+    """Gives each feed-created booking the confirmation code its CSV row
+    carries (see _feed_twin), so everything downstream just finds it by UID."""
+    for row in raw_bookings:
+        if Booking.objects.filter(source=source, external_uid=row.external_uid).exists():
+            continue
+        twin = _feed_twin(property, source, row, listing_unit_map, default_unit)
+        if twin:
+            twin.external_uid = row.external_uid
+            twin.from_feed = False
+            twin.save(update_fields=['external_uid', 'from_feed'])
+
+
+def update_feed_health(source, raw_bookings):
+    """Called once a batch (or feed poll) for `source` actually applies
+    successfully — see BookingFeedHealth's docstring for what each field
+    means and why they're kept separate. All three only ever move forward."""
+    health, _ = BookingFeedHealth.objects.get_or_create(source=source)
+    update_fields = ['last_upload_at']
+    health.last_upload_at = timezone.now()
+
+    booked_dates = [r.booked_at for r in raw_bookings if r.booked_at]
+    if booked_dates:
+        newest = max(booked_dates)
+        if not health.newest_booked_date or newest > health.newest_booked_date:
+            health.newest_booked_date = newest
+            update_fields.append('newest_booked_date')
+
+    checkouts = [r.check_out for r in raw_bookings]
+    if checkouts:
+        furthest = max(checkouts)
+        if not health.coverage_through or furthest > health.coverage_through:
+            health.coverage_through = furthest
+            update_fields.append('coverage_through')
+
+    health.save(update_fields=update_fields)
+
+
+def diff_bookings(property, source, raw_bookings, default_unit=None):
     """Read-only preview diff — nothing written. Returns a dict with 'new'/
     'changed'/'reactivated'/'missing_visit' (lists of RawBooking) and
     'cancelled' (list of existing Booking rows).
@@ -131,6 +201,7 @@ def diff_bookings(property, source, raw_bookings):
     so apply_bookings_for_property relocates the existing row instead of
     attempting a duplicate insert."""
     uids = {row.external_uid for row in raw_bookings}
+    listing_unit_map = _listing_unit_map(property, source)
     existing_by_uid = {
         b.external_uid: b
         for b in Booking.objects.filter(source=source, external_uid__in=uids)
@@ -138,7 +209,7 @@ def diff_bookings(property, source, raw_bookings):
     new_rows, changed_rows, reactivated_rows, missing_visit_rows = [], [], [], []
     cancelled = []
     for row in raw_bookings:
-        existing = existing_by_uid.get(row.external_uid)
+        existing = existing_by_uid.get(row.external_uid) or _feed_twin(property, source, row, listing_unit_map, default_unit)
         if row.is_cancelled:
             # Only this property's own row can be cancelled by a row it
             # received — a reservation currently filed under some OTHER
@@ -231,14 +302,16 @@ def _refresh_next_bookings_for_property(property):
 
 
 @transaction.atomic
-def apply_bookings_for_property(property, source, raw_bookings):
+def apply_bookings_for_property(property, source, raw_bookings, default_unit=None, from_feed=False):
     """Writes the diff computed the same way diff_bookings does, for ONE
     property's rows. Returns (new_count, changed_count, reactivated_count,
     cancelled_count, visit_note) — visit_note is a user-facing message when
     visit creation had to be skipped. Does not touch any ImportBatch; a
     portfolio-wide import calls this once per resolved property and
     aggregates the counts itself (see onsite/views.py)."""
-    diff = diff_bookings(property, source, raw_bookings)
+    listing_unit_map = _listing_unit_map(property, source)
+    _adopt_feed_twins(property, source, raw_bookings, listing_unit_map, default_unit)
+    diff = diff_bookings(property, source, raw_bookings, default_unit)
     turnover_type = VisitType.objects.filter(slug=TURNOVER_SLUG, is_active=True).first()
     visit_note = '' if turnover_type else (
         'Bookings were imported, but no active "Turnover" visit type exists yet — no visits were '
@@ -248,19 +321,17 @@ def apply_bookings_for_property(property, source, raw_bookings):
     # to its Unit (or None) once up front rather than per-row — this is the
     # actual fix for "3 units, 1 property record": a row's listing_name
     # tells us which unit its Booking/Visit belongs to.
-    listing_unit_map = {
-        pln.name: pln.unit
-        for pln in PropertyListingName.objects.filter(property=property, platform=source)
-    }
 
     for row in diff['new']:
-        unit = listing_unit_map.get(row.listing_name)
+        # default_unit: a polled calendar feed is for one specific listing, so
+        # its rows carry no listing name to look up — the feed's own unit applies.
+        unit = listing_unit_map.get(row.listing_name, default_unit)
         check_in_dt = _combine(property, row.check_in, 'check_in')
         check_out_dt = _combine(property, row.check_out, 'check_out')
         booking = Booking.objects.create(
             property=property, unit=unit, source=source, external_uid=row.external_uid,
             guest_name=row.guest_name, guest_phone_last4=row.guest_phone_last4,
-            listing_name=row.listing_name,
+            listing_name=row.listing_name, from_feed=from_feed,
             check_in=check_in_dt, check_out=check_out_dt, last_seen_at=timezone.now(),
         )
         if turnover_type:

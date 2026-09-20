@@ -19,6 +19,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 
+from core.fields import EncryptedTextField
 from core.models import Contact, Property, StaffProfile, Unit
 from core.storage import DocumentStorage
 
@@ -245,6 +246,58 @@ class BookingFeedHealth(models.Model):
         return f'{self.get_source_display()} feed health'
 
 
+class BookingFeed(models.Model):
+    """A listing's Airbnb/VRBO calendar (.ics) link that the app polls on a
+    timer, so reservations — and their turnover visits — appear, move and
+    disappear without anyone uploading a file. One feed per listing: a
+    single-unit property has one, a multi-unit building has one per unit
+    (`unit` set), exactly like the listing-name mapping the CSV import uses.
+
+    The link itself is a secret (anyone holding it can read the calendar),
+    so it's stored encrypted (core/fields.py) and never logged or shown in
+    full. Polling logic lives in onsite/services/feeds.py; the rules for
+    treating a reservation that vanished from the feed as cancelled are
+    documented there."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='booking_feeds')
+    unit = models.ForeignKey(
+        Unit, on_delete=models.CASCADE, null=True, blank=True, related_name='booking_feeds',
+        help_text='Required when the property has units — which unit this listing is.',
+    )
+    source = models.CharField(max_length=20, choices=ImportBatch.Source.choices)
+    url = EncryptedTextField(help_text='The calendar (.ics) link from the platform.')
+    is_active = models.BooleanField(default=True)
+
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=255, blank=True)
+    last_summary = models.CharField(max_length=255, blank=True)
+    # uid -> number of consecutive successful polls in which an active,
+    # upcoming booking was missing from the feed. See services/feeds.py.
+    missing_streak = models.JSONField(default=dict, blank=True)
+    cancellations_held = models.PositiveIntegerField(
+        default=0,
+        help_text='Reservations that vanished from the feed all at once and were NOT auto-cancelled '
+                   'pending a human confirming.',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['property__name', 'unit__label', 'source']
+
+    def __str__(self):
+        return f'{self.get_source_display()} calendar — {self.label()}'
+
+    def label(self):
+        return f'{self.property.name} — {self.unit.label}' if self.unit_id else self.property.name
+
+    def masked_url(self):
+        """Enough to recognize which link this is, not enough to use it."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.url or '')
+        tail = (self.url or '')[-6:]
+        return f'{parsed.hostname or "?"}/…{tail}' if self.url else ''
+
+
 class OnsiteCalendarHealth(models.Model):
     """Single-row record of whether the shared on-site Google Calendar push
     is actually working — set by onsite/google_calendar_push.py after each
@@ -355,6 +408,13 @@ class Booking(models.Model):
         default=timezone.now,
         help_text='Updated on every import that still contains this UID — a row not touched by an '
                    "import covering its date range is presumed cancelled off the guest's platform.",
+    )
+    from_feed = models.BooleanField(
+        default=False,
+        help_text="Created by polling a BookingFeed (an .ics link), which can only see the calendar's own "
+                   "UID — not necessarily the confirmation code a later CSV report will use. Lets that CSV "
+                   'import recognize the same reservation (same property, same dates) and adopt its '
+                   'confirmation code instead of creating a duplicate booking and cleaning.',
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

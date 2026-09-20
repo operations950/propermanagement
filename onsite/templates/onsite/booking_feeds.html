@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Booking calendars{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+
+<h2 class="page-title mb-1">Booking calendars</h2>
+<p class="text-muted small mb-4">
+    Paste a listing's Airbnb or VRBO calendar link and the app checks it every {{ poll_minutes }} minutes: new reservations get a turnover visit
+    (and calendar event), changed dates move it, and a reservation that has disappeared from the calendar is cancelled once it has been missing for
+    {{ missing_polls }} checks in a row. Uploading a CSV still works alongside this — it adds guest and listing detail, and the same reservation is never
+    counted twice. Each link is private (anyone with it can read that calendar), so it is stored encrypted and only shown partly hidden.
+    <span class="d-block mt-1">Where to find it: in each platform's calendar settings for that listing, look for <em>Export calendar</em> (an .ics / iCal link).</span>
+</p>
+
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title">Add a calendar</h6>
+        <form method="post" class="row g-3 align-items-end">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_feed">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Listing</label>
+                <select name="listing" class="form-select form-select-sm" required>
+                    <option value="">Choose…</option>
+                    {% for value, label in listing_options %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">Platform</label>
+                <select name="source" class="form-select form-select-sm" required>
+                    {% for value, label in sources %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">Calendar link</label>
+                <input type="text" name="url" class="form-control form-control-sm" placeholder="https://…" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i data-lucide="plus" class="icon"></i> Add &amp; check now</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body p-0">
+        {% for feed in feeds %}
+        <div class="p-3 {% if not forloop.first %}border-top{% endif %}">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <div class="fw-semibold">{{ feed.label }}
+                        <span class="badge text-bg-light border ms-1">{{ feed.get_source_display }}</span>
+                        {% if not feed.is_active %}<span class="badge text-bg-secondary ms-1">Paused</span>{% endif %}
+                    </div>
+                    <div class="text-muted small"><code>{{ feed.masked_url }}</code></div>
+                    <div class="small mt-1">
+                        {% if feed.last_error %}
+                        <span style="color: var(--status-critical);"><i data-lucide="circle-alert" class="icon"></i> {{ feed.last_error }}</span>
+                        {% elif feed.last_summary %}
+                        <span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i></span> {{ feed.last_summary }}
+                        {% else %}
+                        <span class="text-muted">Not checked yet.</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small">
+                        {% if feed.last_polled_at %}Last checked {{ feed.last_polled_at|date:"M j, g:i A" }}{% endif %}
+                        {% if feed.last_success_at %}· last successful {{ feed.last_success_at|date:"M j, g:i A" }}{% endif %}
+                    </div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <form method="post">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="poll_now">
+                        <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Check now</button></form>
+                    {% if feed.cancellations_held %}
+                    <form method="post" onsubmit="return confirm('Cancel the {{ feed.cancellations_held }} reservations that have vanished from this calendar, and their visits?');">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="confirm_cancellations">
+                        <button class="btn btn-warning btn-sm">Check now and apply {{ feed.cancellations_held }} cancellations</button></form>
+                    {% endif %}
+                    <form method="post">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="toggle_active">
+                        <button class="btn btn-outline-secondary btn-sm">{% if feed.is_active %}Pause{% else %}Resume{% endif %}</button></form>
+                    <form method="post" onsubmit="return confirm('Remove this calendar link? Existing reservations and visits stay as they are.');">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="delete_feed">
+                        <button class="btn btn-link btn-sm text-danger">Remove</button></form>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-muted small p-3 mb-0">No calendars yet. Add one above.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
