@@ -4,7 +4,8 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="page-title mb-0">On-Site Visits</h2>
-    <div class="d-flex gap-2">
+    {# Wide screens: every shortcut as a button. Phones: the two you use most, and the rest in a menu (eleven wrapped buttons ate the whole first screen). #}
+    <div class="d-none d-md-flex gap-2 flex-wrap">
         <a href="{% url 'onsite_str_today' %}" class="btn btn-primary btn-sm"><i data-lucide="sun" class="icon"></i> Rentals today</a>
         <a href="{% url 'onsite_reservation_list' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="book-open" class="icon"></i> Reservations</a>
         <a href="{% url 'onsite_performance' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-no-axes-column" class="icon"></i> Performance</a>
@@ -12,13 +13,30 @@
         {% if is_admin %}
         <a href="{% url 'onsite_checklist_custom_items' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="list-checks" class="icon"></i> Custom checklist items</a>
         <a href="{% url 'onsite_cleaning_payments' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="dollar-sign" class="icon"></i> Cleaning payments</a>
-        {% endif %}
-        {% if is_admin %}
         <a href="{% url 'onsite_booking_feeds' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-sync" class="icon"></i> Booking calendars</a>
         {% endif %}
         <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="upload" class="icon"></i> Import bookings</a>
         <a href="{% url 'onsite_visit_rule_list' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> Recurring visits</a>
         <a href="{% url 'onsite_visit_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New visit</a>
+    </div>
+    <div class="d-flex d-md-none gap-2 w-100">
+        <a href="{% url 'onsite_visit_create' %}" class="btn btn-primary btn-sm flex-fill"><i data-lucide="plus" class="icon"></i> New visit</a>
+        <a href="{% url 'onsite_str_today' %}" class="btn btn-outline-primary btn-sm flex-fill"><i data-lucide="sun" class="icon"></i> Rentals today</a>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'onsite_reservation_list' %}">Reservations</a></li>
+                <li><a class="dropdown-item" href="{% url 'onsite_performance' %}">Performance</a></li>
+                <li><a class="dropdown-item" href="{% url 'onsite_checklist_templates' %}">Checklist templates</a></li>
+                {% if is_admin %}
+                <li><a class="dropdown-item" href="{% url 'onsite_checklist_custom_items' %}">Custom checklist items</a></li>
+                <li><a class="dropdown-item" href="{% url 'onsite_cleaning_payments' %}">Cleaning payments</a></li>
+                <li><a class="dropdown-item" href="{% url 'onsite_booking_feeds' %}">Booking calendars</a></li>
+                {% endif %}
+                <li><a class="dropdown-item" href="{% url 'onsite_booking_import' %}">Import bookings</a></li>
+                <li><a class="dropdown-item" href="{% url 'onsite_visit_rule_list' %}">Recurring visits</a></li>
+            </ul>
+        </div>
     </div>
 </div>
 
@@ -37,8 +55,8 @@
     <i data-lucide="calendar-sync" class="icon mt-1"></i>
     <div class="small">
         <strong>{{ feeds_attention|length }} booking calendar line{{ feeds_attention|length|pluralize }} need{{ feeds_attention|length|pluralize:"s," }} attention</strong> — reservations from these aren't flowing in automatically:
-        {% for line in feeds_attention|slice:":8" %}<span class="d-block">{{ line.label }} · {{ line.source_label }}: {{ line.status_text }}</span>{% endfor %}
-        {% if feeds_attention|length > 8 %}<span class="d-block">…and {{ feeds_attention|length|add:"-8" }} more.</span>{% endif %}
+        {% for line in feeds_attention|slice:":8" %}<span class="d-none d-md-block">{{ line.label }} · {{ line.source_label }}: {{ line.status_text }}</span>{% endfor %}
+        {% if feeds_attention|length > 8 %}<span class="d-none d-md-block">…and {{ feeds_attention|length|add:"-8" }} more.</span>{% endif %}
         <a href="{% url 'onsite_booking_feeds' %}" class="alert-link">Open Booking calendars</a>
     </div>
 </div>

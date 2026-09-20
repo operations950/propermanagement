@@ -10,7 +10,7 @@
 <form method="get" class="row g-2 mb-3 align-items-center">
     <div class="col-auto position-relative">
         <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
-        <input type="text" name="q" id="property-search-input" class="form-control" style="padding-left: 2.2rem; min-width: 320px;"
+        <input type="text" name="q" id="property-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);"
                placeholder="Search name or address…" value="{{ q }}" autocomplete="off">
     </div>
     <input type="hidden" name="type" value="{{ selected_type }}">

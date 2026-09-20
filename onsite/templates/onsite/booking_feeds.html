@@ -37,7 +37,7 @@
         {% for line in target.lines %}
         {% if not attention_only or line.needs_attention %}
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 py-2 {% if not forloop.first or target.unit %}border-top{% endif %}">
-            <div style="min-width: 260px;">
+            <div style="min-width: min(260px, 100%);">
                 <div class="d-flex align-items-center gap-2">
                     <span class="badge text-bg-light border" style="min-width: 62px;">{{ line.source_label }}</span>
                     {% if line.status == 'connected' %}<span class="small" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Connected</span>
@@ -54,10 +54,10 @@
             </div>
             <div class="d-flex gap-2 flex-wrap align-items-start">
                 {% if line.status == 'missing' or line.status == 'not_listed' %}
-                <form method="post" class="d-flex gap-2">
+                <form method="post" class="d-flex gap-2 flex-wrap" style="min-width: 0; max-width: 100%;">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="add_feed"><input type="hidden" name="listing" value="{{ line.listing }}"><input type="hidden" name="source" value="{{ line.source }}">
-                    <input type="text" name="url" class="form-control form-control-sm" style="width: 260px;" placeholder="Paste the {{ line.source_label }} calendar link" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+                    <input type="text" name="url" class="form-control form-control-sm" style="width: 260px; max-width: 100%;" placeholder="Paste the {{ line.source_label }} calendar link" autocomplete="off" autocapitalize="off" spellcheck="false" required>
                     <button class="btn btn-primary btn-sm text-nowrap">Connect</button>
                 </form>
                 {% if line.status == 'missing' %}

@@ -19,7 +19,7 @@
         <h2 class="page-title mb-0">Rentals — {% if board.is_today %}today{% else %}{{ day|date:"l" }}{% endif %}</h2>
         <p class="mb-0 small" style="color: var(--ink-muted);">{{ day|date:"l, F j" }}{% if board.is_today %} · updated {{ board.now|date:"g:i A" }}{% endif %}</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
         <a href="?date={{ previous_day|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Previous day"><i data-lucide="chevron-left" class="icon"></i></a>
         {% if not board.is_today %}<a href="{% url 'onsite_str_today' %}" class="btn btn-outline-secondary btn-sm">Today</a>{% endif %}
         <a href="?date={{ next_day|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Next day"><i data-lucide="chevron-right" class="icon"></i></a>

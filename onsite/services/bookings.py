@@ -100,6 +100,31 @@ def _listing_unit_map(property, source):
     }
 
 
+def _needs_visit(check_out_date):
+    """Only a stay that has not yet ended needs a cleaning. A payout report
+    lists a year of finished stays; turning each into an overdue, unassigned
+    visit (and a calendar event) would bury the real work."""
+    return check_out_date >= timezone.localdate()
+
+
+def _record_paid_cancellations(property, source, raw_bookings, listing_unit_map, default_unit=None):
+    """A cancelled reservation the guest was still charged for shows up in a
+    payout report with money attached. If we never had that reservation, keep
+    a cancelled record of it - no visit, no occupancy - so the payout can be
+    reconciled and the cancellation counted."""
+    for row in raw_bookings:
+        if not (row.is_cancelled and row.payout_amount and row.payout_amount > 0):
+            continue
+        if Booking.objects.filter(source=source, external_uid=row.external_uid).exists():
+            continue
+        Booking.objects.create(
+            property=property, unit=listing_unit_map.get(row.listing_name, default_unit), source=source,
+            external_uid=row.external_uid, guest_name=row.guest_name, listing_name=row.listing_name,
+            status=Booking.Status.CANCELLED, last_seen_at=timezone.now(),
+            check_in=_combine(property, row.check_in, 'check_in'), check_out=_combine(property, row.check_out, 'check_out'),
+        )
+
+
 def _feed_twin(property, source, row, listing_unit_map, default_unit=None):
     """The booking a feed poll already created for this same reservation
     under a different key. A polled calendar (onsite/services/feeds.py) can
@@ -168,18 +193,26 @@ def _save_amounts(source, raw_bookings):
     figure an earlier one gave in full. Fields the file left blank are left
     alone."""
     for row in raw_bookings:
-        if row.is_cancelled or not row.has_amounts():
+        if not row.has_amounts():
+            continue
+        # A cancelled reservation is skipped only when it carries no money -
+        # a cancellation the guest was still charged for (VRBO pays those out)
+        # is a real payout to reconcile.
+        if row.is_cancelled and not (row.payout_amount and row.payout_amount > 0):
             continue
         booking = Booking.objects.filter(source=source, external_uid=row.external_uid).first()
         if booking is None:
             continue
         changed = []
-        for field in ('gross_amount', 'payout_amount', 'cleaning_fee', 'other_fees'):
+        for field in ('gross_amount', 'payout_amount', 'cleaning_fee', 'other_fees', 'tax_amount', 'platform_fee'):
             new_value = getattr(row, field)
             old_value = getattr(booking, field)
             if new_value is not None and (old_value is None or new_value > old_value):
                 setattr(booking, field, new_value)
                 changed.append(field)
+        if row.payout_date and booking.payout_date != row.payout_date:
+            booking.payout_date = row.payout_date
+            changed.append('payout_date')
         if changed:
             booking.amount_source = 'csv upload'
             booking.save(update_fields=changed + ['amount_source'])
@@ -262,7 +295,10 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
             or (row.listing_name and existing.listing_name != row.listing_name)
         ):
             changed_rows.append(row)
-        elif not property.is_general and not existing.visits.exclude(status=Visit.Status.CANCELLED).exists():
+        elif (
+            not property.is_general and _needs_visit(row.check_out)
+            and not existing.visits.exclude(status=Visit.Status.CANCELLED).exists()
+        ):
             # Active booking, same property, nothing about the reservation
             # itself changed — normally a pure no-op. EXCEPT its cleaning
             # Visit can go missing independently of the Booking surviving
@@ -363,7 +399,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
             listing_name=row.listing_name, from_feed=from_feed,
             check_in=check_in_dt, check_out=check_out_dt, last_seen_at=timezone.now(),
         )
-        if turnover_type:
+        if turnover_type and _needs_visit(row.check_out):
             next_booking = _find_next_booking(property, check_out_dt, exclude_pk=booking.pk, unit=unit)
             create_visit(
                 property, turnover_type, unit=unit, booking=booking, next_booking=next_booking,
@@ -378,7 +414,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
         # fresh at the top of this same function — this guard is just
         # defensive, not covering any real staleness window.
         booking = Booking.objects.get(source=source, external_uid=row.external_uid)
-        if turnover_type and not booking.visits.exclude(status=Visit.Status.CANCELLED).exists():
+        if turnover_type and _needs_visit(row.check_out) and not booking.visits.exclude(status=Visit.Status.CANCELLED).exists():
             unit = listing_unit_map.get(row.listing_name) if row.listing_name else booking.unit
             next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=unit)
             create_visit(
@@ -441,7 +477,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
                 cancelled_visit.ready_by = next_booking.check_in if next_booking else None
                 cancelled_visit.save(update_fields=['property', 'unit', 'status', 'scheduled_date', 'next_booking', 'ready_by'])
                 transaction.on_commit(lambda visit=cancelled_visit: push_visit(visit))
-            elif turnover_type:
+            elif turnover_type and _needs_visit(row.check_out):
                 create_visit(
                     property, turnover_type, unit=booking.unit, booking=booking, next_booking=next_booking,
                     scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
@@ -475,7 +511,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
             cancelled_visit.ready_by = next_booking.check_in if next_booking else None
             cancelled_visit.save(update_fields=['unit', 'status', 'scheduled_date', 'next_booking', 'ready_by'])
             transaction.on_commit(lambda visit=cancelled_visit: push_visit(visit))
-        elif turnover_type:
+        elif turnover_type and _needs_visit(row.check_out):
             # No Visit at all survived (shouldn't normally happen, but
             # don't leave a reactivated booking with no cleaning scheduled).
             create_visit(
@@ -483,6 +519,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
                 scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
             )
 
+    _record_paid_cancellations(property, source, raw_bookings, listing_unit_map, default_unit)
     _save_amounts(source, raw_bookings)
 
     for booking in diff['cancelled']:

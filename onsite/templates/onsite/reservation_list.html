@@ -33,11 +33,34 @@
     <div class="d-flex gap-1"><input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Guest or property"><button class="btn btn-outline-secondary btn-sm">Search</button></div>
 </form>
 
-<div class="card" style="border-radius: var(--bs-border-radius-lg);">
+<div class="d-md-none">
+    {% for b in rows %}
+    <div class="card mb-2" style="border-radius: var(--bs-border-radius-lg);">
+        <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div style="min-width: 0;">
+                    <div class="fw-semibold">{{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }} <span class="fw-normal text-muted">· {{ b.nights }} night{{ b.nights|pluralize }}</span></div>
+                    <div class="small">{{ b.property.name }}{% if b.unit %} — {{ b.unit.label }}{% endif %}</div>
+                    <div class="small text-muted">{{ b.guest_name|default:"—" }}{% if b.guest_phone %} · {{ b.guest_phone }}{% endif %}</div>
+                </div>
+                <span class="badge rounded-pill flex-shrink-0 {% if b.source == 'manual' %}bg-primary-subtle text-primary-emphasis{% else %}bg-light text-dark border{% endif %}">{{ b.get_source_display }}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-2">
+                <span class="small">{% if is_admin %}{% if b.payout_amount is not None %}<strong>${{ b.payout_amount|floatformat:2 }}</strong> payout{% if b.payout_date %} <span class="text-muted">· paid {{ b.payout_date|date:"M j, Y" }}</span>{% endif %}{% else %}{% with rev=b.lodging_revenue %}{% if rev is not None %}${{ rev|floatformat:2 }} lodging{% else %}<span class="text-muted">no amount</span>{% endif %}{% endwith %}{% endif %}{% endif %}</span>
+                {% if b.source == 'manual' and b.status == 'active' %}<a href="{% url 'onsite_reservation_edit' b.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>{% endif %}
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-muted small">No reservations match.</p>
+    {% endfor %}
+</div>
+
+<div class="card d-none d-md-block" style="border-radius: var(--bs-border-radius-lg);">
     <div class="table-responsive">
         <table class="table table-sm align-middle mb-0">
             <thead>
-                <tr class="small text-muted text-uppercase"><th>Stay</th><th>Rental</th><th>Guest</th><th>Source</th>{% if is_admin %}<th class="text-end">Revenue</th>{% endif %}<th></th></tr>
+                <tr class="small text-muted text-uppercase"><th>Stay</th><th>Rental</th><th>Guest</th><th>Source</th>{% if is_admin %}<th class="text-end">Amount</th>{% endif %}<th></th></tr>
             </thead>
             <tbody>
                 {% for b in rows %}
@@ -46,7 +69,7 @@
                     <td class="small">{{ b.property.name }}{% if b.unit %}<div class="text-muted">{{ b.unit.label }}</div>{% endif %}</td>
                     <td class="small">{{ b.guest_name|default:"—" }}{% if b.guest_phone %}<div class="text-muted">{{ b.guest_phone }}</div>{% endif %}</td>
                     <td class="small"><span class="badge rounded-pill {% if b.source == 'manual' %}bg-primary-subtle text-primary-emphasis{% else %}bg-light text-dark border{% endif %}">{{ b.get_source_display }}</span></td>
-                    {% if is_admin %}<td class="small text-end">{% with rev=b.lodging_revenue %}{% if rev is not None %}${{ rev|floatformat:2 }}{% if b.nights %}<div class="text-muted">${{ b.gross_amount|floatformat:0 }} gross</div>{% endif %}{% elif b.payout_amount is not None %}${{ b.payout_amount|floatformat:2 }}<div class="text-muted">payout</div>{% else %}<span class="text-muted">—</span>{% endif %}{% endwith %}</td>{% endif %}
+                    {% if is_admin %}<td class="small text-end">{% if b.payout_amount is not None %}<strong>${{ b.payout_amount|floatformat:2 }}</strong><div class="text-muted">payout{% if b.payout_date %} · {{ b.payout_date|date:"M j, Y" }}{% endif %}</div>{% else %}{% with rev=b.lodging_revenue %}{% if rev is not None %}${{ rev|floatformat:2 }}{% if b.nights %}<div class="text-muted">${{ b.gross_amount|floatformat:0 }} gross</div>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}{% endwith %}{% endif %}</td>{% endif %}
                     <td class="text-end">{% if b.source == 'manual' and b.status == 'active' %}<a href="{% url 'onsite_reservation_edit' b.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>{% endif %}</td>
                 </tr>
                 {% empty %}

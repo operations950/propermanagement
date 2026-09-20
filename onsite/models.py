@@ -11,7 +11,7 @@ for administrative staff at a computer; this is a flat, ordered, mandatory
 checklist completed on a phone by someone standing in a house."""
 import uuid
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -30,6 +30,13 @@ from core.storage import DocumentStorage
 # DEEP_CLEAN_ADDON_SLUG already uses for the identical reason (a display
 # name can be renamed freely; the slug is what code keys off of).
 TURNOVER_VISIT_TYPE_SLUG = 'turnover'
+
+
+def round_down_to_five(amount):
+    """A calculated price rounded DOWN to a whole multiple of $5 (never up, never
+    cents): $127.40 -> $125.00, $4.99 -> $0.00. Returns a Decimal with two
+    places so it displays and stores like every other price."""
+    return ((Decimal(amount) / 5).to_integral_value(rounding=ROUND_FLOOR) * 5).quantize(Decimal('0.01'))
 
 
 class VisitType(models.Model):
@@ -443,6 +450,13 @@ class Booking(models.Model):
     payout_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cleaning_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     other_fees = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # From a payout report (VRBO's "Payout Summary"): the lodging tax the host
+    # remits themselves (it sits inside gross AND inside the payout, so it is
+    # not revenue), the platform's own deduction (gross - payout), and the date
+    # the money was paid out - the date it lands in the bank/QuickBooks.
+    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    platform_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payout_date = models.DateField(null=True, blank=True)
     amount_source = models.CharField(max_length=60, blank=True, help_text='Where the amounts came from (e.g. "csv upload", "entered by hand").')
 
     from_feed = models.BooleanField(
@@ -466,11 +480,15 @@ class Booking(models.Model):
 
     def lodging_revenue(self):
         """The stay's revenue with cleaning and other fees taken back out
-        (gross_amount - cleaning_fee - other_fees), or None when there's no
-        gross figure. What an average nightly rate should be computed from."""
+        (gross_amount - cleaning_fee - other_fees - tax_amount), or None when
+        there's no gross figure. What an average nightly rate should be
+        computed from."""
         if self.gross_amount is None:
             return None
-        return self.gross_amount - (self.cleaning_fee or Decimal('0')) - (self.other_fees or Decimal('0'))
+        return (
+            self.gross_amount - (self.cleaning_fee or Decimal('0')) - (self.other_fees or Decimal('0'))
+            - (self.tax_amount or Decimal('0'))
+        )
 
 
 class GuestRequest(models.Model):
@@ -777,7 +795,12 @@ class Visit(models.Model):
         DEEP_CLEAN) is priced normally at the hourly rate and added on top
         — a flat price covers the agreed scope, not extra work beyond it.
         4. Every other case is priced from estimated_minutes() x
-           CleaningPricingSettings.get().hourly_rate.
+           CleaningPricingSettings.get().hourly_rate, ROUNDED DOWN to a
+           whole $5 (see round_down_to_five) — a calculated price never
+           has cents. Amounts a person types in (a manual override, a
+           fixed price, a negotiated turnover price) are used exactly as
+           entered; only the calculated pieces are rounded, including a
+           deep clean's own time added on top of one of those.
 
         estimated_minutes()/actual_minutes() are deliberately still
         computed regardless of whether an override applies — comparing
@@ -802,11 +825,11 @@ class Visit(models.Model):
                     (item.minutes for item in self.checklist_items.all() if item.source == VisitChecklistItem.Source.DEEP_CLEAN),
                     0,
                 )
-                override = override + (Decimal(deep_clean_minutes) / Decimal('60') * rate).quantize(Decimal('0.01'))
+                override = override + round_down_to_five(Decimal(deep_clean_minutes) / Decimal('60') * rate)
             return override, source
         if rate is None:
             return None, None
-        return (Decimal(self.estimated_minutes()) / Decimal('60') * rate).quantize(Decimal('0.01')), 'calculated'
+        return round_down_to_five(Decimal(self.estimated_minutes()) / Decimal('60') * rate), 'calculated'
 
     def is_same_day_checkin(self):
         """True when the next guest checks in the same calendar day this

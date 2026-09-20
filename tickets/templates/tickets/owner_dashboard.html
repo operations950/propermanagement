@@ -303,12 +303,12 @@
     {% if quiet %}
     <div class="list-group list-group-flush">
     {% for row in quiet %}
-        <a href="{% url 'ticket_detail' row.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center gap-2 text-decoration-none">
-            <div style="min-width: 0; overflow: hidden;">
+        <a href="{% url 'ticket_detail' row.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-1 gap-sm-2 text-decoration-none">
+            <div style="min-width: 0; max-width: 100%; overflow: hidden;">
                 <div class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ row.ticket.title|truncatechars:48 }}</div>
                 <div class="text-truncate small" style="color: var(--ink-muted);">{{ row.ticket.property.name|default:'—' }} · {{ row.ticket.get_assigned_role_display|default:'Unrouted' }}</div>
             </div>
-            <div class="d-flex flex-wrap gap-1 flex-shrink-0 justify-content-end">
+            <div class="d-flex flex-wrap gap-1 flex-sm-shrink-0 justify-content-sm-end" style="max-width: 100%;">
             {% for r in row.reasons %}
                 <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary); border: 1px solid var(--bs-border-color, #e5e7eb);">
                     {% if r.reason == 'no_activity' %}Quiet {{ r.since|timesince }}

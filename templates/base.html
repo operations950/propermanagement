@@ -139,6 +139,13 @@
             background: #ffffff;
             border-bottom: 1px solid var(--border-hairline);
         }
+        /* Phones: tighter table cells and no orphaned scroll on slightly-too-wide tables. */
+        @media (max-width: 575.98px) {
+            .table-responsive .table > :not(caption) > * > * { padding: 0.3rem 0.4rem; }
+            .table-responsive .table { font-size: 0.85rem; }
+            .table-responsive .table td, .table-responsive .table th { overflow-wrap: anywhere; }
+            .table-responsive .table .text-nowrap, .table-responsive .table td.text-nowrap { white-space: normal !important; }
+        }
         .brand-bar .nav-link {
             color: var(--ink-secondary) !important;
             display: flex;

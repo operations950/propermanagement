@@ -24,7 +24,15 @@
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> Looking ahead — what's booked</h6>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <div class="d-md-none">
+            {% for w in report.ahead %}
+            <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
+                <div class="d-flex justify-content-between align-items-baseline"><span class="fw-semibold">Next {{ w.days }} days</span><span class="fs-5 fw-semibold">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></div>
+                <div class="small text-muted">{{ w.booked }} of {{ w.available }} nights booked · {{ w.open_nights }} open · {{ w.gaps }} gap{{ w.gaps|pluralize }}{% if w.gap_nights %} ({{ w.gap_nights }} nights){% endif %}{% if w.short_gaps %} · <span style="color: var(--status-warning); font-weight: 600;">{{ w.short_gaps }} short</span>{% endif %}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="table-responsive d-none d-md-block"><table class="table table-sm align-middle mb-0">
             <thead><tr class="small text-muted text-uppercase"><th>Window</th><th class="text-end">Occupancy</th><th class="text-end">Nights booked</th><th class="text-end">Open nights</th><th class="text-end">Vacancy gaps</th><th class="text-end">Short gaps (1–2 nights)</th></tr></thead>
             <tbody>
             {% for w in report.ahead %}
@@ -46,7 +54,16 @@
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="history" class="icon"></i> Looking back</h6>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <div class="d-md-none">
+            {% for w in report.back %}
+            <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
+                <div class="d-flex justify-content-between align-items-baseline"><span class="fw-semibold">Last {{ w.days }} days</span><span class="fs-5 fw-semibold">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></div>
+                <div class="small text-muted">{{ w.booked }} of {{ w.available }} nights{% if w.alos is not None %} · avg stay {{ w.alos|floatformat:1 }} nights ({{ w.stays }}){% endif %}{% if w.cancel_rate is not None %} · {{ w.cancel_rate|floatformat:0 }}% cancelled ({{ w.cancelled }} of {{ w.arrivals }}){% endif %}</div>
+                {% if is_admin %}<div class="small">{% if w.adr is not None %}Avg. nightly rate <strong>${{ w.adr|floatformat:0 }}</strong>{% if w.revpar is not None %} · per available night <strong>${{ w.revpar|floatformat:0 }}</strong>{% endif %} <span class="text-muted">({{ w.stays_with_revenue }} of {{ w.stays }} stays have amounts)</span>{% else %}<span class="text-muted">No amounts yet</span>{% endif %}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="table-responsive d-none d-md-block"><table class="table table-sm align-middle mb-0">
             <thead><tr class="small text-muted text-uppercase">
                 <th>Window</th><th class="text-end">Occupancy</th><th class="text-end">Avg. stay</th><th class="text-end">Cancellation rate</th>
                 {% if is_admin %}<th class="text-end">Avg. nightly rate</th><th class="text-end">Revenue / available night</th>{% endif %}

@@ -74,9 +74,17 @@ class RawBooking:
     payout_amount: Decimal | None = None
     cleaning_fee: Decimal | None = None
     other_fees: Decimal | None = None
+    # Payout-report extras (VRBO "Payout Summary"): host-remitted lodging tax,
+    # the platform's deduction, and the day the payout was made.
+    tax_amount: Decimal | None = None
+    platform_fee: Decimal | None = None
+    payout_date: date | None = None
 
     def has_amounts(self):
-        return any(v is not None for v in (self.gross_amount, self.payout_amount, self.cleaning_fee, self.other_fees))
+        return any(v is not None for v in (
+            self.gross_amount, self.payout_amount, self.cleaning_fee, self.other_fees,
+            self.tax_amount, self.platform_fee,
+        ))
 
 
 def detect_format(filename):
@@ -167,15 +175,15 @@ _CSV_FIELD_ALIASES = {
     # that format imported with every guest name blank, since 'guest' alone
     # didn't match any alias here.
     'guest_name': ['guest name', 'guest_name', 'name', 'guest'],
-    'guest_first_name': ['guest first name', 'first name'],
-    'guest_last_name': ['guest last name', 'last name'],
+    'guest_first_name': ['guest first name', 'traveler first name', 'first name'],
+    'guest_last_name': ['guest last name', 'traveler last name', 'last name'],
     # 'contact' is Airbnb's real header for the phone column; 'guest phone'
     # is VRBO's.
     'guest_phone': ['guest phone', 'phone number', 'phone_number', 'phone', 'contact'],
     # A cancellation reason/marker, when present — read generically (see
     # RawBooking.is_cancelled) rather than hardcoded per platform, so a
     # value neither platform has been observed using yet still gets caught.
-    'status': ['status'],
+    'status': ['status', 'booking status'],
     # Not required — a single-listing CSV export legitimately has no such
     # column. When absent, every row's listing_name stays '' and the whole
     # file is treated as belonging to whichever property staff pick anyway
@@ -204,8 +212,17 @@ _CSV_FIELD_ALIASES = {
     # row and 'Gross earnings' is what the guest paid before Airbnb's host fee
     # (cleaning fee inside it, taxes separate); its reservations report has a
     # single 'Earnings'. VRBO's names are best guesses at its report headers.
-    'gross_amount': ['gross earnings', 'total rental amount', 'rental amount', 'gross'],
+    'gross_amount': ['gross earnings', 'gross booking amount', 'total rental amount', 'rental amount', 'gross'],
     'payout_amount': ['amount', 'earnings', 'host payout', 'total payout', 'payout'],
+    # VRBO's "Payout Summary" report: a row per reservation with the payout
+    # itself. 'Deductions' is VRBO's cut (gross - payout); 'Lodging Tax Owner
+    # Remits' is tax the host pays over themselves. Its listing is identified by
+    # 'Address' + 'Unit ID' rather than a listing name (see _payout_listing_name).
+    'payout_date': ['payout date'],
+    'platform_fee': ['deductions'],
+    'tax_amount': ['lodging tax owner remits'],
+    'address': ['address'],
+    'listing_unit_id': ['unit id'],
     'cleaning_fee': ['cleaning fee'],
     'resort_fee': ['resort fee'],
     'pet_fee': ['pet fee'],
@@ -256,9 +273,24 @@ def _find_column(fieldnames, aliases):
     return None
 
 
+def _payout_listing_name(row, columns):
+    """A listing name for a report that identifies listings by address and
+    VRBO unit id (the Payout Summary). The unit id is part of the name because
+    one address can be several listings (two "323 De Carie St B" units were
+    both booked on the same nights), and because it keeps the name stable from
+    one report to the next. Blank when the report has no such columns."""
+    if not (columns['address'] and columns['listing_unit_id']):
+        return ''
+    address = re.sub(r'\s+', ' ', (row.get(columns['address']) or '')).strip()
+    unit_id = (row.get(columns['listing_unit_id']) or '').strip()
+    if not address:
+        return ''
+    return f'{address} (VRBO {unit_id})' if unit_id else address
+
+
 def _parse_csv_date(value):
     value = value.strip()
-    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y'):
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y', '%B %d, %Y', '%b %d, %Y'):
         try:
             return datetime.strptime(value, fmt).date()
         except ValueError:
@@ -334,6 +366,14 @@ def parse_csv(file_bytes):
             guest_name = f'{first} {last}'.strip()
 
         status_value = (row.get(columns['status']) or '').strip() if columns['status'] else ''
+        payout_date = None
+        if columns['payout_date']:
+            raw_payout = (row.get(columns['payout_date']) or '').strip()
+            if raw_payout:
+                try:
+                    payout_date = _parse_csv_date(raw_payout)
+                except BookingFileError:
+                    pass  # optional, like booked_at
 
         def cell(key):
             return _money(row.get(columns[key])) if columns[key] else None
@@ -347,11 +387,16 @@ def parse_csv(file_bytes):
             check_out=_parse_csv_date(row[columns['check_out']]),
             guest_name=guest_name,
             guest_phone_last4=digits[-4:] if digits else '',
-            listing_name=(row.get(columns['listing_name']) or '').strip() if columns['listing_name'] else '',
+            listing_name=(
+                (row.get(columns['listing_name']) or '').strip() if columns['listing_name']
+                else _payout_listing_name(row, columns)
+            ),
             booked_at=booked_at,
             is_cancelled='cancel' in status_value.lower(),
             gross_amount=cell('gross_amount'), payout_amount=cell('payout_amount'),
             cleaning_fee=cell('cleaning_fee'), other_fees=other_fees,
+            tax_amount=cell('tax_amount'), platform_fee=cell('platform_fee'),
+            payout_date=payout_date,
         )
         by_uid[uid] = raw
         bookings.append(raw)
