@@ -248,9 +248,8 @@ def create_visit(property, visit_type, is_deep_clean=False, **visit_kwargs):
         offset = max((i.order for i in items), default=-1) + 1
         items += _deep_clean_checklist_items(visit, property, offset)
     VisitChecklistItem.objects.bulk_create(items)
-    # Deferred to after commit — this is a network call, and shouldn't hold
-    # the transaction (or block the caller) if Google is slow/unreachable.
-    transaction.on_commit(lambda: _push_to_calendar(visit))
+    # The Google Calendar event for this visit is created by the post_save
+    # signal in onsite/signals.py — no explicit push needed here.
     return visit
 
 
@@ -278,11 +277,6 @@ def set_deep_clean(visit, enabled):
         visit.checklist_items.filter(source=VisitChecklistItem.Source.DEEP_CLEAN).delete()
     visit.is_deep_clean = enabled
     visit.save(update_fields=['is_deep_clean'])
-
-
-def _push_to_calendar(visit):
-    from ..google_calendar_push import push_visit
-    push_visit(visit)
 
 
 def submit_visit(visit):

@@ -16,6 +16,16 @@
     </div>
 </div>
 
+{% if calendar_status and not calendar_status.ok %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+    <i data-lucide="calendar-x" class="icon mt-1"></i>
+    <div class="small">
+        <strong>Google Calendar isn't being updated.</strong> {{ calendar_status.message }}
+        <a href="{% url 'admin_tools' %}" class="alert-link ms-1">Admin Tools</a>
+    </div>
+</div>
+{% endif %}
+
 {% if checkouts_missing_visit or unassigned_visits or at_risk_visits %}
 <div class="card mb-4" style="border-left: 4px solid var(--status-critical);">
     <div class="card-body">

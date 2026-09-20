@@ -87,6 +87,20 @@
 
 <div class="card mb-3">
     <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-check" class="icon"></i> On-site visits &rarr; Google Calendar</h6>
+        <p class="small mb-0 d-flex align-items-start gap-2">
+            {% if onsite_calendar_status.ok %}
+            <i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i>
+            {% else %}
+            <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
+            {% endif %}
+            <span>{{ onsite_calendar_status.message }}</span>
+        </p>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-quickbooks" style="cursor: pointer;">
             <i data-lucide="landmark" class="icon"></i> Company Financials (QuickBooks) <i data-lucide="chevron-down" class="icon ms-auto"></i>
         </h6>

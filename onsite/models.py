@@ -245,6 +245,25 @@ class BookingFeedHealth(models.Model):
         return f'{self.get_source_display()} feed health'
 
 
+class OnsiteCalendarHealth(models.Model):
+    """Single-row record of whether the shared on-site Google Calendar push
+    is actually working — set by onsite/google_calendar_push.py after each
+    attempt, read by the On-Site dashboard and Admin Tools to warn an admin
+    when visits are NOT reaching the calendar (nothing configured, Google
+    rejecting the connection, ...). Without this a broken push just fails
+    quietly and the calendar goes stale."""
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=255, blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    needs_reconnect = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name_plural = 'on-site calendar health'
+
+    def __str__(self):
+        return 'On-site calendar health'
+
+
 class DailyUploadSlot(models.Model):
     """One of the small, fixed set of reports staff actually pull every day
     (e.g. "Airbnb - Upcoming Page 1", "VRBO - Patrick") — a real model
@@ -462,6 +481,12 @@ class Visit(models.Model):
 
     google_event_id = models.CharField(max_length=200, blank=True)
     google_sync_pending = models.BooleanField(default=False)
+    # Fingerprint of what the calendar event was last successfully made to
+    # say (title/date/description/invitee — see google_calendar_push.py).
+    # Lets the sync skip visits already in step with Google, and is how a
+    # changed assignee/date/status gets noticed no matter which code path
+    # (a form, a booking import, a queryset .update()) made the change.
+    google_synced_state = models.CharField(max_length=64, blank=True)
 
     signature_image = models.ImageField(upload_to='onsite_signatures/%Y/%m/', null=True, blank=True)
     signed_name = models.CharField(max_length=200, blank=True)

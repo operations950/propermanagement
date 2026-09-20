@@ -24,6 +24,7 @@ from supplies import services as supply_services
 from supplies.models import SupplyItem, SupplyReading
 from vendorportal.models import AccessAttempt
 
+from . import google_calendar_push
 from .google_calendar_push import delete_visit_event
 from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
 from .models import (
@@ -162,6 +163,8 @@ def dashboard(request):
         'unassigned_visits': unassigned_visits,
         'at_risk_visits': at_risk_visits,
         'is_admin': _is_admin(request.user),
+        # Admins only: a banner when visits aren't reaching the shared Google Calendar.
+        'calendar_status': google_calendar_push.status() if _is_admin(request.user) else None,
     })
 
 

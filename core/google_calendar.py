@@ -144,14 +144,25 @@ class GoogleCalendarWriteError(Exception):
     SCOPES from calendar.readonly), so the view can point staff at
     Disconnect + reconnect instead of a generic "try again"."""
 
-    def __init__(self, message, needs_reconnect=False):
+    def __init__(self, message, needs_reconnect=False, status_code=None):
         super().__init__(message)
         self.needs_reconnect = needs_reconnect
+        # HTTP status Google answered with, when it did — lets a caller tell
+        # "that event no longer exists" (404/410) from a transient failure.
+        self.status_code = status_code
 
 
-def _event_body(summary, start, end, all_day, add_meet=False):
+def _event_body(summary, start, end, all_day, add_meet=False, description=None, attendees=None, clear_other_form=False):
+    """`description`/`attendees` are only included when given (None = leave
+    alone; an empty attendees list clears everyone). `clear_other_form` is
+    for PATCH: start/end are merged field-by-field rather than replaced, so
+    switching an existing event between timed and all-day needs the other
+    form's fields explicitly nulled or Google rejects the mixed result."""
     if all_day:
         body = {'summary': summary, 'start': {'date': start.isoformat()}, 'end': {'date': end.isoformat()}}
+        if clear_other_form:
+            for edge in ('start', 'end'):
+                body[edge].update(dateTime=None, timeZone=None)
     else:
         tz_name = timezone.get_current_timezone_name()
         body = {
@@ -159,6 +170,13 @@ def _event_body(summary, start, end, all_day, add_meet=False):
             'start': {'dateTime': start.isoformat(), 'timeZone': tz_name},
             'end': {'dateTime': end.isoformat(), 'timeZone': tz_name},
         }
+        if clear_other_form:
+            for edge in ('start', 'end'):
+                body[edge]['date'] = None
+    if description is not None:
+        body['description'] = description
+    if attendees is not None:
+        body['attendees'] = [{'email': email} for email in attendees]
     if add_meet:
         import uuid
         body['conferenceData'] = {
@@ -183,31 +201,45 @@ def _run_write(token, action, *args):
         if e.resp.status in (401, 403):
             raise GoogleCalendarWriteError(
                 'Google rejected that (permission issue) — try disconnecting and reconnecting your calendar.',
-                needs_reconnect=True,
+                needs_reconnect=True, status_code=e.resp.status,
             ) from e
-        raise GoogleCalendarWriteError('Google Calendar didn\'t accept that change — please try again.') from e
+        raise GoogleCalendarWriteError(
+            'Google Calendar didn\'t accept that change — please try again.', status_code=e.resp.status,
+        ) from e
     except Exception as e:
         logger.exception('Google Calendar: write failed for %s', token.staff)
         raise GoogleCalendarWriteError('Google Calendar didn\'t accept that change — please try again.') from e
 
 
-def create_event(token, calendar_id, summary, start, end, all_day=False, add_meet=False):
-    body = _event_body(summary, start, end, all_day, add_meet=add_meet)
+def create_event(token, calendar_id, summary, start, end, all_day=False, add_meet=False, description=None,
+                 attendees=None, send_updates=None):
+    body = _event_body(summary, start, end, all_day, add_meet=add_meet, description=description, attendees=attendees)
     kwargs = {'conferenceDataVersion': 1} if add_meet else {}
+    if send_updates:
+        kwargs['sendUpdates'] = send_updates
     return _run_write(
         token,
         lambda service: service.events().insert(calendarId=calendar_id, body=body, **kwargs).execute(),
     )
 
 
-def update_event(token, calendar_id, event_id, summary, start, end, all_day=False, add_meet=False):
-    body = _event_body(summary, start, end, all_day, add_meet=add_meet)
+def update_event(token, calendar_id, event_id, summary, start, end, all_day=False, add_meet=False, description=None,
+                 attendees=None, send_updates=None):
+    body = _event_body(
+        summary, start, end, all_day, add_meet=add_meet, description=description, attendees=attendees,
+        clear_other_form=True,
+    )
     kwargs = {'conferenceDataVersion': 1} if add_meet else {}
+    if send_updates:
+        kwargs['sendUpdates'] = send_updates
     return _run_write(
         token,
         lambda service: service.events().patch(calendarId=calendar_id, eventId=event_id, body=body, **kwargs).execute(),
     )
 
 
-def delete_event(token, calendar_id, event_id):
-    return _run_write(token, lambda service: service.events().delete(calendarId=calendar_id, eventId=event_id).execute())
+def delete_event(token, calendar_id, event_id, send_updates=None):
+    kwargs = {'sendUpdates': send_updates} if send_updates else {}
+    return _run_write(
+        token, lambda service: service.events().delete(calendarId=calendar_id, eventId=event_id, **kwargs).execute(),
+    )

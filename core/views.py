@@ -24,6 +24,7 @@ from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
 from . import app_settings, google_calendar, google_login, places, quickbooks, usps
+from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
 from .forms import (
@@ -542,6 +543,7 @@ def admin_tools(request):
     gmail_inbox_tokens = GmailInboxToken.objects.all().order_by('connected_at')
     return render(request, 'core/admin_tools.html', {
         'properties': properties, 'secrets': secrets, 'google_redirect_uris': google_redirect_uris,
+        'onsite_calendar_status': onsite_calendar_push.status(),
         'quickbooks_configured': quickbooks.is_configured(),
         'quickbooks_token': QuickBooksToken.objects.first(),
         'quickbooks_redirect_uri': quickbooks.redirect_uri_for_display(request),

@@ -117,7 +117,8 @@ def start():
         minutes=settings.ONSITE_GENERATE_VISITS_INTERVAL_MINUTES, next_run_time=datetime.now(),
     )
     _scheduler.add_job(
-        _run_sync_onsite_calendar, 'interval', minutes=settings.ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES,
+        _run_sync_onsite_calendar, 'interval',
+        minutes=settings.ONSITE_CALENDAR_SYNC_INTERVAL_MINUTES, next_run_time=datetime.now(),
     )
     _scheduler.add_job(
         _run_generate_sessions, 'interval',
