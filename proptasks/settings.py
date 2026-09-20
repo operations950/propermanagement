@@ -431,16 +431,20 @@ GOOGLE_PLACES_API_KEY = os.environ.get('GOOGLE_PLACES_API_KEY', '')
 USPS_CLIENT_ID = os.environ.get('USPS_CLIENT_ID', '')
 USPS_CLIENT_SECRET = os.environ.get('USPS_CLIENT_SECRET', '')
 
-# Company Financials on the Owner Dashboard (core/quickbooks.py, core/views.py).
-# Blank = the box shows a "Connect QuickBooks" prompt instead of erroring,
-# same future-integration pattern as the keys above.
 # Key for encrypting stored OAuth tokens at rest (see core/fields.py). Any
 # long random string works. Optional: left blank, a key is derived from
 # SECRET_KEY instead, so encryption is on either way. Set it to give the
 # token key its own lifecycle independent of SECRET_KEY.
 TOKEN_ENCRYPTION_KEY = os.environ.get('TOKEN_ENCRYPTION_KEY', '')
+
+# Company Financials on the Owner Dashboard (core/quickbooks.py, core/views.py).
+# Blank = the box shows a "Connect QuickBooks" prompt instead of erroring,
+# same future-integration pattern as the keys above.
 QUICKBOOKS_CLIENT_ID = os.environ.get('QUICKBOOKS_CLIENT_ID', '')
 QUICKBOOKS_CLIENT_SECRET = os.environ.get('QUICKBOOKS_CLIENT_SECRET', '')
+# 'production' (real company file, production keys) or 'sandbox' (Intuit's
+# fake test company, development keys) — the keys and this must match.
+QUICKBOOKS_ENVIRONMENT = os.environ.get('QUICKBOOKS_ENVIRONMENT', 'production').lower()
 QUICKBOOKS_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUICKBOOKS_SYNC_INTERVAL_MINUTES', str(60 * 24)))
 
 # Local Weather box location — the office at 1045 E Atlantic Ave, Delray
