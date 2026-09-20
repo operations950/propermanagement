@@ -459,6 +459,11 @@ class Booking(models.Model):
     payout_date = models.DateField(null=True, blank=True)
     amount_source = models.CharField(max_length=60, blank=True, help_text='Where the amounts came from (e.g. "csv upload", "entered by hand").')
 
+    manually_cancelled = models.BooleanField(
+        default=False,
+        help_text='A person marked this reservation cancelled (e.g. it was a duplicate, or the platform never '
+                   'said so). Uploads and calendar polls leave it cancelled instead of bringing it back.',
+    )
     from_feed = models.BooleanField(
         default=False,
         help_text="Created by polling a BookingFeed (an .ics link), which can only see the calendar's own "

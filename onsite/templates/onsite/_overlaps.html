@@ -1,0 +1,18 @@
+{# Warning for reservations that share a night at one unit. `overlaps` from performance.build_performance; `next` = this page. #}
+{% if overlaps %}
+<div class="alert alert-warning small py-2">
+    <strong>{{ overlaps|length }} pair{{ overlaps|length|pluralize }} of reservations overlap at the same unit</strong> — one unit can't have two guests at once, so one of each pair is probably a duplicate, a cancellation the platform never reported, or a listing mapped to the wrong unit. Occupancy counts each night once, but check these. Cancel the one that isn't real:
+    {% for o in overlaps|slice:":8" %}
+    <div class="border-top mt-2 pt-2">
+        <div class="fw-semibold">{{ o.label }}</div>
+        {% for b in o.pair %}
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-1">
+            <span>{{ b.guest_name|default:"Guest" }} · {{ b.check_in|date:"M j" }}–{{ b.check_out|date:"M j, Y" }} · {{ b.get_source_display }}{% if b.from_feed %} (calendar){% endif %}</span>
+            {% include 'onsite/_reservation_actions.html' with b=b next=next %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+    {% if overlaps|length > 8 %}<div class="mt-2">…and {{ overlaps|length|add:"-8" }} more.</div>{% endif %}
+</div>
+{% endif %}

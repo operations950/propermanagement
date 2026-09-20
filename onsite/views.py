@@ -14,6 +14,7 @@ from django.db.models import Count, F, Max, Prefetch, Q
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
@@ -911,6 +912,29 @@ def reservation_edit(request, pk):
     values = _reservation_form_values(request.POST if request.method == 'POST' else None, booking)
     listing_label = f'{booking.property.name} — {booking.unit.label}' if booking.unit_id else booking.property.name
     return render(request, 'onsite/reservation_form.html', {'options': [], 'values': values, 'booking': booking, 'listing_label': listing_label})
+
+
+@login_required
+@require_http_methods(['POST'])
+def reservation_cancel(request, pk):
+    """Mark any reservation (platform or in-house) cancelled by hand, or undo
+    that. Meant for duplicates, conflicting dates and cancellations the platform
+    files never reported; see reservation_service.cancel_booking."""
+    booking = get_object_or_404(Booking, pk=pk)
+    who = f'{booking.guest_name or "The reservation"} ({timezone.localtime(booking.check_in):%b} {timezone.localtime(booking.check_in).day}–{timezone.localtime(booking.check_out):%b} {timezone.localtime(booking.check_out).day})'
+    try:
+        if request.POST.get('action') == 'restore':
+            reservation_service.restore_booking(booking)
+            messages.success(request, f'{who} is active again.')
+        else:
+            reservation_service.cancel_booking(booking, request.user)
+            messages.success(request, f'{who} marked cancelled. Its cleaning was removed and imports won\'t bring it back.')
+    except reservation_service.ReservationError as e:
+        messages.error(request, str(e))
+    target = request.POST.get('next', '')
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+        target = reverse('onsite_reservation_list')
+    return redirect(target)
 
 
 @login_required

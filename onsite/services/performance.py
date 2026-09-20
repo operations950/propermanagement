@@ -101,7 +101,7 @@ def _overlaps(u):
     found, latest = [], None
     for b in sorted(u.active, key=lambda b: _local_date(b.check_in)):
         if latest is not None and _local_date(b.check_in) < _local_date(latest.check_out):
-            found.append({'label': u.label, 'first': latest, 'second': b})
+            found.append({'label': u.label, 'first': latest, 'second': b, 'pair': [latest, b]})
         if latest is None or _local_date(b.check_out) > _local_date(latest.check_out):
             latest = b
     return found
@@ -254,7 +254,8 @@ def _series(units, month_starts, today):
             first = max(start, u.data_start) if u.data_start else None
             if first is not None and first < end:
                 row['available'] += (end - first).days
-            for b in u.all:
+            claimed = set()      # a night can be sold once; overlapping reservations must not count it twice
+            for b in sorted(u.all, key=lambda b: b.check_in):
                 cin = _local_date(b.check_in)
                 if start <= cin < end:
                     if b.status == Booking.Status.CANCELLED:
@@ -270,7 +271,8 @@ def _series(units, month_starts, today):
                 revenue, nights = b.lodging_revenue(), _nights(b)
                 rate = float(revenue) / len(nights) if (revenue is not None and nights) else None
                 for night in nights:
-                    if start <= night < end:
+                    if start <= night < end and night not in claimed:
+                        claimed.add(night)
                         row['booked'] += 1
                         row['by_source'][b.source] = row['by_source'].get(b.source, 0) + 1
                         if rate is not None:

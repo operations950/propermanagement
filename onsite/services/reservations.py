@@ -158,16 +158,57 @@ def update_reservation(booking, guest_name, check_in_date, check_out_date, check
     return booking
 
 
+def _who(user):
+    if user is None:
+        return 'staff'
+    return (user.get_full_name() or user.get_username()).strip()
+
+
 @transaction.atomic
-def cancel_reservation(booking):
-    if booking.source != Booking.Source.MANUAL:
-        raise ReservationError('Only in-house reservations can be cancelled here — cancel a platform reservation on the platform.')
+def cancel_booking(booking, user=None):
+    """Marks ANY reservation cancelled by hand: its unfinished cleaning is
+    cancelled (and its calendar event removed), and it is flagged so a later
+    upload or calendar poll that still lists it does not bring it back. Use it
+    for a duplicate, a conflicting date, or a cancellation the platform's file
+    never reported. The money on it (a payout, say) is left alone."""
     if booking.status != Booking.Status.ACTIVE:
         return booking
     booking.status = Booking.Status.CANCELLED
-    booking.save(update_fields=['status'])
+    booking.manually_cancelled = True
+    note = f'Cancelled by hand by {_who(user)} on {timezone.localdate():%b} {timezone.localdate().day}, {timezone.localdate().year}.'
+    booking.notes = f'{booking.notes}\n{note}'.strip()
+    booking.save(update_fields=['status', 'manually_cancelled', 'notes'])
     for visit in booking.visits.exclude(status__in=FINISHED_VISIT_STATUSES):
         visit.status = Visit.Status.CANCELLED
         visit.save(update_fields=['status'])      # the signal deletes its calendar event
     _refresh_next_bookings_for_property(booking.property)
     return booking
+
+
+@transaction.atomic
+def restore_booking(booking):
+    """Undoes cancel_booking (a mistake): the reservation is live again and,
+    if it has not ended, gets its cleaning back."""
+    if booking.status != Booking.Status.CANCELLED:
+        return booking
+    if not booking.manually_cancelled:
+        raise ReservationError('Only a reservation cancelled by hand can be restored here — the platform cancelled this one.')
+    booking.status = Booking.Status.ACTIVE
+    booking.manually_cancelled = False
+    booking.save(update_fields=['status', 'manually_cancelled'])
+    if timezone.localtime(booking.check_out).date() >= timezone.localdate() and not booking.property.is_general:
+        old = booking.visits.filter(status=Visit.Status.CANCELLED).order_by('-pk').first()
+        if old is not None and not booking.visits.exclude(status=Visit.Status.CANCELLED).exists():
+            old.status = Visit.Status.SCHEDULED if (old.assigned_staff_id or old.assigned_contact_id) else Visit.Status.UNASSIGNED
+            old.save(update_fields=['status'])
+        else:
+            _visit_for(booking)
+    _refresh_next_bookings_for_property(booking.property)
+    return booking
+
+
+@transaction.atomic
+def cancel_reservation(booking):
+    if booking.source != Booking.Source.MANUAL:
+        raise ReservationError('Only in-house reservations can be cancelled here — cancel a platform reservation on the platform.')
+    return cancel_booking(booking)

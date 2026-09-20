@@ -12,6 +12,7 @@ every other integration in this app."""
 from datetime import datetime, time
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .checklist import create_visit
@@ -140,8 +141,8 @@ def _feed_twin(property, source, row, listing_unit_map, default_unit=None):
     unit = listing_unit_map.get(row.listing_name, default_unit)
     matches = [
         b for b in Booking.objects.filter(
-            property=property, source=source, from_feed=True, status=Booking.Status.ACTIVE,
-            unit=unit,
+            Q(status=Booking.Status.ACTIVE) | Q(manually_cancelled=True),
+            property=property, source=source, from_feed=True, unit=unit,
         ).exclude(external_uid=row.external_uid)
         if timezone.localtime(b.check_in).date() == row.check_in and timezone.localtime(b.check_out).date() == row.check_out
     ]
@@ -267,6 +268,8 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
     cancelled = []
     for row in raw_bookings:
         existing = existing_by_uid.get(row.external_uid) or _feed_twin(property, source, row, listing_unit_map, default_unit)
+        if existing is not None and existing.manually_cancelled:
+            continue    # a person cancelled it; a file or calendar still listing it must not bring it back
         if row.is_cancelled:
             # Only this property's own row can be cancelled by a row it
             # received — a reservation currently filed under some OTHER

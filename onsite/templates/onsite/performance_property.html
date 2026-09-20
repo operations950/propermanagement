@@ -28,6 +28,8 @@
     {% endif %}
 </div>
 
+{% include 'onsite/_overlaps.html' with overlaps=data.forward.overlaps next=request.get_full_path %}
+
 {% if not data.has_data %}
 <div class="alert alert-info small">There are no reservations on record for this rental yet, and no connected Airbnb/VRBO calendar. Upload a report or connect the calendars and this page fills in.</div>
 {% else %}

@@ -1,0 +1,15 @@
+{# Edit / Cancel / Restore for one reservation `b`; `next` is where to come back to. #}
+<div class="d-inline-flex gap-1 flex-wrap justify-content-end">
+    {% if b.source == 'manual' and b.status == 'active' %}<a href="{% url 'onsite_reservation_edit' b.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>{% endif %}
+    {% if b.status == 'active' %}
+    <form method="post" action="{% url 'onsite_reservation_cancel' b.pk %}" class="d-inline" onsubmit="return confirm('Mark this reservation cancelled?\n\nIts cleaning is removed, it stops counting toward occupancy and revenue, and a later upload or calendar check will not bring it back. You can restore it afterwards.');">
+        {% csrf_token %}<input type="hidden" name="action" value="cancel"><input type="hidden" name="next" value="{{ next }}">
+        <button class="btn btn-outline-danger btn-sm">Cancel</button>
+    </form>
+    {% elif b.manually_cancelled %}
+    <form method="post" action="{% url 'onsite_reservation_cancel' b.pk %}" class="d-inline">
+        {% csrf_token %}<input type="hidden" name="action" value="restore"><input type="hidden" name="next" value="{{ next }}">
+        <button class="btn btn-outline-secondary btn-sm">Restore</button>
+    </form>
+    {% endif %}
+</div>
