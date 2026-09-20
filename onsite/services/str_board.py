@@ -25,7 +25,7 @@ show only the structural ones."""
 from datetime import datetime, time, timedelta
 
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from ..models import Booking, GuestRequest, Visit, VisitType
@@ -168,6 +168,39 @@ def _label(prop, unit):
     return f'{prop.name} — {unit.label}' if unit else prop.name
 
 
+# --- arrivals at a unit nobody checked out of today ------------------------------------
+
+def _arrival_readiness(prop, unit, day_start):
+    """For a unit with a check-in but no checkout on the day: is it clean?
+    "Clean" only when a turnover (or deep-clean) visit at the unit has been
+    submitted since the last guest left; the visit is returned so the board can
+    link to it. Otherwise the state of the last checkout's cleaning if one is
+    still open, or the plain fact that none is recorded."""
+    last = (Booking.objects.filter(property=prop, unit=unit, status=Booking.Status.ACTIVE, check_out__lt=day_start)
+            .order_by('-check_out').prefetch_related(
+                Prefetch('visits', queryset=Visit.objects.select_related('assigned_staff__user', 'assigned_contact').prefetch_related('checklist_items')))
+            .first())
+    if last is None:
+        return {'code': 'unknown', 'label': 'No earlier stay on record', 'tone': INFO, 'visit': None}
+    since = _at(timezone.localtime(last.check_out).date(), time.min)
+    done = [
+        v for v in Visit.objects.filter(property=prop, unit=unit, status__in=(Visit.Status.SUBMITTED, Visit.Status.VERIFIED))
+        .filter(Q(visit_type__slug='turnover') | Q(is_deep_clean=True)).select_related('visit_type')
+        if (v.verified_at or v.submitted_at) and (v.verified_at or v.submitted_at) >= since
+    ]
+    if done:
+        best = max(done, key=lambda v: v.submitted_at or v.verified_at)
+        when = best.submitted_at or best.verified_at
+        return {'code': 'clean', 'label': 'Clean', 'tone': GOOD, 'visit': best, 'when': when,
+                'title': f'Cleaned {timezone.localtime(when):%a %b} {timezone.localtime(when).day}, {_fmt(when)}'}
+    open_visit = _active_visit(last)
+    if open_visit is not None:
+        state = _cleaning_state(open_visit)
+        return {**state, 'title': 'The cleaning after the last guest is not finished yet.'}
+    return {'code': 'none', 'label': 'No cleaning recorded', 'tone': WARNING, 'visit': None,
+            'title': f'Nothing on record since the last guest left {timezone.localtime(last.check_out):%b} {timezone.localtime(last.check_out).day}.'}
+
+
 # --- vacant units: are they clean, and when were they last cleaned -----------------
 
 def _vacancy_details(vacant, property_ids, ref, now, add_item):
@@ -249,6 +282,11 @@ def build_board(day=None, now=None, include_tomorrow=True):
         )
     )
 
+    next_in = {}
+    for row in (Booking.objects.filter(status=Booking.Status.ACTIVE, property_id__in=[p.pk for p in properties], check_in__gte=day_end)
+                .order_by('check_in').values('property_id', 'unit_id', 'check_in')):
+        next_in.setdefault((row['property_id'], row['unit_id']), row['check_in'])
+
     by_unit = {}
     for b in bookings:
         slot = by_unit.setdefault((b.property_id, b.unit_id), {'property': b.property, 'unit': b.unit, 'outs': [], 'ins': [], 'stays': []})
@@ -294,6 +332,14 @@ def build_board(day=None, now=None, include_tomorrow=True):
             'requests': [], 'turnover': bool(co and ci), 'gap_minutes': None,
         }
         row['sort_at'] = eff_out or eff_in
+        # What order the board reads in: same-day turnovers first, then other
+        # cleanings, then arrivals into units that need no cleaning that day;
+        # inside each, by when the next guest walks in.
+        row['group'] = 0 if (co and ci) else (1 if co else 2)
+        following = next_in.get((slot['property'].pk, slot['unit'].pk if slot['unit'] else None))
+        row['next_checkin_at'] = eff_in if ci else (timezone.localtime(following) if following else None)
+        row['next_checkin_days'] = (row['next_checkin_at'].date() - day).days if row['next_checkin_at'] else None
+        row['arrival_ready'] = _arrival_readiness(slot['property'], slot['unit'], day_start) if (ci and not co) else None
 
         # Requests, each with its answer.
         cleaning_begun = bool(visit and (visit.started_at or visit.status in (Visit.Status.IN_PROGRESS, Visit.Status.SUBMITTED, Visit.Status.VERIFIED)))
@@ -351,7 +397,8 @@ def build_board(day=None, now=None, include_tomorrow=True):
                      f'{label}: guest asked for a {kind_word} at {_fmt(entry["at"])}. {entry["text"]}', row, request=r, verdict=entry['verdict'])
         rows.append(row)
 
-    rows.sort(key=lambda r: (r['sort_at'] or day_end, r['label']))
+    far = day_end + timedelta(days=3650)
+    rows.sort(key=lambda r: (r['group'], r['next_checkin_at'] or far, r['sort_at'] or day_end, r['label']))
     items.sort(key=lambda i: (i['rank'], i['row']['sort_at'] or day_end, i['row']['label']))
 
     covered = {(r['property'].pk, r['unit'].pk if r['unit'] else None) for r in rows} | {
@@ -364,6 +411,7 @@ def build_board(day=None, now=None, include_tomorrow=True):
                 vacant.append({'label': _label(prop, unit), 'property': prop, 'unit': unit})
     vacant.sort(key=lambda v: v['label'])
     _vacancy_details(vacant, [p.pk for p in properties], max(now, day_start), now, add_item)
+    vacant.sort(key=lambda v: (v['next_checkin_at'] is None, v['next_checkin_at'] or far, v['label']))
     items.sort(key=lambda i: (i['rank'], i['row']['sort_at'] or day_end, i['row']['label']))
 
     outs = [r for r in rows if r['checkout']]

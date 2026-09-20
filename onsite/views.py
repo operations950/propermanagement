@@ -804,6 +804,39 @@ def performance(request):
 
 
 @login_required
+def performance_property(request, property_id):
+    """One rental's performance over the trailing 12 months, month by month,
+    as charts plus the numbers behind them, and the forward view. Money
+    (rates, revenue, payouts) is admin-only; the same builder is meant to feed
+    the owner portal later."""
+    prop = get_object_or_404(str_board.eligible_properties(), pk=property_id)
+    raw = request.GET.get('unit', '')
+    unit_id = int(raw) if raw.isdigit() else None
+    data = performance_service.build_property_performance(prop, unit_id=unit_id)
+    is_admin = _is_admin(request.user)
+    months = data['months']
+    charts = {
+        'occupancy': {'type': 'bar', 'format': 'pct', 'max': 100, 'labels': [m['label'] for m in months], 'full': [m['full'] + (' (to date)' if m['partial'] else '') for m in months],
+                      'series': [{'name': 'Occupancy', 'color': '#3d6178', 'values': [None if m['occupancy'] is None else round(m['occupancy'], 1) for m in months]}]},
+        'nights': {'type': 'stacked', 'format': 'int', 'labels': [m['label'] for m in months], 'full': [m['full'] for m in months],
+                   'series': [{'name': src['label'], 'color': color, 'values': [m['by_source'].get(src['value'], 0) for m in months]}
+                              for src, color in zip(data['sources'], ('#3d6178', '#93b2c6', '#8c4570'))]},
+        'stay': {'type': 'line', 'format': 'dec1', 'labels': [m['label'] for m in months], 'full': [m['full'] for m in months],
+                 'series': [{'name': 'Average stay (nights)', 'color': '#3d6178', 'values': [None if m['alos'] is None else round(m['alos'], 1) for m in months]}]},
+    }
+    if is_admin:
+        charts['adr'] = {'type': 'line', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] for m in months],
+                         'series': [{'name': 'Average nightly rate', 'color': '#3d6178', 'values': [None if m['adr'] is None else round(m['adr'], 2) for m in months]}]}
+        charts['revenue'] = {'type': 'bar', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] + (' (to date)' if m['partial'] else '') for m in months],
+                             'series': [{'name': 'Lodging revenue', 'color': '#3d6178', 'values': [None if m['revenue'] is None else round(m['revenue'], 2) for m in months]}]}
+        charts['payouts'] = {'type': 'bar', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] for m in months],
+                             'series': [{'name': 'Payouts received', 'color': '#6e95b2', 'values': [round(m['payouts'], 2) if m['payout_count'] else None for m in months]}]}
+    return render(request, 'onsite/performance_property.html', {
+        'data': data, 'charts': charts, 'is_admin': is_admin, 'property': prop,
+    })
+
+
+@login_required
 def reservation_list(request):
     """Every reservation — Airbnb, VRBO and in-house — in one list. In-house
     ("offline") ones can be added, edited and cancelled here."""

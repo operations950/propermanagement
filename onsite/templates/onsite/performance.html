@@ -21,6 +21,16 @@
 </div>
 {% endif %}
 
+{% if report.overlaps %}
+<div class="alert alert-warning small py-2">
+    <strong>{{ report.overlaps|length }} pair{{ report.overlaps|length|pluralize }} of reservations overlap at the same unit</strong> — one unit can't have two guests at once, so a listing is probably mapped to the wrong unit (or a stay was entered twice). These skew occupancy until fixed:
+    <ul class="mb-0 mt-1">
+        {% for o in report.overlaps|slice:":8" %}<li>{{ o.label }}: {{ o.first.guest_name|default:"guest" }} ({{ o.first.check_in|date:"M j" }}–{{ o.first.check_out|date:"M j, Y" }}, {{ o.first.get_source_display }}) and {{ o.second.guest_name|default:"guest" }} ({{ o.second.check_in|date:"M j" }}–{{ o.second.check_out|date:"M j, Y" }}, {{ o.second.get_source_display }})</li>{% endfor %}
+    </ul>
+    {% if report.overlaps|length > 8 %}<div>…and {{ report.overlaps|length|add:"-8" }} more.</div>{% endif %}
+</div>
+{% endif %}
+
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> Looking ahead — what's booked</h6>
@@ -95,7 +105,7 @@
             <tbody>
             {% for r in report.by_property %}
             <tr>
-                <td>{{ r.property.name }}{% if r.units > 1 %} <span class="text-muted small">({{ r.units }} units)</span>{% endif %}</td>
+                <td><a href="{% url 'onsite_performance_property' r.property.pk %}" class="text-decoration-none fw-semibold">{{ r.property.name }}</a>{% if r.units > 1 %} <span class="text-muted small">({{ r.units }} units)</span>{% endif %}</td>
                 <td class="text-end">{% if r.occ30 is not None %}{{ r.occ30|floatformat:0 }}%{% else %}—{% endif %}</td>
                 <td class="text-end">{% if r.occ60 is not None %}{{ r.occ60|floatformat:0 }}%{% else %}—{% endif %}</td>
                 <td class="text-end">{% if r.occ90 is not None %}{{ r.occ90|floatformat:0 }}%{% else %}—{% endif %}</td>

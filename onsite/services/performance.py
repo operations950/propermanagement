@@ -15,13 +15,16 @@ Definitions (also shown on the page):
                  simply wasn't watching it yet).
   vacancy gap    unbooked nights sitting BETWEEN two reservations at the same
                  unit — the hardest to sell. "Short" = 1-2 nights. Unbooked
-                 nights with no later reservation are "open", not a gap.
+                 nights with no later reservation are "open", not a gap. A gap
+                 never starts before today (one already under way is counted
+                 from today) and is worked out from the nights actually
+                 booked, so overlapping reservations can't invent one.
   ADR            lodging revenue / nights sold, over reservations whose
                  report gave an amount. Lodging revenue = gross minus cleaning
                  and other fees (see Booking.lodging_revenue).
   RevPAR         ADR x occupancy — revenue per available night.
 Cancelled reservations never count as booked nights."""
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.utils import timezone
 
@@ -68,11 +71,9 @@ class _Unit:
         return bool(self.all) or self.connected
 
 
-def build_performance(today=None, property_id=None):
-    today = today or timezone.localdate()
-    props = list(eligible_properties())
-    if property_id:
-        props = [p for p in props if p.pk == property_id]
+def _collect_units(props):
+    """{(property_id, unit_id): _Unit} for the given properties, loaded with
+    every booking on record, plus how many bookings pointed at no known unit."""
     units = {}
     for prop in props:
         active_units = [u for u in prop.units.all() if u.is_active]
@@ -90,6 +91,28 @@ def build_performance(today=None, property_id=None):
             unattributed += 1
             continue
         holder.add(booking)
+    return units, unattributed
+
+
+def _overlaps(u):
+    """Pairs of active reservations at one unit that share a night. A unit
+    can't host two guests at once, so this is a mapping or data mistake (for
+    instance two platform listings pointed at the same unit)."""
+    found, latest = [], None
+    for b in sorted(u.active, key=lambda b: _local_date(b.check_in)):
+        if latest is not None and _local_date(b.check_in) < _local_date(latest.check_out):
+            found.append({'label': u.label, 'first': latest, 'second': b})
+        if latest is None or _local_date(b.check_out) > _local_date(latest.check_out):
+            latest = b
+    return found
+
+
+def build_performance(today=None, property_id=None):
+    today = today or timezone.localdate()
+    props = list(eligible_properties())
+    if property_id:
+        props = [p for p in props if p.pk == property_id]
+    units, unattributed = _collect_units(props)
 
     counted = [u for u in units.values() if u.counted]
     excluded = sorted(u.label for u in units.values() if not u.counted)
@@ -107,12 +130,16 @@ def build_performance(today=None, property_id=None):
 
     # --- looking ahead: occupancy and vacancy gaps for the next 30/60/90 nights
     def gaps_for(u):
-        stays = sorted(u.active, key=lambda b: _local_date(b.check_in))
+        """Runs of unbooked nights between two booked ones, from the booked
+        nights themselves (so overlapping or nested reservations can't invent
+        a gap), and never starting before today: a gap that is already
+        under way is counted from today."""
+        nights = sorted(u.booked)
         found = []
-        for before, after in zip(stays, stays[1:]):
-            gap_start, gap_end = _local_date(before.check_out), _local_date(after.check_in)
-            if gap_end > gap_start:
-                found.append({'label': u.label, 'start': gap_start, 'end': gap_end, 'length': (gap_end - gap_start).days})
+        for before, after in zip(nights, nights[1:]):
+            start, end = max(before + timedelta(days=1), today), after
+            if end > start:
+                found.append({'label': u.label, 'start': start, 'end': end, 'length': (end - start).days})
         return found
 
     all_gaps = [g for u in counted for g in gaps_for(u)]
@@ -179,6 +206,138 @@ def build_performance(today=None, property_id=None):
     data_from = min((u.data_start for u in counted if u.data_start), default=None)
     return {
         'as_of': today, 'ahead': ahead, 'back': back, 'gaps': upcoming_gaps, 'by_property': by_property,
+        'overlaps': [o for u in counted for o in _overlaps(u)],
         'scope': {'units': len(counted), 'properties': len({u.prop.pk for u in counted}), 'excluded': excluded,
                   'unattributed': unattributed, 'data_from': data_from},
+    }
+
+
+# --- one property, month by month --------------------------------------------------------
+
+def _month_starts(today, months):
+    """The first day of each of the last `months` calendar months, oldest
+    first, ending with the month `today` falls in."""
+    year, month = today.year, today.month
+    starts = []
+    for _ in range(months):
+        starts.append(date(year, month, 1))
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+    return list(reversed(starts))
+
+
+def _next_month(day):
+    return date(day.year + (day.month == 12), day.month % 12 + 1, 1)
+
+
+def _series(units, month_starts, today):
+    """Per-month figures for the given units (a whole property, or one unit),
+    plus a trailing total. Only nights BEFORE today are measured, so the
+    current month is month-to-date and never mixes in future bookings (those
+    are the forward view's job).
+
+    Revenue is spread across the nights of each stay (lodging revenue / nights,
+    for stays whose report carried an amount) so a stay that straddles two
+    months is split fairly. Payouts are cash: counted in the month of the
+    payout date, whatever stay they belong to."""
+    rows = []
+    for start in month_starts:
+        end = min(_next_month(start), today)          # nights up to, not including, this day
+        row = {
+            'start': start, 'label': f'{start:%b}', 'full': f'{start:%B %Y}', 'partial': _next_month(start) > today,
+            'available': 0, 'booked': 0, 'by_source': {s: 0 for s in Booking.Source.values},
+            'rev': 0.0, 'rev_nights': 0, 'arrivals': 0, 'stays': [], 'cancelled': 0, 'payouts': 0.0, 'payout_count': 0,
+        }
+        rows.append(row)
+        for u in units:
+            first = max(start, u.data_start) if u.data_start else None
+            if first is not None and first < end:
+                row['available'] += (end - first).days
+            for b in u.all:
+                cin = _local_date(b.check_in)
+                if start <= cin < end:
+                    if b.status == Booking.Status.CANCELLED:
+                        row['cancelled'] += 1
+                    else:
+                        row['arrivals'] += 1
+                        row['stays'].append(b.nights())
+                if b.payout_date and b.payout_amount is not None and start <= b.payout_date < _next_month(start):
+                    row['payouts'] += float(b.payout_amount)
+                    row['payout_count'] += 1
+                if b.status != Booking.Status.ACTIVE:
+                    continue
+                revenue, nights = b.lodging_revenue(), _nights(b)
+                rate = float(revenue) / len(nights) if (revenue is not None and nights) else None
+                for night in nights:
+                    if start <= night < end:
+                        row['booked'] += 1
+                        row['by_source'][b.source] = row['by_source'].get(b.source, 0) + 1
+                        if rate is not None:
+                            row['rev'] += rate
+                            row['rev_nights'] += 1
+    for row in rows:
+        occ = _pct(row['booked'], row['available'])
+        row['occupancy'] = occ
+        row['adr'] = row['rev'] / row['rev_nights'] if row['rev_nights'] else None
+        row['revpar'] = row['adr'] * occ / 100 if (row['adr'] is not None and occ is not None) else None
+        row['alos'] = sum(row['stays']) / len(row['stays']) if row['stays'] else None
+        seen = row['arrivals'] + row['cancelled']
+        row['cancel_rate'] = _pct(row['cancelled'], seen)
+        row['revenue'] = row['rev'] if row['rev_nights'] else None
+        row['coverage'] = _pct(row['rev_nights'], row['booked'])
+    total = {
+        'available': sum(r['available'] for r in rows), 'booked': sum(r['booked'] for r in rows),
+        'rev': sum(r['rev'] for r in rows), 'rev_nights': sum(r['rev_nights'] for r in rows),
+        'arrivals': sum(r['arrivals'] for r in rows), 'cancelled': sum(r['cancelled'] for r in rows),
+        'payouts': sum(r['payouts'] for r in rows), 'payout_count': sum(r['payout_count'] for r in rows),
+    }
+    stays = [n for r in rows for n in r['stays']]
+    occ = _pct(total['booked'], total['available'])
+    adr = total['rev'] / total['rev_nights'] if total['rev_nights'] else None
+    total.update({
+        'occupancy': occ, 'adr': adr, 'revpar': adr * occ / 100 if (adr is not None and occ is not None) else None,
+        'alos': sum(stays) / len(stays) if stays else None,
+        'cancel_rate': _pct(total['cancelled'], total['arrivals'] + total['cancelled']),
+        'revenue': total['rev'] if total['rev_nights'] else None,
+        'coverage': _pct(total['rev_nights'], total['booked']),
+    })
+    return rows, total
+
+
+def build_property_performance(prop, unit_id=None, today=None, months=12):
+    """Everything the single-property performance screen shows: a trailing
+    `months`-month series (occupancy, average nightly rate, revenue, length of
+    stay, cancellations, payouts, nights by source), a per-unit breakdown for a
+    multi-unit building, and the forward view (next 30/60/90 days, vacancy
+    gaps from today, what is booked next). Money is always computed here; the
+    view decides who may see it."""
+    today = today or timezone.localdate()
+    units, _ = _collect_units([prop])
+    counted = [u for u in units.values() if u.counted]
+    if unit_id:
+        counted = [u for u in counted if (u.unit.pk if u.unit else None) == unit_id]
+    starts = _month_starts(today, months)
+    rows, total = _series(counted, starts, today)
+    per_unit = []
+    if len(units) > 1:
+        for u in units.values():
+            if not u.counted:
+                continue
+            _r, t = _series([u], starts, today)
+            per_unit.append({'unit': u.unit, 'label': u.unit.label if u.unit else u.label, **t})
+        per_unit.sort(key=lambda r: r['label'])
+
+    forward = build_performance(today=today, property_id=prop.pk)
+    upcoming = sorted(
+        (b for u in counted for b in u.active if _local_date(b.check_out) >= today),
+        key=lambda b: b.check_in,
+    )[:12]
+    return {
+        'property': prop, 'as_of': today, 'months': rows, 'total': total, 'per_unit': per_unit,
+        'units': [{'pk': u.unit.pk if u.unit else None, 'label': u.unit.label if u.unit else u.label} for u in units.values()] if len(units) > 1 else [],
+        'unit_id': unit_id, 'forward': forward, 'upcoming': upcoming,
+        'data_from': min((u.data_start for u in counted if u.data_start), default=None),
+        'has_data': bool(counted),
+        'sources': [{'value': v, 'label': l} for v, l in Booking.Source.choices],
     }

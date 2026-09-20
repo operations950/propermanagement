@@ -72,12 +72,15 @@
 
 <h6 class="text-uppercase small fw-bold mb-2" style="letter-spacing: 0.06em; color: var(--ink-muted);">By unit</h6>
 {% for row in board.rows %}
+{% ifchanged row.group %}<div class="small fw-semibold mb-1 {% if not forloop.first %}mt-3{% endif %}" style="color: var(--ink-secondary);">{% if row.group == 0 %}Same-day turnovers — by when the next guest arrives{% elif row.group == 1 %}Other cleanings — by when the next guest arrives{% else %}Arrivals only, no cleaning needed — by arrival time{% endif %}</div>{% endifchanged %}
 <div class="card mb-2" id="row-{{ row.key }}" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body py-3">
         <div class="d-flex flex-wrap gap-3 align-items-start">
             <div style="min-width: 170px;">
                 <div class="fw-semibold">{{ row.label }}</div>
                 {% if row.turnover %}<div class="small" style="color: var(--ink-muted);">Same-day turnover{% if row.gap_minutes is not None %} · {{ row.gap_minutes }} min gap{% endif %}</div>{% endif %}
+                {% if row.next_checkin_at %}<div class="small" style="color: var(--ink-secondary);">Next check-in {% if row.next_checkin_days == 0 %}<strong>{{ board.is_today|yesno:"today,that day" }}</strong>{% else %}<strong>{{ row.next_checkin_at|date:"D M j" }}</strong>{% endif %} · {{ row.next_checkin_at|time:"g:i A" }}{% if row.next_checkin_days %} <span style="color: var(--ink-muted);">({% if row.next_checkin_days == 1 %}next day{% else %}{{ row.next_checkin_days }} days later{% endif %})</span>{% endif %}</div>
+                {% else %}<div class="small" style="color: var(--ink-muted);">No upcoming check-in on record</div>{% endif %}
             </div>
             <div style="flex: 1 1 380px; min-width: 0;">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -89,10 +92,18 @@
                     {% endwith %}
                     <span class="str-arrow">→</span>
                     {% endif %}
+                    {% if row.arrival_ready %}
+                    {% with a=row.arrival_ready %}
+                    {% if a.visit %}<a href="{% url 'onsite_visit_detail' a.visit.pk %}" class="str-pill {{ a.tone }}" title="{{ a.title }}">{{ a.label }}</a>{% else %}<span class="str-pill {{ a.tone }}" title="{{ a.title }}">{{ a.label }}</span>{% endif %}
+                    {% endwith %}
+                    <span class="str-arrow">→</span>
+                    {% endif %}
                     {% if row.checkin %}
                     <span class="str-pill neutral">In {{ row.checkin_at|time:"g:i A" }}{% if row.early_checkin_moved %} <span title="Early check-in approved (normally {{ row.scheduled_checkin_at|time:'g:i A' }})">· early</span>{% endif %}</span>
+                    {% elif row.next_checkin_at %}
+                    <span class="str-pill neutral" title="No guest arrives {% if board.is_today %}today{% else %}that day{% endif %}; this is the next one.">Next in {% if row.next_checkin_days == 1 %}{{ row.next_checkin_at|date:"D" }}{% else %}{{ row.next_checkin_at|date:"D M j" }}{% endif %} {{ row.next_checkin_at|time:"g:i A" }}</span>
                     {% else %}
-                    <span class="str-pill neutral">No arrival {% if board.is_today %}today{% else %}that day{% endif %}</span>
+                    <span class="str-pill neutral">No upcoming check-in</span>
                     {% endif %}
                 </div>
 
@@ -152,7 +163,7 @@
                 {% if v.last_cleaned_at %}Last cleaned {{ v.last_cleaned_at|date:"D M j" }} ({% if v.days_since_clean == 0 %}today{% else %}{{ v.days_since_clean }} day{{ v.days_since_clean|pluralize }} ago{% endif %}){% else %}Never cleaned on record{% endif %}
                 {% if v.last_checkout_at %} · last guest left {{ v.last_checkout_at|date:"M j" }}{% endif %}
             </span>
-            <span class="small ms-auto" style="color: var(--ink-muted);">{% if v.next_checkin_at %}Next guest {{ v.next_checkin_at|date:"D M j" }}{% else %}No upcoming reservation{% endif %}</span>
+            <span class="small ms-auto" style="color: var(--ink-muted);">{% if v.next_checkin_at %}Next check-in <strong>{{ v.next_checkin_at|date:"D M j" }}</strong> · {{ v.next_checkin_at|time:"g:i A" }}{% else %}No upcoming reservation{% endif %}</span>
         </div>
         {% endfor %}
     </div>
