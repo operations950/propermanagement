@@ -893,7 +893,16 @@ class VisitRule(models.Model):
     default_assignee = models.ForeignKey(
         StaffProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='onsite_rules',
     )
-    last_generated_at = models.DateField(null=True, blank=True)
+    last_generated_at = models.DateField(
+        null=True, blank=True,
+        help_text='The date of the most recent visit this rule created (informational).',
+    )
+    next_due = models.DateField(
+        null=True, blank=True,
+        help_text='The date of the next visit this rule will create — chosen when the rule is added and '
+                   'editable any time. Blank means no start date has been set, and the rule creates '
+                   'nothing until one is. See onsite/services/recurring.py.',
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

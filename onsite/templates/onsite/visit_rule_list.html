@@ -63,7 +63,11 @@
             </div>
 
             <div class="row g-3 mt-1">
-                <div class="col-md-4">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">First visit on</label>
+                    <input type="date" name="start_date" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" min="{{ today|date:'Y-m-d' }}" required>
+                </div>
+                <div class="col-md-3">
                     <label class="form-label small text-muted mb-1">Every</label>
                     <div class="input-group input-group-sm">
                         <input type="number" name="interval_value" class="form-control" min="1" value="3" style="max-width: 90px;">
@@ -73,7 +77,7 @@
                         </select>
                     </div>
                 </div>
-                <div class="col-md-8">
+                <div class="col-md-6">
                     <label class="form-label small text-muted mb-1">Default assignee <span style="color: var(--ink-muted);">(optional — can be set on each generated visit)</span></label>
                     <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="default_assignee">
                         <input type="hidden" name="default_assignee" data-bubble-input value="">
@@ -107,7 +111,7 @@
                         <th>Visit type</th>
                         <th>Every</th>
                         <th>Default assignee</th>
-                        <th>Last generated</th>
+                        <th>Next visit</th>
                         <th>Status</th>
                         <th></th>
                     </tr>
@@ -120,7 +124,7 @@
                         <td class="small">{{ rule.visit_type.name }}</td>
                         <td class="small">{{ rule.cadence_display }}</td>
                         <td class="small">{% if rule.default_assignee %}{{ rule.default_assignee.user.get_full_name|default:rule.default_assignee.user.username }}{% else %}Unassigned{% endif %}</td>
-                        <td class="small">{{ rule.last_generated_at|default:"Never" }}</td>
+                        <td class="small">{% if rule.next_due %}{{ rule.next_due|date:"D, M j, Y" }}{% else %}<span class="badge rounded-pill" style="background: var(--status-warning); color: #fff;">No start date — set one</span>{% endif %}{% if rule.last_generated_at %}<div class="text-muted" style="font-size: 0.75rem;">last: {{ rule.last_generated_at|date:"M j" }}</div>{% endif %}</td>
                         <td class="small">
                             {% if rule.is_active %}
                             <span class="badge rounded-pill" style="background: var(--status-good); color: #fff;">Active</span>
@@ -169,7 +173,7 @@
                     </div>
                     <div class="small text-muted mt-2">
                         {% if rule.default_assignee %}{{ rule.default_assignee.user.get_full_name|default:rule.default_assignee.user.username }}{% else %}Unassigned{% endif %}
-                        &middot; Last generated {{ rule.last_generated_at|default:"never" }}
+                        &middot; Next visit {% if rule.next_due %}{{ rule.next_due|date:"D, M j, Y" }}{% else %}<strong style="color: var(--status-warning);">no start date — set one</strong>{% endif %}{% if rule.last_generated_at %} (last {{ rule.last_generated_at|date:"M j" }}){% endif %}
                     </div>
                     <div class="mt-2">
                         <button class="btn btn-link btn-sm p-0 me-3" type="button" data-bs-toggle="collapse" data-bs-target="#edit-rule-mobile-{{ rule.pk }}"><i data-lucide="pencil" class="icon"></i> Edit</button>

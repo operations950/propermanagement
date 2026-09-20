@@ -7,6 +7,10 @@ so the edit form only exists in one place. Expects: rule, staff_options.
     <input type="hidden" name="action" value="update_rule">
     <input type="hidden" name="rule_id" value="{{ rule.pk }}">
     <div>
+        <label class="form-label small text-muted mb-1">Next visit on</label>
+        <input type="date" name="next_due" class="form-control form-control-sm" value="{{ rule.next_due|date:'Y-m-d' }}" min="{{ today|date:'Y-m-d' }}">
+    </div>
+    <div>
         <label class="form-label small text-muted mb-1">Every</label>
         <div class="input-group input-group-sm">
             <input type="number" name="interval_value" class="form-control" min="1" style="max-width: 80px;" value="{{ rule.interval_value }}">

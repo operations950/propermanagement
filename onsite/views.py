@@ -34,6 +34,7 @@ from .models import (
 )
 from .services import checklist as checklist_service
 from .services import feeds as feed_service
+from .services import recurring as recurring_service
 from .services import notify as notify_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name,
@@ -804,14 +805,25 @@ def visit_rule_list(request):
             if kind == 'staff' and raw_id.isdigit():
                 default_assignee = StaffProfile.objects.filter(pk=raw_id).first()
 
+            start_date = parse_date(request.POST.get('start_date', '').strip() or '')
+            if start_date is None or start_date < timezone.localdate():
+                messages.error(request, 'Choose the date of the first visit (today or later).')
+                return redirect('onsite_visit_rule_list')
+
             rule = VisitRule.objects.create(
                 property=prop, unit=unit, visit_type=visit_type,
-                default_assignee=default_assignee, **interval_kwargs,
+                default_assignee=default_assignee, next_due=start_date, **interval_kwargs,
             )
+            first = recurring_service.generate_for_rule(rule)
+            days_ahead = recurring_service.lookahead_days(rule)
             messages.success(
                 request,
                 f'Recurring rule added: {prop.name}{f" — {unit.label}" if unit else ""} — '
-                f'{visit_type.name} every {rule.cadence_display()}.',
+                f'{visit_type.name} every {rule.cadence_display()}. '
+                + (
+                    f'First visit created for {first.scheduled_date:%b} {first.scheduled_date.day}.' if first
+                    else f'First visit on {start_date:%b} {start_date.day} — it will be created up to {days_ahead} days before.'
+                ),
             )
         elif action == 'update_rule':
             # Cadence/assignee are the two fields staff actually need to
@@ -831,7 +843,10 @@ def visit_rule_list(request):
             rule.default_assignee = (
                 StaffProfile.objects.filter(pk=raw_id).first() if kind == 'staff' and raw_id.isdigit() else None
             )
-            rule.save(update_fields=['interval_days', 'interval_months', 'default_assignee'])
+            next_due = parse_date(request.POST.get('next_due', '').strip() or '')
+            if next_due is not None and next_due >= timezone.localdate():
+                rule.next_due = next_due
+            rule.save(update_fields=['interval_days', 'interval_months', 'default_assignee', 'next_due'])
             messages.success(request, f'Rule updated — now every {rule.cadence_display()}.')
         elif action == 'toggle_active':
             rule = get_object_or_404(VisitRule, pk=request.POST.get('rule_id'))
@@ -849,6 +864,7 @@ def visit_rule_list(request):
     return render(request, 'onsite/visit_rule_list.html', {
         'rules': rules, 'str_properties': str_properties, 'other_properties': other_properties, 'visit_types': visit_types,
         'staff_options': staff_options, 'units_by_property_json': units_by_property_json,
+        'today': timezone.localdate(),
     })
 
 
