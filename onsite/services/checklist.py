@@ -227,6 +227,11 @@ def create_visit(property, visit_type, is_deep_clean=False, **visit_kwargs):
     _deep_clean_checklist_items) — most callers won't know this at creation
     time (a booking import has no way to know a given turnover should also
     be a deep clean); see set_deep_clean for turning it on afterward."""
+    if property.is_general:
+        # A visit is one person physically at one real place — a general
+        # placeholder ("Short-Term Rentals (general)", "No specific
+        # property") is a bucket, not somewhere anyone can go.
+        raise ValidationError(f'"{property.name}" is a general placeholder, not a real property — on-site visits can\'t be scheduled for it.')
     visit = Visit.objects.create(property=property, visit_type=visit_type, is_deep_clean=is_deep_clean, **visit_kwargs)
     resolved = resolve_checklist(property, visit_type)
     items = [

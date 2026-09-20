@@ -4,86 +4,106 @@
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
 
 <h2 class="page-title mb-1">Booking calendars</h2>
-<p class="text-muted small mb-4">
-    Paste a listing's Airbnb or VRBO calendar link and the app checks it every {{ poll_minutes }} minutes: new reservations get a turnover visit
-    (and calendar event), changed dates move it, and a reservation that has disappeared from the calendar is cancelled once it has been missing for
-    {{ missing_polls }} checks in a row. Uploading a CSV still works alongside this — it adds guest and listing detail, and the same reservation is never
-    counted twice. Each link is private (anyone with it can read that calendar), so it is stored encrypted and only shown partly hidden.
-    <span class="d-block mt-1">Where to find it: in each platform's calendar settings for that listing, look for <em>Export calendar</em> (an .ics / iCal link).</span>
+<p class="text-muted small mb-3">
+    Every short-term rental gets an Airbnb line and a VRBO line (one pair per unit for a building). Paste that listing's calendar link and the app checks it every {{ poll_minutes }} minutes:
+    new reservations get a turnover visit and calendar event, changed dates move it, and a reservation that has disappeared is cancelled once it has been missing for
+    {{ missing_polls }} checks in a row. If a property isn't on a platform, mark it <em>Not listed</em> so it stops being flagged. General placeholders (like "Short-Term Rentals (general)") never appear here and never get visits.
+    Each link is private, so it is stored encrypted and shown only partly hidden. Where to find it: the listing's calendar settings on the platform — look for <em>Export calendar</em> (an .ics link). CSV uploads still work alongside this.
 </p>
 
-<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
-    <div class="card-body">
-        <h6 class="card-title">Add a calendar</h6>
-        <form method="post" class="row g-3 align-items-end">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="add_feed">
-            <div class="col-md-4">
-                <label class="form-label small text-muted mb-1">Listing</label>
-                <select name="listing" class="form-select form-select-sm" required>
-                    <option value="">Choose…</option>
-                    {% for value, label in listing_options %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">Platform</label>
-                <select name="source" class="form-select form-select-sm" required>
-                    {% for value, label in sources %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label small text-muted mb-1">Calendar link</label>
-                <input type="text" name="url" class="form-control form-control-sm" placeholder="https://…" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary btn-sm w-100"><i data-lucide="plus" class="icon"></i> Add &amp; check now</button>
-            </div>
-        </form>
+{% if coverage.attention %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+    <i data-lucide="triangle-alert" class="icon mt-1"></i>
+    <div class="small">
+        <strong>{{ coverage.attention|length }} of {{ coverage.total }} calendar line{{ coverage.total|pluralize }} need{{ coverage.attention|length|pluralize:"s," }} attention.</strong>
+        Until they're connected (or marked not listed), reservations from these listings are <strong>not flowing in automatically</strong>.
+        {% if attention_only %}<a href="{% url 'onsite_booking_feeds' %}" class="alert-link ms-1">Show everything</a>{% else %}<a href="?show=attention" class="alert-link ms-1">Show only these</a>{% endif %}
     </div>
 </div>
+{% else %}
+<div class="alert alert-success d-flex align-items-center gap-2 mb-3" role="alert">
+    <i data-lucide="check-circle" class="icon"></i>
+    <div class="small">All {{ coverage.total }} calendar line{{ coverage.total|pluralize }} are connected or marked not listed.</div>
+</div>
+{% endif %}
 
-<div class="card" style="border-radius: var(--bs-border-radius-lg);">
-    <div class="card-body p-0">
-        {% for feed in feeds %}
-        <div class="p-3 {% if not forloop.first %}border-top{% endif %}">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                <div>
-                    <div class="fw-semibold">{{ feed.label }}
-                        <span class="badge text-bg-light border ms-1">{{ feed.get_source_display }}</span>
-                        {% if not feed.is_active %}<span class="badge text-bg-secondary ms-1">Paused</span>{% endif %}
-                    </div>
-                    <div class="text-muted small"><code>{{ feed.masked_url }}</code></div>
-                    <div class="small mt-1">
-                        {% if feed.last_error %}
-                        <span style="color: var(--status-critical);"><i data-lucide="circle-alert" class="icon"></i> {{ feed.last_error }}</span>
-                        {% elif feed.last_summary %}
-                        <span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i></span> {{ feed.last_summary }}
-                        {% else %}
-                        <span class="text-muted">Not checked yet.</span>
-                        {% endif %}
-                    </div>
-                    <div class="text-muted small">
-                        {% if feed.last_polled_at %}Last checked {{ feed.last_polled_at|date:"M j, g:i A" }}{% endif %}
-                        {% if feed.last_success_at %}· last successful {{ feed.last_success_at|date:"M j, g:i A" }}{% endif %}
-                    </div>
+{% for group in coverage.groups %}
+{% if not attention_only or group.needs_attention %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); {% if group.needs_attention %}border-left: 4px solid var(--status-warning);{% endif %}">
+    <div class="card-body py-3">
+        <div class="fw-semibold mb-2">{{ group.property.name }}</div>
+        {% for target in group.targets %}
+        {% if target.unit %}<div class="small fw-semibold text-muted mt-2 mb-1">{{ target.unit.label }}</div>{% endif %}
+        {% for line in target.lines %}
+        {% if not attention_only or line.needs_attention %}
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 py-2 {% if not forloop.first or target.unit %}border-top{% endif %}">
+            <div style="min-width: 260px;">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge text-bg-light border" style="min-width: 62px;">{{ line.source_label }}</span>
+                    {% if line.status == 'connected' %}<span class="small" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Connected</span>
+                    {% elif line.status == 'not_listed' %}<span class="small text-muted"><i data-lucide="minus-circle" class="icon"></i> Not listed on {{ line.source_label }}</span>
+                    {% elif line.status == 'missing' %}<span class="small fw-semibold" style="color: var(--status-warning);"><i data-lucide="triangle-alert" class="icon"></i> Not connected</span>
+                    {% elif line.status == 'paused' %}<span class="small fw-semibold" style="color: var(--status-warning);"><i data-lucide="pause-circle" class="icon"></i> Paused — not syncing</span>
+                    {% else %}<span class="small fw-semibold" style="color: var(--status-critical);"><i data-lucide="circle-alert" class="icon"></i> Needs attention</span>{% endif %}
                 </div>
-                <div class="d-flex gap-2 flex-wrap">
-                    <form method="post">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="poll_now">
-                        <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Check now</button></form>
-                    {% if feed.cancellations_held %}
-                    <form method="post" onsubmit="return confirm('Cancel the {{ feed.cancellations_held }} reservations that have vanished from this calendar, and their visits?');">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="confirm_cancellations">
-                        <button class="btn btn-warning btn-sm">Check now and apply {{ feed.cancellations_held }} cancellations</button></form>
-                    {% endif %}
-                    <form method="post">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="toggle_active">
-                        <button class="btn btn-outline-secondary btn-sm">{% if feed.is_active %}Pause{% else %}Resume{% endif %}</button></form>
-                    <form method="post" onsubmit="return confirm('Remove this calendar link? Existing reservations and visits stay as they are.');">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="delete_feed">
-                        <button class="btn btn-link btn-sm text-danger">Remove</button></form>
-                </div>
+                {% if line.feed and not line.feed.not_listed %}
+                <div class="text-muted small mt-1"><code>{{ line.feed.masked_url }}</code></div>
+                <div class="small mt-1 {% if line.status == 'failing' or line.status == 'held' %}fw-semibold{% endif %}" style="{% if line.status == 'failing' %}color: var(--status-critical);{% endif %}">{{ line.status_text }}</div>
+                {% if line.feed.last_polled_at %}<div class="text-muted small">Last checked {{ line.feed.last_polled_at|date:"M j, g:i A" }}{% if line.feed.last_success_at %} · last successful {{ line.feed.last_success_at|date:"M j, g:i A" }}{% endif %}</div>{% endif %}
+                {% endif %}
+            </div>
+            <div class="d-flex gap-2 flex-wrap align-items-start">
+                {% if line.status == 'missing' or line.status == 'not_listed' %}
+                <form method="post" class="d-flex gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_feed"><input type="hidden" name="listing" value="{{ line.listing }}"><input type="hidden" name="source" value="{{ line.source }}">
+                    <input type="text" name="url" class="form-control form-control-sm" style="width: 260px;" placeholder="Paste the {{ line.source_label }} calendar link" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+                    <button class="btn btn-primary btn-sm text-nowrap">Connect</button>
+                </form>
+                {% if line.status == 'missing' %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="mark_not_listed"><input type="hidden" name="listing" value="{{ line.listing }}"><input type="hidden" name="source" value="{{ line.source }}">
+                    <button class="btn btn-outline-secondary btn-sm text-nowrap">Not listed here</button></form>
+                {% else %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_feed"><input type="hidden" name="feed_id" value="{{ line.feed.pk }}">
+                    <button class="btn btn-link btn-sm text-nowrap">Undo</button></form>
+                {% endif %}
+                {% else %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ line.feed.pk }}"><input type="hidden" name="action" value="poll_now">
+                    <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Check now</button></form>
+                {% if line.feed.cancellations_held %}
+                <form method="post" onsubmit="return confirm('Cancel the {{ line.feed.cancellations_held }} reservations that have vanished from this calendar, and their visits?');">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ line.feed.pk }}"><input type="hidden" name="action" value="confirm_cancellations">
+                    <button class="btn btn-warning btn-sm">Apply {{ line.feed.cancellations_held }} cancellations</button></form>
+                {% endif %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ line.feed.pk }}"><input type="hidden" name="action" value="toggle_active">
+                    <button class="btn btn-outline-secondary btn-sm">{% if line.feed.is_active %}Pause{% else %}Resume{% endif %}</button></form>
+                <form method="post" onsubmit="return confirm('Remove this calendar link? Existing reservations and visits stay as they are.');">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ line.feed.pk }}"><input type="hidden" name="action" value="delete_feed">
+                    <button class="btn btn-link btn-sm text-danger">Remove</button></form>
+                {% endif %}
             </div>
         </div>
-        {% empty %}
-        <p class="text-muted small p-3 mb-0">No calendars yet. Add one above.</p>
+        {% endif %}
+        {% endfor %}
         {% endfor %}
     </div>
 </div>
+{% endif %}
+{% empty %}
+<p class="text-muted small">No short-term rental properties yet. A property appears here once its type is Short-Term Rental (and it isn't a general placeholder).</p>
+{% endfor %}
+
+{% if coverage.orphans %}
+<div class="card mt-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <h6 class="card-title">Other calendars</h6>
+        <p class="text-muted small">These are still being checked but no longer match a short-term rental row above (the property changed type, was deactivated, or was split into units). Remove them, or fix the property.</p>
+        {% for feed in coverage.orphans %}
+        <div class="d-flex justify-content-between align-items-center py-1 border-top">
+            <span class="small">{{ feed.get_source_display }} — {{ feed.label }} <code class="ms-1">{{ feed.masked_url }}</code></span>
+            <form method="post" onsubmit="return confirm('Remove this calendar link?');">{% csrf_token %}<input type="hidden" name="feed_id" value="{{ feed.pk }}"><input type="hidden" name="action" value="delete_feed">
+                <button class="btn btn-link btn-sm text-danger">Remove</button></form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 {% endblock %}

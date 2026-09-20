@@ -103,7 +103,7 @@ def onsite_next_48h(now=None):
     todays_visits = [v for v in visits if v.scheduled_date == today]
 
     tomorrow_checkouts = (
-        Booking.objects.filter(check_out__date=tomorrow, status=Booking.Status.ACTIVE)
+        Booking.objects.filter(check_out__date=tomorrow, status=Booking.Status.ACTIVE, property__is_general=False)
         .select_related('property')
         .prefetch_related('visits')
     )
@@ -125,7 +125,12 @@ def onsite_next_48h(now=None):
         health.is_stale = not health.last_upload_at or health.last_upload_at <= stale_cutoff
         feed_rows.append(health)
 
+    from onsite.services.feeds import coverage_report
+    coverage = coverage_report()
+
     return {
+        'calendar_gaps': coverage['attention'],
+        'calendar_lines_total': coverage['total'],
         'unassigned_tomorrow_checkouts': unassigned_tomorrow_checkouts,
         'todays_visits': todays_visits,
         'feed_health': feed_rows,

@@ -69,6 +69,15 @@
     </div>
     <div class="card-body">
         {# Feed health strip — always rendered, even with zero visits/checkouts below, so a broken import pipeline never looks identical to a quiet day. #}
+        {% if onsite.calendar_gaps %}
+        <div class="small p-2 mb-3 d-flex align-items-start gap-2" style="border-radius: 10px; border: 1px solid color-mix(in srgb, var(--status-warning) 50%, white); background: color-mix(in srgb, var(--status-warning) 8%, white);">
+            <i data-lucide="triangle-alert" class="icon mt-1" style="color: var(--status-warning);"></i>
+            <div>
+                <strong>{{ onsite.calendar_gaps|length }} of {{ onsite.calendar_lines_total }} Airbnb/VRBO calendar lines aren't connected or need attention</strong> — those reservations are not flowing in automatically.
+                <a href="{% url 'onsite_booking_feeds' %}">Booking calendars</a>
+            </div>
+        </div>
+        {% endif %}
         <div class="d-flex flex-wrap gap-2 mb-3">
             {% for health in onsite.feed_health %}
             <div class="flex-fill p-2" style="min-width: 220px; border-radius: 10px; border: 1px solid {% if health.is_stale %}color-mix(in srgb, var(--status-critical) 40%, white){% else %}var(--bs-border-color, #e5e7eb){% endif %}; background: {% if health.is_stale %}color-mix(in srgb, var(--status-critical) 6%, white){% endif %};">

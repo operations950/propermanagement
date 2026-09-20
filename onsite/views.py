@@ -145,7 +145,7 @@ def dashboard(request):
 
     todays_visits = visits_by_date.get(today, [])
     checkouts_today = (
-        Booking.objects.filter(check_out__date=today, status=Booking.Status.ACTIVE)
+        Booking.objects.filter(check_out__date=today, status=Booking.Status.ACTIVE, property__is_general=False)
         .select_related('property')
         .prefetch_related('visits')
     )
@@ -230,7 +230,7 @@ def _visit_eligible_properties():
     the (unrelated) booking-import property list, which stays STR-only
     outright since a booking file is inherently an STR/checkout concept
     with no exception case to expand into."""
-    properties = Property.objects.filter(is_active=True).order_by('property_type', 'name')
+    properties = Property.objects.filter(is_active=True, is_general=False).order_by('property_type', 'name')
     str_properties = [p for p in properties if p.property_type == Property.Type.SHORT_TERM_RENTAL]
     other_properties = [p for p in properties if p.property_type != Property.Type.SHORT_TERM_RENTAL]
     return str_properties, other_properties
@@ -593,7 +593,7 @@ def visit_create(request):
     units_by_property_json = _units_by_property_json()
 
     if request.method == 'POST':
-        prop = get_object_or_404(Property, pk=request.POST.get('property'), is_active=True) \
+        prop = get_object_or_404(Property, pk=request.POST.get('property'), is_active=True, is_general=False) \
             if request.POST.get('property') else None
         visit_type = get_object_or_404(VisitType, pk=request.POST.get('visit_type'), is_addon=False) \
             if request.POST.get('visit_type') else None
@@ -649,39 +649,64 @@ def visit_create(request):
     })
 
 
+def _feed_listing_from_post(post):
+    """(property, unit) named by the form's `listing` value ("p-<id>" for a
+    property, "u-<id>" for one unit of a building), or None. Only real
+    short-term rentals qualify — the same set the screen lists — and a
+    building with units must be addressed unit by unit."""
+    kind, _, raw_id = post.get('listing', '').partition('-')
+    if not raw_id.isdigit():
+        return None
+    eligible = feed_service.eligible_properties()
+    if kind == 'p':
+        prop = eligible.filter(pk=raw_id).first()
+        if prop is None or prop.units.filter(is_active=True).exists():
+            return None
+        return prop, None
+    if kind == 'u':
+        unit = Unit.objects.filter(pk=raw_id, is_active=True, property__in=eligible).select_related('property').first()
+        return (unit.property, unit) if unit else None
+    return None
+
+
 @login_required
 def booking_feeds(request):
     """Admin screen for BookingFeed — the Airbnb/VRBO calendar links the app
-    polls (see onsite/services/feeds.py). Admin-only because the links are
-    secrets: anyone holding one can read that listing's calendar."""
+    polls (see onsite/services/feeds.py). One card per short-term rental
+    (one block per unit for a building), each with an Airbnb line and a
+    VRBO line, so a property whose calendars were never connected can't
+    hide: every line is either connected, deliberately marked "not listed"
+    on that platform, or flagged. Admin-only because the links are secrets
+    (anyone holding one can read that listing's calendar)."""
     if not _is_admin(request.user):
         return HttpResponseForbidden('Admins only.')
 
     if request.method == 'POST':
         action = request.POST.get('action')
-        if action == 'add_feed':
-            kind, _, raw_id = request.POST.get('listing', '').partition('-')
+        if action in ('add_feed', 'mark_not_listed'):
+            listing = _feed_listing_from_post(request.POST)
             source = request.POST.get('source', '')
             url = request.POST.get('url', '').strip()
-            prop = unit = None
-            if kind == 'p' and raw_id.isdigit():
-                prop = Property.objects.filter(pk=raw_id, is_active=True).first()
-                if prop and prop.units.filter(is_active=True).exists():
-                    prop = None  # a property with units needs one feed per unit
-            elif kind == 'u' and raw_id.isdigit():
-                unit = Unit.objects.filter(pk=raw_id, is_active=True, property__is_active=True).select_related('property').first()
-                prop = unit.property if unit else None
-            if not prop:
-                messages.error(request, 'Choose which listing this calendar is for (a property with units needs one calendar per unit).')
-            elif source not in ImportBatch.Source.values:
+            if not listing:
+                messages.error(request, "Choose a short-term rental listing (a building with units needs one calendar per unit).")
+                return redirect('onsite_booking_feeds')
+            prop, unit = listing
+            existing = list(BookingFeed.objects.filter(property=prop, unit=unit, source=source))
+            real = [f for f in existing if not f.not_listed]
+            if source not in ImportBatch.Source.values:
                 messages.error(request, 'Choose Airbnb or VRBO.')
+            elif real:
+                messages.error(request, 'That listing already has a calendar for this platform — resume or remove it first.')
+            elif action == 'mark_not_listed':
+                if not existing:
+                    BookingFeed.objects.create(property=prop, unit=unit, source=source, url='', not_listed=True)
+                messages.success(request, f'Marked as not listed on {dict(ImportBatch.Source.choices)[source]}.')
             elif not url.lower().startswith(('http://', 'https://', 'webcal://')):
                 messages.error(request, 'Paste the calendar link — it should start with https://.')
-            elif BookingFeed.objects.filter(property=prop, unit=unit, source=source, is_active=True).exists():
-                messages.error(request, 'That listing already has an active calendar for this platform — pause or delete it first.')
             else:
                 if url.lower().startswith('webcal://'):
                     url = 'https://' + url[len('webcal://'):]
+                BookingFeed.objects.filter(pk__in=[f.pk for f in existing]).delete()  # replaces a "not listed" marker
                 feed = BookingFeed.objects.create(property=prop, unit=unit, source=source, url=url)
                 feed_service.poll_feed(feed)
                 if feed.last_error:
@@ -690,33 +715,30 @@ def booking_feeds(request):
                     messages.success(request, f'Calendar added. {feed.last_summary}')
         else:
             feed = get_object_or_404(BookingFeed, pk=request.POST.get('feed_id'))
-            if action == 'poll_now':
+            if action == 'poll_now' and not feed.not_listed:
                 feed_service.poll_feed(feed)
                 messages.success(request, f'Checked {feed.label()}. {feed.last_error or feed.last_summary}')
-            elif action == 'confirm_cancellations':
+            elif action == 'confirm_cancellations' and not feed.not_listed:
                 feed_service.poll_feed(feed, allow_mass_cancel=True)
                 messages.success(request, f'Checked {feed.label()}. {feed.last_error or feed.last_summary}')
-            elif action == 'toggle_active':
+            elif action == 'toggle_active' and not feed.not_listed:
                 feed.is_active = not feed.is_active
                 feed.save(update_fields=['is_active'])
                 messages.success(request, f'Calendar {"resumed" if feed.is_active else "paused"}.')
             elif action == 'delete_feed':
+                was_marker = feed.not_listed
                 feed.delete()
-                messages.success(request, 'Calendar removed. Existing reservations and visits were left as they are.')
+                messages.success(
+                    request,
+                    'Marker removed.' if was_marker
+                    else 'Calendar removed. Existing reservations and visits were left as they are.',
+                )
         return redirect('onsite_booking_feeds')
 
-    properties = Property.objects.filter(is_active=True).order_by('name').prefetch_related('units')
-    listing_options = []
-    for prop in properties:
-        units = [u for u in prop.units.all() if u.is_active]
-        if units:
-            listing_options += [(f'u-{u.pk}', f'{prop.name} — {u.label}') for u in units]
-        else:
-            listing_options.append((f'p-{prop.pk}', prop.name))
+    coverage = feed_service.coverage_report()
     return render(request, 'onsite/booking_feeds.html', {
-        'feeds': BookingFeed.objects.select_related('property', 'unit'),
-        'listing_options': listing_options,
-        'sources': ImportBatch.Source.choices,
+        'coverage': coverage,
+        'attention_only': request.GET.get('show') == 'attention',
         'poll_minutes': settings.BOOKING_FEED_POLL_INTERVAL_MINUTES,
         'missing_polls': settings.BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL,
     })
@@ -752,7 +774,7 @@ def visit_rule_list(request):
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'add_rule':
-            prop = get_object_or_404(Property, pk=request.POST.get('property'), is_active=True) \
+            prop = get_object_or_404(Property, pk=request.POST.get('property'), is_active=True, is_general=False) \
                 if request.POST.get('property') else None
             visit_type = get_object_or_404(
                 VisitType, pk=request.POST.get('visit_type'), is_addon=False,

@@ -45,7 +45,9 @@ from django.utils import timezone
 
 from ..feed_ics import parse_feed_ics
 from ..importers import BookingFileError, RawBooking
-from ..models import Booking, BookingFeed
+from core.models import Property
+
+from ..models import Booking, BookingFeed, ImportBatch
 from .bookings import apply_bookings_for_property, update_feed_health
 
 logger = logging.getLogger(__name__)
@@ -212,6 +214,8 @@ def poll_feed(feed, allow_mass_cancel=False):
     allow_mass_cancel is only for a person confirming, on the feeds screen,
     that a burst of vanished reservations really is a burst of cancellations
     (a hurricane, a platform-wide cancellation)."""
+    if feed.not_listed:
+        return feed
     with _poll_lock:
         now = timezone.now()
         feed.last_polled_at = now
@@ -236,19 +240,97 @@ def poll_feed(feed, allow_mass_cancel=False):
 
 
 def poll_all():
-    feeds = list(BookingFeed.objects.filter(is_active=True).select_related('property', 'unit'))
+    feeds = list(BookingFeed.objects.filter(is_active=True, not_listed=False).select_related('property', 'unit'))
     for feed in feeds:
         poll_feed(feed)
     return feeds
 
 
+# How each calendar line reads on the Booking calendars screen. Everything
+# except CONNECTED and NOT_LISTED needs a person to look at it.
+CONNECTED, FAILING, HELD, PAUSED, NOT_LISTED, MISSING = 'connected', 'failing', 'held', 'paused', 'not_listed', 'missing'
+NEEDS_ATTENTION = (FAILING, HELD, PAUSED, MISSING)
+
+
+def eligible_properties():
+    """The properties that should have their Airbnb and VRBO calendars
+    connected: active, real (not a general placeholder), short-term rentals.
+    Anything else has no reservations to pull in."""
+    return Property.objects.filter(
+        is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL,
+    ).order_by('name').prefetch_related('units')
+
+
+def _line(label, source, source_label, feed, now):
+    if feed is None:
+        status, text = MISSING, 'Not connected'
+    elif feed.not_listed:
+        status, text = NOT_LISTED, f'Not listed on {source_label}'
+    elif not feed.is_active:
+        status, text = PAUSED, 'Paused — not syncing'
+    elif feed.last_error:
+        status, text = FAILING, feed.last_error
+    elif feed.cancellations_held:
+        status, text = HELD, f'{feed.cancellations_held} reservations vanished at once — cancellations waiting for confirmation'
+    elif feed.last_polled_at is not None and (feed.last_success_at is None or feed.last_success_at < now - STALE_AFTER):
+        status, text = FAILING, "Hasn't updated in hours"
+    else:
+        status, text = CONNECTED, feed.last_summary or 'Connected — not checked yet'
+    return {
+        'label': label, 'source': source, 'source_label': source_label, 'feed': feed, 'status': status,
+        'status_text': text, 'needs_attention': status in NEEDS_ATTENTION,
+    }
+
+
+def coverage_report():
+    """Every eligible property (and, for a building with units, every unit)
+    with one line per platform saying whether its calendar is connected,
+    failing, paused, deliberately "not listed", or simply never set up.
+    The point is the last case: a property added and forgotten looks
+    exactly like a working system unless something says it isn't connected.
+
+    Returns {'groups': [...], 'attention': [lines needing a person],
+    'total': lines, 'ok': lines that are fine, 'orphans': feeds that match
+    no row (their property became a general/non-STR/inactive one, or gained
+    units after a whole-property calendar was added) — still polled, shown
+    so they can be removed}."""
+    now = timezone.now()
+    by_key, all_feeds = {}, list(BookingFeed.objects.select_related('property', 'unit'))
+    for feed in all_feeds:
+        key = (feed.property_id, feed.unit_id, feed.source)
+        current = by_key.get(key)
+        # A real feed beats a "not listed" marker; an active one beats a paused one.
+        if current is None or (current.not_listed and not feed.not_listed) or (not current.is_active and feed.is_active):
+            by_key[key] = feed
+
+    groups, attention, used, total, ok = [], [], set(), 0, 0
+    for prop in eligible_properties():
+        units = [u for u in prop.units.all() if u.is_active]
+        targets = [(u, f'{prop.name} — {u.label}') for u in units] or [(None, prop.name)]
+        group = {'property': prop, 'targets': []}
+        for unit, label in targets:
+            lines = []
+            for source, source_label in ImportBatch.Source.choices:
+                key = (prop.pk, unit.pk if unit else None, source)
+                feed = by_key.get(key)
+                if feed:
+                    used.add(feed.pk)
+                line = _line(label, source, source_label, feed, now)
+                line['listing'] = f'u-{unit.pk}' if unit else f'p-{prop.pk}'
+                lines.append(line)
+                total += 1
+                if line['needs_attention']:
+                    attention.append(line)
+                else:
+                    ok += 1
+            group['targets'].append({'unit': unit, 'label': label, 'lines': lines})
+        group['needs_attention'] = any(l['needs_attention'] for t in group['targets'] for l in t['lines'])
+        groups.append(group)
+    orphans = [f for f in all_feeds if f.pk not in used and not f.not_listed]
+    return {'groups': groups, 'attention': attention, 'total': total, 'ok': ok, 'orphans': orphans}
+
+
 def feeds_needing_attention():
-    """Active feeds an admin should look at: the last poll failed, it hasn't
-    succeeded in hours, or cancellations are being held for confirmation."""
-    cutoff = timezone.now() - STALE_AFTER
-    result = []
-    for feed in BookingFeed.objects.filter(is_active=True).select_related('property', 'unit'):
-        stale = feed.last_polled_at is not None and (feed.last_success_at is None or feed.last_success_at < cutoff)
-        if feed.last_error or feed.cancellations_held or stale:
-            result.append(feed)
-    return result
+    """The calendar lines an admin should look at right now — see
+    coverage_report. Includes properties whose calendar was never set up."""
+    return coverage_report()['attention']

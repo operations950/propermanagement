@@ -238,7 +238,7 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
             or (row.listing_name and existing.listing_name != row.listing_name)
         ):
             changed_rows.append(row)
-        elif not existing.visits.exclude(status=Visit.Status.CANCELLED).exists():
+        elif not property.is_general and not existing.visits.exclude(status=Visit.Status.CANCELLED).exists():
             # Active booking, same property, nothing about the reservation
             # itself changed — normally a pure no-op. EXCEPT its cleaning
             # Visit can go missing independently of the Booking surviving
@@ -313,7 +313,12 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
     _adopt_feed_twins(property, source, raw_bookings, listing_unit_map, default_unit)
     diff = diff_bookings(property, source, raw_bookings, default_unit)
     turnover_type = VisitType.objects.filter(slug=TURNOVER_SLUG, is_active=True).first()
-    visit_note = '' if turnover_type else (
+    if property.is_general:
+        # A general placeholder (e.g. "Short-Term Rentals (general)") is the
+        # bucket for listings nobody wants cleanings scheduled for: the
+        # bookings are still recorded, but no visit is ever created.
+        turnover_type = None
+    visit_note = '' if (turnover_type or property.is_general) else (
         'Bookings were imported, but no active "Turnover" visit type exists yet — no visits were '
         'created. Run seed_checklist_templates, or create one manually, then re-import.'
     )

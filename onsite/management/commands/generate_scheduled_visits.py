@@ -25,7 +25,7 @@ class Command(BaseCommand):
         # pointed at one is a misconfiguration, not something to silently
         # generate ad-hoc Visits for.
         for rule in (
-            VisitRule.objects.filter(is_active=True, visit_type__is_addon=False)
+            VisitRule.objects.filter(is_active=True, visit_type__is_addon=False, property__is_general=False)
             .select_related('property', 'unit', 'visit_type')
         ):
             if not rule.last_generated_at:

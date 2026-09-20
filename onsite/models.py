@@ -264,7 +264,13 @@ class BookingFeed(models.Model):
         help_text='Required when the property has units — which unit this listing is.',
     )
     source = models.CharField(max_length=20, choices=ImportBatch.Source.choices)
-    url = EncryptedTextField(help_text='The calendar (.ics) link from the platform.')
+    url = EncryptedTextField(blank=True, help_text='The calendar (.ics) link from the platform.')
+    not_listed = models.BooleanField(
+        default=False,
+        help_text="Not a real feed: records that someone decided this listing is deliberately NOT on this "
+                   "platform, so the Booking calendars screen doesn't keep flagging it as unconnected. "
+                   "Has no link and is never polled.",
+    )
     is_active = models.BooleanField(default=True)
 
     last_polled_at = models.DateTimeField(null=True, blank=True)
@@ -285,7 +291,7 @@ class BookingFeed(models.Model):
         ordering = ['property__name', 'unit__label', 'source']
 
     def __str__(self):
-        return f'{self.get_source_display()} calendar — {self.label()}'
+        return f'{self.get_source_display()} calendar — {self.label()}' + (' (not listed)' if self.not_listed else '')
 
     def label(self):
         return f'{self.property.name} — {self.unit.label}' if self.unit_id else self.property.name
