@@ -202,6 +202,15 @@ class ImportBatch(models.Model):
         Property, on_delete=models.CASCADE, related_name='onsite_import_batches', null=True, blank=True,
     )
     source = models.CharField(max_length=20, choices=Source.choices)
+    class Kind(models.TextChoices):
+        RESERVATIONS = 'reservations', 'Reservations'
+        PAYOUTS = 'payouts', 'Payouts only'
+
+    kind = models.CharField(
+        max_length=20, choices=Kind.choices, default=Kind.RESERVATIONS,
+        help_text='A payouts-only file (VRBO "upcoming payouts") has amounts but no stay dates, so it can only '
+                   'attach money to reservations that are already on record.',
+    )
     raw_file = models.FileField(upload_to='onsite_import_batches/%Y/%m/', storage=DocumentStorage())
     covers_start = models.DateField(help_text='Earliest checkout date this file actually covers.')
     covers_end = models.DateField(help_text='Latest checkout date this file actually covers.')
@@ -251,6 +260,11 @@ class BookingFeedHealth(models.Model):
     last_upload_at = models.DateTimeField(null=True, blank=True)
     newest_booked_date = models.DateField(null=True, blank=True)
     coverage_through = models.DateField(null=True, blank=True)
+    payouts_through = models.DateField(
+        null=True, blank=True,
+        help_text='The latest payout date any uploaded payout report has shown for this platform. A future '
+                   "reservation with no payout is only suspicious when its payout would fall on or before this.",
+    )
 
     class Meta:
         verbose_name_plural = 'booking feed health'
@@ -457,6 +471,12 @@ class Booking(models.Model):
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     platform_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     payout_date = models.DateField(null=True, blank=True)
+    payout_status = models.CharField(max_length=20, blank=True, help_text='"paid" or "scheduled", from the payout report.')
+    confirmed_real = models.BooleanField(
+        default=False,
+        help_text='A person checked this reservation is genuine even though no payout has shown up for it, '
+                   'so it is left off the "reservations to review" list.',
+    )
     amount_source = models.CharField(max_length=60, blank=True, help_text='Where the amounts came from (e.g. "csv upload", "entered by hand").')
 
     manually_cancelled = models.BooleanField(
@@ -496,6 +516,26 @@ class Booking(models.Model):
         )
 
 
+class PendingPayout(models.Model):
+    """A payout a report listed for a reservation we don't have yet (a VRBO
+    "upcoming payouts" file carries the confirmation code and the money but no
+    stay dates, so it can't create the reservation). Held here and attached the
+    moment a reservation with that code arrives from any import."""
+    source = models.CharField(max_length=20, choices=ImportBatch.Source.choices)
+    external_uid = models.CharField(max_length=100)
+    guest_name = models.CharField(max_length=200, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payout_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('source', 'external_uid')]
+
+    def __str__(self):
+        return f'{self.get_source_display()} {self.external_uid} ${self.amount}'
+
+
 class GuestRequest(models.Model):
     """An early check-in or late checkout a guest has asked for, logged by
     hand by whoever is watching the short-term rentals (the request itself
@@ -507,6 +547,15 @@ class GuestRequest(models.Model):
     class Kind(models.TextChoices):
         EARLY_CHECKIN = 'early_checkin', 'Early check-in'
         LATE_CHECKOUT = 'late_checkout', 'Late checkout'
+        EARLY_CHECKOUT = 'early_checkout', 'Early checkout'
+        LATE_CHECKIN = 'late_checkin', 'Late check-in'
+
+    # Which time of the stay a kind moves, and whether that is good news for
+    # the turnover: leaving early or arriving late gives the cleaner more time;
+    # leaving late or arriving early takes it away.
+    CHECKOUT_KINDS = ('late_checkout', 'early_checkout')
+    CHECKIN_KINDS = ('early_checkin', 'late_checkin')
+    HELPFUL_KINDS = ('early_checkout', 'late_checkin')
 
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'

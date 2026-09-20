@@ -15,6 +15,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from . import payouts as payouts_service
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
 from ..models import Booking, BookingFeedHealth, Visit, VisitType
@@ -177,6 +178,8 @@ def update_feed_health(source, raw_bookings):
             health.newest_booked_date = newest
             update_fields.append('newest_booked_date')
 
+    payouts_service.note_coverage(source, [getattr(r, 'payout_date', None) for r in raw_bookings])
+
     checkouts = [r.check_out for r in raw_bookings]
     if checkouts:
         furthest = max(checkouts)
@@ -214,6 +217,11 @@ def _save_amounts(source, raw_bookings):
         if row.payout_date and booking.payout_date != row.payout_date:
             booking.payout_date = row.payout_date
             changed.append('payout_date')
+        if row.payout_date and booking.payout_amount is not None:
+            status = payouts_service.status_for(row.payout_date)
+            if booking.payout_status != status:
+                booking.payout_status = status
+                changed.append('payout_status')
         if changed:
             booking.amount_source = 'csv upload'
             booking.save(update_fields=changed + ['amount_source'])
@@ -524,6 +532,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
 
     _record_paid_cancellations(property, source, raw_bookings, listing_unit_map, default_unit)
     _save_amounts(source, raw_bookings)
+    payouts_service.attach_pending(source, [r.external_uid for r in raw_bookings])
 
     for booking in diff['cancelled']:
         booking.status = Booking.Status.CANCELLED

@@ -77,6 +77,12 @@ def notify_assignee(visit, request=None, updated=False):
         f'{visit.property.name} on {when}. Details: {link}'
     ).strip()
 
+    return _deliver(visit, phone, email, body)
+
+
+def _deliver(visit, phone, email, body):
+    """Texts and emails `body`; SENT if at least one channel went out, FAILED if
+    there was somewhere to send and every attempt failed. Never raises."""
     delivered = False
     if phone:
         try:
@@ -85,7 +91,7 @@ def notify_assignee(visit, request=None, updated=False):
                 get_sms_backend().send(phone, body)
             delivered = True
         except Exception:
-            logger.exception('Failed to text visit assignment (visit %s) to %s', visit.pk, phone)
+            logger.exception('Failed to text visit message (visit %s) to %s', visit.pk, phone)
 
     if email:
         try:
@@ -95,8 +101,34 @@ def notify_assignee(visit, request=None, updated=False):
             )
             delivered = True
         except Exception:
-            logger.exception('Failed to email visit assignment (visit %s) to %s', visit.pk, email)
+            logger.exception('Failed to email visit message (visit %s) to %s', visit.pk, email)
     return SENT if delivered else FAILED
+
+
+def notify_time_change(visit):
+    """Tells a cleaner who already has this visit's link that the guests' times
+    changed (an early checkout means they can start sooner; a late check-in
+    gives them longer). Only when they have been sent the link, the visit isn't
+    finished, and there is somewhere to send. Best-effort; never raises."""
+    from ..models import Visit
+    from . import times
+
+    try:
+        fresh = Visit.objects.select_related('property', 'assigned_staff__user', 'assigned_contact', 'booking', 'next_booking').prefetch_related(
+            'booking__guest_requests', 'next_booking__guest_requests',
+        ).filter(pk=visit.pk).first()
+        if fresh is None or not fresh.link_notified_key or fresh.status not in (Visit.Status.SCHEDULED, Visit.Status.IN_PROGRESS):
+            return NOT_NEEDED
+        name, phone, email = _assignee_contact_info(fresh)
+        if not name or not (phone or email):
+            return NOT_NEEDED
+        when = fresh.scheduled_date.strftime('%A, %b %d') if fresh.scheduled_date else 'your visit'
+        lines = '; '.join(times.visit_time_lines(fresh))
+        body = f'Update, {name.split()[0]}: times changed for {fresh.property.name} on {when}. {lines}. Details: {times.visit_link(fresh)}'
+        return _deliver(fresh, phone, email, body)
+    except Exception:
+        logger.exception('Unexpected error sending a time-change notice for visit %s', getattr(visit, 'pk', visit))
+        return FAILED
 
 
 # --- when the link goes out ------------------------------------------------------

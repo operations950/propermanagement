@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}Reservations to review{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_reservation_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Reservations</a>
+<h2 class="page-title mb-1">Reservations to review</h2>
+<p class="text-muted small mb-3">
+    A calendar or an old upload can leave stale or duplicate reservations behind. The best proof that an upcoming reservation is real is that the platform has scheduled a payout for it, so anything without one is listed here for you to decide — nothing is cancelled automatically.
+    {% if reach %}Payout reports on file reach through {% for name, day in reach %}<strong>{{ name }} {{ day|date:"M j, Y" }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}; reservations paying out after that can't be judged yet. Upload a payouts report with a longer date range to check further ahead.{% else %}No payout report has been uploaded yet, so there is nothing to compare against — upload the VRBO payouts (past and upcoming) on the import screen.{% endif %}
+</p>
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="copy" class="icon"></i> Overlapping reservations ({{ conflicts|length }})</h6>
+    <p class="text-muted small">Two reservations can't share a night at one unit. Cancel the one that isn't real; a reservation with a payout is likelier to be the real one.</p>
+    {% for c in conflicts %}
+    <div class="border-top pt-2 mt-2">
+        <div class="fw-semibold">{{ c.label }}</div>
+        {% for b in c.pair %}
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-1 {% if c.likely_real and c.likely_real.pk == b.pk %}p-1 rounded{% endif %}" {% if c.likely_real and c.likely_real.pk == b.pk %}style="background: color-mix(in srgb, var(--status-good) 12%, white);"{% endif %}>
+            <span class="small">{{ b.guest_name|default:"Guest" }} · {{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }} · {{ b.get_source_display }}{% if b.from_feed %} (calendar){% endif %}
+                {% if b.payout_amount is not None %}<span class="badge text-bg-success">payout{% if b.payout_date %} {{ b.payout_status|default:"on" }} {{ b.payout_date|date:"M j" }}{% endif %}{% if is_admin %} · ${{ b.payout_amount }}{% endif %}</span>{% else %}<span class="badge text-bg-light border">no payout</span>{% endif %}
+                {% if c.likely_real and c.likely_real.pk == b.pk %}<span class="text-muted">— likelier real</span>{% endif %}</span>
+            {% include 'onsite/_reservation_actions.html' with b=b next=request.get_full_path %}
+        </div>
+        {% endfor %}
+    </div>
+    {% empty %}<p class="text-muted small mb-0"><i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i> No current or upcoming reservations overlap.</p>{% endfor %}
+</div></div>
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="banknote-x" class="icon"></i> Upcoming with no payout ({{ unpaid|length }})</h6>
+    <p class="text-muted small">Their payout would fall inside the period the payout reports cover, yet none is on record. Either it isn't real (cancel it), or it's real and just hasn't been linked to its payout yet — upload the VRBO inbox / reservations report so its confirmation code can be matched, or mark it real here.</p>
+    {% for b in unpaid %}
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap border-top py-2">
+        <span class="small"><strong>{{ b.property.name }}{% if b.unit %} — {{ b.unit.label }}{% endif %}</strong><br>{{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }} · {{ b.get_source_display }}{% if b.from_feed %} (calendar){% endif %}{% if b.guest_name %} · {{ b.guest_name }}{% endif %}</span>
+        {% include 'onsite/_reservation_actions.html' with b=b next=request.get_full_path confirm=True %}
+    </div>
+    {% empty %}<p class="text-muted small mb-0"><i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i> Every upcoming reservation the payout reports cover has a payout.</p>{% endfor %}
+</div></div>
+{% endblock %}

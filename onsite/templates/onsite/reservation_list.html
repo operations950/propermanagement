@@ -6,9 +6,12 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
         <h2 class="page-title mb-0">Reservations</h2>
-        <p class="text-muted small mb-0">Every stay from Airbnb, VRBO and booked directly. In-house reservations are added, edited and cancelled here; platform ones change on the platform.</p>
+        <p class="text-muted small mb-0">Every stay from Airbnb, VRBO and booked directly. In-house reservations can be added and edited here; any reservation can be cancelled by hand if it isn't real.</p>
     </div>
-    <a href="{% url 'onsite_reservation_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New in-house reservation</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'onsite_reservation_review' %}" class="btn btn-sm {% if review_count %}btn-warning{% else %}btn-outline-secondary{% endif %}"><i data-lucide="shield-question" class="icon"></i> To review{% if review_count %} ({{ review_count }}){% endif %}</a>
+        <a href="{% url 'onsite_reservation_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New in-house reservation</a>
+    </div>
 </div>
 
 <form method="get" class="d-flex flex-wrap gap-2 align-items-end mb-3">

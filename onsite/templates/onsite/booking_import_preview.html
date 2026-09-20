@@ -16,7 +16,46 @@
 </div>
 {% endif %}
 
-{% if portfolio %}
+{% if payouts %}
+<h2 class="page-title mb-1">Review payouts — {{ batch.get_source_display }}</h2>
+<p class="text-muted small mb-3">This report lists payouts by reservation code, with no stay dates, so it can't create reservations — it can only add the payout to reservations already on record. Nothing has been saved yet.</p>
+
+<div class="row row-cols-1 row-cols-md-3 g-2 mb-3">
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Will be attached</div><div class="fs-4 fw-semibold">{{ attach|length }}</div><div class="small text-muted">reservation{{ attach|length|pluralize }} on record</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Already paid</div><div class="fs-4 fw-semibold">{{ kept|length }}</div><div class="small text-muted">left as they are</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: {% if held %}color-mix(in srgb, var(--status-warning) 15%, white){% else %}var(--bs-light, #f8f9fa){% endif %}; border-radius: 10px;"><div class="small text-muted">Not on record yet</div><div class="fs-4 fw-semibold">{{ held|length }}</div><div class="small text-muted">held until the reservation arrives</div></div></div>
+</div>
+
+{% if held %}
+<div class="alert alert-warning small">
+    <strong>{{ held|length }} payout{{ held|length|pluralize }} {{ held|length|pluralize:"is,are" }} for reservations we don't have yet.</strong>
+    They are kept, and attach on their own the moment a reservation with that code comes in — from the VRBO inbox / reservations report, or a payout summary. Until then those reservations can't be matched to their payout.
+    <ul class="mb-0 mt-1">
+        {% for row in held|slice:":12" %}<li>{{ row.external_uid }}{% if row.guest_name %} · {{ row.guest_name }}{% endif %}{% if row.payout_date %} · est. {{ row.payout_date|date:"M j, Y" }}{% endif %}{% if is_admin %} · ${{ row.amount }}{% endif %}</li>{% endfor %}
+    </ul>
+    {% if held|length > 12 %}<div>…and {{ held|length|add:"-12" }} more.</div>{% endif %}
+</div>
+{% endif %}
+
+{% if attach %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">Payouts that will be attached</h6>
+    {% for row, booking in attach|slice:":40" %}
+    <div class="d-flex justify-content-between gap-2 flex-wrap border-top py-1 small">
+        <span>{{ booking.property.name }}{% if booking.unit %} — {{ booking.unit.label }}{% endif %} · {{ booking.check_in|date:"M j" }}–{{ booking.check_out|date:"M j" }} · {{ row.external_uid }}</span>
+        <span class="text-muted">{% if row.payout_date %}est. {{ row.payout_date|date:"M j, Y" }}{% endif %}{% if is_admin %} · <strong>${{ row.amount }}</strong>{% endif %}</span>
+    </div>
+    {% endfor %}
+    {% if attach|length > 40 %}<div class="small text-muted mt-1">…and {{ attach|length|add:"-40" }} more.</div>{% endif %}
+</div></div>
+{% endif %}
+
+<form method="post" action="{% url 'onsite_booking_import_apply' batch.pk %}">
+    {% csrf_token %}
+    <button class="btn btn-primary">Save payouts</button>
+    <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% elif portfolio %}
 <h2 class="page-title mb-1">Review import — portfolio-wide</h2>
 <p class="text-muted small mb-4">{{ batch.get_source_display }} · covers {{ batch.covers_start }} to {{ batch.covers_end }}. Nothing has been saved yet.</p>
 

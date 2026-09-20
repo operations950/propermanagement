@@ -95,6 +95,19 @@ def early_checkin_verdict(requested_at, checkin_at, ready_at, margin_minutes):
     return NOT_YET, f'The unit will not be ready until about {_fmt(ready_at)}.'
 
 
+def early_checkout_verdict(requested_at, checkout_at, assigned):
+    """(level, text) for a guest leaving EARLIER than normal: always good news
+    for the turnover."""
+    saved = _minutes(checkout_at - requested_at)
+    tail = ' and the cleaner can start then.' if assigned else ' — nobody is assigned to the cleaning yet, so it is a chance to line someone up early.'
+    return OK, f'Leaving {_duration(saved)} early ({_fmt(requested_at)} instead of {_fmt(checkout_at)}){tail}'
+
+
+def late_checkin_verdict(requested_at, checkin_at):
+    """(level, text) for a guest arriving LATER than normal: more time to clean."""
+    return OK, f'Arriving {_duration(_minutes(requested_at - checkin_at))} later ({_fmt(requested_at)} instead of {_fmt(checkin_at)}) gives the cleaner more time.'
+
+
 # --- building blocks -----------------------------------------------------------
 
 def _active_visit(booking):
@@ -125,21 +138,32 @@ def _cleaning_state(visit):
     return {**base, 'code': 'assigned', 'label': f'Assigned · {who} · not started', 'tone': INFO}
 
 
-def _requests_for(booking, kind):
-    return [r for r in booking.guest_requests.all() if r.kind == kind and r.status != GuestRequest.Status.DECLINED]
+def _requests_for(booking, kinds):
+    """The live (not declined) time changes of these kinds for a booking."""
+    return [r for r in booking.guest_requests.all() if r.kind in kinds and r.status != GuestRequest.Status.DECLINED]
 
 
-def _effective_time(booking_dt, requests, day, later):
-    """The booking's time on `day`, moved by an APPROVED request when it
-    moves it the right way (later for a checkout, earlier for a check-in)."""
+def _effective_time(booking_dt, requests, day):
+    """The booking's time on `day`, moved (earlier or later) by an APPROVED
+    change. A booking has at most one live change per time; if history left
+    several, the newest approved one stands."""
     best = booking_dt
     for r in requests:
-        if r.status != GuestRequest.Status.APPROVED:
-            continue
-        candidate = _at(day, r.requested_time)
-        if (later and candidate > best) or (not later and candidate < best):
-            best = candidate
+        if r.status == GuestRequest.Status.APPROVED:
+            best = _at(day, r.requested_time)
     return best
+
+
+def _time_tone(delta_minutes, good_when_negative, tight):
+    """Colour for a checkout or check-in time compared with normal. Leaving
+    early or arriving late is good (green): more time to clean. Leaving late or
+    arriving early is worse (amber, red when the turnover no longer fits)."""
+    if not delta_minutes:
+        return 'neutral'
+    good = (delta_minutes < 0) == good_when_negative
+    if good:
+        return GOOD
+    return CRITICAL if tight else WARNING
 
 
 def _ready_at(row, now, is_today, est):
@@ -318,17 +342,23 @@ def build_board(day=None, now=None, include_tomorrow=True):
         est = _est_minutes(visit, default_minutes)
         co_at = timezone.localtime(co.check_out) if co else None
         ci_at = timezone.localtime(ci.check_in) if ci else None
-        late_reqs = _requests_for(co, GuestRequest.Kind.LATE_CHECKOUT) if co else []
-        early_reqs = _requests_for(ci, GuestRequest.Kind.EARLY_CHECKIN) if ci else []
-        eff_out = _effective_time(co_at, late_reqs, day, later=True) if co else None
-        eff_in = _effective_time(ci_at, early_reqs, day, later=False) if ci else None
+        out_reqs = _requests_for(co, GuestRequest.CHECKOUT_KINDS) if co else []
+        in_reqs = _requests_for(ci, GuestRequest.CHECKIN_KINDS) if ci else []
+        eff_out = _effective_time(co_at, out_reqs, day) if co else None
+        eff_in = _effective_time(ci_at, in_reqs, day) if ci else None
+        out_delta = _minutes(eff_out - co_at) if co else 0
+        in_delta = _minutes(eff_in - ci_at) if ci else 0
+        tight_turn = bool(co and ci and _minutes(eff_in - eff_out) < est)
 
         row = {
             'key': f'{slot["property"].pk}-{slot["unit"].pk if slot["unit"] else 0}', 'day': day, 'label': label,
             'property': slot['property'], 'unit': slot['unit'], 'checkout': co, 'checkin': ci, 'staying': stay,
             'visit': visit, 'cleaning': state, 'est_minutes': est,
             'checkout_at': eff_out, 'checkin_at': eff_in, 'scheduled_checkout_at': co_at, 'scheduled_checkin_at': ci_at,
-            'late_checkout_moved': bool(co and eff_out != co_at), 'early_checkin_moved': bool(ci and eff_in != ci_at),
+            'late_checkout_moved': bool(co and eff_out > co_at), 'early_checkin_moved': bool(ci and eff_in < ci_at),
+            'checkout_delta': out_delta, 'checkin_delta': in_delta,
+            'checkout_tone': _time_tone(out_delta, True, tight_turn), 'checkin_tone': _time_tone(in_delta, False, tight_turn),
+            'checkout_shift': _duration(abs(out_delta)) if out_delta else '', 'checkin_shift': _duration(abs(in_delta)) if in_delta else '',
             'requests': [], 'turnover': bool(co and ci), 'gap_minutes': None,
         }
         row['sort_at'] = eff_out or eff_in
@@ -343,12 +373,18 @@ def build_board(day=None, now=None, include_tomorrow=True):
 
         # Requests, each with its answer.
         cleaning_begun = bool(visit and (visit.started_at or visit.status in (Visit.Status.IN_PROGRESS, Visit.Status.SUBMITTED, Visit.Status.VERIFIED)))
-        for r in late_reqs:
-            level, text = late_checkout_verdict(_at(day, r.requested_time), co_at, eff_in if ci else None, est, buffer, cleaning_begun)
-            row['requests'].append({'request': r, 'verdict': level, 'text': text, 'kind': r.kind, 'at': _at(day, r.requested_time)})
-        for r in early_reqs:
-            level, text = early_checkin_verdict(_at(day, r.requested_time), ci_at, _ready_at(row, now, is_today, est), margin)
-            row['requests'].append({'request': r, 'verdict': level, 'text': text, 'kind': r.kind, 'at': _at(day, r.requested_time)})
+        assigned = bool(visit and (visit.assigned_staff_id or visit.assigned_contact_id))
+        for r in out_reqs + in_reqs:
+            at_time = _at(day, r.requested_time)
+            if r.kind == GuestRequest.Kind.LATE_CHECKOUT:
+                level, text = late_checkout_verdict(at_time, co_at, eff_in if ci else None, est, buffer, cleaning_begun)
+            elif r.kind == GuestRequest.Kind.EARLY_CHECKOUT:
+                level, text = early_checkout_verdict(at_time, co_at, assigned)
+            elif r.kind == GuestRequest.Kind.LATE_CHECKIN:
+                level, text = late_checkin_verdict(at_time, ci_at)
+            else:
+                level, text = early_checkin_verdict(at_time, ci_at, _ready_at(row, now, is_today, est), margin)
+            row['requests'].append({'request': r, 'verdict': level, 'text': text, 'kind': r.kind, 'at': at_time})
 
         # Cleaning-side items (only for a real checkout).
         if co and state['code'] not in ('submitted', 'verified'):
@@ -391,10 +427,10 @@ def build_board(day=None, now=None, include_tomorrow=True):
             r = entry['request']
             if r.status != GuestRequest.Status.PENDING:
                 continue
-            kind_word = 'late checkout' if r.kind == GuestRequest.Kind.LATE_CHECKOUT else 'early check-in'
+            kind_word = r.get_kind_display().lower()
             tone = GOOD if entry['verdict'] in (OK, MOOT) else (WARNING if entry['verdict'] in (TIGHT, UNKNOWN) else CRITICAL)
             add_item(tone, f'{kind_word.capitalize()} request',
-                     f'{label}: guest asked for a {kind_word} at {_fmt(entry["at"])}. {entry["text"]}', row, request=r, verdict=entry['verdict'])
+                     f'{label}: guest asked for {"an" if kind_word[0] in "ae" else "a"} {kind_word} at {_fmt(entry["at"])}. {entry["text"]}', row, request=r, verdict=entry['verdict'])
         rows.append(row)
 
     far = day_end + timedelta(days=3650)
@@ -440,28 +476,62 @@ class RequestError(ValueError):
 
 
 def record_request(booking, kind, requested_time, note='', user=None):
-    """Logs a guest's early check-in / late checkout request. It must move the
-    time the right way, and a booking has at most one open request of each
-    kind (decide or remove it before logging another)."""
-    if kind not in GuestRequest.Kind.values:
-        raise RequestError('Choose early check-in or late checkout.')
+    """Logs a change to a booking's checkout or check-in time — earlier or later.
+    `kind` is 'checkout' or 'checkin' (the direction is worked out from the time
+    against the normal one) or one of the four specific kinds, which must match
+    the direction. A booking has at most one live change per time (decide or
+    remove it before logging another). A change that helps the turnover — a
+    guest leaving early or arriving late — is simply approved and the cleaner
+    told; one that hurts (leaving late, arriving early) waits for a decision."""
+    if kind not in GuestRequest.Kind.values and kind not in ('checkout', 'checkin'):
+        raise RequestError('Choose whether the checkout or the check-in time is changing.')
     if booking.status != Booking.Status.ACTIVE:
         raise RequestError('That reservation is cancelled.')
     if not isinstance(requested_time, time):
         raise RequestError('Enter the time the guest asked for.')
-    if kind == GuestRequest.Kind.LATE_CHECKOUT:
-        scheduled = timezone.localtime(booking.check_out)
-        if _at(scheduled.date(), requested_time) <= scheduled:
-            raise RequestError(f'A late checkout has to be after the normal checkout ({_fmt(scheduled)}).')
-    else:
-        scheduled = timezone.localtime(booking.check_in)
-        if _at(scheduled.date(), requested_time) >= scheduled:
-            raise RequestError(f'An early check-in has to be before the normal check-in ({_fmt(scheduled)}).')
-    if GuestRequest.objects.filter(booking=booking, kind=kind).exclude(status=GuestRequest.Status.DECLINED).exists():
-        raise RequestError('That reservation already has this kind of request — decide or remove it first.')
-    return GuestRequest.objects.create(
-        booking=booking, kind=kind, requested_time=requested_time, note=(note or '').strip()[:200], created_by=user,
+    is_checkout = kind == 'checkout' or kind in GuestRequest.CHECKOUT_KINDS
+    scheduled = timezone.localtime(booking.check_out if is_checkout else booking.check_in)
+    requested_dt = _at(scheduled.date(), requested_time)
+    word = 'checkout' if is_checkout else 'check-in'
+    if requested_dt == scheduled:
+        raise RequestError(f'That is the normal {word} time ({_fmt(scheduled)}) — nothing to change.')
+    later = requested_dt > scheduled
+    inferred = (
+        (GuestRequest.Kind.LATE_CHECKOUT if later else GuestRequest.Kind.EARLY_CHECKOUT) if is_checkout
+        else (GuestRequest.Kind.LATE_CHECKIN if later else GuestRequest.Kind.EARLY_CHECKIN)
     )
+    if kind in GuestRequest.Kind.values and kind != inferred:
+        if kind == GuestRequest.Kind.LATE_CHECKOUT:
+            raise RequestError(f'A late checkout has to be after the normal checkout ({_fmt(scheduled)}).')
+        if kind == GuestRequest.Kind.EARLY_CHECKIN:
+            raise RequestError(f'An early check-in has to be before the normal check-in ({_fmt(scheduled)}).')
+        raise RequestError(f'That time is {"later" if later else "earlier"} than the normal {word} ({_fmt(scheduled)}), so it is not an {GuestRequest.Kind(kind).label.lower()}.')
+    live = GuestRequest.objects.filter(booking=booking, kind__in=GuestRequest.CHECKOUT_KINDS if is_checkout else GuestRequest.CHECKIN_KINDS)
+    if live.exclude(status=GuestRequest.Status.DECLINED).exists():
+        raise RequestError(f'That reservation already has this kind of request (a {word} time change) — decide or remove it first.')
+    helpful = inferred in GuestRequest.HELPFUL_KINDS
+    created = GuestRequest.objects.create(
+        booking=booking, kind=inferred, requested_time=requested_time, note=(note or '').strip()[:200], created_by=user,
+        status=GuestRequest.Status.APPROVED if helpful else GuestRequest.Status.PENDING,
+        decided_by=user if helpful else None, decided_at=timezone.now() if helpful else None,
+    )
+    if helpful:
+        tell_cleaners(created)
+    return created
+
+
+def tell_cleaners(guest_request):
+    """After a time change is approved: message the cleaner of each affected
+    visit (the one for this booking's checkout, or the one before this booking's
+    check-in) who already has their link. Best-effort."""
+    from django.db import transaction
+    from django.db.models import Q
+    from .notify import notify_time_change
+
+    booking_id = guest_request.booking_id
+    pks = list(Visit.objects.filter(Q(booking_id=booking_id) | Q(next_booking_id=booking_id)).values_list('pk', flat=True))
+    for pk in pks:
+        transaction.on_commit(lambda pk=pk: notify_time_change(Visit(pk=pk)))
 
 
 def decide_request(guest_request, decision, user=None):
@@ -472,4 +542,6 @@ def decide_request(guest_request, decision, user=None):
     guest_request.decided_by = user
     guest_request.decided_at = timezone.now()
     guest_request.save(update_fields=['status', 'decided_by', 'decided_at'])
+    if guest_request.status == GuestRequest.Status.APPROVED:
+        tell_cleaners(guest_request)
     return guest_request

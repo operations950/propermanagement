@@ -428,3 +428,76 @@ def read_csv_header(uploaded_file):
     text = file_bytes.decode('utf-8-sig', errors='replace')
     reader = csv.DictReader(io.StringIO(text))
     return reader.fieldnames
+
+
+# --- payouts-only reports ----------------------------------------------------------------
+
+@dataclass
+class PayoutRow:
+    """One line of a payouts-only report: money for a reservation, identified
+    by its confirmation code. No stay dates, so it can never create a booking."""
+    external_uid: str
+    amount: Decimal
+    payout_date: date | None = None
+    status: str = ''
+    guest_name: str = ''
+    platform_property_id: str = ''
+
+
+def is_payout_file(fieldnames):
+    """True for a report that lists payouts by reservation code without any stay
+    dates — VRBO's "upcoming payouts" export ('Reservation ID', 'Est. payout
+    date', 'Amount', ...). The payout SUMMARY export also has payout dates, but
+    it carries check-in and check-out too, so it is a reservations file."""
+    lowered = {(f or '').strip().lower() for f in fieldnames or []}
+    has_code = bool(lowered & {'reservation id', 'confirmation code'})
+    has_stay = bool(lowered & set(_CSV_FIELD_ALIASES['check_in']))
+    return has_code and not has_stay and bool(lowered & {'est. payout date', 'estimated payout date', 'payout date'}) and 'amount' in lowered
+
+
+def parse_payouts_csv(file_bytes):
+    text = file_bytes.decode('utf-8-sig', errors='replace')
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames or not is_payout_file(reader.fieldnames):
+        raise BookingFileError('This does not look like a payouts report (no reservation code, payout date and amount columns).')
+    columns = {
+        'uid': _find_column(reader.fieldnames, ['reservation id', 'confirmation code']),
+        'amount': _find_column(reader.fieldnames, ['amount']),
+        'date': _find_column(reader.fieldnames, ['est. payout date', 'estimated payout date', 'payout date']),
+        'status': _find_column(reader.fieldnames, ['status']),
+        'guest': _find_column(reader.fieldnames, ['guest name', 'guest']),
+        'property': _find_column(reader.fieldnames, ['property id']),
+    }
+    rows, seen = [], set()
+    for row in reader:
+        uid = (row.get(columns['uid']) or '').strip()
+        amount = _money(row.get(columns['amount']))
+        if not uid or amount is None:
+            continue    # the "Total: ..." trailer, or a blank line
+        if uid in seen:
+            # A reservation paid in installments lists one line each; they add up.
+            first = next(r for r in rows if r.external_uid == uid)
+            first.amount += amount
+            continue
+        seen.add(uid)
+        raw_date = (row.get(columns['date']) or '').strip() if columns['date'] else ''
+        try:
+            payout_date = _parse_csv_date(raw_date) if raw_date else None
+        except BookingFileError:
+            payout_date = None
+        rows.append(PayoutRow(
+            external_uid=uid, amount=amount, payout_date=payout_date,
+            status=((row.get(columns['status']) or '').strip().lower() if columns['status'] else ''),
+            guest_name=(row.get(columns['guest']) or '').strip() if columns['guest'] else '',
+            platform_property_id=(row.get(columns['property']) or '').strip() if columns['property'] else '',
+        ))
+    if not rows:
+        raise BookingFileError('No payouts found in this file.')
+    return rows
+
+
+def parse_payouts_file(uploaded_file):
+    """parse_payouts_csv for an uploaded (or stored) file object."""
+    file_bytes = uploaded_file.read()
+    uploaded_file.seek(0)
+    return parse_payouts_csv(file_bytes)

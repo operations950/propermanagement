@@ -24,6 +24,7 @@
         {% if not board.is_today %}<a href="{% url 'onsite_str_today' %}" class="btn btn-outline-secondary btn-sm">Today</a>{% endif %}
         <a href="?date={{ next_day|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Next day"><i data-lucide="chevron-right" class="icon"></i></a>
         <a href="{% url 'onsite_reservation_list' %}" class="btn btn-outline-secondary btn-sm">Reservations</a>
+        {% if review_count %}<a href="{% url 'onsite_reservation_review' %}" class="btn btn-warning btn-sm">To review ({{ review_count }})</a>{% endif %}
         <a href="{% url 'onsite_performance' %}" class="btn btn-outline-secondary btn-sm">Performance</a>
         <a href="{% url 'onsite_dashboard' %}" class="btn btn-outline-secondary btn-sm">On-site visits</a>
     </div>
@@ -85,7 +86,7 @@
             <div style="flex: 1 1 380px; min-width: 0;">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     {% if row.checkout %}
-                    <span class="str-pill neutral">Out {{ row.checkout_at|time:"g:i A" }}{% if row.late_checkout_moved %} <span title="Late checkout approved (normally {{ row.scheduled_checkout_at|time:'g:i A' }})">· late</span>{% endif %}</span>
+                    <span class="str-pill {{ row.checkout_tone }}" title="{% if row.checkout_delta %}{% if row.checkout_delta < 0 %}Leaving early — good: the cleaner can start sooner{% else %}Leaving late — less time to clean{% endif %} (normally {{ row.scheduled_checkout_at|time:'g:i A' }}){% else %}Normal checkout time{% endif %}">Out {{ row.checkout_at|time:"g:i A" }}{% if row.checkout_delta %} · {{ row.checkout_shift }} {% if row.checkout_delta < 0 %}early{% else %}late{% endif %}{% endif %}</span>
                     <span class="str-arrow">→</span>
                     {% with c=row.cleaning %}
                     {% if c.visit %}<a href="{% url 'onsite_visit_detail' c.visit.pk %}" class="str-pill {{ c.tone }}">{{ c.label }}</a>{% else %}<span class="str-pill {{ c.tone }}">{{ c.label }}</span>{% endif %}
@@ -99,7 +100,7 @@
                     <span class="str-arrow">→</span>
                     {% endif %}
                     {% if row.checkin %}
-                    <span class="str-pill neutral">In {{ row.checkin_at|time:"g:i A" }}{% if row.early_checkin_moved %} <span title="Early check-in approved (normally {{ row.scheduled_checkin_at|time:'g:i A' }})">· early</span>{% endif %}</span>
+                    <span class="str-pill {{ row.checkin_tone }}" title="{% if row.checkin_delta %}{% if row.checkin_delta > 0 %}Arriving late — good: more time to clean{% else %}Arriving early — less time to clean{% endif %} (normally {{ row.scheduled_checkin_at|time:'g:i A' }}){% else %}Normal check-in time{% endif %}">In {{ row.checkin_at|time:"g:i A" }}{% if row.checkin_delta %} · {{ row.checkin_shift }} {% if row.checkin_delta > 0 %}late{% else %}early{% endif %}{% endif %}</span>
                     {% elif row.next_checkin_at %}
                     <span class="str-pill neutral" title="No guest arrives {% if board.is_today %}today{% else %}that day{% endif %}; this is the next one.">Next in {% if row.next_checkin_days == 1 %}{{ row.next_checkin_at|date:"D" }}{% else %}{{ row.next_checkin_at|date:"D M j" }}{% endif %} {{ row.next_checkin_at|time:"g:i A" }}</span>
                     {% else %}
@@ -109,10 +110,10 @@
 
                 {% for entry in row.requests %}
                 <div class="str-req mt-2 d-flex align-items-start gap-2 flex-wrap">
-                    <span class="str-pill {% if entry.request.status == 'approved' %}good{% elif entry.verdict == 'ok' or entry.verdict == 'moot' %}good{% elif entry.verdict == 'tight' or entry.verdict == 'unknown' %}warning{% else %}critical{% endif %}">
+                    <span class="str-pill {% if entry.request.status == 'approved' %}{% if entry.request.kind == 'early_checkout' or entry.request.kind == 'late_checkin' %}good{% else %}warning{% endif %}{% elif entry.verdict == 'ok' or entry.verdict == 'moot' %}good{% elif entry.verdict == 'tight' or entry.verdict == 'unknown' %}warning{% else %}critical{% endif %}">
                         {{ entry.request.get_kind_display }} · {{ entry.at|time:"g:i A" }} · {{ entry.request.get_status_display }}
                     </span>
-                    <span style="color: var(--ink-secondary);">{% if entry.request.note %}“{{ entry.request.note }}” · {% endif %}{% if entry.request.status == 'pending' %}{{ entry.text }}{% endif %}</span>
+                    <span style="color: var(--ink-secondary);">{% if entry.request.note %}“{{ entry.request.note }}” · {% endif %}{% if entry.request.status == 'pending' or entry.request.kind == 'early_checkout' or entry.request.kind == 'late_checkin' %}{{ entry.text }}{% endif %}</span>
                     {% if entry.request.status != 'pending' %}
                     <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="request_id" value="{{ entry.request.pk }}">
                         <button class="btn btn-link btn-sm p-0 text-danger">Remove</button></form>
@@ -122,22 +123,22 @@
 
                 {% if row.checkout or row.checkin %}
                 <details class="mt-2">
-                    <summary class="small" style="cursor: pointer; color: var(--ink-muted);">Log an early check-in / late checkout request</summary>
+                    <summary class="small" style="cursor: pointer; color: var(--ink-muted);">Change a checkout or check-in time (guest leaving early or late, arriving early or late)</summary>
                     <div class="d-flex flex-wrap gap-2 align-items-end mt-2">
                         {% if row.checkout %}
                         <form method="post" class="d-flex gap-2 align-items-end flex-wrap">
-                            {% csrf_token %}<input type="hidden" name="action" value="log_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="booking_id" value="{{ row.checkout.pk }}"><input type="hidden" name="kind" value="late_checkout">
-                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Late checkout until</label><input type="time" name="requested_time" class="form-control form-control-sm" required></div>
+                            {% csrf_token %}<input type="hidden" name="action" value="log_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="booking_id" value="{{ row.checkout.pk }}"><input type="hidden" name="kind" value="checkout">
+                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Guest checks out at (normally {{ row.scheduled_checkout_at|time:"g:i A" }})</label><input type="time" name="requested_time" class="form-control form-control-sm" required></div>
                             <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Note</label><input type="text" name="note" maxlength="200" class="form-control form-control-sm" placeholder="optional"></div>
-                            <button class="btn btn-outline-secondary btn-sm">Log late checkout</button>
+                            <button class="btn btn-outline-secondary btn-sm">Change checkout time</button>
                         </form>
                         {% endif %}
                         {% if row.checkin %}
                         <form method="post" class="d-flex gap-2 align-items-end flex-wrap">
-                            {% csrf_token %}<input type="hidden" name="action" value="log_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="booking_id" value="{{ row.checkin.pk }}"><input type="hidden" name="kind" value="early_checkin">
-                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Early check-in from</label><input type="time" name="requested_time" class="form-control form-control-sm" required></div>
+                            {% csrf_token %}<input type="hidden" name="action" value="log_request"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="booking_id" value="{{ row.checkin.pk }}"><input type="hidden" name="kind" value="checkin">
+                            <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Guest checks in at (normally {{ row.scheduled_checkin_at|time:"g:i A" }})</label><input type="time" name="requested_time" class="form-control form-control-sm" required></div>
                             <div><label class="form-label small mb-0" style="color: var(--ink-muted);">Note</label><input type="text" name="note" maxlength="200" class="form-control form-control-sm" placeholder="optional"></div>
-                            <button class="btn btn-outline-secondary btn-sm">Log early check-in</button>
+                            <button class="btn btn-outline-secondary btn-sm">Change check-in time</button>
                         </form>
                         {% endif %}
                     </div>

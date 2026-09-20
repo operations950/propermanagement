@@ -28,7 +28,7 @@ from vendorportal.models import AccessAttempt
 
 from . import google_calendar_push
 from .google_calendar_push import delete_visit_event
-from .importers import BookingFileError, detect_format, parse_booking_file, read_csv_header
+from .importers import BookingFileError, detect_format, is_payout_file, parse_booking_file, parse_payouts_file, read_csv_header
 from .models import (
     Booking, BookingFeed, BookingFeedHealth, CleaningPaymentBatch, GuestRequest, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
     PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule,
@@ -38,6 +38,7 @@ from .services import checklist as checklist_service
 from .services import feeds as feed_service
 from .services import recurring as recurring_service
 from .services import performance as performance_service
+from .services import review as review_service
 from .services import reservations as reservation_service
 from .services import str_board
 from .services import times as times_service
@@ -298,6 +299,34 @@ def _units_by_property_json():
     return dumps_for_script(grouped)
 
 
+def _create_payout_batch(user, source, uploaded_file):
+    """A payouts-only report (VRBO "upcoming payouts"): money by confirmation
+    code, no stay dates. Saved as a batch of its own kind; the preview shows what
+    it will attach to."""
+    rows = parse_payouts_file(uploaded_file)
+    dates = [r.payout_date for r in rows if r.payout_date] or [timezone.localdate()]
+    batch = ImportBatch.objects.create(
+        property=None, source=source, raw_file=uploaded_file, kind=ImportBatch.Kind.PAYOUTS,
+        covers_start=min(dates), covers_end=max(dates), imported_by=user,
+    )
+    return batch, None
+
+
+def _payout_preview_context(batch, rows):
+    from .services import payouts as payouts_service
+    existing = {b.external_uid: b for b in Booking.objects.filter(source=batch.source, external_uid__in=[r.external_uid for r in rows]).select_related('property', 'unit')}
+    attach, kept, held = [], [], []
+    for row in rows:
+        booking = existing.get(row.external_uid)
+        if booking is None:
+            held.append(row)
+        elif booking.payout_status == payouts_service.PAID and booking.payout_amount is not None:
+            kept.append((row, booking))
+        else:
+            attach.append((row, booking))
+    return {'batch': batch, 'payout_rows': rows, 'attach': attach, 'kept': kept, 'held': held, 'portfolio': False, 'payouts': True}
+
+
 def _create_import_batch(user, source, uploaded_file, property=None):
     """Shared by the generic upload form and each daily-upload-slot drop —
     parses the file, decides single-property vs. portfolio-wide the same
@@ -305,6 +334,8 @@ def _create_import_batch(user, source, uploaded_file, property=None):
     (batch, error_message); batch is None on error."""
     try:
         fmt = detect_format(uploaded_file.name)
+        if fmt == 'csv' and is_payout_file(read_csv_header(uploaded_file)):
+            return _create_payout_batch(user, source, uploaded_file)
         raw_bookings = parse_booking_file(uploaded_file)
     except BookingFileError as e:
         return None, str(e)
@@ -420,6 +451,15 @@ def booking_import_preview(request, batch_id):
     # Popped (not just read) so it only ever shows once, right after the
     # crash that produced it.
     debug_last_import_error = request.session.pop(DEBUG_LAST_IMPORT_ERROR_SESSION_KEY, None)
+    if batch.kind == ImportBatch.Kind.PAYOUTS:
+        try:
+            rows = parse_payouts_file(batch.raw_file)
+        except BookingFileError as e:
+            messages.error(request, f'Could not re-read the saved file: {e}')
+            return redirect('onsite_booking_import')
+        context = _payout_preview_context(batch, rows)
+        context['is_admin'] = _is_admin(request.user)
+        return render(request, 'onsite/booking_import_preview.html', context)
     try:
         raw_bookings = parse_booking_file(batch.raw_file)
     except BookingFileError as e:
@@ -476,6 +516,26 @@ def booking_import_apply(request, batch_id):
     batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
     if request.method != 'POST':
         return redirect('onsite_booking_import')
+
+    if batch.kind == ImportBatch.Kind.PAYOUTS:
+        from .services import payouts as payouts_service
+        try:
+            rows = parse_payouts_file(batch.raw_file)
+        except BookingFileError as e:
+            messages.error(request, f'Could not re-read the saved file: {e}')
+            return redirect('onsite_booking_import')
+        result = payouts_service.apply_payouts(batch.source, rows)
+        batch.new_count, batch.changed_count = 0, len(result['attached'])
+        batch.applied_at = timezone.now()
+        batch.save(update_fields=['new_count', 'changed_count', 'applied_at'])
+        messages.success(
+            request,
+            f'Payouts attached to {len(result["attached"])} reservation{"" if len(result["attached"]) == 1 else "s"}'
+            + (f'; {len(result["kept"])} already paid, left as they were' if result['kept'] else '')
+            + (f'; {len(result["held"])} for reservations not on record yet, held until they arrive' if result['held'] else '')
+            + '.',
+        )
+        return redirect('onsite_reservation_list')
 
     try:
         raw_bookings = parse_booking_file(batch.raw_file)
@@ -864,6 +924,7 @@ def reservation_list(request):
     return render(request, 'onsite/reservation_list.html', {
         'rows': rows, 'when': when, 'source': source, 'show': show, 'q': q, 'sources': Booking.Source.choices,
         'truncated': len(rows) == 300, 'today': today, 'is_admin': _is_admin(request.user),
+        'review_count': sum(review_service.counts()),
     })
 
 
@@ -915,6 +976,18 @@ def reservation_edit(request, pk):
 
 
 @login_required
+def reservation_review(request):
+    """Reservations that might not be real — overlaps, and upcoming ones with no
+    payout — for a person to cancel or confirm. See services/review.py."""
+    reach = review_service.coverage()
+    return render(request, 'onsite/reservation_review.html', {
+        'conflicts': review_service.conflicts(), 'unpaid': review_service.unpaid_upcoming(),
+        'reach': [(dict(Booking.Source.choices).get(src, src), day) for src, day in sorted(reach.items())],
+        'is_admin': _is_admin(request.user),
+    })
+
+
+@login_required
 @require_http_methods(['POST'])
 def reservation_cancel(request, pk):
     """Mark any reservation (platform or in-house) cancelled by hand, or undo
@@ -926,6 +999,10 @@ def reservation_cancel(request, pk):
         if request.POST.get('action') == 'restore':
             reservation_service.restore_booking(booking)
             messages.success(request, f'{who} is active again.')
+        elif request.POST.get('action') == 'confirm':
+            booking.confirmed_real = True
+            booking.save(update_fields=['confirmed_real'])
+            messages.success(request, f'{who} confirmed as a real reservation.')
         else:
             reservation_service.cancel_booking(booking, request.user)
             messages.success(request, f'{who} marked cancelled. Its cleaning was removed and imports won\'t bring it back.')
@@ -958,7 +1035,11 @@ def str_today(request):
                     booking, request.POST.get('kind', ''), requested, request.POST.get('note', ''), request.user,
                 )
                 t = guest_request.requested_time
-                messages.success(request, f'Logged: {guest_request.get_kind_display().lower()} at {t.hour % 12 or 12}:{t:%M} {"AM" if t.hour < 12 else "PM"}.')
+                messages.success(
+                    request,
+                    f'Logged: {guest_request.get_kind_display().lower()} at {t.hour % 12 or 12}:{t:%M} {"AM" if t.hour < 12 else "PM"}.'
+                    + (' It helps the turnover, so it is approved — the cleaner has been told.' if guest_request.status == GuestRequest.Status.APPROVED else ''),
+                )
             elif action == 'decide_request':
                 guest_request = get_object_or_404(GuestRequest, pk=request.POST.get('request_id'))
                 decision = request.POST.get('decision', '')
@@ -974,7 +1055,7 @@ def str_today(request):
 
     board = str_board.build_board(day)
     return render(request, 'onsite/str_today.html', {
-        'board': board, 'day': day, 'today': today,
+        'board': board, 'day': day, 'today': today, 'review_count': sum(review_service.counts()),
         'previous_day': day - timedelta(days=1), 'next_day': day + timedelta(days=1),
         'is_admin': _is_admin(request.user),
     })
