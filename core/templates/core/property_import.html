@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Import property details{% endblock %}
+{% block content %}
+<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Admin Tools</a>
+<h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="file-up" class="icon-lg"></i> Import property details</h2>
+
+{% if stage == 'paste' %}
+<p class="text-muted small">Paste a JSON file of property details. Nothing is saved yet — you'll see, record by record, what would change. Passwords are never displayed on this screen, and the pasted text isn't stored — passwords are kept only on the property or unit they belong to.</p>
+<form method="post" class="card" style="border-radius: var(--bs-border-radius-lg);">
+    {% csrf_token %}<input type="hidden" name="action" value="preview">
+    <div class="card-body">
+        <label class="form-label small fw-medium" for="payload">The JSON</label>
+        <textarea name="payload" id="payload" rows="14" class="form-control font-monospace small" spellcheck="false" autocomplete="off" placeholder='{"records": [ {"property_id": 12, "unit": "Wave", "wifi_network": "...", ...} ]}'>{{ payload }}</textarea>
+        <div class="form-text">Each record is one listing: <code>property_id</code>, <code>unit</code>, <code>listing</code>, <code>check_in_time</code>, <code>check_out_time</code>, <code>wifi_network</code>, <code>wifi_password</code>, <code>access_note</code>, <code>parking</code>, <code>laundry</code>, <code>trash</code>, <code>amenity_notes</code>. Anything missing or null is left alone.</div>
+        <button class="btn btn-primary btn-sm mt-3">Preview what would change</button>
+    </div>
+</form>
+<div class="text-muted small mt-3">
+    <strong>Where things go.</strong> Check-in/check-out times and wifi go on the property (or on each unit, when the units' wifi differs). How-to-get-in goes on the unit (or the property). Parking, laundry, trash and house tips become FAQ answers written as staff — for the whole property when the same words apply to two or more units, otherwise for one unit — so the message assistant can read them but can't overwrite them. Addresses are never changed.
+</div>
+
+{% elif stage == 'done' %}
+<div class="alert alert-success">
+    <strong>Done.</strong> {{ result.properties }} propert{{ result.properties|pluralize:"y,ies" }} updated · {{ result.fields }} field{{ result.fields|pluralize }} set{% if result.units_created %} · {{ result.units_created }} unit{{ result.units_created|pluralize }} created{% endif %} · {{ result.faq_added }} FAQ answer{{ result.faq_added|pluralize }} added{% if result.faq_replaced %}, {{ result.faq_replaced }} replaced{% endif %}.
+</div>
+{% if result.skipped %}<div class="alert alert-warning small"><strong>Not saved:</strong>{% for s in result.skipped %}<div>{{ s }}</div>{% endfor %}</div>{% endif %}
+<p class="small text-muted">The pasted file was not kept. Open a property to check it — or paste another file.</p>
+<a href="{% url 'property_data_import' %}" class="btn btn-outline-secondary btn-sm">Import another file</a>
+
+{% else %}
+<p class="text-muted small">{{ record_count }} record{{ record_count|pluralize }}. <strong>Nothing has been saved.</strong> Untick anything you don't want, choose the unit where it isn't clear, then apply. Passwords show only as "will change".</p>
+<form method="post" id="import-form">
+    {% csrf_token %}<input type="hidden" name="payload" value="{{ payload }}"><input type="hidden" name="from_preview" value="1">
+    {% for block in plan %}
+    <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-2">
+            <div>
+                <h6 class="mb-0">{% if block.property %}{{ block.property.name }} <span class="text-muted fw-normal small">· property {{ block.property_id }}{% if block.property.units.all %} · {{ block.property.units.all|length }} unit{{ block.property.units.all|length|pluralize }}{% endif %}</span>{% else %}Property {{ block.property_id|default:"?" }}{% endif %}</h6>
+            </div>
+            {% if block.property %}<div class="form-check"><input class="form-check-input" type="checkbox" name="apply_prop_{{ block.property_id }}" id="ap-{{ block.property_id }}" {% if block.apply %}checked{% endif %}><label class="form-check-label small" for="ap-{{ block.property_id }}">Apply the property-wide changes</label></div>{% endif %}
+        </div>
+        {% for e in block.errors %}<div class="alert alert-warning small py-2 mb-2">{{ e }}</div>{% endfor %}
+        {% if block.property_changes %}
+        <div class="small fw-semibold text-uppercase text-muted mb-1" style="letter-spacing: 0.04em;">Whole property</div>
+        {% include 'core/_import_changes.html' with changes=block.property_changes %}
+        {% endif %}
+        {% for item in block.records %}
+        <div class="border rounded p-2 mt-2 {% if not item.apply %}bg-body-tertiary{% endif %}">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                <div>
+                    <div class="fw-medium">{{ item.record.listing|default:"(no listing title)" }}</div>
+                    <div class="small text-muted">
+                        {% if item.record.unit %}Unit on the sheet: <strong>{{ item.record.unit }}</strong>{% else %}No unit named{% endif %}
+                        {% if item.unit %} → <strong>{{ item.unit.label }}</strong> <span>({{ item.unit_how }})</span>{% elif item.create %} → {{ item.unit_how }}{% elif item.unit_how %} → {{ item.unit_how }}{% endif %}
+                    </div>
+                </div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="apply_{{ item.index }}" id="ar-{{ item.index }}" {% if item.apply %}checked{% endif %}><label class="form-check-label small" for="ar-{{ item.index }}">Apply</label></div>
+            </div>
+            {% if block.property and item.record.unit_core %}
+            <div class="d-flex gap-2 align-items-center flex-wrap mt-1">
+                <label class="small text-muted mb-0" for="unit-{{ item.index }}">This is</label>
+                <select name="unit_{{ item.index }}" id="unit-{{ item.index }}" class="form-select form-select-sm" style="max-width: 280px;" onchange="document.getElementById('import-form').querySelector('[name=action]').value='refresh'; this.form.submit();">
+                    <option value="auto" {% if item.unit_pick == 'auto' %}selected{% endif %}>{% if item.unit %}{{ item.unit.label }} (matched){% else %}— choose —{% endif %}</option>
+                    {% for u in item.unit_options %}{% if not item.unit or u.pk != item.unit.pk %}<option value="{{ u.pk }}" {% if item.unit_pick == u.pk|stringformat:"s" %}selected{% endif %}>{{ u.label }}</option>{% endif %}{% endfor %}
+                    <option value="new" {% if item.unit_pick == 'new' %}selected{% endif %}>Create a unit "{{ item.record.unit_core }}"</option>
+                    <option value="none" {% if item.unit_pick == 'none' %}selected{% endif %}>The whole property (no unit)</option>
+                </select>
+            </div>
+            {% endif %}
+            {% for w in item.warnings %}<div class="small mt-1" style="color: #8a5d00;"><i data-lucide="triangle-alert" class="icon"></i> {{ w }}</div>{% endfor %}
+            {% if item.changes %}{% include 'core/_import_changes.html' with changes=item.changes %}{% else %}<div class="small text-muted mt-1">Nothing to change for this record{% if not item.warnings %} — it's already up to date{% endif %}.</div>{% endif %}
+        </div>
+        {% endfor %}
+    </div></div>
+    {% endfor %}
+    <input type="hidden" name="action" value="apply">
+    <div class="sticky-bottom py-2" style="background: var(--surface-page);">
+        <button class="btn btn-primary" onclick="return confirm('Apply the ticked changes to production data?');">Apply the ticked changes</button>
+        <a href="{% url 'property_data_import' %}" class="btn btn-link">Start over</a>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

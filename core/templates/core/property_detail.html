@@ -222,7 +222,7 @@
             <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="messages-square" class="icon"></i> FAQ — what the message assistant knows</h6>
             {% if faq_unreviewed_count %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{{ faq_unreviewed_count }} to review</span>{% endif %}
         </div>
-        <p class="text-muted small mb-3">Questions guests ask about this property, and the answers. The assistant reads these when it replies and adds to them as it learns. Anything you write or review is locked, so the assistant can use it but not change it. Door codes and the wifi password can't be saved here — they stay in Access &amp; systems, so a changed code never leaves an old copy behind.</p>
+        <p class="text-muted small mb-3">{% if units %}<strong>Answers can belong to the whole building or to one unit</strong> (does <em>this</em> unit have an oven?) — the assistant is told which unit a guest is in and reads the building's answers plus that unit's. {% endif %}Questions guests ask about this property, and the answers. The assistant reads these when it replies and adds to them as it learns. Anything you write or review is locked, so the assistant can use it but not change it. Door codes and the wifi password can't be saved here — they stay in Access &amp; systems, so a changed code never leaves an old copy behind.</p>
 
         {% for f in faqs %}
         <div class="border-top py-2">
@@ -253,6 +253,12 @@
                     {% csrf_token %}<input type="hidden" name="action" value="faq_edit"><input type="hidden" name="faq_id" value="{{ f.pk }}">
                     <input type="text" name="question" class="form-control form-control-sm" maxlength="300" value="{{ f.question }}" required>
                     <textarea name="answer" class="form-control form-control-sm" rows="3" maxlength="2000" required>{{ f.answer }}</textarea>
+                    {% if units %}
+                    <select name="unit_id" class="form-select form-select-sm" style="max-width: 260px;" aria-label="Where this answer applies">
+                        <option value="" {% if not f.unit_id %}selected{% endif %}>Whole property</option>
+                        {% for u in units %}{% if u.is_active %}<option value="{{ u.pk }}" {% if f.unit_id == u.pk %}selected{% endif %}>{{ u.label }} only</option>{% endif %}{% endfor %}
+                    </select>
+                    {% endif %}
                     <div><button class="btn btn-primary btn-sm">Save (marks it reviewed)</button></div>
                 </form>
             </div>
@@ -660,6 +666,8 @@
                         <input type="hidden" name="unit_id" value="{{ unit.pk }}">
                         <input type="text" name="label" class="form-control form-control-sm" style="max-width: 140px;" value="{{ unit.label }}">
                         <input type="text" name="access_code" class="form-control form-control-sm" style="max-width: 120px;" placeholder="Access code" value="{{ unit.access_code }}">
+                        <input type="text" name="wifi_network" class="form-control form-control-sm" style="max-width: 150px;" placeholder="Wifi network (if its own)" value="{{ unit.wifi_network }}" autocomplete="off">
+                        <input type="text" name="wifi_password" class="form-control form-control-sm" style="max-width: 150px;" placeholder="Wifi password" value="{{ unit.wifi_password }}" autocomplete="off">
                         <input type="number" step="1" min="0" name="bedroom_count" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Bedrooms" value="{{ unit.bedroom_count|default_if_none:'' }}">
                         <input type="number" step="1" min="0" name="bed_count" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Beds" value="{{ unit.bed_count|default_if_none:'' }}">
                         <input type="number" step="0.5" min="0" name="bathroom_count" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Baths" value="{{ unit.bathroom_count|default_if_none:'' }}">
@@ -671,6 +679,7 @@
                         </div>
                         {% endif %}
                         <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)" value="{{ unit.notes }}">
+                        <textarea name="access_notes" class="form-control form-control-sm" rows="2" placeholder="How to get into this unit (which door, which side) — private">{{ unit.access_notes }}</textarea>
                         <div class="form-check">
                             <input type="checkbox" name="is_active" class="form-check-input" id="unit-active-{{ unit.pk }}" {% if unit.is_active %}checked{% endif %}>
                             <label class="form-check-label small" for="unit-active-{{ unit.pk }}">Active</label>

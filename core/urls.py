@@ -19,6 +19,7 @@ urlpatterns = [
     path('admin-tools/', views.admin_tools, name='admin_tools'),
     path('admin-tools/assistant-access/', views.bot_keys, name='bot_keys'),
     path('admin-tools/quickbooks-accounts/', views.quickbooks_accounts, name='quickbooks_accounts'),
+    path('admin-tools/import-property-details/', views.property_data_import, name='property_data_import'),
     path('close/', close_views.close_overview, name='close_overview'),
     path('close/<str:month>/<int:pk>/', close_views.close_property, name='close_property'),
     path('close/<str:month>/<int:pk>/unit/<int:unit_pk>/', close_views.close_property, name='close_unit'),

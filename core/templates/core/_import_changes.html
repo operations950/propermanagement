@@ -1,0 +1,12 @@
+{# One list of planned changes: changes = a list of dicts from core/property_import.py (secrets are already masked). #}
+<div class="small mt-1">
+    {% for c in changes %}
+    <div class="d-flex gap-2 py-1 border-top flex-wrap">
+        <div class="text-muted" style="min-width: 190px;">{{ c.label }}</div>
+        <div style="flex: 1 1 260px; min-width: 0; white-space: pre-line;">
+            {% if c.blocked %}<span style="color: var(--status-critical);">Not saved — {{ c.blocked }}</span>
+            {% else %}{% if c.old and c.old != '—' %}<span class="text-muted text-decoration-line-through">{{ c.old }}</span> → {% endif %}<strong>{{ c.new }}</strong>{% if c.replaces %} <span class="badge text-bg-light border">replaces an existing answer</span>{% endif %}{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>

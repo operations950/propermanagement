@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import never_cache
 
 from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
 from processes.models import ProcessTemplate
@@ -523,6 +524,46 @@ def _list_quo_phone_lines():
     ]
     cache.set('quo_phone_lines', lines, timeout=3600)
     return lines
+
+
+def _import_choices(post, records):
+    """What the person ticked and picked on the preview (only meaningful once a preview was shown)."""
+    if 'from_preview' not in post:
+        return {}
+    choices = {'prop': {}}
+    for rec in records:
+        i = rec['index']
+        choices[i] = {'unit': post.get(f'unit_{i}', 'auto') or 'auto', 'apply': f'apply_{i}' in post}
+        if rec['property_id'] is not None:
+            choices['prop'][rec['property_id']] = f'apply_prop_{rec["property_id"]}' in post
+    return choices
+
+
+@never_cache
+@login_required
+@user_passes_test(_is_admin)
+def property_data_import(request):
+    """Admin: paste a JSON file of property details (wifi, check-in times, parking, laundry,
+    how to get in, ...) — see core/property_import.py. Nothing is applied until the
+    preview is confirmed, and passwords are never shown back."""
+    from . import property_import
+    context = {'stage': 'paste', 'payload': ''}
+    if request.method == 'POST':
+        payload = request.POST.get('payload', '')
+        context['payload'] = payload
+        try:
+            records = property_import.parse(payload)
+        except property_import.ImportError_ as exc:
+            messages.error(request, str(exc))
+            return render(request, 'core/property_import.html', context)
+        plan = property_import.build_plan(records, _import_choices(request.POST, records))
+        if request.POST.get('action') == 'apply':
+            result = property_import.apply_plan(plan, request.user)
+            logger.info('Property details import by %s: %s properties, %s fields, %s FAQ added, %s replaced', request.user.pk, result['properties'], result['fields'], result['faq_added'], result['faq_replaced'])
+            context.update(stage='done', result=result, payload='')
+            return render(request, 'core/property_import.html', context)
+        context.update(stage='preview', plan=plan, record_count=len(records))
+    return render(request, 'core/property_import.html', context)
 
 
 def _qb_mapping_targets(rentals):
@@ -1032,7 +1073,10 @@ def _property_faq_action(request, prop, action):
             return
         entry = get_object_or_404(PropertyFAQ, pk=request.POST.get('faq_id'), property=prop)
         if action == 'faq_edit':
-            faq_service.staff_edit(entry, request.user, request.POST.get('question', ''), request.POST.get('answer', ''))
+            unit = faq_service.KEEP_UNIT
+            if 'unit_id' in request.POST:      # the edit form says where the answer applies; older forms say nothing
+                unit = prop.units.filter(pk=request.POST['unit_id']).first() if request.POST['unit_id'].isdigit() else None
+            faq_service.staff_edit(entry, request.user, request.POST.get('question', ''), request.POST.get('answer', ''), unit=unit)
             messages.success(request, 'FAQ entry saved and marked reviewed.')
         elif action == 'faq_review':
             faq_service.staff_review(entry, request.user)
@@ -1189,6 +1233,9 @@ def property_detail(request, pk):
             if label:
                 unit.label = label
             unit.access_code = request.POST.get('access_code', '').strip()
+            for field in ('wifi_network', 'wifi_password', 'access_notes'):
+                if field in request.POST:      # forms that predate these fields don't send them
+                    setattr(unit, field, request.POST[field].strip())
             unit.notes = request.POST.get('notes', '').strip()
             unit.is_active = request.POST.get('is_active') == 'on'
             unit.bedroom_count = _parse_int(request.POST.get('bedroom_count'))

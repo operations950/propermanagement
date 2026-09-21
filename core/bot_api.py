@@ -23,7 +23,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from . import faq as faq_service
 from .models import BotAccessKey, Property, PropertyFAQ, Unit
-from .property_profile import build_profile, faq_entry, render_text
+from .property_profile import build_profile, faq_entry, faq_for, render_text
 
 MAX_BODY = 32 * 1024
 
@@ -113,14 +113,33 @@ def property_search(request):
             Q(name__icontains=token) | Q(address__icontains=token) | Q(units__label__icontains=token)
             | Q(listing_names__name__icontains=token),
         )
-    props = qs.distinct().order_by('name').prefetch_related('units')[:50]
+    tokens = [t.lower() for t in request.GET.get('q', '').split()]
+    props = qs.distinct().order_by('name').prefetch_related('units', 'listing_names')[:50]
     return JsonResponse({'properties': [
         {
             'id': p.pk, 'name': p.name, 'address': p.address, 'type': p.property_type, 'active': p.is_active,
-            'units': [u.label for u in p.units.all() if u.is_active],
+            'units': [{'id': u.pk, 'label': u.label} for u in p.units.all() if u.is_active],
+            'matched_unit': _matched_unit(p, tokens),
         }
         for p in props
     ]})
+
+
+def _matched_unit(prop, tokens):
+    """The one unit the search words point at — through the unit's label or one of its
+    own platform listing titles — or None when they name the whole building or don't
+    single a unit out. So a listing title like "800 Tropic - Wave (C)" finds Wave."""
+    if not tokens:
+        return None
+    building = ' '.join([prop.name, prop.address] + [ln.name for ln in prop.listing_names.all() if not ln.unit_id]).lower()
+    hits = []
+    for unit in prop.units.all():
+        if not unit.is_active:
+            continue
+        own = ' '.join([unit.label] + [ln.name for ln in prop.listing_names.all() if ln.unit_id == unit.pk]).lower()
+        if any(t in own for t in tokens) and all(t in own or t in building for t in tokens):
+            hits.append(unit)
+    return {'id': hits[0].pk, 'label': hits[0].label} if len(hits) == 1 else None
 
 
 @bot_api(['GET'])
@@ -129,14 +148,21 @@ def property_profile(request, pk):
     if prop is None:
         return _error(404, 'not_found', 'No such property.')
     key = request.bot_key
-    profile = build_profile(prop, access=key.allow_access_info, internal=key.allow_internal_info)
+    try:
+        unit = _unit_from(prop, request.GET.get('unit_id'))
+    except faq_service.FAQError as err:
+        return _faq_error(err)
+    profile = build_profile(prop, access=key.allow_access_info, internal=key.allow_internal_info, unit=unit)
     if request.GET.get('format') == 'text':
         return HttpResponse(render_text(profile), content_type='text/plain; charset=utf-8')
     return JsonResponse(profile)
 
 
 def _faq_queryset(prop, request):
-    qs = prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE).select_related('unit')
+    """The FAQ, searched by words. With unit_id: the whole property's answers plus that
+    unit's (not another unit's)."""
+    unit = _unit_from(prop, request.GET.get('unit_id'))
+    qs = faq_for(prop, unit)
     for token in request.GET.get('q', '').split():
         qs = qs.filter(Q(question__icontains=token) | Q(answer__icontains=token))
     return qs.order_by('question')
@@ -162,7 +188,11 @@ def faq_collection(request, pk):
     if prop is None:
         return _error(404, 'not_found', 'No such property.')
     if request.method == 'GET':
-        return JsonResponse({'property_id': prop.pk, 'faq': [faq_entry(e) for e in _faq_queryset(prop, request)]})
+        try:
+            entries = _faq_queryset(prop, request)
+        except faq_service.FAQError as err:
+            return _faq_error(err)
+        return JsonResponse({'property_id': prop.pk, 'faq': [faq_entry(e) for e in entries]})
     if not request.bot_key.allow_faq_write:
         return _error(403, 'forbidden', 'This key is not allowed to write FAQ entries.')
     try:
@@ -177,7 +207,7 @@ def faq_collection(request, pk):
             return _faq_error(err)
         return _error(400, 'bad_request', str(err))
     payload = {'created': created, 'entry': faq_entry(entry)}
-    similar = faq_service.similar(prop, entry.question_key, exclude_pk=entry.pk)
+    similar = faq_service.similar(prop, entry.question_key, unit=entry.unit, exclude_pk=entry.pk)
     if similar:
         payload['similar'] = [{'id': s.pk, 'question': s.question} for s in similar]
     return JsonResponse(payload, status=201 if created else 200)

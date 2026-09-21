@@ -11,6 +11,7 @@
 import re
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import PropertyFAQ
@@ -51,7 +52,7 @@ def secret_values(prop):
     """Every value on this property (and its units) that must not be copied into
     an FAQ."""
     values = {prop.gate_code, prop.door_code, prop.lockbox_code, prop.alarm_code, prop.wifi_password}
-    values |= {u.access_code for u in prop.units.all()}
+    values |= {u.access_code for u in prop.units.all()} | {u.wifi_password for u in prop.units.all()}
     return sorted((v.strip() for v in values if v and len(v.strip()) >= MIN_SECRET_LEN), key=len, reverse=True)
 
 
@@ -85,12 +86,17 @@ def validate(prop, question, answer):
 
 def similar(prop, key, unit=None, exclude_pk=None, limit=5):
     """Active entries whose questions share most of their words with `key`, to
-    help the writer notice a near-duplicate."""
+    help the writer notice a near-duplicate. An answer for one unit is compared
+    with that unit's entries and the whole property's; a whole-property answer
+    with the whole property's only — "Is there an oven?" for Wave and for Reef are
+    different questions, not duplicates."""
     mine = set(key.split())
     if not mine:
         return []
     found = []
-    for entry in PropertyFAQ.objects.filter(property=prop, status=PropertyFAQ.Status.ACTIVE).exclude(pk=exclude_pk):
+    scope = PropertyFAQ.objects.filter(property=prop, status=PropertyFAQ.Status.ACTIVE)
+    scope = scope.filter(Q(unit__isnull=True) | Q(unit=unit)) if unit is not None else scope.filter(unit__isnull=True)
+    for entry in scope.exclude(pk=exclude_pk):
         theirs = set(entry.question_key.split())
         if theirs and len(mine & theirs) / len(mine | theirs) >= 0.5:
             found.append(entry)
@@ -176,15 +182,21 @@ def staff_add(prop, user, question, answer, unit=None):
     )
 
 
+KEEP_UNIT = object()
+
+
 @transaction.atomic
-def staff_edit(entry, user, question, answer):
-    """Staff correct an entry; doing so counts as reviewing it."""
+def staff_edit(entry, user, question, answer, unit=KEEP_UNIT):
+    """Staff correct an entry (and may move it between the whole property and one
+    unit); doing so counts as reviewing it."""
     question, answer, key = validate(entry.property, question, answer)
+    scope = entry.unit if unit is KEEP_UNIT else unit
     clash = PropertyFAQ.objects.filter(
-        property=entry.property, question_key=key, unit=entry.unit, status=PropertyFAQ.Status.ACTIVE,
+        property=entry.property, question_key=key, unit=scope, status=PropertyFAQ.Status.ACTIVE,
     ).exclude(pk=entry.pk).first()
     if clash:
-        raise FAQError('duplicate', 'Another entry already answers that question.', status=409, existing=clash)
+        raise FAQError('duplicate', 'Another entry already answers that question' + (' for that unit.' if scope is not None else '.'), status=409, existing=clash)
+    entry.unit = scope
     entry.question, entry.answer, entry.question_key = question, answer, key
     entry.reviewed, entry.reviewed_by, entry.reviewed_at = True, user, timezone.now()
     entry.save()

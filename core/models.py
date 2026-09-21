@@ -283,6 +283,12 @@ class Unit(models.Model):
         help_text="This unit's owner trust account on the balance sheet.",
     )
     ledger_synced_at = models.DateTimeField(null=True, blank=True, help_text="When this unit's QuickBooks transactions were last pulled in.")
+    # A unit's own wifi and how to get in, when they differ from the building's
+    # (the property's wifi_network / wifi_password / access_notes still apply to a
+    # unit that leaves these blank).
+    wifi_network = models.CharField(max_length=100, blank=True)
+    wifi_password = models.CharField(max_length=100, blank=True)
+    access_notes = models.TextField(blank=True, help_text="How to get into this unit (which door, which side of the building) — private, like the property's access notes.")
 
     class Meta:
         ordering = ['label']
