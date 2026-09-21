@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% block title %}{{ property.name }} — {{ month|date:"F Y" }} close{% endblock %}
+{% block content %}
+<a href="{% url 'close_overview' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title mb-0">{{ property.name }}</h2>
+        <p class="text-muted small mb-0">{{ month|date:"F Y" }}{% if close %} · <strong>closed</strong>{% endif %}{% if synced_at %} · synced from QuickBooks {{ synced_at|timesince }} ago{% endif %}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <div class="btn-group btn-group-sm">
+            <a href="{% url 'close_property' previous|date:'Y-m' property.pk %}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+            <a href="{% url 'close_property' next|date:'Y-m' property.pk %}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+        </div>
+        {% if not close %}
+        <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="sync"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Sync this rental</button></form>
+        {% endif %}
+    </div>
+</div>
+
+{% if close %}
+<div class="alert alert-secondary small d-flex align-items-start gap-2"><i data-lucide="lock" class="icon mt-1"></i><div><strong>Closed {{ close.closed_at|date:"F j, Y" }}{% if close.closed_by %} by {{ close.closed_by.get_full_name|default:close.closed_by.username }}{% endif %}.</strong> The figures below are frozen — nothing in QuickBooks changes them. If something was wrong, correct it in the current month.{% if close.note %}<br>Note: {{ close.note }}{% endif %}</div></div>
+{% endif %}
+
+{% if drift %}
+<div class="alert alert-danger small">
+    <strong>QuickBooks no longer matches this closed month.</strong> These changes were <strong>not</strong> applied — the closed numbers stand:
+    {% for d in drift %}
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-1">
+        <span>{{ d.get_kind_display }}: {{ d.detail }}</span>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="resolve_drift"><input type="hidden" name="change_id" value="{{ d.pk }}"><button class="btn btn-outline-secondary btn-sm">Dealt with</button></form>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-7">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+            <h6 class="card-title">The month</h6>
+            <div class="row row-cols-2 row-cols-md-3 g-2 small">
+                <div class="col"><div class="text-muted">Owner deposits</div><div class="fs-6 fw-semibold">${{ totals.deposits|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">Expenses (all)</div><div class="fs-6 fw-semibold">${{ totals.expenses_total|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">&nbsp;&nbsp;paid by us, reimbursable</div><div class="fw-semibold">${{ totals.expenses_reimbursable|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">&nbsp;&nbsp;paid direct from trust</div><div class="fw-semibold">${{ totals.expenses_direct|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">Reimbursement to us</div><div class="fw-semibold">${{ totals.reimbursement_trust|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">Commission</div><div class="fw-semibold">${{ totals.commission|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">Owner payment</div><div class="fs-6 fw-semibold">${{ totals.owner_payment|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">Trust balance change</div><div class="fw-semibold">{% if totals.trust_net < 0 %}−{% endif %}${% if totals.trust_net < 0 %}{{ totals.trust_net|cut:"-"|floatformat:"2g" }}{% else %}{{ totals.trust_net|floatformat:"2g" }}{% endif %}</div></div>
+            </div>
+            <p class="text-muted small mb-0 mt-2">Reimbursements are money moving between the trust account and our expense account, so they aren't counted as an extra expense.</p>
+        </div></div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+            {% if close %}
+            <h6 class="card-title">Closed</h6>
+            <p class="small text-muted mb-0">{{ close.totals.lines }} transaction{{ close.totals.lines|pluralize }} locked.{% if close.warnings_acknowledged %} Warnings acknowledged at close: {{ close.warnings_acknowledged|join:", " }}.{% endif %}</p>
+            {% else %}
+            <h6 class="card-title">Before you can close</h6>
+            <form method="post">
+                {% csrf_token %}<input type="hidden" name="action" value="close">
+                {% for c in checks %}
+                <div class="small d-flex gap-2 align-items-start mb-1">
+                    {% if c.level == 'block' %}<span style="color: var(--status-critical);"><i data-lucide="circle-x" class="icon"></i></span>{% elif c.level == 'warn' %}<span style="color: var(--status-warning);"><i data-lucide="triangle-alert" class="icon"></i></span>{% else %}<span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i></span>{% endif %}
+                    <div>{{ c.text }}{% if c.level == 'warn' %}<div class="form-check"><input class="form-check-input" type="checkbox" name="ack_{{ c.key }}" id="ack-{{ c.key }}"><label class="form-check-label" for="ack-{{ c.key }}">I have looked at this — close anyway</label></div>{% endif %}</div>
+                </div>
+                {% empty %}<p class="small mb-1" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Everything checks out.</p>{% endfor %}
+                <input type="text" name="note" class="form-control form-control-sm my-2" maxlength="500" placeholder="Optional note kept with the close">
+                <button class="btn btn-primary btn-sm" {% if not can_close %}disabled{% endif %} onclick="return confirm('Close {{ month|date:"F Y" }} for {{ property.name }}? Its transactions are locked and QuickBooks changes to this month will no longer flow in.');"><i data-lucide="lock" class="icon"></i> Close {{ month|date:"F Y" }}</button>
+            </form>
+            {% endif %}
+        </div></div>
+    </div>
+</div>
+
+{% if not close and changed %}
+<div class="alert alert-warning small d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <span><strong>{{ changed }} line{{ changed|pluralize }} changed in QuickBooks</strong> after being pulled in. Their coding was kept — look at the highlighted ones below.</span>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="acknowledge_changes"><button class="btn btn-outline-secondary btn-sm">I've looked — they're fine</button></form>
+</div>
+{% endif %}
+
+<form method="post" id="coding-form">
+    {% csrf_token %}
+    {% if not close %}
+    <div class="d-flex gap-2 flex-wrap align-items-center mb-3 p-2 rounded" style="background: var(--bs-light, #f8f9fa);">
+        <span class="small text-muted">Tick lines, then</span>
+        <select id="bulk-category" class="form-select form-select-sm" style="max-width: 220px;">
+            <option value="expense">Expense</option><option value="deposit">Owner deposit</option><option value="owner_payment">Owner payment</option><option value="reimbursement">Expense reimbursement</option><option value="commission">Commission</option>
+        </select>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="applyBulk()">Set ticked to this</button>
+        <span class="ms-auto d-flex gap-2 flex-wrap">
+            <button name="action" value="accept_all" class="btn btn-outline-primary btn-sm">Accept everything as shown{% if unreviewed %} ({{ unreviewed }} to review){% endif %}</button>
+            <button name="action" value="save_coding" class="btn btn-primary btn-sm">Save coding</button>
+        </span>
+    </div>
+    {% endif %}
+
+    {% for sec in sections %}
+    <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body p-0">
+        <div class="p-3 pb-2">
+            <h6 class="mb-0">{{ sec.title }}{% if sec.account %} <span class="text-muted fw-normal small">· {{ sec.account.fully_qualified_name }}</span>{% endif %}</h6>
+            <p class="text-muted small mb-0">
+                {% if sec.role == 'expense' %}Everything here is an expense unless it's the monthly reimbursement (the credit that pays us back out of the trust account).{% else %}Money in is an owner deposit. Money out is an expense unless it's the owner payment, the expense reimbursement to us, or commission.{% endif %}
+            </p>
+        </div>
+        {% for l in sec.lines %}
+        <div class="d-flex gap-2 align-items-start flex-wrap px-3 py-2 border-top {% if l.changed_in_qb %}bg-warning-subtle{% endif %}">
+            {% if not close %}<input type="checkbox" class="form-check-input mt-2 bulk-check" data-line="{{ l.pk }}" aria-label="Select">{% endif %}
+            <div style="flex: 1 1 260px; min-width: 0;">
+                <div class="small text-muted">{{ l.txn_date|date:"D M j" }} · {{ l.txn_type }}{% if l.doc_num %} #{{ l.doc_num }}{% endif %}</div>
+                <div class="fw-medium">{{ l.payee|default:"—" }}</div>
+                <div class="small text-muted">{{ l.memo|default:"" }}{% if l.split %}{% if l.memo %} · {% endif %}other side: {{ l.split }}{% endif %}</div>
+                {% if l.changed_in_qb %}<div class="small" style="color: #8a5d00;"><i data-lucide="triangle-alert" class="icon"></i> Changed in QuickBooks: {{ l.change_note }}</div>{% endif %}
+            </div>
+            <div class="text-end fw-semibold" style="min-width: 110px; {% if sec.role == 'trust' %}color: {% if l.flow > 0 %}var(--status-good){% else %}inherit{% endif %};{% endif %}">
+                {% if sec.role == 'trust' %}{% if l.flow > 0 %}+${{ l.flow|floatformat:"2g" }}<div class="small fw-normal text-muted">in</div>{% else %}−${{ l.flow|cut:"-"|floatformat:"2g" }}<div class="small fw-normal text-muted">out</div>{% endif %}
+                {% else %}{% if l.flow < 0 %}−${{ l.flow|cut:"-"|floatformat:"2g" }}<div class="small fw-normal text-muted">credit</div>{% else %}${{ l.flow|floatformat:"2g" }}{% endif %}{% endif %}
+            </div>
+            <div style="min-width: 210px;">
+                {% if close %}
+                <span class="small">{{ l.get_category_display }}</span>
+                {% else %}
+                <select name="cat_{{ l.pk }}" id="cat-{{ l.pk }}" class="form-select form-select-sm" aria-label="Category">
+                    {% for value, label in sec.options %}<option value="{{ value }}" {% if l.category == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <div class="small mt-1 text-muted">
+                    {% if l.reviewed %}<span style="color: var(--status-good);">✓ reviewed</span>{% else %}<span style="color: var(--status-warning);">to review</span>{% endif %}
+                    · {% if l.category_source == 'user' %}coded by a person{% elif l.category_source == 'suggested' %}suggested{% else %}default{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}<p class="text-muted small px-3 pb-3 mb-0 border-top pt-2">Nothing in this account for {{ month|date:"F Y" }}.</p>{% endfor %}
+    </div></div>
+    {% endfor %}
+</form>
+
+{% if removed %}
+<details class="mb-3">
+    <summary class="small text-muted" style="cursor: pointer;">{{ removed|length }} transaction{{ removed|length|pluralize }} no longer in QuickBooks for this rental (voided, deleted, or re-coded elsewhere)</summary>
+    <div class="mt-2 small">{% for l in removed %}<div class="text-muted"><s>{{ l.txn_date|date:"M j" }} · {{ l.payee|default:l.txn_type }} · ${{ l.flow|cut:"-"|floatformat:"2g" }}</s> — its coding is kept in case it comes back</div>{% endfor %}</div>
+</details>
+{% endif %}
+
+<script>
+function applyBulk() {
+    var value = document.getElementById('bulk-category').value, skipped = 0;
+    document.querySelectorAll('.bulk-check:checked').forEach(function (box) {
+        var select = document.getElementById('cat-' + box.dataset.line);
+        if (select && select.querySelector('option[value="' + value + '"]')) { select.value = value; } else { skipped += 1; }
+    });
+    if (skipped) { alert(skipped + ' ticked line(s) belong to an account where that category doesn\'t apply, so they were left as they were.'); }
+}
+</script>
+{% endblock %}

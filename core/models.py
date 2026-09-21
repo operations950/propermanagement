@@ -122,6 +122,9 @@ class Property(models.Model):
         'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='trust_for_properties',
         help_text="This rental's owner trust account on the balance sheet.",
     )
+    ledger_synced_at = models.DateTimeField(
+        null=True, blank=True, help_text="When this rental's QuickBooks transactions were last pulled in (a month can only be closed on a recent sync).",
+    )
     turnover_price_override = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text='A negotiated flat price for a standard Turnover Clean at this property, replacing '
@@ -741,6 +744,8 @@ class QuickBooksToken(models.Model):
     last_sync_error = models.CharField(max_length=255, blank=True)
     accounts_synced_at = models.DateTimeField(null=True, blank=True, help_text='When the chart of accounts was last read.')
     accounts_sync_error = models.CharField(max_length=255, blank=True)
+    ledger_synced_at = models.DateTimeField(null=True, blank=True, help_text='When the property transactions were last pulled in.')
+    ledger_sync_error = models.CharField(max_length=255, blank=True)
     ytd_revenue = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     ytd_expenses = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     ytd_net_income = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -932,3 +937,136 @@ class QuickBooksAccount(models.Model):
     @property
     def on_income_statement(self):
         return self.classification in self.INCOME_STATEMENT
+
+
+class FinancialsSettings(models.Model):
+    """Singleton: where the books being managed here begin. Transactions before
+    this month are never pulled in or asked about (a year of history would mean a
+    year of closes)."""
+    books_start = models.DateField(null=True, blank=True, help_text='The first month to manage; earlier transactions are ignored.')
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class LedgerLine(models.Model):
+    """One QuickBooks transaction as it hits one of a rental's two mapped accounts
+    (the sum of its lines in that account), pulled in so a person can code it at
+    month end. QuickBooks is the system of record: the identity is QuickBooks's own
+    (account role, transaction type, transaction id), so a resync recognises the same
+    transaction, updates it if it changed and keeps its coding, and marks it
+    removed if it left the account (voided, deleted, or re-coded to another
+    property, where it turns up as a new line). Once the month is closed the line is
+    locked and the sync no longer touches it.
+
+    `flow` is signed so that for the expense account positive = an expense charged
+    (a debit) and negative = a credit; for the trust account positive = money into
+    the trust and negative = money out."""
+    class Role(models.TextChoices):
+        EXPENSE = 'expense', 'Reimbursable-expense account'
+        TRUST = 'trust', 'Owner trust account'
+
+    class Category(models.TextChoices):
+        EXPENSE = 'expense', 'Expense'
+        DEPOSIT = 'deposit', 'Owner deposit'
+        OWNER_PAYMENT = 'owner_payment', 'Owner payment'
+        REIMBURSEMENT = 'reimbursement', 'Expense reimbursement'
+        COMMISSION = 'commission', 'Commission'
+
+    class Source(models.TextChoices):
+        DEFAULT = 'default', 'Default'
+        SUGGESTED = 'suggested', 'Suggested'
+        USER = 'user', 'Coded by a person'
+
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        REMOVED = 'removed', 'Gone from QuickBooks'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='ledger_lines')
+    role = models.CharField(max_length=10, choices=Role.choices)
+    account = models.ForeignKey(QuickBooksAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    txn_type = models.CharField(max_length=60)
+    txn_id = models.CharField(max_length=40)
+    txn_date = models.DateField()
+    month = models.DateField(db_index=True, help_text='The first day of the month the transaction falls in.')
+    doc_num = models.CharField(max_length=60, blank=True)
+    payee = models.CharField(max_length=300, blank=True)
+    memo = models.CharField(max_length=500, blank=True)
+    split = models.CharField(max_length=300, blank=True, help_text='The other account(s) of the transaction, as QuickBooks shows them.')
+    flow = models.DecimalField(max_digits=12, decimal_places=2)
+    fingerprint = models.CharField(max_length=40, blank=True)
+
+    category = models.CharField(max_length=20, choices=Category.choices, default=Category.EXPENSE)
+    category_source = models.CharField(max_length=10, choices=Source.choices, default=Source.DEFAULT)
+    reviewed = models.BooleanField(default=False, help_text='A person has looked at this line and accepted its category.')
+    coded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    coded_at = models.DateTimeField(null=True, blank=True)
+    note = models.CharField(max_length=300, blank=True)
+
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
+    changed_in_qb = models.BooleanField(default=False, help_text='QuickBooks changed the amount, date or account after this was pulled in; a person should glance at it.')
+    change_note = models.CharField(max_length=300, blank=True)
+    locked_at = models.DateTimeField(null=True, blank=True, help_text='Set when the month is closed; a locked line never changes.')
+
+    class Meta:
+        ordering = ['txn_date', 'txn_type', 'txn_id']
+        constraints = [
+            models.UniqueConstraint(fields=['property', 'role', 'txn_type', 'txn_id'], name='uniq_ledger_line'),
+        ]
+        indexes = [models.Index(fields=['property', 'month'])]
+
+    def __str__(self):
+        return f'{self.property} {self.txn_date} {self.txn_type} {self.flow}'
+
+
+class MonthClose(models.Model):
+    """A rental's month, closed. From then on its transactions are frozen: the
+    figures were used to pay the owner, so QuickBooks changes to that month do not
+    flow in (they are logged as ClosedMonthChange). A mistake found later is fixed
+    in the current month."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='month_closes')
+    month = models.DateField(help_text='The first day of the month.')
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    closed_at = models.DateTimeField(auto_now_add=True)
+    totals = models.JSONField(default=dict, help_text='The figures as closed, frozen.')
+    warnings_acknowledged = models.JSONField(default=list, blank=True)
+    note = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ['-month']
+        constraints = [models.UniqueConstraint(fields=['property', 'month'], name='uniq_month_close')]
+
+    def __str__(self):
+        return f'{self.property} {self.month:%B %Y} closed'
+
+
+class ClosedMonthChange(models.Model):
+    """QuickBooks differs from the closed books: a transaction in a closed month
+    was added, changed or removed after the close. It is NOT applied — the closed
+    numbers stand — but recorded so the team can see QuickBooks and the books have
+    drifted apart and put the correction in the current month."""
+    class Kind(models.TextChoices):
+        NEW = 'new', 'Added in QuickBooks'
+        CHANGED = 'changed', 'Changed in QuickBooks'
+        REMOVED = 'removed', 'Removed from QuickBooks'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='closed_month_changes')
+    month = models.DateField()
+    role = models.CharField(max_length=10)
+    txn_type = models.CharField(max_length=60)
+    txn_id = models.CharField(max_length=40)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    detail = models.CharField(max_length=400, blank=True)
+    detected_at = models.DateTimeField(auto_now_add=True)
+    resolved = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-detected_at']
+        constraints = [
+            models.UniqueConstraint(fields=['property', 'role', 'txn_type', 'txn_id', 'kind'], name='uniq_closed_month_change'),
+        ]

@@ -5,6 +5,7 @@ QuickBooks isn't connected — same degrade-gracefully shape as every other
 optional integration in this app."""
 from django.core.management.base import BaseCommand
 
+from core import ledger
 from core.models import QuickBooksToken
 from core.quickbooks import sync_accounts, sync_snapshot
 
@@ -30,3 +31,13 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f'QuickBooks account list not refreshed ({error}).'))
         else:
             self.stdout.write(self.style.SUCCESS(f'QuickBooks chart of accounts synced ({count} accounts).'))
+        # ... and each rental's transactions for the month-end close (closed months stay frozen).
+        try:
+            done, ledger_error = ledger.sync_all()
+        except Exception:
+            self.stdout.write(self.style.WARNING('QuickBooks transactions not refreshed (unexpected error).'))
+        else:
+            if ledger_error:
+                self.stdout.write(self.style.WARNING(f'QuickBooks transactions partly refreshed: {ledger_error}'))
+            else:
+                self.stdout.write(self.style.SUCCESS(f'QuickBooks transactions synced for {done} rentals.'))

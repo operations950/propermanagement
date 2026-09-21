@@ -7,6 +7,16 @@
 <div class="card mb-3">
     <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
+            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="lock-keyhole" class="icon"></i> Month-end close</h6>
+            <p class="text-muted small mb-0">Code each rental's QuickBooks transactions for the month (deposits, owner payment, reimbursement, commission, expenses), then close and lock the month.</p>
+        </div>
+        <a href="{% url 'close_overview' %}" class="btn btn-outline-secondary btn-sm flex-shrink-0"><i data-lucide="arrow-right" class="icon"></i> Open the close</a>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
             <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon"></i> QuickBooks accounts for each rental</h6>
             <p class="text-muted small mb-0">Tie every short-term rental to its reimbursable-expense account (income statement) and its owner trust account (balance sheet), so its expenses and owner money can be found in QuickBooks.</p>
         </div>

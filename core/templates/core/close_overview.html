@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Month-end close{% endblock %}
+{% block content %}
+<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Admin Tools</a>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="lock-keyhole" class="icon-lg"></i> Month-end close</h2>
+        <p class="text-muted small mb-0">Code each rental's QuickBooks transactions, then close the month. A closed month is locked: later QuickBooks changes to it don't flow in, because the owner has been paid from those numbers.</p>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-primary disabled" style="opacity: 1;">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+
+{% if not connected %}
+<div class="alert alert-warning small">QuickBooks isn't connected — connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a> first.</div>
+{% endif %}
+{% if sync_error %}<div class="alert alert-warning small py-2">{{ sync_error }}</div>{% endif %}
+{% if not month_over %}<div class="alert alert-info small py-2">{{ month|date:"F Y" }} isn't over yet. You can code what has come in so far, but it can't be closed until the month ends.</div>{% endif %}
+
+<div class="d-flex gap-2 flex-wrap align-items-center mb-3">
+    <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="sync">
+        <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Sync from QuickBooks now</button></form>
+    <span class="small text-muted">{% if synced_at %}Last full sync {{ synced_at|timesince }} ago.{% else %}Not synced yet.{% endif %} Fix anything in QuickBooks first, sync, and your coding is kept.</span>
+</div>
+
+<div class="row row-cols-2 row-cols-md-4 g-2 mb-3">
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Closed</div><div class="fs-4 fw-semibold">{{ counts.closed }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: {% if counts.ready %}color-mix(in srgb, var(--status-good) 12%, white){% else %}var(--bs-light, #f8f9fa){% endif %}; border-radius: 10px;"><div class="small text-muted">Ready to close</div><div class="fs-4 fw-semibold">{{ counts.ready }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Still being coded</div><div class="fs-4 fw-semibold">{{ counts.open }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: {% if counts.needs_accounts %}color-mix(in srgb, var(--status-warning) 15%, white){% else %}var(--bs-light, #f8f9fa){% endif %}; border-radius: 10px;"><div class="small text-muted">Need QuickBooks accounts</div><div class="fs-4 fw-semibold">{{ counts.needs_accounts }}</div></div></div>
+</div>
+
+{% if ready_clean %}
+<form method="post" class="mb-3" onsubmit="return confirm('Close {{ ready_clean }} rental{{ ready_clean|pluralize }} for {{ month|date:"F Y" }}? Their transactions are locked from then on.');">
+    {% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="close_ready">
+    <button class="btn btn-primary btn-sm"><i data-lucide="lock" class="icon"></i> Close the {{ ready_clean }} ready rental{{ ready_clean|pluralize }} with no warnings</button>
+</form>
+{% endif %}
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body p-0">
+    {% for r in rows %}
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap p-3 {% if not forloop.first %}border-top{% endif %}">
+        <div style="min-width: 220px; flex: 1 1 220px;">
+            <a href="{% url 'close_property' month|date:'Y-m' r.property.pk %}" class="fw-semibold text-decoration-none">{{ r.property.name }}</a>
+            <div class="small text-muted">
+                {% if r.state == 'closed' %}Closed {{ r.close.closed_at|date:"M j" }}{% if r.close.closed_by %} by {{ r.close.closed_by.get_full_name|default:r.close.closed_by.username }}{% endif %}
+                {% elif r.state == 'needs_accounts' %}Tie it to its QuickBooks accounts first
+                {% else %}{{ r.lines }} transaction{{ r.lines|pluralize }}{% if r.unreviewed %} · <strong>{{ r.unreviewed }} to review</strong>{% endif %}{% if r.changed %} · <span style="color: var(--status-warning);">{{ r.changed }} changed in QuickBooks</span>{% endif %}{% endif %}
+                {% if r.drift %} · <span style="color: var(--status-critical);">{{ r.drift }} QuickBooks change{{ r.drift|pluralize }} to this closed month were not applied</span>{% endif %}
+            </div>
+        </div>
+        {% if r.totals %}
+        <div class="small text-muted text-end" style="min-width: 190px;">
+            Deposits <strong>${{ r.totals.deposits|floatformat:"2g" }}</strong> · Expenses <strong>${{ r.totals.expenses_total|floatformat:"2g" }}</strong><br>Owner payment <strong>${{ r.totals.owner_payment|floatformat:"2g" }}</strong>
+        </div>
+        {% endif %}
+        <div class="d-flex align-items-center gap-2">
+            {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>
+            {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready to close</span>
+            {% elif r.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">No accounts</span>
+            {% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
+            <a href="{% if r.state == 'needs_accounts' %}{% url 'property_detail' r.property.pk %}#quickbooks{% else %}{% url 'close_property' month|date:'Y-m' r.property.pk %}{% endif %}" class="btn btn-outline-secondary btn-sm">{% if r.state == 'closed' %}View{% elif r.state == 'needs_accounts' %}Set accounts{% else %}Code{% endif %}</a>
+        </div>
+    </div>
+    {% empty %}<p class="text-muted small p-3 mb-0">No active short-term rentals.</p>{% endfor %}
+</div></div>
+
+<div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">Where the books start</h6>
+    <p class="text-muted small">Transactions before this month are never pulled in, so the first close isn't a year of catching up. {% if not books_start_saved %}<strong>Not set yet</strong> — for now it is {{ books_start|date:"F Y" }} (last month).{% else %}Currently {{ books_start|date:"F Y" }}.{% endif %}</p>
+    <form method="post" class="d-flex gap-2 flex-wrap align-items-center">
+        {% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_start">
+        <input type="month" name="books_start" value="{{ books_start|date:'Y-m' }}" class="form-control form-control-sm" style="max-width: 180px;">
+        <button class="btn btn-outline-secondary btn-sm">Save</button>
+    </form>
+</div></div>
+{% endblock %}

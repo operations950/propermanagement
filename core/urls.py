@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import bot_api, views
+from . import bot_api, close_views, views
 
 urlpatterns = [
     path('privacy/', views.privacy_policy, name='privacy_policy'),
@@ -19,6 +19,8 @@ urlpatterns = [
     path('admin-tools/', views.admin_tools, name='admin_tools'),
     path('admin-tools/assistant-access/', views.bot_keys, name='bot_keys'),
     path('admin-tools/quickbooks-accounts/', views.quickbooks_accounts, name='quickbooks_accounts'),
+    path('close/', close_views.close_overview, name='close_overview'),
+    path('close/<str:month>/<int:pk>/', close_views.close_property, name='close_property'),
     # JSON API for the message-answering assistant (Bearer key; see BOT_API.md)
     path('api/v1/me/', bot_api.me, name='bot_api_me'),
     path('api/v1/properties/', bot_api.property_search, name='bot_api_properties'),

@@ -430,3 +430,122 @@ def sync_accounts(token):
     token.accounts_sync_error = error
     token.save(update_fields=['accounts_synced_at', 'accounts_sync_error'])
     return count, error
+
+
+# --- transactions of one account (the month-end close) -------------------------------------
+# A General Ledger report filtered to one account lists every transaction that hit it
+# (one row per line), each row carrying QuickBooks's own transaction id. core/ledger.py
+# groups those into one entry per transaction and keeps them in step with QuickBooks.
+
+LEDGER_COLUMNS = 'tx_date,txn_type,doc_num,name,memo,split_acc,debt_amt,credit_amt,subt_nat_amount'
+LEDGER_ERROR = "Couldn't read the transactions from QuickBooks — will retry on the next sync."
+
+# Column keys QuickBooks reports, and the titles to fall back on if a key is missing.
+_TITLE_KEYS = {
+    'date': 'tx_date', 'transaction type': 'txn_type', 'num': 'doc_num', 'name': 'name', 'memo/description': 'memo', 'memo': 'memo',
+    'split': 'split_acc', 'debit': 'debt_amt', 'credit': 'credit_amt', 'amount': 'subt_nat_amount', 'balance': 'rbal_nat_amount',
+}
+
+
+def _money(text):
+    """A report cell as a Decimal (commas, a leading minus or accounting
+    parentheses tolerated); blank is zero."""
+    from decimal import Decimal, InvalidOperation
+    raw = (text or '').replace(',', '').replace('$', '').strip()
+    if not raw:
+        return Decimal('0')
+    negative = raw.startswith('(') and raw.endswith(')')
+    try:
+        value = Decimal(raw.strip('()'))
+    except InvalidOperation:
+        return Decimal('0')
+    return -value if negative else value
+
+
+def _column_keys(payload):
+    keys = []
+    for column in (payload.get('Columns') or {}).get('Column', []) or []:
+        key = ''
+        for meta in column.get('MetaData', []) or []:
+            if meta.get('Name') == 'ColKey':
+                key = meta.get('Value', '')
+        keys.append(key or column.get('ColType') or _TITLE_KEYS.get((column.get('ColTitle') or '').strip().lower(), ''))
+    return keys
+
+
+def parse_general_ledger(payload):
+    """The transactions listed by a General Ledger report, one dict per report row:
+    txn_id (QuickBooks's own), txn_type, date (ISO string), doc_num, name, memo, split
+    and debit / credit (or, when the report has no such columns, the signed natural
+    `amount`). Section headers, totals and the beginning-balance row carry no
+    transaction id and are skipped."""
+    keys = _column_keys(payload)
+    found = []
+
+    def walk(rows):
+        for row in rows or []:
+            cells = row.get('ColData')
+            if cells and not row.get('Rows') and row.get('type', 'Data') == 'Data':
+                values = {keys[i]: c.get('value', '') for i, c in enumerate(cells) if i < len(keys) and keys[i]}
+                ids = {keys[i]: c.get('id', '') for i, c in enumerate(cells) if i < len(keys) and keys[i]}
+                txn_id = ids.get('tx_date') or ids.get('txn_type') or next((v for v in ids.values() if v), '')
+                if txn_id and values.get('txn_type') and values.get('tx_date'):
+                    item = {
+                        'txn_id': str(txn_id), 'txn_type': values['txn_type'].strip(), 'date': values['tx_date'].strip(),
+                        'doc_num': values.get('doc_num', '').strip(), 'name': values.get('name', '').strip(),
+                        'memo': values.get('memo', '').strip(), 'split': values.get('split_acc', '').strip(),
+                    }
+                    if 'debt_amt' in values or 'credit_amt' in values:
+                        item['debit'], item['credit'] = _money(values.get('debt_amt')), _money(values.get('credit_amt'))
+                    else:
+                        item['amount'] = _money(values.get('subt_nat_amount'))
+                    found.append(item)
+            walk((row.get('Rows') or {}).get('Row', []))
+
+    walk((payload.get('Rows') or {}).get('Row', []))
+    return found
+
+
+def _read_ledger(token, account_qb_id, start, end):
+    resp = requests.get(
+        f'{API_BASES[_environment()]}/{token.realm_id}/reports/GeneralLedger',
+        params={
+            'start_date': start.isoformat(), 'end_date': end.isoformat(), 'account': account_qb_id,
+            'columns': LEDGER_COLUMNS, 'sort_by': 'tx_date', 'sort_order': 'ascend',
+        },
+        headers={'Authorization': f'Bearer {token.access_token}', 'Accept': 'application/json'},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    logger.info('QuickBooks General Ledger read ok (intuit_tid=%s)', _intuit_tid(resp))
+    return parse_general_ledger(resp.json())
+
+
+def fetch_ledger(token, account_qb_id, start, end):
+    """(entries, error): the transactions that hit one QuickBooks account between
+    two dates. Refreshes the token if needed, and retries once like the other reads
+    (a 401 forces a refresh; a rejected refresh means reconnect)."""
+    if not is_configured():
+        return None, 'QuickBooks client ID/secret are not set — add them in Admin Tools.'
+    outcome = _refresh_with_retry(token)
+    if outcome == REFRESH_REJECTED:
+        return None, RECONNECT_ERROR
+    if outcome == REFRESH_FAILED:
+        return None, LEDGER_ERROR
+    try:
+        return _read_ledger(token, account_qb_id, start, end), ''
+    except Exception as exc:
+        logger.warning('QuickBooks General Ledger failed, retrying once: %s', _failure_summary(exc))
+        if _status_code(exc) == 401:
+            outcome = _refresh_if_needed(token, force=True)
+            if outcome == REFRESH_REJECTED:
+                return None, RECONNECT_ERROR
+            if outcome != REFRESH_OK:
+                return None, LEDGER_ERROR
+        else:
+            time.sleep(RETRY_DELAY_SECONDS)
+    try:
+        return _read_ledger(token, account_qb_id, start, end), ''
+    except Exception as exc:
+        logger.error('QuickBooks General Ledger failed after retry: %s', _failure_summary(exc))
+        return None, LEDGER_ERROR
