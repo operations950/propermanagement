@@ -195,13 +195,9 @@ def close_property(request, month, pk, unit_pk=None):
     close = ledger.MonthClose.objects.filter(month=month, **book.scope()).first()
     lines = list(ledger.month_lines(book, month))
     removed = list(LedgerLine.objects.filter(month=month, status=LedgerLine.Status.REMOVED, **book.scope()))
-    sections = []
-    for role, title, account in ((LedgerLine.Role.TRUST, 'Owner trust account', book.qb_trust_account), (LedgerLine.Role.EXPENSE, 'Reimbursable-expense account', book.qb_expense_account)):
-        mine = [l for l in lines if l.role == role]
-        sections.append({
-            'role': role, 'title': title, 'account': account, 'lines': mine,
-            'options': [(c, CATEGORY_LABELS[c]) for c in ledger.ROLE_CATEGORIES[role]],
-        })
+    lines = sorted(lines, key=lambda l: (l.txn_date, l.role, l.txn_type, l.txn_id))
+    for line in lines:
+        line.options = [(c, CATEGORY_LABELS[c]) for c in ledger.ROLE_CATEGORIES[line.role]]
     rec = recon.from_close(close) if close else (recon.reconcile(book, month) if book.mapped else None)
     items = ledger.checks(book, month, rec=rec) if close is None else []
     return render(request, 'core/close_property.html', {
@@ -210,7 +206,7 @@ def close_property(request, month, pk, unit_pk=None):
         'prev_url': _page_url(ledger.previous_month(month), prop, unit), 'next_url': _page_url(ledger.next_month(month), prop, unit),
         'back_url': (_page_url(month, prop) if unit is not None else reverse('close_overview') + f'?month={month:%Y-%m}'),
         'back_label': (f'{prop.name} — all units' if unit is not None else 'Month-end close'),
-        'sections': sections, 'removed': removed, 'checks': items, 'can_close': ledger.can_close(items),
+        'lines': lines, 'all_categories': list(CATEGORY_LABELS.items()), 'removed': removed, 'checks': items, 'can_close': ledger.can_close(items),
         'warn_keys': [i['key'] for i in items if i['level'] == 'warn'],
         'totals': ledger.closed_summary(close) if close else ledger.totals(book, month, lines),
         'recon': rec,

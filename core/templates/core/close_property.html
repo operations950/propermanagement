@@ -1,11 +1,34 @@
 {% extends 'base.html' %}
 {% block title %}{{ title }} — {{ month|date:"F Y" }} close{% endblock %}
 {% block content %}
-<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ back_label }}</a>
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+<style>
+    .cl-sum th { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 4px 8px; background: var(--bs-light, #f8f9fa); }
+    .cl-sum td { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; padding: 5px 8px; }
+    .cl-table { font-size: 0.82rem; }
+    .cl-table thead th { position: sticky; top: 0; background: var(--surface-card, #fff); z-index: 2; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); }
+    .cl-table thead th[data-sort] { cursor: pointer; user-select: none; }
+    .cl-table thead th[data-sort]:hover { color: var(--ink-primary); }
+    .cl-table thead th .arrow { opacity: 0; margin-left: 2px; }
+    .cl-table thead th.sorted .arrow { opacity: 1; }
+    .cl-table td { padding: 3px 8px; white-space: nowrap; vertical-align: middle; }
+    .cl-table td.wrap { white-space: normal; }
+    .cl-table .trunc { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+    .cl-table tr.changed td { background: color-mix(in srgb, var(--status-warning) 12%, white); }
+    .cl-table tr.edited td:first-child { box-shadow: inset 3px 0 0 var(--brand-primary); }
+    .cl-table .amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .cl-table .amt.in { color: #0b6a0b; }
+    .cl-table select.cat { min-width: 178px; padding-top: 1px; padding-bottom: 1px; font-size: 0.8rem; }
+    .cl-chip { font-size: 0.75rem; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border-hairline); background: var(--surface-card, #fff); color: var(--ink-secondary); cursor: pointer; }
+    .cl-chip.on { background: var(--role-admin, #3d6178); border-color: var(--role-admin, #3d6178); color: #fff; }
+    .cl-tag { font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: #eceff2; color: #4b5563; }
+    .cl-tag.trust { background: #e2edf5; color: #23485f; }
+    .cl-checks li { padding: 3px 0; }
+</style>
+<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ back_label }}</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
-        <h2 class="page-title mb-0">{{ title }}</h2>
-        <p class="text-muted small mb-0">{{ month|date:"F Y" }}{% if close %} · <strong>closed</strong>{% endif %}{% if synced_at %} · synced from QuickBooks {{ synced_at|timesince }} ago{% endif %}</p>
+        <h2 class="page-title fs-4 mb-0">{{ title }} <span class="text-muted fw-normal fs-6">· {{ month|date:"F Y" }}{% if close %} · <strong>closed</strong>{% endif %}</span></h2>
+        <div class="small text-muted">{% if synced_at %}Synced from QuickBooks {{ synced_at|timesince }} ago{% else %}Not synced yet{% endif %}</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <div class="btn-group btn-group-sm">
@@ -19,177 +42,185 @@
 </div>
 
 {% if close %}
-<div class="alert alert-secondary small d-flex align-items-start gap-2"><i data-lucide="lock" class="icon mt-1"></i><div><strong>Closed {{ close.closed_at|date:"F j, Y" }}{% if close.closed_by %} by {{ close.closed_by.get_full_name|default:close.closed_by.username }}{% endif %}.</strong> The figures below are frozen — nothing in QuickBooks changes them. If something was wrong, correct it in the current month.{% if close.note %}<br>Note: {{ close.note }}{% endif %}</div></div>
+<div class="alert alert-secondary small py-2 mb-2 d-flex align-items-start gap-2"><i data-lucide="lock" class="icon mt-1"></i><div><strong>Closed {{ close.closed_at|date:"F j, Y" }}{% if close.closed_by %} by {{ close.closed_by.get_full_name|default:close.closed_by.username }}{% endif %}.</strong> These figures are frozen — nothing in QuickBooks changes them. Correct anything wrong in the current month.{% if close.note %} Note: {{ close.note }}{% endif %}</div></div>
 {% endif %}
 
 {% if drift %}
-<div class="alert alert-danger small">
+<div class="alert alert-danger small py-2 mb-2">
     <strong>QuickBooks no longer matches this closed month.</strong> These changes were <strong>not</strong> applied — the closed numbers stand:
     {% for d in drift %}
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-1">
         <span>{{ d.get_kind_display }}: {{ d.detail }}</span>
-        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="resolve_drift"><input type="hidden" name="change_id" value="{{ d.pk }}"><button class="btn btn-outline-secondary btn-sm">Dealt with</button></form>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="resolve_drift"><input type="hidden" name="change_id" value="{{ d.pk }}"><button class="btn btn-outline-secondary btn-sm py-0">Dealt with</button></form>
     </div>
     {% endfor %}
 </div>
 {% endif %}
 
-<div class="row g-3 mb-3">
-    <div class="col-lg-7">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-            <h6 class="card-title">The month</h6>
-            <div class="row row-cols-2 row-cols-md-3 g-2 small">
-                <div class="col"><div class="text-muted">Income deposits</div><div class="fs-6 fw-semibold">${{ totals.deposits|floatformat:"2g" }}</div></div>
-                <div class="col"><div class="text-muted">Expenses (all)</div><div class="fs-6 fw-semibold">${{ totals.expenses_total|floatformat:"2g" }}</div></div>
-                <div class="col"><div class="text-muted">&nbsp;&nbsp;paid by us, reimbursable</div><div class="fw-semibold">${{ totals.expenses_reimbursable|floatformat:"2g" }}</div></div>
-                <div class="col"><div class="text-muted">&nbsp;&nbsp;paid direct from trust</div><div class="fw-semibold">${{ totals.expenses_direct|floatformat:"2g" }}</div></div>
-                <div class="col"><div class="text-muted">Reimbursement to us</div><div class="fw-semibold">${{ totals.reimbursement_trust|floatformat:"2g" }}</div></div>
-                <div class="col"><div class="text-muted">Commission</div><div class="fw-semibold">${{ totals.commission|floatformat:"2g" }}</div></div>
-                <div class="col"><div class="text-muted">Owner payment</div><div class="fs-6 fw-semibold">${{ totals.owner_payment|floatformat:"2g" }}</div></div>
-                <div class="col"><div class="text-muted">Trust balance change</div><div class="fw-semibold">{% if totals.trust_net < 0 %}−{% endif %}${% if totals.trust_net < 0 %}{{ totals.trust_net|cut:"-"|floatformat:"2g" }}{% else %}{{ totals.trust_net|floatformat:"2g" }}{% endif %}</div></div>
-            </div>
-            <p class="text-muted small mb-0 mt-2">Reimbursements are money moving between the trust account and our expense account, so they aren't counted as an extra expense.</p>
-        </div></div>
-    </div>
+<div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
+    <thead><tr><th>Income deposits</th><th>Expenses</th><th>Reimbursable</th><th>Paid from trust</th><th>Reimb. to us</th><th>Commission</th><th>Owner payment</th><th>Trust change</th></tr></thead>
+    <tbody><tr>
+        <td>${{ totals.deposits|floatformat:"2g" }}</td><td>${{ totals.expenses_total|floatformat:"2g" }}</td><td>${{ totals.expenses_reimbursable|floatformat:"2g" }}</td><td>${{ totals.expenses_direct|floatformat:"2g" }}</td>
+        <td>${{ totals.reimbursement_trust|floatformat:"2g" }}</td><td>${{ totals.commission|floatformat:"2g" }}</td><td>${{ totals.owner_payment|floatformat:"2g" }}</td>
+        <td>{% if totals.trust_net < 0 %}−${{ totals.trust_net|cut:"-"|floatformat:"2g" }}{% else %}${{ totals.trust_net|floatformat:"2g" }}{% endif %}</td>
+    </tr></tbody>
+</table></div>
+<p class="small text-muted mb-2" style="font-size: 0.72rem;">Reimbursements move money between the trust account and our expense account, so they aren't counted as an extra expense.</p>
+
+<div class="row g-2 mb-2">
     <div class="col-lg-5">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+        <div class="card h-100" style="border-radius: 12px;"><div class="card-body py-2 px-3">
             {% if close %}
-            <h6 class="card-title">Closed</h6>
-            <p class="small text-muted mb-0">{{ close.totals.lines }} transaction{{ close.totals.lines|pluralize }} locked.{% if close.warnings_acknowledged %} Warnings acknowledged at close: {{ close.warnings_acknowledged|join:", " }}.{% endif %}</p>
+            <div class="small fw-semibold mb-1">Closed</div>
+            <div class="small text-muted">{{ close.totals.lines }} transaction{{ close.totals.lines|pluralize }} locked.{% if close.warnings_acknowledged %} Warnings acknowledged: {{ close.warnings_acknowledged|join:", " }}.{% endif %}</div>
             {% else %}
-            <h6 class="card-title">Before you can close</h6>
+            <div class="small fw-semibold mb-1">Before you can close</div>
             <form method="post">
                 {% csrf_token %}<input type="hidden" name="action" value="close">
+                <ul class="list-unstyled mb-1 cl-checks small">
                 {% for c in checks %}
-                <div class="small d-flex gap-2 align-items-start mb-1">
-                    {% if c.level == 'block' %}<span style="color: var(--status-critical);"><i data-lucide="circle-x" class="icon"></i></span>{% elif c.level == 'warn' %}<span style="color: var(--status-warning);"><i data-lucide="triangle-alert" class="icon"></i></span>{% else %}<span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i></span>{% endif %}
-                    <div>{{ c.text }}{% if c.level == 'warn' %}<div class="form-check"><input class="form-check-input" type="checkbox" name="ack_{{ c.key }}" id="ack-{{ c.key }}"><label class="form-check-label" for="ack-{{ c.key }}">I have looked at this — close anyway</label></div>{% endif %}</div>
+                    <li class="d-flex gap-2 align-items-start">
+                        {% if c.level == 'block' %}<span style="color: var(--status-critical);"><i data-lucide="circle-x" class="icon"></i></span>{% elif c.level == 'warn' %}<span style="color: var(--status-warning);"><i data-lucide="triangle-alert" class="icon"></i></span>{% else %}<span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i></span>{% endif %}
+                        <span>{{ c.text }}{% if c.level == 'warn' %} <label class="ms-1 text-nowrap"><input class="form-check-input me-1" type="checkbox" name="ack_{{ c.key }}" id="ack-{{ c.key }}">I've looked — close anyway</label>{% endif %}</span>
+                    </li>
+                {% empty %}<li style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Everything checks out.</li>{% endfor %}
+                </ul>
+                <div class="d-flex gap-2 align-items-center">
+                    <input type="text" name="note" class="form-control form-control-sm" maxlength="500" placeholder="Optional note kept with the close">
+                    <button class="btn btn-primary btn-sm text-nowrap" {% if not can_close %}disabled{% endif %} onclick="return confirm('Close {{ month|date:"F Y" }} for {{ title }}? Its transactions are locked and QuickBooks changes to this month will no longer flow in.');"><i data-lucide="lock" class="icon"></i> Close {{ month|date:"M Y" }}</button>
                 </div>
-                {% empty %}<p class="small mb-1" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Everything checks out.</p>{% endfor %}
-                <input type="text" name="note" class="form-control form-control-sm my-2" maxlength="500" placeholder="Optional note kept with the close">
-                <button class="btn btn-primary btn-sm" {% if not can_close %}disabled{% endif %} onclick="return confirm('Close {{ month|date:"F Y" }} for {{ title }}? Its transactions are locked and QuickBooks changes to this month will no longer flow in.');"><i data-lucide="lock" class="icon"></i> Close {{ month|date:"F Y" }}</button>
             </form>
             {% endif %}
         </div></div>
     </div>
+
+    <div class="col-lg-7">
+        {% if recon %}
+        <div class="card h-100" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+            <div class="d-flex justify-content-between align-items-center mb-1"><span class="small fw-semibold"><i data-lucide="scale" class="icon"></i> Income reconciliation</span>{% if recon.closed %}<span class="badge rounded-pill text-bg-secondary">As closed</span>{% endif %}</div>
+            <div class="table-responsive"><table class="table table-sm table-bordered text-center mb-1 cl-sum">
+                <thead><tr><th>Income deposits</th><th>Matched to payouts</th><th>Reservations checking in</th><th>…paid within the month</th>{% if recon.reservations.paid_later %}<th>…paid later</th>{% endif %}{% if recon.reservations.carried_in %}<th>Carried in</th>{% endif %}</tr></thead>
+                <tbody><tr><td>${{ recon.deposits_total|floatformat:"2g" }}</td><td>${{ recon.payouts_matched|floatformat:"2g" }}</td><td>{{ recon.reservations.count }} · ${{ recon.reservations.payout_total|floatformat:"2g" }}</td><td>${{ recon.reservations.paid_in_month|floatformat:"2g" }}</td>{% if recon.reservations.paid_later %}<td>${{ recon.reservations.paid_later|floatformat:"2g" }}</td>{% endif %}{% if recon.reservations.carried_in %}<td>${{ recon.reservations.carried_in|floatformat:"2g" }}</td>{% endif %}</tr></tbody>
+            </table></div>
+            <div class="text-muted" style="font-size: 0.72rem;">Every payout the platforms show must have cleared into the trust account, and every income deposit must be a platform payout. A stay belongs to the month it checks in; its money arrives when the platform pays it.</div>
+
+            {% if recon.closed %}
+                {% if recon.pairs %}<details class="small mt-1"><summary style="cursor: pointer;">{{ recon.pairs|length }} deposit{{ recon.pairs|length|pluralize }} matched</summary>{% for p in recon.pairs %}<div class="text-muted">{{ p.date|slice:"5:" }} · ${{ p.amount }} ← {% for g in p.payouts %}{{ g.label }} (${{ g.amount }}){% if not forloop.last %} + {% endif %}{% endfor %}</div>{% endfor %}</details>{% endif %}
+                {% if recon.accepted %}<div class="small mt-1"><strong>Reconciling items accepted:</strong>{% for a in recon.accepted %}<div>{{ a.text }} — <em>{{ a.note }}</em>{% if a.by %} ({{ a.by }}){% endif %}</div>{% endfor %}</div>{% endif %}
+                {% if recon.in_transit %}<div class="small text-muted mt-1">On their way at month end:{% for a in recon.in_transit %} {{ a.text }}.{% endfor %}</div>{% endif %}
+            {% else %}
+                {% if recon.pairs %}<details class="small mt-1"><summary style="cursor: pointer;">{{ recon.pairs|length }} deposit{{ recon.pairs|length|pluralize }} matched to platform payouts</summary>{% for p in recon.pairs %}<div class="text-muted">{{ p.line.txn_date|date:"M j" }} · ${{ p.amount|floatformat:"2g" }} ← {% for g in p.groups %}{{ g.label }} ({{ g.count }} reservation{{ g.count|pluralize }}){% if not forloop.last %} + {% endif %}{% endfor %}</div>{% endfor %}</details>{% endif %}
+                {% if recon.reservations.paid_later_items %}<details class="small mt-1"><summary style="cursor: pointer;">Reservations this month whose payout comes later</summary>{% for r in recon.reservations.paid_later_items %}<div class="text-muted">{{ r.guest|default:"Guest" }} · checks in {{ r.check_in|date:"M j" }} · ${{ r.amount|floatformat:"2g" }}{% if r.payout_date %} · payout {{ r.payout_date|date:"M j" }}{% else %} · no payout date yet{% endif %}</div>{% endfor %}</details>{% endif %}
+                {% if not recon.items %}<div class="small mt-1" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Every income deposit matches a platform payout and every payout has cleared.</div>{% endif %}
+
+            {% endif %}
+        </div></div>
+        {% endif %}
+    </div>
 </div>
 
-{% if recon %}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-        <h6 class="card-title mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon"></i> Income reconciliation</h6>
-        {% if recon.closed %}<span class="badge rounded-pill text-bg-secondary">As closed</span>{% endif %}
-    </div>
-    <p class="text-muted small">The owner is paid from what actually reached the trust account, so every payout the platforms show has to have cleared into it, and every income deposit has to be a platform payout. Anything left over blocks the close until it's fixed or accepted as a reconciling item.</p>
-    <div class="row row-cols-2 row-cols-md-4 g-2 small mb-2">
-        <div class="col"><div class="text-muted">Income deposits</div><div class="fw-semibold">${{ recon.deposits_total|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">Matched to platform payouts</div><div class="fw-semibold">${{ recon.payouts_matched|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">Reservations checking in</div><div class="fw-semibold">{{ recon.reservations.count }} · ${{ recon.reservations.payout_total|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">…paid out within the month</div><div class="fw-semibold">${{ recon.reservations.paid_in_month|floatformat:"2g" }}</div></div>
-    </div>
-    <p class="small text-muted mb-2">
-        A stay belongs to the month it checks in, but its money arrives when the platform pays it.
-        {% if recon.reservations.paid_later %}<strong>${{ recon.reservations.paid_later|floatformat:"2g" }}</strong> of this month's reservations is paid after month end (or not yet dated).{% endif %}
-        {% if recon.reservations.carried_in %}<strong>${{ recon.reservations.carried_in|floatformat:"2g" }}</strong> arrived this month for earlier stays.{% endif %}
-    </p>
-    {% if recon.reservations.paid_later_items %}
-    <details class="small mb-2"><summary style="cursor: pointer;" class="text-muted">Reservations this month whose payout comes later</summary>
-        {% for r in recon.reservations.paid_later_items %}<div class="text-muted">{{ r.guest|default:"Guest" }} · checks in {{ r.check_in|date:"M j" }} · ${{ r.amount|floatformat:"2g" }}{% if r.payout_date %} · payout {{ r.payout_date|date:"M j" }}{% else %} · no payout date yet{% endif %}</div>{% endfor %}
-    </details>
-    {% endif %}
+{% if recon and not recon.closed and recon.items %}
+<div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+    <div class="small fw-semibold mb-1"><i data-lucide="scale" class="icon"></i> Income to reconcile <span class="text-muted fw-normal">— fix each item, or accept it as a reconciling item with a reason</span></div>
+                <div class="table-responsive"><table class="table table-sm mb-0 cl-table">
+                    <thead><tr><th>Item</th><th class="text-end">Amount</th><th>What</th><th>Reason / action</th></tr></thead>
+                    <tbody>
+                    {% for i in recon.items %}
+                    <tr class="{% if not i.accepted and not i.in_transit %}changed{% endif %}">
+                        <td>{% if i.kind == 'deposit' %}In the bank, not from a platform payout{% elif i.in_transit %}Payout on its way{% else %}Platform payout not in the bank{% endif %}</td>
+                        <td class="amt">${{ i.amount|floatformat:"2g" }}</td>
+                        <td class="wrap small text-muted" style="min-width: 300px;">{{ i.text }}{% if i.kind == 'deposit' and not i.accepted %} <em>Not income (a refund)? Code the line as an expense.</em>{% endif %}</td>
+                        <td class="wrap">
+                            {% if i.accepted %}<span class="small">Accepted: <em>{{ i.accepted.note }}</em>{% if i.accepted.accepted_by %} — {{ i.accepted.accepted_by.get_full_name|default:i.accepted.accepted_by.username }}{% endif %}</span>
+                                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form>
+                            {% elif i.in_transit %}<span class="small text-muted">Dated within days of month end; it will match its deposit next month.</span>
+                            {% else %}
+                            <form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="action" value="accept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}">
+                                <input type="text" name="note" class="form-control form-control-sm" style="min-width: 190px;" maxlength="300" placeholder="Why is this a reconciling item?" required>
+                                <button class="btn btn-outline-secondary btn-sm text-nowrap py-0">Accept as reconciling item</button></form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table></div>
 
-    {% if recon.closed %}
-        {% if recon.pairs %}<div class="small fw-semibold mt-2">Deposits matched</div>{% for p in recon.pairs %}<div class="small text-muted">{{ p.date|slice:"5:" }} · ${{ p.amount }} ← {% for g in p.payouts %}{{ g.label }} (${{ g.amount }}){% if not forloop.last %} + {% endif %}{% endfor %}</div>{% endfor %}{% endif %}
-        {% if recon.accepted %}<div class="small fw-semibold mt-2">Reconciling items accepted at close</div>{% for a in recon.accepted %}<div class="small">{{ a.text }} — <em>{{ a.note }}</em>{% if a.by %} ({{ a.by }}){% endif %}</div>{% endfor %}{% endif %}
-        {% if recon.in_transit %}<div class="small fw-semibold mt-2">On their way at month end</div>{% for a in recon.in_transit %}<div class="small text-muted">{{ a.text }}</div>{% endfor %}{% endif %}
-    {% else %}
-        {% if recon.pairs %}
-        <details class="small mb-2"><summary style="cursor: pointer;" class="text-muted">{{ recon.pairs|length }} deposit{{ recon.pairs|length|pluralize }} matched to platform payouts</summary>
-            {% for p in recon.pairs %}<div class="text-muted">{{ p.line.txn_date|date:"M j" }} · ${{ p.amount|floatformat:"2g" }} ← {% for g in p.groups %}{{ g.label }} ({{ g.count }} reservation{{ g.count|pluralize }}){% if not forloop.last %} + {% endif %}{% endfor %}</div>{% endfor %}
-        </details>
-        {% endif %}
-        {% for i in recon.items %}
-        <div class="border rounded p-2 mb-2 {% if i.accepted %}bg-body-tertiary{% elif i.in_transit %}{% else %}border-warning{% endif %}">
-            <div class="small"><strong>{% if i.kind == 'deposit' %}In the bank, not from a platform payout{% elif i.in_transit %}Payout on its way{% else %}Platform payout not in the bank{% endif %}</strong> · ${{ i.amount|floatformat:"2g" }}</div>
-            <div class="small text-muted">{{ i.text }}</div>
-            {% if i.accepted %}
-            <div class="small mt-1">Accepted: <em>{{ i.accepted.note }}</em>{% if i.accepted.accepted_by %} — {{ i.accepted.accepted_by.get_full_name|default:i.accepted.accepted_by.username }}{% endif %}
-                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form></div>
-            {% elif i.in_transit %}
-            <div class="small text-muted mt-1">Dated within days of month end, so it isn't a problem yet — it will match its deposit next month.</div>
-            {% else %}
-            <form method="post" class="d-flex gap-2 flex-wrap mt-1">{% csrf_token %}<input type="hidden" name="action" value="accept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}">
-                <input type="text" name="note" class="form-control form-control-sm" style="max-width: 360px;" maxlength="300" placeholder="Why is this a reconciling item?" required>
-                <button class="btn btn-outline-secondary btn-sm">Accept as reconciling item</button></form>
-            {% if i.kind == 'deposit' %}<div class="small text-muted mt-1">Not income (a refund, say)? Re-code the line below as an expense instead.</div>{% endif %}
-            {% endif %}
-        </div>
-        {% empty %}<p class="small mb-0" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Every income deposit matches a platform payout and every payout has cleared.</p>{% endfor %}
-    {% endif %}
 </div></div>
 {% endif %}
 
 {% if not close and changed %}
-<div class="alert alert-warning small d-flex justify-content-between align-items-center gap-2 flex-wrap">
-    <span><strong>{{ changed }} line{{ changed|pluralize }} changed in QuickBooks</strong> after being pulled in. Their coding was kept — look at the highlighted ones below.</span>
-    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="acknowledge_changes"><button class="btn btn-outline-secondary btn-sm">I've looked — they're fine</button></form>
+<div class="alert alert-warning small py-1 px-3 mb-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <span><strong>{{ changed }} line{{ changed|pluralize }} changed in QuickBooks</strong> after being pulled in; coding was kept. The highlighted rows below need a glance.</span>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="acknowledge_changes"><button class="btn btn-outline-secondary btn-sm py-0">I've looked — they're fine</button></form>
 </div>
 {% endif %}
 
 <form method="post" id="coding-form">
     {% csrf_token %}
-    {% if not close %}
-    <div class="d-flex gap-2 flex-wrap align-items-center mb-3 p-2 rounded" style="background: var(--bs-light, #f8f9fa);">
-        <span class="small text-muted">Tick lines, then</span>
-        <select id="bulk-category" class="form-select form-select-sm" style="max-width: 220px;">
-            <option value="expense">Expense (or refund of one)</option><option value="deposit">Income deposit (booking payout)</option><option value="owner_payment">Owner payment</option><option value="reimbursement">Expense reimbursement</option><option value="commission">Commission</option>
-        </select>
-        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="applyBulk()">Set ticked to this</button>
-        <span class="ms-auto d-flex gap-2 flex-wrap">
-            <button name="action" value="accept_all" class="btn btn-outline-primary btn-sm">Accept everything as shown{% if unreviewed %} ({{ unreviewed }} to review){% endif %}</button>
-            <button name="action" value="save_coding" class="btn btn-primary btn-sm">Save coding</button>
-        </span>
+    <div class="card mb-3" style="border-radius: 12px;">
+        <div class="p-2 border-bottom">
+            <div class="d-flex flex-wrap gap-1 align-items-center mb-2" id="cl-chips">
+                <span class="small text-muted me-1">Quick filters</span>
+                <button type="button" class="cl-chip on" data-preset="">All</button>
+                <button type="button" class="cl-chip" data-preset="acct=trust;sign=pos" title="Money into the trust account — most likely income deposits">Trust · money in</button>
+                <button type="button" class="cl-chip" data-preset="acct=trust;sign=neg" title="Money out of the trust account">Trust · money out</button>
+                <button type="button" class="cl-chip" data-preset="acct=expense;sign=pos" title="Charges to the reimbursable-expense account">Expense · charges</button>
+                <button type="button" class="cl-chip" data-preset="acct=expense;sign=neg" title="Credits to the reimbursable-expense account — usually the reimbursement">Expense · credits</button>
+                {% if not close %}<button type="button" class="cl-chip" data-preset="show=review">To review</button><button type="button" class="cl-chip" data-preset="show=changed">Changed in QuickBooks</button><button type="button" class="cl-chip" data-preset="show=suggested">Suggested</button>{% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <select id="f-acct" class="form-select form-select-sm" style="width: auto;" aria-label="Account"><option value="">Both accounts</option><option value="trust">Trust account</option><option value="expense">Expense account</option></select>
+                <select id="f-sign" class="form-select form-select-sm" style="width: auto;" aria-label="Amount"><option value="">Any amount</option><option value="pos">Positive (in / charge)</option><option value="neg">Negative (out / credit)</option></select>
+                <select id="f-cat" class="form-select form-select-sm" style="width: auto;" aria-label="Category"><option value="">Any category</option>{% for value, label in all_categories %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+                {% if not close %}<select id="f-show" class="form-select form-select-sm" style="width: auto;" aria-label="Status"><option value="">Any status</option><option value="review">To review</option><option value="changed">Changed in QuickBooks</option><option value="suggested">Suggested category</option><option value="default">Default category</option><option value="user">Coded by a person</option></select>{% endif %}
+                <input type="search" id="f-q" class="form-control form-control-sm" style="max-width: 200px;" placeholder="Search payee, memo…" aria-label="Search">
+                <span class="small text-muted ms-auto" id="cl-count"></span>
+            </div>
+            {% if not close %}
+            <div class="d-flex flex-wrap gap-2 align-items-center mt-2 pt-2 border-top">
+                <span class="small text-muted">Set</span>
+                <select id="bulk-category" class="form-select form-select-sm" style="width: auto;">{% for value, label in all_categories %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0" onclick="clBulk('ticked')">ticked rows</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0" onclick="clBulk('shown')">every row shown</button>
+                <span class="ms-auto d-flex gap-2 flex-wrap">
+                    <button name="action" value="accept_all" class="btn btn-outline-primary btn-sm py-0">Accept everything as shown{% if unreviewed %} ({{ unreviewed }} to review){% endif %}</button>
+                    <button name="action" value="save_coding" class="btn btn-primary btn-sm py-0">Save coding</button>
+                </span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="table-responsive" style="max-height: 70vh;">
+        <table class="table table-sm table-hover align-middle mb-0 cl-table" id="lines">
+            <thead><tr>
+                {% if not close %}<th style="width: 28px;"><input type="checkbox" class="form-check-input" id="pick-all" aria-label="Tick every row shown"></th>{% endif %}
+                <th data-sort="date">Date<span class="arrow">▲</span></th><th data-sort="acct">Account<span class="arrow">▲</span></th><th data-sort="type">Type<span class="arrow">▲</span></th>
+                <th data-sort="payee">Payee / memo<span class="arrow">▲</span></th><th data-sort="split">Other side<span class="arrow">▲</span></th>
+                <th data-sort="amount" class="text-end">Amount<span class="arrow">▲</span></th><th data-sort="cat">Category<span class="arrow">▲</span></th>{% if not close %}<th data-sort="status">Status<span class="arrow">▲</span></th>{% endif %}
+            </tr></thead>
+            <tbody>
+            {% for l in lines %}
+            <tr class="{% if l.changed_in_qb and not close %}changed{% endif %}" data-acct="{{ l.role }}" data-sign="{% if l.flow > 0 %}pos{% else %}neg{% endif %}" data-cat="{{ l.category }}" data-source="{{ l.category_source }}"
+                data-review="{% if not l.reviewed %}1{% endif %}" data-changed="{% if l.changed_in_qb %}1{% endif %}" data-date="{{ l.txn_date|date:'Y-m-d' }}" data-amount="{{ l.flow }}"
+                data-type="{{ l.txn_type|lower }}" data-payee="{{ l.payee|lower }}" data-split="{{ l.split|lower }}" data-status="{% if l.changed_in_qb %}0{% elif not l.reviewed %}1{% else %}2{% endif %}"
+                data-search="{{ l.payee|lower }} {{ l.memo|lower }} {{ l.split|lower }} {{ l.txn_type|lower }} {{ l.doc_num }}">
+                {% if not close %}<td><input type="checkbox" class="form-check-input bulk-check" data-line="{{ l.pk }}" aria-label="Tick this row"></td>{% endif %}
+                <td>{{ l.txn_date|date:"M j" }}</td>
+                <td><span class="cl-tag {{ l.role }}">{% if l.role == 'trust' %}Trust{% else %}Expenses{% endif %}</span></td>
+                <td class="text-muted">{{ l.txn_type }}{% if l.doc_num %} #{{ l.doc_num }}{% endif %}</td>
+                <td><span class="trunc" title="{{ l.payee }}{% if l.memo %} — {{ l.memo }}{% endif %}"><strong>{{ l.payee|default:"—" }}</strong>{% if l.memo %} <span class="text-muted">{{ l.memo }}</span>{% endif %}</span></td>
+                <td class="text-muted"><span class="trunc" style="max-width: 190px;" title="{{ l.split }}">{{ l.split|default:"" }}</span></td>
+                <td class="amt {% if l.role == 'trust' and l.flow > 0 %}in{% endif %}">{% if l.role == 'trust' %}{% if l.flow > 0 %}+${{ l.flow|floatformat:"2g" }}{% else %}−${{ l.flow|cut:"-"|floatformat:"2g" }}{% endif %}{% else %}{% if l.flow < 0 %}−${{ l.flow|cut:"-"|floatformat:"2g" }}{% else %}${{ l.flow|floatformat:"2g" }}{% endif %}{% endif %}</td>
+                <td>{% if close %}{{ l.get_category_display }}{% else %}
+                    <select name="cat_{{ l.pk }}" id="cat-{{ l.pk }}" class="form-select form-select-sm cat" aria-label="Category" data-original="{{ l.category }}">
+                        {% for value, label in l.options %}<option value="{{ value }}" {% if l.category == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>{% endif %}</td>
+                {% if not close %}<td class="small">{% if l.changed_in_qb %}<span style="color: #8a5d00;" title="Changed in QuickBooks: {{ l.change_note }}"><i data-lucide="triangle-alert" class="icon"></i> changed</span>{% elif l.reviewed %}<span style="color: var(--status-good);"><i data-lucide="check" class="icon"></i></span>{% else %}<span style="color: var(--status-warning); font-weight: 600;">review</span>{% endif %}{% if l.category_source == 'suggested' and not l.reviewed %} <span class="text-muted" title="The system suggested this category from the wording">· suggested</span>{% elif l.category_source == 'user' %} <span class="text-muted">· by hand</span>{% endif %}</td>{% endif %}
+            </tr>
+            {% empty %}<tr><td colspan="9" class="text-muted small p-3">No transactions in either account for {{ month|date:"F Y" }}.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+        </div>
     </div>
-    {% endif %}
-
-    {% for sec in sections %}
-    <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body p-0">
-        <div class="p-3 pb-2">
-            <h6 class="mb-0">{{ sec.title }}{% if sec.account %} <span class="text-muted fw-normal small">· {{ sec.account.fully_qualified_name }}</span>{% endif %}</h6>
-            <p class="text-muted small mb-0">
-                {% if sec.role == 'expense' %}Everything here is an expense unless it's the monthly reimbursement (the credit that pays us back out of the trust account).{% else %}Money in is an income deposit (a booking payout) — unless it isn't income, like a refund, which is an expense here. Money out is an expense unless it's the owner payment, the expense reimbursement to us, or commission.{% endif %}
-            </p>
-        </div>
-        {% for l in sec.lines %}
-        <div class="d-flex gap-2 align-items-start flex-wrap px-3 py-2 border-top {% if l.changed_in_qb %}bg-warning-subtle{% endif %}">
-            {% if not close %}<input type="checkbox" class="form-check-input mt-2 bulk-check" data-line="{{ l.pk }}" aria-label="Select">{% endif %}
-            <div style="flex: 1 1 260px; min-width: 0;">
-                <div class="small text-muted">{{ l.txn_date|date:"D M j" }} · {{ l.txn_type }}{% if l.doc_num %} #{{ l.doc_num }}{% endif %}</div>
-                <div class="fw-medium">{{ l.payee|default:"—" }}</div>
-                <div class="small text-muted">{{ l.memo|default:"" }}{% if l.split %}{% if l.memo %} · {% endif %}other side: {{ l.split }}{% endif %}</div>
-                {% if l.changed_in_qb %}<div class="small" style="color: #8a5d00;"><i data-lucide="triangle-alert" class="icon"></i> Changed in QuickBooks: {{ l.change_note }}</div>{% endif %}
-            </div>
-            <div class="text-end fw-semibold" style="min-width: 110px; {% if sec.role == 'trust' %}color: {% if l.flow > 0 %}var(--status-good){% else %}inherit{% endif %};{% endif %}">
-                {% if sec.role == 'trust' %}{% if l.flow > 0 %}+${{ l.flow|floatformat:"2g" }}<div class="small fw-normal text-muted">in</div>{% else %}−${{ l.flow|cut:"-"|floatformat:"2g" }}<div class="small fw-normal text-muted">out</div>{% endif %}
-                {% else %}{% if l.flow < 0 %}−${{ l.flow|cut:"-"|floatformat:"2g" }}<div class="small fw-normal text-muted">credit</div>{% else %}${{ l.flow|floatformat:"2g" }}{% endif %}{% endif %}
-            </div>
-            <div style="min-width: 210px;">
-                {% if close %}
-                <span class="small">{{ l.get_category_display }}</span>
-                {% else %}
-                <select name="cat_{{ l.pk }}" id="cat-{{ l.pk }}" class="form-select form-select-sm" aria-label="Category">
-                    {% for value, label in sec.options %}<option value="{{ value }}" {% if l.category == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-                </select>
-                <div class="small mt-1 text-muted">
-                    {% if l.reviewed %}<span style="color: var(--status-good);">✓ reviewed</span>{% else %}<span style="color: var(--status-warning);">to review</span>{% endif %}
-                    · {% if l.category_source == 'user' %}coded by a person{% elif l.category_source == 'suggested' %}suggested{% else %}default{% endif %}
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        {% empty %}<p class="text-muted small px-3 pb-3 mb-0 border-top pt-2">Nothing in this account for {{ month|date:"F Y" }}.</p>{% endfor %}
-    </div></div>
-    {% endfor %}
 </form>
 
 {% if removed %}
@@ -200,13 +231,89 @@
 {% endif %}
 
 <script>
-function applyBulk() {
-    var value = document.getElementById('bulk-category').value, skipped = 0;
-    document.querySelectorAll('.bulk-check:checked').forEach(function (box) {
-        var select = document.getElementById('cat-' + box.dataset.line);
-        if (select && select.querySelector('option[value="' + value + '"]')) { select.value = value; } else { skipped += 1; }
+(function () {
+    var table = document.getElementById('lines');
+    if (!table) { return; }
+    var body = table.tBodies[0], rows = Array.prototype.slice.call(body.querySelectorAll('tr[data-acct]'));
+    var els = { acct: document.getElementById('f-acct'), sign: document.getElementById('f-sign'), cat: document.getElementById('f-cat'), show: document.getElementById('f-show'), q: document.getElementById('f-q') };
+    var count = document.getElementById('cl-count'), pickAll = document.getElementById('pick-all');
+    var sort = { key: 'date', dir: 1 };
+
+    function shows(row, show) {
+        if (!show) { return true; }
+        if (show === 'review') { return !!row.dataset.review; }
+        if (show === 'changed') { return !!row.dataset.changed; }
+        return row.dataset.source === show;
+    }
+    function apply() {
+        var q = (els.q.value || '').toLowerCase().trim(), shown = 0;
+        rows.forEach(function (row) {
+            var ok = (!els.acct.value || row.dataset.acct === els.acct.value) && (!els.sign.value || row.dataset.sign === els.sign.value)
+                && (!els.cat.value || row.dataset.cat === els.cat.value) && shows(row, els.show ? els.show.value : '')
+                && (!q || row.dataset.search.indexOf(q) !== -1);
+            row.hidden = !ok;
+            if (ok) { shown += 1; }
+        });
+        count.textContent = 'Showing ' + shown + ' of ' + rows.length;
+        if (pickAll) { pickAll.checked = false; }
+        document.querySelectorAll('#cl-chips .cl-chip').forEach(function (chip) { chip.classList.remove('on'); });
+    }
+    function preset(text) {
+        ['acct', 'sign', 'cat', 'show'].forEach(function (k) { if (els[k]) { els[k].value = ''; } });
+        els.q.value = '';
+        (text || '').split(';').forEach(function (pair) { var kv = pair.split('='); if (kv[0] && els[kv[0]]) { els[kv[0]].value = kv[1]; } });
+    }
+    document.querySelectorAll('#cl-chips .cl-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () { preset(chip.dataset.preset); apply(); chip.classList.add('on'); });
     });
-    if (skipped) { alert(skipped + ' ticked line(s) belong to an account where that category doesn\'t apply, so they were left as they were.'); }
-}
+    Object.keys(els).forEach(function (k) { if (els[k]) { els[k].addEventListener(k === 'q' ? 'input' : 'change', apply); } });
+
+    function keyOf(row, key) {
+        if (key === 'amount') { return parseFloat(row.dataset.amount); }
+        if (key === 'status') { return parseInt(row.dataset.status, 10); }
+        return row.dataset[key] || '';
+    }
+    table.querySelectorAll('thead th[data-sort]').forEach(function (th) {
+        th.addEventListener('click', function () {
+            var key = th.dataset.sort;
+            sort.dir = sort.key === key ? -sort.dir : 1;
+            sort.key = key;
+            var ordered = rows.slice().sort(function (a, b) {
+                var x = keyOf(a, key), y = keyOf(b, key);
+                return (x < y ? -1 : (x > y ? 1 : 0)) * sort.dir || (a.dataset.date < b.dataset.date ? -1 : 1);
+            });
+            ordered.forEach(function (row) { body.appendChild(row); });
+            table.querySelectorAll('thead th').forEach(function (h) { h.classList.remove('sorted'); var a = h.querySelector('.arrow'); if (a) { a.textContent = '▲'; } });
+            th.classList.add('sorted');
+            th.querySelector('.arrow').textContent = sort.dir === 1 ? '▲' : '▼';
+        });
+    });
+    if (pickAll) {
+        pickAll.addEventListener('change', function () {
+            rows.forEach(function (row) { var box = row.querySelector('.bulk-check'); if (box && !row.hidden) { box.checked = pickAll.checked; } });
+        });
+    }
+    body.addEventListener('change', function (event) {
+        if (!event.target.classList.contains('cat')) { return; }
+        var row = event.target.closest('tr');
+        row.dataset.cat = event.target.value;
+        row.classList.toggle('edited', event.target.value !== event.target.dataset.original);
+        if (els.cat.value) { apply(); }
+    });
+    window.clBulk = function (which) {
+        var value = document.getElementById('bulk-category').value, skipped = 0, done = 0;
+        rows.forEach(function (row) {
+            var use = which === 'shown' ? !row.hidden : (!row.hidden && row.querySelector('.bulk-check') && row.querySelector('.bulk-check').checked);
+            if (!use) { return; }
+            var select = row.querySelector('select.cat');
+            if (select && select.querySelector('option[value="' + value + '"]')) {
+                select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); done += 1;
+            } else { skipped += 1; }
+        });
+        if (!done && !skipped) { alert(which === 'ticked' ? 'Tick some rows first.' : 'No rows are shown.'); }
+        else if (skipped) { alert(skipped + ' row(s) are in an account where that category doesn\'t apply, so they were left as they were.'); }
+    };
+    apply();
+})();
 </script>
 {% endblock %}

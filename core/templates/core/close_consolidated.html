@@ -1,11 +1,19 @@
 {% extends 'base.html' %}
 {% block title %}{{ property.name }} — {{ month|date:"F Y" }} consolidated{% endblock %}
 {% block content %}
-<a href="{% url 'close_overview' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+<style>
+    .cl-ov { font-size: 0.84rem; }
+    .cl-ov thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); background: var(--surface-card, #fff); }
+    .cl-ov td { padding: 4px 8px; vertical-align: middle; }
+    .cl-ov td.num, .cl-ov th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cl-sum th { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 4px 8px; background: var(--bs-light, #f8f9fa); }
+    .cl-sum td { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; padding: 5px 8px; }
+</style>
+<a href="{% url 'close_overview' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
-        <h2 class="page-title mb-0">{{ property.name }}</h2>
-        <p class="text-muted small mb-0">{{ month|date:"F Y" }} · consolidated from {{ consolidated.units }} unit{{ consolidated.units|pluralize }}{% if consolidated.state == 'closed' %} · <strong>all closed</strong>{% elif consolidated.closed_units %} · {{ consolidated.closed_units }} closed{% endif %}</p>
+        <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· {{ month|date:"F Y" }}</span></h2>
+        <div class="small text-muted">Consolidated from {{ consolidated.units }} unit{{ consolidated.units|pluralize }}{% if consolidated.state == 'closed' %} · <strong>all closed</strong>{% elif consolidated.closed_units %} · {{ consolidated.closed_units }} closed{% endif %}. Each unit is coded, reconciled and closed on its own; this page is the units added up.</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <div class="btn-group btn-group-sm">
@@ -15,37 +23,34 @@
         {% if consolidated.state != 'closed' %}
         <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="sync"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Sync every unit</button></form>
         {% endif %}
+        {% if ready_clean %}
+        <form method="post" class="d-inline" onsubmit="return confirm('Close the {{ ready_clean }} ready unit{{ ready_clean|pluralize }} for {{ month|date:"F Y" }}? Their transactions are locked from then on.');">
+            {% csrf_token %}<input type="hidden" name="action" value="close_ready">
+            <button class="btn btn-primary btn-sm"><i data-lucide="lock" class="icon"></i> Close the {{ ready_clean }} ready unit{{ ready_clean|pluralize }} with no warnings</button>
+        </form>
+        {% endif %}
     </div>
 </div>
-<p class="text-muted small">This property keeps its books unit by unit: each unit is coded, reconciled and closed on its own, and this page is simply the units added up. Nothing here is coded separately.</p>
 
-{% if consolidated.drift %}<div class="alert alert-danger small">{{ consolidated.drift }} QuickBooks change{{ consolidated.drift|pluralize }} to closed units were <strong>not</strong> applied — open the unit to see them.</div>{% endif %}
+{% if consolidated.drift %}<div class="alert alert-danger small py-2 mb-2">{{ consolidated.drift }} QuickBooks change{{ consolidated.drift|pluralize }} to closed units were <strong>not</strong> applied — open the unit to see them.</div>{% endif %}
 
 {% if consolidated.totals %}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-    <h6 class="card-title">The month, consolidated</h6>
-    <div class="row row-cols-2 row-cols-md-4 g-2 small">
-        <div class="col"><div class="text-muted">Income deposits</div><div class="fs-6 fw-semibold">${{ consolidated.totals.deposits|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">Expenses (all)</div><div class="fs-6 fw-semibold">${{ consolidated.totals.expenses_total|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">&nbsp;&nbsp;paid by us, reimbursable</div><div class="fw-semibold">${{ consolidated.totals.expenses_reimbursable|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">&nbsp;&nbsp;paid direct from trust</div><div class="fw-semibold">${{ consolidated.totals.expenses_direct|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">Reimbursement to us</div><div class="fw-semibold">${{ consolidated.totals.reimbursement_trust|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">Commission</div><div class="fw-semibold">${{ consolidated.totals.commission|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">Owner payment</div><div class="fs-6 fw-semibold">${{ consolidated.totals.owner_payment|floatformat:"2g" }}</div></div>
-        <div class="col"><div class="text-muted">Matched to platform payouts</div><div class="fw-semibold">${{ consolidated.payouts_matched|floatformat:"2g" }}</div></div>
-    </div>
-    {% if consolidated.state != 'closed' %}<p class="text-muted small mb-0 mt-2">Includes units still being coded, as they stand now; units that are closed are as closed.</p>{% endif %}
-</div></div>
+<div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
+    <thead><tr><th>Income deposits</th><th>Expenses</th><th>Reimbursable</th><th>Paid from trust</th><th>Reimb. to us</th><th>Commission</th><th>Owner payment</th><th>Matched to payouts</th></tr></thead>
+    <tbody><tr>
+        <td>${{ consolidated.totals.deposits|floatformat:"2g" }}</td><td>${{ consolidated.totals.expenses_total|floatformat:"2g" }}</td><td>${{ consolidated.totals.expenses_reimbursable|floatformat:"2g" }}</td><td>${{ consolidated.totals.expenses_direct|floatformat:"2g" }}</td>
+        <td>${{ consolidated.totals.reimbursement_trust|floatformat:"2g" }}</td><td>${{ consolidated.totals.commission|floatformat:"2g" }}</td><td>${{ consolidated.totals.owner_payment|floatformat:"2g" }}</td><td>${{ consolidated.payouts_matched|floatformat:"2g" }}</td>
+    </tr></tbody>
+</table></div>
+{% if consolidated.state != 'closed' %}<p class="text-muted mb-2" style="font-size: 0.72rem;">Includes units still being coded, as they stand now; units that are closed are as closed.</p>{% endif %}
 {% endif %}
 
-{% if ready_clean %}
-<form method="post" class="mb-3" onsubmit="return confirm('Close the {{ ready_clean }} ready unit{{ ready_clean|pluralize }} for {{ month|date:"F Y" }}? Their transactions are locked from then on.');">
-    {% csrf_token %}<input type="hidden" name="action" value="close_ready">
-    <button class="btn btn-primary btn-sm"><i data-lucide="lock" class="icon"></i> Close the {{ ready_clean }} ready unit{{ ready_clean|pluralize }} with no warnings</button>
-</form>
-{% endif %}
-
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body p-0">
-    {% for r in rows %}{% include 'core/_close_row.html' with r=r indent=False first=forloop.first %}{% empty %}<p class="text-muted small p-3 mb-0">No active units. Add the units on the property page.</p>{% endfor %}
+<div class="card mb-3" style="border-radius: 12px;"><div class="table-responsive">
+<table class="table table-sm table-hover mb-0 cl-ov">
+    <thead><tr><th>Unit</th><th>Status</th><th class="num">Lines</th><th class="num">To review</th><th class="num">Income deposits</th><th class="num">Expenses</th><th class="num">Owner payment</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}{% include 'core/_close_row.html' with r=r indent=False %}{% empty %}<tr><td colspan="9" class="text-muted small p-3">No active units. Add the units on the property page.</td></tr>{% endfor %}
+    </tbody>
+</table>
 </div></div>
 {% endblock %}
