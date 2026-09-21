@@ -38,6 +38,7 @@ from .services import checklist as checklist_service
 from .services import feeds as feed_service
 from .services import recurring as recurring_service
 from .services import performance as performance_service
+from .services import calendar_view as calendar_service
 from .services import coverage as coverage_service
 from .services import recalibrate as recalibrate_service
 from .services import review as review_service
@@ -864,6 +865,20 @@ def performance(request):
         'report': report, 'property_id': property_id, 'is_admin': _is_admin(request.user),
         'properties': list(str_board.eligible_properties()),
     })
+
+
+@login_required
+def performance_calendar(request, property_id):
+    """A host-style calendar for one rental: a row per unit, a bar per
+    reservation from check-in to check-out, the blank stretches between them
+    counted in nights, for 30/60/90/180 days from any start date. Opened from
+    the occupancy numbers on the performance screens."""
+    prop = get_object_or_404(str_board.eligible_properties(), pk=property_id)
+    raw_days = request.GET.get('days', '')
+    days = int(raw_days) if raw_days.isdigit() else calendar_service.DEFAULT_DAYS
+    start = parse_date(request.GET.get('start', '') or '')
+    cal = calendar_service.build_property_calendar(prop, start=start, days=days)
+    return render(request, 'onsite/performance_calendar.html', {'cal': cal, 'property': prop, 'is_admin': _is_admin(request.user)})
 
 
 @login_required

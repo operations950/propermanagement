@@ -55,6 +55,7 @@ class _Unit:
         self.label = f'{prop.name} — {unit.label}' if unit else prop.name
         self.active, self.all = [], []
         self.active_ops, self.calendar = [], []
+        self.bars = []      # (booking, the nights of it that count) — what the calendar draws
         self.booked = set()
         self.data_start = None
         self.connected = False
@@ -77,6 +78,8 @@ class _Unit:
                 nights = [n for n in nights if n < today]
             if booking.on_calendar or booking.source == Booking.Source.MANUAL:
                 self.calendar.append(booking)
+            if nights:
+                self.bars.append((booking, nights))
             self.booked.update(nights)
 
     @property

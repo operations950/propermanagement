@@ -7,6 +7,7 @@ urlpatterns = [
     path('today/', views.str_today, name='onsite_str_today'),
     path('performance/', views.performance, name='onsite_performance'),
     path('performance/<int:property_id>/', views.performance_property, name='onsite_performance_property'),
+    path('performance/<int:property_id>/calendar/', views.performance_calendar, name='onsite_performance_calendar'),
     path('reservations/', views.reservation_list, name='onsite_reservation_list'),
     path('reservations/new/', views.reservation_create, name='onsite_reservation_create'),
     path('reservations/review/', views.reservation_review, name='onsite_reservation_review'),

@@ -10,6 +10,7 @@
                         {% if not p.is_active %} <span class="badge bg-secondary rounded-pill">Inactive</span>{% endif %}
                         {% if p.unit_count %} <span class="badge rounded-pill bg-light text-muted border" title="Units">{{ p.unit_count }} unit{{ p.unit_count|pluralize }}</span>{% endif %}
                     </div>
+                    {% if p.missing_specs %}<div class="mt-1">{% if p.missing_specs %} <a href="{% url 'property_detail' p.pk %}#property-size" class="badge rounded-pill text-decoration-none" style="background: color-mix(in srgb, var(--status-warning) 22%, white); color: #7a5200; border: 1px solid var(--status-warning);" title="{{ p.specs_summary }}. Cleaning time estimates need these — tap to fill them in."><i data-lucide="ruler" class="icon"></i> Needs details</a>{% endif %}<div class="small text-muted mt-1">{{ p.specs_summary }}</div></div>{% endif %}
                     <div class="small text-muted">{{ p.address|default:'—' }}</div>
                 </div>
             </div>

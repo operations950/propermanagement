@@ -7,6 +7,13 @@
     <a href="{% url 'property_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New property</a>
 </div>
 
+{% if incomplete_specs %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
+    <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>{{ incomplete_specs }} short-term rental{{ incomplete_specs|pluralize }}</strong> {{ incomplete_specs|pluralize:"is,are" }} missing bedrooms, beds, bathrooms or square footage. Cleaning time estimates and prices use those, and a blank counts as zero, so they come out too low.</span>
+    {% if needs_details %}<a href="?{% if selected_type %}type={{ selected_type }}{% endif %}" class="btn btn-outline-secondary btn-sm">Show all</a>{% else %}<a href="?needs=details" class="btn btn-outline-secondary btn-sm">Show only these</a>{% endif %}
+</div>
+{% endif %}
+
 <form method="get" class="row g-2 mb-3 align-items-center">
     <div class="col-auto position-relative">
         <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
@@ -14,6 +21,7 @@
                placeholder="Search name or address…" value="{{ q }}" autocomplete="off">
     </div>
     <input type="hidden" name="type" value="{{ selected_type }}">
+    {% if needs_details %}<input type="hidden" name="needs" value="details">{% endif %}
     <div class="col-auto">
         <div class="form-check">
             <input class="form-check-input" type="checkbox" name="show_inactive" value="1" id="showInactive" {% if show_inactive %}checked{% endif %} onchange="this.form.submit()">
@@ -50,6 +58,7 @@
     var mobileBody = document.getElementById('property-mobile-cards');
     var selectedType = '{{ selected_type|escapejs }}';
     var showInactive = {% if show_inactive %}true{% else %}false{% endif %};
+    var needsDetails = {% if needs_details %}true{% else %}false{% endif %};
     var timer = null;
 
     function runSearch() {
@@ -57,6 +66,7 @@
         if (input.value) params.set('q', input.value);
         if (selectedType) params.set('type', selectedType);
         if (showInactive) params.set('show_inactive', '1');
+        if (needsDetails) params.set('needs', 'details');
         fetch('{% url "property_list" %}?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })

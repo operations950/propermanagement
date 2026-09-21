@@ -23,7 +23,7 @@ from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
-from . import app_settings, google_calendar, google_login, places, quickbooks, usps
+from . import app_settings, google_calendar, google_login, places, property_specs, quickbooks, usps
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
@@ -462,16 +462,31 @@ def property_list(request):
     show_inactive = request.GET.get('show_inactive') == '1'
     if not show_inactive:
         qs = qs.filter(is_active=True)
-    qs = qs.annotate(unit_count=Count('units', distinct=True)).order_by('property_type', '-is_general', 'name')
+    qs = qs.annotate(unit_count=Count('units', distinct=True)).order_by('property_type', '-is_general', 'name').prefetch_related('units')
+    properties = list(qs)
+    for p in properties:
+        p.missing_specs = property_specs.missing_specs(p)
+        p.specs_summary = property_specs.summary(p.missing_specs)
+    needs_details = request.GET.get('needs') == 'details'
+    if needs_details:
+        properties = [p for p in properties if p.missing_specs]
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse({
-            'desktop': render_to_string('core/_property_table_rows.html', {'properties': qs}, request=request),
-            'mobile': render_to_string('core/_property_mobile_cards.html', {'properties': qs}, request=request),
+            'desktop': render_to_string('core/_property_table_rows.html', {'properties': properties}, request=request),
+            'mobile': render_to_string('core/_property_mobile_cards.html', {'properties': properties}, request=request),
         })
 
+    # How many active short-term rentals still lack size details, whatever the
+    # list is currently filtered to — a reminder, never a requirement.
+    incomplete = sum(
+        1 for p in Property.objects.filter(is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL).prefetch_related('units')
+        if property_specs.missing_specs(p)
+    )
     return render(request, 'core/property_list.html', {
-        'properties': qs,
+        'properties': properties,
+        'needs_details': needs_details,
+        'incomplete_specs': incomplete,
         'type_choices': Property.Type.choices,
         'q': q,
         'selected_type': selected_type,
@@ -1139,6 +1154,7 @@ def property_detail(request, pk):
 
     return render(request, 'core/property_detail.html', {
         'property': prop,
+        'specs_summary': property_specs.summary(property_specs.missing_specs(prop)),
         'back_url': back_url,
         'contact_groups': contact_groups,
         'contacts_with_thread_ids': contacts_with_thread_ids,

@@ -20,12 +20,15 @@
         <h2 class="page-title mb-0">{{ property.name }}</h2>
         <p class="text-muted small mb-0">Trailing 12 months, as of {{ data.as_of|date:"F j, Y" }}{% if data.data_from %} · reservations on record since {{ data.data_from|date:"M j, Y" }}{% endif %}</p>
     </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+    <a href="{% url 'onsite_performance_calendar' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-days" class="icon"></i> Calendar</a>
     {% if data.units %}
     <form method="get"><select name="unit" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="">All units</option>
         {% for u in data.units %}<option value="{{ u.pk }}" {% if data.unit_id == u.pk %}selected{% endif %}>{{ u.label }}</option>{% endfor %}
     </select></form>
     {% endif %}
+    </div>
 </div>
 
 {% include 'onsite/_overlaps.html' with overlaps=data.forward.overlaps next=request.get_full_path %}
@@ -84,7 +87,7 @@
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> Looking ahead</h6>
     <div class="row row-cols-3 g-2 mb-3">
         {% for w in data.forward.ahead %}
-        <div class="col"><div class="kpi"><div class="lbl">Next {{ w.days }} days</div><div class="val">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ w.booked }} of {{ w.available }} nights{% if w.gaps %} · {{ w.gaps }} gap{{ w.gaps|pluralize }}{% endif %}</div></div></div>
+        <div class="col"><a href="{% url 'onsite_performance_calendar' property.pk %}?days={{ w.days }}" class="text-decoration-none d-block h-100" title="Open the calendar for the next {{ w.days }} days"><div class="kpi" style="border: 1px solid transparent;"><div class="lbl">Occupancy · next {{ w.days }} days</div><div class="val" style="color: var(--ink-primary);">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ w.booked }} of {{ w.available }} nights booked{% if w.gaps %} · {{ w.gaps }} gap{{ w.gaps|pluralize }}{% endif %} · <span style="color: var(--brand-primary);">see calendar</span></div></div></a></div>
         {% endfor %}
     </div>
     <div class="small fw-semibold mb-1">Vacancy gaps to fill</div>

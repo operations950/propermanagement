@@ -91,16 +91,17 @@
 
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
-        <h6 class="card-title">By property — next 30 / 60 / 90 days</h6>
+        <h6 class="card-title">By property — occupancy, next 30 / 60 / 90 days</h6>
+        <p class="text-muted small mb-2">The share of nights already booked (higher is better; the rest is still open). Click a number to see that property's calendar for that stretch.</p>
         <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-            <thead><tr class="small text-muted text-uppercase"><th>Property</th><th class="text-end">30 days</th><th class="text-end">60 days</th><th class="text-end">90 days</th><th class="text-end">Gaps (90 days)</th></tr></thead>
+            <thead><tr class="small text-muted text-uppercase"><th>Property</th><th class="text-end">Occupied, 30 days</th><th class="text-end">60 days</th><th class="text-end">90 days</th><th class="text-end">Gaps (90 days)</th></tr></thead>
             <tbody>
             {% for r in report.by_property %}
             <tr>
                 <td><a href="{% url 'onsite_performance_property' r.property.pk %}" class="text-decoration-none fw-semibold">{{ r.property.name }}</a>{% if r.units > 1 %} <span class="text-muted small">({{ r.units }} units)</span>{% endif %}</td>
-                <td class="text-end">{% if r.occ30 is not None %}{{ r.occ30|floatformat:0 }}%{% else %}—{% endif %}</td>
-                <td class="text-end">{% if r.occ60 is not None %}{{ r.occ60|floatformat:0 }}%{% else %}—{% endif %}</td>
-                <td class="text-end">{% if r.occ90 is not None %}{{ r.occ90|floatformat:0 }}%{% else %}—{% endif %}</td>
+                <td class="text-end">{% if r.occ30 is not None %}<a href="{% url 'onsite_performance_calendar' r.property.pk %}?days=30" title="Open the 30-day calendar">{{ r.occ30|floatformat:0 }}%</a>{% else %}—{% endif %}</td>
+                <td class="text-end">{% if r.occ60 is not None %}<a href="{% url 'onsite_performance_calendar' r.property.pk %}?days=60" title="Open the 60-day calendar">{{ r.occ60|floatformat:0 }}%</a>{% else %}—{% endif %}</td>
+                <td class="text-end">{% if r.occ90 is not None %}<a href="{% url 'onsite_performance_calendar' r.property.pk %}?days=90" title="Open the 90-day calendar">{{ r.occ90|floatformat:0 }}%</a>{% else %}—{% endif %}</td>
                 <td class="text-end">{{ r.gaps90 }}{% if r.short_gaps90 %} <span style="color: var(--status-warning);" class="small">({{ r.short_gaps90 }} short)</span>{% endif %}</td>
             </tr>
             {% empty %}<tr><td colspan="5" class="text-muted small">No data yet.</td></tr>{% endfor %}

@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}{{ property.name }} — calendar{% endblock %}
+{% block content %}
+<style>
+    .cal-scroll { overflow-x: auto; border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 12px; background: var(--surface-card, #fff); }
+    .cal-row { display: flex; min-width: min-content; }
+    .cal-label { position: sticky; left: 0; z-index: 3; flex: 0 0 118px; width: 118px; background: var(--surface-card, #fff); border-right: 1px solid var(--bs-border-color, #dee2e6); padding: 6px 8px; font-size: 0.82rem; }
+    .cal-track { position: relative; flex: 1 0 auto; background-image: linear-gradient(to right, rgba(43,43,46,0.07) 1px, transparent 1px); background-size: calc(100% / var(--days)) 100%; }
+    .cal-head .cal-track { height: 22px; }
+    .cal-daynum { position: absolute; top: 0; bottom: 0; text-align: center; font-size: 0.7rem; line-height: 1.05; padding-top: 2px; color: var(--ink-secondary); }
+    .cal-daynum b { display: block; font-weight: 600; color: var(--ink-primary); font-size: 0.74rem; }
+    .cal-daynum.weekend { background: rgba(43,43,46,0.045); }
+    .cal-daynum.today b { color: #fff; background: var(--role-admin, #3d6178); border-radius: 999px; width: 1.5em; margin: 0 auto; }
+    .cal-month { position: absolute; top: 0; bottom: 0; font-size: 0.74rem; font-weight: 600; padding: 3px 4px; border-left: 1px solid var(--bs-border-color, #dee2e6); color: var(--ink-secondary); white-space: nowrap; overflow: hidden; }
+    .cal-head.months .cal-track { height: 24px; }
+    .cal-head.days .cal-track { height: 38px; }
+    .cal-body .cal-row { border-top: 1px solid var(--bs-border-color, #dee2e6); }
+    .cal-wk { position: absolute; top: 0; bottom: 0; background: rgba(43,43,46,0.035); }
+    .cal-today { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--status-critical); opacity: 0.55; z-index: 2; }
+    .cal-bar { position: absolute; height: 28px; border-radius: 14px; padding: 0 10px; font-size: 0.76rem; line-height: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; z-index: 1; box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+    .cal-bar.airbnb { background: #3d6178; }
+    .cal-bar.vrbo { background: #93b2c6; color: #10222e; }
+    .cal-bar.manual { background: #8c4570; }
+    .cal-bar.starts-before { border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
+    .cal-bar.ends-after { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
+    .cal-blank { position: absolute; height: 28px; border: 1.5px dashed rgba(43,43,46,0.28); border-radius: 14px; font-size: 0.72rem; line-height: 25px; text-align: center; color: var(--ink-muted); white-space: nowrap; overflow: hidden; }
+    .cal-blank.short { border-color: var(--status-warning); color: #8a5d00; background: color-mix(in srgb, var(--status-warning) 12%, white); }
+    .cal-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; color: var(--ink-secondary); }
+    .cal-legend i { display: inline-block; width: 22px; height: 10px; border-radius: 5px; margin-right: 5px; vertical-align: -1px; }
+</style>
+
+<a href="{% url 'onsite_performance_property' property.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ property.name }} performance</a>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title mb-0">{{ property.name }} — calendar</h2>
+        <p class="text-muted small mb-0">{{ cal.start|date:"M j" }} → {{ cal.end|date:"M j, Y" }} · {% if cal.occupancy is not None %}<strong>{{ cal.occupancy|floatformat:0 }}% occupied</strong> ({{ cal.booked }} of {{ cal.available }} nights booked){% else %}no reservations on record{% endif %}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Days shown">
+            {% for w in cal.windows %}<a href="?days={{ w }}&start={{ cal.start|date:'Y-m-d' }}" class="btn {% if w == cal.days %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ w }} days</a>{% endfor %}
+        </div>
+        <div class="btn-group btn-group-sm">
+            <a href="?days={{ cal.days }}&start={{ cal.previous|date:'Y-m-d' }}" class="btn btn-outline-secondary" aria-label="Earlier"><i data-lucide="chevron-left" class="icon"></i></a>
+            <a href="?days={{ cal.days }}" class="btn btn-outline-secondary">Today</a>
+            <a href="?days={{ cal.days }}&start={{ cal.next|date:'Y-m-d' }}" class="btn btn-outline-secondary" aria-label="Later"><i data-lucide="chevron-right" class="icon"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="cal-legend mb-2">
+    <span><i style="background:#3d6178"></i>Airbnb</span>
+    <span><i style="background:#93b2c6"></i>VRBO</span>
+    <span><i style="background:#8c4570"></i>In-house</span>
+    <span><i style="border: 1.5px dashed rgba(43,43,46,0.4); background: transparent;"></i>Open nights</span>
+    <span><i style="border: 1.5px dashed var(--status-warning); background: color-mix(in srgb, var(--status-warning) 15%, white);"></i>Short gap between stays (1–2 nights)</span>
+</div>
+
+<div class="cal-scroll mb-3" style="--days: {{ cal.days }};">
+    <div style="min-width: {{ cal.min_width|add:118 }}px;">
+        <div class="cal-row cal-head months"><div class="cal-label"></div><div class="cal-track">{% for m in cal.months %}<div class="cal-month" style="left: {{ m.left }}%; width: {{ m.width }}%;">{{ m.label }}</div>{% endfor %}</div></div>
+        <div class="cal-row cal-head days"><div class="cal-label"></div><div class="cal-track">{% for d in cal.header_days %}<div class="cal-daynum {% if d.weekend %}weekend{% endif %} {% if d.today %}today{% endif %}" style="left: {{ d.left }}%; width: {{ d.width }}%;"><b>{{ d.num }}</b>{{ d.dow }}</div>{% endfor %}</div></div>
+        <div class="cal-body">
+            {% for row in cal.rows %}
+            <div class="cal-row">
+                <div class="cal-label">
+                    <div class="fw-semibold">{{ row.label }}</div>
+                    <div class="text-muted" style="font-size: 0.72rem;">{% if row.occupancy is not None %}{{ row.occupancy|floatformat:0 }}% booked{% else %}no data{% endif %}</div>
+                </div>
+                <div class="cal-track" style="height: {{ row.height }}px;">
+                    {% for d in cal.header_days %}{% if d.weekend %}<div class="cal-wk" style="left: {{ d.left }}%; width: {{ d.width }}%;"></div>{% endif %}{% endfor %}
+                    {% if cal.today_left is not None %}<div class="cal-today" style="left: {{ cal.today_left }}%;"></div>{% endif %}
+                    {% for b in row.blanks %}
+                    <div class="cal-blank {% if b.short %}short{% endif %}" title="{{ b.nights }} open night{{ b.nights|pluralize }}{% if b.between %} between two stays{% endif %}" style="left: {{ b.left }}%; width: {{ b.width }}%; top: 4px;">{% if b.roomy %}{{ b.nights }} night{{ b.nights|pluralize }} open{% elif b.width > 4 %}{{ b.nights }}{% endif %}</div>
+                    {% endfor %}
+                    {% for bar in row.bars %}
+                    <div class="cal-bar {{ bar.source }} {% if bar.starts_before %}starts-before{% endif %} {% if bar.ends_after %}ends-after{% endif %}" tabindex="0"
+                         title="{{ bar.guest }} · {{ bar.booking.check_in|date:'D M j' }} → {{ bar.booking.check_out|date:'D M j' }} · {{ bar.nights }} night{{ bar.nights|pluralize }} · {{ bar.source_label }}{% if is_admin and bar.booking.payout_amount is not None %} · ${{ bar.booking.payout_amount }} payout{% endif %}"
+                         style="left: {{ bar.left }}%; width: {{ bar.width }}%; top: {{ bar.top }}px;">{% if bar.starts_before %}◂ {% endif %}{{ bar.guest }} · {{ bar.nights }}n{% if bar.ends_after %} ▸{% endif %}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="p-3 text-muted small">No rentals to show.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% for row in cal.rows %}{% if row.next_after %}
+<p class="small text-muted mb-1"><i data-lucide="arrow-right" class="icon"></i> Next reservation after this window{% if row.has_units %} ({{ row.label }}){% endif %}: <strong>{{ row.next_after.check_in|date:"D M j" }}</strong>{% if row.next_after.guest_name %} · {{ row.next_after.guest_name }}{% endif %}</p>
+{% endif %}{% endfor %}
+
+<div class="card mt-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">Reservations in this window ({{ cal.reservations|length }})</h6>
+    {% for e in cal.reservations %}
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap border-top py-1 small">
+        <span><strong>{{ e.booking.check_in|date:"D M j" }} → {{ e.booking.check_out|date:"D M j" }}</strong> · {{ e.bar.nights }} night{{ e.bar.nights|pluralize }}{% if e.unit.unit %} · {{ e.unit.unit.label }}{% endif %} · {{ e.bar.guest }}</span>
+        <span class="text-muted">{{ e.bar.source_label }}{% if is_admin and e.booking.payout_amount is not None %} · ${{ e.booking.payout_amount }} payout{% endif %}</span>
+    </div>
+    {% empty %}<p class="text-muted small mb-0">No reservations in this window.</p>{% endfor %}
+</div></div>
+{% endblock %}
