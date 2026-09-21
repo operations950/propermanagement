@@ -26,6 +26,13 @@ How it works
     the payout date, so a payout dated at the very end of a month that arrives in the
     next is normal: it is shown as "in transit" — not a problem — and matches the
     deposit next month, because a payout stays in line until it has cleared.
+  * the question each month is "what hit the bank, and is there a payout behind each of it?".
+    Deposits (and take-backs: a negative income line) with no payout, and payouts dated within
+    the books that have not arrived, are what is left. A payout still outstanding from an
+    earlier month of the books is carried into the next month and can clear whenever it lands.
+    A payout dated before the books start is only ever a candidate for an early deposit in the
+    first month; if it matches nothing it reached the bank before the ledger begins, and is not
+    reported as missing.
   * whatever is left over blocks the close until it is fixed (re-code the deposit, fix
     the amount in QuickBooks, upload the missing report) or accepted as a reconciling
     item with a note. An accepted item is remembered for that month at that amount.
@@ -84,7 +91,9 @@ def _groups(bookings):
 
 
 def _income_deposits(book, month):
-    return [l for l in ledger.month_lines(book, month) if l.role == LedgerLine.Role.TRUST and l.category == LedgerLine.Category.DEPOSIT and l.flow > 0]
+    # Negative ones count too: a platform can take money back (a resolution, an adjustment), and QuickBooks
+    # shows that as a negative line in the trust account, matched by the negative payout.
+    return [l for l in ledger.month_lines(book, month) if l.role == LedgerLine.Role.TRUST and l.category == LedgerLine.Category.DEPOSIT and l.flow != 0]
 
 
 def _match_month(book, month, cleared, scope):
@@ -116,7 +125,8 @@ def _match_month(book, month, cleared, scope):
     free = _groups(pool)
     pairs, open_deposits = list(code_pairs), []
     for dep in deposits:
-        cands = [g for g in free if g['date'] - EARLY <= dep.txn_date <= g['date'] + LATE]
+        # A payout carried over from an earlier month can land whenever it lands; one dated this month is expected within LATE.
+        cands = [g for g in free if g['date'] - EARLY <= dep.txn_date and (dep.txn_date <= g['date'] + LATE or g['date'] < month)]
         cands.sort(key=lambda g: abs((dep.txn_date - g['date']).days))
         chosen = None
         for size in (1, 2, 3):
@@ -132,7 +142,11 @@ def _match_month(book, month, cleared, scope):
         else:
             open_deposits.append(dep)
     matched_ids = {i for p in pairs for g in p['groups'] for i in g['ids']}
-    open_groups = [g for g in free if g['date'] <= month_end]
+    # Only payouts from inside the books are owed to the bank. One dated just before the books start is
+    # let into the pool above so it can match a deposit that lands early in the first month, but if it
+    # matched nothing it reached the bank before the ledger begins: not something this month can chase.
+    first = ledger.month_of(ledger.books_start())
+    open_groups = [g for g in free if first <= g['date'] <= month_end]
     return {'pairs': pairs, 'open_deposits': open_deposits, 'open_groups': open_groups, 'cleared_out': cleared | matched_ids, 'month_end': month_end,
             'mismatched': [p for p in code_pairs if p['difference'] != 0]}
 
@@ -179,16 +193,18 @@ def _items(book, month, result):
         a = accepted.get(('deposit', f'line:{dep.pk}'))
         items.append({
             'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False,
-            'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${dep.flow:,.2f} deposited ({who}) with no matching platform payout',
+            'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${abs(dep.flow):,.2f} {"deposited" if dep.flow > 0 else "taken out"} ({who}) with no matching platform payout',
             'accepted': a if a and a.amount == dep.flow else None,
         })
     for g in result['open_groups']:
         a = accepted.get(('payout', g['key']))
         transit = g['date'] > result['month_end'] - TRANSIT
+        carried = g['date'] < month
         items.append({
-            'kind': 'payout', 'key': g['key'], 'amount': g['total'], 'date': g['date'], 'in_transit': transit,
-            'text': f'{g["label"]}: ${g["total"]:,.2f} for {g["count"]} reservation{"" if g["count"] == 1 else "s"}'
-                    f'{" (" + ", ".join(g["guests"]) + ")" if g["guests"] else ""} has not reached the trust account',
+            'kind': 'payout', 'key': g['key'], 'amount': g['total'], 'date': g['date'], 'in_transit': transit, 'carried': carried,
+            'text': f'{"Carried over from " + format(g["date"], "%B") + ": " if carried else ""}{g["label"]}: ${g["total"]:,.2f} for {g["count"]} reservation{"" if g["count"] == 1 else "s"}'
+                    f'{" (" + ", ".join(g["guests"]) + ")" if g["guests"] else ""} has not reached the trust account'
+                    f'{" — it was still on its way at the end of that month and has not arrived yet" if carried else ""}',
             'accepted': a if a and a.amount == g['total'] else None,
         })
     return items
@@ -247,10 +263,9 @@ def reconcile(book, month):
     unassigned = 0
     if book.unit is not None:
         from onsite.models import Booking
-        lower = ledger.month_of(ledger.books_start()) - LOOKBACK
         unassigned = Booking.objects.filter(
             property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
-            payout_date__gte=lower, payout_date__lte=month_end, payout_amount__isnull=False,
+            payout_date__gte=ledger.month_of(ledger.books_start()), payout_date__lte=month_end, payout_amount__isnull=False,
         ).exclude(payout_amount=0).exclude(pk__in=cleared).count()
     return {
         'closed': False, 'month': month, 'pairs': result['pairs'], 'items': items, 'cleared_out': result['cleared_out'],

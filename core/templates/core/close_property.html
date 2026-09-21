@@ -129,7 +129,7 @@
                     <tr class="{% if not i.accepted and not i.in_transit %}changed{% endif %}">
                         <td>{% if i.mismatch %}Deposit differs from its payout{% elif i.kind == 'deposit' %}In the bank, not from a platform payout{% elif i.in_transit %}Payout on its way{% else %}Platform payout not in the bank{% endif %}</td>
                         <td class="amt">${{ i.amount|floatformat:"2g" }}</td>
-                        <td class="wrap small text-muted" style="min-width: 300px;">{{ i.text }}{% if i.kind == 'deposit' and not i.accepted and not i.mismatch %} <em>Not income (a refund)? Code the line as an expense.</em>{% endif %}</td>
+                        <td class="wrap small text-muted" style="min-width: 300px;">{{ i.text }}{% if i.kind == 'deposit' and not i.accepted and not i.mismatch %} <em>Not income (a refund)? Code the line as an expense. The payout of a stay from before this month? Accept it and say which.</em>{% endif %}</td>
                         <td class="wrap">
                             {% if i.accepted %}<span class="small">Accepted: <em>{{ i.accepted.note }}</em>{% if i.accepted.accepted_by %} — {{ i.accepted.accepted_by.get_full_name|default:i.accepted.accepted_by.username }}{% endif %}</span>
                                 <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form>
