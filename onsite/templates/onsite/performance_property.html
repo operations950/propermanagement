@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static perf_visuals %}
 {% block title %}{{ property.name }} — performance{% endblock %}
 {% block content %}
 <style>
@@ -12,6 +12,19 @@
     .kpi .lbl { font-size: 0.78rem; color: var(--ink-muted); }
     .kpi .val { font-size: 1.5rem; font-weight: 600; line-height: 1.2; }
     .kpi .sub { font-size: 0.75rem; color: var(--ink-muted); }
+    .kpi-card { background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); border-radius: 14px; padding: 12px 14px; height: 100%; }
+    .kpi-card .lbl { font-size: 0.78rem; color: var(--ink-muted); }
+    .kpi-card .val { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
+    .kpi-card .spark { margin: 6px 0 4px; }
+    .kpi-card .sub { font-size: 0.72rem; color: var(--ink-muted); }
+    .delta { font-size: 0.72rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+    .delta-good { background: #e3f4e3; color: #0b6a0b; }
+    .delta-bad { background: #fbe4e4; color: #a02020; }
+    .delta-flat { background: #eceef1; color: #5b5f66; }
+    .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+    .databar { position: relative; }
+    .databar::before { content: ''; position: absolute; left: 0; top: 18%; bottom: 18%; width: var(--w, 0%); background: color-mix(in srgb, #3d6178 16%, transparent); border-radius: 4px; }
+    .databar > span { position: relative; }
 </style>
 <a href="{% url 'onsite_performance' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Rental performance</a>
 
@@ -37,17 +50,9 @@
 <div class="alert alert-info small">There are no reservations on record for this rental yet, and no connected Airbnb/VRBO calendar. Upload a report or connect the calendars and this page fills in.</div>
 {% else %}
 
-{% with t=data.total %}
-<div class="row row-cols-2 row-cols-md-4 g-2 mb-3">
-    <div class="col"><div class="kpi"><div class="lbl">Occupancy</div><div class="val">{% if t.occupancy is not None %}{{ t.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ t.booked }} of {{ t.available }} nights</div></div></div>
-    {% if is_admin %}
-    <div class="col"><div class="kpi"><div class="lbl">Average nightly rate</div><div class="val">{% if t.adr is not None %}${{ t.adr|floatformat:0 }}{% else %}—{% endif %}</div><div class="sub">{% if t.coverage is not None %}from {{ t.coverage|floatformat:0 }}% of booked nights{% else %}no amounts yet{% endif %}</div></div></div>
-    <div class="col"><div class="kpi"><div class="lbl">Revenue (payouts)</div><div class="val">{% if t.revenue is not None %}${{ t.revenue|floatformat:"0g" }}{% else %}—{% endif %}</div><div class="sub">{% if t.revpar is not None %}${{ t.revpar|floatformat:"0g" }} per available night{% else %}&nbsp;{% endif %}</div></div></div>
-    {% endif %}
-    <div class="col"><div class="kpi"><div class="lbl">Average stay</div><div class="val">{% if t.alos is not None %}{{ t.alos|floatformat:1 }}<span class="fs-6 fw-normal"> nights</span>{% else %}—{% endif %}</div><div class="sub">{{ t.arrivals }} stay{{ t.arrivals|pluralize }}</div></div></div>
-    <div class="col"><div class="kpi"><div class="lbl">Cancellation rate</div><div class="val">{% if t.cancel_rate is not None %}{{ t.cancel_rate|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ t.cancelled }} cancelled</div></div></div>
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-{{ kpis|length }} g-2 mb-3">
+    {% for c in kpis %}<div class="col">{% include 'onsite/_kpi_card.html' with c=c %}</div>{% endfor %}
 </div>
-{% endwith %}
 
 <div class="row g-3 mb-3">
     <div class="col-12 col-lg-6"><div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
@@ -85,16 +90,43 @@
 {# ---------- looking ahead ---------- #}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> Looking ahead</h6>
-    <div class="row row-cols-3 g-2 mb-3">
+    <div class="row row-cols-1 row-cols-md-3 g-2 mb-3">
         {% for w in data.forward.ahead %}
-        <div class="col"><a href="{% url 'onsite_performance_calendar' property.pk %}?days={{ w.days }}" class="text-decoration-none d-block h-100" title="Open the calendar for the next {{ w.days }} days"><div class="kpi" style="border: 1px solid transparent;"><div class="lbl">Occupancy · next {{ w.days }} days</div><div class="val" style="color: var(--ink-primary);">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ w.booked }} of {{ w.available }} nights booked{% if w.gaps %} · {{ w.gaps }} gap{{ w.gaps|pluralize }}{% endif %} · <span style="color: var(--brand-primary);">see calendar</span></div></div></a></div>
+        <div class="col"><a href="{% url 'onsite_performance_calendar' property.pk %}?days={{ w.days }}" class="text-decoration-none d-block h-100" title="Open the calendar for the next {{ w.days }} days">
+            <div class="kpi-card">
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                    <div>
+                        <div class="lbl">Occupancy · next {{ w.days }} days</div>
+                        <div class="val" style="color: var(--ink-primary);">{% if w.occupancy is not None %}{{ w.occupancy|floatformat:0 }}%{% else %}—{% endif %}<span class="fs-6 fw-normal text-muted"> booked</span></div>
+                    </div>
+                    <div style="width: 58px; flex: 0 0 58px;">{% ring w.occupancy 58 'Booked' %}</div>
+                </div>
+                <div class="spark">{% stackbar w.booked w.gap_nights w.open_nights %}</div>
+                <div class="sub">{{ w.booked }} of {{ w.available }} nights booked{% if w.gaps %} · <span style="color: #9a6a00; font-weight: 600;">{{ w.gaps }} gap{{ w.gaps|pluralize }} to fill</span>{% endif %} · <span style="color: var(--brand-primary);">see calendar</span></div>
+            </div>
+        </a></div>
         {% endfor %}
     </div>
+    <div class="d-flex flex-wrap gap-3 small text-muted mb-2">
+        <span><i class="legend-dot" style="background: #3d6178;"></i>booked</span>
+        <span><i class="legend-dot" style="background: repeating-linear-gradient(45deg, #fab219 0 2px, #fde9b3 2px 4px);"></i>empty between two stays — fill these</span>
+        <span><i class="legend-dot" style="background: #e3e7ec;"></i>open</span>
+    </div>
+    {% for strip in data.strips %}
+    <div class="mb-2">
+        {% if data.strips|length > 1 %}<div class="small fw-semibold">{{ strip.label }}</div>{% endif %}
+        {% daystrip data.strip_start strip.states forloop.counter|stringformat:"s" %}
+    </div>
+    {% endfor %}
+    <div class="mb-3"></div>
     <div class="small fw-semibold mb-1">Vacancy gaps to fill</div>
     {% for g in data.forward.gaps %}
-    <div class="d-flex justify-content-between gap-2 flex-wrap border-top py-1 small">
-        <span>{{ g.label }}</span>
-        <span>{{ g.start|date:"D M j" }} → {{ g.end|date:"D M j" }} · <strong>{{ g.length }} night{{ g.length|pluralize }}</strong>{% if g.short %} <span style="color: var(--status-warning);">· hard to fill</span>{% endif %}</span>
+    <div class="border-top py-2 small">
+        <div class="d-flex justify-content-between gap-2 flex-wrap">
+            <span>{{ g.label }}</span>
+            <span>{{ g.start|date:"D M j" }} → {{ g.end|date:"D M j" }} · <strong>{{ g.length }} night{{ g.length|pluralize }}</strong>{% if g.short %} <span style="color: #9a6a00;">· hard to fill</span>{% endif %}</span>
+        </div>
+        <div class="mt-1">{% gap_track g data.as_of %}</div>
     </div>
     {% empty %}<p class="text-muted small mb-0">No open stretches between reservations in the next 90 days.</p>{% endfor %}
     {% if data.upcoming %}
@@ -126,7 +158,7 @@
         {% for m in data.months reversed %}
         <tr>
             <td class="fw-semibold">{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}</td>
-            <td class="text-end">{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% else %}—{% endif %}</td>
+            <td class="text-end databar" {% if m.occupancy is not None %}style="--w: {{ m.occupancy|floatformat:0 }}%;"{% endif %}><span>{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></td>
             <td class="text-end">{{ m.booked }} / {{ m.available }}</td>
             <td class="text-end">{{ m.arrivals }}</td>
             <td class="text-end">{% if m.alos is not None %}{{ m.alos|floatformat:1 }}{% else %}—{% endif %}</td>

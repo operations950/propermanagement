@@ -1,0 +1,13 @@
+{% load perf_visuals %}{# One headline figure: the number, a picture of the last twelve months, and whether it is moving the right way. c = an entry from performance.kpi_cards #}
+<div class="kpi-card">
+    <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="lbl">{{ c.label }}</div>
+        {% if c.delta %}<span class="delta delta-{% if c.delta.good is True %}good{% elif c.delta.good is False %}bad{% else %}flat{% endif %}" title="{{ c.delta.basis }}">{% if c.delta.direction == 'up' %}▲ {% elif c.delta.direction == 'down' %}▼ {% endif %}{{ c.delta.text }}</span>{% endif %}
+    </div>
+    <div class="d-flex justify-content-between align-items-center gap-2">
+        <div class="val">{{ c.value }}{% if c.suffix %}<span class="fs-6 fw-normal">{{ c.suffix }}</span>{% endif %}</div>
+        {% if c.ring %}<div style="width: 58px; flex: 0 0 58px;">{{ c.ring }}</div>{% endif %}
+    </div>
+    <div class="spark">{{ c.spark }}</div>
+    <div class="sub d-flex justify-content-between gap-2"><span>{{ c.sub|default:"&nbsp;" }}</span><span>12 months</span></div>
+</div>

@@ -30,6 +30,7 @@ from django.utils import timezone
 
 from ..models import Booking, BookingFeed
 from . import coverage
+from . import visuals
 from .feeds import eligible_properties
 
 WINDOWS = (30, 60, 90)
@@ -217,6 +218,8 @@ def build_performance(today=None, property_id=None):
                 available += days
                 booked += sum(1 for i in range(days) if (today + timedelta(days=i)) in u.booked)
             row[f'occ{n}'] = _pct(booked, available)
+        row['strip_start'] = today
+        row['strip'] = [sum(1 for u in mine if (today + timedelta(days=i)) in u.booked) / len(mine) for i in range(STRIP_DAYS)]
         gaps = [g for u in mine for g in gaps_for(u) if g['end'] > today and g['start'] < today + timedelta(days=90)]
         row['gaps90'] = len(gaps)
         row['short_gaps90'] = sum(1 for g in gaps if g['length'] <= SHORT_GAP_NIGHTS)
@@ -355,7 +358,10 @@ def build_property_performance(prop, unit_id=None, today=None, months=12):
         (b for u in counted for b in u.active_ops if _local_date(b.check_out) >= today),
         key=lambda b: b.check_in,
     )[:12]
+    strips = [{'label': u.unit.label if u.unit else u.label, 'states': day_states(u, today)} for u in counted]
+    strips.sort(key=lambda r: r['label'])
     return {
+        'strips': strips, 'strip_start': today,
         'property': prop, 'as_of': today, 'months': rows, 'total': total, 'per_unit': per_unit,
         'units': [{'pk': u.unit.pk if u.unit else None, 'label': u.unit.label if u.unit else u.label} for u in units.values()] if len(units) > 1 else [],
         'unit_id': unit_id, 'forward': forward, 'upcoming': upcoming,
@@ -363,3 +369,80 @@ def build_property_performance(prop, unit_id=None, today=None, months=12):
         'has_data': bool(counted),
         'sources': [{'value': v, 'label': l} for v, l in Booking.Source.choices],
     }
+
+
+# --- pictures ---------------------------------------------------------------------------------
+
+STRIP_DAYS = 90
+
+
+def _gap_nights(u, today):
+    """The empty nights between two stays at one unit, from `today` on."""
+    nights = sorted(u.booked)
+    found = set()
+    for before, after in zip(nights, nights[1:]):
+        day = max(before + timedelta(days=1), today)
+        while day < after:
+            found.add(day)
+            day += timedelta(days=1)
+    return found
+
+
+def day_states(u, today, days=STRIP_DAYS):
+    """One state per day for the next `days` days: booked, gap (empty between two stays: worth
+    filling) or open (nothing booked, nothing after it either)."""
+    gap = _gap_nights(u, today)
+    out = []
+    for i in range(days):
+        day = today + timedelta(days=i)
+        out.append('booked' if day in u.booked else ('gap' if day in gap else 'open'))
+    return out
+
+
+def kpi_cards(data, is_admin):
+    """The headline figures of the single-property screen as cards that can be read at a glance:
+    the number, a twelve-month picture of it, and whether it is moving the right way (the last three
+    complete months against the three before)."""
+    months, t = data['months'], data['total']
+    labels = [m['full'] for m in months]
+    partial_last = bool(months and months[-1]['partial'])
+    complete = [m for m in months if not m['partial']]
+
+    def series(key, scale=1.0, digits=None):
+        return [None if m[key] is None else (round(m[key] * scale, digits) if digits is not None else m[key] * scale) for m in months]
+
+    def change(key, higher_is_better, unit):
+        return visuals.trend([m[key] for m in complete], higher_is_better=higher_is_better, unit=unit)
+
+    cards = [{
+        'key': 'occupancy', 'label': 'Occupancy', 'value': '—' if t['occupancy'] is None else f'{t["occupancy"]:.0f}%', 'suffix': '',
+        'sub': f'{t["booked"]} of {t["available"]} nights', 'ring': visuals.ring(t['occupancy'], size=58, stroke=7),
+        'spark': visuals.sparkline(series('occupancy'), labels, kind='bars', fmt='pct', ymax=100, partial_last=partial_last),
+        'delta': change('occupancy', True, 'pct_points'),
+    }]
+    if is_admin:
+        cards.append({
+            'key': 'adr', 'label': 'Average nightly rate', 'value': '—' if t['adr'] is None else f'${t["adr"]:,.0f}', 'suffix': '',
+            'sub': f'from {t["coverage"]:.0f}% of booked nights' if t['coverage'] is not None else 'no amounts yet', 'ring': '',
+            'spark': visuals.sparkline(series('adr'), labels, kind='line', fmt='money'),
+            'delta': change('adr', True, 'percent'),
+        })
+        cards.append({
+            'key': 'revenue', 'label': 'Revenue (payouts)', 'value': '—' if t['revenue'] is None else f'${t["revenue"]:,.0f}', 'suffix': '',
+            'sub': f'${t["revpar"]:,.0f} per available night' if t['revpar'] is not None else '', 'ring': '',
+            'spark': visuals.sparkline(series('revenue'), labels, kind='bars', fmt='money', partial_last=partial_last),
+            'delta': change('revenue', True, 'percent'),
+        })
+    cards.append({
+        'key': 'alos', 'label': 'Average stay', 'value': '—' if t['alos'] is None else f'{t["alos"]:.1f}', 'suffix': '' if t['alos'] is None else ' nights',
+        'sub': f'{t["arrivals"]} stay{"" if t["arrivals"] == 1 else "s"}', 'ring': '',
+        'spark': visuals.sparkline(series('alos'), labels, kind='line', fmt='dec1'),
+        'delta': change('alos', None, 'percent'),
+    })
+    cards.append({
+        'key': 'cancel', 'label': 'Cancellation rate', 'value': '—' if t['cancel_rate'] is None else f'{t["cancel_rate"]:.0f}%', 'suffix': '',
+        'sub': f'{t["cancelled"]} cancelled', 'ring': '',
+        'spark': visuals.sparkline(series('cancel_rate'), labels, kind='line', fmt='pct'),
+        'delta': change('cancel_rate', False, 'pct_points'),
+    })
+    return cards
