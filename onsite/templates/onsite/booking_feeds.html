@@ -3,7 +3,10 @@
 {% block content %}
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
 
-<h2 class="page-title mb-1">Booking calendars</h2>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+    <h2 class="page-title mb-0">Booking calendars</h2>
+    <a href="{% url 'onsite_feeds_recalibrate' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="scale" class="icon"></i> Recalibrate cleanings from the calendars</a>
+</div>
 <p class="text-muted small mb-3">
     Every short-term rental gets an Airbnb line and a VRBO line (one pair per unit for a building). Paste that listing's calendar link and the app checks it every {{ poll_minutes }} minutes:
     new reservations get a turnover visit and calendar event, changed dates move it, and a reservation that has disappeared is cancelled once it has been missing for

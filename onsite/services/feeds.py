@@ -48,6 +48,7 @@ from ..importers import BookingFileError, RawBooking
 from core.models import Property
 
 from ..models import Booking, BookingFeed, ImportBatch
+from . import recalibrate
 from .bookings import apply_bookings_for_property, update_feed_health
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,13 @@ def _poll(feed, allow_mass_cancel):
             external_uid=uid, check_in=event.check_in, check_out=event.check_out, guest_phone_last4=event.phone_last4,
         ))
 
+    # What the calendar shows is on the calendar. Marked BEFORE applying so a
+    # reservation a payment report brought in earlier is recognised as real (and
+    # gets its cleaning) in this same poll.
+    Booking.objects.filter(source=feed.source, external_uid__in=[r.external_uid for r in rows]).update(
+        on_calendar=True, calendar_seen_at=now,
+    )
+
     upcoming = list(Booking.objects.filter(
         property=feed.property, unit=feed.unit, source=feed.source, status=Booking.Status.ACTIVE, check_in__gt=now,
     ))
@@ -178,12 +186,24 @@ def _poll(feed, allow_mass_cancel):
     held = 0
     if due and not allow_mass_cancel and len(due) > MASS_CANCEL_MIN and len(due) * 2 >= len(upcoming):
         held, due = len(due), []
+    retired = 0
     for booking in due:
-        rows.append(RawBooking(
-            external_uid=booking.external_uid, check_in=_local_date(booking.check_in),
-            check_out=_local_date(booking.check_out), is_cancelled=True,
-        ))
         streak.pop(booking.external_uid, None)
+        if not booking.on_calendar:
+            # Never on the calendar: a stay only a payment report knows about.
+            # Its (stale) cleaning is removed quietly; a paid one stays as a record.
+            recalibrate.retire_booking(booking)
+            retired += 1
+        elif recalibrate.has_payment_evidence(booking):
+            # It WAS on the calendar and has gone (a real cancellation), but money
+            # is on record for it: keep it as a payment record, drop the cleaning.
+            recalibrate.demote_booking(booking)
+            retired += 1
+        else:
+            rows.append(RawBooking(
+                external_uid=booking.external_uid, check_in=_local_date(booking.check_in),
+                check_out=_local_date(booking.check_out), is_cancelled=True,
+            ))
 
     new = changed = reactivated = cancelled = 0
     note = ''
@@ -197,7 +217,7 @@ def _poll(feed, allow_mass_cancel):
     feed.cancellations_held = held
     summary = (
         f'{len(live)} upcoming reservation{"" if len(live) == 1 else "s"} — '
-        f'{new} new, {changed} changed, {reactivated} restored, {cancelled} cancelled.'
+        f'{new} new, {changed} changed, {reactivated} restored, {cancelled + retired} cancelled.'
     )
     if held:
         summary += (

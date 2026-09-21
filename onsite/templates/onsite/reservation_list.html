@@ -46,6 +46,7 @@
                     <div class="small">{{ b.property.name }}{% if b.unit %} — {{ b.unit.label }}{% endif %}</div>
                     <div class="small text-muted">{{ b.guest_name|default:"—" }}{% if b.guest_phone %} · {{ b.guest_phone }}{% endif %}</div>
                     {% if b.manually_cancelled %}<div class="small" style="color: var(--status-warning);">Cancelled by hand</div>{% endif %}
+                    {% if b.payment_only and b.status == 'active' %}<div class="small text-muted" title="Known from a payment report; the synced calendar doesn't show it, so no cleaning is scheduled.">Payment record · not on the calendar</div>{% endif %}
                 </div>
                 <span class="badge rounded-pill flex-shrink-0 {% if b.source == 'manual' %}bg-primary-subtle text-primary-emphasis{% else %}bg-light text-dark border{% endif %}">{{ b.get_source_display }}</span>
             </div>
@@ -71,7 +72,7 @@
                 <tr>
                     <td class="small">{{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }}<div class="text-muted">{{ b.nights }} night{{ b.nights|pluralize }}</div></td>
                     <td class="small">{{ b.property.name }}{% if b.unit %}<div class="text-muted">{{ b.unit.label }}</div>{% endif %}</td>
-                    <td class="small">{{ b.guest_name|default:"—" }}{% if b.guest_phone %}<div class="text-muted">{{ b.guest_phone }}</div>{% endif %}{% if b.manually_cancelled %}<div style="color: var(--status-warning);">Cancelled by hand</div>{% endif %}</td>
+                    <td class="small">{{ b.guest_name|default:"—" }}{% if b.guest_phone %}<div class="text-muted">{{ b.guest_phone }}</div>{% endif %}{% if b.manually_cancelled %}<div style="color: var(--status-warning);">Cancelled by hand</div>{% endif %}{% if b.payment_only and b.status == 'active' %}<div class="text-muted" title="Known from a payment report; the synced calendar doesn't show it, so no cleaning is scheduled.">Payment record · not on the calendar</div>{% endif %}</td>
                     <td class="small"><span class="badge rounded-pill {% if b.source == 'manual' %}bg-primary-subtle text-primary-emphasis{% else %}bg-light text-dark border{% endif %}">{{ b.get_source_display }}</span></td>
                     {% if is_admin %}<td class="small text-end">{% if b.payout_amount is not None %}<strong>${{ b.payout_amount|floatformat:2 }}</strong><div class="text-muted">payout{% if b.payout_date %} · {{ b.payout_date|date:"M j, Y" }}{% endif %}</div>{% else %}{% with rev=b.lodging_revenue %}{% if rev is not None %}${{ rev|floatformat:2 }}{% if b.nights %}<div class="text-muted">${{ b.gross_amount|floatformat:0 }} gross</div>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}{% endwith %}{% endif %}</td>{% endif %}
                     <td class="text-end">{% include 'onsite/_reservation_actions.html' with b=b next=request.get_full_path %}</td>

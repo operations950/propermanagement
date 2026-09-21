@@ -29,6 +29,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from ..models import Booking, GuestRequest, Visit, VisitType
+from . import coverage
 from .feeds import coverage_report, eligible_properties
 
 # Item tones, most to least urgent, used to sort and to colour.
@@ -227,14 +228,15 @@ def _arrival_readiness(prop, unit, day_start):
 
 # --- vacant units: are they clean, and when were they last cleaned -----------------
 
-def _vacancy_details(vacant, property_ids, ref, now, add_item):
+def _vacancy_details(vacant, property_ids, ref, now, add_item, covered=None):
     """Enriches each vacant unit with its cleaning state: whether it is clean,
     when it was last cleaned, when the last guest left, and when the next one
     arrives. "Clean" means a cleaning was submitted/verified at or after the
     last checkout. A vacant unit that is NOT clean, has no cleaning lined up
     and has a guest arriving within 3 days is flagged."""
+    covered = coverage.covered_keys(now) if covered is None else covered
     bookings = list(Booking.objects.filter(status=Booking.Status.ACTIVE, property_id__in=property_ids)
-                    .values('property_id', 'unit_id', 'check_in', 'check_out'))
+                    .values('property_id', 'unit_id', 'check_in', 'check_out', 'source', 'on_calendar'))
     visits = list(Visit.objects.filter(property_id__in=property_ids)
                   .exclude(status__in=(Visit.Status.CANCELLED, Visit.Status.SKIPPED))
                   .values('pk', 'property_id', 'unit_id', 'status', 'submitted_at', 'verified_at', 'scheduled_date'))
@@ -243,7 +245,7 @@ def _vacancy_details(vacant, property_ids, ref, now, add_item):
         mine_b = [b for b in bookings if b['property_id'] == pid and b['unit_id'] == uid]
         mine_v = [v for v in visits if v['property_id'] == pid and v['unit_id'] == uid]
         past = [b['check_out'] for b in mine_b if b['check_out'] <= ref]
-        future = [b['check_in'] for b in mine_b if b['check_in'] > ref]
+        future = [b['check_in'] for b in mine_b if b['check_in'] > ref and coverage.is_operational(b, covered)]
         last_out = max(past) if past else None
         next_in = min(future) if future else None
         done = [v['verified_at'] or v['submitted_at'] for v in mine_v
@@ -296,18 +298,19 @@ def build_board(day=None, now=None, include_tomorrow=True):
     day_start = _at(day, time.min)
     day_end = day_start + timedelta(days=1)
 
+    covered = coverage.covered_keys(now)
     bookings = list(
-        Booking.objects.filter(
+        coverage.operational(Booking.objects.filter(
             status=Booking.Status.ACTIVE, property_id__in=[p.pk for p in properties],
             check_out__gte=day_start, check_in__lt=day_end,
-        ).select_related('property', 'unit').prefetch_related(
+        ), covered).select_related('property', 'unit').prefetch_related(
             Prefetch('visits', queryset=Visit.objects.select_related('assigned_staff__user', 'assigned_contact').prefetch_related('checklist_items')),
             'guest_requests',
         )
     )
 
     next_in = {}
-    for row in (Booking.objects.filter(status=Booking.Status.ACTIVE, property_id__in=[p.pk for p in properties], check_in__gte=day_end)
+    for row in (coverage.operational(Booking.objects.filter(status=Booking.Status.ACTIVE, property_id__in=[p.pk for p in properties], check_in__gte=day_end), covered)
                 .order_by('check_in').values('property_id', 'unit_id', 'check_in')):
         next_in.setdefault((row['property_id'], row['unit_id']), row['check_in'])
 
@@ -446,7 +449,7 @@ def build_board(day=None, now=None, include_tomorrow=True):
             if (prop.pk, unit.pk if unit else None) not in covered and (prop.pk, None) not in covered:
                 vacant.append({'label': _label(prop, unit), 'property': prop, 'unit': unit})
     vacant.sort(key=lambda v: v['label'])
-    _vacancy_details(vacant, [p.pk for p in properties], max(now, day_start), now, add_item)
+    _vacancy_details(vacant, [p.pk for p in properties], max(now, day_start), now, add_item, covered)
     vacant.sort(key=lambda v: (v['next_checkin_at'] is None, v['next_checkin_at'] or far, v['label']))
     items.sort(key=lambda i: (i['rank'], i['row']['sort_at'] or day_end, i['row']['label']))
 

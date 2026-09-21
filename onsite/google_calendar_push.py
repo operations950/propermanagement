@@ -343,3 +343,34 @@ def reconcile():
 
 
 retry_pending = reconcile
+
+
+def quiet_delete_event(visit):
+    """Removes a visit's calendar event WITHOUT emailing the invitees (used when
+    tidying visits that were never real, so nobody gets a cancellation notice
+    for something they were never really expected at). Clears the visit's event
+    bookkeeping; returns True when the event is gone (or there never was one),
+    False if Google refused, in which case the visit is left flagged for a normal
+    retry. Best-effort, never raises."""
+    from .models import Visit
+
+    if not visit.google_event_id:
+        return True
+    if not is_configured():
+        return True
+    token = _pushing_token()
+    if not token:
+        return True
+    with _lock:
+        try:
+            delete_event(token, settings.GOOGLE_ONSITE_CALENDAR_ID, visit.google_event_id, send_updates='none')
+        except GoogleCalendarWriteError as e:
+            if e.status_code not in GONE_STATUS_CODES:
+                logger.warning('Could not quietly remove the calendar event for visit %s (%s).', visit.pk, e)
+                _record_failure(str(e), needs_reconnect=e.needs_reconnect)
+                return False
+        except Exception:
+            logger.exception('Unexpected error quietly removing the calendar event for visit %s', visit.pk)
+            return False
+    Visit.objects.filter(pk=visit.pk).update(google_event_id='', google_synced_state='', google_notify_state='', google_sync_pending=False)
+    return True

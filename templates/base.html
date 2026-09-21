@@ -96,6 +96,10 @@
             background: var(--surface-page);
             color: var(--ink-primary);
             font-family: var(--font-ui);
+            /* `hidden` on both html and body turns body into a scroll container,
+               which stops the sticky top bar from sticking. `clip` hides the same
+               overflow without becoming one (html above still locks the page). */
+            overflow-x: clip;
         }
 
         /* The signature pad needs to intercept every touch gesture itself

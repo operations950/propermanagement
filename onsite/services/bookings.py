@@ -15,6 +15,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from . import coverage
 from . import payouts as payouts_service
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
@@ -109,6 +110,17 @@ def _needs_visit(check_out_date):
     return check_out_date >= timezone.localdate()
 
 
+def _cleaning_allowed(property_id, unit_id, source, from_calendar, covered, on_calendar=False):
+    """A cleaning is made only for a stay the calendar shows. Where a listing's
+    calendar is connected and healthy, a reservation that only a payment report
+    knows about is a financial record: no cleaning, no board row. Where there is
+    no working calendar yet, imports keep scheduling cleanings as before."""
+    return bool(
+        from_calendar or on_calendar or source == Booking.Source.MANUAL
+        or (property_id, unit_id, source) not in covered
+    )
+
+
 def _record_paid_cancellations(property, source, raw_bookings, listing_unit_map, default_unit=None):
     """A cancelled reservation the guest was still charged for shows up in a
     payout report with money attached. If we never had that reservation, keep
@@ -143,7 +155,8 @@ def _feed_twin(property, source, row, listing_unit_map, default_unit=None):
     matches = [
         b for b in Booking.objects.filter(
             Q(status=Booking.Status.ACTIVE) | Q(manually_cancelled=True),
-            property=property, source=source, from_feed=True, unit=unit,
+            Q(from_feed=True) | Q(on_calendar=True),
+            property=property, source=source, unit=unit,
         ).exclude(external_uid=row.external_uid)
         if timezone.localtime(b.check_in).date() == row.check_in and timezone.localtime(b.check_out).date() == row.check_out
     ]
@@ -227,6 +240,26 @@ def _save_amounts(source, raw_bookings):
             booking.save(update_fields=changed + ['amount_source'])
 
 
+def _fill_details(source, raw_bookings):
+    """A payment report knows the guest; a calendar event usually doesn't. Where a
+    row matches a reservation already on record (by code, or merged with the
+    calendar stay it lines up with), fill in what that reservation is missing —
+    never overwriting what it already has."""
+    for row in raw_bookings:
+        if not (row.guest_name or row.guest_phone_last4 or row.listing_name):
+            continue
+        booking = Booking.objects.filter(source=source, external_uid=row.external_uid).first()
+        if booking is None:
+            continue
+        changed = []
+        for field, value in (('guest_name', row.guest_name), ('guest_phone_last4', row.guest_phone_last4), ('listing_name', row.listing_name)):
+            if value and not getattr(booking, field):
+                setattr(booking, field, value)
+                changed.append(field)
+        if changed:
+            booking.save(update_fields=changed)
+
+
 def diff_bookings(property, source, raw_bookings, default_unit=None):
     """Read-only preview diff — nothing written. Returns a dict with 'new'/
     'changed'/'reactivated'/'missing_visit' (lists of RawBooking) and
@@ -268,6 +301,7 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
     attempting a duplicate insert."""
     uids = {row.external_uid for row in raw_bookings}
     listing_unit_map = _listing_unit_map(property, source)
+    covered = coverage.covered_keys()
     existing_by_uid = {
         b.external_uid: b
         for b in Booking.objects.filter(source=source, external_uid__in=uids)
@@ -308,6 +342,7 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
             changed_rows.append(row)
         elif (
             not property.is_general and _needs_visit(row.check_out)
+            and _cleaning_allowed(existing.property_id, existing.unit_id, source, False, covered, existing.on_calendar)
             and not existing.visits.exclude(status=Visit.Status.CANCELLED).exists()
         ):
             # Active booking, same property, nothing about the reservation
@@ -381,6 +416,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
     portfolio-wide import calls this once per resolved property and
     aggregates the counts itself (see onsite/views.py)."""
     listing_unit_map = _listing_unit_map(property, source)
+    covered = coverage.covered_keys()
     _adopt_feed_twins(property, source, raw_bookings, listing_unit_map, default_unit)
     diff = diff_bookings(property, source, raw_bookings, default_unit)
     turnover_type = VisitType.objects.filter(slug=TURNOVER_SLUG, is_active=True).first()
@@ -408,9 +444,10 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
             property=property, unit=unit, source=source, external_uid=row.external_uid,
             guest_name=row.guest_name, guest_phone_last4=row.guest_phone_last4,
             listing_name=row.listing_name, from_feed=from_feed,
+            on_calendar=from_feed, calendar_seen_at=timezone.now() if from_feed else None,
             check_in=check_in_dt, check_out=check_out_dt, last_seen_at=timezone.now(),
         )
-        if turnover_type and _needs_visit(row.check_out):
+        if turnover_type and _needs_visit(row.check_out) and _cleaning_allowed(property.pk, unit.pk if unit else None, source, from_feed, covered):
             next_booking = _find_next_booking(property, check_out_dt, exclude_pk=booking.pk, unit=unit)
             create_visit(
                 property, turnover_type, unit=unit, booking=booking, next_booking=next_booking,
@@ -425,7 +462,11 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
         # fresh at the top of this same function — this guard is just
         # defensive, not covering any real staleness window.
         booking = Booking.objects.get(source=source, external_uid=row.external_uid)
-        if turnover_type and _needs_visit(row.check_out) and not booking.visits.exclude(status=Visit.Status.CANCELLED).exists():
+        if (
+            turnover_type and _needs_visit(row.check_out)
+            and _cleaning_allowed(property.pk, booking.unit_id, source, from_feed, covered, booking.on_calendar)
+            and not booking.visits.exclude(status=Visit.Status.CANCELLED).exists()
+        ):
             unit = listing_unit_map.get(row.listing_name) if row.listing_name else booking.unit
             next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=unit)
             create_visit(
@@ -488,7 +529,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
                 cancelled_visit.ready_by = next_booking.check_in if next_booking else None
                 cancelled_visit.save(update_fields=['property', 'unit', 'status', 'scheduled_date', 'next_booking', 'ready_by'])
                 transaction.on_commit(lambda visit=cancelled_visit: push_visit(visit))
-            elif turnover_type and _needs_visit(row.check_out):
+            elif turnover_type and _needs_visit(row.check_out) and _cleaning_allowed(property.pk, booking.unit_id, source, from_feed, covered, booking.on_calendar):
                 create_visit(
                     property, turnover_type, unit=booking.unit, booking=booking, next_booking=next_booking,
                     scheduled_date=row.check_out, ready_by=next_booking.check_in if next_booking else None,
@@ -522,7 +563,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
             cancelled_visit.ready_by = next_booking.check_in if next_booking else None
             cancelled_visit.save(update_fields=['unit', 'status', 'scheduled_date', 'next_booking', 'ready_by'])
             transaction.on_commit(lambda visit=cancelled_visit: push_visit(visit))
-        elif turnover_type and _needs_visit(row.check_out):
+        elif turnover_type and _needs_visit(row.check_out) and _cleaning_allowed(property.pk, booking.unit_id, source, from_feed, covered, booking.on_calendar):
             # No Visit at all survived (shouldn't normally happen, but
             # don't leave a reactivated booking with no cleaning scheduled).
             create_visit(
@@ -532,6 +573,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
 
     _record_paid_cancellations(property, source, raw_bookings, listing_unit_map, default_unit)
     _save_amounts(source, raw_bookings)
+    _fill_details(source, raw_bookings)
     payouts_service.attach_pending(source, [r.external_uid for r in raw_bookings])
 
     for booking in diff['cancelled']:

@@ -1,5 +1,19 @@
 {# Edit / Cancel / Restore for one reservation `b`; `next` is where to come back to. #}
 <div class="d-inline-flex gap-1 flex-wrap justify-content-end">
+    {% with units=b.property.units.all %}{% if units|length > 1 and b.status == 'active' %}
+    <details class="d-inline position-relative">
+        <summary class="btn btn-outline-secondary btn-sm" style="list-style: none;">Unit</summary>
+        <form method="post" action="{% url 'onsite_reservation_move' b.pk %}" class="card card-body p-2 position-absolute end-0 mt-1 shadow-sm text-start" style="z-index: 5; min-width: 230px;">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+            <label class="form-label small mb-1">Which unit is this guest really in?</label>
+            <select name="unit_id" class="form-select form-select-sm mb-2">
+                {% for u in units %}{% if u.is_active %}<option value="{{ u.pk }}" {% if b.unit_id == u.pk %}selected{% endif %}>{{ u.label }}</option>{% endif %}{% endfor %}
+            </select>
+            {% if b.listing_name %}<label class="small mb-2 d-flex gap-1 align-items-start"><input type="checkbox" name="apply_to_listing" value="1" checked class="mt-1"> <span>Also send future reservations from "{{ b.listing_name }}" to this unit</span></label>{% endif %}
+            <button class="btn btn-primary btn-sm">Move</button>
+        </form>
+    </details>
+    {% endif %}{% endwith %}
     {% if b.source == 'manual' and b.status == 'active' %}<a href="{% url 'onsite_reservation_edit' b.pk %}" class="btn btn-outline-secondary btn-sm">Edit</a>{% endif %}
     {% if confirm and b.status == 'active' %}
     <form method="post" action="{% url 'onsite_reservation_cancel' b.pk %}" class="d-inline">

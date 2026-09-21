@@ -19,9 +19,9 @@ Definitions (also shown on the page):
                  never starts before today (one already under way is counted
                  from today) and is worked out from the nights actually
                  booked, so overlapping reservations can't invent one.
-  ADR            lodging revenue / nights sold, over reservations whose
-                 report gave an amount. Lodging revenue = gross minus cleaning
-                 and other fees (see Booking.lodging_revenue).
+  ADR            revenue / nights sold, over reservations whose report gave
+                 an amount. Revenue is the PAYOUT — what the platform pays for
+                 the stay, the top line (see Booking.lodging_revenue).
   RevPAR         ADR x occupancy — revenue per available night.
 Cancelled reservations never count as booked nights."""
 from datetime import date, timedelta
@@ -29,6 +29,7 @@ from datetime import date, timedelta
 from django.utils import timezone
 
 from ..models import Booking, BookingFeed
+from . import coverage
 from .feeds import eligible_properties
 
 WINDOWS = (30, 60, 90)
@@ -53,25 +54,37 @@ class _Unit:
         self.prop, self.unit = prop, unit
         self.label = f'{prop.name} — {unit.label}' if unit else prop.name
         self.active, self.all = [], []
+        self.active_ops, self.calendar = [], []
         self.booked = set()
         self.data_start = None
         self.connected = False
 
-    def add(self, booking):
+    def add(self, booking, operational=True, today=None):
+        """`operational` is False for a stay only a payment report knows about, on a
+        listing whose calendar is connected: it is real for the money and for the
+        past, but it says nothing about the future (the calendar does), so its
+        nights from `today` on are not counted as booked."""
         self.all.append(booking)
         start = _local_date(booking.check_in)
         if self.data_start is None or start < self.data_start:
             self.data_start = start
         if booking.status == Booking.Status.ACTIVE:
             self.active.append(booking)
-            self.booked.update(_nights(booking))
+            nights = _nights(booking)
+            if operational:
+                self.active_ops.append(booking)
+            elif today is not None:
+                nights = [n for n in nights if n < today]
+            if booking.on_calendar or booking.source == Booking.Source.MANUAL:
+                self.calendar.append(booking)
+            self.booked.update(nights)
 
     @property
     def counted(self):
         return bool(self.all) or self.connected
 
 
-def _collect_units(props):
+def _collect_units(props, today=None):
     """{(property_id, unit_id): _Unit} for the given properties, loaded with
     every booking on record, plus how many bookings pointed at no known unit."""
     units = {}
@@ -85,21 +98,25 @@ def _collect_units(props):
         if holder:
             holder.connected = True
     unattributed = 0
+    covered = coverage.covered_keys()
     for booking in Booking.objects.filter(property_id__in=[p.pk for p in props]).select_related('property', 'unit'):
         holder = units.get((booking.property_id, booking.unit_id))
         if holder is None:
             unattributed += 1
             continue
-        holder.add(booking)
+        holder.add(booking, coverage.is_operational(booking, covered), today)
     return units, unattributed
 
 
 def _overlaps(u):
-    """Pairs of active reservations at one unit that share a night. A unit
-    can't host two guests at once, so this is a mapping or data mistake (for
-    instance two platform listings pointed at the same unit)."""
+    """Pairs of reservations that share a night at one unit, counting only what
+    the synced calendars (and in-house bookings) show. A unit can't host two
+    guests at once, so a genuine overlap there is a real problem (say, two
+    listings feeding one unit). Overlaps between stays known only from payment
+    reports are not reported: those files legitimately contain cancelled,
+    replaced and old reservations."""
     found, latest = [], None
-    for b in sorted(u.active, key=lambda b: _local_date(b.check_in)):
+    for b in sorted(u.calendar, key=lambda b: _local_date(b.check_in)):
         if latest is not None and _local_date(b.check_in) < _local_date(latest.check_out):
             found.append({'label': u.label, 'first': latest, 'second': b, 'pair': [latest, b]})
         if latest is None or _local_date(b.check_out) > _local_date(latest.check_out):
@@ -112,7 +129,7 @@ def build_performance(today=None, property_id=None):
     props = list(eligible_properties())
     if property_id:
         props = [p for p in props if p.pk == property_id]
-    units, unattributed = _collect_units(props)
+    units, unattributed = _collect_units(props, today)
 
     counted = [u for u in units.values() if u.counted]
     excluded = sorted(u.label for u in units.values() if not u.counted)
@@ -315,7 +332,7 @@ def build_property_performance(prop, unit_id=None, today=None, months=12):
     gaps from today, what is booked next). Money is always computed here; the
     view decides who may see it."""
     today = today or timezone.localdate()
-    units, _ = _collect_units([prop])
+    units, _ = _collect_units([prop], today)
     counted = [u for u in units.values() if u.counted]
     if unit_id:
         counted = [u for u in counted if (u.unit.pk if u.unit else None) == unit_id]
@@ -332,7 +349,7 @@ def build_property_performance(prop, unit_id=None, today=None, months=12):
 
     forward = build_performance(today=today, property_id=prop.pk)
     upcoming = sorted(
-        (b for u in counted for b in u.active if _local_date(b.check_out) >= today),
+        (b for u in counted for b in u.active_ops if _local_date(b.check_out) >= today),
         key=lambda b: b.check_in,
     )[:12]
     return {

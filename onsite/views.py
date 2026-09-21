@@ -20,7 +20,7 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
 from core.json_utils import dumps_for_script
-from core.models import Contact, Property, StaffProfile, Unit
+from core.models import Contact, Property, PropertyListingName, StaffProfile, Unit
 from core.views import _is_admin, _parse_decimal, _parse_int
 from supplies import services as supply_services
 from supplies.models import SupplyItem, SupplyReading
@@ -38,6 +38,8 @@ from .services import checklist as checklist_service
 from .services import feeds as feed_service
 from .services import recurring as recurring_service
 from .services import performance as performance_service
+from .services import coverage as coverage_service
+from .services import recalibrate as recalibrate_service
 from .services import review as review_service
 from .services import reservations as reservation_service
 from .services import str_board
@@ -889,7 +891,7 @@ def performance_property(request, property_id):
         charts['adr'] = {'type': 'line', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] for m in months],
                          'series': [{'name': 'Average nightly rate', 'color': '#3d6178', 'values': [None if m['adr'] is None else round(m['adr'], 2) for m in months]}]}
         charts['revenue'] = {'type': 'bar', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] + (' (to date)' if m['partial'] else '') for m in months],
-                             'series': [{'name': 'Lodging revenue', 'color': '#3d6178', 'values': [None if m['revenue'] is None else round(m['revenue'], 2) for m in months]}]}
+                             'series': [{'name': 'Revenue (payouts)', 'color': '#3d6178', 'values': [None if m['revenue'] is None else round(m['revenue'], 2) for m in months]}]}
     return render(request, 'onsite/performance_property.html', {
         'data': data, 'charts': charts, 'is_admin': is_admin, 'property': prop,
     })
@@ -918,7 +920,10 @@ def reservation_list(request):
         bookings = bookings.filter(source=source)
     if q:
         bookings = bookings.filter(Q(guest_name__icontains=q) | Q(property__name__icontains=q) | Q(external_uid__icontains=q))
-    rows = list(bookings[:300])
+    rows = list(bookings.prefetch_related('property__units')[:300])
+    covered = coverage_service.covered_keys()
+    for b in rows:
+        b.payment_only = not coverage_service.is_operational(b, covered)
     return render(request, 'onsite/reservation_list.html', {
         'rows': rows, 'when': when, 'source': source, 'show': show, 'q': q, 'sources': Booking.Source.choices,
         'truncated': len(rows) == 300, 'today': today, 'is_admin': _is_admin(request.user),
@@ -974,12 +979,72 @@ def reservation_edit(request, pk):
 
 
 @login_required
+@require_http_methods(['POST'])
+def reservation_move(request, pk):
+    """Files a reservation under a different unit of its building (an import can
+    put two units' guests on the same one). Optionally fixes the platform listing
+    too, so the next reservation from that listing lands on the right unit."""
+    booking = get_object_or_404(Booking.objects.select_related('property'), pk=pk)
+    units = list(booking.property.units.filter(is_active=True))
+    unit = next((u for u in units if str(u.pk) == request.POST.get('unit_id', '')), None)
+    target = request.POST.get('next', '')
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+        target = reverse('onsite_reservation_list')
+    if units and unit is None:
+        messages.error(request, 'Choose which unit this reservation belongs to.')
+        return redirect(target)
+    booking.unit = unit
+    booking.save(update_fields=['unit'])
+    for visit in booking.visits.exclude(status__in=('submitted', 'verified', 'cancelled')):
+        visit.unit = unit
+        visit.save(update_fields=['unit'])
+    fixed_listing = False
+    if request.POST.get('apply_to_listing') and booking.listing_name:
+        fixed_listing = PropertyListingName.objects.filter(
+            property=booking.property, platform=booking.source, name=booking.listing_name,
+        ).update(unit=unit) > 0
+    from .services.bookings import _refresh_next_bookings_for_property
+    _refresh_next_bookings_for_property(booking.property)
+    messages.success(
+        request,
+        f'{booking.guest_name or "Reservation"} moved to {unit.label if unit else "the whole property"}.'
+        + (f' Future reservations from "{booking.listing_name}" will go there too.' if fixed_listing else ''),
+    )
+    return redirect(target)
+
+
+@login_required
+def feeds_recalibrate(request):
+    """Admin: bring on-site visits in line with the synced calendars. Shows what
+    would be removed (quietly, no notices) and what would be kept as payment
+    records, and only acts when told to."""
+    if not _is_admin(request.user):
+        return redirect('onsite_dashboard')
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'refresh':
+            feed_service.poll_all()
+            messages.success(request, 'Every connected calendar was read again.')
+        elif action == 'apply':
+            result = recalibrate_service.apply()
+            messages.success(
+                request,
+                f'Done, quietly. {result["visits"]} cleaning{"" if result["visits"] == 1 else "s"} removed with no notices; '
+                f'{result["kept"]} paid reservation{"" if result["kept"] == 1 else "s"} kept as payment records; '
+                f'{result["removed"] + result["cancelled"]} unpaid one{"" if result["removed"] + result["cancelled"] == 1 else "s"} cleared out.',
+            )
+        return redirect('onsite_feeds_recalibrate')
+    return render(request, 'onsite/feeds_recalibrate.html', {'plan': recalibrate_service.plan(), 'feeds': coverage_service.covered_keys()})
+
+
+@login_required
 def reservation_review(request):
     """Reservations that might not be real — overlaps, and upcoming ones with no
     payout — for a person to cancel or confirm. See services/review.py."""
     reach = review_service.coverage()
     return render(request, 'onsite/reservation_review.html', {
         'conflicts': review_service.conflicts(), 'unpaid': review_service.unpaid_upcoming(),
+        'paid_only': review_service.paid_not_on_calendar(),
         'reach': [(dict(Booking.Source.choices).get(src, src), day) for src, day in sorted(reach.items())],
         'is_admin': _is_admin(request.user),
     })

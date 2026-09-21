@@ -39,7 +39,7 @@
     <div class="col"><div class="kpi"><div class="lbl">Occupancy</div><div class="val">{% if t.occupancy is not None %}{{ t.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ t.booked }} of {{ t.available }} nights</div></div></div>
     {% if is_admin %}
     <div class="col"><div class="kpi"><div class="lbl">Average nightly rate</div><div class="val">{% if t.adr is not None %}${{ t.adr|floatformat:0 }}{% else %}—{% endif %}</div><div class="sub">{% if t.coverage is not None %}from {{ t.coverage|floatformat:0 }}% of booked nights{% else %}no amounts yet{% endif %}</div></div></div>
-    <div class="col"><div class="kpi"><div class="lbl">Lodging revenue</div><div class="val">{% if t.revenue is not None %}${{ t.revenue|floatformat:"0g" }}{% else %}—{% endif %}</div><div class="sub">{% if t.revpar is not None %}${{ t.revpar|floatformat:"0g" }} per available night{% else %}&nbsp;{% endif %}</div></div></div>
+    <div class="col"><div class="kpi"><div class="lbl">Revenue (payouts)</div><div class="val">{% if t.revenue is not None %}${{ t.revenue|floatformat:"0g" }}{% else %}—{% endif %}</div><div class="sub">{% if t.revpar is not None %}${{ t.revpar|floatformat:"0g" }} per available night{% else %}&nbsp;{% endif %}</div></div></div>
     {% endif %}
     <div class="col"><div class="kpi"><div class="lbl">Average stay</div><div class="val">{% if t.alos is not None %}{{ t.alos|floatformat:1 }}<span class="fs-6 fw-normal"> nights</span>{% else %}—{% endif %}</div><div class="sub">{{ t.arrivals }} stay{{ t.arrivals|pluralize }}</div></div></div>
     <div class="col"><div class="kpi"><div class="lbl">Cancellation rate</div><div class="val">{% if t.cancel_rate is not None %}{{ t.cancel_rate|floatformat:0 }}%{% else %}—{% endif %}</div><div class="sub">{{ t.cancelled }} cancelled</div></div></div>
@@ -57,13 +57,13 @@
         <h6 class="card-title">Average nightly rate</h6>
         <div class="mini-chart" data-src="chart-adr"></div>
         {{ charts.adr|json_script:"chart-adr" }}
-        <p class="text-muted small mb-0 mt-1">Lodging revenue per night sold, cleaning fees and taxes taken out. Only stays whose report carried an amount count.</p>
+        <p class="text-muted small mb-0 mt-1">Payout per night sold — what the platform pays you for the stay. Only stays whose report carried a payout count.</p>
     </div></div></div>
     <div class="col-12 col-lg-6"><div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-        <h6 class="card-title">Lodging revenue by month</h6>
+        <h6 class="card-title">Revenue by month (payouts)</h6>
         <div class="mini-chart" data-src="chart-revenue"></div>
         {{ charts.revenue|json_script:"chart-revenue" }}
-        <p class="text-muted small mb-0 mt-1">Each stay's revenue is spread over the nights it covers, so a stay across two months is split between them.</p>
+        <p class="text-muted small mb-0 mt-1">Each stay's payout is spread over the nights it covers, so a stay across two months is split between them.</p>
     </div></div></div>
     {% endif %}
     <div class="col-12 col-lg-6"><div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">

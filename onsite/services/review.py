@@ -18,7 +18,10 @@ from datetime import datetime, time, timedelta
 
 from django.utils import timezone
 
+from django.db.models import Q
+
 from ..models import Booking, BookingFeedHealth
+from . import coverage as coverage_service
 
 # VRBO pays out about a day after check-in.
 PAYOUT_LAG_DAYS = 1
@@ -46,10 +49,10 @@ def unpaid_upcoming(today=None):
     reach = coverage()
     if not reach:
         return []
-    rows = (Booking.objects.filter(
+    rows = (coverage_service.operational(Booking.objects.filter(
         status=Booking.Status.ACTIVE, source__in=list(reach), payout_amount__isnull=True, confirmed_real=False,
         property__is_general=False, check_out__gte=_start_of(today),
-    ).select_related('property', 'unit').order_by('check_in'))
+    )).select_related('property', 'unit').order_by('check_in'))
     return [b for b in rows if _local_date(b.check_in) + timedelta(days=PAYOUT_LAG_DAYS) <= reach[b.source]]
 
 
@@ -59,6 +62,7 @@ def conflicts(today=None):
     that is unambiguous."""
     today = today or timezone.localdate()
     bookings = (Booking.objects.filter(
+        Q(on_calendar=True) | Q(source=Booking.Source.MANUAL),
         status=Booking.Status.ACTIVE, property__is_general=False, check_out__gte=_start_of(today),
     ).select_related('property', 'unit').order_by('check_in'))
     by_unit = {}
@@ -80,6 +84,17 @@ def conflicts(today=None):
                 latest = b
     found.sort(key=lambda c: _local_date(c['pair'][1].check_in))
     return found
+
+
+def paid_not_on_calendar(today=None):
+    """Upcoming reservations we are being paid for that a connected calendar
+    does not show: valid income, but no cleaning is scheduled for them. Worth a
+    look because the calendar may be missing a real stay."""
+    today = today or timezone.localdate()
+    rows = coverage_service.payment_only(Booking.objects.filter(
+        status=Booking.Status.ACTIVE, property__is_general=False, check_out__gte=_start_of(today),
+    )).select_related('property', 'unit').order_by('check_in')
+    return list(rows)
 
 
 def counts(today=None):

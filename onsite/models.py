@@ -479,6 +479,13 @@ class Booking(models.Model):
     )
     amount_source = models.CharField(max_length=60, blank=True, help_text='Where the amounts came from (e.g. "csv upload", "entered by hand").')
 
+    on_calendar = models.BooleanField(
+        default=False,
+        help_text='The synced platform calendar shows this stay right now (same listing, same dates). The calendars '
+                   'are the source of truth for cleanings and the Rentals board; a reservation that only came in '
+                   'from a payment report is a financial record and never gets a cleaning where a calendar is connected.',
+    )
+    calendar_seen_at = models.DateTimeField(null=True, blank=True, help_text='When a calendar poll last saw this stay.')
     manually_cancelled = models.BooleanField(
         default=False,
         help_text='A person marked this reservation cancelled (e.g. it was a duplicate, or the platform never '
@@ -504,16 +511,15 @@ class Booking(models.Model):
         return max((timezone.localtime(self.check_out).date() - timezone.localtime(self.check_in).date()).days, 0)
 
     def lodging_revenue(self):
-        """The stay's revenue with cleaning and other fees taken back out
-        (gross_amount - cleaning_fee - other_fees - tax_amount), or None when
-        there's no gross figure. What an average nightly rate should be
-        computed from."""
-        if self.gross_amount is None:
-            return None
-        return (
-            self.gross_amount - (self.cleaning_fee or Decimal('0')) - (self.other_fees or Decimal('0'))
-            - (self.tax_amount or Decimal('0'))
-        )
+        """The stay's revenue — the top line: what the platform pays out for it
+        (Airbnb "Amount", VRBO "Payout"), which is also what lands in the bank.
+        An in-house stay has no platform, so it is what the guest paid. None until
+        an amount is known. What the average nightly rate is built from."""
+        if self.payout_amount is not None:
+            return self.payout_amount
+        if self.source == self.Source.MANUAL and self.gross_amount is not None:
+            return self.gross_amount
+        return None
 
 
 class PendingPayout(models.Model):

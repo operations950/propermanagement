@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Recalibrate from calendars{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_booking_feeds' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Booking calendars</a>
+<h2 class="page-title mb-1">Recalibrate from the calendars</h2>
+<p class="text-muted small mb-3">
+    The synced calendars are the single source of truth for who is checking in and out, so the cleaning schedule should be exactly what they show. Payment reports are the source of truth for money. This page finds upcoming reservations that only a payment report brought in — on a listing whose calendar is connected and reading fine — and tidies them <strong>quietly</strong>: their cleanings and calendar events are removed <strong>without any cancellation notices or messages</strong>. Nothing is done until you press the button.
+</p>
+
+<div class="d-flex gap-2 flex-wrap align-items-center mb-3">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="refresh"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Read every calendar again first</button></form>
+    <span class="small text-muted">{{ plan.covered_listings }} listing{{ plan.covered_listings|pluralize }} {{ plan.covered_listings|pluralize:"has,have" }} a healthy calendar (read successfully in the last 2 days). Only those are checked.</span>
+</div>
+
+<div class="row row-cols-1 row-cols-md-3 g-2 mb-3">
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Unpaid, not on the calendar</div><div class="fs-4 fw-semibold">{{ plan.remove|length }}</div><div class="small text-muted">will be cleared out</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Paid, not on the calendar</div><div class="fs-4 fw-semibold">{{ plan.keep|length }}</div><div class="small text-muted">kept as payment records</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Cleanings removed</div><div class="fs-4 fw-semibold">{{ plan.visits_to_remove }}</div><div class="small text-muted">quietly, no notices</div></div></div>
+</div>
+
+{% if plan.remove or plan.keep %}
+<form method="post" class="mb-4" onsubmit="return confirm('Quietly remove {{ plan.visits_to_remove }} cleaning(s) and clear out {{ plan.remove|length }} unpaid reservation(s) the calendars do not show?\n\nNo cancellation notices or messages are sent. Paid reservations are kept as payment records.');">
+    {% csrf_token %}<input type="hidden" name="action" value="apply">
+    <button class="btn btn-primary"><i data-lucide="brush-cleaning" class="icon"></i> Clean up now — quietly</button>
+</form>
+{% else %}
+<div class="alert alert-success small"><i data-lucide="check-circle" class="icon"></i> Nothing to do: every upcoming reservation on a connected calendar is on that calendar.</div>
+{% endif %}
+
+{% if plan.remove %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">Unpaid and not on the calendar — cleared out ({{ plan.remove|length }})</h6>
+    <p class="text-muted small">No payout on record and not marked real. These are stale or duplicate rows (perhaps from an old upload). Their cleanings go; the rows are deleted, or marked cancelled if something else still refers to them.</p>
+    {% for e in plan.remove %}
+    <div class="d-flex justify-content-between gap-2 flex-wrap border-top py-1 small">
+        <span>{{ e.booking.property.name }}{% if e.booking.unit %} — {{ e.booking.unit.label }}{% endif %} · {{ e.booking.check_in|date:"D M j" }} → {{ e.booking.check_out|date:"D M j" }} · {{ e.booking.get_source_display }}{% if e.booking.guest_name %} · {{ e.booking.guest_name }}{% endif %}</span>
+        <span class="text-muted">{% if e.visits %}{{ e.visits }} cleaning{{ e.visits|pluralize }} removed{% else %}no cleaning{% endif %}</span>
+    </div>
+    {% endfor %}
+</div></div>
+{% endif %}
+
+{% if plan.keep %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">Paid but not on the calendar — kept as payment records ({{ plan.keep|length }})</h6>
+    <p class="text-muted small">A payout is on record (or you marked it real), so it stays as income. It just gets no cleaning and isn't on the Rentals board. If it's a genuine guest, the platform calendar is missing it.</p>
+    {% for e in plan.keep %}
+    <div class="d-flex justify-content-between gap-2 flex-wrap border-top py-1 small">
+        <span>{{ e.booking.property.name }}{% if e.booking.unit %} — {{ e.booking.unit.label }}{% endif %} · {{ e.booking.check_in|date:"D M j" }} → {{ e.booking.check_out|date:"D M j" }} · {{ e.booking.get_source_display }}{% if e.booking.guest_name %} · {{ e.booking.guest_name }}{% endif %}</span>
+        <span class="text-muted">{% if e.visits %}{{ e.visits }} cleaning{{ e.visits|pluralize }} removed{% else %}no cleaning{% endif %}</span>
+    </div>
+    {% endfor %}
+</div></div>
+{% endif %}
+
+{% if plan.uncovered_reservations %}
+<p class="text-muted small"><i data-lucide="info" class="icon"></i> {{ plan.uncovered_reservations }} upcoming reservation{{ plan.uncovered_reservations|pluralize }} sit{{ plan.uncovered_reservations|pluralize:"s," }} on listings with no working calendar yet. They are left exactly as they are — connect those calendars on the Booking calendars screen, then recalibrate again.</p>
+{% endif %}
+{% endblock %}
