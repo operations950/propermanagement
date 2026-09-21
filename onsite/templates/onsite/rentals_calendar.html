@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block title %}Rentals calendar{% endblock %}
+{% block content %}
+{% include 'onsite/_calendar_css.html' %}
+
+<a href="{% url 'onsite_str_today' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Rentals today</a>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title mb-0">Rentals calendar</h2>
+        <p class="text-muted small mb-0">{{ cal.start|date:"M j" }} → {{ cal.end|date:"M j, Y" }} · {{ shown }} of {{ total }} rental{{ total|pluralize }}{% if cal.occupancy is not None %} · <strong>{{ cal.occupancy|floatformat:0 }}% occupied</strong> ({{ cal.booked }} of {{ cal.available }} nights booked){% endif %}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Days shown">
+            {% for w in cal.windows %}<a href="?days={{ w }}&start={{ cal.start|date:'Y-m-d' }}{{ filter_qs }}" class="btn {% if w == cal.days %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ w }} days</a>{% endfor %}
+        </div>
+        <div class="btn-group btn-group-sm">
+            <a href="?days={{ cal.days }}&start={{ cal.previous|date:'Y-m-d' }}{{ filter_qs }}" class="btn btn-outline-secondary" aria-label="Earlier"><i data-lucide="chevron-left" class="icon"></i></a>
+            <a href="?days={{ cal.days }}{{ filter_qs }}" class="btn btn-outline-secondary">Today</a>
+            <a href="?days={{ cal.days }}&start={{ cal.next|date:'Y-m-d' }}{{ filter_qs }}" class="btn btn-outline-secondary" aria-label="Later"><i data-lucide="chevron-right" class="icon"></i></a>
+        </div>
+    </div>
+</div>
+
+<form method="get" class="d-flex flex-wrap gap-2 align-items-start mb-2">
+    <input type="hidden" name="days" value="{{ cal.days }}">
+    <input type="hidden" name="start" value="{{ cal.start|date:'Y-m-d' }}">
+    <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" style="max-width: 240px;" placeholder="Search name, address or unit">
+    <details class="position-relative">
+        <summary class="btn btn-outline-secondary btn-sm" style="list-style: none;"><i data-lucide="filter" class="icon"></i> Properties{% if picked %} ({{ picked|length }}){% endif %}</summary>
+        <div class="card card-body p-2 position-absolute shadow-sm" style="z-index: 6; min-width: 260px; max-height: 320px; overflow-y: auto;">
+            {% for p in all_properties %}
+            <label class="d-flex gap-2 align-items-center small py-1"><input type="checkbox" name="p" value="{{ p.pk }}" {% if p.pk in picked %}checked{% endif %}> <span>{{ p.name }}</span></label>
+            {% endfor %}
+        </div>
+    </details>
+    <button class="btn btn-primary btn-sm">Apply</button>
+    {% if q or picked %}<a href="?days={{ cal.days }}&start={{ cal.start|date:'Y-m-d' }}" class="btn btn-link btn-sm">Clear filters</a>{% endif %}
+</form>
+
+<div class="cal-legend mb-2">
+    <span><i class="cal-airbnb"></i>Airbnb</span><span><i class="cal-vrbo"></i>VRBO</span><span><i class="cal-manual"></i>In-house</span>
+    <span><i style="border: 1.5px dashed rgba(43,43,46,0.4); background: transparent;"></i>Open nights</span>
+    <span><i style="border: 1.5px dashed var(--status-warning); background: color-mix(in srgb, var(--status-warning) 15%, white);"></i>Short gap between stays (1–2 nights)</span>
+</div>
+
+<div class="cal-scroll mb-3" style="--days: {{ cal.days }}; --cal-label: 170px;">
+    <div style="min-width: {{ cal.min_width|add:170 }}px;">
+        <div class="cal-row cal-head months"><div class="cal-label"></div><div class="cal-track">{% for m in cal.months %}<div class="cal-month" style="left: {{ m.left }}%; width: {{ m.width }}%;">{{ m.label }}</div>{% endfor %}</div></div>
+        <div class="cal-row cal-head days"><div class="cal-label"></div><div class="cal-track" style="height: 38px;">{% for d in cal.header_days %}<div class="cal-daynum {% if d.weekend %}weekend{% endif %} {% if d.today %}today{% endif %}" style="left: {{ d.left }}%; width: {{ d.width }}%;"><b>{{ d.num }}</b>{{ d.dow }}</div>{% endfor %}</div></div>
+        <div class="cal-body">
+            {% for row in cal.rows %}
+            {% if row.has_units and row.first_in_group %}
+            <div class="cal-row" style="background: var(--bs-light, #f8f9fa);"><div class="cal-label" style="background: var(--bs-light, #f8f9fa);"><a href="{% url 'onsite_performance_calendar' row.property.pk %}" class="fw-semibold text-decoration-none">{{ row.property.name }}</a></div><div class="cal-track" style="height: 26px; background-image: none;"></div></div>
+            {% endif %}
+            <div class="cal-row">
+                <div class="cal-label">
+                    <div class="fw-semibold">{% if row.has_units %}<span class="ms-2">{{ row.label }}</span>{% else %}<a href="{% url 'onsite_performance_calendar' row.property.pk %}" class="text-decoration-none">{{ row.label }}</a>{% endif %}</div>
+                    <div class="text-muted" style="font-size: 0.72rem;">{% if row.occupancy is not None %}{{ row.occupancy|floatformat:0 }}% booked{% else %}no data{% endif %}</div>
+                </div>
+                <div class="cal-track" style="height: {{ row.height }}px;">
+                    {% for d in cal.header_days %}{% if d.weekend %}<div class="cal-wk" style="left: {{ d.left }}%; width: {{ d.width }}%;"></div>{% endif %}{% endfor %}
+                    {% if cal.today_left is not None %}<div class="cal-today" style="left: {{ cal.today_left }}%;"></div>{% endif %}
+                    {% for b in row.blanks %}
+                    <div class="cal-blank {% if b.short %}short{% endif %}" title="{{ b.nights }} open night{{ b.nights|pluralize }}{% if b.between %} between two stays{% endif %}" style="left: {{ b.left }}%; width: {{ b.width }}%; top: 4px;">{% if b.roomy %}{{ b.nights }} night{{ b.nights|pluralize }} open{% elif b.width > 4 %}{{ b.nights }}{% endif %}</div>
+                    {% endfor %}
+                    {% for bar in row.bars %}
+                    <div class="cal-bar cal-{{ bar.source }} {% if bar.starts_before %}starts-before{% endif %} {% if bar.ends_after %}ends-after{% endif %}" tabindex="0"
+                         title="{{ row.property.name }}{% if row.has_units %} — {{ row.label }}{% endif %} · {{ bar.guest }} · {{ bar.booking.check_in|date:'D M j' }} → {{ bar.booking.check_out|date:'D M j' }} · {{ bar.nights }} night{{ bar.nights|pluralize }} · {{ bar.source_label }}{% if is_admin and bar.booking.payout_amount is not None %} · ${{ bar.booking.payout_amount }} payout{% endif %}"
+                         style="left: {{ bar.left }}%; width: {{ bar.width }}%; top: {{ bar.top }}px;">{% if bar.starts_before %}◂ {% endif %}{{ bar.guest }} · {{ bar.nights }}n{% if bar.ends_after %} ▸{% endif %}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="p-3 text-muted small">No rentals match these filters.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+<p class="text-muted small">Click a rental's name for its month calendar. Rentals with a short gap between two stays are the ones worth a look.</p>
+{% endblock %}

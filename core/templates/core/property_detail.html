@@ -16,7 +16,11 @@
                 {% if property.address_verified %}<span class="badge rounded-pill border ms-1" style="color: var(--status-good); border-color: var(--status-good) !important;">USPS verified</span>{% endif %}
             </p>
         </div>
-        <div class="d-flex gap-2 flex-shrink-0">
+        <div class="d-flex gap-2 flex-shrink-0 flex-wrap">
+            {% if property.property_type == 'str' and property.is_active and not property.is_general %}
+            <a href="{% url 'onsite_performance_calendar' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-days" class="icon"></i> Calendar</a>
+            <a href="{% url 'onsite_performance_property' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-column" class="icon"></i> Performance</a>
+            {% endif %}
             <a href="{% url 'property_edit' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
         </div>
     </div>

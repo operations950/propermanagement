@@ -23,6 +23,7 @@
         <a href="?date={{ previous_day|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Previous day"><i data-lucide="chevron-left" class="icon"></i></a>
         {% if not board.is_today %}<a href="{% url 'onsite_str_today' %}" class="btn btn-outline-secondary btn-sm">Today</a>{% endif %}
         <a href="?date={{ next_day|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Next day"><i data-lucide="chevron-right" class="icon"></i></a>
+        <a href="{% url 'onsite_rentals_calendar' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-range" class="icon"></i> Calendar</a>
         <a href="{% url 'onsite_reservation_list' %}" class="btn btn-outline-secondary btn-sm">Reservations</a>
         {% if review_count %}<a href="{% url 'onsite_reservation_review' %}" class="btn btn-warning btn-sm">To review ({{ review_count }})</a>{% endif %}
         <a href="{% url 'onsite_performance' %}" class="btn btn-outline-secondary btn-sm">Performance</a>

@@ -7,6 +7,7 @@
     {# Wide screens: every shortcut as a button. Phones: the two you use most, and the rest in a menu (eleven wrapped buttons ate the whole first screen). #}
     <div class="d-none d-md-flex gap-2 flex-wrap">
         <a href="{% url 'onsite_str_today' %}" class="btn btn-primary btn-sm"><i data-lucide="sun" class="icon"></i> Rentals today</a>
+        <a href="{% url 'onsite_rentals_calendar' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-range" class="icon"></i> Rentals calendar</a>
         <a href="{% url 'onsite_reservation_list' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="book-open" class="icon"></i> Reservations</a>
         <a href="{% url 'onsite_performance' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-no-axes-column" class="icon"></i> Performance</a>
         <a href="{% url 'onsite_checklist_templates' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="clipboard-list" class="icon"></i> Checklist templates</a>
@@ -25,6 +26,7 @@
         <div class="dropdown">
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
             <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'onsite_rentals_calendar' %}">Rentals calendar</a></li>
                 <li><a class="dropdown-item" href="{% url 'onsite_reservation_list' %}">Reservations</a></li>
                 <li><a class="dropdown-item" href="{% url 'onsite_performance' %}">Performance</a></li>
                 <li><a class="dropdown-item" href="{% url 'onsite_checklist_templates' %}">Checklist templates</a></li>

@@ -1,0 +1,50 @@
+<style>
+    /* Reservation colours, shared by the month calendar and the multi-calendar. */
+    .cal-airbnb { background: #3d6178; color: #fff; }
+    .cal-vrbo { background: #93b2c6; color: #10222e; }
+    .cal-manual { background: #8c4570; color: #fff; }
+    .cal-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; color: var(--ink-secondary); }
+    .cal-legend i { display: inline-block; width: 22px; height: 10px; border-radius: 5px; margin-right: 5px; vertical-align: -1px; }
+
+    /* Timeline (one row per unit, a column per day). */
+    .cal-scroll { overflow-x: auto; border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 12px; background: var(--surface-card, #fff); }
+    .cal-row { display: flex; min-width: min-content; }
+    .cal-label { position: sticky; left: 0; z-index: 3; flex: 0 0 var(--cal-label, 118px); width: var(--cal-label, 118px); background: var(--surface-card, #fff); border-right: 1px solid var(--bs-border-color, #dee2e6); padding: 6px 8px; font-size: 0.82rem; overflow-wrap: anywhere; }
+    .cal-track { position: relative; flex: 1 0 auto; background-image: linear-gradient(to right, rgba(43,43,46,0.07) 1px, transparent 1px); background-size: calc(100% / var(--days)) 100%; }
+    .cal-daynum { position: absolute; top: 0; bottom: 0; text-align: center; font-size: 0.7rem; line-height: 1.05; padding-top: 2px; color: var(--ink-secondary); }
+    .cal-daynum b { display: block; font-weight: 600; color: var(--ink-primary); font-size: 0.74rem; }
+    .cal-daynum.weekend { background: rgba(43,43,46,0.045); }
+    .cal-daynum.today b { color: #fff; background: var(--role-admin, #3d6178); border-radius: 999px; width: 1.5em; margin: 0 auto; }
+    .cal-month { position: absolute; top: 0; bottom: 0; font-size: 0.74rem; font-weight: 600; padding: 3px 4px; border-left: 1px solid var(--bs-border-color, #dee2e6); color: var(--ink-secondary); white-space: nowrap; overflow: hidden; }
+    .cal-head.months .cal-track { height: 24px; }
+    .cal-head.days .cal-track { height: 38px; }
+    .cal-body .cal-row { border-top: 1px solid var(--bs-border-color, #dee2e6); }
+    .cal-wk { position: absolute; top: 0; bottom: 0; background: rgba(43,43,46,0.035); }
+    .cal-today { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--status-critical); opacity: 0.55; z-index: 2; }
+    .cal-bar { position: absolute; height: 28px; border-radius: 14px; padding: 0 10px; font-size: 0.76rem; line-height: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+    .cal-bar.starts-before, .mg-bar.starts-before { border-top-left-radius: 3px; border-bottom-left-radius: 3px; }
+    .cal-bar.ends-after, .mg-bar.ends-after { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
+    .cal-blank { position: absolute; height: 28px; border: 1.5px dashed rgba(43,43,46,0.28); border-radius: 14px; font-size: 0.72rem; line-height: 25px; text-align: center; color: var(--ink-muted); white-space: nowrap; overflow: hidden; }
+    .cal-blank.short { border-color: var(--status-warning); color: #8a5d00; background: color-mix(in srgb, var(--status-warning) 12%, white); }
+
+    /* Month calendar: seven columns, a row per week. */
+    .mg { border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 12px; overflow: hidden; background: var(--surface-card, #fff); }
+    .mg-dow, .mg-cells { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .mg-dow { background: var(--bs-light, #f8f9fa); border-bottom: 1px solid var(--bs-border-color, #dee2e6); }
+    .mg-dow div { text-align: center; font-size: 0.72rem; font-weight: 600; color: var(--ink-secondary); padding: 5px 0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .mg-week { position: relative; border-bottom: 1px solid var(--bs-border-color, #dee2e6); }
+    .mg-week:last-child { border-bottom: 0; }
+    .mg-cells { position: absolute; inset: 0; }
+    .mg-cell { border-right: 1px solid var(--bs-border-color, #dee2e6); padding: 3px 5px; font-size: 0.74rem; color: var(--ink-primary); }
+    .mg-cell:last-child { border-right: 0; }
+    .mg-cell.weekend { background: rgba(43,43,46,0.03); }
+    .mg-cell.out { color: var(--ink-muted); background: rgba(43,43,46,0.05); }
+    .mg-cell.dim { opacity: 0.45; }
+    .mg-cell.today .mg-num { color: #fff; background: var(--role-admin, #3d6178); border-radius: 999px; display: inline-block; min-width: 1.6em; text-align: center; font-weight: 600; }
+    .mg-bar { position: absolute; height: 22px; border-radius: 11px; padding: 0 8px; font-size: 0.7rem; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+    @media (max-width: 575.98px) {
+        .mg-cell { padding: 2px 3px; font-size: 0.68rem; }
+        .mg-bar { padding: 0 5px; font-size: 0.64rem; }
+        .mg-dow div { font-size: 0.62rem; letter-spacing: 0; }
+    }
+</style>

@@ -8,10 +8,13 @@
         <h2 class="page-title mb-0">Rental performance</h2>
         <p class="text-muted small mb-0">As of {{ report.as_of|date:"F j, Y" }} · {{ report.scope.units }} unit{{ report.scope.units|pluralize }} across {{ report.scope.properties }} propert{{ report.scope.properties|pluralize:"y,ies" }}{% if report.scope.data_from %} · reservations on record since {{ report.scope.data_from|date:"M j, Y" }}{% endif %}</p>
     </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+    <a href="{% url 'onsite_rentals_calendar' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-range" class="icon"></i> Calendar</a>
     <form method="get"><select name="property" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="">All rentals</option>
         {% for p in properties %}<option value="{{ p.pk }}" {% if property_id == p.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
     </select></form>
+    </div>
 </div>
 
 {% if report.scope.excluded %}

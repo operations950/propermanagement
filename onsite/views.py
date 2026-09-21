@@ -869,16 +869,66 @@ def performance(request):
 
 @login_required
 def performance_calendar(request, property_id):
-    """A host-style calendar for one rental: a row per unit, a bar per
-    reservation from check-in to check-out, the blank stretches between them
-    counted in nights, for 30/60/90/180 days from any start date. Opened from
-    the occupancy numbers on the performance screens."""
+    """One rental as ordinary month calendars (seven columns, a row per week, the
+    reservations running across the days): the current month by default, or the
+    months that cover the next 30/60/90/180 days when opened from an occupancy
+    number (?days=N), with the days outside that stretch dimmed. A building shows
+    a calendar per unit (?unit= narrows it)."""
     prop = get_object_or_404(str_board.eligible_properties(), pk=property_id)
+    today = timezone.localdate()
+    raw_days = request.GET.get('days', '')
+    raw_unit = request.GET.get('unit', '')
+    unit_id = int(raw_unit) if raw_unit.isdigit() else None
+    if raw_days.isdigit() and int(raw_days) in calendar_service.WINDOWS:
+        days = int(raw_days)
+        window = (today, days)
+        grids = calendar_service.build_month_grids(
+            prop, first_month=today, months=min(calendar_service.months_covering(today, days), 6), today=today, window=window, unit_id=unit_id,
+        )
+    else:
+        days = None
+        raw_month = request.GET.get('month', '')
+        try:
+            first_month = datetime.strptime(raw_month, '%Y-%m').date() if raw_month else today
+        except ValueError:
+            first_month = today
+        raw_count = request.GET.get('months', '')
+        months = int(raw_count) if raw_count.isdigit() and int(raw_count) in calendar_service.MONTH_COUNTS else 1
+        grids = calendar_service.build_month_grids(prop, first_month=first_month, months=months, today=today, unit_id=unit_id)
+    return render(request, 'onsite/performance_calendar.html', {
+        'cal': grids, 'property': prop, 'days': days, 'month_counts': calendar_service.MONTH_COUNTS,
+        'windows': calendar_service.WINDOWS, 'is_admin': _is_admin(request.user),
+    })
+
+
+@login_required
+def rentals_calendar(request):
+    """Every rental on one calendar: a row per unit, a column per day, for scanning
+    the whole portfolio at once. Narrow it with a search (?q=) or by ticking
+    properties (?p=…); the same filters carry through the window buttons and the
+    earlier/later arrows."""
+    all_props = list(str_board.eligible_properties())
     raw_days = request.GET.get('days', '')
     days = int(raw_days) if raw_days.isdigit() else calendar_service.DEFAULT_DAYS
     start = parse_date(request.GET.get('start', '') or '')
-    cal = calendar_service.build_property_calendar(prop, start=start, days=days)
-    return render(request, 'onsite/performance_calendar.html', {'cal': cal, 'property': prop, 'is_admin': _is_admin(request.user)})
+    q = request.GET.get('q', '').strip()
+    picked = {int(x) for x in request.GET.getlist('p') if x.isdigit()}
+    chosen = all_props
+    if picked:
+        chosen = [p for p in chosen if p.pk in picked]
+    tokens = q.lower().split()
+    if tokens:
+        chosen = [
+            p for p in chosen
+            if all(t in ' '.join([p.name, p.address, p.city] + [u.label for u in p.units.all()]).lower() for t in tokens)
+        ]
+    cal = calendar_service.build_timeline(chosen, start=start, days=days)
+    from urllib.parse import urlencode
+    qs = urlencode([('q', q)] * bool(q) + [('p', pk) for pk in sorted(picked)])
+    return render(request, 'onsite/rentals_calendar.html', {
+        'cal': cal, 'all_properties': all_props, 'q': q, 'picked': picked, 'filter_qs': ('&' + qs) if qs else '',
+        'shown': len(chosen), 'total': len(all_props), 'is_admin': _is_admin(request.user),
+    })
 
 
 @login_required
