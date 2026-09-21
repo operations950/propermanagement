@@ -957,28 +957,73 @@
                     form.querySelectorAll('[data-bubble-picker]').forEach(function (picker) {
                         picker.addEventListener('bubble:lock', autosave);
                         picker.addEventListener('bubble:unlock', autosave);
+                        picker.addEventListener('bubble:lock', syncFollowupBubbles);
+                        picker.addEventListener('bubble:unlock', syncFollowupBubbles);
                     });
 
-                    // A contact newly linked here (existing contact picked via
-                    // search, or a brand-new one created via +Add below) is
-                    // otherwise invisible to the Follow-Up modal until a full
-                    // reload — its Text/Email bubble pools are rendered once
-                    // from the page's initial load. Appending the bubble here
-                    // instead needs no extra wiring for the click-to-lock
-                    // behavior itself: bubble-picker.js's multi-picker binds
-                    // its lock listener on the pool *container*, not each
-                    // bubble, so a bubble added later the same way still
-                    // works the first time it's clicked.
-                    function addFollowupBubble(formId, id, label) {
-                        var pool = document.querySelector('#' + formId + ' [data-bubble-pool]');
-                        if (!pool || pool.querySelector('.bubble[data-value="' + id + '"]')) return;
+                    // The Follow-Up modal's Text/Email pools are rendered once
+                    // from the page's initial load, so a contact linked here
+                    // afterwards would be missing from them until a reload —
+                    // whichever way it was linked (a suggested bubble, the
+                    // search box, or a brand-new contact), and even when the
+                    // ticket had nobody to message at all (both forms are
+                    // always in the page, hidden while their pool is empty).
+                    // So every lock/unlock here re-syncs the pools with what
+                    // is now linked: a contact with a phone number gets a Text
+                    // bubble, one with an email an Email bubble, and one
+                    // that was unlinked loses the bubble this script added
+                    // for it (bubbles the server rendered — the assigned
+                    // contractor, the reporter — stay). A bubble added later
+                    // needs no wiring of its own: bubble-picker.js's multi
+                    // picker binds its click listener on the pool container.
+                    var contactInfo = {};   // contact id -> {phone, email}
+                    form.querySelectorAll('[data-contact-filter-source]').forEach(function (el) {
+                        try {
+                            JSON.parse(el.textContent).forEach(function (c) {
+                                contactInfo[String(c.id)] = { phone: !!c.has_phone, email: !!c.has_email };
+                            });
+                        } catch (err) { /* a search list that won't parse just adds nothing */ }
+                    });
+                    var followupFormIds = { sms: 'ticket-followup-sms-form', email: 'ticket-followup-email-form' };
+
+                    function addFollowupBubble(kind, id, label) {
+                        var f = document.getElementById(followupFormIds[kind]);
+                        if (!f || f.querySelector('.bubble[data-value="' + id + '"]')) return;
                         var bubble = document.createElement('button');
                         bubble.type = 'button';
                         bubble.className = 'bubble';
                         bubble.dataset.value = id;
                         bubble.dataset.label = label;
+                        bubble.dataset.relatedAdded = '1';
                         bubble.textContent = label;
-                        pool.appendChild(bubble);
+                        f.querySelector('[data-bubble-pool]').appendChild(bubble);
+                    }
+
+                    function syncFollowupBubbles() {
+                        var linked = {};   // id -> label, everything now locked in the three columns
+                        form.querySelectorAll('[data-bubble-picker] .bubble-slot .bubble').forEach(function (b) {
+                            linked[b.dataset.value] = b.dataset.label;
+                        });
+                        Object.keys(linked).forEach(function (id) {
+                            var info = contactInfo[id];
+                            if (!info) return;
+                            if (info.phone) addFollowupBubble('sms', id, linked[id]);
+                            if (info.email) addFollowupBubble('email', id, linked[id]);
+                        });
+                        ['sms', 'email'].forEach(function (kind) {
+                            var f = document.getElementById(followupFormIds[kind]);
+                            if (!f) return;
+                            var picker = f.querySelector('[data-bubble-picker]');
+                            f.querySelectorAll('.bubble[data-related-added]').forEach(function (b) {
+                                if (linked[b.dataset.value]) return;
+                                if (b.classList.contains('bubble-locked') && picker._bubbleApi) picker._bubbleApi.unlock(b, 0);
+                                b.remove();
+                            });
+                            var any = f.querySelector('.bubble');
+                            f.hidden = !any;
+                            var note = document.querySelector('[data-followup-empty="' + kind + '"]');
+                            if (note) note.hidden = !!any;
+                        });
                     }
 
                     [
@@ -990,9 +1035,8 @@
                         var picker = form.querySelector('[data-bubble-picker][data-name="' + pair[1] + '"]');
                         if (!filterRoot || !picker) return;
                         filterRoot.addEventListener('contact:choose', function (e) {
+                            contactInfo[String(e.detail.id)] = { phone: !!e.detail.hasPhone, email: !!e.detail.hasEmail };
                             picker._bubbleApi.lockValue(String(e.detail.id), e.detail.label);
-                            if (e.detail.hasPhone) addFollowupBubble('ticket-followup-sms-form', e.detail.id, e.detail.label);
-                            if (e.detail.hasEmail) addFollowupBubble('ticket-followup-email-form', e.detail.id, e.detail.label);
                         });
                     });
 
@@ -1030,9 +1074,9 @@
                                     if (data.success) {
                                         (data.new_contacts || []).forEach(function (nc) {
                                             var picker = form.querySelector('[data-bubble-picker][data-name="' + nc.prefix + '_contact_ids"]');
+                                            // Known before the bubble locks, since locking is what syncs the pools.
+                                            contactInfo[String(nc.id)] = { phone: hadPhone, email: hadEmail };
                                             if (picker && picker._bubbleApi) picker._bubbleApi.lockValue(String(nc.id), nc.label);
-                                            if (hadPhone) addFollowupBubble('ticket-followup-sms-form', nc.id, nc.label);
-                                            if (hadEmail) addFollowupBubble('ticket-followup-email-form', nc.id, nc.label);
                                         });
                                         nameInput.value = '';
                                         phoneInput.value = '';
@@ -1165,9 +1209,9 @@
         <div class="row">
           <div class="col-md-6 mb-3 mb-md-0">
                 <h6 class="d-flex align-items-center gap-2"><i data-lucide="message-circle" class="icon"></i> Text</h6>
-                {% if followup_text_parties %}
+                {% comment %}Both forms are always in the page (hidden while empty) so a contact linked under Related contacts can be added to their pool live, without a reload.{% endcomment %}
                 <form method="post" action="{% url 'ticket_followup_sms' ticket.pk %}" id="ticket-followup-sms-form"
-                      enctype="multipart/form-data"
+                      enctype="multipart/form-data"{% if not followup_text_parties %} hidden{% endif %}
                       onsubmit="var n=this.querySelectorAll('input[name=contact_ids]').length; if(!n){alert('Choose at least one recipient first.'); return false;} return confirm('Send this text to ' + n + ' recipient(s)?');">
                     {% csrf_token %}
                     <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
@@ -1198,14 +1242,11 @@
                     <textarea name="body" class="form-control mb-2" rows="4" placeholder="Message…" required></textarea>
                     <button class="btn btn-primary btn-sm w-100" type="submit">Send Text</button>
                 </form>
-                {% else %}
-                <p class="text-muted small">No party on this ticket has a phone number.</p>
-                {% endif %}
+                <p class="text-muted small" data-followup-empty="sms"{% if followup_text_parties %} hidden{% endif %}>No party on this ticket has a phone number.</p>
           </div>
           <div class="col-md-6">
                 <h6 class="d-flex align-items-center gap-2"><i data-lucide="mail" class="icon"></i> Email</h6>
-                {% if followup_email_parties %}
-                <form method="post" action="{% url 'ticket_followup_email' ticket.pk %}" id="ticket-followup-email-form" enctype="multipart/form-data">
+                <form method="post" action="{% url 'ticket_followup_email' ticket.pk %}" id="ticket-followup-email-form" enctype="multipart/form-data"{% if not followup_email_parties %} hidden{% endif %}>
                     {% csrf_token %}
                     <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="contact_ids">
                         <div class="bubble-slot" data-bubble-slot data-empty-text="No one selected"></div>
@@ -1312,9 +1353,7 @@
                     });
                 })();
                 </script>
-                {% else %}
-                <p class="text-muted small">No party on this ticket has an email address.</p>
-                {% endif %}
+                <p class="text-muted small" data-followup-empty="email"{% if followup_email_parties %} hidden{% endif %}>No party on this ticket has an email address.</p>
           </div>
         </div>
       </div>
