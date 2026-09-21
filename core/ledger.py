@@ -39,7 +39,7 @@ import hashlib
 import logging
 import re
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -589,13 +589,23 @@ def acknowledge_changes(book, month):
 
 # --- the month's figures and checks ----------------------------------------------------------------------
 
-TOTAL_KEYS = ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 'reimbursement_expense', 'expenses_reimbursable', 'expenses_direct', 'trust_net')
+TOTAL_KEYS = ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 'reimbursement_expense', 'expenses_reimbursable', 'expenses_direct', 'trust_net',
+              'net_income', 'commission_due', 'owner_due')
+CENT = Decimal('0.01')
 
 
-def totals(book, month, lines=None):
+def totals(book, month, lines=None, with_prior=True):
     """The month in dollars, from the lines as currently coded (positive numbers).
     `deposits` is income: only trust-account money in that is coded as a booking
-    payout — a refund coded as an expense reduces expenses instead."""
+    payout — a refund coded as an expense reduces expenses instead.
+
+    THE MONTH'S CALCULATION: income deposits, less the reimbursable expenses (paid by us, out
+    of the expense account) and the expenses paid from trust, is the net income; our commission
+    is the property's commission rate of that; what is left is the owner payment (`owner_due`).
+    The reimbursement to us and the commission actually taken out of the trust account this
+    month (`reimbursement_trust`, `commission`) do NOT enter this month's calculation: they settle
+    LAST month's, so they are compared with last month's figures (`prior_*`, see
+    prior_settlement) instead. `owner_payment` is what was coded as paid to the owner."""
     lines = list(month_lines(book, month)) if lines is None else lines
     total = {k: ZERO for k in TOTAL_KEYS}
     for l in lines:
@@ -617,7 +627,54 @@ def totals(book, month, lines=None):
             else:
                 total['expenses_direct'] += -l.flow
     total['expenses_total'] = total['expenses_reimbursable'] + total['expenses_direct']
-    return total
+    prop = _book(book).property
+    rate = Decimal(prop.commission_rate if prop.commission_rate is not None else Decimal('10.00'))
+    net = total['deposits'] - total['expenses_total']
+    due = (max(net, ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+    total.update(net_income=net, commission_rate=rate, commission_due=due, owner_due=net - due, calc=True)
+    if with_prior:
+        total.update(prior_settlement(book, month))
+    return derive(total)
+
+
+def derive(t):
+    """The figures the screens show that are simple sums of others: what was taken out for us, what is still to come
+    out for us and for the owner, and how this month's reimbursement and commission differ from last month's."""
+    if not t.get('calc'):
+        return t
+    t['taken_to_us'] = t['reimbursement_trust'] + t['commission']
+    t['still_to_us'] = t['expenses_reimbursable'] + t['commission_due']
+    t['owner_unpaid'] = t['owner_due'] - t['owner_payment']
+    ok = t.get('prior_status') == 'ok'
+    t['reimbursement_diff'] = t['reimbursement_trust'] - t['prior_reimbursable'] if ok else None
+    t['commission_diff'] = t['commission'] - t['prior_commission'] if ok else None
+    return t
+
+
+def prior_settlement(book, month):
+    """What last month left to settle in this one: its reimbursable expenses (reimbursed to us out of
+    the trust account this month) and its commission (paid to us out of the trust account this month),
+    from its frozen figures if it was closed under this calculation, else worked out from its lines.
+    `prior_status` says why there is nothing to compare with: 'not_in_books' (before the books start),
+    'other_shape' (kept as property books then, unit books now, or the reverse), 'no_data' (nothing
+    pulled in for it yet)."""
+    book = _book(book)
+    month = month_of(month)
+    prior = previous_month(month)
+    out = {'prior_month': prior, 'prior_reimbursable': None, 'prior_commission': None, 'prior_status': 'ok', 'prior_closed': False}
+    if prior < month_of(books_start()):
+        out['prior_status'] = 'not_in_books'
+        return out
+    if month_level(book.property, prior) != book.level:
+        out['prior_status'] = 'other_shape'
+        return out
+    close = MonthClose.objects.filter(month=prior, **book.scope()).first()
+    if close is None and not month_lines(book, prior).exists():
+        out['prior_status'] = 'no_data'
+        return out
+    t = closed_summary(close) if (close is not None and 'commission_due' in close.totals) else totals(book, prior, with_prior=False)
+    out.update(prior_reimbursable=t['expenses_reimbursable'], prior_commission=t['commission_due'], prior_closed=close is not None)
+    return out
 
 
 def sum_totals(parts):
@@ -626,7 +683,16 @@ def sum_totals(parts):
     for part in parts:
         for k in out:
             out[k] += part.get(k, ZERO)
-    return out
+    out['calc'] = bool(parts) and all(p.get('calc') for p in parts)
+    out['commission_rate'] = next((p['commission_rate'] for p in parts if p.get('commission_rate') is not None), None)
+    priors = [p.get('prior_reimbursable') for p in parts]
+    ok = bool(parts) and all(v is not None for v in priors)
+    out['prior_reimbursable'] = sum(priors, ZERO) if ok else None
+    out['prior_commission'] = sum((p['prior_commission'] for p in parts), ZERO) if ok else None
+    out['prior_status'] = 'ok' if ok else next((p.get('prior_status') for p in parts if p.get('prior_status') not in (None, 'ok')), 'no_data')
+    out['prior_month'] = next((p.get('prior_month') for p in parts if p.get('prior_month')), None)
+    out['prior_closed'] = ok and all(p.get('prior_closed') for p in parts)
+    return derive(out)
 
 
 def checks(book, month, now=None, rec=None):
@@ -664,16 +730,42 @@ def checks(book, month, now=None, rec=None):
     if changed:
         add('changed', 'block', f'{changed} line{"" if changed == 1 else "s"} changed in QuickBooks since coded — take a look and confirm.')
     if lines:
-        t = totals(book, month, lines)
+        t = totals(book, month, lines, with_prior=False)
         if t['reimbursement_trust'] != t['reimbursement_expense']:
             add('reimbursement_mismatch', 'warn', f'The reimbursement out of the trust account (${t["reimbursement_trust"]:,.2f}) does not equal the reimbursement credited to the expense account (${t["reimbursement_expense"]:,.2f}).')
         if t['owner_payment'] == 0 and t['deposits'] > 0:
             add('no_owner_payment', 'warn', 'No owner payment is coded this month although there were deposits.')
-        if t['expenses_reimbursable'] > 0 and t['reimbursement_trust'] == 0:
-            add('no_reimbursement', 'warn', 'There are reimbursable expenses but no reimbursement is coded from the trust account.')
+    add_settlement_checks(book, month, lines, add)
     if book.mapped:
         add_recon_checks(rec if rec is not None else recon.reconcile(book, month), add)
     return items
+
+
+def add_settlement_checks(book, month, lines, add):
+    """The reimbursement to us and the commission taken out of the trust account this month settle
+    LAST month's: compare them with last month's reimbursable expenses and commission."""
+    t = totals(book, month, lines)
+    prior = t['prior_month']
+    name = f'{prior:%B}'
+    status = t['prior_status']
+    if status == 'not_in_books':
+        add('settle_prior', 'ok', f'{name} is before the books start, so this month\'s reimbursement and commission can\'t be checked against it.')
+        return
+    if status == 'other_shape':
+        add('settle_prior', 'ok', f'{name} was kept in a different shape (property books against unit books), so this month\'s reimbursement and commission can\'t be checked against it.')
+        return
+    if status == 'no_data':
+        taken = t['reimbursement_trust'] + t['commission']
+        if taken:
+            add('settle_prior', 'warn', f'Nothing has been pulled in for {name}, so the ${taken:,.2f} taken out for us this month (reimbursement and commission) can\'t be checked against it.')
+        return
+    for key, label, taken, owed, what in (
+        ('reimbursement_vs_prior', 'Reimbursement to us', t['reimbursement_trust'], t['prior_reimbursable'], 'reimbursable expenses'),
+        ('commission_vs_prior', 'Commission', t['commission'], t['prior_commission'], 'commission'),
+    ):
+        diff = taken - owed
+        if diff != 0:
+            add(key, 'warn', f'{label} taken this month (${taken:,.2f}) does not match {name}\'s {what} (${owed:,.2f}): ${abs(diff):,.2f} {"more" if diff > 0 else "less"}.')
 
 
 def add_recon_checks(rec, add):
@@ -724,7 +816,7 @@ def close_month(book, month, user, acknowledged=(), note=''):
         raise CloseError('Acknowledge each warning before closing: ' + ', '.join(missing))
     lines = list(month_lines(book, month))
     t = totals(book, month, lines)
-    snapshot = {k: str(v) for k, v in t.items()}
+    snapshot = {k: (str(v) if isinstance(v, Decimal) else (v.isoformat() if isinstance(v, date) else v)) for k, v in t.items()}
     snapshot['lines'] = len(lines)
     close = MonthClose.objects.create(
         property=book.property, unit=book.unit, level=book.level, month=month, closed_by=user, totals=snapshot,
@@ -735,8 +827,24 @@ def close_month(book, month, user, acknowledged=(), note=''):
 
 
 def closed_summary(close):
-    """A closed month's frozen figures as Decimals."""
-    return {k: (Decimal(v) if k != 'lines' else int(v)) for k, v in close.totals.items()}
+    """A closed month's frozen figures as Decimals. A month closed before the calculation existed
+    has no `calc` (nor net income, commission due or last-month figures) and is shown as it was."""
+    out = {}
+    for k, v in close.totals.items():
+        if k == 'lines':
+            out[k] = int(v)
+        elif k in ('calc', 'prior_closed'):
+            out[k] = bool(v)
+        elif k == 'prior_status':
+            out[k] = v
+        elif k == 'prior_month':
+            out[k] = date.fromisoformat(v) if v else None
+        elif v is None:
+            out[k] = None
+        else:
+            out[k] = Decimal(v)
+    out.setdefault('calc', False)
+    return derive(out)
 
 
 def status_row(book, month, now=None):

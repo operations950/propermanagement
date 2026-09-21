@@ -1,0 +1,62 @@
+{% load core_extras %}{% comment %}
+    The month's figures at the top of a close screen. `totals` is the month's totals (live, or as closed; for a
+    unit-level property the units added up), `month` the first of the month, `closed` whether it is closed.
+
+    A month closed before the calculation existed (no totals.calc) keeps the layout it was closed in.
+{% endcomment %}
+{% if totals.calc %}
+<div class="table-responsive mb-1"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
+    <caption class="small fw-semibold text-start p-0 pb-1" style="caption-side: top; color: var(--ink-secondary);">{{ month|date:"F Y" }}: what the month comes to</caption>
+    <thead><tr><th>Income deposits</th><th>− Reimbursable expenses</th><th>− Paid from trust</th><th>= Net income</th><th>− Commission ({{ totals.commission_rate|floatformat:"-2" }}%)</th><th>= Owner payment</th></tr></thead>
+    <tbody><tr>
+        <td>{{ totals.deposits|money }}</td><td>{{ totals.expenses_reimbursable|money }}</td><td>{{ totals.expenses_direct|money }}</td>
+        <td>{{ totals.net_income|money }}</td><td>{{ totals.commission_due|money }}</td><td>{{ totals.owner_due|money }}</td>
+    </tr></tbody>
+</table></div>
+<p class="text-muted mb-2" style="font-size: 0.72rem;">Reimbursable expenses are what we paid out of the expense account for the owner; paid from trust comes straight out of the trust account. Our commission is {{ totals.commission_rate|floatformat:"-2" }}% of net income, and what is left is the owner payment. This month's reimbursement to us and commission are paid next month, out of the trust account.</p>
+
+<div class="row g-2 mb-2">
+    <div class="col-lg-7">
+        <div class="table-responsive"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
+            <caption class="small fw-semibold text-start p-0 pb-1" style="caption-side: top; color: var(--ink-secondary);">Taken out of the trust account this month for {{ totals.prior_month|date:"F" }}</caption>
+            <thead><tr><th class="text-start">What</th><th>Taken this month</th><th>{{ totals.prior_month|date:"F" }} figure</th><th>Difference</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td class="text-start">Reimbursement to us <span class="fw-normal text-muted">(vs {{ totals.prior_month|date:"F" }}'s reimbursable expenses)</span></td>
+                    <td>{{ totals.reimbursement_trust|money }}</td>
+                    {% if totals.prior_status == 'ok' %}<td>{{ totals.prior_reimbursable|money }}</td>
+                    <td>{% if totals.reimbursement_diff == 0 %}<span style="color: var(--status-good);">matches</span>{% else %}<span style="color: #9a6a00;">{{ totals.reimbursement_diff|money }}</span>{% endif %}</td>
+                    {% else %}<td colspan="2" class="fw-normal text-muted small">{% include 'core/_close_prior_note.html' %}</td>{% endif %}
+                </tr>
+                <tr>
+                    <td class="text-start">Commission <span class="fw-normal text-muted">(vs {{ totals.prior_month|date:"F" }}'s commission)</span></td>
+                    <td>{{ totals.commission|money }}</td>
+                    {% if totals.prior_status == 'ok' %}<td>{{ totals.prior_commission|money }}</td>
+                    <td>{% if totals.commission_diff == 0 %}<span style="color: var(--status-good);">matches</span>{% else %}<span style="color: #9a6a00;">{{ totals.commission_diff|money }}</span>{% endif %}</td>
+                    {% else %}<td colspan="2" class="fw-normal text-muted small">{% include 'core/_close_prior_note.html' %}</td>{% endif %}
+                </tr>
+            </tbody>
+        </table></div>
+        {% if totals.prior_status == 'ok' and not totals.prior_closed %}<p class="text-muted mb-0 mt-1" style="font-size: 0.72rem;">{{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.</p>{% endif %}
+    </div>
+    <div class="col-lg-5">
+        <div class="table-responsive"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
+            <caption class="small fw-semibold text-start p-0 pb-1" style="caption-side: top; color: var(--ink-secondary);">Trust account this month</caption>
+            <thead><tr><th>In</th><th>Paid from trust</th><th>To us</th><th>To owner</th><th>= Change</th></tr></thead>
+            <tbody><tr>
+                <td>{{ totals.deposits|money }}</td><td>{{ totals.expenses_direct|money }}</td><td>{{ totals.taken_to_us|money }}</td><td>{{ totals.owner_payment|money }}</td><td>{{ totals.trust_net|money }}</td>
+            </tr></tbody>
+        </table></div>
+        <p class="text-muted mb-0 mt-1" style="font-size: 0.72rem;">The net movement of the trust account: money in, less money out. "To us" is the reimbursement plus commission for {{ totals.prior_month|date:"F" }}. Still to come out for {{ month|date:"F" }}: {{ totals.still_to_us|money }} to us{% if totals.owner_unpaid > 0 %} and {{ totals.owner_unpaid|money }} to the owner{% endif %}.</p>
+    </div>
+</div>
+{% else %}
+<div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
+    <thead><tr><th>Income deposits</th><th>Expenses</th><th>Reimbursable</th><th>Paid from trust</th><th>Reimb. to us</th><th>Commission</th><th>Owner payment</th><th>Trust change</th></tr></thead>
+    <tbody><tr>
+        <td>{{ totals.deposits|money }}</td><td>{{ totals.expenses_total|money }}</td><td>{{ totals.expenses_reimbursable|money }}</td><td>{{ totals.expenses_direct|money }}</td>
+        <td>{{ totals.reimbursement_trust|money }}</td><td>{{ totals.commission|money }}</td><td>{{ totals.owner_payment|money }}</td><td>{{ totals.trust_net|money }}</td>
+    </tr></tbody>
+</table></div>
+<p class="small text-muted mb-2" style="font-size: 0.72rem;">Reimbursements move money between the trust account and our expense account, so they aren't counted as an extra expense. This month was closed before commission and the owner payment were calculated, so it keeps its original layout.</p>
+{% endif %}

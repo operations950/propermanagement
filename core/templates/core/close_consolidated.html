@@ -35,13 +35,8 @@
 {% if consolidated.drift %}<div class="alert alert-danger small py-2 mb-2">{{ consolidated.drift }} QuickBooks change{{ consolidated.drift|pluralize }} to closed units were <strong>not</strong> applied — open the unit to see them.</div>{% endif %}
 
 {% if consolidated.totals %}
-<div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
-    <thead><tr><th>Income deposits</th><th>Expenses</th><th>Reimbursable</th><th>Paid from trust</th><th>Reimb. to us</th><th>Commission</th><th>Owner payment</th><th>Matched to payouts</th></tr></thead>
-    <tbody><tr>
-        <td>${{ consolidated.totals.deposits|floatformat:"2g" }}</td><td>${{ consolidated.totals.expenses_total|floatformat:"2g" }}</td><td>${{ consolidated.totals.expenses_reimbursable|floatformat:"2g" }}</td><td>${{ consolidated.totals.expenses_direct|floatformat:"2g" }}</td>
-        <td>${{ consolidated.totals.reimbursement_trust|floatformat:"2g" }}</td><td>${{ consolidated.totals.commission|floatformat:"2g" }}</td><td>${{ consolidated.totals.owner_payment|floatformat:"2g" }}</td><td>${{ consolidated.payouts_matched|floatformat:"2g" }}</td>
-    </tr></tbody>
-</table></div>
+{% include 'core/_close_summary.html' with totals=consolidated.totals month=month %}
+<p class="small mb-2">Income deposits matched to platform payouts: <strong>${{ consolidated.payouts_matched|floatformat:"2g" }}</strong></p>
 {% if consolidated.state != 'closed' %}<p class="text-muted mb-2" style="font-size: 0.72rem;">Includes units still being coded, as they stand now; units that are closed are as closed.</p>{% endif %}
 {% endif %}
 

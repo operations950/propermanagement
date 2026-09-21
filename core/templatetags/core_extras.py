@@ -18,3 +18,16 @@ PROPERTY_TYPE_ICONS = {
 @register.filter
 def property_type_icon(property_type):
     return PROPERTY_TYPE_ICONS.get(property_type, 'circle-dot')
+
+
+@register.filter
+def money(value):
+    """A dollar amount with its sign in front of the dollar sign: $1,234.56 or −$1,234.56 (blank for none)."""
+    from decimal import Decimal, InvalidOperation
+    if value is None or value == "":
+        return ""
+    try:
+        amount = Decimal(value)
+    except (InvalidOperation, TypeError, ValueError):
+        return ""
+    return ("−" if amount < 0 else "") + f"${abs(amount):,.2f}"

@@ -62,7 +62,7 @@
         <td class="num">{% if c.unreviewed %}<strong style="color: #9a6a00;">{{ c.unreviewed }}</strong>{% else %}0{% endif %}</td>
         <td class="num">{% if c.totals %}${{ c.totals.deposits|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td class="num">{% if c.totals %}${{ c.totals.expenses_total|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-        <td class="num">{% if c.totals %}${{ c.totals.owner_payment|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td class="num">{% if c.totals %}${% if c.totals.calc %}{{ c.totals.owner_due|floatformat:"2g" }}{% else %}{{ c.totals.owner_payment|floatformat:"2g" }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td class="small text-muted">{% if c.units %}{{ c.closed_units }} of {{ c.units }} unit{{ c.units|pluralize }} closed · consolidated = the units added up{% else %}No active units yet — add its units on the property page.{% endif %}</td>
         <td class="text-end"><a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="btn btn-outline-secondary btn-sm py-0">Consolidated</a></td>
     </tr>

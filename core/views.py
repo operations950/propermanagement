@@ -1020,6 +1020,18 @@ def _property_qb_action(request, prop, action):
             saved += not errors
         if saved:
             messages.success(request, f'Saved the accounts for {saved} unit{"" if saved == 1 else "s"}.')
+    elif action == 'qb_set_commission':
+        raw = (request.POST.get('commission_rate') or '').strip().rstrip('%')
+        try:
+            rate = Decimal(raw).quantize(Decimal('0.01'))
+            if not Decimal('0') <= rate <= Decimal('100'):
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            messages.error(request, 'The commission rate is a percent between 0 and 100.')
+        else:
+            prop.commission_rate = rate
+            prop.save(update_fields=['commission_rate'])
+            messages.success(request, f'Commission for {prop.name} is now {rate}% of net income, from the months still open onward. Months already closed stay as they were closed.')
     elif action == 'qb_set_level':
         try:
             result = ledger.set_financials_level(prop, request.POST.get('financials_level', ''))

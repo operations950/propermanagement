@@ -57,15 +57,7 @@
 </div>
 {% endif %}
 
-<div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
-    <thead><tr><th>Income deposits</th><th>Expenses</th><th>Reimbursable</th><th>Paid from trust</th><th>Reimb. to us</th><th>Commission</th><th>Owner payment</th><th>Trust change</th></tr></thead>
-    <tbody><tr>
-        <td>${{ totals.deposits|floatformat:"2g" }}</td><td>${{ totals.expenses_total|floatformat:"2g" }}</td><td>${{ totals.expenses_reimbursable|floatformat:"2g" }}</td><td>${{ totals.expenses_direct|floatformat:"2g" }}</td>
-        <td>${{ totals.reimbursement_trust|floatformat:"2g" }}</td><td>${{ totals.commission|floatformat:"2g" }}</td><td>${{ totals.owner_payment|floatformat:"2g" }}</td>
-        <td>{% if totals.trust_net < 0 %}−${{ totals.trust_net|cut:"-"|floatformat:"2g" }}{% else %}${{ totals.trust_net|floatformat:"2g" }}{% endif %}</td>
-    </tr></tbody>
-</table></div>
-<p class="small text-muted mb-2" style="font-size: 0.72rem;">Reimbursements move money between the trust account and our expense account, so they aren't counted as an extra expense.</p>
+{% include 'core/_close_summary.html' with totals=totals month=month %}
 
 <div class="row g-2 mb-2">
     <div class="col-lg-5">

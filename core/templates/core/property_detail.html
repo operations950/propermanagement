@@ -620,6 +620,16 @@
         </div>
         <p class="text-muted small mb-3">Each rental runs through two accounts. The <strong>income-statement</strong> account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The <strong>balance-sheet</strong> account is the owner's trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner's payment.</p>
 
+        <form method="post" class="border rounded p-2 mb-3">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_commission">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <label class="small fw-semibold mb-0" for="qb-commission">Our commission</label>
+                <div class="input-group input-group-sm" style="max-width: 130px;"><input type="number" name="commission_rate" id="qb-commission" class="form-control" step="0.01" min="0" max="100" value="{{ property.commission_rate|floatformat:'2u' }}" required><span class="input-group-text">%</span></div>
+                <button class="btn btn-outline-secondary btn-sm">Save</button>
+            </div>
+            <p class="small text-muted mb-0 mt-1">A percent of each month's net income (income deposits less reimbursable expenses and expenses paid from trust); the rest is the owner payment. Applies to months still open; closed months keep the rate they were closed with.</p>
+        </form>
+
         <form method="post" class="border rounded p-2 mb-3" onsubmit="return confirmLevelChange(this);" data-open-lines="{{ qb.open_lines.total }}" data-open-reviewed="{{ qb.open_lines.reviewed }}">
             {% csrf_token %}<input type="hidden" name="action" value="qb_set_level">
             <div class="d-flex gap-2 flex-wrap align-items-center">

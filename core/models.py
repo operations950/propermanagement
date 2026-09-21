@@ -1,7 +1,8 @@
 import re
+from decimal import Decimal
 
 from django.conf import settings
-from django.core.validators import RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from django.db.models import Case, IntegerField, Value, When
 
@@ -124,6 +125,11 @@ class Property(models.Model):
     )
     ledger_synced_at = models.DateTimeField(
         null=True, blank=True, help_text="When this rental's QuickBooks transactions were last pulled in (a month can only be closed on a recent sync).",
+    )
+
+    commission_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10.00'), validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
+        help_text="Our commission, as a percent of the month's net income (income deposits less reimbursable expenses and expenses paid from trust). Only an administrator can change it.",
     )
 
     class FinancialsLevel(models.TextChoices):

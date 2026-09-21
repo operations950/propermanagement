@@ -17,7 +17,7 @@
     <td class="num">{% if r.state == 'closed' %}<span class="text-muted">—</span>{% elif r.unreviewed %}<strong style="color: #9a6a00;">{{ r.unreviewed }}</strong>{% else %}0{% endif %}</td>
     <td class="num">{% if r.totals %}${{ r.totals.deposits|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
     <td class="num">{% if r.totals %}${{ r.totals.expenses_total|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-    <td class="num">{% if r.totals %}${{ r.totals.owner_payment|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+    <td class="num">{% if r.totals %}${% if r.totals.calc %}{{ r.totals.owner_due|floatformat:"2g" }}{% else %}{{ r.totals.owner_payment|floatformat:"2g" }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
     {% endif %}
     <td class="small">
         {% if r.state == 'needs_accounts' %}
