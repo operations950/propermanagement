@@ -205,31 +205,26 @@ def gap_track(gap, today, days=90, height=10):
 
 # --- trends ---------------------------------------------------------------------------------------
 
-def trend(values, higher_is_better=True, unit='pct_points', recent=3):
-    """The last `recent` complete months against the `recent` before them. `values` are the
-    monthly figures, complete months only, oldest first (None for a month with nothing). Returns
-    None when there isn't enough to compare, else {'text', 'direction', 'good', 'basis'}: 'good' is
-    True/False/None (None = about the same) so the colour says whether the change is welcome."""
-    usable = list(values)
-    if len(usable) < recent * 2:
+def year_over_year(now, before, higher_is_better=True, unit='pct_points', basis=''):
+    """A figure against the same period a year earlier: the only comparison the screens make, because
+    a month-on-month or quarter-on-quarter change mostly measures the season. `now` and `before` are
+    the two figures; returns None unless both exist (nothing is shown without the comparison), else
+    {'text', 'direction', 'good', 'basis'}: 'good' is True/False/None (None = about the same) so the
+    colour says whether the change is welcome."""
+    if now is None or before is None:
         return None
-    now = [v for v in usable[-recent:] if v is not None]
-    before = [v for v in usable[-recent * 2:-recent] if v is not None]
-    if not now or not before:
-        return None
-    a, b = sum(now) / len(now), sum(before) / len(before)
     if unit == 'pct_points':
-        diff = a - b
-        text = f'{diff:+.0f} pts'
+        diff = now - before
+        text = f'{diff:+.0f} pts YoY'
         flat = abs(diff) < 1
     else:
-        if not b:
+        if not before:
             return None
-        diff = (a - b) / b * 100
-        text = f'{diff:+.0f}%'
+        diff = (now - before) / before * 100
+        text = f'{diff:+.0f}% YoY'
         flat = abs(diff) < 2
     if flat:
-        return {'text': 'steady', 'direction': 'flat', 'good': None, 'basis': f'last {recent} months vs the {recent} before'}
+        return {'text': 'flat YoY', 'direction': 'flat', 'good': None, 'basis': basis}
     up = diff > 0
     good = None if higher_is_better is None else (up == higher_is_better)
-    return {'text': text, 'direction': 'up' if up else 'down', 'good': good, 'basis': f'last {recent} months vs the {recent} before'}
+    return {'text': text, 'direction': 'up' if up else 'down', 'good': good, 'basis': basis}

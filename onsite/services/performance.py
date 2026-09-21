@@ -401,6 +401,32 @@ def _series(units, month_starts, today):
     return rows, total
 
 
+YOY_MONTHS = 3            # the latest complete months compared with the same months a year earlier
+YOY_MIN_COVERAGE = 90     # revenue is only compared when nearly every booked night carried an amount, both years
+
+
+def _year_over_year(counted, rows, today, recent=YOY_MONTHS):
+    """The latest `recent` complete months against the same months a year earlier, as two aggregated
+    totals (occupancy, rate, revenue... measured over the whole window, not averaged month by month).
+    None unless BOTH windows are fully measured: every night of every month falls inside the units'
+    recorded history, so a property without a year of data shows no comparison rather than a guess."""
+    complete = [r for r in rows if not r['partial']]
+    if len(complete) < recent:
+        return None
+    now_starts = [r['start'] for r in complete[-recent:]]
+    before_starts = [date(s.year - 1, s.month, 1) for s in now_starts]
+    now_rows, now_total = _series(counted, now_starts, today)
+    before_rows, before_total = _series(counted, before_starts, today)
+    if any(r['available'] == 0 or r['uncovered'] > 0 for r in now_rows + before_rows):
+        return None
+
+    def label(starts):
+        first, last = starts[0], starts[-1]
+        return f'{first:%b}–{last:%b %Y}' if first.year == last.year else f'{first:%b %Y}–{last:%b %Y}'
+
+    return {'now': now_total, 'before': before_total, 'basis': f'{label(now_starts)} vs the same months a year earlier ({label(before_starts)})'}
+
+
 def build_property_performance(prop, unit_id=None, today=None, months=12):
     """Everything the single-property performance screen shows: a trailing
     `months`-month series (occupancy, average nightly rate, revenue, length of
@@ -432,7 +458,7 @@ def build_property_performance(prop, unit_id=None, today=None, months=12):
     strips = [{'label': u.unit.label if u.unit else u.label, 'states': day_states(u, today)} for u in counted]
     strips.sort(key=lambda r: r['label'])
     return {
-        'strips': strips, 'strip_start': today,
+        'strips': strips, 'strip_start': today, 'yoy': _year_over_year(counted, rows, today),
         'property': prop, 'as_of': today, 'months': rows, 'total': total, 'per_unit': per_unit,
         'units': [{'pk': u.unit.pk if u.unit else None, 'label': u.unit.label if u.unit else u.label} for u in units.values()] if len(units) > 1 else [],
         'unit_id': unit_id, 'forward': forward, 'upcoming': upcoming,
@@ -472,18 +498,22 @@ def day_states(u, today, days=STRIP_DAYS):
 
 def kpi_cards(data, is_admin):
     """The headline figures of the single-property screen as cards that can be read at a glance:
-    the number, a twelve-month picture of it, and whether it is moving the right way (the last three
-    complete months against the three before)."""
+    the number, a twelve-month picture of it, and — only when there is a year to compare with — whether
+    it is up or down on the same months a year earlier (data['yoy']; no comparison, no bubble)."""
     months, t = data['months'], data['total']
     labels = [m['full'] for m in months]
     partial_last = bool(months and months[-1]['partial'])
-    complete = [m for m in months if not m['partial']]
+    yoy = data.get('yoy')
 
     def series(key, scale=1.0, digits=None):
         return [None if m[key] is None else (round(m[key] * scale, digits) if digits is not None else m[key] * scale) for m in months]
 
     def change(key, higher_is_better, unit):
-        return visuals.trend([m[key] for m in complete], higher_is_better=higher_is_better, unit=unit)
+        if not yoy:
+            return None
+        if key == 'revenue' and any((yoy[w]['coverage'] or 0) < YOY_MIN_COVERAGE for w in ('now', 'before')):
+            return None    # amounts missing on many nights would make the totals incomparable
+        return visuals.year_over_year(yoy['now'][key], yoy['before'][key], higher_is_better, unit, yoy['basis'])
 
     cards = [{
         'key': 'occupancy', 'label': 'Occupancy', 'value': '—' if t['occupancy'] is None else f'{t["occupancy"]:.0f}%', 'suffix': '',
