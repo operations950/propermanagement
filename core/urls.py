@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import bot_api, views
 
 urlpatterns = [
     path('privacy/', views.privacy_policy, name='privacy_policy'),
@@ -17,6 +17,14 @@ urlpatterns = [
     path('quickbooks/callback/', views.quickbooks_callback, name='quickbooks_callback'),
     path('quickbooks/disconnect/', views.quickbooks_disconnect, name='quickbooks_disconnect'),
     path('admin-tools/', views.admin_tools, name='admin_tools'),
+    path('admin-tools/assistant-access/', views.bot_keys, name='bot_keys'),
+    # JSON API for the message-answering assistant (Bearer key; see BOT_API.md)
+    path('api/v1/me/', bot_api.me, name='bot_api_me'),
+    path('api/v1/properties/', bot_api.property_search, name='bot_api_properties'),
+    path('api/v1/properties/<int:pk>/', bot_api.property_profile, name='bot_api_profile'),
+    path('api/v1/properties/<int:pk>/faq/', bot_api.faq_collection, name='bot_api_faq'),
+    path('api/v1/properties/<int:pk>/faq/<int:faq_id>/', bot_api.faq_item, name='bot_api_faq_item'),
+    path('api/v1/properties/<int:pk>/faq/<int:faq_id>/used/', bot_api.faq_used, name='bot_api_faq_used'),
     path('admin-tools/properties/<int:pk>/toggle/', views.property_toggle_active, name='property_toggle_active'),
     path('admin-tools/settings/save/', views.admin_settings_save, name='admin_settings_save'),
     path('admin-tools/settings/test-email/', views.admin_test_email_send, name='admin_test_email_send'),

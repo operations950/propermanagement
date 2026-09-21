@@ -301,3 +301,23 @@ Questions worth answering before writing code, based on precedent above:
 - Does it add a new `ImageField`, or touch `INSTALLED_APPS`/`STORAGES`? Read
   the "Media storage" section above first — both have already caused a
   production crash-loop once.
+
+## Message-assistant API and property FAQ
+
+The AI that answers guest/owner messages reads property information, and keeps a
+per-property FAQ, through a small JSON API (`core/bot_api.py`, routes under
+`/api/v1/`). Full reference and suggested assistant instructions: `BOT_API.md`.
+
+- Auth is a Bearer `BotAccessKey` (`core/models.py`), made and revoked in
+  Admin Tools -> Message assistant access. Only a SHA-256 hash is stored. Browser
+  sessions are not accepted. Each key has separate permissions: everyday facts are
+  always readable; `allow_access_info` (door/lockbox/gate/alarm codes, wifi password,
+  access notes), `allow_internal_info` (notes, contacts, documents) and
+  `allow_faq_write` are opt-in.
+- `core/property_profile.py` builds the profile (what the property detail screen
+  knows). Unrecorded facts are null and listed in `facts_missing`; withheld tiers say
+  they exist without giving values.
+- The FAQ is `PropertyFAQ`, shown and reviewed on the property page (`#faq`). Rules
+  live in `core/faq.py`: secrets (codes, wifi password) are refused inside FAQ text so
+  they stay single-sourced; the same question (normalised) is corrected in place, never
+  duplicated; an entry staff reviewed or wrote is locked against the assistant.

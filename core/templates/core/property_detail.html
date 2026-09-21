@@ -211,6 +211,71 @@
     </div>
 </div>
 
+{# FAQ: what the message assistant knows about this property, kept on the record. #}
+<div class="card mb-3" id="faq">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+            <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="messages-square" class="icon"></i> FAQ — what the message assistant knows</h6>
+            {% if faq_unreviewed_count %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{{ faq_unreviewed_count }} to review</span>{% endif %}
+        </div>
+        <p class="text-muted small mb-3">Questions guests ask about this property, and the answers. The assistant reads these when it replies and adds to them as it learns. Anything you write or review is locked, so the assistant can use it but not change it. Door codes and the wifi password can't be saved here — they stay in Access &amp; systems, so a changed code never leaves an old copy behind.</p>
+
+        {% for f in faqs %}
+        <div class="border-top py-2">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                <div style="min-width: 0; flex: 1 1 320px;">
+                    <div class="fw-semibold">{{ f.question }}</div>
+                    <div class="small" style="white-space: pre-line;">{{ f.answer }}</div>
+                    <div class="d-flex gap-1 flex-wrap align-items-center mt-1" style="font-size: 0.75rem;">
+                        {% if f.origin == 'staff' %}<span class="badge text-bg-light border">Written by staff</span>
+                        {% elif f.reviewed %}<span class="badge text-bg-light border" style="color: var(--status-good);">Assistant-written · reviewed</span>
+                        {% else %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">Assistant-written · not reviewed</span>{% endif %}
+                        {% if f.origin == 'bot' %}<span class="text-muted">{{ f.get_basis_display }}</span>{% endif %}
+                        {% if f.unit %}<span class="badge text-bg-light border">{{ f.unit.label }} only</span>{% endif %}
+                        <span class="text-muted">{% if f.times_used %}used {{ f.times_used }} time{{ f.times_used|pluralize }}{% else %}not used yet{% endif %} · updated {{ f.updated_at|date:"M j, Y" }}</span>
+                        {% if f.source_note %}<span class="text-muted">· {{ f.source_note }}</span>{% endif %}
+                    </div>
+                </div>
+                <div class="d-flex gap-1 flex-shrink-0 flex-wrap">
+                    {% if not f.reviewed %}
+                    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="faq_review"><input type="hidden" name="faq_id" value="{{ f.pk }}"><button class="btn btn-outline-success btn-sm">Looks right</button></form>
+                    {% endif %}
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#faq-edit-{{ f.pk }}">Edit</button>
+                    <form method="post" onsubmit="return confirm('Remove this FAQ entry?');">{% csrf_token %}<input type="hidden" name="action" value="faq_archive"><input type="hidden" name="faq_id" value="{{ f.pk }}"><button class="btn btn-outline-danger btn-sm">Remove</button></form>
+                </div>
+            </div>
+            <div class="collapse mt-2" id="faq-edit-{{ f.pk }}">
+                <form method="post" class="d-flex flex-column gap-2">
+                    {% csrf_token %}<input type="hidden" name="action" value="faq_edit"><input type="hidden" name="faq_id" value="{{ f.pk }}">
+                    <input type="text" name="question" class="form-control form-control-sm" maxlength="300" value="{{ f.question }}" required>
+                    <textarea name="answer" class="form-control form-control-sm" rows="3" maxlength="2000" required>{{ f.answer }}</textarea>
+                    <div><button class="btn btn-primary btn-sm">Save (marks it reviewed)</button></div>
+                </form>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-muted small border-top pt-2 mb-2">Nothing here yet. Add the questions you always get asked, or let the assistant start filling it in.</p>
+        {% endfor %}
+
+        <details class="border-top pt-2 mt-1">
+            <summary class="small fw-semibold" style="cursor: pointer;">Add a question</summary>
+            <form method="post" class="d-flex flex-column gap-2 mt-2">
+                {% csrf_token %}<input type="hidden" name="action" value="faq_add">
+                <input type="text" name="question" class="form-control form-control-sm" maxlength="300" placeholder="e.g. Is there parking?" required>
+                <textarea name="answer" class="form-control form-control-sm" rows="3" maxlength="2000" placeholder="The answer, as you would tell a guest" required></textarea>
+                {% if units %}
+                <select name="unit_id" class="form-select form-select-sm" style="max-width: 260px;">
+                    <option value="">Whole property</option>
+                    {% for u in units %}{% if u.is_active %}<option value="{{ u.pk }}">{{ u.label }} only</option>{% endif %}{% endfor %}
+                </select>
+                {% endif %}
+                <div><button class="btn btn-outline-primary btn-sm">Add</button></div>
+            </form>
+        </details>
+        {% if faq_archived_count %}<p class="text-muted small mt-2 mb-0">{{ faq_archived_count }} removed entr{{ faq_archived_count|pluralize:"y,ies" }} kept out of view.</p>{% endif %}
+    </div>
+</div>
+
 <div class="row g-3 mb-3">
     <div class="col-md-6">
         <div class="card h-100" id="property-size">

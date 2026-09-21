@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Message assistant access{% endblock %}
+{% block content %}
+<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Admin Tools</a>
+<h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="bot" class="icon-lg"></i> Message assistant access</h2>
+<p class="text-muted small mb-3">
+    The AI that answers your messages reads property information — and keeps each property's FAQ — through a small API. It signs in with a key made here. Each key is limited to what you tick, the key itself is shown once and never stored (only a fingerprint is), and you can revoke it whenever you like.
+</p>
+
+{% if new_key %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border: 2px solid var(--status-good);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2" style="color: var(--status-good);"><i data-lucide="key-round" class="icon"></i> Key created: {{ new_key.key.name }}</h6>
+        <p class="small mb-2"><strong>Copy it now — it will not be shown again.</strong> Keep it somewhere private (a secrets setting on the machine running the assistant), never in a message or a shared document.</p>
+        <div class="input-group mb-1">
+            <input type="text" readonly class="form-control font-monospace" id="new-key-value" value="{{ new_key.raw }}" onclick="this.select();">
+            <button class="btn btn-outline-secondary" type="button" onclick="var i = document.getElementById('new-key-value'); i.select(); navigator.clipboard && navigator.clipboard.writeText(i.value);">Copy</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">Make a key</h6>
+    <form method="post">
+        {% csrf_token %}<input type="hidden" name="action" value="create">
+        <div class="mb-2"><label class="form-label small mb-1">Name</label><input type="text" name="name" class="form-control form-control-sm" style="max-width: 360px;" placeholder="e.g. Guest message bot" maxlength="120" required></div>
+        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="allow_faq_write" value="1" id="k-faq" checked><label class="form-check-label" for="k-faq"><strong>Add and correct FAQ entries.</strong> It can never overwrite an entry you have reviewed or written.</label></div>
+        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="allow_access_info" value="1" id="k-access"><label class="form-check-label" for="k-access"><strong>Read access information</strong> — gate, door, lockbox and alarm codes, the wifi password, access notes. Tick this only if the assistant is meant to hand codes to guests.</label></div>
+        <div class="form-check small mb-3"><input class="form-check-input" type="checkbox" name="allow_internal_info" value="1" id="k-internal"><label class="form-check-label" for="k-internal"><strong>Read internal information</strong> — staff notes, contacts (names, phones, emails) and document names.</label></div>
+        <p class="text-muted small">Without these, the assistant still reads the everyday facts: bedrooms, beds, bathrooms, square footage, address, check-in and check-out times, amenities, where the shutoffs are, the wifi network name and the FAQ.</p>
+        <button class="btn btn-primary btn-sm">Make key</button>
+    </form>
+</div></div>
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">Keys</h6>
+    {% for k in keys %}
+    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap border-top py-2 {% if not k.is_active %}text-muted{% endif %}">
+        <div class="small">
+            <div class="fw-semibold">{{ k.name }} <span class="font-monospace text-muted">{{ k.key_prefix }}…</span> {% if not k.is_active %}<span class="badge text-bg-secondary">Revoked {{ k.revoked_at|date:"M j, Y" }}</span>{% endif %}</div>
+            <div class="d-flex gap-1 flex-wrap my-1">
+                <span class="badge text-bg-light border">everyday facts</span>
+                {% if k.allow_faq_write %}<span class="badge text-bg-light border">writes FAQ</span>{% endif %}
+                {% if k.allow_access_info %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">reads access codes</span>{% endif %}
+                {% if k.allow_internal_info %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">reads internal info</span>{% endif %}
+            </div>
+            <div class="text-muted">Made {{ k.created_at|date:"M j, Y" }}{% if k.created_by %} by {{ k.created_by.get_full_name|default:k.created_by.username }}{% endif %} · {% if k.last_used_at %}last used {{ k.last_used_at|timesince }} ago · {{ k.use_count }} request{{ k.use_count|pluralize }}{% else %}never used{% endif %}</div>
+        </div>
+        {% if k.is_active %}
+        <form method="post" onsubmit="return confirm('Revoke this key? Anything using it will stop working immediately.');">
+            {% csrf_token %}<input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{ k.pk }}">
+            <button class="btn btn-outline-danger btn-sm">Revoke</button>
+        </form>
+        {% endif %}
+    </div>
+    {% empty %}<p class="text-muted small mb-0">No keys yet.</p>{% endfor %}
+</div></div>
+
+{% if unreviewed %}
+<div class="alert alert-info small py-2"><i data-lucide="clipboard-list" class="icon"></i> <strong>{{ unreviewed }} FAQ entr{{ unreviewed|pluralize:"y,ies" }}</strong> the assistant wrote {{ unreviewed|pluralize:"is,are" }} still unreviewed. Open a property and check its FAQ card: reviewing an entry (or editing it) locks it so the assistant can't overwrite it.</div>
+{% endif %}
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title">How the assistant uses it</h6>
+    <p class="small text-muted mb-2">Send the key as <code>Authorization: Bearer &lt;key&gt;</code>. Base address: <code>{{ api_base }}/api/v1/</code></p>
+    <ul class="small mb-2">
+        <li><code>GET properties/?q=…</code> — find the property from any part of its name, address, a unit label or the Airbnb/VRBO listing title.</li>
+        <li><code>GET properties/&lt;id&gt;/?format=text</code> — everything it may know about the property as a ready-to-use document (or without <code>format=text</code> as JSON). Anything not recorded is listed under "Not recorded" so it says so instead of guessing.</li>
+        <li><code>GET properties/&lt;id&gt;/faq/?q=…</code> — search the FAQ before answering.</li>
+        <li><code>POST properties/&lt;id&gt;/faq/</code> with <code>{"question": …, "answer": …, "basis": "host_reply"}</code> — add or correct an entry. Access codes and the wifi password are refused: they live in the access info, so a changed code never leaves a stale copy behind.</li>
+        <li><code>POST properties/&lt;id&gt;/faq/&lt;n&gt;/used/</code> — count a use, so you can see which entries earn their keep.</li>
+    </ul>
+    <p class="small text-muted mb-0">The full reference, with a suggested set of instructions for the assistant, is in <code>BOT_API.md</code> in the code repository. One suggestion above all: let the assistant save an answer only when it comes from something <em>you</em> told a guest (<code>basis: "host_reply"</code>) or from the property record — not from what a guest claims — so a guest can't teach it something false.</p>
+</div></div>
+{% endblock %}

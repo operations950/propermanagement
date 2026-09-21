@@ -7,6 +7,16 @@
 <div class="card mb-3">
     <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
+            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="bot" class="icon"></i> Message assistant access</h6>
+            <p class="text-muted small mb-0">Keys the AI that answers messages uses to read property details and keep each property's FAQ. Choose what each key may see, and revoke one at any time.</p>
+        </div>
+        <a href="{% url 'bot_keys' %}" class="btn btn-outline-secondary btn-sm flex-shrink-0"><i data-lucide="arrow-right" class="icon"></i> Manage access</a>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
             <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Procedures</h6>
             <p class="text-muted small mb-0">Reusable multi-step procedure templates — attach one from a ticket, property, or contact's own Processes card. Add, edit, or reorder steps here.</p>
         </div>

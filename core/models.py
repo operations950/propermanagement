@@ -749,3 +749,127 @@ class AppSetting(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class BotAccessKey(models.Model):
+    """A credential for an outside program — the AI that answers guest messages —
+    to read property information and keep a per-property FAQ through the JSON API
+    (core/bot_api.py). The key itself is shown once when it is made and only its
+    SHA-256 hash is stored, so a database leak can't be replayed; it can be revoked
+    at any time. What a key may see is set per key: plain facts (bedrooms, check-in
+    time, amenities, where the water shutoff is) are always readable; door and
+    lockbox codes, the wifi password and access notes need allow_access_info;
+    internal notes, contacts and document names need allow_internal_info; writing
+    FAQ entries needs allow_faq_write."""
+    name = models.CharField(max_length=120, help_text='What this key is for, e.g. "Guest message bot".')
+    key_prefix = models.CharField(max_length=16, help_text='The first few characters, to recognise it in the list.')
+    key_hash = models.CharField(max_length=64, unique=True)
+    allow_access_info = models.BooleanField(
+        default=False, help_text='May read gate/door/lockbox/alarm codes, the wifi password and access notes.',
+    )
+    allow_internal_info = models.BooleanField(
+        default=False, help_text='May read internal notes, contacts (names, phones, emails) and document names.',
+    )
+    allow_faq_write = models.BooleanField(default=True, help_text='May add and correct FAQ entries.')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    use_count = models.PositiveIntegerField(default=0)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.key_prefix}…)'
+
+    @property
+    def is_active(self):
+        return self.revoked_at is None
+
+    @staticmethod
+    def hash_key(raw):
+        import hashlib
+        return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+    @classmethod
+    def issue(cls, name, user=None, allow_access_info=False, allow_internal_info=False, allow_faq_write=True):
+        """Makes a key. Returns (BotAccessKey, raw_key); the raw key exists only
+        in this return value."""
+        import secrets
+        raw = 'pmk_' + secrets.token_urlsafe(32)
+        key = cls.objects.create(
+            name=name.strip()[:120] or 'Unnamed key', key_prefix=raw[:12], key_hash=cls.hash_key(raw), created_by=user,
+            allow_access_info=allow_access_info, allow_internal_info=allow_internal_info, allow_faq_write=allow_faq_write,
+        )
+        return key, raw
+
+
+class PropertyFAQ(models.Model):
+    """A question guests (or owners) ask about a property, and its answer — the
+    property's own knowledge base, kept on the property record so it survives
+    between sessions of the AI that answers messages. The bot writes entries as it
+    learns; staff review, correct or archive them on the property page. An entry a
+    person has reviewed (or wrote) is locked against the bot: it can be read and
+    used, but the bot can't overwrite it. Door codes, lockbox codes and wifi
+    passwords are refused here on purpose (see core/faq.py) — they live in one
+    place, the property's access info, so a changed code never leaves a stale
+    copy behind in an answer."""
+    class Origin(models.TextChoices):
+        BOT = 'bot', 'Written by the assistant'
+        STAFF = 'staff', 'Written by staff'
+
+    class Basis(models.TextChoices):
+        HOST_REPLY = 'host_reply', 'A reply the host sent'
+        PROPERTY_RECORD = 'property_record', 'From the property record'
+        INFERRED = 'inferred', 'Inferred by the assistant'
+        STAFF = 'staff', 'Entered by staff'
+
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        ARCHIVED = 'archived', 'Archived'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='faqs')
+    unit = models.ForeignKey(
+        'Unit', on_delete=models.SET_NULL, null=True, blank=True, related_name='faqs',
+        help_text='Blank = applies to the whole property; set for an answer that is only true of one unit.',
+    )
+    question = models.CharField(max_length=300)
+    question_key = models.CharField(max_length=320, db_index=True, help_text='The question, normalised, for spotting duplicates.')
+    answer = models.TextField()
+    origin = models.CharField(max_length=10, choices=Origin.choices, default=Origin.BOT)
+    basis = models.CharField(max_length=20, choices=Basis.choices, default=Basis.INFERRED)
+    source_note = models.CharField(max_length=200, blank=True, help_text='Where the assistant learned it (never a guest\'s private details).')
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    reviewed = models.BooleanField(default=False, help_text='A person has checked this; the assistant can no longer overwrite it.')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    times_used = models.PositiveIntegerField(default=0)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_by_key = models.ForeignKey(BotAccessKey, on_delete=models.SET_NULL, null=True, blank=True, related_name='faqs')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['question']
+        verbose_name = 'property FAQ entry'
+        verbose_name_plural = 'property FAQ entries'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['property', 'question_key'], condition=models.Q(status='active', unit__isnull=True),
+                name='uniq_active_faq_property',
+            ),
+            models.UniqueConstraint(
+                fields=['property', 'unit', 'question_key'], condition=models.Q(status='active', unit__isnull=False),
+                name='uniq_active_faq_unit',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.property}: {self.question}'
+
+    def locked_against_bot(self):
+        """True when a person has reviewed or written this, so the assistant may
+        read and use it but not overwrite it. (A method, not a property: this
+        model has a field called `property`, which shadows the decorator.)"""
+        return self.reviewed or self.origin == self.Origin.STAFF

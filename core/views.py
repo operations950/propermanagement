@@ -23,7 +23,7 @@ from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
-from . import app_settings, google_calendar, google_login, places, property_specs, quickbooks, usps
+from . import app_settings, faq as faq_service, google_calendar, google_login, places, property_specs, quickbooks, usps
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
@@ -34,9 +34,9 @@ from .forms import (
     StaffCreateForm,
 )
 from .models import (
-    Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
+    BotAccessKey, Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
     GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, PropertyDocument,
-    PropertyListingName, PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES, Unit,
+    PropertyFAQ, PropertyListingName, PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES, Unit,
     creatable_contact_types, group_contacts_by_type, is_valid_phone, properties_by_type,
 )
 
@@ -527,6 +527,40 @@ def _list_quo_phone_lines():
 
 @login_required
 @user_passes_test(_is_admin)
+def bot_keys(request):
+    """Admin: keys the message-answering assistant uses to read property
+    information and keep the FAQ (core/bot_api.py). A new key's value is shown
+    once, on the response to creating it, and never stored."""
+    new_key = None
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'create':
+            name = request.POST.get('name', '').strip()
+            if not name:
+                messages.error(request, 'Give the key a name so you can tell it apart later.')
+            else:
+                key, raw = BotAccessKey.issue(
+                    name, request.user, allow_access_info=bool(request.POST.get('allow_access_info')),
+                    allow_internal_info=bool(request.POST.get('allow_internal_info')),
+                    allow_faq_write=bool(request.POST.get('allow_faq_write')),
+                )
+                new_key = {'key': key, 'raw': raw}
+        elif action == 'revoke':
+            key = get_object_or_404(BotAccessKey, pk=request.POST.get('key_id'))
+            if key.is_active:
+                key.revoked_at = timezone.now()
+                key.save(update_fields=['revoked_at'])
+                messages.success(request, f'"{key.name}" can no longer be used.')
+            return redirect('bot_keys')
+    return render(request, 'core/bot_keys.html', {
+        'keys': BotAccessKey.objects.select_related('created_by'), 'new_key': new_key,
+        'api_base': django_settings.SITE_BASE_URL or request.build_absolute_uri('/').rstrip('/'),
+        'unreviewed': PropertyFAQ.objects.filter(status=PropertyFAQ.Status.ACTIVE, reviewed=False).count(),
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
 def admin_tools(request):
     """Staff-facing admin toolbox — deliberately separate from the
     property edit screen (deactivating/reactivating a property is an
@@ -836,6 +870,29 @@ def property_address_lookup(request, place_id):
     return JsonResponse(places.place_details(place_id) or {})
 
 
+def _property_faq_action(request, prop, action):
+    """Staff add, correct, review or archive a property's FAQ entries (the
+    assistant's own writes go through core/bot_api.py)."""
+    try:
+        if action == 'faq_add':
+            unit = prop.units.filter(pk=request.POST.get('unit_id')).first() if request.POST.get('unit_id') else None
+            faq_service.staff_add(prop, request.user, request.POST.get('question', ''), request.POST.get('answer', ''), unit=unit)
+            messages.success(request, 'FAQ entry added.')
+            return
+        entry = get_object_or_404(PropertyFAQ, pk=request.POST.get('faq_id'), property=prop)
+        if action == 'faq_edit':
+            faq_service.staff_edit(entry, request.user, request.POST.get('question', ''), request.POST.get('answer', ''))
+            messages.success(request, 'FAQ entry saved and marked reviewed.')
+        elif action == 'faq_review':
+            faq_service.staff_review(entry, request.user)
+            messages.success(request, 'Marked reviewed — the assistant can use it but no longer change it.')
+        elif action == 'faq_archive':
+            faq_service.staff_archive(entry)
+            messages.success(request, 'FAQ entry removed.')
+    except faq_service.FAQError as e:
+        messages.error(request, str(e))
+
+
 @login_required
 def property_detail(request, pk):
     """Everything-about-this-property dashboard: facts, access/system info,
@@ -1077,6 +1134,9 @@ def property_detail(request, pk):
             else:
                 PropertyAttributeAssignment.objects.create(property=prop, attribute_id=attribute_id)
                 messages.success(request, 'Attribute added.')
+        elif action and action.startswith('faq_'):
+            _property_faq_action(request, prop, action)
+            return redirect(reverse('property_detail', args=[prop.pk]) + '#faq')
         return redirect('property_detail', pk=prop.pk)
 
     contacts = list(prop.contacts.all())
@@ -1155,6 +1215,9 @@ def property_detail(request, pk):
     return render(request, 'core/property_detail.html', {
         'property': prop,
         'specs_summary': property_specs.summary(property_specs.missing_specs(prop)),
+        'faqs': prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE).select_related('unit', 'created_by_key').order_by('reviewed', 'question'),
+        'faq_archived_count': prop.faqs.filter(status=PropertyFAQ.Status.ARCHIVED).count(),
+        'faq_unreviewed_count': prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE, reviewed=False).count(),
         'back_url': back_url,
         'contact_groups': contact_groups,
         'contacts_with_thread_ids': contacts_with_thread_ids,
