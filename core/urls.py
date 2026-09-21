@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import bot_api, close_views, views
+from . import bot_api, close_views, faq_views, views
 
 urlpatterns = [
     path('privacy/', views.privacy_policy, name='privacy_policy'),
@@ -20,6 +20,7 @@ urlpatterns = [
     path('admin-tools/assistant-access/', views.bot_keys, name='bot_keys'),
     path('admin-tools/quickbooks-accounts/', views.quickbooks_accounts, name='quickbooks_accounts'),
     path('admin-tools/import-property-details/', views.property_data_import, name='property_data_import'),
+    path('faq-review/', faq_views.faq_review_queue, name='faq_review_queue'),
     path('close/', close_views.close_overview, name='close_overview'),
     path('close/<str:month>/<int:pk>/', close_views.close_property, name='close_property'),
     path('close/<str:month>/<int:pk>/unit/<int:unit_pk>/', close_views.close_property, name='close_unit'),

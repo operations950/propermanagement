@@ -24,7 +24,7 @@ from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
-from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, places, property_specs, qb_accounts, quickbooks, usps
+from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, nudges, places, property_specs, qb_accounts, quickbooks, usps
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
@@ -488,6 +488,7 @@ def property_list(request):
         'properties': properties,
         'needs_details': needs_details,
         'incomplete_specs': incomplete,
+        'faq_waiting': nudges.faq_stats(),
         'type_choices': Property.Type.choices,
         'q': q,
         'selected_type': selected_type,

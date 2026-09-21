@@ -18,6 +18,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
+from core import nudges
 from core.json_utils import dumps_for_script
 from core.models import (
     Contact, Property, PropertyAttribute, StaffProfile, Unit, group_vendors_by_trade, is_valid_phone,
@@ -193,6 +194,7 @@ def dashboard(request):
     awaiting_verification = Ticket.objects.filter(status=Ticket.Status.COMPLETED).select_related('property')
 
     return render(request, 'tickets/dashboard.html', {
+        'nudges': nudges.collect(request.user),
         'boxes': boxes,
         'now': now,
         'no_role_count': no_role_count,
@@ -245,6 +247,7 @@ def _owner_dashboard(request):
     quickbooks_token = QuickBooksToken.objects.first()
 
     return render(request, 'tickets/owner_dashboard.html', {
+        'nudges': nudges.collect(request.user),
         'now': now,
         'department_boxes': department_boxes,
         'off_track': off_track,

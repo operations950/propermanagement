@@ -10,6 +10,8 @@
     <a href="{% url 'ticket_create' %}" class="btn btn-primary flex-shrink-0"><i data-lucide="plus" class="icon"></i> New ticket</a>
 </div>
 
+{% include 'core/_nudges.html' %}
+
 {# ============================== 1. OFF TRACK — reactive tickets looking backward ============================== #}
 {# Collapsed by default — this section can list every blocked/overdue/delayed #}
 {# ticket across the whole company, which routinely dwarfed every other card #}

@@ -58,7 +58,7 @@
 </div></div>
 
 {% if unreviewed %}
-<div class="alert alert-info small py-2"><i data-lucide="clipboard-list" class="icon"></i> <strong>{{ unreviewed }} FAQ entr{{ unreviewed|pluralize:"y,ies" }}</strong> the assistant wrote {{ unreviewed|pluralize:"is,are" }} still unreviewed. Open a property and check its FAQ card: reviewing an entry (or editing it) locks it so the assistant can't overwrite it.</div>
+<div class="alert alert-info small py-2"><i data-lucide="clipboard-list" class="icon"></i> <strong>{{ unreviewed }} FAQ entr{{ unreviewed|pluralize:"y,ies" }}</strong> the assistant wrote {{ unreviewed|pluralize:"is,are" }} still unreviewed. <a href="{% url 'faq_review_queue' %}" class="alert-link">Review them all in one place</a> — reviewing an entry (or editing it) locks it so the assistant can't overwrite it.</div>
 {% endif %}
 
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">

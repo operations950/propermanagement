@@ -216,13 +216,16 @@
 </div>
 
 {# FAQ: what the message assistant knows about this property, kept on the record. #}
-<div class="card mb-3" id="faq">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-            <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="messages-square" class="icon"></i> FAQ — what the message assistant knows</h6>
+<details class="card mb-3" id="faq">
+    <summary class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2" style="cursor: pointer; list-style: none;">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="messages-square" class="icon"></i> FAQ — what the message assistant knows <span class="text-muted fw-normal small">· {{ faqs|length }} answer{{ faqs|length|pluralize }}</span></h6>
+        <span class="d-flex align-items-center gap-2">
             {% if faq_unreviewed_count %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{{ faq_unreviewed_count }} to review</span>{% endif %}
-        </div>
-        <p class="text-muted small mb-3">{% if units %}<strong>Answers can belong to the whole building or to one unit</strong> (does <em>this</em> unit have an oven?) — the assistant is told which unit a guest is in and reads the building's answers plus that unit's. {% endif %}Questions guests ask about this property, and the answers. The assistant reads these when it replies and adds to them as it learns. Anything you write or review is locked, so the assistant can use it but not change it. Door codes and the wifi password can't be saved here — they stay in Access &amp; systems, so a changed code never leaves an old copy behind.</p>
+            <i data-lucide="chevron-down" class="icon faq-chevron"></i>
+        </span>
+    </summary>
+    <div class="card-body pt-0">
+        <p class="text-muted small mb-3">{% if units %}<strong>Answers can belong to the whole building or to one unit</strong> (does <em>this</em> unit have an oven?) — the assistant is told which unit a guest is in and reads the building's answers plus that unit's. {% endif %}Questions guests ask about this property, and the answers. The assistant reads these when it replies and adds to them as it learns. Anything you write or review is locked, so the assistant can use it but not change it. Door codes and the wifi password can't be saved here — they stay in Access &amp; systems, so a changed code never leaves an old copy behind. <a href="{% url 'faq_review_queue' %}">Review every property's new answers in one place →</a></p>
 
         {% for f in faqs %}
         <div class="border-top py-2">
@@ -284,7 +287,21 @@
         </details>
         {% if faq_archived_count %}<p class="text-muted small mt-2 mb-0">{{ faq_archived_count }} removed entr{{ faq_archived_count|pluralize:"y,ies" }} kept out of view.</p>{% endif %}
     </div>
-</div>
+</details>
+<style>
+    #faq > summary::-webkit-details-marker { display: none; }
+    #faq[open] .faq-chevron { transform: rotate(180deg); }
+</style>
+<script>
+    // Collapsed by default. It opens when you come here to work on it: a link or a redirect to #faq
+    // (after adding, editing or reviewing an entry) opens it.
+    (function () {
+        var card = document.getElementById('faq');
+        function openIfTargeted() { if (card && window.location.hash === '#faq') { card.open = true; } }
+        openIfTargeted();
+        window.addEventListener('hashchange', openIfTargeted);
+    })();
+</script>
 
 {% if qb %}
 {# QuickBooks: the two accounts this rental's money runs through (admin only). #}
