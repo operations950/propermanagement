@@ -291,6 +291,28 @@
         </div>
         <p class="text-muted small mb-3">Each rental runs through two accounts. The <strong>income-statement</strong> account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The <strong>balance-sheet</strong> account is the owner's trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner's payment.</p>
 
+        <form method="post" class="border rounded p-2 mb-3" onsubmit="return confirmLevelChange(this);" data-open-lines="{{ qb.open_lines.total }}" data-open-reviewed="{{ qb.open_lines.reviewed }}">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_level">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <label class="small fw-semibold mb-0" for="qb-level">How this rental's books are kept</label>
+                <select name="financials_level" id="qb-level" class="form-select form-select-sm" style="max-width: 320px;">
+                    {% for value, label in qb.level_choices %}<option value="{{ value }}" {% if property.financials_level == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <button class="btn btn-outline-secondary btn-sm">Change</button>
+            </div>
+            <p class="small text-muted mb-0 mt-1">{% if qb.unit_mode %}Each unit has its own two accounts and is closed on its own; the property's financials are its units added up.{% else %}One pair of accounts for the whole property; its units aren't kept separately.{% endif %} Switching applies from the months still open — months already closed keep the way they were closed.</p>
+        </form>
+        <script>
+        function confirmLevelChange(form) {
+            var select = form.querySelector('select'), now = "{{ property.financials_level }}";
+            if (select.value === now) { return false; }
+            var open = parseInt(form.dataset.openLines, 10) || 0, reviewed = parseInt(form.dataset.openReviewed, 10) || 0;
+            var text = 'Change how {{ property.name|escapejs }} keeps its books?\n\nMonths already closed stay exactly as they were. Months still open switch to the new way.';
+            if (open) { text += '\n\n' + open + ' transaction(s) already pulled in for open months' + (reviewed ? ' (' + reviewed + ' reviewed)' : '') + ' will be set aside and re-read from the new accounts on the next sync, so their coding will need doing again.'; }
+            return confirm(text);
+        }
+        </script>
+
         {% if not qb.connected %}
         <div class="alert alert-warning small py-2 mb-0">QuickBooks isn't connected. Connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a>, then come back and choose the accounts.</div>
         {% else %}
@@ -298,6 +320,45 @@
         {% if not qb.account_count %}
         <div class="alert alert-info small py-2">No accounts have been read from QuickBooks yet.</div>
         {% endif %}
+        {% if qb.unit_mode %}
+        {% if property.qb_expense_account_id or property.qb_trust_account_id %}<p class="small text-muted">Earlier property-level accounts (kept for months closed that way): {{ property.qb_expense_account.fully_qualified_name|default:"—" }} · {{ property.qb_trust_account.fully_qualified_name|default:"—" }}.</p>{% endif %}
+        {% if qb.units %}
+        <form method="post">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_save_unit_mapping">
+            {% for row in qb.units %}
+            <div class="{% if not forloop.first %}border-top pt-3 mt-3{% endif %}">
+                <div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">{{ row.unit.label }}</span>
+                    {% if row.status == 'mapped' %}<span class="small" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Tied</span>{% elif row.status == 'partial' %}<span class="small" style="color: var(--status-warning);">One account needed</span>{% else %}<span class="small text-muted">Not tied yet</span>{% endif %}</div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <select name="unit_expense_{{ row.unit.pk }}" id="uqbe-{{ row.unit.pk }}" class="form-select form-select-sm" aria-label="Income-statement account for {{ row.unit.label }}">
+                            <option value="">Income statement — not chosen</option>
+                            {% regroup row.expense_options by account_type as groups %}
+                            {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if row.unit.qb_expense_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+                        </select>
+                        {% for s in row.suggestions.expense %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('uqbe-{{ row.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <select name="unit_trust_{{ row.unit.pk }}" id="uqbt-{{ row.unit.pk }}" class="form-select form-select-sm" aria-label="Balance-sheet account for {{ row.unit.label }}">
+                            <option value="">Balance sheet — not chosen</option>
+                            {% regroup row.trust_options by account_type as groups %}
+                            {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if row.unit.qb_trust_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+                        </select>
+                        {% for s in row.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('uqbt-{{ row.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            <div class="d-flex gap-2 flex-wrap align-items-center mt-3">
+                <button class="btn btn-primary btn-sm">Save unit accounts</button>
+                <a href="{% url 'quickbooks_accounts' %}" class="btn btn-link btn-sm">Map all rentals</a>
+                <span class="small text-muted">Each account can belong to one unit (or rental) only.</span>
+            </div>
+        </form>
+        {% else %}
+        <div class="alert alert-info small py-2">This property has no active units yet — add its units below, then tie each to its accounts here.</div>
+        {% endif %}
+        {% else %}
         <form method="post" class="row g-3">
             {% csrf_token %}<input type="hidden" name="action" value="qb_save_mapping">
             <div class="col-md-6">
@@ -328,6 +389,7 @@
                 <span class="small text-muted">Each account can belong to one rental only.</span>
             </div>
         </form>
+        {% endif %}
         <form method="post" class="mt-2 d-flex gap-2 flex-wrap align-items-center">
             {% csrf_token %}<input type="hidden" name="action" value="qb_refresh_accounts">
             <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Refresh accounts from QuickBooks</button>

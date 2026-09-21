@@ -1,19 +1,19 @@
 {% extends 'base.html' %}
-{% block title %}{{ property.name }} — {{ month|date:"F Y" }} close{% endblock %}
+{% block title %}{{ title }} — {{ month|date:"F Y" }} close{% endblock %}
 {% block content %}
-<a href="{% url 'close_overview' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
+<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ back_label }}</a>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div>
-        <h2 class="page-title mb-0">{{ property.name }}</h2>
+        <h2 class="page-title mb-0">{{ title }}</h2>
         <p class="text-muted small mb-0">{{ month|date:"F Y" }}{% if close %} · <strong>closed</strong>{% endif %}{% if synced_at %} · synced from QuickBooks {{ synced_at|timesince }} ago{% endif %}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <div class="btn-group btn-group-sm">
-            <a href="{% url 'close_property' previous|date:'Y-m' property.pk %}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-            <a href="{% url 'close_property' next|date:'Y-m' property.pk %}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+            <a href="{{ prev_url }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+            <a href="{{ next_url }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
         </div>
         {% if not close %}
-        <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="sync"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Sync this rental</button></form>
+        <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="sync"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Sync this {% if unit %}unit{% else %}rental{% endif %}</button></form>
         {% endif %}
     </div>
 </div>
@@ -39,7 +39,7 @@
         <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
             <h6 class="card-title">The month</h6>
             <div class="row row-cols-2 row-cols-md-3 g-2 small">
-                <div class="col"><div class="text-muted">Owner deposits</div><div class="fs-6 fw-semibold">${{ totals.deposits|floatformat:"2g" }}</div></div>
+                <div class="col"><div class="text-muted">Income deposits</div><div class="fs-6 fw-semibold">${{ totals.deposits|floatformat:"2g" }}</div></div>
                 <div class="col"><div class="text-muted">Expenses (all)</div><div class="fs-6 fw-semibold">${{ totals.expenses_total|floatformat:"2g" }}</div></div>
                 <div class="col"><div class="text-muted">&nbsp;&nbsp;paid by us, reimbursable</div><div class="fw-semibold">${{ totals.expenses_reimbursable|floatformat:"2g" }}</div></div>
                 <div class="col"><div class="text-muted">&nbsp;&nbsp;paid direct from trust</div><div class="fw-semibold">${{ totals.expenses_direct|floatformat:"2g" }}</div></div>
@@ -67,12 +67,67 @@
                 </div>
                 {% empty %}<p class="small mb-1" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Everything checks out.</p>{% endfor %}
                 <input type="text" name="note" class="form-control form-control-sm my-2" maxlength="500" placeholder="Optional note kept with the close">
-                <button class="btn btn-primary btn-sm" {% if not can_close %}disabled{% endif %} onclick="return confirm('Close {{ month|date:"F Y" }} for {{ property.name }}? Its transactions are locked and QuickBooks changes to this month will no longer flow in.');"><i data-lucide="lock" class="icon"></i> Close {{ month|date:"F Y" }}</button>
+                <button class="btn btn-primary btn-sm" {% if not can_close %}disabled{% endif %} onclick="return confirm('Close {{ month|date:"F Y" }} for {{ title }}? Its transactions are locked and QuickBooks changes to this month will no longer flow in.');"><i data-lucide="lock" class="icon"></i> Close {{ month|date:"F Y" }}</button>
             </form>
             {% endif %}
         </div></div>
     </div>
 </div>
+
+{% if recon %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+        <h6 class="card-title mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon"></i> Income reconciliation</h6>
+        {% if recon.closed %}<span class="badge rounded-pill text-bg-secondary">As closed</span>{% endif %}
+    </div>
+    <p class="text-muted small">The owner is paid from what actually reached the trust account, so every payout the platforms show has to have cleared into it, and every income deposit has to be a platform payout. Anything left over blocks the close until it's fixed or accepted as a reconciling item.</p>
+    <div class="row row-cols-2 row-cols-md-4 g-2 small mb-2">
+        <div class="col"><div class="text-muted">Income deposits</div><div class="fw-semibold">${{ recon.deposits_total|floatformat:"2g" }}</div></div>
+        <div class="col"><div class="text-muted">Matched to platform payouts</div><div class="fw-semibold">${{ recon.payouts_matched|floatformat:"2g" }}</div></div>
+        <div class="col"><div class="text-muted">Reservations checking in</div><div class="fw-semibold">{{ recon.reservations.count }} · ${{ recon.reservations.payout_total|floatformat:"2g" }}</div></div>
+        <div class="col"><div class="text-muted">…paid out within the month</div><div class="fw-semibold">${{ recon.reservations.paid_in_month|floatformat:"2g" }}</div></div>
+    </div>
+    <p class="small text-muted mb-2">
+        A stay belongs to the month it checks in, but its money arrives when the platform pays it.
+        {% if recon.reservations.paid_later %}<strong>${{ recon.reservations.paid_later|floatformat:"2g" }}</strong> of this month's reservations is paid after month end (or not yet dated).{% endif %}
+        {% if recon.reservations.carried_in %}<strong>${{ recon.reservations.carried_in|floatformat:"2g" }}</strong> arrived this month for earlier stays.{% endif %}
+    </p>
+    {% if recon.reservations.paid_later_items %}
+    <details class="small mb-2"><summary style="cursor: pointer;" class="text-muted">Reservations this month whose payout comes later</summary>
+        {% for r in recon.reservations.paid_later_items %}<div class="text-muted">{{ r.guest|default:"Guest" }} · checks in {{ r.check_in|date:"M j" }} · ${{ r.amount|floatformat:"2g" }}{% if r.payout_date %} · payout {{ r.payout_date|date:"M j" }}{% else %} · no payout date yet{% endif %}</div>{% endfor %}
+    </details>
+    {% endif %}
+
+    {% if recon.closed %}
+        {% if recon.pairs %}<div class="small fw-semibold mt-2">Deposits matched</div>{% for p in recon.pairs %}<div class="small text-muted">{{ p.date|slice:"5:" }} · ${{ p.amount }} ← {% for g in p.payouts %}{{ g.label }} (${{ g.amount }}){% if not forloop.last %} + {% endif %}{% endfor %}</div>{% endfor %}{% endif %}
+        {% if recon.accepted %}<div class="small fw-semibold mt-2">Reconciling items accepted at close</div>{% for a in recon.accepted %}<div class="small">{{ a.text }} — <em>{{ a.note }}</em>{% if a.by %} ({{ a.by }}){% endif %}</div>{% endfor %}{% endif %}
+        {% if recon.in_transit %}<div class="small fw-semibold mt-2">On their way at month end</div>{% for a in recon.in_transit %}<div class="small text-muted">{{ a.text }}</div>{% endfor %}{% endif %}
+    {% else %}
+        {% if recon.pairs %}
+        <details class="small mb-2"><summary style="cursor: pointer;" class="text-muted">{{ recon.pairs|length }} deposit{{ recon.pairs|length|pluralize }} matched to platform payouts</summary>
+            {% for p in recon.pairs %}<div class="text-muted">{{ p.line.txn_date|date:"M j" }} · ${{ p.amount|floatformat:"2g" }} ← {% for g in p.groups %}{{ g.label }} ({{ g.count }} reservation{{ g.count|pluralize }}){% if not forloop.last %} + {% endif %}{% endfor %}</div>{% endfor %}
+        </details>
+        {% endif %}
+        {% for i in recon.items %}
+        <div class="border rounded p-2 mb-2 {% if i.accepted %}bg-body-tertiary{% elif i.in_transit %}{% else %}border-warning{% endif %}">
+            <div class="small"><strong>{% if i.kind == 'deposit' %}In the bank, not from a platform payout{% elif i.in_transit %}Payout on its way{% else %}Platform payout not in the bank{% endif %}</strong> · ${{ i.amount|floatformat:"2g" }}</div>
+            <div class="small text-muted">{{ i.text }}</div>
+            {% if i.accepted %}
+            <div class="small mt-1">Accepted: <em>{{ i.accepted.note }}</em>{% if i.accepted.accepted_by %} — {{ i.accepted.accepted_by.get_full_name|default:i.accepted.accepted_by.username }}{% endif %}
+                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form></div>
+            {% elif i.in_transit %}
+            <div class="small text-muted mt-1">Dated within days of month end, so it isn't a problem yet — it will match its deposit next month.</div>
+            {% else %}
+            <form method="post" class="d-flex gap-2 flex-wrap mt-1">{% csrf_token %}<input type="hidden" name="action" value="accept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}">
+                <input type="text" name="note" class="form-control form-control-sm" style="max-width: 360px;" maxlength="300" placeholder="Why is this a reconciling item?" required>
+                <button class="btn btn-outline-secondary btn-sm">Accept as reconciling item</button></form>
+            {% if i.kind == 'deposit' %}<div class="small text-muted mt-1">Not income (a refund, say)? Re-code the line below as an expense instead.</div>{% endif %}
+            {% endif %}
+        </div>
+        {% empty %}<p class="small mb-0" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Every income deposit matches a platform payout and every payout has cleared.</p>{% endfor %}
+    {% endif %}
+</div></div>
+{% endif %}
 
 {% if not close and changed %}
 <div class="alert alert-warning small d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -87,7 +142,7 @@
     <div class="d-flex gap-2 flex-wrap align-items-center mb-3 p-2 rounded" style="background: var(--bs-light, #f8f9fa);">
         <span class="small text-muted">Tick lines, then</span>
         <select id="bulk-category" class="form-select form-select-sm" style="max-width: 220px;">
-            <option value="expense">Expense</option><option value="deposit">Owner deposit</option><option value="owner_payment">Owner payment</option><option value="reimbursement">Expense reimbursement</option><option value="commission">Commission</option>
+            <option value="expense">Expense (or refund of one)</option><option value="deposit">Income deposit (booking payout)</option><option value="owner_payment">Owner payment</option><option value="reimbursement">Expense reimbursement</option><option value="commission">Commission</option>
         </select>
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="applyBulk()">Set ticked to this</button>
         <span class="ms-auto d-flex gap-2 flex-wrap">
@@ -102,7 +157,7 @@
         <div class="p-3 pb-2">
             <h6 class="mb-0">{{ sec.title }}{% if sec.account %} <span class="text-muted fw-normal small">· {{ sec.account.fully_qualified_name }}</span>{% endif %}</h6>
             <p class="text-muted small mb-0">
-                {% if sec.role == 'expense' %}Everything here is an expense unless it's the monthly reimbursement (the credit that pays us back out of the trust account).{% else %}Money in is an owner deposit. Money out is an expense unless it's the owner payment, the expense reimbursement to us, or commission.{% endif %}
+                {% if sec.role == 'expense' %}Everything here is an expense unless it's the monthly reimbursement (the credit that pays us back out of the trust account).{% else %}Money in is an income deposit (a booking payout) — unless it isn't income, like a refund, which is an expense here. Money out is an expense unless it's the owner payment, the expense reimbursement to us, or commission.{% endif %}
             </p>
         </div>
         {% for l in sec.lines %}

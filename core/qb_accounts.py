@@ -19,7 +19,7 @@ income-statement accounts. That is what each picker is limited to."""
 import re
 
 from . import property_specs
-from .models import Property, QuickBooksAccount
+from .models import Property, QuickBooksAccount, Unit
 
 SIDES = {
     'expense': {'field': 'qb_expense_account', 'classes': QuickBooksAccount.INCOME_STATEMENT, 'label': 'Income-statement (reimbursable expense) account'},
@@ -45,9 +45,25 @@ def accounts_for(side, include_inactive_pk=None):
     return QuickBooksAccount.objects.filter(q).order_by('classification', 'account_type', 'fully_qualified_name')
 
 
-def used_by_other(account, side, prop):
-    """The other property already tied to this account on this side, or None."""
-    return Property.objects.filter(**{SIDES[side]['field']: account}).exclude(pk=prop.pk).first()
+def _label(target):
+    return target.name if isinstance(target, Property) else f'{target.property.name} — {target.label}'
+
+
+def used_by_other(account, side, target):
+    """The other rental (a property, or a unit of one) already tied to this account
+    on this side, or None. A property and its units share one pool of accounts, so
+    nothing is counted twice."""
+    field = SIDES[side]['field']
+    other = Property.objects.filter(**{field: account})
+    if isinstance(target, Property):
+        other = other.exclude(pk=target.pk)
+    found = other.first()
+    if found is not None:
+        return found
+    others = Unit.objects.filter(**{field: account}).select_related('property')
+    if isinstance(target, Unit):
+        others = others.exclude(pk=target.pk)
+    return others.first()
 
 
 def save_mapping(prop, expense_id, trust_id):
@@ -70,7 +86,7 @@ def save_mapping(prop, expense_id, trust_id):
         else:
             other = used_by_other(account, side, prop)
             if other is not None:
-                errors[side] = f'{account.fully_qualified_name} is already tied to {other.name}. Each account belongs to one rental — clear it there first.'
+                errors[side] = f'{account.fully_qualified_name} is already tied to {_label(other)}. Each account belongs to one rental — clear it there first.'
             else:
                 chosen[side] = account
     changed = []
@@ -88,9 +104,13 @@ def _tokens(text):
     return re.findall(r'[a-z0-9]+', (text or '').lower())
 
 
-def _key_tokens(prop):
+def _key_tokens(target):
+    prop = target if isinstance(target, Property) else target.property
     tokens = [t for t in _tokens(prop.name) if t not in _GENERIC]
-    return tokens or _tokens(prop.name)
+    tokens = tokens or _tokens(prop.name)
+    if isinstance(target, Unit):
+        tokens += [t for t in _tokens(target.label) if t not in _GENERIC and t not in tokens]
+    return tokens
 
 
 def suggestions(prop, pool=None, limit=3):
@@ -103,7 +123,14 @@ def suggestions(prop, pool=None, limit=3):
     out = {}
     for side, spec in SIDES.items():
         current = getattr(prop, spec['field'] + '_id')
-        taken = set(Property.objects.exclude(pk=prop.pk).exclude(**{spec['field'] + '__isnull': True}).values_list(spec['field'] + '_id', flat=True))
+        field = spec['field']
+        taken_by_properties = Property.objects.exclude(**{field + '__isnull': True})
+        taken_by_units = Unit.objects.exclude(**{field + '__isnull': True})
+        if isinstance(prop, Property):
+            taken_by_properties = taken_by_properties.exclude(pk=prop.pk)
+        else:
+            taken_by_units = taken_by_units.exclude(pk=prop.pk)
+        taken = set(taken_by_properties.values_list(field + '_id', flat=True)) | set(taken_by_units.values_list(field + '_id', flat=True))
         found = []
         for account in pool:
             if account.classification not in spec['classes'] or account.pk in taken or account.pk == current:
@@ -116,12 +143,29 @@ def suggestions(prop, pool=None, limit=3):
     return out
 
 
-def status(prop):
-    """'mapped' (both), 'partial' or 'unmapped'."""
-    have = [prop.qb_expense_account_id, prop.qb_trust_account_id]
+def own_status(target):
+    """'mapped' (both accounts), 'partial' or 'unmapped' — for a property's own pair
+    or a unit's."""
+    have = [target.qb_expense_account_id, target.qb_trust_account_id]
     if all(have):
         return 'mapped'
     return 'partial' if any(have) else 'unmapped'
+
+
+def active_units(prop):
+    return list(prop.units.filter(is_active=True).order_by('label'))
+
+
+def status(prop):
+    """'mapped', 'partial' or 'unmapped'. A property kept unit by unit is mapped when
+    every active unit has both accounts (and it has at least one unit)."""
+    if isinstance(prop, Property) and prop.financials_level == Property.FinancialsLevel.UNIT:
+        units = active_units(prop)
+        states = [own_status(u) for u in units]
+        if units and all(s == 'mapped' for s in states):
+            return 'mapped'
+        return 'partial' if any(s != 'unmapped' for s in states) else 'unmapped'
+    return own_status(prop)
 
 
 def rentals_needing_accounts():

@@ -41,30 +41,29 @@
 {% endif %}
 
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body p-0">
-    {% for r in rows %}
-    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap p-3 {% if not forloop.first %}border-top{% endif %}">
+    {% for g in groups %}
+    {% if g.level == 'unit' %}
+    {% with c=g.consolidated %}
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap p-3 {% if not forloop.first %}border-top border-2{% endif %}">
         <div style="min-width: 220px; flex: 1 1 220px;">
-            <a href="{% url 'close_property' month|date:'Y-m' r.property.pk %}" class="fw-semibold text-decoration-none">{{ r.property.name }}</a>
-            <div class="small text-muted">
-                {% if r.state == 'closed' %}Closed {{ r.close.closed_at|date:"M j" }}{% if r.close.closed_by %} by {{ r.close.closed_by.get_full_name|default:r.close.closed_by.username }}{% endif %}
-                {% elif r.state == 'needs_accounts' %}Tie it to its QuickBooks accounts first
-                {% else %}{{ r.lines }} transaction{{ r.lines|pluralize }}{% if r.unreviewed %} · <strong>{{ r.unreviewed }} to review</strong>{% endif %}{% if r.changed %} · <span style="color: var(--status-warning);">{{ r.changed }} changed in QuickBooks</span>{% endif %}{% endif %}
-                {% if r.drift %} · <span style="color: var(--status-critical);">{{ r.drift }} QuickBooks change{{ r.drift|pluralize }} to this closed month were not applied</span>{% endif %}
-            </div>
+            <a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="fw-semibold text-decoration-none">{{ g.property.name }}</a> <span class="badge rounded-pill text-bg-light border">books kept unit by unit</span>
+            <div class="small text-muted">{% if c.units %}{{ c.closed_units }} of {{ c.units }} unit{{ c.units|pluralize }} closed · consolidated below is the units added up{% else %}No active units yet — add its units on the property page.{% endif %}</div>
         </div>
-        {% if r.totals %}
+        {% if c.totals %}
         <div class="small text-muted text-end" style="min-width: 190px;">
-            Deposits <strong>${{ r.totals.deposits|floatformat:"2g" }}</strong> · Expenses <strong>${{ r.totals.expenses_total|floatformat:"2g" }}</strong><br>Owner payment <strong>${{ r.totals.owner_payment|floatformat:"2g" }}</strong>
+            Deposits <strong>${{ c.totals.deposits|floatformat:"2g" }}</strong> · Expenses <strong>${{ c.totals.expenses_total|floatformat:"2g" }}</strong><br>Owner payment <strong>${{ c.totals.owner_payment|floatformat:"2g" }}</strong>
         </div>
         {% endif %}
         <div class="d-flex align-items-center gap-2">
-            {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>
-            {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready to close</span>
-            {% elif r.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">No accounts</span>
-            {% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
-            <a href="{% if r.state == 'needs_accounts' %}{% url 'property_detail' r.property.pk %}#quickbooks{% else %}{% url 'close_property' month|date:'Y-m' r.property.pk %}{% endif %}" class="btn btn-outline-secondary btn-sm">{% if r.state == 'closed' %}View{% elif r.state == 'needs_accounts' %}Set accounts{% else %}Code{% endif %}</a>
+            {% if c.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>{% elif c.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready to close</span>{% elif c.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">Units need accounts</span>{% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
+            <a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="btn btn-outline-secondary btn-sm">Consolidated</a>
         </div>
     </div>
+    {% endwith %}
+    {% for r in g.rows %}{% include 'core/_close_row.html' with r=r indent=True first=False %}{% endfor %}
+    {% else %}
+    {% for r in g.rows %}{% include 'core/_close_row.html' with r=r indent=False first=forloop.parentloop.first %}{% endfor %}
+    {% endif %}
     {% empty %}<p class="text-muted small p-3 mb-0">No active short-term rentals.</p>{% endfor %}
 </div></div>
 

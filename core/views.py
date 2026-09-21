@@ -23,7 +23,7 @@ from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
-from . import app_settings, faq as faq_service, google_calendar, google_login, places, property_specs, qb_accounts, quickbooks, usps
+from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, places, property_specs, qb_accounts, quickbooks, usps
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
@@ -525,6 +525,18 @@ def _list_quo_phone_lines():
     return lines
 
 
+def _qb_mapping_targets(rentals):
+    """(object, input-name prefix, label) for everything on the map-all screen that
+    takes accounts: each rental that keeps one set of books, and each active unit of
+    one that keeps its books unit by unit."""
+    for prop in rentals:
+        if prop.financials_level == Property.FinancialsLevel.UNIT:
+            for unit in qb_accounts.active_units(prop):
+                yield unit, 'unit_', f'{prop.name} — {unit.label}'
+        else:
+            yield prop, '', prop.name
+
+
 @login_required
 @user_passes_test(_is_admin)
 def quickbooks_accounts(request):
@@ -539,28 +551,38 @@ def quickbooks_accounts(request):
             _refresh_qb_accounts(request)
             return redirect('quickbooks_accounts')
         saved = failed = 0
-        for prop in rentals:
-            expense, trust = request.POST.get(f'expense_{prop.pk}'), request.POST.get(f'trust_{prop.pk}')
+        for target, prefix, name in _qb_mapping_targets(rentals):
+            expense, trust = request.POST.get(f'{prefix}expense_{target.pk}'), request.POST.get(f'{prefix}trust_{target.pk}')
             if expense is None and trust is None:
                 continue
-            if (expense or '') == str(prop.qb_expense_account_id or '') and (trust or '') == str(prop.qb_trust_account_id or ''):
+            if (expense or '') == str(target.qb_expense_account_id or '') and (trust or '') == str(target.qb_trust_account_id or ''):
                 continue
-            errors = qb_accounts.save_mapping(prop, expense, trust)
+            errors = qb_accounts.save_mapping(target, expense, trust)
             for message in errors.values():
-                messages.error(request, f'{prop.name}: {message}')
+                messages.error(request, f'{name}: {message}')
             failed += bool(errors)
             saved += not errors
         if saved:
-            messages.success(request, f'Saved the accounts for {saved} rental{"" if saved == 1 else "s"}.')
+            messages.success(request, f'Saved the accounts for {saved} rental{"" if saved == 1 else "s"} or unit{"" if saved == 1 else "s"}.')
         return redirect('quickbooks_accounts')
     pool = list(QuickBooksAccount.objects.filter(active=True))
     rows = []
     for prop in rentals:
-        rows.append({
-            'property': prop, 'status': qb_accounts.status(prop), 'suggestions': qb_accounts.suggestions(prop, pool=pool, limit=1),
+        unit_mode = prop.financials_level == Property.FinancialsLevel.UNIT
+        row = {
+            'property': prop, 'status': qb_accounts.status(prop), 'unit_mode': unit_mode, 'units': [],
+            'suggestions': qb_accounts.suggestions(prop, pool=pool, limit=1),
             'expense_options': qb_accounts.accounts_for('expense', prop.qb_expense_account_id),
             'trust_options': qb_accounts.accounts_for('trust', prop.qb_trust_account_id),
-        })
+        }
+        if unit_mode:
+            for unit in qb_accounts.active_units(prop):
+                row['units'].append({
+                    'unit': unit, 'status': qb_accounts.own_status(unit), 'suggestions': qb_accounts.suggestions(unit, pool=pool, limit=1),
+                    'expense_options': qb_accounts.accounts_for('expense', unit.qb_expense_account_id),
+                    'trust_options': qb_accounts.accounts_for('trust', unit.qb_trust_account_id),
+                })
+        rows.append(row)
     token = QuickBooksToken.objects.first()
     return render(request, 'core/quickbooks_accounts.html', {
         'rows': rows, 'connected': token is not None, 'synced_at': token.accounts_synced_at if token else None,
@@ -941,6 +963,42 @@ def _property_qb_action(request, prop, action):
             messages.error(request, message)
         if not errors:
             messages.success(request, 'QuickBooks accounts saved.')
+    elif action == 'qb_save_unit_mapping':
+        saved = failed = 0
+        for unit in qb_accounts.active_units(prop):
+            expense, trust = request.POST.get(f'unit_expense_{unit.pk}'), request.POST.get(f'unit_trust_{unit.pk}')
+            if expense is None and trust is None:
+                continue
+            if (expense or '') == str(unit.qb_expense_account_id or '') and (trust or '') == str(unit.qb_trust_account_id or ''):
+                continue
+            errors = qb_accounts.save_mapping(unit, expense, trust)
+            for message in errors.values():
+                messages.error(request, f'{unit.label}: {message}')
+            failed += bool(errors)
+            saved += not errors
+        if saved:
+            messages.success(request, f'Saved the accounts for {saved} unit{"" if saved == 1 else "s"}.')
+    elif action == 'qb_set_level':
+        try:
+            result = ledger.set_financials_level(prop, request.POST.get('financials_level', ''))
+        except ledger.CloseError as exc:
+            messages.error(request, str(exc))
+        else:
+            prop.refresh_from_db(fields=['financials_level'])
+            shape = 'separate books for each unit' if prop.financials_level == Property.FinancialsLevel.UNIT else 'one set of books for the whole property'
+            extra = ''
+            if result['discarded']:
+                extra = f' {result["discarded"]} transaction{"" if result["discarded"] == 1 else "s"} already pulled in for open months ({result["reviewed"]} reviewed) were set aside; they are re-read from the new accounts on the next sync.'
+            messages.success(request, f'{prop.name} now keeps {shape}, from the months still open onward. Months already closed stay as they were closed.{extra}')
+
+
+def _open_ledger_lines(prop):
+    """How many transactions already pulled in for months still open (what switching
+    how the books are kept would set aside), and how many of those are reviewed."""
+    from .models import LedgerLine, MonthClose
+    closed = set(MonthClose.objects.filter(property=prop).values_list('month', flat=True))
+    lines = LedgerLine.objects.filter(property=prop, locked_at__isnull=True).exclude(month__in=closed)
+    return {'total': lines.count(), 'reviewed': lines.filter(reviewed=True).count()}
 
 
 def _property_qb_context(prop):
@@ -952,6 +1010,14 @@ def _property_qb_context(prop):
         'expense_options': qb_accounts.accounts_for('expense', prop.qb_expense_account_id),
         'trust_options': qb_accounts.accounts_for('trust', prop.qb_trust_account_id),
         'suggestions': qb_accounts.suggestions(prop), 'status': qb_accounts.status(prop),
+        'unit_mode': prop.financials_level == Property.FinancialsLevel.UNIT,
+        'units': [{
+            'unit': unit, 'status': qb_accounts.own_status(unit), 'suggestions': qb_accounts.suggestions(unit, limit=1),
+            'expense_options': qb_accounts.accounts_for('expense', unit.qb_expense_account_id),
+            'trust_options': qb_accounts.accounts_for('trust', unit.qb_trust_account_id),
+        } for unit in qb_accounts.active_units(prop)] if prop.financials_level == Property.FinancialsLevel.UNIT else [],
+        'level_choices': Property.FinancialsLevel.choices,
+        'open_lines': _open_ledger_lines(prop),
     }
 
 
@@ -1144,8 +1210,9 @@ def property_detail(request, pk):
             except ProtectedError:
                 messages.error(
                     request,
-                    'Can\'t remove this unit — a ticket is still assigned to it. Reassign or clear that '
-                    'ticket\'s unit first.',
+                    'Can\'t remove this unit — a ticket or financial records (QuickBooks transactions, a month '
+                    'close) still refer to it. Reassign or clear the ticket\'s unit, or mark the unit inactive '
+                    'instead of removing it.',
                 )
         elif action == 'add_supply_override':
             # An exception to the portfolio-wide standard list, scoped to

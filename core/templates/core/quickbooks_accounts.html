@@ -26,6 +26,29 @@
                 <a href="{% url 'property_detail' row.property.pk %}#quickbooks" class="fw-semibold text-decoration-none">{{ row.property.name }}</a>
                 {% if row.status == 'mapped' %}<span class="small" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Tied</span>{% elif row.status == 'partial' %}<span class="small" style="color: var(--status-warning);">One account needed</span>{% else %}<span class="small text-muted">Not tied yet</span>{% endif %}
             </div>
+            {% if row.unit_mode %}
+            {% for u in row.units %}
+            <div class="row g-2 mb-2 ps-3 border-start">
+                <div class="col-12 small fw-semibold">{{ u.unit.label }} {% if u.status == 'mapped' %}<span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i></span>{% elif u.status == 'partial' %}<span class="fw-normal" style="color: var(--status-warning);">one account needed</span>{% endif %}</div>
+                <div class="col-md-6">
+                    <select name="unit_expense_{{ u.unit.pk }}" id="qbe-u{{ u.unit.pk }}" class="form-select form-select-sm" aria-label="Income-statement account for {{ u.unit.label }}">
+                        <option value="">Income statement — not chosen</option>
+                        {% regroup u.expense_options by account_type as groups %}
+                        {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if u.unit.qb_expense_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+                    </select>
+                    {% for s in u.suggestions.expense %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qbe-u{{ u.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <select name="unit_trust_{{ u.unit.pk }}" id="qbt-u{{ u.unit.pk }}" class="form-select form-select-sm" aria-label="Balance-sheet account for {{ u.unit.label }}">
+                        <option value="">Balance sheet — not chosen</option>
+                        {% regroup u.trust_options by account_type as groups %}
+                        {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if u.unit.qb_trust_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+                    </select>
+                    {% for s in u.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qbt-u{{ u.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+                </div>
+            </div>
+            {% empty %}<p class="small text-muted mb-0">This property keeps its books unit by unit but has no active units yet.</p>{% endfor %}
+            {% else %}
             <div class="row g-2">
                 <div class="col-md-6">
                     <select name="expense_{{ row.property.pk }}" id="qbe-{{ row.property.pk }}" class="form-select form-select-sm" aria-label="Income-statement account for {{ row.property.name }}">
@@ -44,6 +67,7 @@
                     {% for s in row.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qbt-{{ row.property.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
                 </div>
             </div>
+            {% endif %}
         </div>
         {% empty %}<p class="text-muted small p-3 mb-0">No active short-term rentals.</p>{% endfor %}
     </div></div>

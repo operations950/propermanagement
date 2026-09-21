@@ -21,6 +21,7 @@ urlpatterns = [
     path('admin-tools/quickbooks-accounts/', views.quickbooks_accounts, name='quickbooks_accounts'),
     path('close/', close_views.close_overview, name='close_overview'),
     path('close/<str:month>/<int:pk>/', close_views.close_property, name='close_property'),
+    path('close/<str:month>/<int:pk>/unit/<int:unit_pk>/', close_views.close_property, name='close_unit'),
     # JSON API for the message-answering assistant (Bearer key; see BOT_API.md)
     path('api/v1/me/', bot_api.me, name='bot_api_me'),
     path('api/v1/properties/', bot_api.property_search, name='bot_api_properties'),

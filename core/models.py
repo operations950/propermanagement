@@ -125,6 +125,17 @@ class Property(models.Model):
     ledger_synced_at = models.DateTimeField(
         null=True, blank=True, help_text="When this rental's QuickBooks transactions were last pulled in (a month can only be closed on a recent sync).",
     )
+
+    class FinancialsLevel(models.TextChoices):
+        PROPERTY = 'property', 'One set of books for the whole property'
+        UNIT = 'unit', 'Separate books for each unit'
+
+    financials_level = models.CharField(
+        max_length=10, choices=FinancialsLevel.choices, default=FinancialsLevel.PROPERTY,
+        help_text='Whether this rental is closed as one set of books (the two accounts above) or unit by unit '
+                   '(each unit has its own two accounts and its own owner payment, and the property is their sum). '
+                   'A month already closed keeps the shape it was closed in; open months follow this setting.',
+    )
     turnover_price_override = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text='A negotiated flat price for a standard Turnover Clean at this property, replacing '
@@ -261,6 +272,17 @@ class Unit(models.Model):
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Used only when the property's financials are kept unit by unit (see
+    # Property.financials_level): this unit's own two QuickBooks accounts.
+    qb_expense_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='expense_for_units',
+        help_text="This unit's reimbursable-expense account on the income statement.",
+    )
+    qb_trust_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='trust_for_units',
+        help_text="This unit's owner trust account on the balance sheet.",
+    )
+    ledger_synced_at = models.DateTimeField(null=True, blank=True, help_text="When this unit's QuickBooks transactions were last pulled in.")
 
     class Meta:
         ordering = ['label']
@@ -970,7 +992,7 @@ class LedgerLine(models.Model):
 
     class Category(models.TextChoices):
         EXPENSE = 'expense', 'Expense'
-        DEPOSIT = 'deposit', 'Owner deposit'
+        DEPOSIT = 'deposit', 'Income deposit (booking payout)'
         OWNER_PAYMENT = 'owner_payment', 'Owner payment'
         REIMBURSEMENT = 'reimbursement', 'Expense reimbursement'
         COMMISSION = 'commission', 'Commission'
@@ -985,6 +1007,10 @@ class LedgerLine(models.Model):
         REMOVED = 'removed', 'Gone from QuickBooks'
 
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='ledger_lines')
+    unit = models.ForeignKey(
+        Unit, on_delete=models.PROTECT, null=True, blank=True, related_name='ledger_lines',
+        help_text='Set when the property keeps unit-level books: the unit whose accounts this line belongs to.',
+    )
     role = models.CharField(max_length=10, choices=Role.choices)
     account = models.ForeignKey(QuickBooksAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     txn_type = models.CharField(max_length=60)
@@ -1016,7 +1042,8 @@ class LedgerLine(models.Model):
     class Meta:
         ordering = ['txn_date', 'txn_type', 'txn_id']
         constraints = [
-            models.UniqueConstraint(fields=['property', 'role', 'txn_type', 'txn_id'], name='uniq_ledger_line'),
+            models.UniqueConstraint(fields=['property', 'role', 'txn_type', 'txn_id'], condition=models.Q(unit__isnull=True), name='uniq_ledger_line'),
+            models.UniqueConstraint(fields=['unit', 'role', 'txn_type', 'txn_id'], condition=models.Q(unit__isnull=False), name='uniq_ledger_line_unit'),
         ]
         indexes = [models.Index(fields=['property', 'month'])]
 
@@ -1030,19 +1057,49 @@ class MonthClose(models.Model):
     flow in (they are logged as ClosedMonthChange). A mistake found later is fixed
     in the current month."""
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='month_closes')
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, null=True, blank=True, related_name='month_closes')
+    level = models.CharField(
+        max_length=10, choices=Property.FinancialsLevel.choices, default=Property.FinancialsLevel.PROPERTY,
+        help_text='The shape the month was closed in: one set of books for the property, or one per unit.',
+    )
     month = models.DateField(help_text='The first day of the month.')
     closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     closed_at = models.DateTimeField(auto_now_add=True)
     totals = models.JSONField(default=dict, help_text='The figures as closed, frozen.')
+    recon = models.JSONField(default=dict, blank=True, help_text='The income reconciliation as closed, frozen.')
     warnings_acknowledged = models.JSONField(default=list, blank=True)
     note = models.CharField(max_length=500, blank=True)
 
     class Meta:
         ordering = ['-month']
-        constraints = [models.UniqueConstraint(fields=['property', 'month'], name='uniq_month_close')]
+        constraints = [
+            models.UniqueConstraint(fields=['property', 'month'], condition=models.Q(unit__isnull=True), name='uniq_month_close'),
+            models.UniqueConstraint(fields=['unit', 'month'], condition=models.Q(unit__isnull=False), name='uniq_month_close_unit'),
+        ]
 
     def __str__(self):
-        return f'{self.property} {self.month:%B %Y} closed'
+        return f'{self.unit or self.property} {self.month:%B %Y} closed'
+
+
+class ReconAcceptance(models.Model):
+    """A person accepted one unmatched item in a month's income reconciliation as a
+    reconciling item, with the reason (a platform payout still on its way to the
+    bank, a deposit that is not from a platform, ...). Tied to the amount it was
+    accepted at: if that changes the acceptance no longer applies."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='recon_acceptances')
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, null=True, blank=True, related_name='recon_acceptances')
+    month = models.DateField()
+    kind = models.CharField(max_length=10, help_text='"deposit" (in the bank, no platform payout) or "payout" (a platform payout not in the bank).')
+    key = models.CharField(max_length=80)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.CharField(max_length=300, blank=True)
+    note = models.CharField(max_length=300)
+    accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    accepted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['accepted_at']
+        indexes = [models.Index(fields=['property', 'month'])]
 
 
 class ClosedMonthChange(models.Model):
@@ -1056,6 +1113,7 @@ class ClosedMonthChange(models.Model):
         REMOVED = 'removed', 'Removed from QuickBooks'
 
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='closed_month_changes')
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, null=True, blank=True, related_name='closed_month_changes')
     month = models.DateField()
     role = models.CharField(max_length=10)
     txn_type = models.CharField(max_length=60)
@@ -1068,5 +1126,6 @@ class ClosedMonthChange(models.Model):
     class Meta:
         ordering = ['-detected_at']
         constraints = [
-            models.UniqueConstraint(fields=['property', 'role', 'txn_type', 'txn_id', 'kind'], name='uniq_closed_month_change'),
+            models.UniqueConstraint(fields=['property', 'role', 'txn_type', 'txn_id', 'kind'], condition=models.Q(unit__isnull=True), name='uniq_closed_month_change'),
+            models.UniqueConstraint(fields=['unit', 'role', 'txn_type', 'txn_id', 'kind'], condition=models.Q(unit__isnull=False), name='uniq_closed_month_change_unit'),
         ]

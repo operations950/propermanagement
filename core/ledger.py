@@ -17,11 +17,21 @@ in step with QuickBooks — but never disturbs work already done:
     drifted, but they do not flow in — the closed figures were used to pay the
     owner. An error found later is fixed in the current month.
 
+The books. Most rentals keep ONE set of books (the property's two accounts). A
+rental can instead keep separate books per unit, each unit with its own two accounts
+and its own close; the property is then the sum of its units. The choice can change
+at any time: a month keeps the shape it was closed in, months still open follow the
+current setting. Everything here works on a `Book` — a property, or one unit of one.
+
+Every month also has an income reconciliation (core/recon.py) that must be clean
+before it closes.
+
 Coding (what the team does each month):
   * reimbursable-expense account: every line is an expense unless it is the monthly
     reimbursement (the credit that pays us back out of the trust account);
-  * trust account: money in is an owner deposit; money out is an expense unless it
-    is the owner payment, the expense reimbursement to us, or commission.
+  * trust account: money in is an income deposit (a booking payout) unless it isn't
+    income (a refund, say — code that as an expense); money out is an expense unless
+    it is the owner payment, the expense reimbursement to us, or commission.
 Defaults (and a few suggestions, such as a transfer between the two accounts being
 the reimbursement) mean most lines need no touch; a person still has to look at
 each line — "accept as shown" or change it — before the month can close."""
@@ -35,7 +45,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import quickbooks
-from .models import ClosedMonthChange, FinancialsSettings, LedgerLine, MonthClose, Property, QuickBooksToken
+from .models import ClosedMonthChange, FinancialsSettings, LedgerLine, MonthClose, Property, QuickBooksToken, ReconAcceptance, Unit
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +92,139 @@ def rentals():
     )
 
 
-def closed_months(prop):
-    return set(MonthClose.objects.filter(property=prop).values_list('month', flat=True))
+# --- books ---------------------------------------------------------------------------------------------
+
+class Book:
+    """One set of books: a whole property, or one unit of a property that keeps
+    unit-level books. It carries the two accounts to read and is the unit of coding,
+    reconciling and closing."""
+
+    def __init__(self, prop, unit=None):
+        self.property = prop
+        self.unit = unit
+
+    @property
+    def level(self):
+        return Property.FinancialsLevel.UNIT if self.unit is not None else Property.FinancialsLevel.PROPERTY
+
+    @property
+    def owner(self):
+        return self.unit if self.unit is not None else self.property
+
+    @property
+    def name(self):
+        return f'{self.property.name} — {self.unit.label}' if self.unit is not None else self.property.name
+
+    @property
+    def label(self):
+        return self.unit.label if self.unit is not None else self.property.name
+
+    @property
+    def qb_expense_account(self):
+        return self.owner.qb_expense_account
+
+    @property
+    def qb_trust_account(self):
+        return self.owner.qb_trust_account
+
+    @property
+    def qb_expense_account_id(self):
+        return self.owner.qb_expense_account_id
+
+    @property
+    def qb_trust_account_id(self):
+        return self.owner.qb_trust_account_id
+
+    @property
+    def ledger_synced_at(self):
+        """Read fresh: a sync stamps the row, whichever object the caller holds."""
+        return type(self.owner).objects.filter(pk=self.owner.pk).values_list('ledger_synced_at', flat=True).first()
+
+    @property
+    def mapped(self):
+        return self.qb_expense_account_id is not None and self.qb_trust_account_id is not None
+
+    def scope(self):
+        """Filter/create arguments that pick this book's rows out of the ledger tables."""
+        return {'property': self.property, 'unit': self.unit}
+
+    def stamp(self, now):
+        type(self.owner).objects.filter(pk=self.owner.pk).update(ledger_synced_at=now)
+        self.owner.ledger_synced_at = now
+
+    def url_args(self, month):
+        args = [month.strftime('%Y-%m') if hasattr(month, 'strftime') else month, self.property.pk]
+        return args + ([self.unit.pk] if self.unit is not None else [])
+
+    def _key(self):
+        return (self.property.pk, self.unit.pk if self.unit is not None else None)
+
+    def __eq__(self, other):
+        return isinstance(other, Book) and self._key() == other._key()
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __repr__(self):
+        return f'<Book {self.name}>'
 
 
-def is_closed(prop, month):
-    return MonthClose.objects.filter(property=prop, month=month_of(month)).exists()
+def _book(target):
+    """A Property (the whole-property books, as before) or a Book."""
+    return target if isinstance(target, Book) else Book(target)
+
+
+def month_level(prop, month):
+    """The shape a month's books have: what it was closed in, else the property's
+    current setting. (A month already closed never changes shape.)"""
+    level = MonthClose.objects.filter(property=prop, month=month_of(month)).values_list('level', flat=True).first()
+    return level or prop.financials_level
+
+
+def _units_of(prop):
+    return list(prop.units.filter(is_active=True).select_related('qb_expense_account', 'qb_trust_account').order_by('label'))
+
+
+def books_for(prop, month):
+    """The books a month is kept in: the property's one set, or one per unit (the
+    active units, plus any that already have a close or lines in that month)."""
+    month = month_of(month)
+    if month_level(prop, month) != Property.FinancialsLevel.UNIT:
+        return [Book(prop)]
+    units = {u.pk: u for u in _units_of(prop)}
+    extra = set(MonthClose.objects.filter(property=prop, month=month, unit__isnull=False).values_list('unit_id', flat=True))
+    extra |= set(LedgerLine.objects.filter(property=prop, month=month, unit__isnull=False).values_list('unit_id', flat=True))
+    for u in Unit.objects.filter(pk__in=extra - set(units)).select_related('qb_expense_account', 'qb_trust_account'):
+        units[u.pk] = u
+    return [Book(prop, u) for u in sorted(units.values(), key=lambda u: u.label)]
+
+
+def sync_books(prop):
+    """The books whose transactions are read from QuickBooks: the current shape's, plus
+    any earlier shape that has closed months (kept so a change to those still shows up
+    as drift). Only books with at least one account tied."""
+    unit_mode = prop.financials_level == Property.FinancialsLevel.UNIT
+    books = [Book(prop, u) for u in _units_of(prop)] if unit_mode else [Book(prop)]
+    closes = MonthClose.objects.filter(property=prop)
+    if unit_mode and closes.filter(level=Property.FinancialsLevel.PROPERTY).exists():
+        books.append(Book(prop))
+    known = {b.unit.pk for b in books if b.unit is not None}
+    closed_units = set(closes.filter(unit__isnull=False).values_list('unit_id', flat=True)) - known
+    books += [Book(prop, u) for u in Unit.objects.filter(pk__in=closed_units).select_related('qb_expense_account', 'qb_trust_account')]
+    seen, out = set(), []
+    for b in books:
+        if b not in seen and (b.qb_expense_account_id or b.qb_trust_account_id):
+            seen.add(b)
+            out.append(b)
+    return out
+
+
+def closed_months(book):
+    return set(MonthClose.objects.filter(**_book(book).scope()).values_list('month', flat=True))
+
+
+def is_closed(book, month):
+    return MonthClose.objects.filter(month=month_of(month), **_book(book).scope()).exists()
 
 
 # --- turning a QuickBooks report into entries ------------------------------------------------
@@ -157,7 +294,9 @@ def _names_account(text, account):
 
 def suggest(prop, role, flow, split, payee, memo):
     """(category, source) for a new line: what most lines are, plus a suggestion
-    where the transaction plainly is one of the special ones."""
+    where the transaction plainly is one of the special ones. `prop` is a Property
+    or a Book — whichever owns the two accounts."""
+    prop = _book(prop)
     text = _norm(f'{payee} {memo} {split}')
     if role == Role.EXPENSE:
         if flow < 0 and (_names_account(split, prop.qb_trust_account) or 'reimburs' in text):
@@ -187,9 +326,9 @@ def _describe(old, new):
     return '; '.join(parts)[:290]
 
 
-def _record_drift(prop, role, month, txn_type, txn_id, kind, detail):
+def _record_drift(book, role, month, txn_type, txn_id, kind, detail):
     change, created = ClosedMonthChange.objects.get_or_create(
-        property=prop, role=role, txn_type=txn_type, txn_id=txn_id, kind=kind, defaults={'month': month, 'detail': detail[:400]},
+        role=role, txn_type=txn_type, txn_id=txn_id, kind=kind, defaults={'month': month, 'detail': detail[:400]}, **book.scope(),
     )
     if not created and change.detail != detail[:400]:
         change.detail, change.resolved = detail[:400], False
@@ -197,25 +336,30 @@ def _record_drift(prop, role, month, txn_type, txn_id, kind, detail):
     return change
 
 
-def _apply(prop, role, account, grouped, start, end, closed, now):
-    """Brings the stored lines of one account in step with what QuickBooks shows."""
+def _apply(book, role, account, grouped, start, end, closed, now, level_of):
+    """Brings the stored lines of one account in step with what QuickBooks shows.
+    Months whose books have a different shape from this book's (a month closed before
+    the property switched between one set of books and unit-level books) are not this
+    book's to touch."""
     counts = {'new': 0, 'updated': 0, 'removed': 0, 'unchanged': 0, 'ignored_closed': 0}
-    existing = {(l.txn_type, l.txn_id): l for l in LedgerLine.objects.filter(property=prop, role=role)}
+    existing = {(l.txn_type, l.txn_id): l for l in LedgerLine.objects.filter(role=role, **book.scope())}
     seen = set()
     for key, unit in grouped.items():
         line = existing.get(key)
         month = month_of(unit['date'])
         fp = fingerprint(unit)
         if line is None:
+            if level_of(month) != book.level:
+                continue
             if month in closed:
-                _record_drift(prop, role, month, unit['txn_type'], unit['txn_id'], 'new', f'{unit["date"]:%b} {unit["date"].day}: {unit["payee"] or unit["memo"] or unit["txn_type"]} ${abs(unit["flow"]):,.2f} added to a closed month')
+                _record_drift(book, role, month, unit['txn_type'], unit['txn_id'], 'new', f'{unit["date"]:%b} {unit["date"].day}: {unit["payee"] or unit["memo"] or unit["txn_type"]} ${abs(unit["flow"]):,.2f} added to a closed month')
                 counts['ignored_closed'] += 1
                 continue
-            category, source = suggest(prop, role, unit['flow'], unit['split'], unit['payee'], unit['memo'])
+            category, source = suggest(book, role, unit['flow'], unit['split'], unit['payee'], unit['memo'])
             LedgerLine.objects.create(
-                property=prop, role=role, account=account, txn_type=unit['txn_type'], txn_id=unit['txn_id'], txn_date=unit['date'],
+                role=role, account=account, txn_type=unit['txn_type'], txn_id=unit['txn_id'], txn_date=unit['date'],
                 month=month, doc_num=unit['doc_num'][:60], payee=unit['payee'][:300], memo=unit['memo'][:500], split=unit['split'][:300],
-                flow=unit['flow'], fingerprint=fp, category=category, category_source=source, last_seen_at=now,
+                flow=unit['flow'], fingerprint=fp, category=category, category_source=source, last_seen_at=now, **book.scope(),
             )
             counts['new'] += 1
             continue
@@ -224,14 +368,14 @@ def _apply(prop, role, account, grouped, start, end, closed, now):
         if frozen:
             if fp != line.fingerprint or line.status == LedgerLine.Status.REMOVED:
                 old = {'date': line.txn_date, 'flow': line.flow, 'split': line.split}
-                _record_drift(prop, role, line.month, line.txn_type, line.txn_id, 'changed', _describe(old, unit) or 'reappeared in QuickBooks')
+                _record_drift(book, role, line.month, line.txn_type, line.txn_id, 'changed', _describe(old, unit) or 'reappeared in QuickBooks')
                 counts['ignored_closed'] += 1
             else:
                 counts['unchanged'] += 1
             continue
         if month in closed and month != line.month:
             # QuickBooks moved it into a month that is already closed: not applied.
-            _record_drift(prop, role, month, line.txn_type, line.txn_id, 'changed', f'date moved into a closed month ({unit["date"]:%b} {unit["date"].day})')
+            _record_drift(book, role, month, line.txn_type, line.txn_id, 'changed', f'date moved into a closed month ({unit["date"]:%b} {unit["date"].day})')
             counts['ignored_closed'] += 1
             continue
         changed_fields = []
@@ -246,7 +390,7 @@ def _apply(prop, role, account, grouped, start, end, closed, now):
             line.txn_date, line.month, line.flow, line.split, line.fingerprint = unit['date'], month, unit['flow'], unit['split'][:300], fp
             line.changed_in_qb, line.change_note = True, note
             if sign_flipped:
-                line.category, line.category_source = suggest(prop, role, unit['flow'], unit['split'], unit['payee'], unit['memo'])
+                line.category, line.category_source = suggest(book, role, unit['flow'], unit['split'], unit['payee'], unit['memo'])
                 line.reviewed = False
                 line.change_note = (note + '; direction reversed, category reset')[:300]
             changed_fields += ['txn_date', 'month', 'flow', 'split', 'fingerprint', 'changed_in_qb', 'change_note', 'category', 'category_source', 'reviewed']
@@ -264,10 +408,10 @@ def _apply(prop, role, account, grouped, start, end, closed, now):
         counts['updated' if did_update else 'unchanged'] += 1
 
     for key, line in existing.items():
-        if key in seen or line.txn_date < start or line.txn_date > end or line.status != LedgerLine.Status.ACTIVE:
+        if key in seen or line.txn_date < start or line.txn_date > end or line.status != LedgerLine.Status.ACTIVE or level_of(line.month) != book.level:
             continue
         if line.locked_at is not None or line.month in closed:
-            _record_drift(prop, role, line.month, line.txn_type, line.txn_id, 'removed', f'{line.txn_date:%b} {line.txn_date.day}: {line.payee or line.memo or line.txn_type} ${abs(line.flow):,.2f} is no longer in QuickBooks')
+            _record_drift(book, role, line.month, line.txn_type, line.txn_id, 'removed', f'{line.txn_date:%b} {line.txn_date.day}: {line.payee or line.memo or line.txn_type} ${abs(line.flow):,.2f} is no longer in QuickBooks')
             counts['ignored_closed'] += 1
             continue
         line.status, line.removed_at = LedgerLine.Status.REMOVED, now
@@ -276,28 +420,58 @@ def _apply(prop, role, account, grouped, start, end, closed, now):
     return counts
 
 
-def sync_property(token, prop, start=None, end=None, now=None):
-    """Pulls this rental's transactions from both mapped accounts and reconciles
+def _level_lookup(prop):
+    """month -> the shape its books have, looked up once per sync."""
+    cache = {}
+
+    def level_of(month):
+        month = month_of(month)
+        if month not in cache:
+            cache[month] = month_level(prop, month)
+        return cache[month]
+    return level_of
+
+
+def sync_book(token, book, start=None, end=None, now=None):
+    """Pulls one set of books' transactions from its mapped accounts and reconciles
     them with what is stored (see the module docstring). Returns per-role counts;
     raises LedgerSyncError if QuickBooks can't be read (nothing is changed then)."""
     now = now or timezone.now()
     start = start or books_start()
     end = end or timezone.localdate()
     fetched = {}
-    for role, account in ((Role.EXPENSE, prop.qb_expense_account), (Role.TRUST, prop.qb_trust_account)):
+    for role, account in ((Role.EXPENSE, book.qb_expense_account), (Role.TRUST, book.qb_trust_account)):
         if account is None:
             continue
         entries, error = quickbooks.fetch_ledger(token, account.qb_id, start, end)
         if error:
             raise LedgerSyncError(error)
         fetched[role] = (account, group_entries(role, account, entries))
-    closed = closed_months(prop)
+    closed = closed_months(book)
+    level_of = _level_lookup(book.property)
     summary = {}
     with transaction.atomic():
         for role, (account, grouped) in fetched.items():
-            summary[role] = _apply(prop, role, account, grouped, start, end, closed, now)
-        Property.objects.filter(pk=prop.pk).update(ledger_synced_at=now)
+            summary[role] = _apply(book, role, account, grouped, start, end, closed, now, level_of)
+        book.stamp(now)
     return summary
+
+
+def sync_property(token, prop, start=None, end=None, now=None):
+    """Syncs every set of books a property keeps (its one set, or one per unit, plus
+    any earlier shape that still has closed months). Returns per-role counts added up
+    across them; raises LedgerSyncError if QuickBooks can't be read."""
+    if isinstance(prop, Book):
+        return sync_book(token, prop, start, end, now)
+    now = now or timezone.now()
+    total = {}
+    for book in sync_books(prop):
+        for role, counts in sync_book(token, book, start, end, now).items():
+            bucket = total.setdefault(role, {k: 0 for k in counts})
+            for k, v in counts.items():
+                bucket[k] += v
+    prop.ledger_synced_at = Property.objects.filter(pk=prop.pk).values_list('ledger_synced_at', flat=True).first()
+    return total
 
 
 def sync_all(now=None):
@@ -310,7 +484,7 @@ def sync_all(now=None):
     now = now or timezone.now()
     done, errors = 0, []
     for prop in rentals():
-        if prop.qb_expense_account_id is None and prop.qb_trust_account_id is None:
+        if not sync_books(prop):
             continue
         try:
             sync_property(token, prop, now=now)
@@ -327,27 +501,60 @@ def sync_all(now=None):
     return done, token.ledger_sync_error
 
 
+# --- switching between one set of books and unit-level books --------------------------------------------
+
+def set_financials_level(prop, level):
+    """Changes how a property's books are kept from now on: one set for the property,
+    or one per unit. Months already closed keep the shape they were closed in. Months
+    still open take the new shape, so what was pulled in and coded for them under the
+    old shape is discarded and re-read from the new accounts on the next sync. Refused
+    while a month is part-closed (some of its books closed, others not). Returns how
+    many open lines were discarded (and how many of those a person had reviewed)."""
+    if level not in Property.FinancialsLevel.values:
+        raise CloseError('Choose one set of books for the property, or separate books for each unit.')
+    if prop.financials_level == level:
+        return {'discarded': 0, 'reviewed': 0}
+    for month in sorted(set(MonthClose.objects.filter(property=prop).values_list('month', flat=True))):
+        books = books_for(prop, month)
+        closed = sum(1 for b in books if is_closed(b, month))
+        if closed < len(books):
+            raise CloseError(f'{month:%B %Y} is closed for {closed} of its {len(books)} sets of books. Finish closing it (or set aside the unit that has no accounts) before changing how the books are kept.')
+    with transaction.atomic():
+        closed_months_set = set(MonthClose.objects.filter(property=prop).values_list('month', flat=True))
+        stale = LedgerLine.objects.filter(property=prop, locked_at__isnull=True).exclude(month__in=closed_months_set)
+        stale = stale.filter(unit__isnull=True) if level == Property.FinancialsLevel.UNIT else stale.filter(unit__isnull=False)
+        reviewed = stale.filter(reviewed=True).count()
+        discarded = stale.count()
+        ReconAcceptance.objects.filter(property=prop).exclude(month__in=closed_months_set).delete()
+        stale.delete()
+        prop.financials_level = level
+        prop.ledger_synced_at = None
+        prop.save(update_fields=['financials_level', 'ledger_synced_at'])
+        Unit.objects.filter(property=prop).update(ledger_synced_at=None)
+    return {'discarded': discarded, 'reviewed': reviewed}
+
+
 # --- coding ----------------------------------------------------------------------------------------------
 
-def month_lines(prop, month, include_removed=False):
-    qs = LedgerLine.objects.filter(property=prop, month=month_of(month))
+def month_lines(book, month, include_removed=False):
+    qs = LedgerLine.objects.filter(month=month_of(month), **_book(book).scope())
     if not include_removed:
         qs = qs.filter(status=LedgerLine.Status.ACTIVE)
     return qs.order_by('role', 'txn_date', 'txn_type', 'txn_id')
 
 
-def _guard_open(prop, month):
-    if is_closed(prop, month):
-        raise CloseError(f'{month_of(month):%B %Y} is closed for {prop.name}. It can no longer be changed; put a correction in the current month.')
+def _guard_open(book, month):
+    if is_closed(book, month):
+        raise CloseError(f'{month_of(month):%B %Y} is closed for {_book(book).name}. It can no longer be changed; put a correction in the current month.')
 
 
 @transaction.atomic
-def code_lines(prop, month, user, assignments):
+def code_lines(book, month, user, assignments):
     """Apply {line id: category} chosen on the coding screen. A line whose category
     changes becomes "coded by a person"; every line included is marked reviewed.
     Returns how many changed category."""
-    _guard_open(prop, month)
-    lines = {l.pk: l for l in month_lines(prop, month)}
+    _guard_open(book, month)
+    lines = {l.pk: l for l in month_lines(book, month)}
     changed, now = 0, timezone.now()
     for pk, category in assignments.items():
         line = lines.get(pk)
@@ -366,26 +573,31 @@ def code_lines(prop, month, user, assignments):
 
 
 @transaction.atomic
-def accept_all(prop, month, user):
+def accept_all(book, month, user):
     """Marks every line of the month reviewed as it stands (defaults included).
     Returns how many were newly reviewed."""
-    _guard_open(prop, month)
-    return month_lines(prop, month).filter(reviewed=False).update(reviewed=True, coded_by=user, coded_at=timezone.now())
+    _guard_open(book, month)
+    return month_lines(book, month).filter(reviewed=False).update(reviewed=True, coded_by=user, coded_at=timezone.now())
 
 
 @transaction.atomic
-def acknowledge_changes(prop, month):
+def acknowledge_changes(book, month):
     """The team has looked at what QuickBooks changed."""
-    _guard_open(prop, month)
-    return month_lines(prop, month).filter(changed_in_qb=True).update(changed_in_qb=False)
+    _guard_open(book, month)
+    return month_lines(book, month).filter(changed_in_qb=True).update(changed_in_qb=False)
 
 
 # --- the month's figures and checks ----------------------------------------------------------------------
 
-def totals(prop, month, lines=None):
-    """The month in dollars, from the lines as currently coded (positive numbers)."""
-    lines = list(month_lines(prop, month)) if lines is None else lines
-    total = {k: ZERO for k in ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 'reimbursement_expense', 'expenses_reimbursable', 'expenses_direct', 'trust_net')}
+TOTAL_KEYS = ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 'reimbursement_expense', 'expenses_reimbursable', 'expenses_direct', 'trust_net')
+
+
+def totals(book, month, lines=None):
+    """The month in dollars, from the lines as currently coded (positive numbers).
+    `deposits` is income: only trust-account money in that is coded as a booking
+    payout — a refund coded as an expense reduces expenses instead."""
+    lines = list(month_lines(book, month)) if lines is None else lines
+    total = {k: ZERO for k in TOTAL_KEYS}
     for l in lines:
         if l.role == Role.EXPENSE:
             if l.category == Category.REIMBURSEMENT:
@@ -408,10 +620,21 @@ def totals(prop, month, lines=None):
     return total
 
 
-def checks(prop, month, now=None):
-    """What stands between this rental-month and being closed. Each item is
+def sum_totals(parts):
+    """The property's figures: its units' added up."""
+    out = {k: ZERO for k in TOTAL_KEYS + ('expenses_total',)}
+    for part in parts:
+        for k in out:
+            out[k] += part.get(k, ZERO)
+    return out
+
+
+def checks(book, month, now=None, rec=None):
+    """What stands between this set of books' month and being closed. Each item is
     {'key', 'level': 'ok'|'warn'|'block', 'text'}: a 'block' has to be fixed, a
     'warn' can be acknowledged (it is recorded with the close)."""
+    from . import recon
+    book = _book(book)
     now = now or timezone.now()
     month = month_of(month)
     items = []
@@ -419,19 +642,19 @@ def checks(prop, month, now=None):
     def add(key, level, text):
         items.append({'key': key, 'level': level, 'text': text})
 
-    if is_closed(prop, month):
+    if is_closed(book, month):
         add('closed', 'block', f'{month:%B %Y} is already closed.')
         return items
-    if prop.qb_expense_account_id is None or prop.qb_trust_account_id is None:
-        add('accounts', 'block', 'This rental is not tied to both QuickBooks accounts yet.')
+    if not book.mapped:
+        add('accounts', 'block', f'{"This unit" if book.unit else "This rental"} is not tied to both QuickBooks accounts yet.')
     if timezone.localdate() < next_month(month):
         add('month_over', 'block', f'{month:%B %Y} is not over yet.')
-    synced = prop.ledger_synced_at
+    synced = book.ledger_synced_at
     if synced is None:
         add('sync', 'block', 'Its transactions have never been pulled in from QuickBooks — sync first.')
     elif now - synced > STALE_AFTER:
         add('sync', 'block', f'The last sync was {timezone.localtime(synced):%b} {timezone.localtime(synced).day}; sync again so you close what QuickBooks shows now.')
-    lines = list(month_lines(prop, month))
+    lines = list(month_lines(book, month))
     if not lines:
         add('empty', 'warn', 'No transactions in either account this month.')
     unreviewed = sum(1 for l in lines if not l.reviewed)
@@ -441,14 +664,43 @@ def checks(prop, month, now=None):
     if changed:
         add('changed', 'block', f'{changed} line{"" if changed == 1 else "s"} changed in QuickBooks since coded — take a look and confirm.')
     if lines:
-        t = totals(prop, month, lines)
+        t = totals(book, month, lines)
         if t['reimbursement_trust'] != t['reimbursement_expense']:
             add('reimbursement_mismatch', 'warn', f'The reimbursement out of the trust account (${t["reimbursement_trust"]:,.2f}) does not equal the reimbursement credited to the expense account (${t["reimbursement_expense"]:,.2f}).')
         if t['owner_payment'] == 0 and t['deposits'] > 0:
             add('no_owner_payment', 'warn', 'No owner payment is coded this month although there were deposits.')
         if t['expenses_reimbursable'] > 0 and t['reimbursement_trust'] == 0:
             add('no_reimbursement', 'warn', 'There are reimbursable expenses but no reimbursement is coded from the trust account.')
+    if book.mapped:
+        add_recon_checks(rec if rec is not None else recon.reconcile(book, month), add)
     return items
+
+
+def add_recon_checks(rec, add):
+    """The income reconciliation's part of the checklist."""
+    from . import recon
+    if rec is None:
+        return
+    open_deposits, open_payouts = recon.problems(rec)
+    if open_deposits:
+        total = sum((i['amount'] for i in open_deposits), ZERO)
+        add('recon_deposits', 'block', f'{len(open_deposits)} income deposit{"" if len(open_deposits) == 1 else "s"} (${total:,.2f}) in the trust account {"has" if len(open_deposits) == 1 else "have"} no matching platform payout — re-code {"it" if len(open_deposits) == 1 else "them"} (a refund is an expense), fix QuickBooks, or accept as a reconciling item with a note.')
+    if open_payouts:
+        total = sum((i['amount'] for i in open_payouts), ZERO)
+        add('recon_payouts', 'block', f'{len(open_payouts)} platform payout{"" if len(open_payouts) == 1 else "s"} (${total:,.2f}) {"has" if len(open_payouts) == 1 else "have"} not reached the trust account — find the deposit in QuickBooks, or accept as a reconciling item with a note.')
+    if rec['unassigned']:
+        add('recon_unassigned', 'block', f'{rec["unassigned"]} platform payout{"" if rec["unassigned"] == 1 else "s"} belong to no unit yet — assign each reservation to its unit so the money can be reconciled.')
+    if rec['undated']:
+        add('recon_undated', 'warn', f'{rec["undated"]} reservation{"" if rec["undated"] == 1 else "s"} have a payout amount (${rec["undated_total"]:,.2f}) but no payout date, so {"it" if rec["undated"] == 1 else "they"} can\'t be matched to a deposit.')
+    transit = [i for i in rec['items'] if i['in_transit'] and not i['accepted'] and i['kind'] == 'payout']
+    if transit:
+        total = sum((i['amount'] for i in transit), ZERO)
+        add('recon_transit', 'ok', f'${total:,.2f} of payouts dated at month end are still on their way to the bank; they will clear next month.')
+    accepted = [i for i in rec['items'] if i['accepted']]
+    if accepted:
+        add('recon_accepted', 'ok', f'{len(accepted)} reconciling item{"" if len(accepted) == 1 else "s"} accepted.')
+    if not open_deposits and not open_payouts and not rec['unassigned']:
+        add('recon_ok', 'ok', f'Income reconciles: ${rec["deposits_total"]:,.2f} of income deposits against platform payouts{"" if rec["pairs"] or rec["deposits_total"] else " (none this month)"}.')
 
 
 def can_close(items):
@@ -456,11 +708,13 @@ def can_close(items):
 
 
 @transaction.atomic
-def close_month(prop, month, user, acknowledged=(), note=''):
-    """Closes and locks a rental's month. Refused while anything blocks it, or a
+def close_month(book, month, user, acknowledged=(), note=''):
+    """Closes and locks a set of books' month. Refused while anything blocks it, or a
     warning hasn't been acknowledged."""
+    from . import recon
+    book = _book(book)
     month = month_of(month)
-    items = checks(prop, month)
+    items = checks(book, month)
     blocks = [i for i in items if i['level'] == 'block']
     if blocks:
         raise CloseError(blocks[0]['text'])
@@ -468,14 +722,15 @@ def close_month(prop, month, user, acknowledged=(), note=''):
     missing = [k for k in warns if k not in set(acknowledged)]
     if missing:
         raise CloseError('Acknowledge each warning before closing: ' + ', '.join(missing))
-    lines = list(month_lines(prop, month))
-    t = totals(prop, month, lines)
+    lines = list(month_lines(book, month))
+    t = totals(book, month, lines)
     snapshot = {k: str(v) for k, v in t.items()}
     snapshot['lines'] = len(lines)
     close = MonthClose.objects.create(
-        property=prop, month=month, closed_by=user, totals=snapshot, warnings_acknowledged=warns, note=note.strip()[:500],
+        property=book.property, unit=book.unit, level=book.level, month=month, closed_by=user, totals=snapshot,
+        recon=recon.snapshot(recon.reconcile(book, month)), warnings_acknowledged=warns, note=note.strip()[:500],
     )
-    LedgerLine.objects.filter(property=prop, month=month).update(locked_at=timezone.now())
+    LedgerLine.objects.filter(month=month, **book.scope()).update(locked_at=timezone.now())
     return close
 
 
@@ -484,23 +739,77 @@ def closed_summary(close):
     return {k: (Decimal(v) if k != 'lines' else int(v)) for k, v in close.totals.items()}
 
 
-def status_row(prop, month, now=None):
-    """Everything the close overview shows for one rental-month."""
+def status_row(book, month, now=None):
+    """Everything the close overview shows for one set of books' month."""
+    from . import recon
+    book = _book(book)
     month = month_of(month)
-    close = MonthClose.objects.filter(property=prop, month=month).first()
-    lines = list(month_lines(prop, month))
-    items = checks(prop, month, now) if close is None else []
-    drift = ClosedMonthChange.objects.filter(property=prop, month=month, resolved=False).count()
+    close = MonthClose.objects.filter(month=month, **book.scope()).first()
+    lines = list(month_lines(book, month))
+    live = recon.reconcile(book, month) if (close is None and book.mapped) else None
+    items = checks(book, month, now, rec=live) if close is None else []
+    drift = ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()).count()
     if close:
         state = 'closed'
-    elif prop.qb_expense_account_id is None or prop.qb_trust_account_id is None:
+    elif not book.mapped:
         state = 'needs_accounts'
     elif can_close(items):
         state = 'ready'
     else:
         state = 'open'
+    if close:
+        rec = recon.from_close(close)
+        recon_ok = True
+    elif book.mapped:
+        rec = live
+        recon_ok = recon.is_clean(rec)
+    else:
+        rec, recon_ok = None, None
     return {
-        'property': prop, 'state': state, 'close': close, 'lines': len(lines), 'unreviewed': sum(1 for l in lines if not l.reviewed),
-        'changed': sum(1 for l in lines if l.changed_in_qb), 'checks': items, 'drift': drift,
-        'totals': closed_summary(close) if close else (totals(prop, month, lines) if lines else None),
+        'property': book.property, 'book': book, 'unit': book.unit, 'label': book.label, 'state': state, 'close': close, 'lines': len(lines),
+        'unreviewed': sum(1 for l in lines if not l.reviewed), 'changed': sum(1 for l in lines if l.changed_in_qb), 'checks': items, 'drift': drift,
+        'totals': closed_summary(close) if close else (totals(book, month, lines) if lines else None),
+        'recon': rec, 'recon_ok': recon_ok,
+    }
+
+
+def overview(month, now=None):
+    """The close overview: for each rental, its set of books for the month (one row, or
+    one per unit) and — for a unit-level property — the consolidated figures, which are
+    just its units added up."""
+    month = month_of(month)
+    groups = []
+    for prop in rentals():
+        level = month_level(prop, month)
+        rows = [status_row(b, month, now) for b in books_for(prop, month)]
+        group = {'property': prop, 'level': level, 'rows': rows, 'consolidated': None}
+        if level == Property.FinancialsLevel.UNIT:
+            group['consolidated'] = consolidate(rows)
+            group['state'] = group['consolidated']['state']
+        elif rows:
+            group['state'] = rows[0]['state']
+        groups.append(group)
+    return groups
+
+
+def consolidate(rows):
+    """A unit-level property's month from its units' rows."""
+    states = [r['state'] for r in rows]
+    if not rows:
+        state = 'needs_accounts'
+    elif all(s == 'closed' for s in states):
+        state = 'closed'
+    elif any(s == 'needs_accounts' for s in states):
+        state = 'needs_accounts'
+    elif all(s in ('ready', 'closed') for s in states):
+        state = 'ready'
+    else:
+        state = 'open'
+    parts = [r['totals'] for r in rows if r['totals']]
+    return {
+        'state': state, 'totals': sum_totals(parts) if parts else None, 'closed_units': states.count('closed'), 'units': len(rows),
+        'lines': sum(r['lines'] for r in rows), 'unreviewed': sum(r['unreviewed'] for r in rows), 'changed': sum(r['changed'] for r in rows),
+        'drift': sum(r['drift'] for r in rows), 'recon_ok': all(r['recon_ok'] for r in rows if r['recon_ok'] is not None) if rows else None,
+        'payouts_matched': sum((r['recon']['payouts_matched'] for r in rows if r['recon']), ZERO),
+        'deposits_total': sum((r['recon']['deposits_total'] for r in rows if r['recon']), ZERO),
     }
