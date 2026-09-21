@@ -121,12 +121,21 @@ def _est_minutes(visit, default_minutes):
     return minutes or default_minutes
 
 
-def _cleaning_state(visit):
+def _cleaning_state(visit, day=None, today=None):
+    """`day` is the board's day: a cleaning scheduled for a LATER date (someone moved it) is not part of that day's
+    work, whatever the checkout says — it reads as the cleaning being on that other date."""
     if visit is None:
         return {'code': 'none', 'label': 'No cleaning scheduled', 'tone': CRITICAL, 'visit': None}
     items = list(visit.checklist_items.all())
     done, total = sum(1 for i in items if i.is_completed), len(items)
     base = {'visit': visit, 'done': done, 'total': total}
+    if (day is not None and visit.scheduled_date and visit.scheduled_date > day and not visit.started_at
+            and visit.status in (Visit.Status.SCHEDULED, Visit.Status.UNASSIGNED)):
+        due = visit.scheduled_date
+        when = 'tomorrow' if today is not None and (due - today).days == 1 else f'{due:%a %b} {due.day}'
+        assigned = visit.assigned_staff_id or visit.assigned_contact_id
+        return {**base, 'code': 'later', 'scheduled_date': due, 'label': f'Cleaning {when} · {visit.assignee_label() if assigned else "unassigned"}',
+                'tone': INFO if assigned else WARNING, 'when': when}
     if visit.status == Visit.Status.VERIFIED:
         return {**base, 'code': 'verified', 'label': 'Clean, verified', 'tone': GOOD}
     if visit.status == Visit.Status.SUBMITTED:
@@ -177,7 +186,7 @@ def _ready_at(row, now, is_today, est):
         # now unless its (older) cleaning is somehow still open — not tracked
         # here, so treat as ready.
         return max(now, day_start) if is_today else day_start
-    if visit is None:
+    if visit is None or state['code'] == 'later':
         return None
     if state['code'] in ('submitted', 'verified'):
         return visit.submitted_at or now
@@ -341,7 +350,7 @@ def build_board(day=None, now=None, include_tomorrow=True):
             continue
 
         visit = _active_visit(co) if co else None
-        state = _cleaning_state(visit) if co else None
+        state = _cleaning_state(visit, day, today) if co else None
         est = _est_minutes(visit, default_minutes)
         co_at = timezone.localtime(co.check_out) if co else None
         ci_at = timezone.localtime(ci.check_in) if ci else None
@@ -369,6 +378,8 @@ def build_board(day=None, now=None, include_tomorrow=True):
         # cleanings, then arrivals into units that need no cleaning that day;
         # inside each, by when the next guest walks in.
         row['group'] = 0 if (co and ci) else (1 if co else 2)
+        if co and not ci and state['code'] == 'later':
+            row['group'] = 3   # the guest has left, but the cleaning is not today's work
         following = next_in.get((slot['property'].pk, slot['unit'].pk if slot['unit'] else None))
         row['next_checkin_at'] = eff_in if ci else (timezone.localtime(following) if following else None)
         row['next_checkin_days'] = (row['next_checkin_at'].date() - day).days if row['next_checkin_at'] else None
@@ -392,6 +403,9 @@ def build_board(day=None, now=None, include_tomorrow=True):
         # Cleaning-side items (only for a real checkout).
         if co and state['code'] not in ('submitted', 'verified'):
             urgent_side = bool(ci)
+            if state['code'] == 'later' and ci:
+                add_item(CRITICAL, 'Cleaning is after the next guest arrives',
+                         f'{label}: the cleaning is scheduled for {state["when"]}, but a guest arrives {_fmt(eff_in)}.', row)
             if state['code'] == 'none':
                 add_item(CRITICAL if urgent_side else WARNING, 'No cleaning scheduled',
                          f'{label} checks out {_fmt(eff_out)}{" and a guest arrives " + _fmt(eff_in) if ci else ""} — nothing is scheduled to clean it.', row)
@@ -413,7 +427,7 @@ def build_board(day=None, now=None, include_tomorrow=True):
                              f'{_fmt(projected)}, after the {_fmt(eff_in)} check-in.', row)
 
         # A turnover that is too tight regardless of anything being late.
-        if co and ci and state['code'] not in ('submitted', 'verified'):
+        if co and ci and state['code'] not in ('submitted', 'verified', 'later'):
             gap = _minutes(eff_in - eff_out)
             row['gap_minutes'] = gap
             if gap < est:
@@ -454,13 +468,14 @@ def build_board(day=None, now=None, include_tomorrow=True):
     items.sort(key=lambda i: (i['rank'], i['row']['sort_at'] or day_end, i['row']['label']))
 
     outs = [r for r in rows if r['checkout']]
+    todays_cleanings = [r for r in outs if r['cleaning']['code'] != 'later']   # one moved to another day is not this day's
     board = {
         'day': day, 'is_today': is_today, 'now': local_now, 'rows': rows, 'in_house': in_house, 'vacant': vacant, 'items': items,
         'counts': {
             'checkouts': len(outs),
             'checkins': sum(1 for r in rows if r['checkin']),
             'cleanings_done': sum(1 for r in outs if r['cleaning']['code'] in ('submitted', 'verified')),
-            'cleanings_total': len(outs),
+            'cleanings_total': len(todays_cleanings),
             'attention': sum(1 for i in items if i['tone'] in (CRITICAL, WARNING)),
             'pending_requests': sum(1 for i in items if i['request'] is not None),
         },

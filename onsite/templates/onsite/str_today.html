@@ -74,7 +74,7 @@
 
 <h6 class="text-uppercase small fw-bold mb-2" style="letter-spacing: 0.06em; color: var(--ink-muted);">By unit</h6>
 {% for row in board.rows %}
-{% ifchanged row.group %}<div class="small fw-semibold mb-1 {% if not forloop.first %}mt-3{% endif %}" style="color: var(--ink-secondary);">{% if row.group == 0 %}Same-day turnovers — by when the next guest arrives{% elif row.group == 1 %}Other cleanings — by when the next guest arrives{% else %}Arrivals only, no cleaning needed — by arrival time{% endif %}</div>{% endifchanged %}
+{% ifchanged row.group %}<div class="small fw-semibold mb-1 {% if not forloop.first %}mt-3{% endif %}" style="color: var(--ink-secondary);">{% if row.group == 0 %}Same-day turnovers — by when the next guest arrives{% elif row.group == 1 %}Other cleanings — by when the next guest arrives{% elif row.group == 3 %}Checked out, cleaning on another day{% else %}Arrivals only, no cleaning needed — by arrival time{% endif %}</div>{% endifchanged %}
 <div class="card mb-2" id="row-{{ row.key }}" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body py-3">
         <div class="d-flex flex-wrap gap-3 align-items-start">
