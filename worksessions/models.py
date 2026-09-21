@@ -63,6 +63,18 @@ class SessionTemplate(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
 
+    # Where the work is done — shown on the rule and on every session it opens.
+    # A hint, never the password itself.
+    link_url = models.URLField(
+        max_length=500, blank=True,
+        help_text='A web address for the task (a bank, a utility, a portal) — opens in a new tab from the session.',
+    )
+    login_username = models.CharField(max_length=200, blank=True, help_text='The username or email to sign in with.')
+    password_hint = models.CharField(
+        max_length=300, blank=True,
+        help_text='A reminder of the password, not the password itself — e.g. "the usual one, with the year at the end".',
+    )
+
     owner = models.ForeignKey(
         StaffProfile, on_delete=models.PROTECT, related_name='session_templates',
         help_text='The person this rule\'s sessions belong to — snapshotted onto Session.owner at '

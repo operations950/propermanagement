@@ -33,7 +33,7 @@ class SessionTemplateForm(forms.ModelForm):
     class Meta:
         model = SessionTemplate
         fields = [
-            'name', 'description', 'owner', 'department',
+            'name', 'description', 'link_url', 'login_username', 'password_hint', 'owner', 'department',
             'frequency', 'workday_of_month', 'next_open_date', 'due_offset_days',
             'active_from', 'active_until', 'is_active',
             'line_source', 'property_types', 'required_attributes', 'query_by_unit',
@@ -49,6 +49,12 @@ class SessionTemplateForm(forms.ModelForm):
                 self.instance.static_lines.values_list('label', flat=True)
             )
             self.fields['property_types'].initial = self.instance.property_types
+
+    def clean_link_url(self):
+        url = (self.cleaned_data.get('link_url') or '').strip()
+        if url and not url.lower().startswith(('http://', 'https://')):
+            raise forms.ValidationError('Use a web address that starts with http:// or https://.')
+        return url
 
     def clean(self):
         cleaned = super().clean()

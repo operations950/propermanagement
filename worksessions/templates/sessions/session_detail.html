@@ -8,6 +8,7 @@
     <div>
         <h2 class="page-title mb-0">{{ session.template.name }}</h2>
         <div style="color: var(--ink-muted);">{{ session.period_label }} &middot; opened {{ session.opens_at }}{% if session.due_at %} &middot; due {{ session.due_at }}{% endif %}</div>
+        {% include 'sessions/_where_it_is_done.html' with rule=session.template %}
     </div>
     <div class="text-end">
         <span class="badge" style="background: {% if session.status == 'submitted' %}var(--status-good){% else %}var(--brand-primary){% endif %}; color: #fff;">

@@ -9,6 +9,7 @@
         <h2 class="page-title mb-0">{{ template.name }}</h2>
         <div style="color: var(--ink-muted);">{{ template.get_frequency_display }} &middot; {{ template.get_department_display }} &middot; owned by {{ template.owner }}</div>
         {% if template.description %}<p class="mt-2 mb-0">{{ template.description }}</p>{% endif %}
+        {% include 'sessions/_where_it_is_done.html' with rule=template %}
     </div>
     <a href="{% url 'session_template_edit' template.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
 </div>

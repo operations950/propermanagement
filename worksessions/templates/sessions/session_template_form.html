@@ -26,6 +26,24 @@
             <textarea name="description" id="id_description" rows="2" class="form-control">{{ form.description.value|default:'' }}</textarea>
         </div>
 
+        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Where it's done <span class="fw-normal text-lowercase">(optional)</span></h6>
+        <div class="mb-3">
+            <label class="form-label fw-medium" for="id_link_url">Link</label>
+            <input type="url" name="link_url" id="id_link_url" maxlength="500" placeholder="https://" class="form-control {% if form.link_url.errors %}is-invalid{% endif %}" value="{{ form.link_url.value|default:'' }}">
+            {% if form.link_url.errors %}<div class="invalid-feedback d-block">{{ form.link_url.errors|join:', ' }}</div>{% endif %}
+        </div>
+        <div class="row g-3 mb-1">
+            <div class="col-md-6">
+                <label class="form-label fw-medium" for="id_login_username">Username</label>
+                <input type="text" name="login_username" id="id_login_username" maxlength="200" autocomplete="off" class="form-control" value="{{ form.login_username.value|default:'' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-medium" for="id_password_hint">Password hint</label>
+                <input type="text" name="password_hint" id="id_password_hint" maxlength="300" autocomplete="off" class="form-control" value="{{ form.password_hint.value|default:'' }}" placeholder="e.g. the usual one, with the year">
+            </div>
+        </div>
+        <div class="form-text mb-4"><strong>Don't type the password itself</strong> — only a reminder that would mean nothing to someone who doesn't already know it. Anyone who can open this rule or its sessions can read this.</div>
+
         <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Owner &amp; department</h6>
         <div class="mb-4">
             <label class="form-label fw-medium d-block">Owner</label>

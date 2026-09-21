@@ -1,0 +1,8 @@
+{# Where a recurring rule's work is done: link, username, password hint. Shown on the rule and on each session. #}
+{% if rule.link_url or rule.login_username or rule.password_hint %}
+<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
+    {% if rule.link_url %}<a href="{{ rule.link_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm"><i data-lucide="external-link" class="icon"></i> Open the site</a>{% endif %}
+    {% if rule.login_username %}<span class="text-muted">Username <strong class="user-select-all" style="color: var(--ink-primary);">{{ rule.login_username }}</strong></span>{% endif %}
+    {% if rule.password_hint %}<span class="text-muted">Password hint <em style="color: var(--ink-primary);">{{ rule.password_hint }}</em></span>{% endif %}
+</div>
+{% endif %}
