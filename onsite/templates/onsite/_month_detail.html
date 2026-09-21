@@ -1,0 +1,22 @@
+{% comment %}What is behind one month's occupancy: how much of the month is measured, which nights were open, and
+which reservations are counted for the others. m = a month row from performance._series.{% endcomment %}
+<div class="small">
+    {% if m.partial_data %}
+    <div class="alert alert-warning py-2 px-3 mb-2"><strong>Only part of this month is measured.</strong> Nothing is on record for the {{ m.uncovered }} night{{ m.uncovered|pluralize }} before {% if m.coverage_from %}{{ m.coverage_from|date:"M j" }}{% else %}the first reservation{% endif %} (this rental's record begins then: its first reservation, or the day its calendar was connected), so {{ m.uncovered|pluralize:"it is,they are" }} left out of the percentage rather than counted as open or as booked.</div>
+    {% endif %}
+    <div class="fw-semibold mb-1">Open nights</div>
+    {% for v in m.vacant %}<div class="text-muted">{% if v.label %}<strong>{{ v.label }}</strong> · {% endif %}{% for r in v.ranges %}{{ r.text }}{% if r.nights > 1 %} ({{ r.nights }} nights){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+    {% empty %}<div class="text-muted">None — every night that is measured is covered by a reservation below.</div>{% endfor %}
+    <div class="fw-semibold mt-2 mb-1">Reservations counted{% if m.partial %} so far{% endif %}</div>
+    {% for s in m.stay_rows %}
+    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap border-top py-1">
+        <span>{{ s.check_in|date:"M j" }} → {{ s.check_out|date:"M j" }} · {{ s.guest|default:"guest" }}{% if s.unit %} · {{ s.unit }}{% endif %}
+            <span class="text-muted">· {{ s.source }} · {{ s.nights_here }} of its {{ s.nights }} night{{ s.nights|pluralize }} fall{{ s.nights_here|pluralize:"s," }} in this month</span>
+            {% if s.payment_only %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);" title="Known only from a payment report; the connected calendar doesn't show it. It could be an old or changed reservation.">payment report only</span>
+            {% elif s.on_calendar %}<span class="badge text-bg-light border">on the calendar</span>{% endif %}
+        </span>
+        <a href="{% url 'onsite_reservation_edit' s.id %}" class="text-decoration-none">Open</a>
+    </div>
+    {% empty %}<div class="text-muted">No reservations fall in this month.</div>{% endfor %}
+    <p class="text-muted mt-2 mb-0">A reservation that shouldn't be here (a cancelled or replaced one) can be marked cancelled from its page; the numbers update.</p>
+</div>

@@ -290,6 +290,11 @@ class Unit(models.Model):
     # A unit's own wifi and how to get in, when they differ from the building's
     # (the property's wifi_network / wifi_password / access_notes still apply to a
     # unit that leaves these blank).
+    exclude_from_stats = models.BooleanField(
+        default=False,
+        help_text="Leave this unit out of the rental performance statistics — an owner's unit that is rarely rented, say. "
+                   'It stays on the calendars; it just isn\'t counted in occupancy, rates, revenue or gaps.',
+    )
     lockbox_code = models.CharField(max_length=50, blank=True, help_text="This unit's own lockbox code, when it has one (else the building's applies).")
     alarm_code = models.CharField(max_length=50, blank=True, help_text="This unit's own alarm code, when it has one (else the building's applies).")
     wifi_network = models.CharField(max_length=100, blank=True)

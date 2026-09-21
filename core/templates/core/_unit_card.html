@@ -10,6 +10,7 @@
             <span class="text-muted small">{% if target.bedroom_count is not None %}{{ target.bedroom_count }} bd{% endif %}{% if target.bed_count is not None %} · {{ target.bed_count }} bed{{ target.bed_count|pluralize }}{% endif %}{% if target.bathroom_count is not None %} · {{ target.bathroom_count|floatformat:"-1" }} ba{% endif %}{% if target.square_footage is not None %} · {{ target.square_footage|floatformat:"0g" }} sq ft{% endif %}</span>
             {% endif %}
             {% if c.missing_size %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">size needed</span>{% endif %}
+            {% if u and u.exclude_from_stats %}<span class="badge rounded-pill text-bg-light border" title="Left out of the rental performance statistics">not in statistics</span>{% endif %}
         </span>
         <span class="d-flex align-items-center gap-2 small">
             {% for s in c.ratings %}<span class="badge text-bg-light border" title="{{ s.link.get_platform_display }} guest rating">{{ s.link.get_platform_display }} ★ {{ s.link.rating }}{% if s.change %} <span style="color: {% if s.change > 0 %}#0b6a0b{% else %}#a02020{% endif %};">{% if s.change > 0 %}▲{% else %}▼{% endif %}{{ s.change|cut:"-" }}</span>{% endif %}</span>{% endfor %}
@@ -38,6 +39,13 @@
             <label class="form-label small text-muted mb-1">How to get in</label>
             <textarea name="access_notes" class="form-control form-control-sm mb-2" rows="2" placeholder="Which door, which side of the building, anything a guest or cleaner needs.">{{ target.access_notes }}</textarea>
             {% if u %}<label class="form-label small text-muted mb-1">Notes about this unit</label><input type="text" name="notes" class="form-control form-control-sm mb-2" value="{{ u.notes }}">{% endif %}
+            {% if u %}
+            <div class="form-check mb-2">
+                <input type="hidden" name="stats_field" value="1">
+                <input class="form-check-input" type="checkbox" name="exclude_from_stats" id="xstats-{{ u.pk }}" {% if u.exclude_from_stats %}checked{% endif %}>
+                <label class="form-check-label small" for="xstats-{{ u.pk }}"><strong>Leave this unit out of the performance statistics</strong> — an owner's unit that is rarely rented, say. It won't appear on the rental performance screens or count in the property's occupancy, rates or revenue. It stays on the calendars.</label>
+            </div>
+            {% endif %}
             {% if is_admin %}
             <div class="input-group input-group-sm mb-2" style="max-width: 280px;" title="A negotiated flat price for a standard Turnover Clean here, replacing the checklist-computed estimate. Admin only.">
                 <span class="input-group-text">Turnover $</span><input type="number" step="0.01" min="0" name="turnover_price_override" class="form-control form-control-sm" value="{{ target.turnover_price_override|default_if_none:'' }}">

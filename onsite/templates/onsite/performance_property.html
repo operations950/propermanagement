@@ -22,9 +22,7 @@
     .delta-bad { background: #fbe4e4; color: #a02020; }
     .delta-flat { background: #eceef1; color: #5b5f66; }
     .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-    .databar { position: relative; }
-    .databar::before { content: ''; position: absolute; left: 0; top: 18%; bottom: 18%; width: var(--w, 0%); background: color-mix(in srgb, #3d6178 16%, transparent); border-radius: 4px; }
-    .databar > span { position: relative; }
+    .partial-data { color: #9a6a00; font-weight: 600; }
 </style>
 <a href="{% url 'onsite_performance' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Rental performance</a>
 
@@ -148,7 +146,9 @@
         <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
             <div class="d-flex justify-content-between align-items-baseline"><span class="fw-semibold">{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}</span><span class="fs-5 fw-semibold">{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></div>
             <div class="small text-muted">{{ m.booked }} of {{ m.available }} nights · {{ m.arrivals }} stay{{ m.arrivals|pluralize }}{% if m.alos is not None %} · avg {{ m.alos|floatformat:1 }} nights{% endif %}{% if m.cancelled %} · {{ m.cancelled }} cancelled{% endif %}</div>
+            {% if m.partial_data %}<div class="small partial-data">Part of this month only — {{ m.uncovered }} night{{ m.uncovered|pluralize }} before {{ m.coverage_from|date:"M j" }} not on record</div>{% endif %}
             {% if is_admin %}<div class="small">{% if m.adr is not None %}Rate <strong>${{ m.adr|floatformat:0 }}</strong> · revenue <strong>${{ m.revenue|floatformat:"0g" }}</strong>{% else %}<span class="text-muted">no amounts</span>{% endif %}</div>{% endif %}
+            <details class="mt-1"><summary class="small" style="cursor: pointer; color: var(--brand-primary);">Which nights and reservations?</summary><div class="mt-2">{% include 'onsite/_month_detail.html' with m=m %}</div></details>
         </div>
         {% endfor %}
     </div>
@@ -157,8 +157,8 @@
         <tbody>
         {% for m in data.months reversed %}
         <tr>
-            <td class="fw-semibold">{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}</td>
-            <td class="text-end databar" {% if m.occupancy is not None %}style="--w: {{ m.occupancy|floatformat:0 }}%;"{% endif %}><span>{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></td>
+            <td class="fw-semibold">{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}<div><button type="button" class="btn btn-link btn-sm p-0 small" data-month-toggle="mo-{{ forloop.counter }}" aria-expanded="false">Which nights?</button></div></td>
+            <td class="text-end">{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% if m.partial_data %}<span class="partial-data" title="Only part of this month is measured">*</span>{% endif %}{% else %}—{% endif %}</td>
             <td class="text-end">{{ m.booked }} / {{ m.available }}</td>
             <td class="text-end">{{ m.arrivals }}</td>
             <td class="text-end">{% if m.alos is not None %}{{ m.alos|floatformat:1 }}{% else %}—{% endif %}</td>
@@ -168,9 +168,22 @@
             <td class="text-end">{% if m.revenue is not None %}${{ m.revenue|floatformat:"0g" }}{% if m.coverage is not None and m.coverage < 100 %}<div class="text-muted small">{{ m.coverage|floatformat:0 }}% of nights</div>{% endif %}{% else %}—{% endif %}</td>
             {% endif %}
         </tr>
+        <tr class="d-none" id="mo-{{ forloop.counter }}"><td colspan="8" class="bg-body-tertiary">{% include 'onsite/_month_detail.html' with m=m %}</td></tr>
         {% endfor %}
         </tbody>
-    </table></div>
+    </table>
+    <p class="small text-muted mt-2 mb-0"><span class="partial-data">*</span> Only part of that month is on record; the percentage covers just the nights that are.</p>
+    </div>
+    <script>
+        document.querySelectorAll('[data-month-toggle]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var row = document.getElementById(button.dataset.monthToggle);
+                var open = row.classList.toggle('d-none') === false;
+                button.setAttribute('aria-expanded', open ? 'true' : 'false');
+                button.textContent = open ? 'Hide the nights' : 'Which nights?';
+            });
+        });
+    </script>
     <p class="text-muted small mt-2 mb-0">The current month counts only nights that have already happened; what is still to come is under Looking ahead. Months before the first reservation on record show a dash — the app wasn't watching yet.</p>
 </div></div>
 

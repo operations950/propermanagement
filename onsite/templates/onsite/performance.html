@@ -10,9 +10,9 @@
     .kpi-card .sub { font-size: 0.75rem; color: var(--ink-muted); }
     .kpi-card .stat { display: flex; justify-content: space-between; gap: 8px; font-size: 0.82rem; padding: 3px 0; border-top: 1px solid var(--border-hairline); }
     .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-    .databar { position: relative; }
-    .databar::before { content: ''; position: absolute; left: 0; top: 18%; bottom: 18%; width: var(--w, 0%); background: color-mix(in srgb, #3d6178 16%, transparent); border-radius: 4px; }
-    .databar > span { position: relative; }
+    .pct { display: inline-block; min-width: 3.4rem; text-align: center; padding: 2px 8px; border-radius: 999px; background: #eef1f4; font-weight: 600; font-variant-numeric: tabular-nums; text-decoration: none; color: var(--ink-primary); }
+    a.pct:hover { background: #dfe6ec; color: var(--ink-primary); }
+    .pct-none { color: var(--ink-muted); font-weight: 400; background: transparent; }
     .perf-table th, .perf-table td { overflow-wrap: normal !important; }
 </style>
 <a href="{% url 'onsite_str_today' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Rentals today</a>
@@ -106,9 +106,9 @@
             <tr>
                 <td><a href="{% url 'onsite_performance_property' r.property.pk %}" class="text-decoration-none fw-semibold">{{ r.property.name }}</a>{% if r.units > 1 %} <span class="text-muted small">({{ r.units }} units)</span>{% endif %}
                     <div class="mt-1" style="max-width: 420px;">{% heatstrip r.strip_start r.strip %}</div></td>
-                <td class="text-end text-nowrap databar" {% if r.occ30 is not None %}style="--w: {{ r.occ30|floatformat:0 }}%;"{% endif %}><span>{% if r.occ30 is not None %}<a href="{% url 'onsite_performance_calendar' r.property.pk %}?days=30" title="Open the 30-day calendar">{{ r.occ30|floatformat:0 }}%</a>{% else %}—{% endif %}</span></td>
-                <td class="text-end text-nowrap databar" {% if r.occ60 is not None %}style="--w: {{ r.occ60|floatformat:0 }}%;"{% endif %}><span>{% if r.occ60 is not None %}<a href="{% url 'onsite_performance_calendar' r.property.pk %}?days=60" title="Open the 60-day calendar">{{ r.occ60|floatformat:0 }}%</a>{% else %}—{% endif %}</span></td>
-                <td class="text-end text-nowrap databar" {% if r.occ90 is not None %}style="--w: {{ r.occ90|floatformat:0 }}%;"{% endif %}><span>{% if r.occ90 is not None %}<a href="{% url 'onsite_performance_calendar' r.property.pk %}?days=90" title="Open the 90-day calendar">{{ r.occ90|floatformat:0 }}%</a>{% else %}—{% endif %}</span></td>
+                <td class="text-end text-nowrap">{% if r.occ30 is not None %}<a class="pct" href="{% url 'onsite_performance_calendar' r.property.pk %}?days=30" title="Open the 30-day calendar">{{ r.occ30|floatformat:0 }}%</a>{% else %}<span class="pct pct-none">—</span>{% endif %}</td>
+                <td class="text-end text-nowrap">{% if r.occ60 is not None %}<a class="pct" href="{% url 'onsite_performance_calendar' r.property.pk %}?days=60" title="Open the 60-day calendar">{{ r.occ60|floatformat:0 }}%</a>{% else %}<span class="pct pct-none">—</span>{% endif %}</td>
+                <td class="text-end text-nowrap">{% if r.occ90 is not None %}<a class="pct" href="{% url 'onsite_performance_calendar' r.property.pk %}?days=90" title="Open the 90-day calendar">{{ r.occ90|floatformat:0 }}%</a>{% else %}<span class="pct pct-none">—</span>{% endif %}</td>
                 <td class="text-end">{{ r.gaps90 }}{% if r.short_gaps90 %} <span style="color: #9a6a00;" class="small">({{ r.short_gaps90 }} short)</span>{% endif %}</td>
             </tr>
             {% empty %}<tr><td colspan="5" class="text-muted small">No data yet.</td></tr>{% endfor %}

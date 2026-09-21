@@ -58,7 +58,9 @@ class _Unit:
         self.active_ops, self.calendar = [], []
         self.bars = []      # (booking, the nights of it that count) — what the calendar draws
         self.booked = set()
+        self.non_operational = set()     # ids of stays only a payment report knows about (see coverage.py)
         self.data_start = None
+        self.feed_since = None       # the day its calendar was connected: from then on the calendar says what was open
         self.connected = False
 
     def add(self, booking, operational=True, today=None):
@@ -67,6 +69,8 @@ class _Unit:
         past, but it says nothing about the future (the calendar does), so its
         nights from `today` on are not counted as booked."""
         self.all.append(booking)
+        if not operational:
+            self.non_operational.add(booking.pk)
         start = _local_date(booking.check_in)
         if self.data_start is None or start < self.data_start:
             self.data_start = start
@@ -88,12 +92,22 @@ class _Unit:
         return bool(self.all) or self.connected
 
 
-def _collect_units(props, today=None):
+def _collect_units(props, today=None, for_stats=False):
     """{(property_id, unit_id): _Unit} for the given properties, loaded with
-    every booking on record, plus how many bookings pointed at no known unit."""
+    every booking on record, plus how many bookings pointed at no known unit.
+    With for_stats, a unit marked "leave out of the statistics" is left out
+    entirely (its reservations are not "unattributed" either); the calendars
+    don't ask for this and still show it."""
     units = {}
+    left_out = set()
     for prop in props:
         active_units = [u for u in prop.units.all() if u.is_active]
+        if for_stats:
+            skipped = [u for u in active_units if u.exclude_from_stats]
+            left_out |= {u.pk for u in skipped}
+            active_units = [u for u in active_units if not u.exclude_from_stats]
+            if skipped and not active_units:
+                continue                         # every unit of this building is left out
         for unit in (active_units or [None]):
             units[(prop.pk, unit.pk if unit else None)] = _Unit(prop, unit)
 
@@ -101,14 +115,25 @@ def _collect_units(props, today=None):
         holder = units.get((feed.property_id, feed.unit_id))
         if holder:
             holder.connected = True
+            since = timezone.localtime(feed.created_at).date()
+            if holder.feed_since is None or since < holder.feed_since:
+                holder.feed_since = since
     unattributed = 0
     covered = coverage.covered_keys()
     for booking in Booking.objects.filter(property_id__in=[p.pk for p in props]).select_related('property', 'unit'):
+        if booking.unit_id in left_out:
+            continue
         holder = units.get((booking.property_id, booking.unit_id))
         if holder is None:
             unattributed += 1
             continue
         holder.add(booking, coverage.is_operational(booking, covered), today)
+    # A unit's record begins with its first reservation — or earlier, the day its calendar was connected:
+    # a connected calendar that shows nothing for a night is telling us the night was open, so those nights
+    # count as open instead of being left out (which would make a month look fully booked).
+    for holder in units.values():
+        if holder.feed_since is not None and (holder.data_start is None or holder.feed_since < holder.data_start):
+            holder.data_start = holder.feed_since
     return units, unattributed
 
 
@@ -133,7 +158,7 @@ def build_performance(today=None, property_id=None):
     props = list(eligible_properties())
     if property_id:
         props = [p for p in props if p.pk == property_id]
-    units, unattributed = _collect_units(props, today)
+    units, unattributed = _collect_units(props, today, for_stats=True)
 
     counted = [u for u in units.values() if u.counted]
     excluded = sorted(u.label for u in units.values() if not u.counted)
@@ -254,6 +279,26 @@ def _next_month(day):
     return date(day.year + (day.month == 12), day.month % 12 + 1, 1)
 
 
+def _ranges(days):
+    """Sorted dates -> [{'text': 'Aug 18–19', 'nights': 2}, ...] (runs of consecutive nights)."""
+    out, run = [], []
+    for d in days:
+        if run and (d - run[-1]).days == 1:
+            run.append(d)
+        else:
+            if run:
+                out.append(run)
+            run = [d]
+    if run:
+        out.append(run)
+    rendered = []
+    for r in out:
+        first, last = r[0], r[-1]
+        text = f'{first:%b} {first.day}' if first == last else (f'{first:%b} {first.day}–{last.day}' if first.month == last.month else f'{first:%b} {first.day} – {last:%b} {last.day}')
+        rendered.append({'text': text, 'nights': len(r)})
+    return rendered
+
+
 def _series(units, month_starts, today):
     """Per-month figures for the given units (a whole property, or one unit),
     plus a trailing total. Only nights BEFORE today are measured, so the
@@ -271,13 +316,23 @@ def _series(units, month_starts, today):
             'start': start, 'label': f'{start:%b}', 'full': f'{start:%B %Y}', 'partial': _next_month(start) > today,
             'available': 0, 'booked': 0, 'by_source': {s: 0 for s in Booking.Source.values},
             'rev': 0.0, 'rev_nights': 0, 'arrivals': 0, 'stays': [], 'cancelled': 0, 'payouts': 0.0, 'payout_count': 0,
+            'stay_rows': [], 'vacant': [], 'uncovered': 0, 'coverage_from': None,
         }
         rows.append(row)
         for u in units:
             first = max(start, u.data_start) if u.data_start else None
             if first is not None and first < end:
                 row['available'] += (end - first).days
+            # Nights of this month before the unit's first reservation on record are not counted at all
+            # (nothing says whether they were open), so a month can be measured on part of its nights.
+            if (end - start).days > 0:
+                covered_days = (end - first).days if (first is not None and first < end) else 0
+                if covered_days < (end - start).days:
+                    row['uncovered'] += (end - start).days - covered_days
+                    if u.data_start and start < u.data_start < end and (row['coverage_from'] is None or u.data_start < row['coverage_from']):
+                        row['coverage_from'] = u.data_start
             claimed = set()      # a night can be sold once; overlapping reservations must not count it twice
+            claimed_by = {}      # booking id -> how many of this month's nights it claimed
             for b in sorted(u.all, key=lambda b: b.check_in):
                 cin = _local_date(b.check_in)
                 if start <= cin < end:
@@ -296,11 +351,26 @@ def _series(units, month_starts, today):
                 for night in nights:
                     if start <= night < end and night not in claimed:
                         claimed.add(night)
+                        claimed_by[b.pk] = claimed_by.get(b.pk, 0) + 1
                         row['booked'] += 1
                         row['by_source'][b.source] = row['by_source'].get(b.source, 0) + 1
                         if rate is not None:
                             row['rev'] += rate
                             row['rev_nights'] += 1
+                if claimed_by.get(b.pk):
+                    row['stay_rows'].append({
+                        'id': b.pk, 'guest': b.guest_name, 'check_in': cin, 'check_out': _local_date(b.check_out), 'nights_here': claimed_by[b.pk],
+                        'nights': len(nights), 'source': b.get_source_display(), 'on_calendar': b.on_calendar, 'payment_only': b.pk in u.non_operational,
+                        'unit': u.unit.label if u.unit else '',
+                    })
+            if first is not None and first < end:
+                open_days, day = [], first
+                while day < end:
+                    if day not in claimed:
+                        open_days.append(day)
+                    day += timedelta(days=1)
+                if open_days:
+                    row['vacant'].append({'label': u.unit.label if u.unit else '', 'ranges': _ranges(open_days), 'count': len(open_days)})
     for row in rows:
         occ = _pct(row['booked'], row['available'])
         row['occupancy'] = occ
@@ -311,6 +381,7 @@ def _series(units, month_starts, today):
         row['cancel_rate'] = _pct(row['cancelled'], seen)
         row['revenue'] = row['rev'] if row['rev_nights'] else None
         row['coverage'] = _pct(row['rev_nights'], row['booked'])
+        row['partial_data'] = row['uncovered'] > 0 and row['available'] > 0
     total = {
         'available': sum(r['available'] for r in rows), 'booked': sum(r['booked'] for r in rows),
         'rev': sum(r['rev'] for r in rows), 'rev_nights': sum(r['rev_nights'] for r in rows),
@@ -338,7 +409,7 @@ def build_property_performance(prop, unit_id=None, today=None, months=12):
     gaps from today, what is booked next). Money is always computed here; the
     view decides who may see it."""
     today = today or timezone.localdate()
-    units, _ = _collect_units([prop], today)
+    units, _ = _collect_units([prop], today, for_stats=True)
     counted = [u for u in units.values() if u.counted]
     if unit_id:
         counted = [u for u in counted if (u.unit.pk if u.unit else None) == unit_id]

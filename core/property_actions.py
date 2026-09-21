@@ -53,6 +53,9 @@ def run(request, prop, action, is_admin):
             if name in post:
                 setattr(target, name, post[name].strip())
                 fields.append(name)
+        if unit is not None and 'stats_field' in post:      # the checkbox is only on this form, so absent means unticked
+            unit.exclude_from_stats = post.get('exclude_from_stats') == 'on'
+            fields.append('exclude_from_stats')
         if unit is not None and 'notes' in post:
             unit.notes = post['notes'].strip()
             fields.append('notes')
