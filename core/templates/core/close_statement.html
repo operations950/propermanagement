@@ -48,10 +48,9 @@
     </tr></thead>
     <tbody>
         <tr><td>Income deposits</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.deposits|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.deposits|money }}</td></tr>
+        <tr><td>− Commission <span class="text-muted">(a percent of income deposits)</span></td>{% for c in st.columns %}<td>{% if c.t %}<span title="{{ c.t.commission_rate|floatformat:'-2' }}% of income deposits">{{ c.t.commission_due|money }}</span>{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
         <tr><td>− Reimbursable expenses</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.expenses_reimbursable|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
         <tr><td>− Paid from trust</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.expenses_direct|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>
-        <tr class="sum"><td>= Net income</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.net_income|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.net_income|money }}</td></tr>
-        <tr><td>− Commission <span class="text-muted">(a percent of net income)</span></td>{% for c in st.columns %}<td>{% if c.t %}<span title="{{ c.t.commission_rate|floatformat:'-2' }}% of net income">{{ c.t.commission_due|money }}</span>{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
         <tr class="sum"><td>= Owner payment</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.owner_due|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.owner_due|money }}</td></tr>
 
         <tr class="section"><td colspan="{{ st.columns|length|add:2 }}">Accounts payable at month end — paid out early next month</td></tr>

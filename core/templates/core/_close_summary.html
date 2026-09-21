@@ -5,58 +5,37 @@
     A month closed before the calculation existed (no totals.calc) keeps the layout it was closed in.
 {% endcomment %}
 {% if totals.calc %}
-<div class="table-responsive mb-1"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
-    <caption class="small fw-semibold text-start p-0 pb-1" style="caption-side: top; color: var(--ink-secondary);">{{ month|date:"F Y" }}: what the month comes to</caption>
-    <thead><tr><th>Income deposits</th><th>− Reimbursable expenses</th><th>− Paid from trust</th><th>= Net income</th><th>− Commission ({{ totals.commission_rate|floatformat:"-2" }}%)</th><th>= Owner payment</th></tr></thead>
+<style>
+    .cl-calc { table-layout: fixed; width: 100%; }
+    .cl-calc th, .cl-calc td { width: 20%; }
+    .cl-settle { table-layout: fixed; width: 100%; max-width: 620px; }
+    .cl-settle th:first-child, .cl-settle td:first-child { width: 28%; text-align: left; }
+    .cl-settle tr.diff td { border-top: 2px solid var(--border-hairline, #ccd); }
+</style>
+<div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum cl-calc">
+    <thead><tr><th>Income deposits</th><th>− Commission ({{ totals.commission_rate|floatformat:"-2" }}%)</th><th>− Reimbursable expenses</th><th>− Paid from trust</th><th>= Owner payment</th></tr></thead>
     <tbody><tr>
-        <td>{{ totals.deposits|money }}</td><td>{{ totals.expenses_reimbursable|money }}</td><td>{{ totals.expenses_direct|money }}</td>
-        <td>{{ totals.net_income|money }}</td><td>{{ totals.commission_due|money }}</td><td>{{ totals.owner_due|money }}</td>
+        <td>{{ totals.deposits|money }}</td><td>{{ totals.commission_due|money }}</td><td>{{ totals.expenses_reimbursable|money }}</td><td>{{ totals.expenses_direct|money }}</td><td>{{ totals.owner_due|money }}</td>
     </tr></tbody>
 </table></div>
-<p class="text-muted mb-2" style="font-size: 0.72rem;">Reimbursable expenses are what we paid out of the expense account for the owner; paid from trust comes straight out of the trust account. Our commission is {{ totals.commission_rate|floatformat:"-2" }}% of net income, and what is left is the owner payment. Reimbursable expenses, commission and the owner payment for {{ month|date:"F" }} are paid early next month; what leaves the trust account this month settles {{ totals.prior_month|date:"F" }}.</p>
 
-<div class="row g-2 mb-2">
-    <div class="col-lg-7">
-        <div class="table-responsive"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
-            <caption class="small fw-semibold text-start p-0 pb-1" style="caption-side: top; color: var(--ink-secondary);">Paid out of the trust account this month, for {{ totals.prior_month|date:"F" }}</caption>
-            <thead><tr><th class="text-start">What</th><th>Paid this month</th><th>Owed from {{ totals.prior_month|date:"F" }}</th><th>Difference</th></tr></thead>
-            <tbody>
-                <tr>
-                    <td class="text-start">Reimbursement to us <span class="fw-normal text-muted">(reimbursable expenses)</span></td>
-                    <td>{{ totals.reimbursement_trust|money }}</td>
-                    {% if totals.prior_status == 'ok' %}<td>{{ totals.prior_reimbursable|money }}</td>
-                    <td>{% if totals.reimbursement_diff == 0 %}<span style="color: var(--status-good);">matches</span>{% else %}<span style="color: #9a6a00;">{{ totals.reimbursement_diff|money }}</span>{% endif %}</td>
-                    {% else %}<td colspan="2" class="fw-normal text-muted small">{% include 'core/_close_prior_note.html' %}</td>{% endif %}
-                </tr>
-                <tr>
-                    <td class="text-start">Commission</td>
-                    <td>{{ totals.commission|money }}</td>
-                    {% if totals.prior_status == 'ok' %}<td>{{ totals.prior_commission|money }}</td>
-                    <td>{% if totals.commission_diff == 0 %}<span style="color: var(--status-good);">matches</span>{% else %}<span style="color: #9a6a00;">{{ totals.commission_diff|money }}</span>{% endif %}</td>
-                    {% else %}<td colspan="2" class="fw-normal text-muted small">{% include 'core/_close_prior_note.html' %}</td>{% endif %}
-                </tr>
-                <tr>
-                    <td class="text-start">Owner payment</td>
-                    <td>{{ totals.owner_payment|money }}</td>
-                    {% if totals.prior_status == 'ok' and totals.prior_owner is not None %}<td>{{ totals.prior_owner|money }}</td>
-                    <td>{% if totals.owner_diff == 0 %}<span style="color: var(--status-good);">matches</span>{% else %}<span style="color: #9a6a00;">{{ totals.owner_diff|money }}</span>{% endif %}</td>
-                    {% elif totals.prior_status == 'ok' %}<td colspan="2" class="fw-normal text-muted small">{{ totals.prior_month|date:"F" }} was closed before the owner payment was calculated.</td>
-                    {% else %}<td colspan="2" class="fw-normal text-muted small">{% include 'core/_close_prior_note.html' %}</td>{% endif %}
-                </tr>
-            </tbody>
-        </table></div>
-        {% if totals.prior_status == 'ok' and not totals.prior_closed %}<p class="text-muted mb-0 mt-1" style="font-size: 0.72rem;">{{ totals.prior_month|date:"F" }} isn't closed, so what was owed from it is as coded now.</p>{% endif %}
-    </div>
-    <div class="col-lg-5">
-        <div class="table-responsive"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
-            <caption class="small fw-semibold text-start p-0 pb-1" style="caption-side: top; color: var(--ink-secondary);">Trust account this month</caption>
-            <thead><tr><th>In</th><th>Paid from trust</th><th>To us</th><th>To owner</th><th>= Change</th></tr></thead>
-            <tbody><tr>
-                <td>{{ totals.deposits|money }}</td><td>{{ totals.expenses_direct|money }}</td><td>{{ totals.taken_to_us|money }}</td><td>{{ totals.owner_payment|money }}</td><td>{{ totals.trust_net|money }}</td>
-            </tr></tbody>
-        </table></div>
-        <p class="text-muted mb-0 mt-1" style="font-size: 0.72rem;">The net movement of the trust account: money in, less money out. "To us" is the reimbursement plus commission. To pay out early next month: <strong>{{ totals.owner_payable|money }}</strong> to the owner and <strong>{{ totals.us_payable|money }}</strong> to us{% if totals.owner_carry != 0 or totals.us_carry != 0 %} (including {{ totals.owner_carry|money }} and {{ totals.us_carry|money }} of {{ totals.prior_month|date:"F" }}'s still unpaid){% endif %}.</p>
-    </div>
+<div class="mb-2">
+    <table class="table table-sm table-bordered text-center mb-0 cl-sum cl-settle">
+        <thead><tr><th></th><th>Reimbursement</th><th>Commission</th><th>Owner payment</th></tr></thead>
+        <tbody>
+            {% if totals.prior_status == 'ok' %}
+            <tr><td>Owed from {{ totals.prior_month|date:"F" }}</td><td>{{ totals.prior_reimbursable|money }}</td><td>{{ totals.prior_commission|money }}</td><td>{% if totals.prior_owner is not None %}{{ totals.prior_owner|money }}{% else %}–{% endif %}</td></tr>
+            {% endif %}
+            <tr><td>Paid in {{ month|date:"F" }}</td><td>{{ totals.reimbursement_trust|money }}</td><td>{{ totals.commission|money }}</td><td>{{ totals.owner_payment|money }}</td></tr>
+            {% if totals.prior_status == 'ok' %}
+            <tr class="diff"><td>Difference</td>
+                <td>{% if totals.reimbursement_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.reimbursement_diff|money }}</span>{% endif %}</td>
+                <td>{% if totals.commission_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.commission_diff|money }}</span>{% endif %}</td>
+                <td>{% if totals.owner_diff is None %}–{% elif totals.owner_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.owner_diff|money }}</span>{% endif %}</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+    <div class="text-muted mt-1" style="font-size: 0.72rem;">{% if totals.prior_status == 'ok' %}What is paid out in {{ month|date:"F" }} settles {{ totals.prior_month|date:"F" }}; the difference should be zero.{% if not totals.prior_closed %} {{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.{% endif %}{% else %}{% include 'core/_close_prior_note.html' %}{% endif %}</div>
 </div>
 {% else %}
 <div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum">

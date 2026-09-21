@@ -129,7 +129,7 @@ class Property(models.Model):
 
     commission_rate = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('10.00'), validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
-        help_text="Our commission, as a percent of the month's net income (income deposits less reimbursable expenses and expenses paid from trust). Only an administrator can change it.",
+        help_text="Our commission, as a percent of the month's income deposits (the top line: we are paid whether or not the month is profitable). Only an administrator can change it.",
     )
 
     class FinancialsLevel(models.TextChoices):

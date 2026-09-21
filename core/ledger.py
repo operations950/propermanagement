@@ -313,6 +313,58 @@ def suggest(prop, role, flow, split, payee, memo):
     return Category.EXPENSE, LedgerLine.Source.DEFAULT
 
 
+def guess_settlements(book, month):
+    """Which lines are the money that settles LAST month, from what last month's books say is owed.
+
+    What was owed at the end of last month is known to the cent (prior_settlement): the reimbursement to us
+    is that month's reimbursable expenses, the commission and the owner payment are theirs. So a money-out
+    line of the trust account for exactly one of those amounts is almost surely that payment. And in the
+    expense account, credits are usually only the reimbursement: the credit that equals what was owed, or
+    else the biggest one when a trust-account line of the very same amount went out. A line a person has
+    chosen (or reviewed) is left alone; a guess is a suggestion and still has to be looked at. Returns how
+    many lines were changed."""
+    book, month = _book(book), month_of(month)
+    if is_closed(book, month):
+        return 0
+    lines = list(month_lines(book, month))
+    if not lines:
+        return 0
+    open_ = lambda l: not l.reviewed and l.category_source != LedgerLine.Source.USER and l.locked_at is None
+    changed = []
+
+    def mark(line, category):
+        if line.category != category or line.category_source != LedgerLine.Source.SUGGESTED:
+            line.category, line.category_source = category, LedgerLine.Source.SUGGESTED
+            line.save(update_fields=['category', 'category_source'])
+            changed.append(line.pk)
+
+    trust_out = [l for l in lines if l.role == Role.TRUST and l.flow < 0]
+    credits = [l for l in lines if l.role == Role.EXPENSE and l.flow < 0]
+    claimed = set()
+    owed = prior_settlement(book, month)
+    if owed['prior_status'] == 'ok':
+        for category, amount in ((Category.REIMBURSEMENT, owed['prior_reimbursable']), (Category.COMMISSION, owed['prior_commission']), (Category.OWNER_PAYMENT, owed['prior_owner'])):
+            if not amount or amount <= 0:
+                continue
+            hits = [l for l in trust_out if l.pk not in claimed and open_(l) and -l.flow == amount]
+            if len(hits) == 1:
+                mark(hits[0], category)
+                claimed.add(hits[0].pk)
+            if category == Category.REIMBURSEMENT:
+                same = [l for l in credits if open_(l) and -l.flow == amount]
+                if len(same) == 1:
+                    mark(same[0], Category.REIMBURSEMENT)
+    if credits:
+        biggest = min(credits, key=lambda l: l.flow)
+        twins = [l for l in trust_out if l.flow == biggest.flow and l.pk not in claimed]
+        if len(twins) == 1 and (twins[0].category == Category.REIMBURSEMENT or open_(twins[0])):
+            if open_(biggest):
+                mark(biggest, Category.REIMBURSEMENT)
+            if open_(twins[0]):
+                mark(twins[0], Category.REIMBURSEMENT)
+    return len(changed)
+
+
 # --- the sync ---------------------------------------------------------------------------------------
 
 def _describe(old, new):
@@ -453,6 +505,8 @@ def sync_book(token, book, start=None, end=None, now=None):
     with transaction.atomic():
         for role, (account, grouped) in fetched.items():
             summary[role] = _apply(book, role, account, grouped, start, end, closed, now, level_of)
+        for month in sorted(set(LedgerLine.objects.filter(status=LedgerLine.Status.ACTIVE, locked_at__isnull=True, **book.scope()).values_list('month', flat=True)) - closed):
+            guess_settlements(book, month)      # oldest first: a month's guesses rest on what the month before it came to
         book.stamp(now)
     return summary
 
@@ -590,7 +644,7 @@ def acknowledge_changes(book, month):
 # --- the month's figures and checks ----------------------------------------------------------------------
 
 TOTAL_KEYS = ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 'reimbursement_expense', 'expenses_reimbursable', 'expenses_direct', 'trust_net',
-              'net_income', 'commission_due', 'owner_due')
+              'commission_due', 'owner_due')
 CENT = Decimal('0.01')
 
 
@@ -599,9 +653,10 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
     `deposits` is income: only trust-account money in that is coded as a booking
     payout — a refund coded as an expense reduces expenses instead.
 
-    THE MONTH'S CALCULATION: income deposits, less the reimbursable expenses (paid by us, out
-    of the expense account) and the expenses paid from trust, is the net income; our commission
-    is the property's commission rate of that; what is left is the owner payment (`owner_due`).
+    THE MONTH'S CALCULATION: our commission is the property's commission rate of the income
+    deposits (the top line: we are paid for our work whether or not the month is profitable);
+    the income deposits less that commission, less the reimbursable expenses (paid by us, out of
+    the expense account) and the expenses paid from trust, is the owner payment (`owner_due`).
     The reimbursement to us and the commission actually taken out of the trust account this
     month (`reimbursement_trust`, `commission`) do NOT enter this month's calculation: they settle
     LAST month's, so they are compared with last month's figures (`prior_*`, see
@@ -629,9 +684,8 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
     total['expenses_total'] = total['expenses_reimbursable'] + total['expenses_direct']
     prop = _book(book).property
     rate = Decimal(prop.commission_rate if prop.commission_rate is not None else Decimal('10.00'))
-    net = total['deposits'] - total['expenses_total']
-    due = (max(net, ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
-    total.update(net_income=net, commission_rate=rate, commission_due=due, owner_due=net - due, calc=True)
+    due = (max(total['deposits'], ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+    total.update(commission_rate=rate, commission_due=due, owner_due=total['deposits'] - due - total['expenses_total'], calc=True)
     if with_prior:
         total.update(prior_settlement(book, month, memo))
     derive(total)
@@ -721,13 +775,13 @@ def sum_totals(parts):
     return derive(out)
 
 
-STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'net_income', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us')
+STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us')
 
 
 def statement(prop, end=None, months=12):
     """A property's months side by side, one column each (12 by default, none before the books start): the
-    calculation down the page (income deposits less reimbursable expenses and expenses paid from trust = net
-    income; commission; the owner payment), what is paid out early next month (the accounts payable to the
+    calculation down the page (income deposits less commission, reimbursable expenses and expenses paid from
+    trust = the owner payment), what is paid out early next month (the accounts payable to the
     owner and to us), what was paid out this month for last month, and two checks: that last month's payables
     were cleared, and that all of the income is accounted for. A closed month is as closed; an open one as it
     is coded now. For a property kept unit by unit each column is its units added up.
