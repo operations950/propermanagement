@@ -1111,6 +1111,7 @@ class ReconAcceptance(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     description = models.CharField(max_length=300, blank=True)
     note = models.CharField(max_length=300)
+    prior_period = models.BooleanField(default=False, help_text='A deposit that pays out something from before the books start (the first month could not have had it carried forward).')
     accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     accepted_at = models.DateTimeField(auto_now_add=True)
 

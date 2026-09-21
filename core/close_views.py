@@ -177,8 +177,9 @@ def close_property(request, month, pk, unit_pk=None):
                 ClosedMonthChange.objects.filter(month=month, pk=request.POST.get('change_id'), **book.scope()).update(resolved=True)
                 messages.success(request, 'Marked as dealt with.')
             elif action == 'accept_recon':
-                recon.accept_item(book, month, request.user, request.POST.get('kind', ''), request.POST.get('key', ''), request.POST.get('note', ''))
-                messages.success(request, 'Accepted as a reconciling item.')
+                prior = request.POST.get('prior') == '1'
+                recon.accept_item(book, month, request.user, request.POST.get('kind', ''), request.POST.get('key', ''), request.POST.get('note', ''), prior_period=prior)
+                messages.success(request, 'Marked as from before the books.' if prior else 'Accepted as a reconciling item.')
             elif action == 'unaccept_recon':
                 recon.unaccept_item(book, month, request.POST.get('kind', ''), request.POST.get('key', ''))
                 messages.success(request, 'No longer accepted — it needs a fix or a fresh acceptance.')

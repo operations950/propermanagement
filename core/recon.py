@@ -174,6 +174,9 @@ def _month_sequence(month):
 
 def _items(book, month, result):
     accepted = {(a.kind, a.key): a for a in ReconAcceptance.objects.filter(month=month, **book.scope())}
+    # In the first month of the books nothing could have been carried forward from the month before, so a deposit
+    # that pays out an earlier stay may be marked as one.
+    first_month = month == ledger.month_of(ledger.books_start())
     items = []
     for pair in result.get('mismatched', []):
         dep, diff, group = pair['line'], pair['difference'], pair['groups'][0]
@@ -192,7 +195,7 @@ def _items(book, month, result):
         who = dep.payee or dep.memo or dep.txn_type
         a = accepted.get(('deposit', f'line:{dep.pk}'))
         items.append({
-            'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False,
+            'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False, 'prior_ok': first_month,
             'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${abs(dep.flow):,.2f} {"deposited" if dep.flow > 0 else "taken out"} ({who}) with no matching platform payout',
             'accepted': a if a and a.amount == dep.flow else None,
         })
@@ -270,6 +273,7 @@ def reconcile(book, month):
     return {
         'closed': False, 'month': month, 'pairs': result['pairs'], 'items': items, 'cleared_out': result['cleared_out'],
         'payouts_matched': matched_payouts, 'deposits_total': sum((d.flow for d in deposits), ZERO),
+        'prior_total': sum((i['amount'] for i in items if i['accepted'] and i['accepted'].prior_period), ZERO),
         'undated': len(undated), 'undated_total': sum((b.payout_amount for b in undated), ZERO), 'unassigned': unassigned,
         'reservations': _reservations_view(book, month, scope),
     }
@@ -297,21 +301,26 @@ def is_clean(rec):
 
 # --- accepting reconciling items ----------------------------------------------------------------
 
-def accept_item(book, month, user, kind, key, note):
-    """A person accepts one open item as a reconciling item, with the reason."""
+def accept_item(book, month, user, kind, key, note, prior_period=False):
+    """A person accepts one open item as a reconciling item, with the reason. `prior_period` marks a deposit in the
+    first month of the books as paying out something from before the books start (a reason is then optional)."""
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         raise ledger.CloseError(f'{month:%B %Y} is closed; it can no longer be changed.')
     note = (note or '').strip()
-    if not note:
-        raise ledger.CloseError('Say why this is a reconciling item — a short note is required.')
     rec = reconcile(book, month)
     item = next((i for i in rec['items'] if i['kind'] == kind and i['key'] == key), None)
     if item is None:
         raise ledger.CloseError('That item is no longer open — the page has been refreshed.')
+    if prior_period:
+        if not item.get('prior_ok'):
+            raise ledger.CloseError(f'Only an unmatched deposit in the first month of the books ({ledger.month_of(ledger.books_start()):%B %Y}) can be marked as from before the books.')
+        note = note or f'Payout from before {month:%B %Y}, where the books start'
+    elif not note:
+        raise ledger.CloseError('Say why this is a reconciling item — a short note is required.')
     ReconAcceptance.objects.update_or_create(
         month=month, kind=kind, key=key, **book.scope(),
-        defaults={'amount': item['amount'], 'description': item['text'][:300], 'note': note[:300], 'accepted_by': user},
+        defaults={'amount': item['amount'], 'description': item['text'][:300], 'note': note[:300], 'prior_period': bool(prior_period), 'accepted_by': user},
     )
     return item
 
@@ -331,13 +340,13 @@ def snapshot(rec):
         return str(Decimal(v).quantize(Decimal('0.01')))
     res = rec['reservations']
     return {
-        'payouts_matched': money(rec['payouts_matched']), 'deposits_total': money(rec['deposits_total']),
+        'payouts_matched': money(rec['payouts_matched']), 'deposits_total': money(rec['deposits_total']), 'prior_total': money(rec['prior_total']),
         'pairs': [{
             'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].payee or p['line'].memo or p['line'].txn_type, 'difference': money(p.get('difference', 0)),
             'payouts': [{'label': g['label'], 'amount': money(g['total']), 'count': g['count']} for g in p['groups']],
         } for p in rec['pairs']],
         'accepted': [{
-            'kind': i['kind'], 'amount': money(i['amount']), 'text': i['text'], 'note': i['accepted'].note,
+            'kind': i['kind'], 'amount': money(i['amount']), 'text': i['text'], 'note': i['accepted'].note, 'prior_period': i['accepted'].prior_period,
             'by': (i['accepted'].accepted_by.get_full_name() or i['accepted'].accepted_by.username) if i['accepted'].accepted_by else '',
         } for i in rec['items'] if i['accepted']],
         'in_transit': [{'amount': money(i['amount']), 'text': i['text']} for i in rec['items'] if i['in_transit'] and not i['accepted']],
@@ -357,7 +366,7 @@ def from_close(close):
         return None
     res = data.get('reservations', {})
     return {
-        'closed': True, 'payouts_matched': Decimal(data.get('payouts_matched', '0')), 'deposits_total': Decimal(data.get('deposits_total', '0')),
+        'closed': True, 'payouts_matched': Decimal(data.get('payouts_matched', '0')), 'deposits_total': Decimal(data.get('deposits_total', '0')), 'prior_total': Decimal(data.get('prior_total', '0')),
         'pairs': data.get('pairs', []), 'accepted': data.get('accepted', []), 'in_transit': data.get('in_transit', []),
         'reservations': {k: (Decimal(v) if k in ('payout_total', 'paid_in_month', 'paid_later', 'carried_in') else v) for k, v in res.items()},
     }
