@@ -265,7 +265,7 @@
                 {% endif %}
 
                 <hr>
-                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" id="status-form">
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" id="status-form" data-scroll="top">
                     {% csrf_token %}
                     <input type="hidden" name="back_url" value="{{ back_url }}">
                     <label class="form-label small fw-medium d-block">Status</label>
@@ -669,7 +669,7 @@
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="badge-check" class="icon"></i> Approval required</h6>
                 {% if can_approve %}
                 <p class="small text-muted">This template requires sign-off from {{ ticket.created_from_template.get_approval_role_display }} before it counts as done.</p>
-                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" id="approve-form">
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" id="approve-form" data-scroll="top">
                     {% csrf_token %}
                     <input type="hidden" name="status" value="verified">
                     <button class="btn btn-warning btn-sm w-100" type="submit"><i data-lucide="badge-check" class="icon"></i> Approve</button>
@@ -1096,7 +1096,7 @@
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-check-big" class="icon"></i> Mark Complete</h6>
-                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" id="mark-complete-form">
+                <form method="post" action="{% url 'ticket_set_status' ticket.pk %}" id="mark-complete-form" data-scroll="top">
                     {% csrf_token %}
                     <input type="hidden" name="status" value="completed">
                     <button class="btn btn-outline-success w-100 py-2" type="submit"><i data-lucide="circle-check-big" class="icon"></i> Mark Complete</button>

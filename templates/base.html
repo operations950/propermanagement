@@ -363,30 +363,53 @@
     <script>lucide.createIcons();</script>
     <script>
     (function () {
-        // A form POST (save, delete, toggle, ...) redirects back to the
-        // same page and reloads it from scratch — the browser has no
-        // "you were scrolled halfway down" memory for that (unlike
-        // back/forward navigation, which restores scroll on its own).
-        // Restore it ourselves via sessionStorage, keyed per URL (path +
-        // query string) so different filtered views of the same list page
-        // don't share a position. Skipped when the URL has a #anchor —
-        // native browser jump-to-fragment (e.g. property_detail's
-        // "Go to Communication card" link) should win instead.
-        if (window.location.hash) return;
-        var key = 'scrollpos:' + window.location.pathname + window.location.search;
-        var saved = sessionStorage.getItem(key);
-        if (saved !== null) {
-            window.scrollTo(0, parseInt(saved, 10));
+        // Keep the reader where they were ONLY right after they submit a form
+        // (a tick, a save, a delete) and the server sends them back to the
+        // same page — the one moment the browser has no memory of the scroll
+        // position. Every other arrival (menu, link, a new form, opening a
+        // ticket again later) starts at the top, and the Back button keeps the
+        // browser's own restore. So: remember the position at submit time
+        // (one-shot, expires in seconds), and use it only if the very next
+        // page load is a redirect landing on that same address.
+        //
+        //   * a form (or an ancestor) marked data-scroll="top" opts out — used
+        //     where the page changes enough that the top is the right place
+        //     (closing a ticket, changing its status);
+        //   * a POST answered directly with the page (a form with errors)
+        //     isn't a redirect, so it isn't restored and shows the errors from
+        //     the top;
+        //   * a #anchor in the address wins over everything.
+        var KEY = 'scroll-after-post', MAX_AGE = 20000;
+        function here() { return window.location.pathname + window.location.search; }
+        function remember(form) {
+            try {
+                if ((form.method || 'get').toLowerCase() !== 'post') return;
+                if (form.closest && form.closest('[data-scroll="top"]')) { sessionStorage.removeItem(KEY); return; }
+                sessionStorage.setItem(KEY, JSON.stringify({ url: here(), y: Math.round(window.scrollY), at: Date.now() }));
+            } catch (e) { /* storage blocked: the page just opens at the top */ }
         }
-        var saveTimer = null;
-        window.addEventListener('scroll', function () {
-            clearTimeout(saveTimer);
-            saveTimer = setTimeout(function () {
-                sessionStorage.setItem(key, String(window.scrollY));
-            }, 150);
-        }, { passive: true });
-        window.addEventListener('beforeunload', function () {
-            sessionStorage.setItem(key, String(window.scrollY));
+        document.addEventListener('submit', function (ev) { if (!ev.defaultPrevented) remember(ev.target); });
+        var nativeSubmit = HTMLFormElement.prototype.submit;
+        HTMLFormElement.prototype.submit = function () { remember(this); return nativeSubmit.call(this); };
+
+        var saved = null;
+        try {
+            saved = JSON.parse(sessionStorage.getItem(KEY));
+            sessionStorage.removeItem(KEY);
+        } catch (e) { saved = null; }
+        if (!saved || window.location.hash || saved.url !== here() || Date.now() - saved.at > MAX_AGE || !saved.y) return;
+        var nav = window.performance && performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+        if (nav && (nav.type !== 'navigate' || nav.redirectCount === 0)) return;
+        // The site's CSS scrolls smoothly; putting the reader back must not animate.
+        function jump() { window.scrollTo({ top: saved.y, left: 0, behavior: 'instant' }); }
+        jump();
+        var moved = false;
+        ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (name) {
+            window.addEventListener(name, function () { moved = true; }, { once: true, passive: true });
+        });
+        // The page can still grow after this point (icons, late content): put it back once.
+        window.addEventListener('load', function () {
+            if (!moved && Math.abs(window.scrollY - saved.y) > 5) jump();
         });
     })();
     </script>
