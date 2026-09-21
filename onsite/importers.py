@@ -79,11 +79,16 @@ class RawBooking:
     tax_amount: Decimal | None = None
     platform_fee: Decimal | None = None
     payout_date: date | None = None
+    # Airbnb's transactions export: the same confirmation code's OTHER money lines — 'Pass Through Tot' (the
+    # occupancy tax Airbnb pays the host to remit) and 'Resolution Payout' / 'Adjustment' — which land in the
+    # same bank deposit as the reservation's own payout but are not revenue.
+    pass_through_amount: Decimal | None = None
+    other_payout_amount: Decimal | None = None
 
     def has_amounts(self):
         return any(v is not None for v in (
             self.gross_amount, self.payout_amount, self.cleaning_fee, self.other_fees,
-            self.tax_amount, self.platform_fee,
+            self.tax_amount, self.platform_fee, self.pass_through_amount, self.other_payout_amount,
         ))
 
 
@@ -219,6 +224,8 @@ _CSV_FIELD_ALIASES = {
     # Remits' is tax the host pays over themselves. Its listing is identified by
     # 'Address' + 'Unit ID' rather than a listing name (see _payout_listing_name).
     'payout_date': ['payout date'],
+    # Airbnb's transactions export has no 'payout date' column: its 'Date' is when the money was paid out.
+    'txn_date': ['date'],
     'platform_fee': ['deductions'],
     'tax_amount': ['lodging tax owner remits'],
     'address': ['address'],
@@ -315,6 +322,7 @@ def parse_csv(file_bytes):
     bookings = []
     seen_uids = set()
     by_uid = {}
+    extras = {}          # confirmation code -> {'pass': Decimal, 'other': Decimal} from the non-reservation money rows
     for row in reader:
         uid = (row.get(columns['external_uid']) or '').strip()
         if not uid:
@@ -322,6 +330,13 @@ def parse_csv(file_bytes):
         if columns['transaction_type']:
             type_value = (row.get(columns['transaction_type']) or '').strip()
             if type_value and _is_non_reservation_row(type_value):
+                # Not a reservation, but money the platform pays with it: keep it, apart from the payout.
+                lowered = type_value.lower()
+                kind = 'pass' if 'pass through' in lowered else ('other' if ('resolution' in lowered or 'adjustment' in lowered) else None)
+                amount = _money(row.get(columns['payout_amount'])) if (kind and columns['payout_amount']) else None
+                if amount is not None:
+                    bucket = extras.setdefault(uid, {})
+                    bucket[kind] = _add_money(bucket.get(kind), amount)
                 continue
         if uid in seen_uids:
             # A confirmation code that legitimately repeats within one file
@@ -374,6 +389,14 @@ def parse_csv(file_bytes):
                     payout_date = _parse_csv_date(raw_payout)
                 except BookingFileError:
                     pass  # optional, like booked_at
+        elif columns['transaction_type'] and columns['txn_date']:
+            # Airbnb's transactions export: a reservation row's 'Date' is the day it was paid out.
+            raw_paid = (row.get(columns['txn_date']) or '').strip()
+            if raw_paid:
+                try:
+                    payout_date = _parse_csv_date(raw_paid)
+                except BookingFileError:
+                    pass
 
         def cell(key):
             return _money(row.get(columns[key])) if columns[key] else None
@@ -403,6 +426,11 @@ def parse_csv(file_bytes):
 
     if not bookings:
         raise BookingFileError('No reservation rows found in this file.')
+    for raw in bookings:
+        bucket = extras.get(raw.external_uid)
+        if bucket:
+            raw.pass_through_amount = bucket.get('pass')
+            raw.other_payout_amount = bucket.get('other')
     return bookings
 
 

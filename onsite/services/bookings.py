@@ -227,6 +227,13 @@ def _save_amounts(source, raw_bookings):
             if new_value is not None and (old_value is None or new_value > old_value):
                 setattr(booking, field, new_value)
                 changed.append(field)
+        # The pass-through tax and other cash lines are sums for this code, taken as the file gives them
+        # (they can be negative, so "only ever moves up" doesn't apply).
+        for field in ('pass_through_amount', 'other_payout_amount'):
+            new_value = getattr(row, field)
+            if new_value is not None and getattr(booking, field) != new_value:
+                setattr(booking, field, new_value)
+                changed.append(field)
         if row.payout_date and booking.payout_date != row.payout_date:
             booking.payout_date = row.payout_date
             changed.append('payout_date')

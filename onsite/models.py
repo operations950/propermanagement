@@ -471,6 +471,12 @@ class Booking(models.Model):
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     platform_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     payout_date = models.DateField(null=True, blank=True)
+    # Airbnb's transactions export lists more money for a confirmation code than the 'Reservation' row: a
+    # 'Pass Through Tot' row (the occupancy tax Airbnb pays the host to remit), and sometimes a 'Resolution
+    # Payout' or 'Adjustment'. They are paid out in the SAME deposit but are not revenue, so they are kept
+    # apart from payout_amount and only added back when a bank deposit is checked (cash_amount).
+    pass_through_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Pass-through tax paid to the host with this reservation payout (not revenue).')
+    other_payout_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Resolution payouts and adjustments paid or taken with this reservation payout (not revenue).')
     payout_status = models.CharField(max_length=20, blank=True, help_text='"paid" or "scheduled", from the payout report.')
     confirmed_real = models.BooleanField(
         default=False,
@@ -509,6 +515,13 @@ class Booking(models.Model):
 
     def nights(self):
         return max((timezone.localtime(self.check_out).date() - timezone.localtime(self.check_in).date()).days, 0)
+
+    def cash_amount(self):
+        """Everything the platform actually deposits for this reservation: the payout plus any pass-through tax,
+        resolution payouts and adjustments. None until a payout is known."""
+        if self.payout_amount is None:
+            return None
+        return self.payout_amount + (self.pass_through_amount or 0) + (self.other_payout_amount or 0)
 
     def lodging_revenue(self):
         """The stay's revenue — the top line: what the platform pays out for it

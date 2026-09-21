@@ -13,7 +13,15 @@ How it works
   * an INCOME DEPOSIT is a trust-account line coded "Income deposit (booking payout)".
     A refund or anything else that isn't platform income is coded as an expense (a
     credit to expenses) instead, and is not part of this check.
-  * each deposit is matched, to the cent, to a payout (or a couple of payouts that
+  * a deposit whose memo names a reservation's confirmation code (Airbnb's deposits list
+    them: "AIRBNB PAYMENTS- ...| $1138.01| HMWZXBF5JF") is matched to that reservation by the
+    code, whatever the amounts. What the platform actually deposits for a reservation is more
+    than its payout: Airbnb also pays the host the pass-through occupancy tax (and sometimes
+    a resolution payout or an adjustment) in the same deposit. Those are kept apart from the
+    payout (they are not revenue) and added back here (Booking.cash_amount). If the deposit
+    still differs from what is on file, it is shown as a difference to look at — with the
+    likely reason — instead of "no matching payout".
+  * every other deposit is matched, to the cent, to a payout (or a couple of payouts that
     landed together) dated shortly before it. Deposits arrive a day or a few days after
     the payout date, so a payout dated at the very end of a month that arrives in the
     next is normal: it is shown as "in transit" — not a problem — and matches the
@@ -27,6 +35,7 @@ How it works
 Alongside that, the reservations view: which reservations CHECK IN during the month and
 how much of their payouts arrived within it — a five-night stay that starts on the
 31st belongs to that month even though its money lands in the next."""
+import re
 from datetime import timedelta
 from decimal import Decimal
 from itertools import combinations
@@ -63,7 +72,7 @@ def _groups(bookings):
     for b in bookings:
         key = f'{b.source}:{b.payout_date.isoformat()}'
         g = groups.setdefault(key, {'key': key, 'source': b.source, 'date': b.payout_date, 'total': ZERO, 'ids': [], 'guests': []})
-        g['total'] += b.payout_amount
+        g['total'] += b.cash_amount()
         g['ids'].append(b.pk)
         if b.guest_name and len(g['guests']) < 3:
             g['guests'].append(b.guest_name)
@@ -82,10 +91,30 @@ def _match_month(book, month, cleared, scope):
     """One month's matching. `scope` is the book's platform-payout reservations."""
     month_end = ledger.next_month(month) - timedelta(days=1)
     lower = ledger.month_of(ledger.books_start()) - LOOKBACK
-    pool = [b for b in scope if b.payout_date and lower <= b.payout_date <= month_end + EARLY and b.pk not in cleared]
-    free = _groups(pool)
     deposits = sorted(_income_deposits(book, month), key=lambda l: (l.txn_date, l.pk))
-    pairs, open_deposits = [], []
+    # First, deposits that name their reservation(s) by confirmation code.
+    by_code = [b for b in scope if b.external_uid and b.pk not in cleared]
+    code_pairs, coded_ids, plain = [], set(), []
+    for dep in deposits:
+        text = f'{dep.payee} {dep.memo}'
+        hits = [b for b in by_code if b.pk not in coded_ids and re.search(r'(?<![A-Za-z0-9])' + re.escape(b.external_uid) + r'(?![A-Za-z0-9])', text, re.IGNORECASE)]
+        if not hits:
+            plain.append(dep)
+            continue
+        expected = sum((b.cash_amount() for b in hits), ZERO).quantize(Decimal('0.01'))
+        codes = ', '.join(b.external_uid for b in hits)
+        group = {
+            'key': 'codes:' + ','.join(sorted(b.external_uid for b in hits)), 'source': hits[0].source, 'date': hits[0].payout_date or dep.txn_date,
+            'total': expected, 'ids': [b.pk for b in hits], 'guests': [b.guest_name for b in hits if b.guest_name][:3], 'count': len(hits),
+            'label': f'{_source_label(hits[0].source)} payout for {codes}',
+            'on_file': [(b.external_uid, b.payout_amount, b.pass_through_amount, b.other_payout_amount) for b in hits],
+        }
+        code_pairs.append({'line': dep, 'groups': [group], 'amount': dep.flow, 'expected': expected, 'difference': (dep.flow - expected).quantize(Decimal('0.01')), 'by_code': True})
+        coded_ids |= set(group['ids'])
+    deposits = plain
+    pool = [b for b in scope if b.payout_date and lower <= b.payout_date <= month_end + EARLY and b.pk not in cleared and b.pk not in coded_ids]
+    free = _groups(pool)
+    pairs, open_deposits = list(code_pairs), []
     for dep in deposits:
         cands = [g for g in free if g['date'] - EARLY <= dep.txn_date <= g['date'] + LATE]
         cands.sort(key=lambda g: abs((dep.txn_date - g['date']).days))
@@ -104,7 +133,8 @@ def _match_month(book, month, cleared, scope):
             open_deposits.append(dep)
     matched_ids = {i for p in pairs for g in p['groups'] for i in g['ids']}
     open_groups = [g for g in free if g['date'] <= month_end]
-    return {'pairs': pairs, 'open_deposits': open_deposits, 'open_groups': open_groups, 'cleared_out': cleared | matched_ids, 'month_end': month_end}
+    return {'pairs': pairs, 'open_deposits': open_deposits, 'open_groups': open_groups, 'cleared_out': cleared | matched_ids, 'month_end': month_end,
+            'mismatched': [p for p in code_pairs if p['difference'] != 0]}
 
 
 def _cleared_by_closes(prop, month):
@@ -131,6 +161,19 @@ def _month_sequence(month):
 def _items(book, month, result):
     accepted = {(a.kind, a.key): a for a in ReconAcceptance.objects.filter(month=month, **book.scope())}
     items = []
+    for pair in result.get('mismatched', []):
+        dep, diff, group = pair['line'], pair['difference'], pair['groups'][0]
+        who = dep.payee or dep.memo or dep.txn_type
+        hint = ''
+        if diff > 0 and not any((pt or 0) for _c, _p, pt, _o in group['on_file']):
+            hint = " Airbnb's transactions file lists a separate 'Pass Through Tot' line (tax it pays the host) for each stay: upload the latest transactions file and it is included."
+        a = accepted.get(('deposit', f'line:{dep.pk}'))
+        items.append({
+            'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False, 'mismatch': True,
+            'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${dep.flow:,.2f} deposited ({who}) names {group["label"].split(" for ")[-1]}, but is ${abs(diff):,.2f} {"more" if diff > 0 else "less"} '
+                    f'than the ${pair["expected"]:,.2f} on file for {"it" if group["count"] == 1 else "them"}.{hint}',
+            'accepted': a if a and a.amount == dep.flow else None,
+        })
     for dep in result['open_deposits']:
         who = dep.payee or dep.memo or dep.txn_type
         a = accepted.get(('deposit', f'line:{dep.pk}'))
@@ -199,8 +242,8 @@ def reconcile(book, month):
     items = _items(book, month, result)
     deposits = _income_deposits(book, month)
     month_end = result['month_end']
-    matched_payouts = sum((p['amount'] for p in result['pairs']), ZERO)
-    undated = [b for b in _undated(book) if month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
+    matched_payouts = sum((p.get('expected', p['amount']) for p in result['pairs']), ZERO)
+    undated = [b for b in _undated(book) if b.pk not in result['cleared_out'] and month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
     unassigned = 0
     if book.unit is not None:
         from onsite.models import Booking
@@ -275,7 +318,7 @@ def snapshot(rec):
     return {
         'payouts_matched': money(rec['payouts_matched']), 'deposits_total': money(rec['deposits_total']),
         'pairs': [{
-            'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].payee or p['line'].memo or p['line'].txn_type,
+            'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].payee or p['line'].memo or p['line'].txn_type, 'difference': money(p.get('difference', 0)),
             'payouts': [{'label': g['label'], 'amount': money(g['total']), 'count': g['count']} for g in p['groups']],
         } for p in rec['pairs']],
         'accepted': [{
