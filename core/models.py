@@ -203,6 +203,10 @@ class PropertySystemLocation(models.Model):
     varies per property, unlike the fixed access-code fields on Property
     itself."""
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='system_locations')
+    unit = models.ForeignKey(
+        'Unit', on_delete=models.CASCADE, null=True, blank=True, related_name='system_locations',
+        help_text="Set when this is inside one unit (its own shutoff or panel); blank for something that serves the whole building.",
+    )
     system_name = models.CharField(max_length=120, help_text='e.g. "Water shutoff", "Electrical panel", "Sprinkler timer"')
     location = models.CharField(max_length=300)
     notes = models.TextField(blank=True)
@@ -286,6 +290,8 @@ class Unit(models.Model):
     # A unit's own wifi and how to get in, when they differ from the building's
     # (the property's wifi_network / wifi_password / access_notes still apply to a
     # unit that leaves these blank).
+    lockbox_code = models.CharField(max_length=50, blank=True, help_text="This unit's own lockbox code, when it has one (else the building's applies).")
+    alarm_code = models.CharField(max_length=50, blank=True, help_text="This unit's own alarm code, when it has one (else the building's applies).")
     wifi_network = models.CharField(max_length=100, blank=True)
     wifi_password = models.CharField(max_length=100, blank=True)
     access_notes = models.TextField(blank=True, help_text="How to get into this unit (which door, which side of the building) — private, like the property's access notes.")
@@ -1135,3 +1141,90 @@ class ClosedMonthChange(models.Model):
             models.UniqueConstraint(fields=['property', 'role', 'txn_type', 'txn_id', 'kind'], condition=models.Q(unit__isnull=True), name='uniq_closed_month_change'),
             models.UniqueConstraint(fields=['unit', 'role', 'txn_type', 'txn_id', 'kind'], condition=models.Q(unit__isnull=False), name='uniq_closed_month_change_unit'),
         ]
+
+
+
+class TrashSchedule(models.Model):
+    """A property's trash and recycling pickup days — one schedule per property. Setting a new
+    one replaces the old (see core/trash.py); the individual pickups are its TrashRules."""
+    property = models.OneToOneField(Property, on_delete=models.CASCADE, related_name='trash_schedule')
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    def __str__(self):
+        return f'Trash schedule — {self.property}'
+
+
+class TrashRule(models.Model):
+    """One kind of pickup and the weekdays it happens (0 = Monday ... 6 = Sunday)."""
+    class Kind(models.TextChoices):
+        TRASH = 'trash', 'Regular trash'
+        BULK = 'bulk', 'Bulk pickup'
+        RECYCLING = 'recycling', 'Recycling'
+        CUSTOM = 'custom', 'Custom'
+
+    schedule = models.ForeignKey(TrashSchedule, on_delete=models.CASCADE, related_name='rules')
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    label = models.CharField(max_length=60, blank=True, help_text='The name of a custom pickup (vegetation, yard waste, ...); blank for the standard kinds.')
+    days = models.JSONField(default=list, help_text='Weekday numbers, 0 = Monday ... 6 = Sunday.')
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(fields=['schedule', 'kind'], condition=~models.Q(kind='custom'), name='uniq_trash_rule_kind'),
+        ]
+
+    @property
+    def name(self):
+        return self.label if self.kind == self.Kind.CUSTOM and self.label else self.get_kind_display()
+
+    def __str__(self):
+        return f'{self.name}: {self.days}'
+
+
+class ListingLink(models.Model):
+    """The Airbnb or VRBO page of one unit (or of a single-unit property), and its guest rating,
+    read from the page about once a month (see core/listings.py) — or typed in by hand when the
+    platform won't let a program read it."""
+    class Platform(models.TextChoices):
+        AIRBNB = 'airbnb', 'Airbnb'
+        VRBO = 'vrbo', 'VRBO'
+
+    class Source(models.TextChoices):
+        AUTO = 'auto', 'Read from the listing'
+        MANUAL = 'manual', 'Entered by hand'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='listing_links')
+    unit = models.ForeignKey(Unit, on_delete=models.CASCADE, null=True, blank=True, related_name='listing_links')
+    platform = models.CharField(max_length=10, choices=Platform.choices)
+    url = models.URLField(max_length=500)
+    rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    review_count = models.PositiveIntegerField(null=True, blank=True)
+    rating_source = models.CharField(max_length=10, choices=Source.choices, blank=True)
+    rating_checked_at = models.DateTimeField(null=True, blank=True, help_text='When the rating was last successfully read or entered.')
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    check_error = models.CharField(max_length=200, blank=True, help_text='Why the last automatic read did not work, if it did not.')
+    failures = models.PositiveSmallIntegerField(default=0, help_text='Automatic reads in a row that did not work.')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['platform']
+        constraints = [
+            models.UniqueConstraint(fields=['property', 'platform'], condition=models.Q(unit__isnull=True), name='uniq_listing_link'),
+            models.UniqueConstraint(fields=['unit', 'platform'], condition=models.Q(unit__isnull=False), name='uniq_listing_link_unit'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_platform_display()} — {self.unit or self.property}'
+
+
+class ListingRating(models.Model):
+    """One reading of a listing's rating, kept so the trend is visible."""
+    link = models.ForeignKey(ListingLink, on_delete=models.CASCADE, related_name='history')
+    rating = models.DecimalField(max_digits=3, decimal_places=2)
+    review_count = models.PositiveIntegerField(null=True, blank=True)
+    source = models.CharField(max_length=10, choices=ListingLink.Source.choices, default=ListingLink.Source.AUTO)
+    checked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-checked_at']

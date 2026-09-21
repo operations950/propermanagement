@@ -67,6 +67,19 @@ unit the guest is in before answering anything that differs between units (appli
 layout, beds, the unit's own door, its wifi), then ask again with `unit_id`. A bad or
 foreign `unit_id` is a `422`.
 
+What else the profile holds that matters at unit level:
+
+* `trash` — the property's trash and recycling schedule: `{"set": true, "summary": "Mon, Wed and
+  Fri: regular trash + vegetation; Tue and Thu: bulk pickup + recycling", "pickups": [{"name":
+  "Regular trash", "days": ["Monday", "Wednesday", "Friday"]}, ...]}`. `"set": false` means none is
+  recorded: say so, don't guess. (One schedule per property; it is the same for every unit.)
+* `access` (when the key may read it): in a unit-scoped profile, `codes` are that unit's own door,
+  lockbox, alarm and wifi password when it has them, else the building's; without `unit_id`,
+  `unit_access` lists each unit's own door / lockbox / alarm codes.
+* `system_locations` (shutoffs, panels): the building's, plus — with `unit_id` — that unit's own,
+  each marked with its `unit` (or `null` for the building).
+* `listing_links` — each unit's Airbnb / VRBO page with its guest `rating` and `review_count`.
+
 The profile never invents anything: a fact nobody recorded is `null`, and
 `facts_missing` lists them. **When something is missing or restricted, say so
 (or hand off to a person); do not guess.**

@@ -1,0 +1,123 @@
+{# Trash & recycling pickup: one schedule per property. Context: trash (core.trash.schedule_for), trash_days [(0,'Mon'),...]. #}
+<div class="card mb-3" id="trash" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="trash-2" class="icon"></i> Trash &amp; recycling pickup</h6>
+        {% if trash.set %}<span class="text-muted small">updated {{ trash.updated_at|date:"M j, Y" }}</span>{% else %}<span class="badge rounded-pill text-bg-light border">no schedule yet</span>{% endif %}
+    </div>
+    <p class="text-muted small mb-3">One schedule for the whole property. It is what the message assistant tells guests, and what the team checks when the bins go out.</p>
+
+    {% if trash.set %}
+    {% for r in trash.rules %}
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 border-top">
+        <span class="fw-medium">{{ r.name }}</span>
+        <span class="d-flex gap-1" aria-label="{{ r.name }}: {{ r.day_text }}">
+            {% for n, abbr in trash_days %}<span class="badge rounded-pill {% if n in r.days %}text-bg-primary{% else %}text-bg-light border text-muted{% endif %}" style="min-width: 2.6rem; {% if n in r.days %}background: var(--role-admin) !important;{% endif %}">{{ abbr }}</span>{% endfor %}
+        </span>
+    </div>
+    {% endfor %}
+    <p class="small text-muted mt-2 mb-2">{{ trash.summary }}.</p>
+
+    <details class="mb-2" id="trash-edit">
+        <summary class="small fw-semibold" style="cursor: pointer;">Edit the days</summary>
+        <form method="post" class="mt-2">
+            {% csrf_token %}<input type="hidden" name="action" value="trash_edit">
+            {% for r in trash.rules %}
+            <div class="mb-3">
+                {% if r.kind == 'custom' %}<input type="text" name="label_{{ r.id }}" class="form-control form-control-sm mb-1" style="max-width: 260px;" maxlength="60" value="{{ r.name }}" aria-label="Name of this pickup">
+                {% else %}<div class="small fw-semibold mb-1">{{ r.name }}</div>{% endif %}
+                <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="rule_{{ r.id }}" data-initial-values="{{ r.days|join:',' }}">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="Pick the days"></div>
+                    <div class="bubble-pool" data-bubble-pool>{% for n, abbr in trash_days %}<button type="button" class="bubble" data-value="{{ n }}" data-label="{{ abbr }}">{{ abbr }}</button>{% endfor %}</div>
+                </div>
+            </div>
+            {% endfor %}
+            <p class="small text-muted">Clear all the days of a pickup to remove it. To change which kinds of pickup there are, make a new schedule below.</p>
+            <button class="btn btn-primary btn-sm">Save changes</button>
+        </form>
+    </details>
+    {% endif %}
+
+    <div class="{% if trash.set %}border-top pt-3{% endif %} mt-2">
+        <div class="bubble-picker" data-bubble-picker id="trash-start">
+            <input type="hidden" data-bubble-input>
+            <div class="bubble-slot" data-bubble-slot data-empty-text=""></div>
+            <div class="bubble-pool" data-bubble-pool><button type="button" class="bubble" data-value="new" data-label="New Trash Schedule"><i data-lucide="plus" class="icon"></i> New Trash Schedule</button></div>
+        </div>
+    </div>
+
+    <form method="post" id="trash-wizard" class="mt-3" hidden>
+        {% csrf_token %}<input type="hidden" name="action" value="trash_new">{% if trash.set %}<input type="hidden" name="had_schedule" value="1">{% endif %}
+        {% if trash.set %}<div class="alert alert-warning small py-2"><i data-lucide="triangle-alert" class="icon"></i> <strong>This deletes the current schedule</strong> ({{ trash.summary }}) <strong>and creates a new one.</strong> If you only need to change days, use "Edit the days" above instead.</div>{% endif %}
+
+        <div class="small fw-semibold mb-1">1. Which pickups are there?</div>
+        <div class="bubble-picker mb-3" data-bubble-picker data-mode="multi" data-name="categories" id="trash-categories">
+            <div class="bubble-slot" data-bubble-slot data-empty-text="Choose the pickups that apply"></div>
+            <div class="bubble-pool" data-bubble-pool>
+                <button type="button" class="bubble" data-value="trash" data-label="Regular trash">Regular trash</button>
+                <button type="button" class="bubble" data-value="bulk" data-label="Bulk pickup">Bulk pickup</button>
+                <button type="button" class="bubble" data-value="recycling" data-label="Recycling">Recycling</button>
+                <button type="button" class="bubble" data-no-autolock id="trash-add-custom"><i data-lucide="plus" class="icon"></i> Custom pickup</button>
+            </div>
+        </div>
+
+        <div class="small fw-semibold mb-1">2. Which days for each?</div>
+        {% for kind, name in trash_kinds %}
+        <div class="mb-3" data-days-for="{{ kind }}" hidden>
+            <div class="small mb-1">{{ name }} is picked up on</div>
+            <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="days_{{ kind }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Pick the days"></div>
+                <div class="bubble-pool" data-bubble-pool>{% for n, abbr in trash_days %}<button type="button" class="bubble" data-value="{{ n }}" data-label="{{ abbr }}">{{ abbr }}</button>{% endfor %}</div>
+            </div>
+        </div>
+        {% endfor %}
+        {% for i in trash_max_custom %}
+        <div class="mb-3 border rounded p-2" data-custom-row="{{ i }}" hidden>
+            <div class="d-flex gap-2 align-items-center mb-1">
+                <input type="hidden" name="custom_on_{{ i }}" value="1" disabled>
+                <input type="text" name="custom_name_{{ i }}" class="form-control form-control-sm" style="max-width: 260px;" maxlength="60" placeholder="Name, e.g. Vegetation, Yard waste" disabled>
+                <button type="button" class="btn btn-link btn-sm text-danger p-0" data-remove-custom aria-label="Remove this custom pickup"><i data-lucide="x" class="icon"></i></button>
+            </div>
+            <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="custom_days_{{ i }}">
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Pick the days"></div>
+                <div class="bubble-pool" data-bubble-pool>{% for n, abbr in trash_days %}<button type="button" class="bubble" data-value="{{ n }}" data-label="{{ abbr }}">{{ abbr }}</button>{% endfor %}</div>
+            </div>
+        </div>
+        {% endfor %}
+        <button class="btn btn-primary btn-sm" id="trash-save">Save the {% if trash.set %}new {% endif %}schedule</button>
+    </form>
+</div></div>
+<script>
+(function () {
+    var start = document.getElementById('trash-start'), wizard = document.getElementById('trash-wizard'), cats = document.getElementById('trash-categories');
+    if (!start || !wizard || !cats) { return; }
+    start.addEventListener('bubble:lock', function () { wizard.hidden = false; });
+    start.addEventListener('bubble:unlock', function () { wizard.hidden = true; });
+    function syncDays() {
+        var chosen = Array.prototype.map.call(cats.querySelectorAll('[data-bubble-slot] .bubble-locked'), function (b) { return b.dataset.value; });
+        wizard.querySelectorAll('[data-days-for]').forEach(function (section) { section.hidden = chosen.indexOf(section.dataset.daysFor) === -1; });
+    }
+    cats.addEventListener('bubble:lock', syncDays);
+    cats.addEventListener('bubble:unlock', syncDays);
+    var rows = Array.prototype.slice.call(wizard.querySelectorAll('[data-custom-row]'));
+    function setRow(row, on) {
+        row.hidden = !on;
+        row.querySelectorAll('input[name^="custom_on_"], input[name^="custom_name_"]').forEach(function (input) { input.disabled = !on; if (!on && input.type === 'text') { input.value = ''; } });
+        if (!on) {
+            var picker = row.querySelector('[data-bubble-picker]');
+            if (picker && picker._bubbleApi) {
+                Array.prototype.slice.call(picker.querySelectorAll('[data-bubble-slot] .bubble-locked')).forEach(function (b) { picker._bubbleApi.unlock(b, 0); });
+            }
+        }
+    }
+    document.getElementById('trash-add-custom').addEventListener('click', function () {
+        var free = rows.filter(function (r) { return r.hidden; })[0];
+        if (free) { setRow(free, true); var name = free.querySelector('input[type=text]'); if (name) { name.focus(); } }
+    });
+    rows.forEach(function (row) { row.querySelector('[data-remove-custom]').addEventListener('click', function () { setRow(row, false); }); });
+    wizard.addEventListener('submit', function (event) {
+        {% if trash.set %}if (!confirm('This deletes the current trash schedule and creates the new one. Continue?')) { event.preventDefault(); }{% endif %}
+    });
+    // arriving from a link or a redirect to #trash-edit opens the editor
+    if (window.location.hash === '#trash') { var edit = document.getElementById('trash-edit'); if (edit && !edit.open) { /* stay closed: the summary is what matters */ } }
+})();
+</script>

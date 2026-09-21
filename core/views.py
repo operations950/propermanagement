@@ -24,7 +24,7 @@ from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
-from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, nudges, places, property_specs, qb_accounts, quickbooks, usps
+from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, listings as listings_service, nudges, places, property_actions, property_specs, qb_accounts, quickbooks, trash as trash_service, usps
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
@@ -37,7 +37,7 @@ from .forms import (
 from .models import (
     BotAccessKey, Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
     GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, PropertyDocument,
-    PropertyFAQ, PropertyListingName, PropertySystemLocation, QuickBooksAccount, QuickBooksToken, StaffProfile, TRADE_CHOICES, Unit,
+    ListingLink, PropertyFAQ, PropertyListingName, PropertySystemLocation, QuickBooksAccount, QuickBooksToken, StaffProfile, TRADE_CHOICES, Unit,
     creatable_contact_types, group_contacts_by_type, is_valid_phone, properties_by_type,
 )
 
@@ -1089,6 +1089,43 @@ def _property_faq_action(request, prop, action):
         messages.error(request, str(e))
 
 
+def _card_links(mine):
+    """The Airbnb / VRBO summaries of one place, sorted into: read (has a rating), not read yet, and all."""
+    both = [mine.get(ListingLink.Platform.AIRBNB), mine.get(ListingLink.Platform.VRBO)]
+    have = [s for s in both if s]
+    return {
+        'airbnb': mine.get(ListingLink.Platform.AIRBNB), 'vrbo': mine.get(ListingLink.Platform.VRBO),
+        'ratings': [s for s in have if s['link'].rating is not None], 'unread': [s for s in have if s['link'].rating is None], 'all_links': have,
+    }
+
+
+def _unit_cards(prop):
+    """One card per unit for the property page: its own size, access and systems, shutoffs, and
+    Airbnb / VRBO links with their ratings."""
+    links = listings_service.links_for(prop)
+    locations = {}
+    for loc in prop.system_locations.filter(unit__isnull=False):
+        locations.setdefault(loc.unit_id, []).append(loc)
+    cards = []
+    for i, unit in enumerate(prop.units.all()):
+        card = {'unit': unit, 'system_locations': locations.get(unit.pk, []),
+                'missing_size': [label for field, label in property_specs.SPEC_FIELDS if getattr(unit, field) is None] if unit.is_active else []}
+        card.update(_card_links(links.get(unit.pk, {})))
+        card['open'] = i == 0 or bool(card['missing_size'])
+        cards.append(card)
+    return cards
+
+
+def _own_card(prop):
+    """The same, for a property with no units (the property itself is the one unit)."""
+    if prop.units.exists():
+        return None
+    card = {'system_locations': list(prop.system_locations.filter(unit__isnull=True)),
+            'missing_size': [label for field, label in property_specs.SPEC_FIELDS if getattr(prop, field) is None] if property_specs.applies_to(prop) else []}
+    card.update(_card_links(listings_service.links_for(prop).get(None, {})))
+    return card
+
+
 @login_required
 def property_detail(request, pk):
     """Everything-about-this-property dashboard: facts, access/system info,
@@ -1118,26 +1155,38 @@ def property_detail(request, pk):
                 'gate_code', 'door_code', 'lockbox_code', 'alarm_code', 'wifi_network', 'wifi_password',
                 'access_notes', 'board_meeting_address',
             ]
+            # Only what the form sent is changed: the building card and each unit's card post
+            # different parts of this, and a part that wasn't on the form must not be blanked.
+            fields = [f for f in fields if f in request.POST]
             for field in fields:
                 setattr(prop, field, request.POST.get(field, '').strip())
             for time_field in ('default_check_in_time', 'default_check_out_time'):
-                setattr(prop, time_field, request.POST.get(time_field) or None)
-            fields += ['default_check_in_time', 'default_check_out_time']
-            prop.bedroom_count = _parse_int(request.POST.get('bedroom_count'))
-            prop.bed_count = _parse_int(request.POST.get('bed_count'))
-            prop.bathroom_count = _parse_decimal(request.POST.get('bathroom_count'))
-            prop.square_footage = _parse_int(request.POST.get('square_footage'))
-            fields += ['bedroom_count', 'bed_count', 'bathroom_count', 'square_footage']
+                if time_field in request.POST:
+                    setattr(prop, time_field, request.POST.get(time_field) or None)
+                    fields.append(time_field)
+            if 'bedroom_count' in request.POST:
+                prop.bedroom_count = _parse_int(request.POST.get('bedroom_count'))
+                fields.append('bedroom_count')
+            if 'bed_count' in request.POST:
+                prop.bed_count = _parse_int(request.POST.get('bed_count'))
+                fields.append('bed_count')
+            if 'bathroom_count' in request.POST:
+                prop.bathroom_count = _parse_decimal(request.POST.get('bathroom_count'))
+                fields.append('bathroom_count')
+            if 'square_footage' in request.POST:
+                prop.square_footage = _parse_int(request.POST.get('square_footage'))
+                fields.append('square_footage')
             # turnover_price_override is admin-only, both to see and to set —
             # a raw POST from a non-admin (bypassing the template's own
             # {% if is_admin %} guard around the input) is silently ignored
             # rather than erroring, same as every other admin-only field
             # elsewhere in this app just doesn't touch the value at all.
-            if _is_admin(request.user):
+            if _is_admin(request.user) and 'turnover_price_override' in request.POST:
                 prop.turnover_price_override = _parse_decimal(request.POST.get('turnover_price_override'))
                 fields.append('turnover_price_override')
-            prop.save(update_fields=fields)
-            messages.success(request, 'Access info saved.')
+            if fields:
+                prop.save(update_fields=sorted(set(fields)))
+            messages.success(request, 'Saved.')
         elif action == 'add_listing_name':
             platform = request.POST.get('platform')
             name = request.POST.get('listing_name', '').strip()
@@ -1196,16 +1245,7 @@ def property_detail(request, pk):
             PropertyDocument.objects.filter(pk=request.POST.get('document_id'), property=prop).delete()
             messages.success(request, 'Removed.')
         elif action == 'add_system_location':
-            system_name = request.POST.get('system_name', '').strip()
-            location = request.POST.get('location', '').strip()
-            if system_name and location:
-                PropertySystemLocation.objects.create(
-                    property=prop, system_name=system_name, location=location,
-                    notes=request.POST.get('notes', '').strip(),
-                )
-                messages.success(request, 'Added.')
-            else:
-                messages.error(request, 'System name and location are both required.')
+            property_actions.add_system_location(request, prop)
         elif action == 'delete_system_location':
             PropertySystemLocation.objects.filter(pk=request.POST.get('system_location_id'), property=prop).delete()
             messages.success(request, 'Removed.')
@@ -1229,21 +1269,25 @@ def property_detail(request, pk):
                     new_unit.save(update_fields=['turnover_price_override'])
                 messages.success(request, f'Added unit "{label}".')
         elif action == 'update_unit':
+            # Only what the form sent is changed — the unit's card posts its label and Active box here,
+            # its size and access details go through save_unit_details.
             unit = get_object_or_404(Unit, pk=request.POST.get('unit_id'), property=prop)
             label = request.POST.get('label', '').strip()
             if label:
                 unit.label = label
-            unit.access_code = request.POST.get('access_code', '').strip()
-            for field in ('wifi_network', 'wifi_password', 'access_notes'):
-                if field in request.POST:      # forms that predate these fields don't send them
+            for field in ('access_code', 'notes', 'wifi_network', 'wifi_password', 'access_notes', 'lockbox_code', 'alarm_code'):
+                if field in request.POST:
                     setattr(unit, field, request.POST[field].strip())
-            unit.notes = request.POST.get('notes', '').strip()
             unit.is_active = request.POST.get('is_active') == 'on'
-            unit.bedroom_count = _parse_int(request.POST.get('bedroom_count'))
-            unit.bed_count = _parse_int(request.POST.get('bed_count'))
-            unit.bathroom_count = _parse_decimal(request.POST.get('bathroom_count'))
-            unit.square_footage = _parse_int(request.POST.get('square_footage'))
-            if _is_admin(request.user):
+            if 'bedroom_count' in request.POST:
+                unit.bedroom_count = _parse_int(request.POST.get('bedroom_count'))
+            if 'bed_count' in request.POST:
+                unit.bed_count = _parse_int(request.POST.get('bed_count'))
+            if 'bathroom_count' in request.POST:
+                unit.bathroom_count = _parse_decimal(request.POST.get('bathroom_count'))
+            if 'square_footage' in request.POST:
+                unit.square_footage = _parse_int(request.POST.get('square_footage'))
+            if _is_admin(request.user) and 'turnover_price_override' in request.POST:
                 unit.turnover_price_override = _parse_decimal(request.POST.get('turnover_price_override'))
             unit.save()
             messages.success(request, 'Unit updated.')
@@ -1334,6 +1378,9 @@ def property_detail(request, pk):
             else:
                 PropertyAttributeAssignment.objects.create(property=prop, attribute_id=attribute_id)
                 messages.success(request, 'Attribute added.')
+        elif action in property_actions.ANCHORS:
+            anchor = property_actions.run(request, prop, action, _is_admin(request.user))
+            return redirect(reverse('property_detail', args=[prop.pk]) + anchor)
         elif action and action.startswith('faq_'):
             _property_faq_action(request, prop, action)
             return redirect(reverse('property_detail', args=[prop.pk]) + '#faq')
@@ -1428,8 +1475,14 @@ def property_detail(request, pk):
         'text_contacts': [c for c in contacts if c.phone],
         'email_contacts': [c for c in contacts if c.email],
         'open_tickets': open_tickets,
-        'system_locations': prop.system_locations.all(),
+        'system_locations': prop.system_locations.filter(unit__isnull=True),
         'units': prop.units.all(),
+        'unit_cards': _unit_cards(prop),
+        'own_card': _own_card(prop),
+        'trash': trash_service.schedule_for(prop),
+        'trash_days': list(enumerate(trash_service.DAY_ABBR)),
+        'trash_kinds': [('trash', 'Regular trash'), ('bulk', 'Bulk pickup'), ('recycling', 'Recycling')],
+        'trash_max_custom': list(range(1, trash_service.MAX_CUSTOM + 1)),
         'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB).select_related('unit'),
         'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO).select_related('unit'),
         'documents': prop.documents.all(),

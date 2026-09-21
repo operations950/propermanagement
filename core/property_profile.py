@@ -16,7 +16,7 @@ them, so the assistant knows what it does not know.
 """
 from django.db.models import Q
 
-from . import property_specs
+from . import property_specs, trash as trash_service
 from .models import Property, PropertyFAQ, PropertyListingName
 
 SIZE_LABELS = (('bedroom_count', 'bedrooms'), ('bed_count', 'beds'), ('bathroom_count', 'bathrooms'), ('square_footage', 'square feet'))
@@ -59,6 +59,27 @@ def faq_entry(entry):
     }
 
 
+def _code(prop, unit, field):
+    """A code for the property, or — for a unit-scoped profile — the unit's own when it has one (else the building's)."""
+    if unit is not None:
+        own = {'wifi_password': unit.wifi_password, 'door_code': unit.access_code, 'lockbox_code': unit.lockbox_code, 'alarm_code': unit.alarm_code}.get(field, '')
+        if own:
+            return own
+    return getattr(prop, field)
+
+
+def _trash(prop):
+    """The trash and recycling schedule for the assistant: what is picked up, which days, in words."""
+    sched = trash_service.schedule_for(prop)
+    if not sched['set']:
+        return {'set': False, 'summary': None, 'pickups': [], 'note': 'No schedule recorded — do not guess pickup days.'}
+    return {
+        'set': True, 'summary': sched['summary'],
+        'pickups': [{'name': r['name'], 'days': [trash_service.DAY_NAMES[d] for d in r['days']]} for r in sched['rules']],
+        'updated_at': sched['updated_at'].isoformat() if sched['updated_at'] else None,
+    }
+
+
 def faq_for(prop, unit=None):
     """The active FAQ. With a unit: the whole property's answers plus that unit's
     (another unit's answers are left out). Without: everything, each entry saying
@@ -98,7 +119,13 @@ def build_profile(prop, access=False, internal=False, unit=None):
             for a in prop.attribute_assignments.select_related('attribute') if a.attribute.is_active
         ],
         'system_locations': [
-            {'system': s.system_name, 'location': s.location, 'notes': s.notes} for s in prop.system_locations.all()
+            {'system': s.system_name, 'location': s.location, 'notes': s.notes, 'unit': s.unit.label if s.unit_id else None}
+            for s in prop.system_locations.select_related('unit').all() if unit is None or s.unit_id in (None, unit.pk)
+        ],
+        'trash': _trash(prop),
+        'listing_links': [
+            {'platform': l.platform, 'url': l.url, 'unit': l.unit.label if l.unit_id else None, 'rating': float(l.rating) if l.rating is not None else None, 'review_count': l.review_count}
+            for l in prop.listing_links.select_related('unit').all() if unit is None or l.unit_id in (None, unit.pk)
         ],
         'wifi_network': (unit.wifi_network if unit is not None and unit.wifi_network else prop.wifi_network) or None,
         'listing_titles': [
@@ -109,6 +136,8 @@ def build_profile(prop, access=False, internal=False, unit=None):
 
     code_units = [unit] if unit is not None else units
     present = [label for field, label in ACCESS_FIELDS if getattr(prop, field)] + (['Unit codes'] if any(u.access_code for u in code_units) else [])
+    if any(u.lockbox_code or u.alarm_code for u in code_units):
+        present.append('Unit lockbox / alarm codes')
     if any(u.wifi_password for u in code_units):
         present.append('Unit wifi password')
     if any(u.access_notes for u in code_units):
@@ -118,7 +147,8 @@ def build_profile(prop, access=False, internal=False, unit=None):
     if access:
         profile['access'] = {
             'restricted': False,
-            'codes': {field: (unit.wifi_password if field == 'wifi_password' and unit is not None and unit.wifi_password else getattr(prop, field)) or None for field, _ in ACCESS_FIELDS},
+            'codes': {field: _code(prop, unit, field) or None for field, _ in ACCESS_FIELDS},
+            'unit_access': {u.label: {k: v for k, v in (('door', u.access_code), ('lockbox', u.lockbox_code), ('alarm', u.alarm_code)) if v} for u in code_units if (u.access_code or u.lockbox_code or u.alarm_code)},
             'unit_codes': {u.label: u.access_code for u in code_units if u.access_code},
             'unit_wifi_passwords': {u.label: u.wifi_password for u in code_units if u.wifi_password},
             'unit_access_notes': {u.label: u.access_notes for u in code_units if u.access_notes},
@@ -189,9 +219,12 @@ def render_text(profile):
     if p['amenities']:
         lines.append('\n## Features and amenities')
         lines += [f'- {a["label"]}' + (f' ({a["note"]})' if a['note'] else '') for a in p['amenities']]
+    if p['trash']['set']:
+        lines.append('\n## Trash and recycling pickup')
+        lines += [f'- {t["name"]}: {", ".join(t["days"])}' for t in p['trash']['pickups']]
     if p['system_locations']:
         lines.append('\n## Where things are')
-        lines += [f'- {s["system"]}: {s["location"]}' + (f' — {s["notes"]}' if s['notes'] else '') for s in p['system_locations']]
+        lines += [f'- {s["system"]}: {s["location"]}' + (f' — {s["notes"]}' if s['notes'] else '') + (f' ({s["unit"]} only)' if s['unit'] else '') for s in p['system_locations']]
     if p['wifi_network']:
         lines.append(f'\nWifi network: {p["wifi_network"]}')
     if not p['scope']['unit']:
@@ -206,6 +239,9 @@ def render_text(profile):
             if access['codes'].get(field):
                 lines.append(f'- {label}: {access["codes"][field]}')
         lines += [f'- {label} (unit) code: {code}' for label, code in access['unit_codes'].items()]
+        for label, kinds in access.get('unit_access', {}).items():
+            extra = {k: v for k, v in kinds.items() if k != 'door'}
+            lines += [f'- {label} {k} code: {v}' for k, v in extra.items()]
         if access.get('unit_wifi_passwords') and not p['scope']['unit']:
             lines += [f'- Wifi password for {label}: {pw}' for label, pw in access['unit_wifi_passwords'].items()]
         lines += [f'- How to get into {label}: {note}' for label, note in access.get('unit_access_notes', {}).items()]

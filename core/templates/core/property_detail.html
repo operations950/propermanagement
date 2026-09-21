@@ -33,48 +33,171 @@
 </div>
 {% endif %}
 
-<div class="card mb-3">
-    <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sticky-note" class="icon"></i> Notes</h6>
-        <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="save_notes">
-            <textarea name="notes" class="form-control form-control-sm mb-2" rows="3" placeholder="General notes about this property — anything that doesn't fit access info, a system location, or a ticket.">{{ property.notes }}</textarea>
-            <button class="btn btn-outline-primary btn-sm" type="submit">Save notes</button>
-        </form>
-    </div>
-</div>
+<nav class="d-flex flex-wrap gap-2 mb-3 small" aria-label="Sections of this property">
+    <a href="#units" class="btn btn-sm btn-outline-secondary">{% if units %}Units{% else %}Details{% endif %}</a>
+    <a href="#building" class="btn btn-sm btn-outline-secondary">{% if units %}Building{% else %}Property-wide{% endif %}</a>
+    <a href="#trash" class="btn btn-sm btn-outline-secondary">Trash</a>
+    <a href="#contacts" class="btn btn-sm btn-outline-secondary">Contacts</a>
+    <a href="#tickets" class="btn btn-sm btn-outline-secondary">Tickets</a>
+    <a href="#faq" class="btn btn-sm btn-outline-secondary">FAQ</a>
+    <a href="#supplies" class="btn btn-sm btn-outline-secondary">Supplies</a>
+    {% if qb %}<a href="#quickbooks" class="btn btn-sm btn-outline-secondary">QuickBooks</a>{% endif %}
+</nav>
 
-<div class="card mb-3">
-    <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="ticket" class="icon"></i> Open tickets & tasks <span class="badge rounded-pill bg-light text-dark border">{{ open_tickets|length }}</span></h6>
-        {% for t in open_tickets %}
-        <a href="{% url 'ticket_detail' t.pk %}" class="d-flex justify-content-between align-items-start gap-2 py-2 border-top text-decoration-none {% if forloop.first %}border-top-0{% endif %}">
-            <div style="min-width: 0;">
-                <div class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ t.title }}</div>
-                <div class="small d-flex flex-wrap align-items-center gap-2 mt-1">
-                    <span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span>
-                    <span class="badge rounded-pill bg-{% if t.priority == 'urgent' %}danger{% else %}light text-dark border{% endif %}">{{ t.get_status_display }}</span>
+<section id="units" class="mb-3">
+    <div id="property-size"></div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h5 class="mb-0 d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> {% if units %}Units{% else %}This property{% endif %}</h5>
+        <span class="small text-muted">{% if units %}Each unit keeps its own size, codes, wifi, shutoffs and listings.{% else %}It is one unit: its size, codes, wifi, shutoffs and listings.{% endif %}</span>
+    </div>
+    {% if own_card %}
+    {% include 'core/_unit_card.html' with u=None target=property c=own_card open_it=True %}
+    {% else %}
+    {% for c in unit_cards %}{% include 'core/_unit_card.html' with u=c.unit target=c.unit c=c open_it=c.open %}{% empty %}<p class="text-muted small">No units yet.</p>{% endfor %}
+    {% endif %}
+    <form method="post" class="d-flex gap-2 flex-wrap align-items-center mt-2">
+        {% csrf_token %}<input type="hidden" name="action" value="add_unit">
+        <input type="text" name="label" class="form-control form-control-sm" style="max-width: 260px;" placeholder="Add a unit — e.g. Bamboo, 3B, Unit 204">
+        <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="plus" class="icon"></i> Add unit</button>
+        {% if not units %}<span class="small text-muted">A single-unit property has none: add units only for a building with several listings.</span>{% endif %}
+    </form>
+</section>
+<style>
+    #units details[open] .unit-chevron { transform: rotate(180deg); }
+    #units summary::-webkit-details-marker { display: none; }
+</style>
+<script>
+    // A link or redirect to a unit (#unit-12), or to the size fields, opens that card.
+    (function () {
+        function openTarget() {
+            var id = window.location.hash.slice(1), el = id && document.getElementById(id);
+            if (el && el.tagName === 'DETAILS') { el.open = true; }
+            if (id === 'property-size') { document.querySelectorAll('#units details').forEach(function (d) { d.open = true; }); }
+        }
+        openTarget();
+        window.addEventListener('hashchange', openTarget);
+    })();
+</script>
+
+{% include 'core/_property_building.html' %}
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Amenities</h6>
+                <p class="small text-muted">Services, physical features, and compliance tags — also used by recurring task rules to auto-apply.</p>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    {% for attr in attributes %}
+                        {% if attr.pk in assigned_attribute_ids %}
+                        <form method="post" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="toggle_attribute">
+                            <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
+                            <button type="submit" class="bubble bubble-locked">
+                                {{ attr.label }} <i data-lucide="x" style="width: 0.7rem; height: 0.7rem;"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    {% endfor %}
+                    {% if not attributes %}
+                    <p class="text-muted small mb-0">No amenity tags defined yet.</p>
+                    {% elif not assigned_attribute_ids %}
+                    <p class="text-muted small mb-0">No amenities added yet.</p>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#amenity-add-pool">
+                    <i data-lucide="plus" class="icon"></i> Add amenity
+                </button>
+                <div class="collapse mt-2" id="amenity-add-pool">
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for attr in attributes %}
+                            {% if attr.pk not in assigned_attribute_ids %}
+                            <form method="post" class="d-inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="toggle_attribute">
+                                <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
+                                <button type="submit" class="bubble">{{ attr.label }}</button>
+                            </form>
+                            {% endif %}
+                        {% endfor %}
+                        {% if attributes|length == assigned_attribute_ids|length %}
+                        <p class="text-muted small mb-0">All amenities already added.</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-            <div class="text-nowrap text-end tabular-nums small flex-shrink-0">
-                {% if t.due_date %}
-                    <span {% if t|is_overdue:now %}style="color: var(--status-critical); font-weight: 600;"{% else %}style="color: var(--ink-muted);"{% endif %}>{{ t.due_date|date:"M j" }}</span>
-                {% else %}
-                    <span style="color: var(--border-hairline);">—</span>
-                {% endif %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Booking platforms</h6>
+                <p class="small text-muted">Every name/title this property answers to on each platform — used to automatically match reservations during an on-site visit booking import. A property can have more than one per platform (e.g. several units at one address). Usually set for you the first time an unrecognized listing name is resolved during an import.</p>
+
+                <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Airbnb</div>
+                {% for ln in airbnb_listing_names %}
+                <div class="d-flex justify-content-between align-items-center py-1 border-top">
+                    <div class="small">{{ ln.name }}{% if ln.unit %} <span class="badge rounded-pill bg-light text-dark border">{{ ln.unit.label }}</span>{% elif units %} <span class="badge rounded-pill bg-light text-muted border" title="No unit assigned yet">No unit</span>{% endif %}</div>
+                    <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove_listing_name">
+                        <input type="hidden" name="listing_name_id" value="{{ ln.pk }}">
+                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
+                    </form>
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-1">None on file yet.</p>
+                {% endfor %}
+                <form method="post" class="d-flex gap-2 mt-1 mb-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_listing_name">
+                    <input type="hidden" name="platform" value="airbnb">
+                    <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add an Airbnb listing name">
+                    {% if units %}
+                    <select name="unit_id" class="form-select form-select-sm" style="max-width: 140px;" title="Which unit is this listing for?">
+                        <option value="">— no unit —</option>
+                        {% for unit in units %}<option value="{{ unit.pk }}">{{ unit.label }}</option>{% endfor %}
+                    </select>
+                    {% endif %}
+                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
+                </form>
+
+                <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">VRBO</div>
+                {% for ln in vrbo_listing_names %}
+                <div class="d-flex justify-content-between align-items-center py-1 border-top">
+                    <div class="small">{{ ln.name }}{% if ln.unit %} <span class="badge rounded-pill bg-light text-dark border">{{ ln.unit.label }}</span>{% elif units %} <span class="badge rounded-pill bg-light text-muted border" title="No unit assigned yet">No unit</span>{% endif %}</div>
+                    <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove_listing_name">
+                        <input type="hidden" name="listing_name_id" value="{{ ln.pk }}">
+                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
+                    </form>
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-1">None on file yet.</p>
+                {% endfor %}
+                <form method="post" class="d-flex gap-2 mt-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="add_listing_name">
+                    <input type="hidden" name="platform" value="vrbo">
+                    <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add a VRBO listing name">
+                    {% if units %}
+                    <select name="unit_id" class="form-select form-select-sm" style="max-width: 140px;" title="Which unit is this listing for?">
+                        <option value="">— no unit —</option>
+                        {% for unit in units %}<option value="{{ unit.pk }}">{{ unit.label }}</option>{% endfor %}
+                    </select>
+                    {% endif %}
+                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
+                </form>
             </div>
-        </a>
-        {% empty %}
-        <p class="text-muted mb-0">No open tickets or tasks for this property.</p>
-        {% endfor %}
-        {% if open_tickets %}
-        <a href="{% url 'ticket_list' %}?property={{ property.pk }}&status=all" class="d-block text-center pt-2 mt-2 border-top small text-decoration-none">View all tickets & tasks for this property →</a>
-        {% endif %}
+        </div>
     </div>
 </div>
 
-<div class="card mb-3">
+{% include 'core/_property_trash.html' %}
+
+<div class="card mb-3" id="contacts">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="contact" class="icon"></i> Contacts</h6>
         {% for group in contact_groups %}
@@ -215,6 +338,47 @@
     </div>
 </div>
 
+<div class="card mb-3" id="tickets">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="ticket" class="icon"></i> Open tickets & tasks <span class="badge rounded-pill bg-light text-dark border">{{ open_tickets|length }}</span></h6>
+        {% for t in open_tickets %}
+        <a href="{% url 'ticket_detail' t.pk %}" class="d-flex justify-content-between align-items-start gap-2 py-2 border-top text-decoration-none {% if forloop.first %}border-top-0{% endif %}">
+            <div style="min-width: 0;">
+                <div class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ t.title }}</div>
+                <div class="small d-flex flex-wrap align-items-center gap-2 mt-1">
+                    <span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span>
+                    <span class="badge rounded-pill bg-{% if t.priority == 'urgent' %}danger{% else %}light text-dark border{% endif %}">{{ t.get_status_display }}</span>
+                </div>
+            </div>
+            <div class="text-nowrap text-end tabular-nums small flex-shrink-0">
+                {% if t.due_date %}
+                    <span {% if t|is_overdue:now %}style="color: var(--status-critical); font-weight: 600;"{% else %}style="color: var(--ink-muted);"{% endif %}>{{ t.due_date|date:"M j" }}</span>
+                {% else %}
+                    <span style="color: var(--border-hairline);">—</span>
+                {% endif %}
+            </div>
+        </a>
+        {% empty %}
+        <p class="text-muted mb-0">No open tickets or tasks for this property.</p>
+        {% endfor %}
+        {% if open_tickets %}
+        <a href="{% url 'ticket_list' %}?property={{ property.pk }}&status=all" class="d-block text-center pt-2 mt-2 border-top small text-decoration-none">View all tickets & tasks for this property →</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sticky-note" class="icon"></i> Notes</h6>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_notes">
+            <textarea name="notes" class="form-control form-control-sm mb-2" rows="3" placeholder="General notes about this property — anything that doesn't fit access info, a system location, or a ticket.">{{ property.notes }}</textarea>
+            <button class="btn btn-outline-primary btn-sm" type="submit">Save notes</button>
+        </form>
+    </div>
+</div>
+
 {# FAQ: what the message assistant knows about this property, kept on the record. #}
 <details class="card mb-3" id="faq">
     <summary class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2" style="cursor: pointer; list-style: none;">
@@ -302,423 +466,6 @@
         window.addEventListener('hashchange', openIfTargeted);
     })();
 </script>
-
-{% if qb %}
-{# QuickBooks: the two accounts this rental's money runs through (admin only). #}
-<div class="card mb-3" id="quickbooks">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-            <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="landmark" class="icon"></i> QuickBooks accounts</h6>
-            {% if qb.status == 'mapped' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Both accounts tied</span>
-            {% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{% if qb.status == 'partial' %}One account still needed{% else %}Not tied to QuickBooks yet{% endif %}</span>{% endif %}
-        </div>
-        <p class="text-muted small mb-3">Each rental runs through two accounts. The <strong>income-statement</strong> account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The <strong>balance-sheet</strong> account is the owner's trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner's payment.</p>
-
-        <form method="post" class="border rounded p-2 mb-3" onsubmit="return confirmLevelChange(this);" data-open-lines="{{ qb.open_lines.total }}" data-open-reviewed="{{ qb.open_lines.reviewed }}">
-            {% csrf_token %}<input type="hidden" name="action" value="qb_set_level">
-            <div class="d-flex gap-2 flex-wrap align-items-center">
-                <label class="small fw-semibold mb-0" for="qb-level">How this rental's books are kept</label>
-                <select name="financials_level" id="qb-level" class="form-select form-select-sm" style="max-width: 320px;">
-                    {% for value, label in qb.level_choices %}<option value="{{ value }}" {% if property.financials_level == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-                </select>
-                <button class="btn btn-outline-secondary btn-sm">Change</button>
-            </div>
-            <p class="small text-muted mb-0 mt-1">{% if qb.unit_mode %}Each unit has its own two accounts and is closed on its own; the property's financials are its units added up.{% else %}One pair of accounts for the whole property; its units aren't kept separately.{% endif %} Switching applies from the months still open — months already closed keep the way they were closed.</p>
-        </form>
-        <script>
-        function confirmLevelChange(form) {
-            var select = form.querySelector('select'), now = "{{ property.financials_level }}";
-            if (select.value === now) { return false; }
-            var open = parseInt(form.dataset.openLines, 10) || 0, reviewed = parseInt(form.dataset.openReviewed, 10) || 0;
-            var text = 'Change how {{ property.name|escapejs }} keeps its books?\n\nMonths already closed stay exactly as they were. Months still open switch to the new way.';
-            if (open) { text += '\n\n' + open + ' transaction(s) already pulled in for open months' + (reviewed ? ' (' + reviewed + ' reviewed)' : '') + ' will be set aside and re-read from the new accounts on the next sync, so their coding will need doing again.'; }
-            return confirm(text);
-        }
-        </script>
-
-        {% if not qb.connected %}
-        <div class="alert alert-warning small py-2 mb-0">QuickBooks isn't connected. Connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a>, then come back and choose the accounts.</div>
-        {% else %}
-        {% if qb.sync_error %}<div class="alert alert-warning small py-2">{{ qb.sync_error }}</div>{% endif %}
-        {% if not qb.account_count %}
-        <div class="alert alert-info small py-2">No accounts have been read from QuickBooks yet.</div>
-        {% endif %}
-        {% if qb.unit_mode %}
-        {% if property.qb_expense_account_id or property.qb_trust_account_id %}<p class="small text-muted">Earlier property-level accounts (kept for months closed that way): {{ property.qb_expense_account.fully_qualified_name|default:"—" }} · {{ property.qb_trust_account.fully_qualified_name|default:"—" }}.</p>{% endif %}
-        {% if qb.units %}
-        <form method="post">
-            {% csrf_token %}<input type="hidden" name="action" value="qb_save_unit_mapping">
-            {% for row in qb.units %}
-            <div class="{% if not forloop.first %}border-top pt-3 mt-3{% endif %}">
-                <div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">{{ row.unit.label }}</span>
-                    {% if row.status == 'mapped' %}<span class="small" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Tied</span>{% elif row.status == 'partial' %}<span class="small" style="color: var(--status-warning);">One account needed</span>{% else %}<span class="small text-muted">Not tied yet</span>{% endif %}</div>
-                <div class="row g-2">
-                    <div class="col-md-6">
-                        <select name="unit_expense_{{ row.unit.pk }}" id="uqbe-{{ row.unit.pk }}" class="form-select form-select-sm" aria-label="Income-statement account for {{ row.unit.label }}">
-                            <option value="">Income statement — not chosen</option>
-                            {% regroup row.expense_options by account_type as groups %}
-                            {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if row.unit.qb_expense_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
-                        </select>
-                        {% for s in row.suggestions.expense %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('uqbe-{{ row.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
-                    </div>
-                    <div class="col-md-6">
-                        <select name="unit_trust_{{ row.unit.pk }}" id="uqbt-{{ row.unit.pk }}" class="form-select form-select-sm" aria-label="Balance-sheet account for {{ row.unit.label }}">
-                            <option value="">Balance sheet — not chosen</option>
-                            {% regroup row.trust_options by account_type as groups %}
-                            {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if row.unit.qb_trust_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
-                        </select>
-                        {% for s in row.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('uqbt-{{ row.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-            <div class="d-flex gap-2 flex-wrap align-items-center mt-3">
-                <button class="btn btn-primary btn-sm">Save unit accounts</button>
-                <a href="{% url 'quickbooks_accounts' %}" class="btn btn-link btn-sm">Map all rentals</a>
-                <span class="small text-muted">Each account can belong to one unit (or rental) only.</span>
-            </div>
-        </form>
-        {% else %}
-        <div class="alert alert-info small py-2">This property has no active units yet — add its units below, then tie each to its accounts here.</div>
-        {% endif %}
-        {% else %}
-        <form method="post" class="row g-3">
-            {% csrf_token %}<input type="hidden" name="action" value="qb_save_mapping">
-            <div class="col-md-6">
-                <label class="form-label small mb-1" for="qb-expense">Income statement — reimbursable expense account</label>
-                <select name="expense_account" id="qb-expense" class="form-select form-select-sm">
-                    <option value="">— not chosen —</option>
-                    {% regroup qb.expense_options by account_type as expense_groups %}
-                    {% for group in expense_groups %}<optgroup label="{{ group.grouper }}">
-                        {% for a in group.list %}<option value="{{ a.pk }}" {% if property.qb_expense_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}
-                    </optgroup>{% endfor %}
-                </select>
-                {% for s in qb.suggestions.expense %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qb-expense').value='{{ s.pk }}'">use it</button></div>{% endfor %}
-            </div>
-            <div class="col-md-6">
-                <label class="form-label small mb-1" for="qb-trust">Balance sheet — owner trust account</label>
-                <select name="trust_account" id="qb-trust" class="form-select form-select-sm">
-                    <option value="">— not chosen —</option>
-                    {% regroup qb.trust_options by account_type as trust_groups %}
-                    {% for group in trust_groups %}<optgroup label="{{ group.grouper }}">
-                        {% for a in group.list %}<option value="{{ a.pk }}" {% if property.qb_trust_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}
-                    </optgroup>{% endfor %}
-                </select>
-                {% for s in qb.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qb-trust').value='{{ s.pk }}'">use it</button></div>{% endfor %}
-            </div>
-            <div class="col-12 d-flex gap-2 flex-wrap align-items-center">
-                <button class="btn btn-primary btn-sm">Save accounts</button>
-                <a href="{% url 'quickbooks_accounts' %}" class="btn btn-link btn-sm">Map all rentals</a>
-                <span class="small text-muted">Each account can belong to one rental only.</span>
-            </div>
-        </form>
-        {% endif %}
-        <form method="post" class="mt-2 d-flex gap-2 flex-wrap align-items-center">
-            {% csrf_token %}<input type="hidden" name="action" value="qb_refresh_accounts">
-            <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Refresh accounts from QuickBooks</button>
-            <span class="small text-muted">{% if qb.synced_at %}{{ qb.account_count }} accounts, last read {{ qb.synced_at|timesince }} ago{% else %}not read yet{% endif %}. Not seeing a new account? Refresh.</span>
-        </form>
-        {% endif %}
-    </div>
-</div>
-{% endif %}
-
-<div class="row g-3 mb-3">
-    <div class="col-md-6">
-        <div class="card h-100" id="property-size">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon"></i> Access & systems</h6>
-                <form method="post" class="mb-3">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="save_access_info">
-                    <div class="row g-2 mb-2">
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Gate code</label>
-                            <input type="text" name="gate_code" class="form-control form-control-sm" value="{{ property.gate_code }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Lockbox code</label>
-                            <input type="text" name="lockbox_code" class="form-control form-control-sm" value="{{ property.lockbox_code }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Alarm code</label>
-                            <input type="text" name="alarm_code" class="form-control form-control-sm" value="{{ property.alarm_code }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Door code</label>
-                            <input type="text" name="door_code" class="form-control form-control-sm" value="{{ property.door_code }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">WiFi network</label>
-                            <input type="text" name="wifi_network" class="form-control form-control-sm" value="{{ property.wifi_network }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">WiFi password</label>
-                            <input type="text" name="wifi_password" class="form-control form-control-sm" value="{{ property.wifi_password }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Check-in time</label>
-                            <input type="time" name="default_check_in_time" class="form-control form-control-sm" value="{{ property.default_check_in_time|time:'H:i' }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Check-out time</label>
-                            <input type="time" name="default_check_out_time" class="form-control form-control-sm" value="{{ property.default_check_out_time|time:'H:i' }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Bedrooms</label>
-                            <input type="number" step="1" min="0" name="bedroom_count" class="form-control form-control-sm" value="{{ property.bedroom_count|default_if_none:'' }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Beds</label>
-                            <input type="number" step="1" min="0" name="bed_count" class="form-control form-control-sm" value="{{ property.bed_count|default_if_none:'' }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Bathrooms</label>
-                            <input type="number" step="0.5" min="0" name="bathroom_count" class="form-control form-control-sm" value="{{ property.bathroom_count|default_if_none:'' }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small text-muted mb-1">Square footage</label>
-                            <input type="number" step="1" min="0" name="square_footage" class="form-control form-control-sm" value="{{ property.square_footage|default_if_none:'' }}">
-                        </div>
-                        {% if is_admin %}
-                        <div class="col-12">
-                            <label class="form-label small text-muted mb-1" title="A negotiated flat price for a standard Turnover Clean here, replacing the checklist-computed time x rate estimate for that visit type only. Admin-only.">Turnover price override <span class="badge rounded-pill bg-light text-muted border">Admin only</span></label>
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text">$</span>
-                                <input type="number" step="0.01" min="0" name="turnover_price_override" class="form-control form-control-sm" value="{{ property.turnover_price_override|default_if_none:'' }}">
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-                    <label class="form-label small text-muted mb-1">Board meeting address</label>
-                    <input type="text" name="board_meeting_address" class="form-control form-control-sm mb-2" placeholder="Where this association normally holds board meetings" value="{{ property.board_meeting_address }}">
-                    <label class="form-label small text-muted mb-1">Access notes</label>
-                    <textarea name="access_notes" class="form-control form-control-sm mb-2" rows="2" placeholder="Anything else staff need to get in or navigate the property.">{{ property.access_notes }}</textarea>
-                    <button class="btn btn-outline-primary btn-sm" type="submit">Save access info</button>
-                </form>
-
-                <hr>
-                <div class="small fw-bold text-uppercase mb-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">System locations</div>
-                {% for loc in system_locations %}
-                <div class="d-flex justify-content-between align-items-start py-1 border-top">
-                    <div>
-                        <div class="fw-medium small">{{ loc.system_name }}</div>
-                        <div class="small text-muted">{{ loc.location }}{% if loc.notes %} — {{ loc.notes }}{% endif %}</div>
-                    </div>
-                    <form method="post" onsubmit="return confirm('Remove &quot;{{ loc.system_name|escapejs }}&quot;?');">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="delete_system_location">
-                        <input type="hidden" name="system_location_id" value="{{ loc.pk }}">
-                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
-                    </form>
-                </div>
-                {% empty %}
-                <p class="text-muted small mb-2">No system locations recorded yet.</p>
-                {% endfor %}
-                <form method="post" class="row g-2 mt-1 align-items-end">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="add_system_location">
-                    <div class="col-12 col-sm-4">
-                        <input type="text" name="system_name" class="form-control form-control-sm" placeholder="e.g. Water shutoff">
-                    </div>
-                    <div class="col-12 col-sm-4">
-                        <input type="text" name="location" class="form-control form-control-sm" placeholder="Where is it?">
-                    </div>
-                    <div class="col-12 col-sm-3">
-                        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)">
-                    </div>
-                    <div class="col-12 col-sm-1">
-                        <button class="btn btn-outline-secondary btn-sm w-100" type="submit"><i data-lucide="plus" class="icon"></i></button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Amenities</h6>
-                <p class="small text-muted">Services, physical features, and compliance tags — also used by recurring task rules to auto-apply.</p>
-                <div class="d-flex flex-wrap gap-2 mb-2">
-                    {% for attr in attributes %}
-                        {% if attr.pk in assigned_attribute_ids %}
-                        <form method="post" class="d-inline">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="toggle_attribute">
-                            <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
-                            <button type="submit" class="bubble bubble-locked">
-                                {{ attr.label }} <i data-lucide="x" style="width: 0.7rem; height: 0.7rem;"></i>
-                            </button>
-                        </form>
-                        {% endif %}
-                    {% endfor %}
-                    {% if not attributes %}
-                    <p class="text-muted small mb-0">No amenity tags defined yet.</p>
-                    {% elif not assigned_attribute_ids %}
-                    <p class="text-muted small mb-0">No amenities added yet.</p>
-                    {% endif %}
-                </div>
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#amenity-add-pool">
-                    <i data-lucide="plus" class="icon"></i> Add amenity
-                </button>
-                <div class="collapse mt-2" id="amenity-add-pool">
-                    <div class="d-flex flex-wrap gap-2">
-                        {% for attr in attributes %}
-                            {% if attr.pk not in assigned_attribute_ids %}
-                            <form method="post" class="d-inline">
-                                {% csrf_token %}
-                                <input type="hidden" name="action" value="toggle_attribute">
-                                <input type="hidden" name="attribute_id" value="{{ attr.pk }}">
-                                <button type="submit" class="bubble">{{ attr.label }}</button>
-                            </form>
-                            {% endif %}
-                        {% endfor %}
-                        {% if attributes|length == assigned_attribute_ids|length %}
-                        <p class="text-muted small mb-0">All amenities already added.</p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-3 mb-3">
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Booking platforms</h6>
-                <p class="small text-muted">Every name/title this property answers to on each platform — used to automatically match reservations during an on-site visit booking import. A property can have more than one per platform (e.g. several units at one address). Usually set for you the first time an unrecognized listing name is resolved during an import.</p>
-
-                <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Airbnb</div>
-                {% for ln in airbnb_listing_names %}
-                <div class="d-flex justify-content-between align-items-center py-1 border-top">
-                    <div class="small">{{ ln.name }}{% if ln.unit %} <span class="badge rounded-pill bg-light text-dark border">{{ ln.unit.label }}</span>{% elif units %} <span class="badge rounded-pill bg-light text-muted border" title="No unit assigned yet">No unit</span>{% endif %}</div>
-                    <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="remove_listing_name">
-                        <input type="hidden" name="listing_name_id" value="{{ ln.pk }}">
-                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
-                    </form>
-                </div>
-                {% empty %}
-                <p class="text-muted small mb-1">None on file yet.</p>
-                {% endfor %}
-                <form method="post" class="d-flex gap-2 mt-1 mb-3">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="add_listing_name">
-                    <input type="hidden" name="platform" value="airbnb">
-                    <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add an Airbnb listing name">
-                    {% if units %}
-                    <select name="unit_id" class="form-select form-select-sm" style="max-width: 140px;" title="Which unit is this listing for?">
-                        <option value="">— no unit —</option>
-                        {% for unit in units %}<option value="{{ unit.pk }}">{{ unit.label }}</option>{% endfor %}
-                    </select>
-                    {% endif %}
-                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
-                </form>
-
-                <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">VRBO</div>
-                {% for ln in vrbo_listing_names %}
-                <div class="d-flex justify-content-between align-items-center py-1 border-top">
-                    <div class="small">{{ ln.name }}{% if ln.unit %} <span class="badge rounded-pill bg-light text-dark border">{{ ln.unit.label }}</span>{% elif units %} <span class="badge rounded-pill bg-light text-muted border" title="No unit assigned yet">No unit</span>{% endif %}</div>
-                    <form method="post" onsubmit="return confirm('Remove &quot;{{ ln.name|escapejs }}&quot;?');">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="remove_listing_name">
-                        <input type="hidden" name="listing_name_id" value="{{ ln.pk }}">
-                        <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
-                    </form>
-                </div>
-                {% empty %}
-                <p class="text-muted small mb-1">None on file yet.</p>
-                {% endfor %}
-                <form method="post" class="d-flex gap-2 mt-1">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="add_listing_name">
-                    <input type="hidden" name="platform" value="vrbo">
-                    <input type="text" name="listing_name" class="form-control form-control-sm" placeholder="Add a VRBO listing name">
-                    {% if units %}
-                    <select name="unit_id" class="form-select form-select-sm" style="max-width: 140px;" title="Which unit is this listing for?">
-                        <option value="">— no unit —</option>
-                        {% for unit in units %}<option value="{{ unit.pk }}">{{ unit.label }}</option>{% endfor %}
-                    </select>
-                    {% endif %}
-                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon"></i> Units</h6>
-                <p class="small text-muted">Individual units within this property — a multi-unit STR building (one listing per unit) or an association's individual owned units. Leave empty for a single-unit property.</p>
-                {% for unit in units %}
-                <div class="d-flex justify-content-between align-items-start py-1 border-top">
-                    <div style="min-width: 0;">
-                        <div class="fw-medium small {% if not unit.is_active %}text-decoration-line-through text-muted{% endif %}">
-                            {{ unit.label }}
-                            {% if unit.access_code %}<span class="badge rounded-pill bg-light text-dark border ms-1" title="Access code — revealed to a cleaner on the visit link only after they tap Get Code"><i data-lucide="key" class="icon"></i> {{ unit.access_code }}</span>{% endif %}
-                            {% if unit.bed_count or unit.bedroom_count or unit.bathroom_count or unit.square_footage %}<span class="badge rounded-pill bg-light text-dark border ms-1" title="Overrides the property's own counts for this unit">{% if unit.bedroom_count %}{{ unit.bedroom_count }}bd {% endif %}{% if unit.bed_count %}{{ unit.bed_count }} beds {% endif %}{% if unit.bathroom_count %}{{ unit.bathroom_count }}ba {% endif %}{% if unit.square_footage %}{{ unit.square_footage }}sqft{% endif %}</span>{% endif %}
-                            {% if is_admin and unit.turnover_price_override is not None %}<span class="badge rounded-pill bg-light text-dark border ms-1" title="Overrides the property's own turnover price override for this unit — admin only">${{ unit.turnover_price_override }}</span>{% endif %}
-                        </div>
-                        {% if unit.notes %}<div class="small text-muted">{{ unit.notes }}</div>{% endif %}
-                    </div>
-                    <div class="d-flex gap-1 flex-shrink-0">
-                        <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#edit-unit-{{ unit.pk }}"><i data-lucide="pencil" class="icon"></i></button>
-                        <form method="post" onsubmit="return confirm('Remove unit &quot;{{ unit.label|escapejs }}&quot;? This also permanently deletes any supply-level readings taken for this unit. A unit still referenced by a ticket can\'t be removed until that ticket is reassigned.');">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="delete_unit">
-                            <input type="hidden" name="unit_id" value="{{ unit.pk }}">
-                            <button class="btn btn-link btn-sm text-danger p-0" type="submit"><i data-lucide="x" class="icon"></i></button>
-                        </form>
-                    </div>
-                </div>
-                <div class="collapse mt-1 mb-1" id="edit-unit-{{ unit.pk }}">
-                    <form method="post" class="d-flex flex-wrap gap-2 align-items-end border-top pt-2">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="update_unit">
-                        <input type="hidden" name="unit_id" value="{{ unit.pk }}">
-                        <input type="text" name="label" class="form-control form-control-sm" style="max-width: 140px;" value="{{ unit.label }}">
-                        <input type="text" name="access_code" class="form-control form-control-sm" style="max-width: 120px;" placeholder="Access code" value="{{ unit.access_code }}">
-                        <input type="text" name="wifi_network" class="form-control form-control-sm" style="max-width: 150px;" placeholder="Wifi network (if its own)" value="{{ unit.wifi_network }}" autocomplete="off">
-                        <input type="text" name="wifi_password" class="form-control form-control-sm" style="max-width: 150px;" placeholder="Wifi password" value="{{ unit.wifi_password }}" autocomplete="off">
-                        <input type="number" step="1" min="0" name="bedroom_count" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Bedrooms" value="{{ unit.bedroom_count|default_if_none:'' }}">
-                        <input type="number" step="1" min="0" name="bed_count" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Beds" value="{{ unit.bed_count|default_if_none:'' }}">
-                        <input type="number" step="0.5" min="0" name="bathroom_count" class="form-control form-control-sm" style="max-width: 90px;" placeholder="Baths" value="{{ unit.bathroom_count|default_if_none:'' }}">
-                        <input type="number" step="1" min="0" name="square_footage" class="form-control form-control-sm" style="max-width: 100px;" placeholder="Sq ft" value="{{ unit.square_footage|default_if_none:'' }}">
-                        {% if is_admin %}
-                        <div class="input-group input-group-sm" style="max-width: 130px;" title="Overrides the property's turnover price override for this unit. Admin only.">
-                            <span class="input-group-text">$</span>
-                            <input type="number" step="0.01" min="0" name="turnover_price_override" class="form-control form-control-sm" placeholder="Turnover $" value="{{ unit.turnover_price_override|default_if_none:'' }}">
-                        </div>
-                        {% endif %}
-                        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)" value="{{ unit.notes }}">
-                        <textarea name="access_notes" class="form-control form-control-sm" rows="2" placeholder="How to get into this unit (which door, which side) — private">{{ unit.access_notes }}</textarea>
-                        <div class="form-check">
-                            <input type="checkbox" name="is_active" class="form-check-input" id="unit-active-{{ unit.pk }}" {% if unit.is_active %}checked{% endif %}>
-                            <label class="form-check-label small" for="unit-active-{{ unit.pk }}">Active</label>
-                        </div>
-                        <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
-                    </form>
-                </div>
-                {% empty %}
-                <p class="text-muted small mb-2">No units — this property is a single unit.</p>
-                {% endfor %}
-                <form method="post" class="d-flex gap-2 mt-1">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="add_unit">
-                    <input type="text" name="label" class="form-control form-control-sm" placeholder="e.g. Bamboo, 3B, Unit 204">
-                    <input type="text" name="access_code" class="form-control form-control-sm" style="max-width: 120px;" placeholder="Access code (optional)">
-                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0" type="submit"><i data-lucide="plus" class="icon"></i></button>
-                </form>
-                <p class="text-muted small mb-0 mt-1">Set a unit's bed/bath/sqft counts by editing it (<i data-lucide="pencil" class="icon" style="width:0.7rem;height:0.7rem;"></i>) after adding it.</p>
-            </div>
-        </div>
-    </div>
-</div>
 
 <div class="card mb-3" id="supplies">
     <div class="card-body">
@@ -861,6 +608,126 @@
         {% include "processes/_attach_form.html" with target_type="property" target_id=property.pk has_runs=process_runs %}
     </div>
 </div>
+
+{% if qb %}
+{# QuickBooks: the two accounts this rental's money runs through (admin only). #}
+<div class="card mb-3" id="quickbooks">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+            <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="landmark" class="icon"></i> QuickBooks accounts</h6>
+            {% if qb.status == 'mapped' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Both accounts tied</span>
+            {% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{% if qb.status == 'partial' %}One account still needed{% else %}Not tied to QuickBooks yet{% endif %}</span>{% endif %}
+        </div>
+        <p class="text-muted small mb-3">Each rental runs through two accounts. The <strong>income-statement</strong> account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The <strong>balance-sheet</strong> account is the owner's trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner's payment.</p>
+
+        <form method="post" class="border rounded p-2 mb-3" onsubmit="return confirmLevelChange(this);" data-open-lines="{{ qb.open_lines.total }}" data-open-reviewed="{{ qb.open_lines.reviewed }}">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_level">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <label class="small fw-semibold mb-0" for="qb-level">How this rental's books are kept</label>
+                <select name="financials_level" id="qb-level" class="form-select form-select-sm" style="max-width: 320px;">
+                    {% for value, label in qb.level_choices %}<option value="{{ value }}" {% if property.financials_level == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <button class="btn btn-outline-secondary btn-sm">Change</button>
+            </div>
+            <p class="small text-muted mb-0 mt-1">{% if qb.unit_mode %}Each unit has its own two accounts and is closed on its own; the property's financials are its units added up.{% else %}One pair of accounts for the whole property; its units aren't kept separately.{% endif %} Switching applies from the months still open — months already closed keep the way they were closed.</p>
+        </form>
+        <script>
+        function confirmLevelChange(form) {
+            var select = form.querySelector('select'), now = "{{ property.financials_level }}";
+            if (select.value === now) { return false; }
+            var open = parseInt(form.dataset.openLines, 10) || 0, reviewed = parseInt(form.dataset.openReviewed, 10) || 0;
+            var text = 'Change how {{ property.name|escapejs }} keeps its books?\n\nMonths already closed stay exactly as they were. Months still open switch to the new way.';
+            if (open) { text += '\n\n' + open + ' transaction(s) already pulled in for open months' + (reviewed ? ' (' + reviewed + ' reviewed)' : '') + ' will be set aside and re-read from the new accounts on the next sync, so their coding will need doing again.'; }
+            return confirm(text);
+        }
+        </script>
+
+        {% if not qb.connected %}
+        <div class="alert alert-warning small py-2 mb-0">QuickBooks isn't connected. Connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a>, then come back and choose the accounts.</div>
+        {% else %}
+        {% if qb.sync_error %}<div class="alert alert-warning small py-2">{{ qb.sync_error }}</div>{% endif %}
+        {% if not qb.account_count %}
+        <div class="alert alert-info small py-2">No accounts have been read from QuickBooks yet.</div>
+        {% endif %}
+        {% if qb.unit_mode %}
+        {% if property.qb_expense_account_id or property.qb_trust_account_id %}<p class="small text-muted">Earlier property-level accounts (kept for months closed that way): {{ property.qb_expense_account.fully_qualified_name|default:"—" }} · {{ property.qb_trust_account.fully_qualified_name|default:"—" }}.</p>{% endif %}
+        {% if qb.units %}
+        <form method="post">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_save_unit_mapping">
+            {% for row in qb.units %}
+            <div class="{% if not forloop.first %}border-top pt-3 mt-3{% endif %}">
+                <div class="d-flex justify-content-between align-items-center mb-2"><span class="fw-semibold">{{ row.unit.label }}</span>
+                    {% if row.status == 'mapped' %}<span class="small" style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Tied</span>{% elif row.status == 'partial' %}<span class="small" style="color: var(--status-warning);">One account needed</span>{% else %}<span class="small text-muted">Not tied yet</span>{% endif %}</div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <select name="unit_expense_{{ row.unit.pk }}" id="uqbe-{{ row.unit.pk }}" class="form-select form-select-sm" aria-label="Income-statement account for {{ row.unit.label }}">
+                            <option value="">Income statement — not chosen</option>
+                            {% regroup row.expense_options by account_type as groups %}
+                            {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if row.unit.qb_expense_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+                        </select>
+                        {% for s in row.suggestions.expense %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('uqbe-{{ row.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <select name="unit_trust_{{ row.unit.pk }}" id="uqbt-{{ row.unit.pk }}" class="form-select form-select-sm" aria-label="Balance-sheet account for {{ row.unit.label }}">
+                            <option value="">Balance sheet — not chosen</option>
+                            {% regroup row.trust_options by account_type as groups %}
+                            {% for g in groups %}<optgroup label="{{ g.grouper }}">{% for a in g.list %}<option value="{{ a.pk }}" {% if row.unit.qb_trust_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+                        </select>
+                        {% for s in row.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('uqbt-{{ row.unit.pk }}').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            <div class="d-flex gap-2 flex-wrap align-items-center mt-3">
+                <button class="btn btn-primary btn-sm">Save unit accounts</button>
+                <a href="{% url 'quickbooks_accounts' %}" class="btn btn-link btn-sm">Map all rentals</a>
+                <span class="small text-muted">Each account can belong to one unit (or rental) only.</span>
+            </div>
+        </form>
+        {% else %}
+        <div class="alert alert-info small py-2">This property has no active units yet — add its units below, then tie each to its accounts here.</div>
+        {% endif %}
+        {% else %}
+        <form method="post" class="row g-3">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_save_mapping">
+            <div class="col-md-6">
+                <label class="form-label small mb-1" for="qb-expense">Income statement — reimbursable expense account</label>
+                <select name="expense_account" id="qb-expense" class="form-select form-select-sm">
+                    <option value="">— not chosen —</option>
+                    {% regroup qb.expense_options by account_type as expense_groups %}
+                    {% for group in expense_groups %}<optgroup label="{{ group.grouper }}">
+                        {% for a in group.list %}<option value="{{ a.pk }}" {% if property.qb_expense_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}
+                    </optgroup>{% endfor %}
+                </select>
+                {% for s in qb.suggestions.expense %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qb-expense').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small mb-1" for="qb-trust">Balance sheet — owner trust account</label>
+                <select name="trust_account" id="qb-trust" class="form-select form-select-sm">
+                    <option value="">— not chosen —</option>
+                    {% regroup qb.trust_options by account_type as trust_groups %}
+                    {% for group in trust_groups %}<optgroup label="{{ group.grouper }}">
+                        {% for a in group.list %}<option value="{{ a.pk }}" {% if property.qb_trust_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}
+                    </optgroup>{% endfor %}
+                </select>
+                {% for s in qb.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qb-trust').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+            </div>
+            <div class="col-12 d-flex gap-2 flex-wrap align-items-center">
+                <button class="btn btn-primary btn-sm">Save accounts</button>
+                <a href="{% url 'quickbooks_accounts' %}" class="btn btn-link btn-sm">Map all rentals</a>
+                <span class="small text-muted">Each account can belong to one rental only.</span>
+            </div>
+        </form>
+        {% endif %}
+        <form method="post" class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_refresh_accounts">
+            <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Refresh accounts from QuickBooks</button>
+            <span class="small text-muted">{% if qb.synced_at %}{{ qb.account_count }} accounts, last read {{ qb.synced_at|timesince }} ago{% else %}not read yet{% endif %}. Not seeing a new account? Refresh.</span>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <script>
 (function () {

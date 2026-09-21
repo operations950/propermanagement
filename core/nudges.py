@@ -11,7 +11,7 @@ from django.db.models import Count, Min
 from django.urls import reverse
 from django.utils import timezone
 
-from . import property_specs, qb_accounts
+from . import listings, property_specs, qb_accounts, trash
 from .models import (ContactImportCandidate, ContactUpdateCandidate, MonthClose, Property, PropertyFAQ, QuickBooksToken)
 
 FAQ_OVERDUE_DAYS = 7          # an unreviewed assistant answer that has waited this long turns amber
@@ -98,6 +98,26 @@ def collect(user, today=None):
         items.append({'key': 'specs', 'count': incomplete, 'level': 'info', 'icon': 'ruler', 'url': f'{reverse("property_list")}?needs=details',
                       'text': f'{incomplete} short-term {_plural(incomplete, "rental")} missing bedrooms, beds, baths or square footage',
                       'detail': 'Cleaning time estimates and prices use these.'})
+
+    missing_trash = trash.missing_count()
+    if missing_trash:
+        items.append({'key': 'trash', 'count': missing_trash, 'level': 'info', 'icon': 'trash-2', 'url': reverse('property_list'),
+                      'text': f'{missing_trash} short-term {_plural(missing_trash, "rental")} with no trash schedule',
+                      'detail': 'Open the property and press "New Trash Schedule". Guests ask, and the assistant only answers from what is recorded.'})
+    attention = listings.attention()
+    if attention['dropped']:
+        n = attention['dropped']
+        items.append({'key': 'rating_drop', 'count': n, 'level': 'warn', 'icon': 'star', 'url': reverse('property_list'),
+                      'text': f'A guest rating fell on {n} {_plural(n, "listing")}', 'detail': 'By a tenth of a point or more since the reading before. Worth a look at recent reviews.'})
+    if attention['unreadable']:
+        n = attention['unreadable']
+        items.append({'key': 'rating_unreadable', 'count': n, 'level': 'info', 'icon': 'star', 'url': reverse('property_list'),
+                      'text': f'{n} listing {_plural(n, "rating")} could not be read automatically',
+                      'detail': 'The platform won\'t let a program read that page. Type the rating in by hand on the unit\'s card, or check the link.'})
+    if attention['places_without_links']:
+        n = attention['places_without_links']
+        items.append({'key': 'listing_links', 'count': n, 'level': 'info', 'icon': 'link', 'url': reverse('property_list'),
+                      'text': f'{n} {_plural(n, "unit")} with no Airbnb or VRBO link yet', 'detail': 'Add the link on the unit\'s card and its guest rating is kept up to date each month.'})
 
     if is_admin:
         close = _close_items(today)

@@ -1,0 +1,118 @@
+{% comment %}One unit of the property — or the property itself when it has no units. Everything that belongs to a single
+   place lives here: size, how to get in, wifi, shutoffs, and its Airbnb / VRBO links with their ratings.
+   Context: u (the Unit, or None), target (the Unit or the Property), c (card data), property, is_admin.{% endcomment %}
+{% with tid=u.pk|default:"own" %}
+<details class="card mb-2" id="{% if u %}unit-{{ u.pk }}{% else %}unit-own{% endif %}" style="border-radius: var(--bs-border-radius-lg);" {% if open_it %}open{% endif %}>
+    <summary class="card-body py-3 d-flex justify-content-between align-items-center flex-wrap gap-2" style="cursor: pointer; list-style: none;">
+        <span class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="fw-semibold {% if u and not u.is_active %}text-decoration-line-through text-muted{% endif %}">{% if u %}{{ u.label }}{% else %}This property{% endif %}</span>
+            {% if target.bedroom_count is not None or target.bed_count is not None or target.bathroom_count is not None or target.square_footage is not None %}
+            <span class="text-muted small">{% if target.bedroom_count is not None %}{{ target.bedroom_count }} bd{% endif %}{% if target.bed_count is not None %} · {{ target.bed_count }} bed{{ target.bed_count|pluralize }}{% endif %}{% if target.bathroom_count is not None %} · {{ target.bathroom_count|floatformat:"-1" }} ba{% endif %}{% if target.square_footage is not None %} · {{ target.square_footage|floatformat:"0g" }} sq ft{% endif %}</span>
+            {% endif %}
+            {% if c.missing_size %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">size needed</span>{% endif %}
+        </span>
+        <span class="d-flex align-items-center gap-2 small">
+            {% for s in c.ratings %}<span class="badge text-bg-light border" title="{{ s.link.get_platform_display }} guest rating">{{ s.link.get_platform_display }} ★ {{ s.link.rating }}{% if s.change %} <span style="color: {% if s.change > 0 %}#0b6a0b{% else %}#a02020{% endif %};">{% if s.change > 0 %}▲{% else %}▼{% endif %}{{ s.change|cut:"-" }}</span>{% endif %}</span>{% endfor %}
+            <i data-lucide="chevron-down" class="icon unit-chevron"></i>
+        </span>
+    </summary>
+    <div class="card-body pt-0">
+        <form method="post" class="mb-3">
+            {% csrf_token %}<input type="hidden" name="action" value="save_unit_details">{% if u %}<input type="hidden" name="unit_id" value="{{ u.pk }}">{% endif %}
+            <div class="small fw-bold text-uppercase mb-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Size <span class="fw-normal text-lowercase">— cleaning time and price are built from these</span></div>
+            <div class="row g-2 mb-3">
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Bedrooms</label><input type="number" step="1" min="0" name="bedroom_count" class="form-control form-control-sm" value="{{ target.bedroom_count|default_if_none:'' }}"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Beds</label><input type="number" step="1" min="0" name="bed_count" class="form-control form-control-sm" value="{{ target.bed_count|default_if_none:'' }}"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Bathrooms</label><input type="number" step="0.5" min="0" name="bathroom_count" class="form-control form-control-sm" value="{{ target.bathroom_count|default_if_none:'' }}"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Square feet</label><input type="number" step="1" min="0" name="square_footage" class="form-control form-control-sm" value="{{ target.square_footage|default_if_none:'' }}"></div>
+            </div>
+            <div class="small fw-bold text-uppercase mb-2" style="color: var(--ink-muted); letter-spacing: 0.05em;">Access &amp; systems</div>
+            <div class="row g-2 mb-2">
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Door code</label><input type="text" name="{% if u %}access_code{% else %}door_code{% endif %}" class="form-control form-control-sm" value="{% if u %}{{ u.access_code }}{% else %}{{ property.door_code }}{% endif %}" autocomplete="off"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Lockbox code</label><input type="text" name="lockbox_code" class="form-control form-control-sm" value="{{ target.lockbox_code }}" autocomplete="off"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Alarm code</label><input type="text" name="alarm_code" class="form-control form-control-sm" value="{{ target.alarm_code }}" autocomplete="off"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">&nbsp;</label>{% if u and property.gate_code %}<div class="small text-muted pt-1">Building gate code applies.</div>{% endif %}</div>
+                <div class="col-6"><label class="form-label small text-muted mb-1">WiFi network</label><input type="text" name="wifi_network" class="form-control form-control-sm" value="{{ target.wifi_network }}" autocomplete="off"></div>
+                <div class="col-6"><label class="form-label small text-muted mb-1">WiFi password</label><input type="text" name="wifi_password" class="form-control form-control-sm" value="{{ target.wifi_password }}" autocomplete="off"></div>
+            </div>
+            <label class="form-label small text-muted mb-1">How to get in</label>
+            <textarea name="access_notes" class="form-control form-control-sm mb-2" rows="2" placeholder="Which door, which side of the building, anything a guest or cleaner needs.">{{ target.access_notes }}</textarea>
+            {% if u %}<label class="form-label small text-muted mb-1">Notes about this unit</label><input type="text" name="notes" class="form-control form-control-sm mb-2" value="{{ u.notes }}">{% endif %}
+            {% if is_admin %}
+            <div class="input-group input-group-sm mb-2" style="max-width: 280px;" title="A negotiated flat price for a standard Turnover Clean here, replacing the checklist-computed estimate. Admin only.">
+                <span class="input-group-text">Turnover $</span><input type="number" step="0.01" min="0" name="turnover_price_override" class="form-control form-control-sm" value="{{ target.turnover_price_override|default_if_none:'' }}">
+            </div>
+            {% endif %}
+            <button class="btn btn-outline-primary btn-sm" type="submit">Save {% if u %}{{ u.label }}{% else %}details{% endif %}</button>
+        </form>
+
+        <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Shutoffs &amp; systems{% if u %} in this unit{% endif %}</div>
+        {% for loc in c.system_locations %}
+        <div class="d-flex justify-content-between align-items-start py-1 border-top">
+            <div><div class="fw-medium small">{{ loc.system_name }}</div><div class="small text-muted">{{ loc.location }}{% if loc.notes %} — {{ loc.notes }}{% endif %}</div></div>
+            <form method="post" onsubmit="return confirm('Remove &quot;{{ loc.system_name|escapejs }}&quot;?');">{% csrf_token %}<input type="hidden" name="action" value="delete_system_location"><input type="hidden" name="system_location_id" value="{{ loc.pk }}"><button class="btn btn-link btn-sm text-danger p-0" type="submit"><i data-lucide="x" class="icon"></i></button></form>
+        </div>
+        {% empty %}<p class="text-muted small mb-1">None recorded{% if u %} for this unit{% endif %}.</p>{% endfor %}
+        <form method="post" class="row g-2 mt-1 mb-3 align-items-end">
+            {% csrf_token %}<input type="hidden" name="action" value="add_system_location">{% if u %}<input type="hidden" name="unit_id" value="{{ u.pk }}">{% endif %}
+            <div class="col-12 col-sm-4"><input type="text" name="system_name" class="form-control form-control-sm" placeholder="e.g. Water shutoff"></div>
+            <div class="col-12 col-sm-4"><input type="text" name="location" class="form-control form-control-sm" placeholder="Where is it?"></div>
+            <div class="col-12 col-sm-3"><input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)"></div>
+            <div class="col-12 col-sm-1"><button class="btn btn-outline-secondary btn-sm w-100" type="submit" aria-label="Add"><i data-lucide="plus" class="icon"></i></button></div>
+        </form>
+
+        <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Listings <span class="fw-normal text-lowercase">— guest ratings are read from these about once a month</span></div>
+        <form method="post" class="row g-2 mb-2">
+            {% csrf_token %}<input type="hidden" name="action" value="save_listing_links">{% if u %}<input type="hidden" name="unit_id" value="{{ u.pk }}">{% endif %}
+            <div class="col-12 col-md-6"><input type="url" name="airbnb_url" class="form-control form-control-sm" placeholder="Airbnb link (https://www.airbnb.com/rooms/…)" value="{{ c.airbnb.link.url }}"></div>
+            <div class="col-12 col-md-6"><input type="url" name="vrbo_url" class="form-control form-control-sm" placeholder="VRBO link (https://www.vrbo.com/…)" value="{{ c.vrbo.link.url }}"></div>
+            <div class="col-12"><button class="btn btn-outline-secondary btn-sm" type="submit">Save links</button> <span class="small text-muted">Leave one blank to remove it.</span></div>
+        </form>
+        {% for s in c.ratings %}
+        <div class="border rounded p-2 mb-2 small">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <strong>{{ s.link.get_platform_display }}</strong> · <span class="fs-6 fw-semibold">★ {{ s.link.rating }}</span>{% if s.link.review_count is not None %} <span class="text-muted">({{ s.link.review_count }} review{{ s.link.review_count|pluralize }})</span>{% endif %}
+                    {% if s.change %}<span style="color: {% if s.change > 0 %}#0b6a0b{% else %}#a02020{% endif %}; font-weight: 600;">{% if s.change > 0 %}▲ +{{ s.change }}{% else %}▼ {{ s.change }}{% endif %} since last time</span>{% endif %}
+                    <span class="text-muted">· {{ s.link.get_rating_source_display|lower }} {{ s.link.rating_checked_at|date:"M j, Y" }}{% if s.stale %} — <span style="color: #b07a00;">out of date</span>{% endif %}</span>
+                </div>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="check_listing_rating"><input type="hidden" name="link_id" value="{{ s.link.pk }}"><button class="btn btn-link btn-sm p-0">Check now</button></form>
+            </div>
+        </div>
+        {% endfor %}
+        {% for s in c.unread %}
+        <div class="border rounded p-2 mb-2 small" style="border-color: color-mix(in srgb, var(--status-warning) 60%, white) !important;">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div><strong>{{ s.link.get_platform_display }}</strong> · no rating yet{% if s.link.check_error %}<div class="text-muted">{{ s.link.check_error }}{% if s.gave_up %} It won't be tried again automatically until you check it or enter it.{% endif %}</div>{% else %}<div class="text-muted">Not read yet — it will be picked up automatically, or check it now.</div>{% endif %}</div>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="check_listing_rating"><input type="hidden" name="link_id" value="{{ s.link.pk }}"><button class="btn btn-outline-secondary btn-sm">Check now</button></form>
+            </div>
+        </div>
+        {% endfor %}
+        {% for s in c.all_links %}
+        <form method="post" class="d-flex gap-2 flex-wrap align-items-center small mb-1">
+            {% csrf_token %}<input type="hidden" name="action" value="set_listing_rating"><input type="hidden" name="link_id" value="{{ s.link.pk }}">
+            <span class="text-muted">Type {{ s.link.get_platform_display }}'s rating in by hand:</span>
+            <input type="text" name="rating" class="form-control form-control-sm" style="width: 80px;" placeholder="4.85" inputmode="decimal">
+            <input type="text" name="reviews" class="form-control form-control-sm" style="width: 100px;" placeholder="reviews" inputmode="numeric">
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+        </form>
+        {% endfor %}
+
+        {% if u %}
+        <details class="mt-3 pt-2 border-top">
+            <summary class="small text-muted" style="cursor: pointer;">Unit settings — rename, deactivate or remove</summary>
+            <form method="post" class="d-flex flex-wrap gap-2 align-items-center mt-2">
+                {% csrf_token %}<input type="hidden" name="action" value="update_unit"><input type="hidden" name="unit_id" value="{{ u.pk }}">
+                <input type="text" name="label" class="form-control form-control-sm" style="max-width: 200px;" value="{{ u.label }}">
+                <div class="form-check"><input type="checkbox" name="is_active" class="form-check-input" id="unit-active-{{ u.pk }}" {% if u.is_active %}checked{% endif %}><label class="form-check-label small" for="unit-active-{{ u.pk }}">Active</label></div>
+                <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+            </form>
+            <form method="post" class="mt-2" onsubmit="return confirm('Remove unit &quot;{{ u.label|escapejs }}&quot;? This also permanently deletes any supply-level readings taken for this unit. A unit still referenced by a ticket or financial records can\'t be removed.');">
+                {% csrf_token %}<input type="hidden" name="action" value="delete_unit"><input type="hidden" name="unit_id" value="{{ u.pk }}">
+                <button class="btn btn-link btn-sm text-danger p-0" type="submit"><i data-lucide="trash-2" class="icon"></i> Remove this unit</button>
+            </form>
+        </details>
+        {% endif %}
+    </div>
+</details>
+{% endwith %}

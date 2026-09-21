@@ -53,6 +53,7 @@ def secret_values(prop):
     an FAQ."""
     values = {prop.gate_code, prop.door_code, prop.lockbox_code, prop.alarm_code, prop.wifi_password}
     values |= {u.access_code for u in prop.units.all()} | {u.wifi_password for u in prop.units.all()}
+    values |= {u.lockbox_code for u in prop.units.all()} | {u.alarm_code for u in prop.units.all()}
     return sorted((v.strip() for v in values if v and len(v.strip()) >= MIN_SECRET_LEN), key=len, reverse=True)
 
 

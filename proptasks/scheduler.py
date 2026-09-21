@@ -15,7 +15,7 @@ checks captured at the on-site visit — see supplies/services.py's
 docstring for the replacement."""
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from django.conf import settings
@@ -91,6 +91,11 @@ def _run_poll_booking_feeds():
     _run_command('poll_booking_feeds')
 
 
+def _run_refresh_listing_ratings():
+    """About monthly (it only opens links that are due): the guest ratings of each unit's Airbnb / VRBO listing."""
+    _run_command('refresh_listing_ratings')
+
+
 def _run_generate_sessions():
     _run_command('generate_sessions')
 
@@ -148,6 +153,9 @@ def start():
     _scheduler.add_job(
         _run_poll_booking_feeds, 'interval',
         minutes=settings.BOOKING_FEED_POLL_INTERVAL_MINUTES, next_run_time=datetime.now(),
+    )
+    _scheduler.add_job(
+        _run_refresh_listing_ratings, 'interval', hours=12, next_run_time=datetime.now() + timedelta(minutes=10),
     )
     _scheduler.add_job(
         _run_generate_sessions, 'interval',

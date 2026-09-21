@@ -1,0 +1,48 @@
+{# What is true of the whole property, not of one unit. Context: property, units, system_locations (building-wide only), is_admin. #}
+<div class="card mb-3" id="building" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon"></i> {% if units %}Building-wide{% else %}Property-wide{% endif %}</h6>
+    <p class="small text-muted">{% if units %}What is the same for every unit: the gate, the check-in and check-out times, how to reach the building. Each unit's own codes, wifi, size and shutoffs are on its card above.{% else %}The gate, the check-in and check-out times. The property's own codes, wifi, size and shutoffs are on its card above.{% endif %}</p>
+    <form method="post" class="mb-3">
+        {% csrf_token %}<input type="hidden" name="action" value="save_access_info">
+        <div class="row g-2 mb-2">
+            <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Gate code</label><input type="text" name="gate_code" class="form-control form-control-sm" value="{{ property.gate_code }}" autocomplete="off"></div>
+            <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Check-in time</label><input type="time" name="default_check_in_time" class="form-control form-control-sm" value="{{ property.default_check_in_time|time:'H:i' }}"></div>
+            <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Check-out time</label><input type="time" name="default_check_out_time" class="form-control form-control-sm" value="{{ property.default_check_out_time|time:'H:i' }}"></div>
+            <div class="col-12 col-md-6"><label class="form-label small text-muted mb-1">Board meeting address</label><input type="text" name="board_meeting_address" class="form-control form-control-sm" placeholder="Where this association normally holds board meetings" value="{{ property.board_meeting_address }}"></div>
+        </div>
+        {% if units %}
+        <label class="form-label small text-muted mb-1">How to reach the building</label>
+        <textarea name="access_notes" class="form-control form-control-sm mb-2" rows="2" placeholder="Parking, the entrance, anything that applies to every unit.">{{ property.access_notes }}</textarea>
+        <details class="mb-2">
+            <summary class="small text-muted" style="cursor: pointer;">Defaults for units that leave their own blank (door, lockbox, alarm, wifi{% if is_admin %}, turnover price{% endif %})</summary>
+            <div class="row g-2 mt-1">
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Door code</label><input type="text" name="door_code" class="form-control form-control-sm" value="{{ property.door_code }}" autocomplete="off"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Lockbox code</label><input type="text" name="lockbox_code" class="form-control form-control-sm" value="{{ property.lockbox_code }}" autocomplete="off"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Alarm code</label><input type="text" name="alarm_code" class="form-control form-control-sm" value="{{ property.alarm_code }}" autocomplete="off"></div>
+                <div class="col-6 col-md-3"></div>
+                <div class="col-6"><label class="form-label small text-muted mb-1">WiFi network</label><input type="text" name="wifi_network" class="form-control form-control-sm" value="{{ property.wifi_network }}" autocomplete="off"></div>
+                <div class="col-6"><label class="form-label small text-muted mb-1">WiFi password</label><input type="text" name="wifi_password" class="form-control form-control-sm" value="{{ property.wifi_password }}" autocomplete="off"></div>
+                {% if is_admin %}<div class="col-12"><div class="input-group input-group-sm" style="max-width: 280px;"><span class="input-group-text">Turnover $</span><input type="number" step="0.01" min="0" name="turnover_price_override" class="form-control form-control-sm" value="{{ property.turnover_price_override|default_if_none:'' }}"></div></div>{% endif %}
+            </div>
+        </details>
+        {% endif %}
+        <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+    </form>
+
+    {% if units %}
+    <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Shutoffs &amp; systems for the whole building</div>
+    {% for loc in system_locations %}
+    <div class="d-flex justify-content-between align-items-start py-1 border-top">
+        <div><div class="fw-medium small">{{ loc.system_name }}</div><div class="small text-muted">{{ loc.location }}{% if loc.notes %} — {{ loc.notes }}{% endif %}</div></div>
+        <form method="post" onsubmit="return confirm('Remove &quot;{{ loc.system_name|escapejs }}&quot;?');">{% csrf_token %}<input type="hidden" name="action" value="delete_system_location"><input type="hidden" name="system_location_id" value="{{ loc.pk }}"><button class="btn btn-link btn-sm text-danger p-0" type="submit"><i data-lucide="x" class="icon"></i></button></form>
+    </div>
+    {% empty %}<p class="text-muted small mb-1">None recorded.</p>{% endfor %}
+    <form method="post" class="row g-2 mt-1 align-items-end">
+        {% csrf_token %}<input type="hidden" name="action" value="add_system_location">
+        <div class="col-12 col-sm-4"><input type="text" name="system_name" class="form-control form-control-sm" placeholder="e.g. Main water shutoff"></div>
+        <div class="col-12 col-sm-4"><input type="text" name="location" class="form-control form-control-sm" placeholder="Where is it?"></div>
+        <div class="col-12 col-sm-3"><input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)"></div>
+        <div class="col-12 col-sm-1"><button class="btn btn-outline-secondary btn-sm w-100" type="submit" aria-label="Add"><i data-lucide="plus" class="icon"></i></button></div>
+    </form>
+    {% endif %}
+</div></div>
