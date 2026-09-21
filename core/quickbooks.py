@@ -323,3 +323,110 @@ def sync_snapshot(token):
         'last_sync_attempt_at', 'last_sync_error',
     ])
     return bool(result)
+
+
+# --- chart of accounts -------------------------------------------------------------------
+# Each property is tied to two QuickBooks accounts (see core/qb_accounts.py), so the
+# chart of accounts is copied into QuickBooksAccount and refreshed here.
+
+ACCOUNT_PAGE_SIZE = 1000
+ACCOUNTS_ERROR = "Couldn't read the chart of accounts from QuickBooks — will retry on the next sync."
+
+# QuickBooks normally supplies Classification; this covers an account that doesn't.
+_TYPE_CLASSIFICATION = {
+    'Bank': 'Asset', 'Accounts Receivable': 'Asset', 'Other Current Asset': 'Asset', 'Fixed Asset': 'Asset', 'Other Asset': 'Asset',
+    'Accounts Payable': 'Liability', 'Credit Card': 'Liability', 'Other Current Liability': 'Liability', 'Long Term Liability': 'Liability',
+    'Equity': 'Equity', 'Income': 'Revenue', 'Other Income': 'Revenue',
+    'Expense': 'Expense', 'Other Expense': 'Expense', 'Cost of Goods Sold': 'Expense',
+}
+
+
+def _read_accounts(token):
+    """One attempt at the whole chart of accounts (paged); raises on any failure."""
+    accounts, start = [], 1
+    while True:
+        resp = requests.get(
+            f'{API_BASES[_environment()]}/{token.realm_id}/query',
+            params={'query': f'select * from Account startposition {start} maxresults {ACCOUNT_PAGE_SIZE}'},
+            headers={'Authorization': f'Bearer {token.access_token}', 'Accept': 'application/json'},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        logger.info('QuickBooks account list read ok (intuit_tid=%s)', _intuit_tid(resp))
+        page = resp.json().get('QueryResponse', {}).get('Account', [])
+        accounts.extend(page)
+        if len(page) < ACCOUNT_PAGE_SIZE:
+            return accounts
+        start += ACCOUNT_PAGE_SIZE
+
+
+def _read_accounts_with_retry(token):
+    """Returns (accounts, error), retrying once like the financial sync does: a 401
+    forces a token refresh first (rejected means reconnect), anything else is
+    treated as transient."""
+    try:
+        return _read_accounts(token), ''
+    except Exception as exc:
+        logger.warning('QuickBooks account list failed, retrying once: %s', _failure_summary(exc))
+        if _status_code(exc) == 401:
+            outcome = _refresh_if_needed(token, force=True)
+            if outcome == REFRESH_REJECTED:
+                return None, RECONNECT_ERROR
+            if outcome != REFRESH_OK:
+                return None, ACCOUNTS_ERROR
+        else:
+            time.sleep(RETRY_DELAY_SECONDS)
+    try:
+        return _read_accounts(token), ''
+    except Exception as exc:
+        logger.error('QuickBooks account list failed after retry: %s', _failure_summary(exc))
+        return None, ACCOUNTS_ERROR
+
+
+def _account_fields(raw):
+    account_type = raw.get('AccountType', '')
+    return {
+        'name': (raw.get('Name') or '')[:300],
+        'fully_qualified_name': (raw.get('FullyQualifiedName') or raw.get('Name') or '')[:500],
+        'account_type': account_type[:60],
+        'account_sub_type': (raw.get('AccountSubType') or '')[:80],
+        'classification': raw.get('Classification') or _TYPE_CLASSIFICATION.get(account_type, ''),
+        'active': bool(raw.get('Active', True)),
+    }
+
+
+def sync_accounts(token):
+    """Copies the QuickBooks chart of accounts into QuickBooksAccount. Accounts
+    QuickBooks no longer returns are kept but marked inactive (so a mapping to one
+    stays visible); an empty answer never deactivates anything. Returns
+    (count, error); a failure keeps what is already stored."""
+    from .models import QuickBooksAccount
+
+    accounts, error = None, ''
+    if not is_configured():
+        error = 'QuickBooks client ID/secret are not set — add them in Admin Tools.'
+    else:
+        outcome = _refresh_with_retry(token)
+        if outcome == REFRESH_REJECTED:
+            error = RECONNECT_ERROR
+        elif outcome == REFRESH_FAILED:
+            error = ACCOUNTS_ERROR
+        else:
+            accounts, error = _read_accounts_with_retry(token)
+
+    count = 0
+    if accounts:
+        now = timezone.now()
+        seen = set()
+        for raw in accounts:
+            qb_id = str(raw.get('Id', '')).strip()
+            if not qb_id:
+                continue
+            seen.add(qb_id)
+            QuickBooksAccount.objects.update_or_create(qb_id=qb_id, defaults={**_account_fields(raw), 'synced_at': now})
+            count += 1
+        QuickBooksAccount.objects.exclude(qb_id__in=seen).filter(active=True).update(active=False)
+        token.accounts_synced_at = now
+    token.accounts_sync_error = error
+    token.save(update_fields=['accounts_synced_at', 'accounts_sync_error'])
+    return count, error

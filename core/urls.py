@@ -18,6 +18,7 @@ urlpatterns = [
     path('quickbooks/disconnect/', views.quickbooks_disconnect, name='quickbooks_disconnect'),
     path('admin-tools/', views.admin_tools, name='admin_tools'),
     path('admin-tools/assistant-access/', views.bot_keys, name='bot_keys'),
+    path('admin-tools/quickbooks-accounts/', views.quickbooks_accounts, name='quickbooks_accounts'),
     # JSON API for the message-answering assistant (Bearer key; see BOT_API.md)
     path('api/v1/me/', bot_api.me, name='bot_api_me'),
     path('api/v1/properties/', bot_api.property_search, name='bot_api_properties'),

@@ -108,6 +108,20 @@ class Property(models.Model):
         help_text='Supports a half bath, e.g. 2.5.',
     )
     square_footage = models.PositiveIntegerField(null=True, blank=True)
+    # --- QuickBooks: the two accounts this rental's money runs through (see
+    # core/qb_accounts.py). The income-statement account is the reimbursable
+    # expense account: expenses we pay are coded to it, and the monthly
+    # reimbursement comes back into it, so it is NOT all expense. The
+    # balance-sheet account is the owner's trust account: deposits in, and out
+    # go direct expenses, reimbursements to us, commission and owner payments.
+    qb_expense_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='expense_for_properties',
+        help_text="This rental's reimbursable-expense account on the income statement.",
+    )
+    qb_trust_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='trust_for_properties',
+        help_text="This rental's owner trust account on the balance sheet.",
+    )
     turnover_price_override = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text='A negotiated flat price for a standard Turnover Clean at this property, replacing '
@@ -725,6 +739,8 @@ class QuickBooksToken(models.Model):
     # token expired or revoked) just leaves the numbers quietly going stale.
     last_sync_attempt_at = models.DateTimeField(null=True, blank=True)
     last_sync_error = models.CharField(max_length=255, blank=True)
+    accounts_synced_at = models.DateTimeField(null=True, blank=True, help_text='When the chart of accounts was last read.')
+    accounts_sync_error = models.CharField(max_length=255, blank=True)
     ytd_revenue = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     ytd_expenses = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     ytd_net_income = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -873,3 +889,46 @@ class PropertyFAQ(models.Model):
         read and use it but not overwrite it. (A method, not a property: this
         model has a field called `property`, which shadows the decorator.)"""
         return self.reviewed or self.origin == self.Origin.STAFF
+
+
+class QuickBooksAccount(models.Model):
+    """One account from the QuickBooks chart of accounts, kept locally so a
+    property can be tied to two of them without a live QuickBooks call on every
+    page (refreshed by the daily sync and by a button on the mapping screens).
+
+    `classification` is QuickBooks's own split: Asset / Liability / Equity sit on
+    the balance sheet, Revenue / Expense on the income statement. An account that
+    disappears from QuickBooks is kept (so a mapping to it stays visible) but
+    marked inactive."""
+    class Classification(models.TextChoices):
+        ASSET = 'Asset', 'Asset'
+        LIABILITY = 'Liability', 'Liability'
+        EQUITY = 'Equity', 'Equity'
+        REVENUE = 'Revenue', 'Revenue'
+        EXPENSE = 'Expense', 'Expense'
+
+    BALANCE_SHEET = ('Asset', 'Liability', 'Equity')
+    INCOME_STATEMENT = ('Revenue', 'Expense')
+
+    qb_id = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=300)
+    fully_qualified_name = models.CharField(max_length=500, help_text='The account with its parents, e.g. "Trust Accounts:324 Harmon".')
+    account_type = models.CharField(max_length=60, blank=True)
+    account_sub_type = models.CharField(max_length=80, blank=True)
+    classification = models.CharField(max_length=20, blank=True)
+    active = models.BooleanField(default=True)
+    synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['fully_qualified_name']
+
+    def __str__(self):
+        return self.fully_qualified_name or self.name
+
+    @property
+    def on_balance_sheet(self):
+        return self.classification in self.BALANCE_SHEET
+
+    @property
+    def on_income_statement(self):
+        return self.classification in self.INCOME_STATEMENT

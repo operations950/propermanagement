@@ -23,7 +23,7 @@ from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
 
-from . import app_settings, faq as faq_service, google_calendar, google_login, places, property_specs, quickbooks, usps
+from . import app_settings, faq as faq_service, google_calendar, google_login, places, property_specs, qb_accounts, quickbooks, usps
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
@@ -36,7 +36,7 @@ from .forms import (
 from .models import (
     BotAccessKey, Contact, ContactDocument, ContactImportCandidate, ContactUpdateCandidate, DuplicateDismissal,
     GoogleCalendarToken, Property, PropertyAttribute, PropertyAttributeAssignment, PropertyDocument,
-    PropertyFAQ, PropertyListingName, PropertySystemLocation, QuickBooksToken, StaffProfile, TRADE_CHOICES, Unit,
+    PropertyFAQ, PropertyListingName, PropertySystemLocation, QuickBooksAccount, QuickBooksToken, StaffProfile, TRADE_CHOICES, Unit,
     creatable_contact_types, group_contacts_by_type, is_valid_phone, properties_by_type,
 )
 
@@ -527,6 +527,50 @@ def _list_quo_phone_lines():
 
 @login_required
 @user_passes_test(_is_admin)
+def quickbooks_accounts(request):
+    """Admin: every short-term rental with the two QuickBooks accounts it is tied to,
+    for mapping them all in one pass (each rental's own page has the same picker)."""
+    rentals = list(
+        Property.objects.filter(is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL)
+        .select_related('qb_expense_account', 'qb_trust_account').order_by('name'),
+    )
+    if request.method == 'POST':
+        if request.POST.get('action') == 'refresh':
+            _refresh_qb_accounts(request)
+            return redirect('quickbooks_accounts')
+        saved = failed = 0
+        for prop in rentals:
+            expense, trust = request.POST.get(f'expense_{prop.pk}'), request.POST.get(f'trust_{prop.pk}')
+            if expense is None and trust is None:
+                continue
+            if (expense or '') == str(prop.qb_expense_account_id or '') and (trust or '') == str(prop.qb_trust_account_id or ''):
+                continue
+            errors = qb_accounts.save_mapping(prop, expense, trust)
+            for message in errors.values():
+                messages.error(request, f'{prop.name}: {message}')
+            failed += bool(errors)
+            saved += not errors
+        if saved:
+            messages.success(request, f'Saved the accounts for {saved} rental{"" if saved == 1 else "s"}.')
+        return redirect('quickbooks_accounts')
+    pool = list(QuickBooksAccount.objects.filter(active=True))
+    rows = []
+    for prop in rentals:
+        rows.append({
+            'property': prop, 'status': qb_accounts.status(prop), 'suggestions': qb_accounts.suggestions(prop, pool=pool, limit=1),
+            'expense_options': qb_accounts.accounts_for('expense', prop.qb_expense_account_id),
+            'trust_options': qb_accounts.accounts_for('trust', prop.qb_trust_account_id),
+        })
+    token = QuickBooksToken.objects.first()
+    return render(request, 'core/quickbooks_accounts.html', {
+        'rows': rows, 'connected': token is not None, 'synced_at': token.accounts_synced_at if token else None,
+        'sync_error': token.accounts_sync_error if token else '', 'account_count': len(pool),
+        'unmapped': sum(1 for r in rows if r['status'] != 'mapped'),
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
 def bot_keys(request):
     """Admin: keys the message-answering assistant uses to read property
     information and keep the FAQ (core/bot_api.py). A new key's value is shown
@@ -870,6 +914,47 @@ def property_address_lookup(request, place_id):
     return JsonResponse(places.place_details(place_id) or {})
 
 
+def _refresh_qb_accounts(request):
+    """Reads the QuickBooks chart of accounts now (a button on the mapping screens)."""
+    token = QuickBooksToken.objects.first()
+    if token is None:
+        messages.error(request, 'QuickBooks is not connected — connect it in Admin Tools first.')
+        return False
+    count, error = quickbooks.sync_accounts(token)
+    if error:
+        messages.error(request, error)
+        return False
+    messages.success(request, f'Read {count} account{"" if count == 1 else "s"} from QuickBooks.')
+    return True
+
+
+def _property_qb_action(request, prop, action):
+    """Admin: tie this rental to its two QuickBooks accounts, or refresh the list."""
+    if not _is_admin(request.user):
+        messages.error(request, 'Only an administrator can change the QuickBooks accounts.')
+        return
+    if action == 'qb_refresh_accounts':
+        _refresh_qb_accounts(request)
+    elif action == 'qb_save_mapping':
+        errors = qb_accounts.save_mapping(prop, request.POST.get('expense_account'), request.POST.get('trust_account'))
+        for message in errors.values():
+            messages.error(request, message)
+        if not errors:
+            messages.success(request, 'QuickBooks accounts saved.')
+
+
+def _property_qb_context(prop):
+    token = QuickBooksToken.objects.first()
+    return {
+        'connected': token is not None, 'configured': quickbooks.is_configured(),
+        'synced_at': token.accounts_synced_at if token else None, 'sync_error': token.accounts_sync_error if token else '',
+        'account_count': QuickBooksAccount.objects.filter(active=True).count(),
+        'expense_options': qb_accounts.accounts_for('expense', prop.qb_expense_account_id),
+        'trust_options': qb_accounts.accounts_for('trust', prop.qb_trust_account_id),
+        'suggestions': qb_accounts.suggestions(prop), 'status': qb_accounts.status(prop),
+    }
+
+
 def _property_faq_action(request, prop, action):
     """Staff add, correct, review or archive a property's FAQ entries (the
     assistant's own writes go through core/bot_api.py)."""
@@ -1137,6 +1222,9 @@ def property_detail(request, pk):
         elif action and action.startswith('faq_'):
             _property_faq_action(request, prop, action)
             return redirect(reverse('property_detail', args=[prop.pk]) + '#faq')
+        elif action and action.startswith('qb_'):
+            _property_qb_action(request, prop, action)
+            return redirect(reverse('property_detail', args=[prop.pk]) + '#quickbooks')
         return redirect('property_detail', pk=prop.pk)
 
     contacts = list(prop.contacts.all())
@@ -1216,6 +1304,7 @@ def property_detail(request, pk):
         'property': prop,
         'specs_summary': property_specs.summary(property_specs.missing_specs(prop)),
         'faqs': prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE).select_related('unit', 'created_by_key').order_by('reviewed', 'question'),
+        'qb': _property_qb_context(prop) if (_is_admin(request.user) and qb_accounts.applies_to(prop)) else None,
         'faq_archived_count': prop.faqs.filter(status=PropertyFAQ.Status.ARCHIVED).count(),
         'faq_unreviewed_count': prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE, reviewed=False).count(),
         'back_url': back_url,

@@ -6,7 +6,7 @@ optional integration in this app."""
 from django.core.management.base import BaseCommand
 
 from core.models import QuickBooksToken
-from core.quickbooks import sync_snapshot
+from core.quickbooks import sync_accounts, sync_snapshot
 
 
 class Command(BaseCommand):
@@ -24,3 +24,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 f'QuickBooks sync failed ({token.last_sync_error}) — keeping last known snapshot.'
             ))
+        # The chart of accounts (what each property is tied to) rides along on the same schedule.
+        count, error = sync_accounts(token)
+        if error:
+            self.stdout.write(self.style.WARNING(f'QuickBooks account list not refreshed ({error}).'))
+        else:
+            self.stdout.write(self.style.SUCCESS(f'QuickBooks chart of accounts synced ({count} accounts).'))

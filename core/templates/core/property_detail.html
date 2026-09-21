@@ -280,6 +280,64 @@
     </div>
 </div>
 
+{% if qb %}
+{# QuickBooks: the two accounts this rental's money runs through (admin only). #}
+<div class="card mb-3" id="quickbooks">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+            <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="landmark" class="icon"></i> QuickBooks accounts</h6>
+            {% if qb.status == 'mapped' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Both accounts tied</span>
+            {% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{% if qb.status == 'partial' %}One account still needed{% else %}Not tied to QuickBooks yet{% endif %}</span>{% endif %}
+        </div>
+        <p class="text-muted small mb-3">Each rental runs through two accounts. The <strong>income-statement</strong> account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The <strong>balance-sheet</strong> account is the owner's trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner's payment.</p>
+
+        {% if not qb.connected %}
+        <div class="alert alert-warning small py-2 mb-0">QuickBooks isn't connected. Connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a>, then come back and choose the accounts.</div>
+        {% else %}
+        {% if qb.sync_error %}<div class="alert alert-warning small py-2">{{ qb.sync_error }}</div>{% endif %}
+        {% if not qb.account_count %}
+        <div class="alert alert-info small py-2">No accounts have been read from QuickBooks yet.</div>
+        {% endif %}
+        <form method="post" class="row g-3">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_save_mapping">
+            <div class="col-md-6">
+                <label class="form-label small mb-1" for="qb-expense">Income statement — reimbursable expense account</label>
+                <select name="expense_account" id="qb-expense" class="form-select form-select-sm">
+                    <option value="">— not chosen —</option>
+                    {% regroup qb.expense_options by account_type as expense_groups %}
+                    {% for group in expense_groups %}<optgroup label="{{ group.grouper }}">
+                        {% for a in group.list %}<option value="{{ a.pk }}" {% if property.qb_expense_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}
+                    </optgroup>{% endfor %}
+                </select>
+                {% for s in qb.suggestions.expense %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qb-expense').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small mb-1" for="qb-trust">Balance sheet — owner trust account</label>
+                <select name="trust_account" id="qb-trust" class="form-select form-select-sm">
+                    <option value="">— not chosen —</option>
+                    {% regroup qb.trust_options by account_type as trust_groups %}
+                    {% for group in trust_groups %}<optgroup label="{{ group.grouper }}">
+                        {% for a in group.list %}<option value="{{ a.pk }}" {% if property.qb_trust_account_id == a.pk %}selected{% endif %}>{{ a.fully_qualified_name }}{% if not a.active %} (no longer active){% endif %}</option>{% endfor %}
+                    </optgroup>{% endfor %}
+                </select>
+                {% for s in qb.suggestions.trust %}<div class="small mt-1">Looks like <strong>{{ s.fully_qualified_name }}</strong> <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('qb-trust').value='{{ s.pk }}'">use it</button></div>{% endfor %}
+            </div>
+            <div class="col-12 d-flex gap-2 flex-wrap align-items-center">
+                <button class="btn btn-primary btn-sm">Save accounts</button>
+                <a href="{% url 'quickbooks_accounts' %}" class="btn btn-link btn-sm">Map all rentals</a>
+                <span class="small text-muted">Each account can belong to one rental only.</span>
+            </div>
+        </form>
+        <form method="post" class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_refresh_accounts">
+            <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Refresh accounts from QuickBooks</button>
+            <span class="small text-muted">{% if qb.synced_at %}{{ qb.account_count }} accounts, last read {{ qb.synced_at|timesince }} ago{% else %}not read yet{% endif %}. Not seeing a new account? Refresh.</span>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <div class="row g-3 mb-3">
     <div class="col-md-6">
         <div class="card h-100" id="property-size">
