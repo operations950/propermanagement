@@ -594,7 +594,7 @@ TOTAL_KEYS = ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 
 CENT = Decimal('0.01')
 
 
-def totals(book, month, lines=None, with_prior=True):
+def totals(book, month, lines=None, with_prior=True, memo=None):
     """The month in dollars, from the lines as currently coded (positive numbers).
     `deposits` is income: only trust-account money in that is coded as a booking
     payout — a refund coded as an expense reduces expenses instead.
@@ -633,35 +633,54 @@ def totals(book, month, lines=None, with_prior=True):
     due = (max(net, ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
     total.update(net_income=net, commission_rate=rate, commission_due=due, owner_due=net - due, calc=True)
     if with_prior:
-        total.update(prior_settlement(book, month))
-    return derive(total)
+        total.update(prior_settlement(book, month, memo))
+    derive(total)
+    if memo is not None:
+        memo[(_book(book)._key(), month_of(month))] = total
+    return total
 
 
 def derive(t):
-    """The figures the screens show that are simple sums of others: what was taken out for us, what is still to come
-    out for us and for the owner, and how this month's reimbursement and commission differ from last month's."""
+    """The figures the screens show that are simple sums of others.
+
+    Everything paid out of the trust account this month settles LAST month's dues: the reimbursement and the
+    commission to us, and the owner payment. So each is compared with last month's figure (`*_diff`), and what
+    was not settled carries on. The PAYABLES at the end of the month are what this month earned and will be
+    paid early next month (the owner payment; the reimbursable expenses and commission to us), plus anything of
+    last month's that is still unpaid (`*_carry`); the aim is to pay out 100% every month, so the carry is zero."""
     if not t.get('calc'):
         return t
     t['taken_to_us'] = t['reimbursement_trust'] + t['commission']
     t['still_to_us'] = t['expenses_reimbursable'] + t['commission_due']
-    t['owner_unpaid'] = t['owner_due'] - t['owner_payment']
     ok = t.get('prior_status') == 'ok'
+    owner_ok = ok and t.get('prior_owner') is not None
     t['reimbursement_diff'] = t['reimbursement_trust'] - t['prior_reimbursable'] if ok else None
     t['commission_diff'] = t['commission'] - t['prior_commission'] if ok else None
+    t['owner_diff'] = t['owner_payment'] - t['prior_owner'] if owner_ok else None
+    t['reimb_carry'] = (t['prior_reimbursable'] - t['reimbursement_trust']) if ok else ZERO
+    t['comm_carry'] = (t['prior_commission'] - t['commission']) if ok else ZERO
+    t['owner_carry'] = (t['prior_owner'] - t['owner_payment']) if owner_ok else ZERO
+    t['us_carry'] = t['reimb_carry'] + t['comm_carry']
+    t['reimb_payable'] = t['expenses_reimbursable'] + t['reimb_carry']
+    t['comm_payable'] = t['commission_due'] + t['comm_carry']
+    t['us_payable'] = t['reimb_payable'] + t['comm_payable']
+    t['owner_payable'] = t['owner_due'] + t['owner_carry']
     return t
 
 
-def prior_settlement(book, month):
-    """What last month left to settle in this one: its reimbursable expenses (reimbursed to us out of
-    the trust account this month) and its commission (paid to us out of the trust account this month),
-    from its frozen figures if it was closed under this calculation, else worked out from its lines.
+def prior_settlement(book, month, memo=None):
+    """What last month left to be paid in this one: the accounts payable at the end of last month, per
+    item: the reimbursable expenses (reimbursed to us out of the trust account), our commission and the
+    owner payment. That is what last month earned plus whatever was still unpaid from the month before it,
+    so an amount not paid stays owed until it is. From its frozen figures if it was closed under this
+    calculation, else worked out from its lines (`memo` holds months already worked out).
     `prior_status` says why there is nothing to compare with: 'not_in_books' (before the books start),
     'other_shape' (kept as property books then, unit books now, or the reverse), 'no_data' (nothing
     pulled in for it yet)."""
     book = _book(book)
     month = month_of(month)
     prior = previous_month(month)
-    out = {'prior_month': prior, 'prior_reimbursable': None, 'prior_commission': None, 'prior_status': 'ok', 'prior_closed': False}
+    out = {'prior_month': prior, 'prior_reimbursable': None, 'prior_commission': None, 'prior_owner': None, 'prior_status': 'ok', 'prior_closed': False}
     if prior < month_of(books_start()):
         out['prior_status'] = 'not_in_books'
         return out
@@ -672,8 +691,14 @@ def prior_settlement(book, month):
     if close is None and not month_lines(book, prior).exists():
         out['prior_status'] = 'no_data'
         return out
-    t = closed_summary(close) if (close is not None and 'commission_due' in close.totals) else totals(book, prior, with_prior=False)
-    out.update(prior_reimbursable=t['expenses_reimbursable'], prior_commission=t['commission_due'], prior_closed=close is not None)
+    if close is not None and 'reimb_payable' in close.totals:
+        t = closed_summary(close)
+    elif memo is not None and (book._key(), prior) in memo:
+        t = memo[(book._key(), prior)]
+    else:
+        t = totals(book, prior, memo=memo)          # closed before the balances were kept, or open: from its lines, and on back
+    out.update(prior_reimbursable=t.get('reimb_payable', t['expenses_reimbursable']), prior_commission=t.get('comm_payable', t['commission_due']),
+               prior_owner=t.get('owner_payable', t['owner_due']), prior_closed=close is not None)
     return out
 
 
@@ -689,10 +714,53 @@ def sum_totals(parts):
     ok = bool(parts) and all(v is not None for v in priors)
     out['prior_reimbursable'] = sum(priors, ZERO) if ok else None
     out['prior_commission'] = sum((p['prior_commission'] for p in parts), ZERO) if ok else None
+    out['prior_owner'] = sum((p['prior_owner'] for p in parts), ZERO) if ok and all(p.get('prior_owner') is not None for p in parts) else None
     out['prior_status'] = 'ok' if ok else next((p.get('prior_status') for p in parts if p.get('prior_status') not in (None, 'ok')), 'no_data')
     out['prior_month'] = next((p.get('prior_month') for p in parts if p.get('prior_month')), None)
     out['prior_closed'] = ok and all(p.get('prior_closed') for p in parts)
     return derive(out)
+
+
+STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'net_income', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us')
+
+
+def statement(prop, end=None, months=12):
+    """A property's months side by side, one column each (12 by default, none before the books start): the
+    calculation down the page (income deposits less reimbursable expenses and expenses paid from trust = net
+    income; commission; the owner payment), what is paid out early next month (the accounts payable to the
+    owner and to us), what was paid out this month for last month, and two checks: that last month's payables
+    were cleared, and that all of the income is accounted for. A closed month is as closed; an open one as it
+    is coded now. For a property kept unit by unit each column is its units added up.
+
+    Returns {'columns': [{'month', 'state', 't', 'accounted', 'cleared'}], 'total': {...sums of the flows...}}."""
+    start = month_of(books_start())
+    last = month_of(end) if end else previous_month(timezone.localdate())
+    span, m = [], last
+    while len(span) < months and m >= start:
+        span.append(m)
+        m = previous_month(m)
+    span.reverse()
+    columns = []
+    memo = {}
+    for m in span:
+        parts, closed = [], 0
+        books = books_for(prop, m)
+        for b in books:
+            close = MonthClose.objects.filter(month=m, **b.scope()).first()
+            if close is not None and 'reimb_payable' in close.totals:
+                parts.append(closed_summary(close))
+            elif close is not None or month_lines(b, m).exists():
+                parts.append(totals(b, m, memo=memo))       # closed before the balances were kept, or open: from its lines
+            closed += close is not None
+        if not parts:
+            columns.append({'month': m, 'state': 'empty', 't': None, 'accounted': None, 'cleared': None})
+            continue
+        t = parts[0] if len(parts) == 1 else sum_totals(parts)
+        accounted = t['deposits'] - (t['expenses_reimbursable'] + t['expenses_direct'] + t['commission_due'] + t['owner_due'])
+        cleared = None if t.get('prior_status') != 'ok' else (t['us_carry'] == 0 and t['owner_carry'] == 0)
+        columns.append({'month': m, 'state': 'closed' if closed == len(books) else 'open', 't': t, 'accounted': accounted, 'cleared': cleared})
+    total = {k: sum((c['t'][k] for c in columns if c['t']), ZERO) for k in STATEMENT_KEYS}
+    return {'columns': columns, 'total': total, 'property': prop, 'first': span[0] if span else None, 'last': span[-1] if span else None}
 
 
 def checks(book, month, now=None, rec=None):
@@ -733,8 +801,6 @@ def checks(book, month, now=None, rec=None):
         t = totals(book, month, lines, with_prior=False)
         if t['reimbursement_trust'] != t['reimbursement_expense']:
             add('reimbursement_mismatch', 'warn', f'The reimbursement out of the trust account (${t["reimbursement_trust"]:,.2f}) does not equal the reimbursement credited to the expense account (${t["reimbursement_expense"]:,.2f}).')
-        if t['owner_payment'] == 0 and t['deposits'] > 0:
-            add('no_owner_payment', 'warn', 'No owner payment is coded this month although there were deposits.')
     add_settlement_checks(book, month, lines, add)
     if book.mapped:
         add_recon_checks(rec if rec is not None else recon.reconcile(book, month), add)
@@ -742,27 +808,31 @@ def checks(book, month, now=None, rec=None):
 
 
 def add_settlement_checks(book, month, lines, add):
-    """The reimbursement to us and the commission taken out of the trust account this month settle
-    LAST month's: compare them with last month's reimbursable expenses and commission."""
+    """What is paid out of the trust account this month settles LAST month's dues: the reimbursement to us and
+    the commission (last month's reimbursable expenses and commission) and the owner payment (last month's).
+    Compare each with last month's figure."""
     t = totals(book, month, lines)
     prior = t['prior_month']
     name = f'{prior:%B}'
     status = t['prior_status']
     if status == 'not_in_books':
-        add('settle_prior', 'ok', f'{name} is before the books start, so this month\'s reimbursement and commission can\'t be checked against it.')
+        add('settle_prior', 'ok', f'{name} is before the books start, so this month\'s reimbursement, commission and owner payment can\'t be checked against it.')
         return
     if status == 'other_shape':
-        add('settle_prior', 'ok', f'{name} was kept in a different shape (property books against unit books), so this month\'s reimbursement and commission can\'t be checked against it.')
+        add('settle_prior', 'ok', f'{name} was kept in a different shape (property books against unit books), so this month\'s reimbursement, commission and owner payment can\'t be checked against it.')
         return
     if status == 'no_data':
-        taken = t['reimbursement_trust'] + t['commission']
+        taken = t['reimbursement_trust'] + t['commission'] + t['owner_payment']
         if taken:
-            add('settle_prior', 'warn', f'Nothing has been pulled in for {name}, so the ${taken:,.2f} taken out for us this month (reimbursement and commission) can\'t be checked against it.')
+            add('settle_prior', 'warn', f'Nothing has been pulled in for {name}, so the ${taken:,.2f} paid out this month (reimbursement, commission and owner payment) can\'t be checked against it.')
         return
     for key, label, taken, owed, what in (
         ('reimbursement_vs_prior', 'Reimbursement to us', t['reimbursement_trust'], t['prior_reimbursable'], 'reimbursable expenses'),
         ('commission_vs_prior', 'Commission', t['commission'], t['prior_commission'], 'commission'),
+        ('owner_vs_prior', 'Owner payment', t['owner_payment'], t['prior_owner'], 'owner payment'),
     ):
+        if owed is None:
+            continue
         diff = taken - owed
         if diff != 0:
             add(key, 'warn', f'{label} taken this month (${taken:,.2f}) does not match {name}\'s {what} (${owed:,.2f}): ${abs(diff):,.2f} {"more" if diff > 0 else "less"}.')

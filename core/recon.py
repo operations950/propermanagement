@@ -21,6 +21,10 @@ How it works
     payout (they are not revenue) and added back here (Booking.cash_amount). If the deposit
     still differs from what is on file, it is shown as a difference to look at — with the
     likely reason — instead of "no matching payout".
+  * a platform pays a reservation out in several dated pieces: each installment of a long stay, a
+    resolution or adjustment on its own day. The reconciliation works on those dated payouts
+    (onsite.PayoutLine, from the transactions file), so a $-100 resolution deposited on Aug 3 is matched to
+    that piece of its reservation, not compared with the whole reservation.
   * every other deposit is matched, to the cent, to a payout (or a couple of payouts that
     landed together) dated shortly before it. Deposits arrive a day or a few days after
     the payout date, so a payout dated at the very end of a month that arrives in the
@@ -43,7 +47,7 @@ Alongside that, the reservations view: which reservations CHECK IN during the mo
 how much of their payouts arrived within it — a five-night stay that starts on the
 31st belongs to that month even though its money lands in the next."""
 import re
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from itertools import combinations
 
@@ -61,27 +65,60 @@ MAX_MONTHS = 36
 
 
 def _bookings(book):
-    """The platform payouts this set of books answers for."""
+    """The platform payouts this set of books answers for: reservations with a payout amount, or with dated payout lines."""
+    from django.db.models import Q
+
     from onsite.models import Booking
-    qs = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).exclude(payout_amount__isnull=True).exclude(payout_amount=0)
+    qs = (Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO))
+          .filter((Q(payout_amount__isnull=False) & ~Q(payout_amount=0)) | Q(payout_lines__isnull=False)).distinct())
     if book.unit is not None:
         qs = qs.filter(unit=book.unit)
-    return qs
+    return qs.prefetch_related('payout_lines')
 
 
 def _source_label(source):
     return {'airbnb': 'Airbnb', 'vrbo': 'VRBO'}.get(source, source)
 
 
-def _groups(bookings):
-    """Reservations paid out together (same platform, same payout date) are one payout."""
+class _Event:
+    """One dated movement of a reservation's platform money: what was paid out on one day. A reservation has
+    one (paid in one go), or several (a long stay's installments, a resolution paid later)."""
+    __slots__ = ('booking', 'date', 'amount')
+
+    def __init__(self, booking, date, amount):
+        self.booking, self.date, self.amount = booking, date, amount
+
+    @property
+    def pk(self):
+        return self.booking.pk
+
+    @property
+    def key(self):
+        return (self.booking.pk, self.date)
+
+
+def _events(scope):
+    return [_Event(b, d, a) for b in scope for d, a in sorted(b.cash_events().items())]
+
+
+def _is_cleared(event, cleared):
+    """`cleared` holds event keys (booking id, day) and, for months closed before payouts were tracked by
+    day, whole booking ids."""
+    return event.pk in cleared or event.key in cleared
+
+
+def _groups(events):
+    """Money paid out together (same platform, same day) is one payout; that is what shows up as one deposit."""
     groups = {}
-    for b in bookings:
-        key = f'{b.source}:{b.payout_date.isoformat()}'
-        g = groups.setdefault(key, {'key': key, 'source': b.source, 'date': b.payout_date, 'total': ZERO, 'ids': [], 'guests': []})
-        g['total'] += b.cash_amount()
-        g['ids'].append(b.pk)
-        if b.guest_name and len(g['guests']) < 3:
+    for ev in events:
+        b = ev.booking
+        key = f'{b.source}:{ev.date.isoformat()}'
+        g = groups.setdefault(key, {'key': key, 'source': b.source, 'date': ev.date, 'total': ZERO, 'ids': [], 'events': [], 'guests': []})
+        g['total'] += ev.amount
+        if b.pk not in g['ids']:
+            g['ids'].append(b.pk)
+        g['events'].append(ev.key)
+        if b.guest_name and len(g['guests']) < 3 and b.guest_name not in g['guests']:
             g['guests'].append(b.guest_name)
     for g in groups.values():
         g['count'] = len(g['ids'])
@@ -96,33 +133,46 @@ def _income_deposits(book, month):
     return [l for l in ledger.month_lines(book, month) if l.role == LedgerLine.Role.TRUST and l.category == LedgerLine.Category.DEPOSIT and l.flow != 0]
 
 
-def _match_month(book, month, cleared, scope):
-    """One month's matching. `scope` is the book's platform-payout reservations."""
+def _match_month(book, month, cleared, scope, events):
+    """One month's matching. `scope` is the book's platform-payout reservations, `events` their dated payouts."""
     month_end = ledger.next_month(month) - timedelta(days=1)
-    lower = ledger.month_of(ledger.books_start()) - LOOKBACK
+    first = ledger.month_of(ledger.books_start())
+    lower = first - LOOKBACK
     deposits = sorted(_income_deposits(book, month), key=lambda l: (l.txn_date, l.pk))
-    # First, deposits that name their reservation(s) by confirmation code.
-    by_code = [b for b in scope if b.external_uid and b.pk not in cleared]
-    code_pairs, coded_ids, plain = [], set(), []
+    pool = [ev for ev in events if not _is_cleared(ev, cleared) and lower <= ev.date <= month_end + EARLY]
+    used = set()
+    # First, deposits that name their reservation(s) by confirmation code. A code names the reservation, not the
+    # day: a resolution is paid on its own day, a long stay in installments, so of each named reservation's
+    # payouts the one nearest the deposit is the one this deposit is (the exact amount first, for one code).
+    named = [b for b in scope if b.external_uid]
+    code_pairs, plain = [], []
     for dep in deposits:
         text = f'{dep.payee} {dep.memo}'
-        hits = [b for b in by_code if b.pk not in coded_ids and re.search(r'(?<![A-Za-z0-9])' + re.escape(b.external_uid) + r'(?![A-Za-z0-9])', text, re.IGNORECASE)]
-        if not hits:
+        hits = [b for b in named if re.search(r'(?<![A-Za-z0-9])' + re.escape(b.external_uid) + r'(?![A-Za-z0-9])', text, re.IGNORECASE)]
+        chosen = []
+        for b in hits:
+            mine = sorted((ev for ev in pool if ev.pk == b.pk and ev.key not in used), key=lambda ev: (abs((dep.txn_date - ev.date).days), ev.date))
+            if not mine:
+                continue
+            exact = [ev for ev in mine if ev.amount == dep.flow] if len(hits) == 1 else []
+            chosen.append((exact or mine)[0])
+        if not chosen:
             plain.append(dep)
             continue
-        expected = sum((b.cash_amount() for b in hits), ZERO).quantize(Decimal('0.01'))
-        codes = ', '.join(b.external_uid for b in hits)
+        used |= {ev.key for ev in chosen}
+        expected = sum((ev.amount for ev in chosen), ZERO).quantize(Decimal('0.01'))
+        books = [ev.booking for ev in chosen]
+        codes = ', '.join(sorted({b.external_uid for b in books}))
+        day = min(ev.date for ev in chosen)
         group = {
-            'key': 'codes:' + ','.join(sorted(b.external_uid for b in hits)), 'source': hits[0].source, 'date': hits[0].payout_date or dep.txn_date,
-            'total': expected, 'ids': [b.pk for b in hits], 'guests': [b.guest_name for b in hits if b.guest_name][:3], 'count': len(hits),
-            'label': f'{_source_label(hits[0].source)} payout for {codes}',
-            'on_file': [(b.external_uid, b.payout_amount, b.pass_through_amount, b.other_payout_amount) for b in hits],
+            'key': 'codes:' + ','.join(sorted(ev.booking.external_uid + '@' + ev.date.isoformat() for ev in chosen)), 'source': books[0].source, 'date': day,
+            'total': expected, 'ids': [b.pk for b in books], 'events': [ev.key for ev in chosen], 'guests': [b.guest_name for b in books if b.guest_name][:3], 'count': len(books),
+            'codes': codes, 'label': f'{_source_label(books[0].source)} payout for {codes} dated {day:%b} {day.day}', 'carried': day < month,
+            'on_file': [(ev.booking.external_uid, ev.booking.payout_amount, ev.booking.pass_through_amount, ev.booking.other_payout_amount) for ev in chosen],
         }
         code_pairs.append({'line': dep, 'groups': [group], 'amount': dep.flow, 'expected': expected, 'difference': (dep.flow - expected).quantize(Decimal('0.01')), 'by_code': True})
-        coded_ids |= set(group['ids'])
     deposits = plain
-    pool = [b for b in scope if b.payout_date and lower <= b.payout_date <= month_end + EARLY and b.pk not in cleared and b.pk not in coded_ids]
-    free = _groups(pool)
+    free = _groups([ev for ev in pool if ev.key not in used])
     pairs, open_deposits = list(code_pairs), []
     for dep in deposits:
         # A payout carried over from an earlier month can land whenever it lands; one dated this month is expected within LATE.
@@ -137,17 +187,20 @@ def _match_month(book, month, cleared, scope):
             if chosen:
                 break
         if chosen:
+            for g in chosen:
+                g['carried'] = g['date'] < month
             pairs.append({'line': dep, 'groups': list(chosen), 'amount': dep.flow})
             free = [g for g in free if g not in chosen]
         else:
             open_deposits.append(dep)
-    matched_ids = {i for p in pairs for g in p['groups'] for i in g['ids']}
+    for p in pairs:
+        p['carried'] = sum((g['total'] for g in p['groups'] if g.get('carried')), ZERO)
+    matched = {key for p in pairs for g in p['groups'] for key in g['events']}
     # Only payouts from inside the books are owed to the bank. One dated just before the books start is
     # let into the pool above so it can match a deposit that lands early in the first month, but if it
     # matched nothing it reached the bank before the ledger begins: not something this month can chase.
-    first = ledger.month_of(ledger.books_start())
     open_groups = [g for g in free if first <= g['date'] <= month_end]
-    return {'pairs': pairs, 'open_deposits': open_deposits, 'open_groups': open_groups, 'cleared_out': cleared | matched_ids, 'month_end': month_end,
+    return {'pairs': pairs, 'open_deposits': open_deposits, 'open_groups': open_groups, 'cleared_out': cleared | matched, 'month_end': month_end,
             'mismatched': [p for p in code_pairs if p['difference'] != 0]}
 
 
@@ -155,10 +208,12 @@ def _cleared_by_closes(prop, month):
     closes = list(MonthClose.objects.filter(property=prop, month=month))
     if not closes:
         return None
-    ids = set()
+    cleared = set()
     for close in closes:
-        ids |= set((close.recon or {}).get('cleared_booking_ids', []))
-    return ids
+        data = close.recon or {}
+        cleared |= set(data.get('cleared_booking_ids', []))
+        cleared |= {(pk, date.fromisoformat(day)) for pk, day in data.get('cleared_events', [])}
+    return cleared
 
 
 def _month_sequence(month):
@@ -180,19 +235,19 @@ def _items(book, month, result):
     items = []
     for pair in result.get('mismatched', []):
         dep, diff, group = pair['line'], pair['difference'], pair['groups'][0]
-        who = dep.payee or dep.memo or dep.txn_type
+        who = dep.memo or dep.txn_type
         hint = ''
         if diff > 0 and not any((pt or 0) for _c, _p, pt, _o in group['on_file']):
             hint = " Airbnb's transactions file lists a separate 'Pass Through Tot' line (tax it pays the host) for each stay: upload the latest transactions file and it is included."
         a = accepted.get(('deposit', f'line:{dep.pk}'))
         items.append({
             'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False, 'mismatch': True,
-            'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${dep.flow:,.2f} deposited ({who}) names {group["label"].split(" for ")[-1]}, but is ${abs(diff):,.2f} {"more" if diff > 0 else "less"} '
-                    f'than the ${pair["expected"]:,.2f} on file for {"it" if group["count"] == 1 else "them"}.{hint}',
+            'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${abs(dep.flow):,.2f} {"deposited" if dep.flow > 0 else "taken out"} ({who}) names {group["codes"]}, but is ${abs(diff):,.2f} {"more" if diff > 0 else "less"} '
+                    f'than the ${pair["expected"]:,.2f} that platform payout is on file for.{hint}',
             'accepted': a if a and a.amount == dep.flow else None,
         })
     for dep in result['open_deposits']:
-        who = dep.payee or dep.memo or dep.txn_type
+        who = dep.memo or dep.txn_type
         a = accepted.get(('deposit', f'line:{dep.pk}'))
         items.append({
             'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False, 'prior_ok': first_month,
@@ -245,34 +300,37 @@ def reconcile(book, month):
     if ledger.is_closed(book, month):
         return None
     scope = list(_bookings(book))
+    events = _events(scope)
     cleared = set()
     result = None
     for m in _month_sequence(month):
         if m == month:
-            result = _match_month(book, m, cleared, scope)
+            result = _match_month(book, m, cleared, scope, events)
             break
         frozen = _cleared_by_closes(book.property, m)
         if frozen is not None:
             cleared |= frozen
         else:
-            cleared = _match_month(book, m, cleared, scope)['cleared_out']
+            cleared = _match_month(book, m, cleared, scope, events)['cleared_out']
     if result is None:
-        result = _match_month(book, month, cleared, scope)
+        result = _match_month(book, month, cleared, scope, events)
     items = _items(book, month, result)
     deposits = _income_deposits(book, month)
     month_end = result['month_end']
     matched_payouts = sum((p.get('expected', p['amount']) for p in result['pairs']), ZERO)
-    undated = [b for b in _undated(book) if b.pk not in result['cleared_out'] and month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
+    booking_ids = {c for c in result['cleared_out'] if isinstance(c, int)}
+    undated = [b for b in _undated(book) if b.pk not in booking_ids and month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
     unassigned = 0
     if book.unit is not None:
         from onsite.models import Booking
         unassigned = Booking.objects.filter(
             property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
             payout_date__gte=ledger.month_of(ledger.books_start()), payout_date__lte=month_end, payout_amount__isnull=False,
-        ).exclude(payout_amount=0).exclude(pk__in=cleared).count()
+        ).exclude(payout_amount=0).count()
     return {
         'closed': False, 'month': month, 'pairs': result['pairs'], 'items': items, 'cleared_out': result['cleared_out'],
         'payouts_matched': matched_payouts, 'deposits_total': sum((d.flow for d in deposits), ZERO),
+        'carried_payouts': sum((p['carried'] for p in result['pairs']), ZERO),
         'prior_total': sum((i['amount'] for i in items if i['accepted'] and i['accepted'].prior_period), ZERO),
         'undated': len(undated), 'undated_total': sum((b.payout_amount for b in undated), ZERO), 'unassigned': unassigned,
         'reservations': _reservations_view(book, month, scope),
@@ -281,7 +339,7 @@ def reconcile(book, month):
 
 def _undated(book):
     from onsite.models import Booking
-    qs = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO), payout_date__isnull=True, payout_amount__isnull=False).exclude(payout_amount=0)
+    qs = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO), payout_date__isnull=True, payout_amount__isnull=False, payout_lines__isnull=True).exclude(payout_amount=0)
     if book.unit is not None:
         qs = qs.filter(unit=book.unit)
     return list(qs.exclude(status='cancelled'))
@@ -340,10 +398,10 @@ def snapshot(rec):
         return str(Decimal(v).quantize(Decimal('0.01')))
     res = rec['reservations']
     return {
-        'payouts_matched': money(rec['payouts_matched']), 'deposits_total': money(rec['deposits_total']), 'prior_total': money(rec['prior_total']),
+        'payouts_matched': money(rec['payouts_matched']), 'deposits_total': money(rec['deposits_total']), 'prior_total': money(rec['prior_total']), 'carried_payouts': money(rec['carried_payouts']),
         'pairs': [{
-            'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].payee or p['line'].memo or p['line'].txn_type, 'difference': money(p.get('difference', 0)),
-            'payouts': [{'label': g['label'], 'amount': money(g['total']), 'count': g['count']} for g in p['groups']],
+            'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].memo or p['line'].txn_type, 'difference': money(p.get('difference', 0)),
+            'payouts': [{'label': g['label'], 'amount': money(g['total']), 'count': g['count'], 'carried': bool(g.get('carried'))} for g in p['groups']],
         } for p in rec['pairs']],
         'accepted': [{
             'kind': i['kind'], 'amount': money(i['amount']), 'text': i['text'], 'note': i['accepted'].note, 'prior_period': i['accepted'].prior_period,
@@ -355,7 +413,10 @@ def snapshot(rec):
             'paid_later': money(res['paid_later']), 'carried_in': money(res['carried_in']),
             'paid_later_items': [{'guest': r['guest'], 'check_in': r['check_in'].isoformat(), 'amount': money(r['amount']), 'payout_date': r['payout_date'].isoformat() if r['payout_date'] else ''} for r in res['paid_later_items']],
         },
-        'cleared_booking_ids': sorted(rec['cleared_out']),
+        # what has cleared, so a later month never counts it again: whole reservations (months closed before payouts
+        # were tracked by day) and dated payouts
+        'cleared_booking_ids': sorted(c for c in rec['cleared_out'] if isinstance(c, int)),
+        'cleared_events': sorted([pk, day.isoformat()] for pk, day in (c for c in rec['cleared_out'] if isinstance(c, tuple))),
     }
 
 
@@ -367,6 +428,7 @@ def from_close(close):
     res = data.get('reservations', {})
     return {
         'closed': True, 'payouts_matched': Decimal(data.get('payouts_matched', '0')), 'deposits_total': Decimal(data.get('deposits_total', '0')), 'prior_total': Decimal(data.get('prior_total', '0')),
+        'carried_payouts': Decimal(data.get('carried_payouts', '0')),
         'pairs': data.get('pairs', []), 'accepted': data.get('accepted', []), 'in_transit': data.get('in_transit', []),
         'reservations': {k: (Decimal(v) if k in ('payout_total', 'paid_in_month', 'paid_later', 'carried_in') else v) for k, v in res.items()},
     }

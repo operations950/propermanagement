@@ -233,6 +233,31 @@ class ImportBatch(models.Model):
         return f'{self.get_source_display()} import {self.created_at:%Y-%m-%d %H:%M}'
 
 
+class PayoutLine(models.Model):
+    """One dated line of the money a platform pays out for a reservation, as its transactions export lists it:
+    the reservation's own payout (a long stay has one per installment), the pass-through occupancy tax Airbnb
+    pays the host to remit, and resolution payouts or adjustments (which can be negative). Each is paid on its
+    own day, so each can be a different bank deposit; the month-end income reconciliation matches deposits to
+    these. Booking.payout_amount stays the revenue (the reservation lines); the rest is not revenue."""
+
+    class Kind(models.TextChoices):
+        RESERVATION = 'reservation', 'Reservation payout'
+        PASS_THROUGH = 'pass_through', 'Pass-through tax'
+        OTHER = 'other', 'Resolution or adjustment'
+
+    booking = models.ForeignKey('Booking', on_delete=models.CASCADE, related_name='payout_lines')
+    kind = models.CharField(max_length=14, choices=Kind.choices)
+    date = models.DateField(help_text='The day the platform paid it out.')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ['date', 'kind']
+        constraints = [models.UniqueConstraint(fields=['booking', 'kind', 'date'], name='uniq_payout_line')]
+
+    def __str__(self):
+        return f'{self.booking_id} {self.kind} {self.date} {self.amount}'
+
+
 class BookingFeedHealth(models.Model):
     """One row per booking source (Airbnb, VRBO, ...) tracking whether that
     platform's import pipeline is actually alive — feeds the owner
@@ -522,6 +547,19 @@ class Booking(models.Model):
         if self.payout_amount is None:
             return None
         return self.payout_amount + (self.pass_through_amount or 0) + (self.other_payout_amount or 0)
+
+    def cash_events(self):
+        """The dated movements of this reservation's platform money, as {date: amount}: from its payout lines when
+        the transactions file gave them (a long stay pays out in installments; a resolution or adjustment comes on
+        its own day), else one event on the payout date for everything (cash_amount). Days that net to zero are left out."""
+        lines = list(self.payout_lines.all())
+        events = {}
+        if lines:
+            for line in lines:
+                events[line.date] = events.get(line.date, 0) + line.amount
+        elif self.payout_date and self.payout_amount is not None:
+            events[self.payout_date] = self.cash_amount()
+        return {d: a for d, a in events.items() if a != 0}
 
     def lodging_revenue(self):
         """The stay's revenue — the top line: what the platform pays out for it

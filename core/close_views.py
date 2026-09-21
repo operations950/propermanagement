@@ -134,6 +134,26 @@ def _consolidated_page(request, prop, month):
 
 @login_required
 @user_passes_test(_is_admin)
+def close_statement(request, pk):
+    """A rental's months side by side, the way the owner sees the year: the calculation, what is owed and paid."""
+    prop = get_object_or_404(Property, pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
+    end = _parse_month(request.GET.get('end'), None)
+    try:
+        months = min(max(int(request.GET.get('months', 12)), 1), 36)
+    except ValueError:
+        months = 12
+    data = ledger.statement(prop, end=end, months=months)
+    last = data['last'] or ledger.previous_month(timezone.localdate())
+    return render(request, 'core/close_statement.html', {
+        'property': prop, 'st': data, 'months': months, 'last': last, 'earlier': ledger.previous_month(last), 'later': ledger.next_month(last),
+        'can_go_later': ledger.next_month(last) <= ledger.previous_month(timezone.localdate()),
+        'can_go_earlier': data['first'] is not None and data['first'] > ledger.month_of(ledger.books_start()),
+        'back_url': reverse('close_overview'),
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
 def close_property(request, month, pk, unit_pk=None):
     prop = get_object_or_404(Property.objects.select_related('qb_expense_account', 'qb_trust_account'), pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
     month = _parse_month(month, None)

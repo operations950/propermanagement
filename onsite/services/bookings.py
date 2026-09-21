@@ -10,6 +10,7 @@ only visit creation is skipped, with a clear message back to the caller
 rather than a crash — the same "degrade, don't break" house style used for
 every other integration in this app."""
 from datetime import datetime, time
+from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Q
@@ -19,7 +20,7 @@ from . import coverage
 from . import payouts as payouts_service
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
-from ..models import Booking, BookingFeedHealth, Visit, VisitType
+from ..models import Booking, BookingFeedHealth, PayoutLine, Visit, VisitType
 from core.models import PropertyListingName
 
 TURNOVER_SLUG = 'turnover'
@@ -234,6 +235,9 @@ def _save_amounts(source, raw_bookings):
             if new_value is not None and getattr(booking, field) != new_value:
                 setattr(booking, field, new_value)
                 changed.append(field)
+        # Each dated line is stored as the file gives it (a later file for the same day corrects it, other days stay).
+        for kind, paid, amount in row.payout_lines:
+            PayoutLine.objects.update_or_create(booking=booking, kind=kind, date=paid, defaults={'amount': amount})
         if row.payout_date and booking.payout_date != row.payout_date:
             booking.payout_date = row.payout_date
             changed.append('payout_date')
@@ -245,6 +249,21 @@ def _save_amounts(source, raw_bookings):
         if changed:
             booking.amount_source = 'csv upload'
             booking.save(update_fields=changed + ['amount_source'])
+
+
+def save_money_only(source, money_rows):
+    """Dated money lines for reservations whose own row was not in the file (see importers.ParsedBookings): added
+    to the booking on record, if there is one. Nothing is created for a code we don't know."""
+    for row in money_rows or ():
+        booking = Booking.objects.filter(source=source, external_uid=row.external_uid).first()
+        if booking is None:
+            continue
+        for kind, paid, amount in row.payout_lines:
+            PayoutLine.objects.update_or_create(booking=booking, kind=kind, date=paid, defaults={'amount': amount})
+        lines = list(booking.payout_lines.all())
+        booking.pass_through_amount = sum((l.amount for l in lines if l.kind == PayoutLine.Kind.PASS_THROUGH), Decimal('0')) or booking.pass_through_amount
+        booking.other_payout_amount = sum((l.amount for l in lines if l.kind == PayoutLine.Kind.OTHER), Decimal('0')) or booking.other_payout_amount
+        booking.save(update_fields=['pass_through_amount', 'other_payout_amount'])
 
 
 def _fill_details(source, raw_bookings):

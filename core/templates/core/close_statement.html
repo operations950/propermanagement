@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}{{ property.name }} — statement{% endblock %}
+{% block content %}
+<style>
+    .st-wrap { overflow-x: auto; }
+    .st-table { font-variant-numeric: tabular-nums; font-size: 0.82rem; white-space: nowrap; }
+    .st-table th, .st-table td { padding: 4px 10px; text-align: right; }
+    .st-table th:first-child, .st-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--bs-body-bg, #fff); z-index: 1; min-width: 250px; }
+    .st-table thead th { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); background: var(--bs-light, #f8f9fa); }
+    .st-table thead th:first-child { background: var(--bs-light, #f8f9fa); }
+    .st-table tr.sum td { font-weight: 700; border-top: 1px solid var(--border-hairline, #ccd); }
+    .st-table tr.section td { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); padding-top: 12px; border-bottom: 1px solid var(--border-hairline, #ccd); }
+    .st-table tr.check td { font-size: 0.72rem; color: var(--ink-muted); }
+    .st-table td.tot, .st-table th.tot { border-left: 1px solid var(--border-hairline, #ccd); font-weight: 600; }
+    .st-open { font-size: 0.62rem; font-weight: 500; text-transform: none; letter-spacing: 0; color: #9a6a00; display: block; }
+    .st-closed { font-size: 0.62rem; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink-muted); display: block; }
+    @media print {
+        nav, .navbar, .no-print, footer { display: none !important; }
+        .st-table { font-size: 0.7rem; }
+        .st-table th:first-child, .st-table td:first-child { position: static; }
+        @page { size: landscape; margin: 0.5in; }
+    }
+</style>
+<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 no-print" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· statement{% if st.first %}, {{ st.first|date:"M Y" }} – {{ st.last|date:"M Y" }}{% endif %}</span></h2>
+        <div class="small text-muted">Each month a column: what came in, what came out, what the owner and Proper Realty are owed, and what was paid out. A month that is closed is as closed; an open month is as coded now.</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap no-print">
+        <div class="btn-group btn-group-sm">
+            <a href="?end={{ earlier|date:'Y-m' }}&months={{ months }}" class="btn btn-outline-secondary {% if not can_go_earlier %}disabled{% endif %}" aria-label="Earlier"><i data-lucide="chevron-left" class="icon"></i></a>
+            <a href="?end={{ later|date:'Y-m' }}&months={{ months }}" class="btn btn-outline-secondary {% if not can_go_later %}disabled{% endif %}" aria-label="Later"><i data-lucide="chevron-right" class="icon"></i></a>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print / save as PDF</button>
+    </div>
+</div>
+
+{% if not st.columns %}
+<div class="alert alert-info small">Nothing to show yet: the books start after this month.</div>
+{% else %}
+<div class="st-wrap"><table class="table table-sm table-borderless mb-2 st-table">
+    <thead><tr>
+        <th></th>
+        {% for c in st.columns %}<th>{{ c.month|date:"M Y" }}{% if c.state == 'closed' %}<span class="st-closed">closed</span>{% elif c.state == 'open' %}<span class="st-open">open</span>{% else %}<span class="st-closed">no transactions</span>{% endif %}</th>{% endfor %}
+        <th class="tot">Total</th>
+    </tr></thead>
+    <tbody>
+        <tr><td>Income deposits</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.deposits|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.deposits|money }}</td></tr>
+        <tr><td>− Reimbursable expenses</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.expenses_reimbursable|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
+        <tr><td>− Paid from trust</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.expenses_direct|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>
+        <tr class="sum"><td>= Net income</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.net_income|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.net_income|money }}</td></tr>
+        <tr><td>− Commission <span class="text-muted">(a percent of net income)</span></td>{% for c in st.columns %}<td>{% if c.t %}<span title="{{ c.t.commission_rate|floatformat:'-2' }}% of net income">{{ c.t.commission_due|money }}</span>{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
+        <tr class="sum"><td>= Owner payment</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.owner_due|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.owner_due|money }}</td></tr>
+
+        <tr class="section"><td colspan="{{ st.columns|length|add:2 }}">Accounts payable at month end — paid out early next month</td></tr>
+        <tr><td>Owed to the owner</td>{% for c in st.columns %}<td>{% if c.t %}<span title="This month's owner payment {{ c.t.owner_due|money }}{% if c.t.owner_carry %}, plus {{ c.t.owner_carry|money }} of last month's still unpaid{% endif %}">{{ c.t.owner_payable|money }}</span>{% else %}–{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
+        <tr><td>Owed to Proper Realty <span class="text-muted">(reimbursable expenses and commission)</span></td>{% for c in st.columns %}<td>{% if c.t %}<span title="This month's reimbursable expenses {{ c.t.expenses_reimbursable|money }} and commission {{ c.t.commission_due|money }}{% if c.t.us_carry %}, plus {{ c.t.us_carry|money }} of last month's still unpaid{% endif %}">{{ c.t.us_payable|money }}</span>{% else %}–{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
+
+        <tr class="section"><td colspan="{{ st.columns|length|add:2 }}">Paid out of the trust account this month — for last month</td></tr>
+        <tr><td>Paid to the owner</td>{% for c in st.columns %}<td>{% if c.t %}{{ c.t.owner_payment|money }}{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.owner_payment|money }}</td></tr>
+        <tr><td>Paid to Proper Realty <span class="text-muted">(reimbursement and commission)</span></td>{% for c in st.columns %}<td>{% if c.t %}<span title="Reimbursement {{ c.t.reimbursement_trust|money }} and commission {{ c.t.commission|money }}">{{ c.t.taken_to_us|money }}</span>{% else %}–{% endif %}</td>{% endfor %}<td class="tot">{{ st.total.taken_to_us|money }}</td></tr>
+
+        <tr class="section"><td colspan="{{ st.columns|length|add:2 }}">Checks</td></tr>
+        <tr class="check"><td>Last month's payables cleared</td>{% for c in st.columns %}<td>{% if c.t %}{% if c.cleared is None %}<span title="Last month is not in the books, so there is nothing to check against">n/a</span>{% elif c.cleared %}<span style="color: var(--status-good);">✓ cleared</span>{% else %}<span style="color: #9a6a00;" title="What last month left to pay, less what was paid: owner {{ c.t.owner_carry|money }}, Proper Realty {{ c.t.us_carry|money }} (negative = paid more than was owed)">off: {{ c.t.owner_carry|money }} owner / {{ c.t.us_carry|money }} Realty</span>{% endif %}{% else %}–{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
+        <tr class="check"><td>All income accounted for <span class="text-muted">(reimbursable + paid from trust + commission + owner payment = deposits)</span></td>{% for c in st.columns %}<td>{% if c.t %}{% if c.accounted == 0 %}<span style="color: var(--status-good);">✓ 100%</span>{% else %}<span style="color: #a02020;">{{ c.accounted|money }} unaccounted</span>{% endif %}{% else %}–{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
+    </tbody>
+</table></div>
+<p class="text-muted" style="font-size: 0.72rem;">The reimbursable expenses, our commission and the owner payment for a month are paid out of the trust account early the next month, so the payables above go to zero the month after: what leaves the trust account in a month settles the month before, and "cleared" says it did, to the cent. Commission is worked out at each month's own rate.</p>
+{% endif %}
+{% endblock %}

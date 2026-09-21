@@ -27,13 +27,26 @@ unreliable where an explicit bubble is trivial."""
 import csv
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 
 class BookingFileError(Exception):
     pass
+
+
+class ParsedBookings(list):
+    """The reservations a file describes, plus `money_only`: money lines for confirmation codes whose Reservation row
+    is NOT in this file (a later month's transactions export carries the resolution paid for a stay an earlier one
+    listed). They never create a booking; they are added to the booking already on record (save_money_only)."""
+    money_only = ()
+
+
+@dataclass
+class MoneyRow:
+    external_uid: str
+    payout_lines: list
 
 
 @dataclass
@@ -84,12 +97,15 @@ class RawBooking:
     # same bank deposit as the reservation's own payout but are not revenue.
     pass_through_amount: Decimal | None = None
     other_payout_amount: Decimal | None = None
+    # The same money, line by line with the day each was paid: [(kind, date, amount)], kind being 'reservation',
+    # 'pass_through' or 'other' (see onsite.PayoutLine). Only the transactions export dates each line.
+    payout_lines: list = field(default_factory=list)
 
     def has_amounts(self):
         return any(v is not None for v in (
             self.gross_amount, self.payout_amount, self.cleaning_fee, self.other_fees,
             self.tax_amount, self.platform_fee, self.pass_through_amount, self.other_payout_amount,
-        ))
+        )) or bool(self.payout_lines)
 
 
 def detect_format(filename):
@@ -323,6 +339,22 @@ def parse_csv(file_bytes):
     seen_uids = set()
     by_uid = {}
     extras = {}          # confirmation code -> {'pass': Decimal, 'other': Decimal} from the non-reservation money rows
+    dated = {}           # confirmation code -> {(kind, date): Decimal}: every money row, with the day it was paid out
+
+    def add_dated(uid, kind, row):
+        """A transactions-export money row's amount, under the day it was paid."""
+        if not (columns['transaction_type'] and columns['txn_date'] and columns['payout_amount']):
+            return
+        amount = _money(row.get(columns['payout_amount']))
+        raw_day = (row.get(columns['txn_date']) or '').strip()
+        if amount is None or not raw_day:
+            return
+        try:
+            paid = _parse_csv_date(raw_day)
+        except BookingFileError:
+            return
+        bucket = dated.setdefault(uid, {})
+        bucket[(kind, paid)] = _add_money(bucket.get((kind, paid)), amount)
     for row in reader:
         uid = (row.get(columns['external_uid']) or '').strip()
         if not uid:
@@ -337,6 +369,7 @@ def parse_csv(file_bytes):
                 if amount is not None:
                     bucket = extras.setdefault(uid, {})
                     bucket[kind] = _add_money(bucket.get(kind), amount)
+                    add_dated(uid, 'pass_through' if kind == 'pass' else 'other', row)
                 continue
         if uid in seen_uids:
             # A confirmation code that legitimately repeats within one file
@@ -354,6 +387,7 @@ def parse_csv(file_bytes):
             #
             # The MONEY on those repeat rows is different: each month's row
             # carries that month's installment, so they are added together.
+            add_dated(uid, 'reservation', row)
             first = by_uid[uid]
             first.gross_amount = _add_money(first.gross_amount, _money(row.get(columns['gross_amount']) if columns['gross_amount'] else ''))
             first.payout_amount = _add_money(first.payout_amount, _money(row.get(columns['payout_amount']) if columns['payout_amount'] else ''))
@@ -423,14 +457,21 @@ def parse_csv(file_bytes):
         )
         by_uid[uid] = raw
         bookings.append(raw)
+        add_dated(uid, 'reservation', row)
 
     if not bookings:
         raise BookingFileError('No reservation rows found in this file.')
+    bookings = ParsedBookings(bookings)
+    bookings.money_only = [
+        MoneyRow(uid, [(kind, paid, amount) for (kind, paid), amount in sorted(lines.items(), key=lambda kv: (kv[0][1], kv[0][0]))])
+        for uid, lines in dated.items() if uid not in by_uid
+    ]
     for raw in bookings:
         bucket = extras.get(raw.external_uid)
         if bucket:
             raw.pass_through_amount = bucket.get('pass')
             raw.other_payout_amount = bucket.get('other')
+        raw.payout_lines = [(kind, paid, amount) for (kind, paid), amount in sorted(dated.get(raw.external_uid, {}).items(), key=lambda kv: (kv[0][1], kv[0][0]))]
     return bookings
 
 

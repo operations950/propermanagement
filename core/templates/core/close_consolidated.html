@@ -16,6 +16,7 @@
         <div class="small text-muted">Consolidated from {{ consolidated.units }} unit{{ consolidated.units|pluralize }}{% if consolidated.state == 'closed' %} · <strong>all closed</strong>{% elif consolidated.closed_units %} · {{ consolidated.closed_units }} closed{% endif %}. Each unit is coded, reconciled and closed on its own; this page is the units added up.</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'close_statement' property.pk %}?end={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="table-2" class="icon"></i> 12-month statement</a>
         <div class="btn-group btn-group-sm">
             <a href="{{ prev_url }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
             <a href="{{ next_url }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
