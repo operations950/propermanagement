@@ -135,19 +135,18 @@ def _consolidated_page(request, prop, month):
 @login_required
 @user_passes_test(_is_admin)
 def close_statement(request, pk):
-    """A rental's months side by side, the way the owner sees the year: the calculation, what is owed and paid."""
+    """A rental's calendar year, month by month, the way the owner sees it: the calculation, what is owed and paid.
+    The arrows move to the year before or after."""
     prop = get_object_or_404(Property, pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
-    end = _parse_month(request.GET.get('end'), None)
+    this_year = timezone.localdate().year
     try:
-        months = min(max(int(request.GET.get('months', 12)), 1), 36)
+        year = min(max(int(request.GET.get('year', this_year)), 2000), this_year)
     except ValueError:
-        months = 12
-    data = ledger.statement(prop, end=end, months=months)
-    last = data['last'] or ledger.previous_month(timezone.localdate())
+        year = this_year
+    data = ledger.statement(prop, year=year)
     return render(request, 'core/close_statement.html', {
-        'property': prop, 'st': data, 'months': months, 'last': last, 'earlier': ledger.previous_month(last), 'later': ledger.next_month(last),
-        'can_go_later': ledger.next_month(last) <= ledger.previous_month(timezone.localdate()),
-        'can_go_earlier': True,
+        'property': prop, 'st': data, 'year': year, 'earlier': year - 1, 'later': year + 1,
+        'can_go_later': year < this_year, 'can_go_earlier': year > 2000,
         'back_url': reverse('close_overview'),
     })
 

@@ -824,10 +824,11 @@ def _detail(book, month):
     return out
 
 
-def statement(prop, end=None, months=12):
-    """A property's months side by side, one column each: always `months` of them (12 by default) ending at `end`
-    (the last complete month), so the layout is there even when there is nothing to show: a month with no
-    transactions, or before the books start, is a column of zeros. Down the page: the calculation (income
+def statement(prop, end=None, months=12, year=None):
+    """A property's months side by side, one column each. With `year` it is that calendar year, January to
+    December (the screen's view; the arrows move by year); otherwise `months` of them ending at `end` (default
+    the last complete month). Always all of them, so the layout is there even when there is nothing to show: a month with no
+    transactions, before the books start, or still to come is a column of zeros. Down the page: the calculation (income
     deposits less commission, reimbursable expenses and expenses paid from trust = the owner payment); the
     accounts payable at month end (to the owner and to us); what was paid out this month for last month; and two
     checks: last month's payables cleared, and all income accounted for. Behind the income, reimbursable and
@@ -836,17 +837,21 @@ def statement(prop, end=None, months=12):
 
     Returns {'columns': [{'month', 'state', 't', 'accounted', 'cleared', 'detail'}], 'total': {...sums...}}."""
     start = month_of(books_start())
-    last = month_of(end) if end else previous_month(timezone.localdate())
-    span, m = [], last
-    for _ in range(months):
-        span.append(m)
-        m = previous_month(m)
-    span.reverse()
+    this_month = month_of(timezone.localdate())
+    if year is not None:
+        span = [date(year, i, 1) for i in range(1, 13)]
+    else:
+        last = month_of(end) if end else previous_month(timezone.localdate())
+        span, m = [], last
+        for _ in range(months):
+            span.append(m)
+            m = previous_month(m)
+        span.reverse()
     columns = []
     memo = {}
     for m in span:
         parts, closed, detail = [], 0, {'deposits': [], 'reimbursable': [], 'direct': []}
-        books = books_for(prop, m) if m >= start else []
+        books = books_for(prop, m) if start <= m <= this_month else []
         for b in books:
             close = MonthClose.objects.filter(month=m, **b.scope()).first()
             if close is not None and 'reimb_payable' in close.totals:
@@ -859,7 +864,7 @@ def statement(prop, end=None, months=12):
             for group, rows in _detail(b, m).items():
                 detail[group] += rows
         if not parts:
-            columns.append({'month': m, 'state': 'empty' if m >= start else 'before', 't': _zero_totals(), 'accounted': None, 'cleared': None, 'detail': detail})
+            columns.append({'month': m, 'state': 'future' if m > this_month else ('empty' if m >= start else 'before'), 't': _zero_totals(), 'accounted': None, 'cleared': None, 'detail': detail})
             continue
         t = parts[0] if len(parts) == 1 else sum_totals(parts)
         accounted = t['deposits'] - (t['expenses_reimbursable'] + t['expenses_direct'] + t['commission_due'] + t['owner_due'])

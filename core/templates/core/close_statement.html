@@ -35,13 +35,14 @@
 <a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 no-print" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
-        <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· statement, {{ st.first|date:"M Y" }} – {{ st.last|date:"M Y" }}</span></h2>
+        <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· {{ year }} statement</span></h2>
         <div class="small text-muted">Each month a column: what came in, what came out, what the owner and Proper Realty are owed, and what was paid out. A closed month is as closed; an open month is as coded now. Open income, reimbursable expenses or paid from trust to see the transactions.</div>
     </div>
     <div class="d-flex gap-2 flex-wrap no-print">
         <div class="btn-group btn-group-sm">
-            <a href="?end={{ earlier|date:'Y-m' }}&months={{ months }}" class="btn btn-outline-secondary" aria-label="Earlier"><i data-lucide="chevron-left" class="icon"></i></a>
-            <a href="?end={{ later|date:'Y-m' }}&months={{ months }}" class="btn btn-outline-secondary {% if not can_go_later %}disabled{% endif %}" aria-label="Later"><i data-lucide="chevron-right" class="icon"></i></a>
+            <a href="?year={{ earlier }}" class="btn btn-outline-secondary {% if not can_go_earlier %}disabled{% endif %}" aria-label="{{ earlier }}" title="{{ earlier }}"><i data-lucide="chevron-left" class="icon"></i></a>
+            <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ year }}</span>
+            <a href="?year={{ later }}" class="btn btn-outline-secondary {% if not can_go_later %}disabled{% endif %}" aria-label="{{ later }}" title="{{ later }}"><i data-lucide="chevron-right" class="icon"></i></a>
         </div>
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print / save as PDF</button>
     </div>
@@ -50,7 +51,7 @@
 <div class="st-wrap"><table class="table table-sm table-borderless mb-2 st-table">
     <thead><tr>
         <th></th>
-        {% for c in st.columns %}<th>{{ c.month|date:"M Y" }}{% if c.state == 'closed' %}<span class="st-closed">closed</span>{% elif c.state == 'open' %}<span class="st-open">open</span>{% elif c.state == 'before' %}<span class="st-closed">before the books</span>{% else %}<span class="st-closed">no transactions</span>{% endif %}</th>{% endfor %}
+        {% for c in st.columns %}<th>{{ c.month|date:"M Y" }}{% if c.state == 'closed' %}<span class="st-closed">closed</span>{% elif c.state == 'open' %}<span class="st-open">open</span>{% elif c.state == 'before' %}<span class="st-closed">before the books</span>{% elif c.state == 'future' %}<span class="st-closed">not yet</span>{% else %}<span class="st-closed">no transactions</span>{% endif %}</th>{% endfor %}
         <th class="tot">Total</th>
     </tr></thead>
     <tbody>
