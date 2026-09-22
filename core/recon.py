@@ -222,12 +222,30 @@ def _match_month(book, month, cleared, scope, events):
     deposits = plain
     free = _groups([ev for ev in pool if ev.key not in used])
     pairs, open_deposits = list(code_pairs), []
+    # Two passes, not one: every deposit that matches exactly ONE group is given that group FIRST,
+    # before any deposit is allowed to reach for a 2- or 3-group combination. Doing this in a single
+    # date-ordered pass (try size 1, then 2, then 3, per deposit, claiming groups as you go) let an
+    # earlier deposit's multi-group combination coincidentally sum to the right total and grab a
+    # group that in fact belonged 1:1 to a LATER deposit — which then had nothing left to match and
+    # showed up as a false "payout not in the bank", even though its own matching deposit was sitting
+    # right there the whole time (a real production case: a reservation's exact-amount payout was
+    # stolen by another deposit that happened to equal that group's total plus another group's).
+    remaining = []
     for dep in deposits:
         # A payout carried over from an earlier month can land whenever it lands; one dated this month is expected within LATE.
         cands = [g for g in free if g['date'] - EARLY <= dep.txn_date and (dep.txn_date <= g['date'] + LATE or g['date'] < month)]
+        match = next((g for g in cands if g['total'] == dep.flow), None)
+        if match:
+            match['carried'] = match['date'] < month
+            pairs.append({'line': dep, 'groups': [match], 'amount': dep.flow})
+            free = [g for g in free if g is not match]
+        else:
+            remaining.append(dep)
+    for dep in remaining:
+        cands = [g for g in free if g['date'] - EARLY <= dep.txn_date and (dep.txn_date <= g['date'] + LATE or g['date'] < month)]
         cands.sort(key=lambda g: abs((dep.txn_date - g['date']).days))
         chosen = None
-        for size in (1, 2, 3):
+        for size in (2, 3):
             for combo in combinations(cands[:14], size):
                 if sum((g['total'] for g in combo), ZERO) == dep.flow:
                     chosen = combo

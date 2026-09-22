@@ -1,5 +1,6 @@
-{% comment %}The rows of one side of the income-to-reconcile table (platform payouts, or bank deposits) — items is
-already filtered to one kind (core_extras.by_kind). Split out so both sides render identically.{% endcomment %}
+{% comment %}The rows of the "to reconcile" table — one list mixing platform payouts not yet in the bank and
+bank deposits that aren't a platform payout, each row's first column naming which it is. Split into its own
+include so close_property.html's single reconciliation card stays readable.{% endcomment %}
 {% for i in items %}
 <tr class="{% if not i.accepted and not i.in_transit %}changed{% endif %}">
     <td>{% if i.mismatch %}Deposit differs from its payout{% elif i.kind == 'deposit' %}In the bank, not from a platform payout{% elif i.in_transit %}Payout on its way{% else %}Platform payout not in the bank{% endif %}</td>

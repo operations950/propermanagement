@@ -40,10 +40,3 @@ def dictget(mapping, key):
         return mapping.get(key, [])
     except AttributeError:
         return []
-
-
-@register.filter
-def by_kind(items, kind):
-    """The items (recon.items) whose 'kind' is this one — for showing platform payouts and bank deposits as
-    two separate lists side by side."""
-    return [i for i in items if i.get('kind') == kind]
