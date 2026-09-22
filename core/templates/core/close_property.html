@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load core_extras %}
 {% block title %}{{ title }} — {{ month|date:"F Y" }} close{% endblock %}
 {% block content %}
 <style>
@@ -127,32 +128,23 @@
 
 {% if recon and not recon.closed and recon.items %}
 <div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3">
-    <div class="small fw-semibold mb-1"><i data-lucide="scale" class="icon"></i> Income to reconcile <span class="text-muted fw-normal">— fix each item, or accept it as a reconciling item with a reason</span></div>
-                <div class="table-responsive"><table class="table table-sm mb-0 cl-table">
-                    <thead><tr><th>Item</th><th class="text-end">Amount</th><th>What</th><th>Reason / action</th></tr></thead>
-                    <tbody>
-                    {% for i in recon.items %}
-                    <tr class="{% if not i.accepted and not i.in_transit %}changed{% endif %}">
-                        <td>{% if i.mismatch %}Deposit differs from its payout{% elif i.kind == 'deposit' %}In the bank, not from a platform payout{% elif i.in_transit %}Payout on its way{% else %}Platform payout not in the bank{% endif %}</td>
-                        <td class="amt">${{ i.amount|floatformat:"2g" }}</td>
-                        <td class="wrap small text-muted" style="min-width: 300px;">{{ i.text }}{% if i.kind == 'deposit' and not i.accepted and not i.mismatch %} <em>Not income (a refund)? Code the line as an expense. The payout of a stay from before this month? Accept it and say which.</em>{% endif %}</td>
-                        <td class="wrap">
-                            {% if i.accepted %}<span class="small">{% if i.accepted.prior_period %}<span class="badge rounded-pill text-bg-secondary">From before the books</span> {% else %}Accepted: {% endif %}<em>{{ i.accepted.note }}</em>{% if i.accepted.accepted_by %} — {{ i.accepted.accepted_by.get_full_name|default:i.accepted.accepted_by.username }}{% endif %}</span>
-                                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form>
-                            {% elif i.in_transit %}<span class="small text-muted">Dated within days of month end; it will match its deposit next month.</span>
-                            {% else %}
-                            {% if tie_panel is not None and i.kind == 'deposit' %}<div class="mb-1 d-flex gap-2 align-items-center flex-wrap"><button type="button" class="btn btn-outline-primary btn-sm py-0" data-tie-open data-tie-key="{{ i.key }}" data-amount="{{ i.amount }}" data-date="{{ i.date|date:'Y-m-d' }}" data-label="{{ i.date|date:'M j' }} · ${{ i.amount|floatformat:'2g' }}"><i data-lucide="list-checks" class="icon"></i> {% if i.tied %}Change the tie{% else %}Tie to reservations{% endif %}</button>
-                                {% if i.tied %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="untie_deposit"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0">untie</button></form>{% endif %}</div>{% endif %}
-                            <form method="post" class="d-flex flex-wrap gap-1">{% csrf_token %}<input type="hidden" name="action" value="accept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}">
-                                <input type="text" name="note" class="form-control form-control-sm" style="min-width: 190px;" maxlength="300" placeholder="{% if i.prior_ok %}Why, or which earlier stay?{% else %}Why is this a reconciling item?{% endif %}" {% if not i.prior_ok %}required{% endif %}>
-                                <button class="btn btn-outline-secondary btn-sm text-nowrap py-0"{% if i.prior_ok %} onclick="this.form.note.required = true"{% endif %}>Accept as reconciling item</button>
-                                {% if i.prior_ok %}<button name="prior" value="1" formnovalidate class="btn btn-outline-secondary btn-sm text-nowrap py-0" title="It pays out a stay from before the books start, so the month before could not carry it forward">From before the books</button>{% endif %}</form>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table></div>
+    <div class="small fw-semibold mb-1"><i data-lucide="scale" class="icon"></i> Income to reconcile <span class="text-muted fw-normal">— here's what Airbnb/VRBO says it paid, here's what hit the bank; fix or accept whatever doesn't line up</span></div>
+    <div class="row g-2">
+        <div class="col-lg-6">
+            <div class="small fw-semibold text-muted mb-1">Platform payouts, not yet in the bank</div>
+            <div class="table-responsive"><table class="table table-sm mb-0 cl-table">
+                <thead><tr><th>Item</th><th class="text-end">Amount</th><th>What</th><th>Reason / action</th></tr></thead>
+                <tbody>{% include 'core/_recon_item_rows.html' with items=recon.items|by_kind:'payout' empty_text='Every platform payout has cleared into the bank.' %}</tbody>
+            </table></div>
+        </div>
+        <div class="col-lg-6">
+            <div class="small fw-semibold text-muted mb-1">Bank deposits, not a platform payout</div>
+            <div class="table-responsive"><table class="table table-sm mb-0 cl-table">
+                <thead><tr><th>Item</th><th class="text-end">Amount</th><th>What</th><th>Reason / action</th></tr></thead>
+                <tbody>{% include 'core/_recon_item_rows.html' with items=recon.items|by_kind:'deposit' empty_text='Every deposit is a platform payout.' %}</tbody>
+            </table></div>
+        </div>
+    </div>
 
 {% if tie_panel is not None %}
 <div id="tie-panel" class="border rounded p-2 mt-2" hidden>

@@ -593,6 +593,30 @@ class PendingPayout(models.Model):
         return f'{self.get_source_display()} {self.external_uid} ${self.amount}'
 
 
+class PayoutBatch(models.Model):
+    """One bank transfer the platform's own transactions export reports (Airbnb's 'Payout' row, its 'Paid out'
+    column): the exact amount and day it moved money, straight from the platform's own record — not derived by
+    us from reservation lines. That is the number the whole income reconciliation ultimately checks the books
+    against, and every such row in a file is kept, even though a portfolio-wide export covers every listing at
+    once and these rows carry no listing name, so `property` starts unattributed (null): nothing in the file is
+    silently dropped just because we can't yet say whose money it is."""
+    property = models.ForeignKey(Property, on_delete=models.SET_NULL, null=True, blank=True, related_name='payout_batches')
+    source = models.CharField(max_length=20, choices=ImportBatch.Source.choices)
+    date = models.DateField(help_text='The day the platform paid it out.')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    detail = models.CharField(max_length=300, blank=True, help_text="The platform's own description of the transfer, e.g. which bank account it went to.")
+    reference = models.CharField(max_length=60, blank=True, help_text="The platform's own reference/confirmation for this transfer.")
+    arriving_by = models.DateField(null=True, blank=True, help_text='When the platform said the money would reach the bank.')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+        constraints = [models.UniqueConstraint(fields=['source', 'date', 'amount', 'reference'], name='uniq_payout_batch')]
+
+    def __str__(self):
+        return f'{self.get_source_display()} {self.date} ${self.amount}'
+
+
 class GuestRequest(models.Model):
     """An early check-in or late checkout a guest has asked for, logged by
     hand by whoever is watching the short-term rentals (the request itself

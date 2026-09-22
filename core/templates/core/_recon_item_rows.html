@@ -1,0 +1,24 @@
+{% comment %}The rows of one side of the income-to-reconcile table (platform payouts, or bank deposits) — items is
+already filtered to one kind (core_extras.by_kind). Split out so both sides render identically.{% endcomment %}
+{% for i in items %}
+<tr class="{% if not i.accepted and not i.in_transit %}changed{% endif %}">
+    <td>{% if i.mismatch %}Deposit differs from its payout{% elif i.kind == 'deposit' %}In the bank, not from a platform payout{% elif i.in_transit %}Payout on its way{% else %}Platform payout not in the bank{% endif %}</td>
+    <td class="amt">${{ i.amount|floatformat:"2g" }}</td>
+    <td class="wrap small text-muted">{{ i.text }}{% if i.kind == 'deposit' and not i.accepted and not i.mismatch %} <em>Not income (a refund)? Code the line as an expense. The payout of a stay from before this month? Accept it and say which.</em>{% endif %}</td>
+    <td class="wrap">
+        {% if i.accepted %}<span class="small">{% if i.accepted.prior_period %}<span class="badge rounded-pill text-bg-secondary">From before the books</span> {% else %}Accepted: {% endif %}<em>{{ i.accepted.note }}</em>{% if i.accepted.accepted_by %} — {{ i.accepted.accepted_by.get_full_name|default:i.accepted.accepted_by.username }}{% endif %}</span>
+            <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form>
+        {% elif i.in_transit %}<span class="small text-muted">Dated within days of month end; it will match its deposit next month.</span>
+        {% else %}
+        {% if tie_panel is not None and i.kind == 'deposit' %}<div class="mb-1 d-flex gap-2 align-items-center flex-wrap"><button type="button" class="btn btn-outline-primary btn-sm py-0" data-tie-open data-tie-key="{{ i.key }}" data-amount="{{ i.amount }}" data-date="{{ i.date|date:'Y-m-d' }}" data-label="{{ i.date|date:'M j' }} · ${{ i.amount|floatformat:'2g' }}"><i data-lucide="list-checks" class="icon"></i> {% if i.tied %}Change the tie{% else %}Tie to reservations{% endif %}</button>
+            {% if i.tied %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="untie_deposit"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0">untie</button></form>{% endif %}</div>{% endif %}
+        <form method="post" class="d-flex flex-wrap gap-1">{% csrf_token %}<input type="hidden" name="action" value="accept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}">
+            <input type="text" name="note" class="form-control form-control-sm" style="min-width: 170px;" maxlength="300" placeholder="{% if i.prior_ok %}Why, or which earlier stay?{% else %}Why is this a reconciling item?{% endif %}" {% if not i.prior_ok %}required{% endif %}>
+            <button class="btn btn-outline-secondary btn-sm text-nowrap py-0"{% if i.prior_ok %} onclick="this.form.note.required = true"{% endif %}>Accept as reconciling item</button>
+            {% if i.prior_ok %}<button name="prior" value="1" formnovalidate class="btn btn-outline-secondary btn-sm text-nowrap py-0" title="It pays out a stay from before the books start, so the month before could not carry it forward">From before the books</button>{% endif %}</form>
+        {% endif %}
+    </td>
+</tr>
+{% empty %}
+<tr><td colspan="4" class="small text-muted p-2">{{ empty_text }}</td></tr>
+{% endfor %}

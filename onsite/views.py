@@ -47,7 +47,7 @@ from .services import str_board
 from .services import times as times_service
 from .services import notify as notify_service
 from .services.bookings import (
-    apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name, save_money_only,
+    apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name, save_money_only, save_payout_batches,
 )
 from .services.bookings import update_feed_health as _update_feed_health
 
@@ -561,6 +561,7 @@ def booking_import_apply(request, batch_id):
             batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
             _update_feed_health(batch.source, raw_bookings)
             save_money_only(batch.source, getattr(raw_bookings, 'money_only', ()))
+            save_payout_batches(batch.source, getattr(raw_bookings, 'payout_batches', ()))
             messages.success(
                 request,
                 f'Imported: {new_count} new, {changed_count} changed, {reactivated_count} reactivated, '
@@ -618,6 +619,7 @@ def booking_import_apply(request, batch_id):
         batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
         _update_feed_health(batch.source, raw_bookings)
         save_money_only(batch.source, getattr(raw_bookings, 'money_only', ()))
+        save_payout_batches(batch.source, getattr(raw_bookings, 'payout_batches', ()))
 
         property_word = 'property' if len(matched) == 1 else 'properties'
         messages.success(

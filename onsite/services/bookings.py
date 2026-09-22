@@ -20,7 +20,7 @@ from . import coverage
 from . import payouts as payouts_service
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
-from ..models import Booking, BookingFeedHealth, PayoutLine, Visit, VisitType
+from ..models import Booking, BookingFeedHealth, PayoutBatch, PayoutLine, Visit, VisitType
 from core.models import PropertyListingName
 
 TURNOVER_SLUG = 'turnover'
@@ -264,6 +264,19 @@ def save_money_only(source, money_rows):
         booking.pass_through_amount = sum((l.amount for l in lines if l.kind == PayoutLine.Kind.PASS_THROUGH), Decimal('0')) or booking.pass_through_amount
         booking.other_payout_amount = sum((l.amount for l in lines if l.kind == PayoutLine.Kind.OTHER), Decimal('0')) or booking.other_payout_amount
         booking.save(update_fields=['pass_through_amount', 'other_payout_amount'])
+
+
+def save_payout_batches(source, payout_batches):
+    """The file's own 'Payout' rows (see importers.PayoutBatchRow): the actual bank transfers, kept whether or
+    not we can say which property they belong to (a portfolio-wide file's Payout rows carry no listing) — see
+    onsite.PayoutBatch. Keyed on (source, date, amount, reference) so re-uploading the same file changes
+    nothing; a transfer with the same amount as one already on file but no reference of its own is still added
+    (nothing here says they're the same transfer)."""
+    for row in payout_batches or ():
+        PayoutBatch.objects.get_or_create(
+            source=source, date=row.date, amount=row.amount, reference=row.reference,
+            defaults={'detail': row.detail, 'arriving_by': row.arriving_by},
+        )
 
 
 def _fill_details(source, raw_bookings):

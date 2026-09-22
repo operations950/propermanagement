@@ -37,16 +37,31 @@ class BookingFileError(Exception):
 
 
 class ParsedBookings(list):
-    """The reservations a file describes, plus `money_only`: money lines for confirmation codes whose Reservation row
-    is NOT in this file (a later month's transactions export carries the resolution paid for a stay an earlier one
-    listed). They never create a booking; they are added to the booking already on record (save_money_only)."""
+    """The reservations a file describes, plus:
+      * `money_only` — money lines for confirmation codes whose Reservation row is NOT in this file (a later
+        month's transactions export carries the resolution paid for a stay an earlier one listed). They never
+        create a booking; they are added to the booking already on record (save_money_only).
+      * `payout_batches` — the file's own 'Payout' rows: the actual bank transfers (see PayoutBatchRow), which
+        describe no reservation at all and so never touch a Booking either (save_payout_batches)."""
     money_only = ()
+    payout_batches = ()
 
 
 @dataclass
 class MoneyRow:
     external_uid: str
     payout_lines: list
+
+
+@dataclass
+class PayoutBatchRow:
+    """One row of the file's own 'Payout' type: an actual bank transfer, in the platform's own words — not
+    tied to any one reservation (see onsite.PayoutBatch)."""
+    date: date
+    amount: Decimal
+    detail: str = ''
+    reference: str = ''
+    arriving_by: date | None = None
 
 
 @dataclass
@@ -249,6 +264,14 @@ _CSV_FIELD_ALIASES = {
     'cleaning_fee': ['cleaning fee'],
     'resort_fee': ['resort fee'],
     'pet_fee': ['pet fee'],
+    # Airbnb's transactions export: on a 'Payout' row (the actual bank transfer, no confirmation code of its
+    # own — see PayoutBatchRow) 'Amount' is blank and this is the money that moved; every other row leaves it
+    # blank. 'Details' says where it went (e.g. "Transfer to ..., Checking 1234"), 'Reference code' is the
+    # platform's own id for the transfer, and 'Arriving by date' is when it said the money would land.
+    'paid_out_amount': ['paid out'],
+    'details': ['details'],
+    'reference_code': ['reference code'],
+    'arriving_by': ['arriving by date'],
 }
 
 
@@ -280,7 +303,7 @@ def _add_money(current, extra):
 # literally 'Reservation' — is treated as a real reservation by default.
 # Mirrors this module's existing "never assume, only explicit signals
 # matter" convention (see RawBooking.is_cancelled's own comment).
-_NON_RESERVATION_TYPE_KEYWORDS = ('pass through', 'resolution', 'payout', 'adjustment')
+_NON_RESERVATION_TYPE_KEYWORDS = ('pass through', 'resolution', 'payout', 'adjustment', 'cancellation')
 
 
 def _is_non_reservation_row(type_value):
@@ -355,16 +378,48 @@ def parse_csv(file_bytes):
             return
         bucket = dated.setdefault(uid, {})
         bucket[(kind, paid)] = _add_money(bucket.get((kind, paid)), amount)
+    payout_batches = []
+
+    def read_payout_batch(row):
+        """A 'Payout' row — the file's Type column exactly 'Payout', never anything with 'Payout' as part of a
+        longer phrase ('Resolution Payout' is a reservation-tied money line, handled below like any other, not
+        a bank transfer). Nothing to key it by (no confirmation code) — collected separately."""
+        if not (columns['txn_date'] and columns['paid_out_amount']):
+            return
+        amount = _money(row.get(columns['paid_out_amount']))
+        raw_day = (row.get(columns['txn_date']) or '').strip()
+        if amount is None or not raw_day:
+            return
+        try:
+            paid = _parse_csv_date(raw_day)
+        except BookingFileError:
+            return
+        arriving = None
+        if columns['arriving_by']:
+            raw_arriving = (row.get(columns['arriving_by']) or '').strip()
+            if raw_arriving:
+                try:
+                    arriving = _parse_csv_date(raw_arriving)
+                except BookingFileError:
+                    pass
+        payout_batches.append(PayoutBatchRow(
+            date=paid, amount=amount, arriving_by=arriving,
+            detail=(row.get(columns['details']) or '').strip() if columns['details'] else '',
+            reference=(row.get(columns['reference_code']) or '').strip() if columns['reference_code'] else '',
+        ))
+
     for row in reader:
         uid = (row.get(columns['external_uid']) or '').strip()
         if not uid:
+            if columns['transaction_type'] and (row.get(columns['transaction_type']) or '').strip().lower() == 'payout':
+                read_payout_batch(row)
             continue
         if columns['transaction_type']:
             type_value = (row.get(columns['transaction_type']) or '').strip()
             if type_value and _is_non_reservation_row(type_value):
                 # Not a reservation, but money the platform pays with it: keep it, apart from the payout.
                 lowered = type_value.lower()
-                kind = 'pass' if 'pass through' in lowered else ('other' if ('resolution' in lowered or 'adjustment' in lowered) else None)
+                kind = 'pass' if 'pass through' in lowered else ('other' if ('resolution' in lowered or 'adjustment' in lowered or 'cancellation' in lowered) else None)
                 amount = _money(row.get(columns['payout_amount'])) if (kind and columns['payout_amount']) else None
                 if amount is not None:
                     bucket = extras.setdefault(uid, {})
@@ -459,9 +514,10 @@ def parse_csv(file_bytes):
         bookings.append(raw)
         add_dated(uid, 'reservation', row)
 
-    if not bookings:
+    if not bookings and not payout_batches:
         raise BookingFileError('No reservation rows found in this file.')
     bookings = ParsedBookings(bookings)
+    bookings.payout_batches = payout_batches
     bookings.money_only = [
         MoneyRow(uid, [(kind, paid, amount) for (kind, paid), amount in sorted(lines.items(), key=lambda kv: (kv[0][1], kv[0][0]))])
         for uid, lines in dated.items() if uid not in by_uid
