@@ -491,15 +491,22 @@ def tie_candidates(book, month, rec):
             state, label = ('cleared', 'already matched in an earlier month') if _is_cleared(ev, cleared) else (('taken', f'matched to the {taken[ev.key]}') if ev.key in taken else ('free', f'paired with the {soft[ev.key]}, which does not add up' if ev.key in soft else ''))
             pieces.append({'key': f'{ev.pk}|{ev.date.isoformat()}', 'date': ev.date, 'amount': ev.amount, 'parts': '; '.join(parts), 'state': state, 'label': label})
         out.append({
-            'code': b.external_uid, 'guest': b.guest_name or 'Guest', 'source': _source_label(b.source), 'check_in': tz.localtime(b.check_in).date(), 'check_out': tz.localtime(b.check_out).date(),
+            'id': b.pk, 'code': b.external_uid, 'guest': b.guest_name or 'Guest', 'source': _source_label(b.source), 'check_in': tz.localtime(b.check_in).date(), 'check_out': tz.localtime(b.check_out).date(),
             'status': b.status, 'pieces': pieces, 'first': min([p['date'] for p in pieces] + [tz.localtime(b.check_in).date()]),
         })
     return sorted(out, key=lambda r: (r['first'], r['code']))
 
 
-def tie_deposit(book, month, user, key, event_keys, note=''):
+def tie_deposit(book, month, user, key, event_keys, note='', new_amounts=None):
     """Tie an open deposit to the payouts a person picked. Each has to exist and not be spoken for; the deposit
-    is then matched to them, and any difference is still an item to accept with a reason."""
+    is then matched to them, and any difference is still an item to accept with a reason.
+
+    `new_amounts` is {booking id: (amount, date)} for a reservation the tie panel offered with NO payout on
+    file at all (nothing was ever imported for it, or the import missed it): the person is asserting, from
+    what they can see in the platform's own file, that it paid out this amount on this day. That is recorded
+    on the reservation itself (Booking.payout_amount/payout_date, a PayoutLine) — not just this one tie — so
+    the reservation is right from here on, in this month and any other deposit or month that names it."""
+    from onsite.models import Booking, PayoutLine
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         raise ledger.CloseError(f'{month:%B %Y} is closed; it can no longer be changed.')
@@ -508,6 +515,18 @@ def tie_deposit(book, month, user, key, event_keys, note=''):
     if item is None:
         raise ledger.CloseError('That deposit is no longer open — the page has been refreshed.')
     picked = [_event_key(k) for k in event_keys]
+    for b_pk, (amount, day) in (new_amounts or {}).items():
+        if not amount or amount <= 0 or day is None:
+            continue
+        booking = Booking.objects.filter(pk=b_pk, property=book.property, unit=book.unit, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).first()
+        if booking is None:
+            raise ledger.CloseError('One of the reservations is no longer on file — reload the page and try again.')
+        if booking.payout_amount is not None or booking.payout_lines.exists():
+            raise ledger.CloseError(f'{booking.external_uid} already has a payout on file now — reload the page and tie to that instead of entering a new one.')
+        PayoutLine.objects.create(booking=booking, kind=PayoutLine.Kind.RESERVATION, date=day, amount=amount)
+        booking.payout_amount, booking.payout_date, booking.amount_source = amount, day, 'reconciliation tie'
+        booking.save(update_fields=['payout_amount', 'payout_date', 'amount_source'])
+        picked.append((b_pk, day))
     if not picked:
         raise ledger.CloseError('Choose at least one payout to tie the deposit to.')
     dep = LedgerLine.objects.get(pk=int(key.split(':')[1]))

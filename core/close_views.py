@@ -3,6 +3,7 @@ month, a coding + reconciliation screen for one set of books' month, and — for
 property kept unit by unit — a consolidated page that adds its units up. The rules
 live in core/ledger.py and core/recon.py."""
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -202,7 +203,22 @@ def close_property(request, month, pk, unit_pk=None):
                 recon.accept_item(book, month, request.user, request.POST.get('kind', ''), request.POST.get('key', ''), request.POST.get('note', ''), prior_period=prior)
                 messages.success(request, 'Marked as from before the books.' if prior else 'Accepted as a reconciling item.')
             elif action == 'tie_deposit':
-                recon.tie_deposit(book, month, request.user, request.POST.get('key', ''), request.POST.getlist('events'), request.POST.get('note', ''))
+                new_amounts = {}
+                for k, v in request.POST.items():
+                    if k.startswith('new_amt_') and (v or '').strip():
+                        b_pk = k[len('new_amt_'):]
+                        try:
+                            amount = Decimal(v.strip())
+                        except InvalidOperation:
+                            continue
+                        raw_day = (request.POST.get(f'new_date_{b_pk}', '') or '').strip()
+                        try:
+                            day = datetime.strptime(raw_day, '%Y-%m-%d').date() if raw_day else None
+                        except ValueError:
+                            day = None
+                        if b_pk.isdigit() and day:
+                            new_amounts[int(b_pk)] = (amount, day)
+                recon.tie_deposit(book, month, request.user, request.POST.get('key', ''), request.POST.getlist('events'), request.POST.get('note', ''), new_amounts=new_amounts)
                 messages.success(request, 'Tied the deposit to those payouts.')
             elif action == 'untie_deposit':
                 recon.untie_deposit(book, month, request.POST.get('key', ''))

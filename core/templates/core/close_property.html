@@ -141,7 +141,7 @@
                                 <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form>
                             {% elif i.in_transit %}<span class="small text-muted">Dated within days of month end; it will match its deposit next month.</span>
                             {% else %}
-                            {% if tie_panel is not None and i.kind == 'deposit' %}<div class="mb-1 d-flex gap-2 align-items-center flex-wrap"><button type="button" class="btn btn-outline-primary btn-sm py-0" data-tie-open data-tie-key="{{ i.key }}" data-amount="{{ i.amount }}" data-label="{{ i.date|date:'M j' }} · ${{ i.amount|floatformat:'2g' }}"><i data-lucide="list-checks" class="icon"></i> {% if i.tied %}Change the tie{% else %}Tie to reservations{% endif %}</button>
+                            {% if tie_panel is not None and i.kind == 'deposit' %}<div class="mb-1 d-flex gap-2 align-items-center flex-wrap"><button type="button" class="btn btn-outline-primary btn-sm py-0" data-tie-open data-tie-key="{{ i.key }}" data-amount="{{ i.amount }}" data-date="{{ i.date|date:'Y-m-d' }}" data-label="{{ i.date|date:'M j' }} · ${{ i.amount|floatformat:'2g' }}"><i data-lucide="list-checks" class="icon"></i> {% if i.tied %}Change the tie{% else %}Tie to reservations{% endif %}</button>
                                 {% if i.tied %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="untie_deposit"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0">untie</button></form>{% endif %}</div>{% endif %}
                             <form method="post" class="d-flex flex-wrap gap-1">{% csrf_token %}<input type="hidden" name="action" value="accept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}">
                                 <input type="text" name="note" class="form-control form-control-sm" style="min-width: 190px;" maxlength="300" placeholder="{% if i.prior_ok %}Why, or which earlier stay?{% else %}Why is this a reconciling item?{% endif %}" {% if not i.prior_ok %}required{% endif %}>
@@ -161,7 +161,7 @@
             <div class="small fw-semibold">Tie the <span id="tie-title"></span> deposit to reservations</div>
             <input type="search" id="tie-q" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Filter by guest or code…" aria-label="Filter reservations">
         </div>
-        <div class="text-muted mb-1" style="font-size: 0.72rem;">Every reservation from {{ month|date:"F" }} and seven days either side. Tick the payouts the deposit is made of; a reservation's lines (its payout, a credit, a resolution) can be ticked together.</div>
+        <div class="text-muted mb-1" style="font-size: 0.72rem;">Every reservation from {{ month|date:"F" }} and seven days either side. Tick the payouts the deposit is made of; a reservation's lines (its payout, a credit, a resolution) can be ticked together. One with no payout on file at all can be given the amount and day it actually paid, straight from what the platform's own file shows — that is saved on the reservation too, not just this tie.</div>
         <div class="table-responsive" style="max-height: 320px; overflow-y: auto;"><table class="table table-sm mb-1 cl-table" id="tie-table">
             <thead><tr><th style="width: 28px;"></th><th>Reservation</th><th>Stay</th><th>Payout</th><th class="text-end">Amount</th></tr></thead>
             <tbody>
@@ -174,7 +174,18 @@
                     <td class="amt">${{ p.amount|floatformat:"2g" }}</td>
                 </tr>
             {% empty %}
-                <tr data-search="{{ r.guest|lower }} {{ r.code|lower }}"><td></td><td><strong>{{ r.guest }}</strong> <span class="text-muted">{{ r.code }} · {{ r.source }}</span></td><td>{{ r.check_in|date:"M j" }}–{{ r.check_out|date:"M j" }}</td><td class="text-muted">no payout on file</td><td></td></tr>
+                <tr data-search="{{ r.guest|lower }} {{ r.code|lower }}">
+                    <td></td>
+                    <td><strong>{{ r.guest }}</strong> <span class="text-muted">{{ r.code }} · {{ r.source }}</span></td>
+                    <td>{{ r.check_in|date:"M j" }}–{{ r.check_out|date:"M j" }}</td>
+                    <td colspan="2" class="text-muted">no payout on file — paid
+                        <span class="input-group input-group-sm d-inline-flex" style="width: auto; vertical-align: middle;">
+                            <span class="input-group-text py-0">$</span>
+                            <input type="number" step="0.01" min="0.01" name="new_amt_{{ r.id }}" class="form-control form-control-sm tie-new-amt" style="width: 100px;" placeholder="0.00" aria-label="Amount {{ r.guest }} was paid">
+                        </span>
+                        on <input type="date" name="new_date_{{ r.id }}" class="form-control form-control-sm d-inline-block tie-new-date" style="width: 150px; vertical-align: middle;" aria-label="Day {{ r.guest }} was paid">
+                    </td>
+                </tr>
             {% endfor %}{% empty %}
                 <tr><td colspan="5" class="text-muted small p-2">No reservations with a payout around this month.</td></tr>
             {% endfor %}
@@ -195,6 +206,11 @@
     function recalc() {
         var sum = 0, n = 0;
         panel.querySelectorAll('.tie-check:checked').forEach(function (c) { sum += parseFloat(c.dataset.amount); n += 1; });
+        panel.querySelectorAll('.tie-new-amt').forEach(function (inp) {
+            var v = parseFloat(inp.value);
+            var dateInp = inp.closest('td').querySelector('.tie-new-date');
+            if (v > 0 && dateInp.value) { sum += v; n += 1; }
+        });
         var diff = Math.round((deposit - sum) * 100) / 100;
         document.getElementById('tie-sum').textContent = money(sum);
         var d = document.getElementById('tie-diff');
@@ -210,11 +226,14 @@
             document.getElementById('tie-title').textContent = btn.dataset.label;
             document.getElementById('tie-dep').textContent = money(deposit);
             panel.querySelectorAll('.tie-check').forEach(function (c) { c.checked = false; });
+            panel.querySelectorAll('.tie-new-amt').forEach(function (inp) { inp.value = ''; });
+            panel.querySelectorAll('.tie-new-date').forEach(function (inp) { inp.value = btn.dataset.date; });
             recalc();
             panel.scrollIntoView({ behavior: 'instant', block: 'nearest' });
         });
     });
     panel.addEventListener('change', recalc);
+    panel.addEventListener('input', recalc);
     document.getElementById('tie-q').addEventListener('input', function () {
         var q = this.value.trim().toLowerCase();
         panel.querySelectorAll('#tie-table tbody tr[data-search]').forEach(function (tr) { tr.hidden = !!q && tr.dataset.search.indexOf(q) < 0; });
