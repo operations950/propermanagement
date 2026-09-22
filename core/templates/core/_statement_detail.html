@@ -1,0 +1,7 @@
+{% load core_extras %}{% comment %}The transactions behind one figure of the statement, for every month, as a hidden row. group = deposits | reimbursable | direct.{% endcomment %}
+<tr data-st-detail="{{ group }}" hidden><td class="st-detail-cell" colspan="{{ st.columns|length|add:2 }}"><div class="st-sub-box"><table class="st-sub">
+    {% for c in st.columns %}{% for x in c.detail|dictget:group %}
+        {% if forloop.first %}<tr class="st-sub-month"><td colspan="2">{{ c.month|date:"F Y" }}</td><td class="amt">{% if group == 'deposits' %}{{ c.t.deposits|money }}{% elif group == 'reimbursable' %}{{ c.t.expenses_reimbursable|money }}{% else %}{{ c.t.expenses_direct|money }}{% endif %}</td></tr>{% endif %}
+        <tr><td style="width: 64px;">{{ x.date|date:"M j" }}</td><td>{{ x.text }}{% if x.unit %} <span class="text-muted">· {{ x.unit }}</span>{% endif %}</td><td class="amt">{{ x.amount|money }}</td></tr>
+    {% endfor %}{% endfor %}
+</table></div></td></tr>

@@ -211,7 +211,7 @@ def _match_month(book, month, cleared, scope, events):
     deposits = untied
     named = [b for b in scope if b.external_uid]
     for dep in deposits:
-        text = f'{dep.payee} {dep.memo}'
+        text = f'{dep.payee} {dep.memo} {dep.description}'
         hits = [b for b in named if re.search(r'(?<![A-Za-z0-9])' + re.escape(b.external_uid) + r'(?![A-Za-z0-9])', text, re.IGNORECASE)]
         chosen, _exact = _pieces(hits, dep, pool, used)
         if not chosen:
@@ -297,7 +297,7 @@ def _items(book, month, result):
     items = []
     for pair in result.get('mismatched', []):
         dep, diff, group = pair['line'], pair['difference'], pair['groups'][0]
-        who = dep.memo or dep.txn_type
+        who = dep.shown_memo or dep.txn_type
         hint = ''
         if diff > 0 and not any((pt or 0) for _c, _p, pt, _o in group['on_file']):
             hint = " Airbnb's transactions file lists a separate 'Pass Through Tot' line (tax it pays the host) for each stay: upload the latest transactions file and it is included."
@@ -310,7 +310,7 @@ def _items(book, month, result):
             'accepted': a if a and a.amount == dep.flow else None,
         })
     for dep in result['open_deposits']:
-        who = dep.memo or dep.txn_type
+        who = dep.shown_memo or dep.txn_type
         a = accepted.get(('deposit', f'line:{dep.pk}'))
         items.append({
             'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False, 'prior_ok': first_month,
@@ -544,7 +544,7 @@ def snapshot(rec):
     return {
         'payouts_matched': money(rec['payouts_matched']), 'deposits_total': money(rec['deposits_total']), 'prior_total': money(rec['prior_total']), 'carried_payouts': money(rec['carried_payouts']),
         'pairs': [{
-            'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].memo or p['line'].txn_type, 'difference': money(p.get('difference', 0)),
+            'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].shown_memo or p['line'].txn_type, 'difference': money(p.get('difference', 0)),
             'manual': bool(p.get('manual')), 'payouts': [{'label': g['label'], 'amount': money(g['total']), 'count': g['count'], 'carried': bool(g.get('carried'))} for g in p['groups']],
         } for p in rec['pairs']],
         'accepted': [{

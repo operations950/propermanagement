@@ -23,6 +23,10 @@
     .cl-tag { font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: #eceff2; color: #4b5563; }
     .cl-tag.trust { background: #e2edf5; color: #23485f; }
     .cl-checks li { padding: 3px 0; }
+    .cl-desc { width: 100%; min-width: 200px; border: 1px solid transparent; background: transparent; padding: 1px 4px; font-size: inherit; color: inherit; border-radius: 4px; }
+    .cl-desc:hover { border-color: var(--border-hairline, #d5d9df); }
+    .cl-desc:focus { border-color: var(--brand-primary); background: var(--surface-card, #fff); outline: none; }
+    .cl-desc.edited { font-style: italic; }
     .cl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border-hairline, #d5d9df); border: 1px solid var(--border-hairline, #d5d9df); border-radius: 8px; overflow: hidden; }
     .cl-grid > div { background: var(--surface-card, #fff); padding: 5px 8px; text-align: center; }
     .cl-grid span { display: block; font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
@@ -276,13 +280,13 @@
             {% for l in lines %}
             <tr class="{% if l.changed_in_qb and not close %}changed{% endif %}" data-acct="{{ l.role }}" data-sign="{% if l.flow > 0 %}pos{% else %}neg{% endif %}" data-cat="{{ l.category }}" data-source="{{ l.category_source }}"
                 data-review="{% if not l.reviewed %}1{% endif %}" data-changed="{% if l.changed_in_qb %}1{% endif %}" data-date="{{ l.txn_date|date:'Y-m-d' }}" data-amount="{{ l.flow }}"
-                data-type="{{ l.txn_type|lower }}" data-memo="{{ l.memo|lower }}" data-split="{{ l.split|lower }}" data-status="{% if l.changed_in_qb %}0{% elif not l.reviewed %}1{% else %}2{% endif %}"
-                data-search="{{ l.memo|lower }} {{ l.split|lower }} {{ l.txn_type|lower }} {{ l.doc_num }}">
+                data-type="{{ l.txn_type|lower }}" data-memo="{{ l.shown_memo|lower }}" data-split="{{ l.split|lower }}" data-status="{% if l.changed_in_qb %}0{% elif not l.reviewed %}1{% else %}2{% endif %}"
+                data-search="{{ l.shown_memo|lower }} {{ l.memo|lower }} {{ l.split|lower }} {{ l.txn_type|lower }} {{ l.doc_num }}">
                 {% if not close %}<td><input type="checkbox" class="form-check-input bulk-check" data-line="{{ l.pk }}" aria-label="Tick this row"></td>{% endif %}
                 <td>{{ l.txn_date|date:"M j" }}</td>
                 <td><span class="cl-tag {{ l.role }}">{% if l.role == 'trust' %}Trust{% else %}Expenses{% endif %}</span></td>
                 <td class="text-muted">{{ l.txn_type }}{% if l.doc_num %} #{{ l.doc_num }}{% endif %}</td>
-                <td><span class="trunc" title="{{ l.memo }}">{{ l.memo|default:"—" }}</span></td>
+                <td>{% if close %}<span class="trunc" title="{{ l.memo }}">{{ l.shown_memo|default:"—" }}</span>{% else %}<input type="text" name="desc_{{ l.pk }}" value="{{ l.shown_memo }}" maxlength="500" class="cl-desc{% if l.description %} edited{% endif %}" aria-label="Description" title="{% if l.description %}Edited. QuickBooks says: {{ l.memo }}{% else %}From QuickBooks. Type to correct it, then Save coding.{% endif %}">{% endif %}</td>
                 <td class="text-muted"><span class="trunc" style="max-width: 190px;" title="{{ l.split }}">{{ l.split|default:"" }}</span></td>
                 <td class="amt {% if l.role == 'trust' and l.flow > 0 %}in{% endif %}">{% if l.role == 'trust' %}{% if l.flow > 0 %}+${{ l.flow|floatformat:"2g" }}{% else %}−${{ l.flow|cut:"-"|floatformat:"2g" }}{% endif %}{% else %}{% if l.flow < 0 %}−${{ l.flow|cut:"-"|floatformat:"2g" }}{% else %}${{ l.flow|floatformat:"2g" }}{% endif %}{% endif %}</td>
                 <td>{% if close %}{{ l.get_category_display }}{% else %}
@@ -301,7 +305,7 @@
 {% if removed %}
 <details class="mb-3">
     <summary class="small text-muted" style="cursor: pointer;">{{ removed|length }} transaction{{ removed|length|pluralize }} no longer in QuickBooks for this rental (voided, deleted, or re-coded elsewhere)</summary>
-    <div class="mt-2 small">{% for l in removed %}<div class="text-muted"><s>{{ l.txn_date|date:"M j" }} · {{ l.memo|default:l.txn_type }} · ${{ l.flow|cut:"-"|floatformat:"2g" }}</s> — its coding is kept in case it comes back</div>{% endfor %}</div>
+    <div class="mt-2 small">{% for l in removed %}<div class="text-muted"><s>{{ l.txn_date|date:"M j" }} · {{ l.shown_memo|default:l.txn_type }} · ${{ l.flow|cut:"-"|floatformat:"2g" }}</s> — its coding is kept in case it comes back</div>{% endfor %}</div>
 </details>
 {% endif %}
 

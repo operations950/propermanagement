@@ -31,3 +31,12 @@ def money(value):
     except (InvalidOperation, TypeError, ValueError):
         return ""
     return ("−" if amount < 0 else "") + f"${abs(amount):,.2f}"
+
+
+@register.filter
+def dictget(mapping, key):
+    """mapping[key] in a template (an empty list when it is not there)."""
+    try:
+        return mapping.get(key, [])
+    except AttributeError:
+        return []

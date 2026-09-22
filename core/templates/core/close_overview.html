@@ -19,7 +19,7 @@
     </div>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-primary disabled" style="opacity: 1;">{{ month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
@@ -64,7 +64,7 @@
         <td class="num">{% if c.totals %}${{ c.totals.expenses_total|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td class="num">{% if c.totals %}${% if c.totals.calc %}{{ c.totals.owner_due|floatformat:"2g" }}{% else %}{{ c.totals.owner_payment|floatformat:"2g" }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
         <td class="small text-muted">{% if c.units %}{{ c.closed_units }} of {{ c.units }} unit{{ c.units|pluralize }} closed · consolidated = the units added up{% else %}No active units yet — add its units on the property page.{% endif %}</td>
-        <td class="text-end"><a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="btn btn-outline-secondary btn-sm py-0">Consolidated</a></td>
+        <td class="text-end text-nowrap"><a href="{% url 'close_statement' g.property.pk %}" class="btn btn-link btn-sm py-0" title="Twelve months side by side">Statement</a> <a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="btn btn-outline-secondary btn-sm py-0">Consolidated</a></td>
     </tr>
     {% endwith %}
     {% for r in g.rows %}{% include 'core/_close_row.html' with r=r indent=True %}{% endfor %}

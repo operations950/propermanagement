@@ -627,6 +627,27 @@ def code_lines(book, month, user, assignments):
 
 
 @transaction.atomic
+def describe_lines(book, month, edits):
+    """Apply {line id: text} typed into the description column of the coding screen. Most lines keep what
+    QuickBooks says; where it needs correcting our wording is kept beside QuickBooks's memo (never overwritten by
+    a sync). Text equal to QuickBooks's memo, or nothing at all, puts QuickBooks's back. Returns how many changed."""
+    _guard_open(book, month)
+    lines = {l.pk: l for l in month_lines(book, month)}
+    changed = 0
+    for pk, text in edits.items():
+        line = lines.get(pk)
+        if line is None:
+            continue
+        text = ' '.join((text or '').split())[:500]
+        new = '' if (not text or text == line.memo) else text
+        if new != line.description:
+            line.description = new
+            line.save(update_fields=['description'])
+            changed += 1
+    return changed
+
+
+@transaction.atomic
 def accept_all(book, month, user):
     """Marks every line of the month reviewed as it stands (defaults included).
     Returns how many were newly reviewed."""
@@ -778,43 +799,74 @@ def sum_totals(parts):
 STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us')
 
 
-def statement(prop, end=None, months=12):
-    """A property's months side by side, one column each (12 by default, none before the books start): the
-    calculation down the page (income deposits less commission, reimbursable expenses and expenses paid from
-    trust = the owner payment), what is paid out early next month (the accounts payable to the
-    owner and to us), what was paid out this month for last month, and two checks: that last month's payables
-    were cleared, and that all of the income is accounted for. A closed month is as closed; an open one as it
-    is coded now. For a property kept unit by unit each column is its units added up.
+def _zero_totals():
+    keys = TOTAL_KEYS + ('expenses_total', 'taken_to_us', 'still_to_us', 'reimb_carry', 'comm_carry', 'owner_carry', 'us_carry', 'reimb_payable', 'comm_payable', 'us_payable', 'owner_payable')
+    out = {k: ZERO for k in keys}
+    out.update(calc=True, commission_rate=ZERO, prior_status='not_in_books', prior_month=None, prior_reimbursable=None, prior_commission=None, prior_owner=None, prior_closed=False)
+    return out
 
-    Returns {'columns': [{'month', 'state', 't', 'accounted', 'cleared'}], 'total': {...sums of the flows...}}."""
+
+def _detail(book, month):
+    """The transactions behind the statement's income, reimbursable expenses and paid-from-trust figures, as they
+    add up to them (each amount signed as it counts: a refund is negative)."""
+    out = {'deposits': [], 'reimbursable': [], 'direct': []}
+    label = book.unit.label if book.unit is not None else ''
+    for l in month_lines(book, month).order_by('txn_date', 'pk'):
+        if l.role == Role.TRUST and l.category == Category.DEPOSIT:
+            group, amount = 'deposits', l.flow
+        elif l.role == Role.EXPENSE and l.category != Category.REIMBURSEMENT:
+            group, amount = 'reimbursable', l.flow
+        elif l.role == Role.TRUST and l.category == Category.EXPENSE:
+            group, amount = 'direct', -l.flow
+        else:
+            continue
+        out[group].append({'date': l.txn_date, 'text': l.shown_memo or l.txn_type, 'amount': amount, 'unit': label})
+    return out
+
+
+def statement(prop, end=None, months=12):
+    """A property's months side by side, one column each: always `months` of them (12 by default) ending at `end`
+    (the last complete month), so the layout is there even when there is nothing to show: a month with no
+    transactions, or before the books start, is a column of zeros. Down the page: the calculation (income
+    deposits less commission, reimbursable expenses and expenses paid from trust = the owner payment); the
+    accounts payable at month end (to the owner and to us); what was paid out this month for last month; and two
+    checks: last month's payables cleared, and all income accounted for. Behind the income, reimbursable and
+    paid-from-trust figures are the transactions they add up. A closed month is as closed (its transactions are
+    locked); an open one as it is coded now. For a property kept unit by unit each column is its units added up.
+
+    Returns {'columns': [{'month', 'state', 't', 'accounted', 'cleared', 'detail'}], 'total': {...sums...}}."""
     start = month_of(books_start())
     last = month_of(end) if end else previous_month(timezone.localdate())
     span, m = [], last
-    while len(span) < months and m >= start:
+    for _ in range(months):
         span.append(m)
         m = previous_month(m)
     span.reverse()
     columns = []
     memo = {}
     for m in span:
-        parts, closed = [], 0
-        books = books_for(prop, m)
+        parts, closed, detail = [], 0, {'deposits': [], 'reimbursable': [], 'direct': []}
+        books = books_for(prop, m) if m >= start else []
         for b in books:
             close = MonthClose.objects.filter(month=m, **b.scope()).first()
             if close is not None and 'reimb_payable' in close.totals:
                 parts.append(closed_summary(close))
             elif close is not None or month_lines(b, m).exists():
                 parts.append(totals(b, m, memo=memo))       # closed before the balances were kept, or open: from its lines
+            else:
+                continue
             closed += close is not None
+            for group, rows in _detail(b, m).items():
+                detail[group] += rows
         if not parts:
-            columns.append({'month': m, 'state': 'empty', 't': None, 'accounted': None, 'cleared': None})
+            columns.append({'month': m, 'state': 'empty' if m >= start else 'before', 't': _zero_totals(), 'accounted': None, 'cleared': None, 'detail': detail})
             continue
         t = parts[0] if len(parts) == 1 else sum_totals(parts)
         accounted = t['deposits'] - (t['expenses_reimbursable'] + t['expenses_direct'] + t['commission_due'] + t['owner_due'])
         cleared = None if t.get('prior_status') != 'ok' else (t['us_carry'] == 0 and t['owner_carry'] == 0)
-        columns.append({'month': m, 'state': 'closed' if closed == len(books) else 'open', 't': t, 'accounted': accounted, 'cleared': cleared})
-    total = {k: sum((c['t'][k] for c in columns if c['t']), ZERO) for k in STATEMENT_KEYS}
-    return {'columns': columns, 'total': total, 'property': prop, 'first': span[0] if span else None, 'last': span[-1] if span else None}
+        columns.append({'month': m, 'state': 'closed' if closed == len(parts) else 'open', 't': t, 'accounted': accounted, 'cleared': cleared, 'detail': detail})
+    total = {k: sum((c['t'][k] for c in columns), ZERO) for k in STATEMENT_KEYS}
+    return {'columns': columns, 'total': total, 'property': prop, 'first': span[0], 'last': span[-1]}
 
 
 def checks(book, month, now=None, rec=None):

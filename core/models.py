@@ -1,3 +1,4 @@
+import builtins
 import re
 from decimal import Decimal
 
@@ -1044,6 +1045,7 @@ class LedgerLine(models.Model):
     payee = models.CharField(max_length=300, blank=True)
     memo = models.CharField(max_length=500, blank=True)
     split = models.CharField(max_length=300, blank=True, help_text='The other account(s) of the transaction, as QuickBooks shows them.')
+    description = models.CharField(max_length=500, blank=True, help_text="Our own wording for this transaction, when QuickBooks's memo needs correcting. QuickBooks's memo stays beside it and a sync never overwrites this.")
     flow = models.DecimalField(max_digits=12, decimal_places=2)
     fingerprint = models.CharField(max_length=40, blank=True)
 
@@ -1061,6 +1063,11 @@ class LedgerLine(models.Model):
     changed_in_qb = models.BooleanField(default=False, help_text='QuickBooks changed the amount, date or account after this was pulled in; a person should glance at it.')
     change_note = models.CharField(max_length=300, blank=True)
     locked_at = models.DateTimeField(null=True, blank=True, help_text='Set when the month is closed; a locked line never changes.')
+
+    @builtins.property      # (this class has a field called `property`)
+    def shown_memo(self):
+        """What the screens say the transaction is: our wording if we corrected QuickBooks's, else QuickBooks's memo."""
+        return self.description or self.memo
 
     class Meta:
         ordering = ['txn_date', 'txn_type', 'txn_id']

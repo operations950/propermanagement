@@ -147,7 +147,7 @@ def close_statement(request, pk):
     return render(request, 'core/close_statement.html', {
         'property': prop, 'st': data, 'months': months, 'last': last, 'earlier': ledger.previous_month(last), 'later': ledger.next_month(last),
         'can_go_later': ledger.next_month(last) <= ledger.previous_month(timezone.localdate()),
-        'can_go_earlier': data['first'] is not None and data['first'] > ledger.month_of(ledger.books_start()),
+        'can_go_earlier': True,
         'back_url': reverse('close_overview'),
     })
 
@@ -177,8 +177,10 @@ def close_property(request, month, pk, unit_pk=None):
                 for key, value in request.POST.items():
                     if key.startswith('cat_') and key[4:].isdigit():
                         assignments[int(key[4:])] = value
+                edits = {int(k[5:]): v for k, v in request.POST.items() if k.startswith('desc_') and k[5:].isdigit()}
                 changed = ledger.code_lines(book, month, request.user, assignments)
-                messages.success(request, f'Saved. {changed} line{"" if changed == 1 else "s"} re-coded; everything on this page is now marked reviewed.')
+                described = ledger.describe_lines(book, month, edits)
+                messages.success(request, f'Saved. {changed} line{"" if changed == 1 else "s"} re-coded' + (f', {described} description{"" if described == 1 else "s"} edited' if described else '') + '; everything on this page is now marked reviewed.')
             elif action == 'accept_all':
                 count = ledger.accept_all(book, month, request.user)
                 messages.success(request, f'{count} line{"" if count == 1 else "s"} accepted as shown.')
