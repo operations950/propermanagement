@@ -167,8 +167,15 @@ def _feed_twin(property, source, row, listing_unit_map, default_unit=None):
 def _adopt_feed_twins(property, source, raw_bookings, listing_unit_map, default_unit=None):
     """Gives each feed-created booking the confirmation code its CSV row
     carries (see _feed_twin), so everything downstream just finds it by UID."""
+    # One query for every row's existence check instead of one per row — on a
+    # large file (hundreds/thousands of rows) the per-row version was slow
+    # enough on its own to help push a production import past its worker
+    # timeout (see apply_bookings_for_property's docstring / commit note).
+    existing_uids = set(Booking.objects.filter(
+        source=source, external_uid__in=[row.external_uid for row in raw_bookings],
+    ).values_list('external_uid', flat=True))
     for row in raw_bookings:
-        if Booking.objects.filter(source=source, external_uid=row.external_uid).exists():
+        if row.external_uid in existing_uids:
             continue
         twin = _feed_twin(property, source, row, listing_unit_map, default_unit)
         if twin:
@@ -210,15 +217,17 @@ def _save_amounts(source, raw_bookings):
     installments still pending, so a later, partial file must never shrink a
     figure an earlier one gave in full. Fields the file left blank are left
     alone."""
-    for row in raw_bookings:
-        if not row.has_amounts():
-            continue
-        # A cancelled reservation is skipped only when it carries no money -
-        # a cancellation the guest was still charged for (VRBO pays those out)
-        # is a real payout to reconcile.
-        if row.is_cancelled and not (row.payout_amount and row.payout_amount > 0):
-            continue
-        booking = Booking.objects.filter(source=source, external_uid=row.external_uid).first()
+    # Batched once for the whole file rather than one SELECT per row — see
+    # _adopt_feed_twins' comment; this loop is the other big multiplier on a
+    # large import (every row with any money on it did its own query here).
+    candidates = [row for row in raw_bookings if row.has_amounts() and not (row.is_cancelled and not (row.payout_amount and row.payout_amount > 0))]
+    bookings_by_uid = {
+        b.external_uid: b
+        for b in Booking.objects.filter(source=source, external_uid__in=[row.external_uid for row in candidates])
+    }
+    payout_line_writes = {}    # (booking_id, kind, date) -> amount, collected here and written once below
+    for row in candidates:
+        booking = bookings_by_uid.get(row.external_uid)
         if booking is None:
             continue
         changed = []
@@ -235,9 +244,11 @@ def _save_amounts(source, raw_bookings):
             if new_value is not None and getattr(booking, field) != new_value:
                 setattr(booking, field, new_value)
                 changed.append(field)
-        # Each dated line is stored as the file gives it (a later file for the same day corrects it, other days stay).
+        # Each dated line is stored as the file gives it (a later file for the same day corrects it, other
+        # days stay). Two rows in the same file landing on the same (booking, kind, date) — a duplicated CSV
+        # line — just means the later one wins, same as re-uploading the file twice would.
         for kind, paid, amount in row.payout_lines:
-            PayoutLine.objects.update_or_create(booking=booking, kind=kind, date=paid, defaults={'amount': amount})
+            payout_line_writes[(booking.pk, kind, paid)] = amount
         if row.payout_date and booking.payout_date != row.payout_date:
             booking.payout_date = row.payout_date
             changed.append('payout_date')
@@ -250,20 +261,84 @@ def _save_amounts(source, raw_bookings):
             booking.amount_source = 'csv upload'
             booking.save(update_fields=changed + ['amount_source'])
 
+    # Written as one batch instead of a get-or-create round trip per dated line — on a file covering a long
+    # stay's many installments, or two years of history, this was the single biggest query multiplier of all
+    # (it's what actually pushed a large real import past its worker timeout in production).
+    if payout_line_writes:
+        booking_ids = {key[0] for key in payout_line_writes}
+        existing = {
+            (pl.booking_id, pl.kind, pl.date): pl
+            for pl in PayoutLine.objects.filter(booking_id__in=booking_ids)
+        }
+        to_create, to_update = [], []
+        for (booking_id, kind, date), amount in payout_line_writes.items():
+            line = existing.get((booking_id, kind, date))
+            if line is None:
+                to_create.append(PayoutLine(booking_id=booking_id, kind=kind, date=date, amount=amount))
+            elif line.amount != amount:
+                line.amount = amount
+                to_update.append(line)
+        if to_create:
+            PayoutLine.objects.bulk_create(to_create)
+        if to_update:
+            PayoutLine.objects.bulk_update(to_update, ['amount'])
+
 
 def save_money_only(source, money_rows):
     """Dated money lines for reservations whose own row was not in the file (see importers.ParsedBookings): added
     to the booking on record, if there is one. Nothing is created for a code we don't know."""
-    for row in money_rows or ():
-        booking = Booking.objects.filter(source=source, external_uid=row.external_uid).first()
+    money_rows = list(money_rows or ())
+    bookings_by_uid = {
+        b.external_uid: b
+        for b in Booking.objects.filter(source=source, external_uid__in=[row.external_uid for row in money_rows])
+    }
+    payout_line_writes = {}
+    for row in money_rows:
+        booking = bookings_by_uid.get(row.external_uid)
         if booking is None:
             continue
         for kind, paid, amount in row.payout_lines:
-            PayoutLine.objects.update_or_create(booking=booking, kind=kind, date=paid, defaults={'amount': amount})
-        lines = list(booking.payout_lines.all())
-        booking.pass_through_amount = sum((l.amount for l in lines if l.kind == PayoutLine.Kind.PASS_THROUGH), Decimal('0')) or booking.pass_through_amount
-        booking.other_payout_amount = sum((l.amount for l in lines if l.kind == PayoutLine.Kind.OTHER), Decimal('0')) or booking.other_payout_amount
-        booking.save(update_fields=['pass_through_amount', 'other_payout_amount'])
+            payout_line_writes[(booking.pk, kind, paid)] = amount
+    if payout_line_writes:
+        booking_ids = {key[0] for key in payout_line_writes}
+        existing = {
+            (pl.booking_id, pl.kind, pl.date): pl
+            for pl in PayoutLine.objects.filter(booking_id__in=booking_ids)
+        }
+        to_create, to_update = [], []
+        for (booking_id, kind, date), amount in payout_line_writes.items():
+            line = existing.get((booking_id, kind, date))
+            if line is None:
+                to_create.append(PayoutLine(booking_id=booking_id, kind=kind, date=date, amount=amount))
+            elif line.amount != amount:
+                line.amount = amount
+                to_update.append(line)
+        if to_create:
+            PayoutLine.objects.bulk_create(to_create)
+        if to_update:
+            PayoutLine.objects.bulk_update(to_update, ['amount'])
+
+    # Summed from one query across every affected booking, not one payout_lines.all() query PER
+    # booking (that refetch-per-booking loop was its own O(n) - the exact mistake this whole fix
+    # is about, just reintroduced one line down).
+    sums = {}   # booking_id -> {kind: total}
+    if bookings_by_uid:
+        for booking_id, kind, amount in PayoutLine.objects.filter(
+            booking_id__in=[b.pk for b in bookings_by_uid.values()],
+            kind__in=[PayoutLine.Kind.PASS_THROUGH, PayoutLine.Kind.OTHER],
+        ).values_list('booking_id', 'kind', 'amount'):
+            sums.setdefault(booking_id, {})[kind] = sums.get(booking_id, {}).get(kind, Decimal('0')) + amount
+    to_save = []
+    for booking in bookings_by_uid.values():
+        totals = sums.get(booking.pk, {})
+        pass_through = totals.get(PayoutLine.Kind.PASS_THROUGH, Decimal('0')) or booking.pass_through_amount
+        other = totals.get(PayoutLine.Kind.OTHER, Decimal('0')) or booking.other_payout_amount
+        if pass_through != booking.pass_through_amount or other != booking.other_payout_amount:
+            booking.pass_through_amount = pass_through
+            booking.other_payout_amount = other
+            to_save.append(booking)
+    if to_save:
+        Booking.objects.bulk_update(to_save, ['pass_through_amount', 'other_payout_amount'])
 
 
 def save_payout_batches(source, payout_batches):
@@ -284,10 +359,13 @@ def _fill_details(source, raw_bookings):
     row matches a reservation already on record (by code, or merged with the
     calendar stay it lines up with), fill in what that reservation is missing —
     never overwriting what it already has."""
-    for row in raw_bookings:
-        if not (row.guest_name or row.guest_phone_last4 or row.listing_name):
-            continue
-        booking = Booking.objects.filter(source=source, external_uid=row.external_uid).first()
+    candidates = [row for row in raw_bookings if row.guest_name or row.guest_phone_last4 or row.listing_name]
+    bookings_by_uid = {
+        b.external_uid: b
+        for b in Booking.objects.filter(source=source, external_uid__in=[row.external_uid for row in candidates])
+    }
+    for row in candidates:
+        booking = bookings_by_uid.get(row.external_uid)
         if booking is None:
             continue
         changed = []
