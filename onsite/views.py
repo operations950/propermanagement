@@ -247,6 +247,26 @@ def _visit_eligible_properties():
     return str_properties, other_properties
 
 
+def _money_only_context(raw_bookings, source):
+    """What each money-only row (see importers.ParsedBookings) will do on Apply, so nothing recognized in the
+    file is invisible just because it isn't a new or changed reservation: the confirmation code, the total money
+    on it, and whether a reservation with that code is already on record (and where) to receive it — or not,
+    in which case Apply changes nothing for it (there is no PendingPayout-style holding for this shape of file;
+    it simply has to arrive in a later, wider export that also carries the Reservation row)."""
+    rows = getattr(raw_bookings, 'money_only', ())
+    if not rows:
+        return []
+    existing = {b.external_uid: b for b in Booking.objects.filter(source=source, external_uid__in=[r.external_uid for r in rows]).select_related('property', 'unit')}
+    out = []
+    for row in rows:
+        booking = existing.get(row.external_uid)
+        out.append({
+            'external_uid': row.external_uid, 'total': sum((amount for _kind, _day, amount in row.payout_lines), Decimal('0')),
+            'booking': booking,
+        })
+    return out
+
+
 def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
     """Builds the preview context for a portfolio-wide .csv: which rows
     auto-matched an existing Property (with their diff), and which distinct
@@ -283,10 +303,13 @@ def _portfolio_preview_context(batch, raw_bookings, source, posted=None):
             'conflict': conflict,
         })
 
+    payout_batches = getattr(raw_bookings, 'payout_batches', ())
     return {
         'batch': batch, 'portfolio': True, 'source': source,
         'property_diffs': property_diffs, 'unmatched_groups': unmatched_groups,
         'units_by_property_json': _units_by_property_json(),
+        'money_only': _money_only_context(raw_bookings, source),
+        'payout_batch_count': len(payout_batches), 'payout_batch_total': sum((b.amount for b in payout_batches), Decimal('0')),
     }
 
 
@@ -330,11 +353,17 @@ def _payout_preview_context(batch, rows):
     return {'batch': batch, 'payout_rows': rows, 'attach': attach, 'kept': kept, 'held': held, 'portfolio': False, 'payouts': True}
 
 
-def _create_import_batch(user, source, uploaded_file, property=None):
+def _create_import_batch(user, source, uploaded_file, property=None, force_portfolio=False):
     """Shared by the generic upload form and each daily-upload-slot drop —
     parses the file, decides single-property vs. portfolio-wide the same
     way either time, and saves the not-yet-applied ImportBatch. Returns
-    (batch, error_message); batch is None on error."""
+    (batch, error_message); batch is None on error.
+
+    `force_portfolio` is for a daily-upload-slot drop, which is portfolio-wide by construction (the slot
+    collects no property at all — see upload_slot) — without it, a file that happens to carry no reservation
+    rows at all (every row a 'Payout' batch line, or a continuation line for a reservation whose own Reservation
+    row is in a different file) has nothing to detect a Listing column from, and would otherwise be wrongly
+    asked to pick a property it was never going to get."""
     try:
         fmt = detect_format(uploaded_file.name)
         if fmt == 'csv' and is_payout_file(read_csv_header(uploaded_file)):
@@ -343,14 +372,21 @@ def _create_import_batch(user, source, uploaded_file, property=None):
     except BookingFileError as e:
         return None, str(e)
 
-    portfolio_mode = fmt == 'csv' and not property and any(r.listing_name for r in raw_bookings)
+    portfolio_mode = fmt == 'csv' and not property and (force_portfolio or any(r.listing_name for r in raw_bookings))
     if not portfolio_mode and not property:
         return None, (
             'Choose a property — only a portfolio-wide .csv with a listing/property column can skip this.'
         )
 
-    covers_start = min(r.check_out for r in raw_bookings)
-    covers_end = max(r.check_out for r in raw_bookings)
+    # A file can validly have no reservation rows at all (all 'Payout' batch rows, or every code's money is a
+    # continuation line for a reservation whose own Reservation row is in an earlier file, not this one) — fall
+    # back to whatever dated thing the file DOES have, rather than crashing staff's upload with a bare 500.
+    checkout_dates = [r.check_out for r in raw_bookings]
+    if not checkout_dates:
+        batch_dates = getattr(raw_bookings, 'payout_batches', ())
+        checkout_dates = [b.date for b in batch_dates] or [timezone.localdate()]
+    covers_start = min(checkout_dates)
+    covers_end = max(checkout_dates)
     batch = ImportBatch.objects.create(
         property=property if not portfolio_mode else None, source=source, raw_file=uploaded_file,
         covers_start=covers_start, covers_end=covers_end, imported_by=user,
@@ -430,7 +466,7 @@ def upload_slot(request, slot_id):
         )
         return redirect('onsite_booking_import')
 
-    batch, error = _create_import_batch(request.user, slot.source, uploaded_file)
+    batch, error = _create_import_batch(request.user, slot.source, uploaded_file, force_portfolio=True)
     if error:
         messages.error(request, f'{slot.label}: {error}')
         return redirect('onsite_booking_import')

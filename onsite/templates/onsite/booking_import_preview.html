@@ -57,7 +57,14 @@
 </form>
 {% elif portfolio %}
 <h2 class="page-title mb-1">Review import — portfolio-wide</h2>
-<p class="text-muted small mb-4">{{ batch.get_source_display }} · covers {{ batch.covers_start }} to {{ batch.covers_end }}. Nothing has been saved yet.</p>
+<p class="text-muted small mb-3">{{ batch.get_source_display }} · covers {{ batch.covers_start }} to {{ batch.covers_end }}. Nothing has been saved yet.</p>
+
+<div class="row row-cols-1 row-cols-md-4 g-2 mb-4">
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Matched properties</div><div class="fs-4 fw-semibold">{{ property_diffs|length }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: {% if unmatched_groups %}color-mix(in srgb, var(--status-warning) 15%, white){% else %}var(--bs-light, #f8f9fa){% endif %}; border-radius: 10px;"><div class="small text-muted">Listing names to resolve</div><div class="fs-4 fw-semibold">{{ unmatched_groups|length }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Money for reservations elsewhere</div><div class="fs-4 fw-semibold">{{ money_only|length }}</div><div class="small text-muted">a code with no Reservation row here</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Platform payout transfers</div><div class="fs-4 fw-semibold">{{ payout_batch_count }}</div><div class="small text-muted">{% if payout_batch_count %}${{ payout_batch_total|floatformat:"2g" }} total, on record{% else %}none in this file{% endif %}</div></div></div>
+</div>
 
 <form method="post" action="{% url 'onsite_booking_import_apply' batch.pk %}">
     {% csrf_token %}
@@ -209,6 +216,27 @@
             {% endfor %}
         </div>
     </div>
+
+    {% if money_only %}
+    <div class="mb-4">
+        <h6 class="fw-medium mb-2">Money for reservations not in this file ({{ money_only|length }})</h6>
+        <p class="text-muted small mb-2">These confirmation codes have a resolution, adjustment or another installment in this file, but no Reservation row of their own here — usually because the reservation itself was in an earlier, wider export. Applying adds this money to the reservation already on record; a code we don't have yet is skipped and will need to arrive with its own Reservation row in a later file.</p>
+        <div class="table-responsive"><table class="table table-sm mb-0">
+            <thead><tr><th>Code</th><th>Property</th><th class="text-end">Amount</th><th>What happens</th></tr></thead>
+            <tbody>
+            {% for row in money_only|slice:":40" %}
+            <tr>
+                <td>{{ row.external_uid }}</td>
+                <td>{% if row.booking %}{{ row.booking.property.name }}{% if row.booking.unit %} — {{ row.booking.unit.label }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-end">${{ row.total|floatformat:"2g" }}</td>
+                <td class="small">{% if row.booking %}<span style="color: var(--status-good);">Added to the reservation on record</span>{% else %}<span style="color: var(--status-warning, #9a6700);">Not on record yet — skipped until its Reservation row arrives</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        {% if money_only|length > 40 %}<div class="small text-muted mt-1">…and {{ money_only|length|add:"-40" }} more.</div>{% endif %}
+    </div>
+    {% endif %}
 
     <button class="btn btn-primary" type="submit">Apply import</button>
     <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary">Cancel</a>
