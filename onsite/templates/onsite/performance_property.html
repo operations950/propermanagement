@@ -143,13 +143,13 @@
     <h6 class="card-title">Month by month</h6>
     <div class="d-md-none">
         {% for m in data.months reversed %}
-        <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
-            <div class="d-flex justify-content-between align-items-baseline"><span class="fw-semibold">{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}</span><span class="fs-5 fw-semibold">{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></div>
+        <details class="py-2 month-details {% if not forloop.first %}border-top{% endif %}">
+            <summary class="d-flex justify-content-between align-items-baseline" style="cursor: pointer; list-style: none;"><span class="fw-semibold d-inline-flex align-items-center gap-1"><i data-lucide="chevron-right" class="icon month-chev"></i>{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}</span><span class="fs-5 fw-semibold">{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% else %}—{% endif %}</span></summary>
             <div class="small text-muted">{{ m.booked }} of {{ m.available }} nights · {{ m.arrivals }} stay{{ m.arrivals|pluralize }}{% if m.alos is not None %} · avg {{ m.alos|floatformat:1 }} nights{% endif %}{% if m.cancelled %} · {{ m.cancelled }} cancelled{% endif %}</div>
             {% if m.partial_data %}<div class="small partial-data">Part of this month only — {{ m.uncovered }} night{{ m.uncovered|pluralize }} before {{ m.coverage_from|date:"M j" }} not on record</div>{% endif %}
             {% if is_admin %}<div class="small">{% if m.adr is not None %}Rate <strong>${{ m.adr|floatformat:0 }}</strong> · revenue <strong>${{ m.revenue|floatformat:"0g" }}</strong>{% else %}<span class="text-muted">no amounts</span>{% endif %}</div>{% endif %}
-            <details class="mt-1"><summary class="small" style="cursor: pointer; color: var(--brand-primary);">Which nights and reservations?</summary><div class="mt-2">{% include 'onsite/_month_detail.html' with m=m %}</div></details>
-        </div>
+            <div class="mt-2">{% include 'onsite/_month_detail.html' with m=m %}</div>
+        </details>
         {% endfor %}
     </div>
     <div class="table-responsive d-none d-md-block"><table class="table table-sm align-middle mb-0">
@@ -157,7 +157,7 @@
         <tbody>
         {% for m in data.months reversed %}
         <tr>
-            <td class="fw-semibold">{{ m.full }}{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}<div><button type="button" class="btn btn-link btn-sm p-0 small" data-month-toggle="mo-{{ forloop.counter }}" aria-expanded="false">Which nights?</button></div></td>
+            <td class="fw-semibold"><button type="button" class="month-toggle" data-month-toggle="mo-{{ forloop.counter }}" aria-expanded="false" aria-controls="mo-{{ forloop.counter }}" title="Show the nights and reservations"><i data-lucide="chevron-right" class="icon month-chev"></i>{{ m.full }}</button>{% if m.partial %} <span class="fw-normal text-muted small">(to date)</span>{% endif %}</td>
             <td class="text-end">{% if m.occupancy is not None %}{{ m.occupancy|floatformat:0 }}%{% if m.partial_data %}<span class="partial-data" title="Only part of this month is measured">*</span>{% endif %}{% else %}—{% endif %}</td>
             <td class="text-end">{{ m.booked }} / {{ m.available }}</td>
             <td class="text-end">{{ m.arrivals }}</td>
@@ -174,13 +174,19 @@
     </table>
     <p class="small text-muted mt-2 mb-0"><span class="partial-data">*</span> Only part of that month is on record; the percentage covers just the nights that are.</p>
     </div>
+    <style>
+        .month-toggle { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; text-align: left; }
+        .month-toggle:hover { text-decoration: underline; }
+        .month-chev { transition: transform 120ms; color: var(--ink-muted); }
+        .month-toggle[aria-expanded="true"] .month-chev, details.month-details[open] .month-chev { transform: rotate(90deg); }
+        details.month-details > summary::-webkit-details-marker { display: none; }
+    </style>
     <script>
         document.querySelectorAll('[data-month-toggle]').forEach(function (button) {
             button.addEventListener('click', function () {
                 var row = document.getElementById(button.dataset.monthToggle);
                 var open = row.classList.toggle('d-none') === false;
                 button.setAttribute('aria-expanded', open ? 'true' : 'false');
-                button.textContent = open ? 'Hide the nights' : 'Which nights?';
             });
         });
     </script>
