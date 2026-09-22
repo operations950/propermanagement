@@ -538,7 +538,7 @@ def booking_import_apply(request, batch_id):
             + (f'; {len(result["held"])} for reservations not on record yet, held until they arrive' if result['held'] else '')
             + '.',
         )
-        return redirect('onsite_reservation_list')
+        return redirect('onsite_booking_import')
 
     try:
         raw_bookings = parse_booking_file(batch.raw_file)
@@ -569,7 +569,7 @@ def booking_import_apply(request, batch_id):
             )
             if visit_note:
                 messages.warning(request, visit_note)
-            return redirect('onsite_dashboard')
+            return redirect('onsite_booking_import')
 
         matched, unmatched = resolve_listing_names(raw_bookings, batch.source)
         pending_mappings = []
@@ -629,7 +629,7 @@ def booking_import_apply(request, batch_id):
         )
         for note in visit_notes:
             messages.warning(request, note)
-        return redirect('onsite_dashboard')
+        return redirect('onsite_booking_import')
     except Exception:
         tb = traceback.format_exc()
         logger.exception('booking_import_apply crashed for batch %s', batch_id)
