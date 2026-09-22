@@ -200,6 +200,12 @@ def close_property(request, month, pk, unit_pk=None):
                 prior = request.POST.get('prior') == '1'
                 recon.accept_item(book, month, request.user, request.POST.get('kind', ''), request.POST.get('key', ''), request.POST.get('note', ''), prior_period=prior)
                 messages.success(request, 'Marked as from before the books.' if prior else 'Accepted as a reconciling item.')
+            elif action == 'tie_deposit':
+                recon.tie_deposit(book, month, request.user, request.POST.get('key', ''), request.POST.getlist('events'), request.POST.get('note', ''))
+                messages.success(request, 'Tied the deposit to those payouts.')
+            elif action == 'untie_deposit':
+                recon.untie_deposit(book, month, request.POST.get('key', ''))
+                messages.success(request, 'Untied.')
             elif action == 'unaccept_recon':
                 recon.unaccept_item(book, month, request.POST.get('kind', ''), request.POST.get('key', ''))
                 messages.success(request, 'No longer accepted — it needs a fix or a fresh acceptance.')
@@ -231,6 +237,7 @@ def close_property(request, month, pk, unit_pk=None):
         'warn_keys': [i['key'] for i in items if i['level'] == 'warn'],
         'totals': ledger.closed_summary(close) if close else ledger.totals(book, month, lines),
         'recon': rec,
+        'tie_panel': recon.tie_candidates(book, month, rec) if (rec and close is None and any(i['kind'] == 'deposit' and not i['accepted'] for i in rec['items'])) else None,
         'drift': ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()),
         'unreviewed': sum(1 for l in lines if not l.reviewed), 'changed': sum(1 for l in lines if l.changed_in_qb),
         'synced_at': book.ledger_synced_at,

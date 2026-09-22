@@ -23,6 +23,10 @@
     .cl-tag { font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; background: #eceff2; color: #4b5563; }
     .cl-tag.trust { background: #e2edf5; color: #23485f; }
     .cl-checks li { padding: 3px 0; }
+    .cl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border-hairline, #d5d9df); border: 1px solid var(--border-hairline, #d5d9df); border-radius: 8px; overflow: hidden; }
+    .cl-grid > div { background: var(--surface-card, #fff); padding: 5px 8px; text-align: center; }
+    .cl-grid span { display: block; font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+    .cl-grid b { font-variant-numeric: tabular-nums; font-size: 0.95rem; }
 </style>
 <a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ back_label }}</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
@@ -91,10 +95,15 @@
         {% if recon %}
         <div class="card h-100" style="border-radius: 12px;"><div class="card-body py-2 px-3">
             <div class="d-flex justify-content-between align-items-center mb-1"><span class="small fw-semibold"><i data-lucide="scale" class="icon"></i> Income reconciliation</span>{% if recon.closed %}<span class="badge rounded-pill text-bg-secondary">As closed</span>{% endif %}</div>
-            <div class="table-responsive"><table class="table table-sm table-bordered text-center mb-1 cl-sum">
-                <thead><tr><th>Income deposits</th><th>Matched to payouts</th><th>Reservations checking in</th><th>…paid within the month</th>{% if recon.reservations.paid_later %}<th>…paid later</th>{% endif %}{% if recon.reservations.carried_in %}<th>Carried in</th>{% endif %}{% if recon.carried_payouts %}<th>Payouts carried from earlier months</th>{% endif %}{% if recon.prior_total %}<th>…from before the books</th>{% endif %}</tr></thead>
-                <tbody><tr><td>${{ recon.deposits_total|floatformat:"2g" }}</td><td>${{ recon.payouts_matched|floatformat:"2g" }}</td><td>{{ recon.reservations.count }} · ${{ recon.reservations.payout_total|floatformat:"2g" }}</td><td>${{ recon.reservations.paid_in_month|floatformat:"2g" }}</td>{% if recon.reservations.paid_later %}<td>${{ recon.reservations.paid_later|floatformat:"2g" }}</td>{% endif %}{% if recon.reservations.carried_in %}<td>${{ recon.reservations.carried_in|floatformat:"2g" }}</td>{% endif %}{% if recon.carried_payouts %}<td>${{ recon.carried_payouts|floatformat:"2g" }}</td>{% endif %}{% if recon.prior_total %}<td>${{ recon.prior_total|floatformat:"2g" }}</td>{% endif %}</tr></tbody>
-            </table></div>
+            <div class="cl-grid mb-1">
+                <div><span>Income deposits</span><b>${{ recon.deposits_total|floatformat:"2g" }}</b></div>
+                <div><span>Matched to payouts</span><b>${{ recon.payouts_matched|floatformat:"2g" }}</b></div>
+                <div><span>Reservations checking in</span><b>{{ recon.reservations.count }} · ${{ recon.reservations.payout_total|floatformat:"2g" }}</b></div>
+                <div><span>…paid within the month</span><b>${{ recon.reservations.paid_in_month|floatformat:"2g" }}</b></div>
+                <div><span>…paid later</span><b>${{ recon.reservations.paid_later|floatformat:"2g" }}</b></div>
+                <div><span>Carried in</span><b>${{ recon.reservations.carried_in|floatformat:"2g" }}</b></div>
+            </div>
+            {% if recon.carried_payouts or recon.prior_total %}<div class="text-muted mb-1" style="font-size: 0.72rem;">{% if recon.carried_payouts %}Of the matched, ${{ recon.carried_payouts|floatformat:"2g" }} was carried over from earlier months. {% endif %}{% if recon.prior_total %}${{ recon.prior_total|floatformat:"2g" }} is from before the books.{% endif %}</div>{% endif %}
             <div class="text-muted" style="font-size: 0.72rem;">Every payout the platforms show must have cleared into the trust account, and every income deposit must be a platform payout. A stay belongs to the month it checks in; its money arrives when the platform pays it.</div>
 
             {% if recon.closed %}
@@ -128,6 +137,8 @@
                                 <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unaccept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0 align-baseline">undo</button></form>
                             {% elif i.in_transit %}<span class="small text-muted">Dated within days of month end; it will match its deposit next month.</span>
                             {% else %}
+                            {% if tie_panel is not None and i.kind == 'deposit' %}<div class="mb-1 d-flex gap-2 align-items-center flex-wrap"><button type="button" class="btn btn-outline-primary btn-sm py-0" data-tie-open data-tie-key="{{ i.key }}" data-amount="{{ i.amount }}" data-label="{{ i.date|date:'M j' }} · ${{ i.amount|floatformat:'2g' }}"><i data-lucide="list-checks" class="icon"></i> {% if i.tied %}Change the tie{% else %}Tie to reservations{% endif %}</button>
+                                {% if i.tied %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="untie_deposit"><input type="hidden" name="key" value="{{ i.key }}"><button class="btn btn-link btn-sm p-0">untie</button></form>{% endif %}</div>{% endif %}
                             <form method="post" class="d-flex flex-wrap gap-1">{% csrf_token %}<input type="hidden" name="action" value="accept_recon"><input type="hidden" name="kind" value="{{ i.kind }}"><input type="hidden" name="key" value="{{ i.key }}">
                                 <input type="text" name="note" class="form-control form-control-sm" style="min-width: 190px;" maxlength="300" placeholder="{% if i.prior_ok %}Why, or which earlier stay?{% else %}Why is this a reconciling item?{% endif %}" {% if not i.prior_ok %}required{% endif %}>
                                 <button class="btn btn-outline-secondary btn-sm text-nowrap py-0"{% if i.prior_ok %} onclick="this.form.note.required = true"{% endif %}>Accept as reconciling item</button>
@@ -138,6 +149,76 @@
                     {% endfor %}
                     </tbody>
                 </table></div>
+
+{% if tie_panel is not None %}
+<div id="tie-panel" class="border rounded p-2 mt-2" hidden>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="tie_deposit"><input type="hidden" name="key" id="tie-key">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+            <div class="small fw-semibold">Tie the <span id="tie-title"></span> deposit to reservations</div>
+            <input type="search" id="tie-q" class="form-control form-control-sm" style="max-width: 220px;" placeholder="Filter by guest or code…" aria-label="Filter reservations">
+        </div>
+        <div class="text-muted mb-1" style="font-size: 0.72rem;">Every reservation from {{ month|date:"F" }} and seven days either side. Tick the payouts the deposit is made of; a reservation's lines (its payout, a credit, a resolution) can be ticked together.</div>
+        <div class="table-responsive" style="max-height: 320px; overflow-y: auto;"><table class="table table-sm mb-1 cl-table" id="tie-table">
+            <thead><tr><th style="width: 28px;"></th><th>Reservation</th><th>Stay</th><th>Payout</th><th class="text-end">Amount</th></tr></thead>
+            <tbody>
+            {% for r in tie_panel %}{% for p in r.pieces %}
+                <tr data-search="{{ r.guest|lower }} {{ r.code|lower }}">
+                    <td>{% if p.state == 'free' %}<input type="checkbox" name="events" value="{{ p.key }}" data-amount="{{ p.amount }}" class="form-check-input tie-check" aria-label="Tick this payout">{% endif %}</td>
+                    <td>{% if forloop.first %}<strong>{{ r.guest }}</strong> <span class="text-muted">{{ r.code }} · {{ r.source }}</span>{% endif %}</td>
+                    <td>{% if forloop.first %}{{ r.check_in|date:"M j" }}–{{ r.check_out|date:"M j" }}{% endif %}</td>
+                    <td>{{ p.date|date:"M j" }} · {{ p.parts }}{% if p.label %} <em class="text-muted">— {{ p.label }}</em>{% endif %}</td>
+                    <td class="amt">${{ p.amount|floatformat:"2g" }}</td>
+                </tr>
+            {% empty %}
+                <tr data-search="{{ r.guest|lower }} {{ r.code|lower }}"><td></td><td><strong>{{ r.guest }}</strong> <span class="text-muted">{{ r.code }} · {{ r.source }}</span></td><td>{{ r.check_in|date:"M j" }}–{{ r.check_out|date:"M j" }}</td><td class="text-muted">no payout on file</td><td></td></tr>
+            {% endfor %}{% empty %}
+                <tr><td colspan="5" class="text-muted small p-2">No reservations with a payout around this month.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="small">Ticked <strong id="tie-sum">$0.00</strong> · deposit <strong id="tie-dep"></strong> · difference <strong id="tie-diff"></strong></div>
+            <div class="d-flex gap-2"><input type="text" name="note" class="form-control form-control-sm" placeholder="Note (optional)" maxlength="300" style="min-width: 200px;"><button class="btn btn-primary btn-sm" id="tie-go" disabled>Tie deposit</button><button type="button" class="btn btn-outline-secondary btn-sm" id="tie-close">Close</button></div>
+        </div>
+    </form>
+</div>
+<script>
+(function () {
+    var panel = document.getElementById('tie-panel');
+    if (!panel) return;
+    var deposit = 0;
+    function money(v) { return (v < 0 ? '−' : '') + '$' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function recalc() {
+        var sum = 0, n = 0;
+        panel.querySelectorAll('.tie-check:checked').forEach(function (c) { sum += parseFloat(c.dataset.amount); n += 1; });
+        var diff = Math.round((deposit - sum) * 100) / 100;
+        document.getElementById('tie-sum').textContent = money(sum);
+        var d = document.getElementById('tie-diff');
+        d.textContent = diff === 0 ? '$0.00 ✓' : money(diff);
+        d.style.color = diff === 0 ? 'var(--status-good)' : '#9a6a00';
+        document.getElementById('tie-go').disabled = n === 0;
+    }
+    document.querySelectorAll('[data-tie-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            panel.hidden = false;
+            document.getElementById('tie-key').value = btn.dataset.tieKey;
+            deposit = parseFloat(btn.dataset.amount);
+            document.getElementById('tie-title').textContent = btn.dataset.label;
+            document.getElementById('tie-dep').textContent = money(deposit);
+            panel.querySelectorAll('.tie-check').forEach(function (c) { c.checked = false; });
+            recalc();
+            panel.scrollIntoView({ behavior: 'instant', block: 'nearest' });
+        });
+    });
+    panel.addEventListener('change', recalc);
+    document.getElementById('tie-q').addEventListener('input', function () {
+        var q = this.value.trim().toLowerCase();
+        panel.querySelectorAll('#tie-table tbody tr[data-search]').forEach(function (tr) { tr.hidden = !!q && tr.dataset.search.indexOf(q) < 0; });
+    });
+    document.getElementById('tie-close').addEventListener('click', function () { panel.hidden = true; });
+})();
+</script>
+{% endif %}
 
 </div></div>
 {% endif %}

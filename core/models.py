@@ -1126,6 +1126,25 @@ class ReconAcceptance(models.Model):
         indexes = [models.Index(fields=['property', 'month'])]
 
 
+class ReconTie(models.Model):
+    """A person tied one bank deposit to platform payouts BY HAND, when the reconciliation could not: it lists the
+    reservations around the month and they pick the ones the deposit is made of. `events` are the dated payouts
+    chosen, [booking id, day]; `amount` is the deposit's amount when it was tied (the tie stops applying if that
+    changes). If the payouts do not add up to the deposit the difference is still an item to accept with a reason."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='recon_ties')
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, null=True, blank=True, related_name='recon_ties')
+    month = models.DateField()
+    line = models.OneToOneField('LedgerLine', on_delete=models.CASCADE, related_name='recon_tie')
+    events = models.JSONField(default=list)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    note = models.CharField(max_length=300, blank=True)
+    tied_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    tied_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['property', 'month'])]
+
+
 class ClosedMonthChange(models.Model):
     """QuickBooks differs from the closed books: a transaction in a closed month
     was added, changed or removed after the close. It is NOT applied — the closed
