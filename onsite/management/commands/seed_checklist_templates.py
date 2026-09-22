@@ -29,7 +29,7 @@ addition or a PropertyChecklistOverride hide instead.
 """
 from django.core.management.base import BaseCommand
 
-from onsite.models import StandardChecklistItem, VisitType
+from onsite.models import NO_CHECKLIST_VISIT_TYPE_SLUG, StandardChecklistItem, VisitType
 
 # (section, text, mandatory, requires_photo, requires_note)
 TURNOVER_ITEMS = [
@@ -128,6 +128,17 @@ INSPECTION_ITEMS = [
     ('General', 'Note any needed repairs or maintenance', False, False, True),
 ]
 
+# For a quick one-off errand that doesn't fit Turnover/Deep Clean/Inspection at all (see
+# onsite/views.py::visit_create's no_checklist handling) — used almost exclusively WITH
+# no_checklist ticked, where this single item never actually reaches anyone (build_checklist_items
+# short-circuits to nothing for a no-checklist visit regardless of type). It's here so the type
+# itself still satisfies VisitType.clean()'s "needs at least one active item" and stays editable
+# from Django admin, and so picking "Task" without ticking "no checklist" is still a coherent,
+# minimal visit rather than a silently empty one.
+TASK_ITEMS = [
+    ('General', 'Note what was done, for the record', True, False, True),
+]
+
 
 class Command(BaseCommand):
     help = 'Seeds the default VisitTypes and adds any standard checklist items that are missing (never deletes — see this file\'s module docstring).'
@@ -156,6 +167,13 @@ class Command(BaseCommand):
         )
         self.stdout.write(f'{"Created" if created else "Found"} VisitType: {inspection.name}')
         self._add_items(inspection, INSPECTION_ITEMS)
+
+        task, created = VisitType.objects.get_or_create(
+            slug=NO_CHECKLIST_VISIT_TYPE_SLUG,
+            defaults={'name': 'Task', 'default_duration_minutes': 30, 'requires_deadline': False},
+        )
+        self.stdout.write(f'{"Created" if created else "Found"} VisitType: {task.name}')
+        self._add_items(task, TASK_ITEMS)
 
         self.stdout.write(self.style.SUCCESS('Checklist templates seeded.'))
 

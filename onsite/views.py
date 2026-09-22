@@ -31,7 +31,7 @@ from .google_calendar_push import delete_visit_event
 from .importers import BookingFileError, detect_format, is_payout_file, parse_booking_file, parse_payouts_file, read_csv_header
 from .models import (
     Booking, BookingFeed, BookingFeedHealth, CleaningPaymentBatch, GuestRequest, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
-    PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule,
+    NO_CHECKLIST_VISIT_TYPE_SLUG, PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule,
     VisitType,
 )
 from .services import checklist as checklist_service
@@ -705,11 +705,19 @@ def visit_create(request):
     if request.method == 'POST':
         prop = get_object_or_404(Property, pk=request.POST.get('property'), is_active=True, is_general=False) \
             if request.POST.get('property') else None
+        no_checklist = request.POST.get('no_checklist') == '1'
         visit_type = get_object_or_404(VisitType, pk=request.POST.get('visit_type'), is_addon=False) \
             if request.POST.get('visit_type') else None
+        if visit_type is None and no_checklist:
+            # A checklist-less errand ("pick up the laundry") often has no natural category at all —
+            # visit_type stays required on the model (too much else keys off it), so this is what a
+            # blank pick quietly resolves to instead of blocking the whole form on a choice that
+            # doesn't matter here anyway (no_checklist means nothing from the type's own checklist
+            # ever reaches this visit regardless of which one is picked).
+            visit_type = VisitType.objects.filter(slug=NO_CHECKLIST_VISIT_TYPE_SLUG).first()
 
         if not prop or not visit_type:
-            messages.error(request, 'Choose a property and a visit type.')
+            messages.error(request, 'Choose a property.' if no_checklist else 'Choose a property and a visit type.')
             return render(request, 'onsite/visit_create.html', {
                 'str_properties': str_properties, 'other_properties': other_properties, 'visit_types': visit_types,
                 'staff_options': staff_options, 'contact_options': contact_options,
@@ -718,7 +726,6 @@ def visit_create(request):
 
         unit_id = request.POST.get('unit') or None
         unit = prop.units.filter(pk=unit_id).first() if unit_id else None
-        no_checklist = request.POST.get('no_checklist') == '1'
 
         kwargs = {
             'unit': unit,

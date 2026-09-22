@@ -31,6 +31,13 @@ from core.storage import DocumentStorage
 # name can be renamed freely; the slug is what code keys off of).
 TURNOVER_VISIT_TYPE_SLUG = 'turnover'
 
+# visit_create's fallback VisitType when staff tick "no checklist" without picking one themselves —
+# visit_type stays a required field on Visit (too much else, from board coloring to price lookups,
+# assumes it's always set to make it nullable for this one case), so a quick errand that genuinely
+# has no natural category gets filed under this one instead of forcing a mislabel like "Turnover
+# Clean". See seed_checklist_templates.py for where it's seeded.
+NO_CHECKLIST_VISIT_TYPE_SLUG = 'task'
+
 
 def round_down_to_five(amount):
     """A calculated price rounded DOWN to a whole multiple of $5 (never up, never
