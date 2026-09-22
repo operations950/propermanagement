@@ -813,6 +813,14 @@ class Visit(models.Model):
     signed_ip = models.GenericIPAddressField(null=True, blank=True)
 
     notes = models.TextField(blank=True, help_text='Staff-authored, visible to the assignee.')
+    no_checklist = models.BooleanField(
+        default=False,
+        help_text="No checklist for this visit — the note above is all the assignee sees, and the "
+                   "public page shows a plain 'no checklist' message instead of an empty one. Set at "
+                   "creation only (see visit_create); build_checklist_items() short-circuits to an "
+                   "empty list for a visit with this set, so the periodic checklist refresh leaves it "
+                   "alone rather than quietly filling it back in from the visit type's real checklist.",
+    )
     is_deep_clean = models.BooleanField(
         default=False,
         help_text='This turnover also includes the deep-clean extra checklist items — see the '

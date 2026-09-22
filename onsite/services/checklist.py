@@ -244,7 +244,15 @@ def build_checklist_items(visit):
     RIGHT NOW: the property's resolved list for its visit type (each item's
     minutes multiplied by this property/unit's own counts), plus the
     deep-clean bundle when the visit is one. Shared by create_visit (the
-    snapshot at creation) and refresh_checklist (re-taking it later)."""
+    snapshot at creation) and refresh_checklist (re-taking it later).
+
+    A no_checklist visit (see the field's own docstring) always resolves to
+    an empty list here, regardless of its visit type or is_deep_clean —
+    this is what keeps refresh_checklist from silently repopulating a
+    checklist someone deliberately left off, since it compares against
+    exactly this function's output."""
+    if visit.no_checklist:
+        return []
     resolved = resolve_checklist(visit.property, visit.visit_type)
     items = [
         VisitChecklistItem(
@@ -328,6 +336,8 @@ def set_deep_clean(visit, enabled):
     already working it."""
     if visit.started_at is not None:
         raise ValidationError("Can't change deep-clean status after the visit has started.")
+    if visit.no_checklist and enabled:
+        raise ValidationError("This visit has no checklist — turn that off first if it also needs the deep-clean bundle.")
     if enabled == visit.is_deep_clean:
         return
     if enabled:

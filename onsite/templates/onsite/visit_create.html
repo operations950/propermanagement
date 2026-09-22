@@ -63,6 +63,10 @@
                     <input type="checkbox" name="is_deep_clean" value="1" class="form-check-input" id="new-visit-deep-clean">
                     <label class="form-check-label small" for="new-visit-deep-clean">Also include the deep-clean extras on this visit</label>
                 </div>
+                <div class="form-check mt-1">
+                    <input type="checkbox" name="no_checklist" value="1" class="form-check-input" id="new-visit-no-checklist">
+                    <label class="form-check-label small" for="new-visit-no-checklist">No checklist for this visit — just the note below</label>
+                </div>
             </div>
 
             <div class="mb-4">
@@ -166,6 +170,20 @@
     propertyPicker.addEventListener('bubble:unlock', function () {
         clearUnitSelection();
         renderUnitPool('');
+    });
+})();
+
+(function () {
+    // No checklist and deep-clean extras don't mix — a checklist-less visit has nothing for the
+    // extras to add onto. Ticking "no checklist" clears and disables the deep-clean box (mirrored
+    // server-side in visit_create's view — this is just so the form doesn't imply a combination
+    // that will silently do nothing).
+    var noChecklist = document.getElementById('new-visit-no-checklist');
+    var deepClean = document.getElementById('new-visit-deep-clean');
+    if (!noChecklist || !deepClean) return;
+    noChecklist.addEventListener('change', function () {
+        deepClean.disabled = noChecklist.checked;
+        if (noChecklist.checked) deepClean.checked = false;
     });
 })();
 </script>

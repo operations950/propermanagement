@@ -718,12 +718,14 @@ def visit_create(request):
 
         unit_id = request.POST.get('unit') or None
         unit = prop.units.filter(pk=unit_id).first() if unit_id else None
+        no_checklist = request.POST.get('no_checklist') == '1'
 
         kwargs = {
             'unit': unit,
             'scheduled_date': parse_date(request.POST.get('scheduled_date', '').strip()) or None,
             'scheduled_start': request.POST.get('scheduled_start', '').strip() or None,
             'notes': request.POST.get('notes', '').strip(),
+            'no_checklist': no_checklist,
         }
         kind, _, raw_id = request.POST.get('assignee', '').partition('-')
         if kind == 'staff' and raw_id.isdigit():
@@ -745,7 +747,9 @@ def visit_create(request):
                 kwargs['ready_by'] = timezone.make_aware(datetime.combine(parsed_date, time_part))
 
         visit = checklist_service.create_visit(
-            prop, visit_type, is_deep_clean=request.POST.get('is_deep_clean') == '1', **kwargs,
+            # A checklist-less visit ignores whatever is_deep_clean was posted — the box is disabled
+            # client-side once "no checklist" is ticked, this is just the same rule enforced server-side.
+            prop, visit_type, is_deep_clean=not no_checklist and request.POST.get('is_deep_clean') == '1', **kwargs,
         )
         link_note = ''
         if visit.assigned_staff_id or visit.assigned_contact_id:
