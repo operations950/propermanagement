@@ -10,12 +10,37 @@ from tickets.models import FollowUpLog
 logger = logging.getLogger(__name__)
 
 
+_FAKE_EMAIL_BACKENDS = (
+    'django.core.mail.backends.console.EmailBackend',
+    'django.core.mail.backends.locmem.EmailBackend',
+    'django.core.mail.backends.dummy.EmailBackend',
+)
+
+
+def _no_real_email_backend():
+    """True when the currently active EMAIL_BACKEND doesn't actually deliver anywhere - the
+    console backend settings.py falls back to whenever no Gmail mailbox is connected and
+    EMAIL_HOST isn't set (see its own comment there), or Django's locmem/dummy backends. That
+    fallback was built so an unconfigured setup never hard-errors the "Report Resolution"/
+    Follow-Up button - but a send through it isn't a failure raising an exception, so without this
+    check it silently came back as success=True: FollowUpLog (and the ticket's own "Recent
+    follow-ups" list, which only shows "(failed)" when success is False) showed the message as
+    sent while nothing had actually reached anyone - the console backend just wrote it to the
+    server's own log, which staff have no practical way to check. Checked at the top of every send
+    so the honest, already-existing failure path (a raised exception -> success=False,
+    error_message set, "(failed)" shown) is what a fake backend produces too, instead of a second,
+    silently-wrong kind of "success"."""
+    return settings.EMAIL_BACKEND in _FAKE_EMAIL_BACKENDS
+
+
 def _send_email(subject, body, from_email, to_list, attachments=None):
     """send_mail() has no way to carry attachments — this is the one extra
     step needed to reuse it here: build the same message via EmailMessage
     instead, which every configured backend (console/SMTP/GmailAPIBackend)
     already knows how to send identically. attachments is a list of
     TicketAttachment (photos only — see ticket_followup_email's caller)."""
+    if _no_real_email_backend():
+        raise RuntimeError('No email delivery is set up yet — connect a Gmail mailbox in Admin Tools. Nothing was actually sent.')
     if not attachments:
         send_mail(subject, body, from_email, to_list)
         return
@@ -291,7 +316,7 @@ def send_followup(ticket, channel, to_override=None, user=None, custom_body=None
             to_address = to_override or (reporter.email if reporter else '')
             if not to_address:
                 raise ValueError("No email address available for this ticket's reporter.")
-            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [to_address])
+            _send_email(subject, body, settings.DEFAULT_FROM_EMAIL, [to_address])
             log.sent_to = to_address
         elif channel == FollowUpLog.Channel.SMS:
             to_number = to_override or (reporter.phone if reporter else '')
