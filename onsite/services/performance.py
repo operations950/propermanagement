@@ -33,6 +33,8 @@ from . import coverage
 from . import visuals
 from .feeds import eligible_properties
 
+from core.models import ListingLink
+
 WINDOWS = (30, 60, 90)
 SHORT_GAP_NIGHTS = 2
 
@@ -496,10 +498,53 @@ def day_states(u, today, days=STRIP_DAYS):
     return out
 
 
-def kpi_cards(data, is_admin):
+def _rating_cards(prop, unit_id):
+    """One card per Airbnb/VRBO listing link this property (or, viewing one specific unit, that
+    unit) has connected — see core/listings.py for how the rating itself gets read. Replaces the
+    old 'Average stay'/'Cancellation rate' cards per direct request: those two are a wash of the
+    same booking data every other card on this page already covers (length of stay has its own
+    chart just below; cancellations still show per month in the table), where the guest rating is
+    the one headline number this screen didn't have at all. A property with neither platform
+    connected gets a single placeholder card inviting a link to be added, rather than the row just
+    silently losing two cards with nothing in their place."""
+    if prop is None:
+        return []
+    links = list(ListingLink.objects.filter(property=prop, unit_id=unit_id))
+    if not links:
+        return [{
+            'key': 'rating', 'label': 'Guest rating', 'value': '—', 'suffix': '',
+            'sub': 'No Airbnb/VRBO listing link connected yet', 'ring': '', 'spark': '', 'delta': None,
+            'period': 'connect one on the property page',
+        }]
+    cards = []
+    for link in links:
+        label = f'{link.get_platform_display()} rating'
+        if link.rating is None:
+            cards.append({
+                'key': f'rating_{link.platform}', 'label': label, 'value': '—', 'suffix': '',
+                'sub': 'Not read yet' if not link.check_error else f"Couldn't be read: {link.check_error}",
+                'ring': '', 'spark': '', 'delta': None, 'period': 'checked about monthly',
+            })
+            continue
+        cards.append({
+            'key': f'rating_{link.platform}', 'label': label, 'value': f'{link.rating:.2f}', 'suffix': ' ★',
+            'sub': f'{link.review_count} review{"" if link.review_count == 1 else "s"}' if link.review_count is not None else (
+                'Entered by hand' if link.rating_source == ListingLink.Source.MANUAL else ''
+            ),
+            'ring': '', 'spark': '', 'delta': None,
+            # A falsy 'period' (blank rating_checked_at, which shouldn't really happen once rating
+            # is set, but the field is nullable) would otherwise fall through to the template's own
+            # "12 months" default via the |default filter, which is wrong for a point-in-time stat.
+            'period': (f'as of {link.rating_checked_at:%b %d}' if link.rating_checked_at else None) or 'checked about monthly',
+        })
+    return cards
+
+
+def kpi_cards(data, is_admin, prop=None, unit_id=None):
     """The headline figures of the single-property screen as cards that can be read at a glance:
     the number, a twelve-month picture of it, and — only when there is a year to compare with — whether
-    it is up or down on the same months a year earlier (data['yoy']; no comparison, no bubble)."""
+    it is up or down on the same months a year earlier (data['yoy']; no comparison, no bubble).
+    prop/unit_id (optional) add the guest-rating card(s) — see _rating_cards."""
     months, t = data['months'], data['total']
     labels = [m['full'] for m in months]
     partial_last = bool(months and months[-1]['partial'])
@@ -534,16 +579,5 @@ def kpi_cards(data, is_admin):
             'spark': visuals.sparkline(series('revenue'), labels, kind='bars', fmt='money', partial_last=partial_last),
             'delta': change('revenue', True, 'percent'),
         })
-    cards.append({
-        'key': 'alos', 'label': 'Average stay', 'value': '—' if t['alos'] is None else f'{t["alos"]:.1f}', 'suffix': '' if t['alos'] is None else ' nights',
-        'sub': f'{t["arrivals"]} stay{"" if t["arrivals"] == 1 else "s"}', 'ring': '',
-        'spark': visuals.sparkline(series('alos'), labels, kind='line', fmt='dec1'),
-        'delta': change('alos', None, 'percent'),
-    })
-    cards.append({
-        'key': 'cancel', 'label': 'Cancellation rate', 'value': '—' if t['cancel_rate'] is None else f'{t["cancel_rate"]:.0f}%', 'suffix': '',
-        'sub': f'{t["cancelled"]} cancelled', 'ring': '',
-        'spark': visuals.sparkline(series('cancel_rate'), labels, kind='line', fmt='pct'),
-        'delta': change('cancel_rate', False, 'pct_points'),
-    })
+    cards.extend(_rating_cards(prop, unit_id))
     return cards

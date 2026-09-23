@@ -1010,7 +1010,7 @@ def performance_property(request, property_id):
                              'series': [{'name': 'Revenue (payouts)', 'color': '#3d6178', 'values': [None if m['revenue'] is None else round(m['revenue'], 2) for m in months]}]}
     return render(request, 'onsite/performance_property.html', {
         'data': data, 'charts': charts, 'is_admin': is_admin, 'property': prop,
-        'kpis': performance_service.kpi_cards(data, is_admin),
+        'kpis': performance_service.kpi_cards(data, is_admin, prop=prop, unit_id=unit_id),
     })
 
 

@@ -9,5 +9,5 @@
         {% if c.ring %}<div style="width: 58px; flex: 0 0 58px;">{{ c.ring }}</div>{% endif %}
     </div>
     <div class="spark">{{ c.spark }}</div>
-    <div class="sub d-flex justify-content-between gap-2"><span>{{ c.sub|default:"&nbsp;" }}</span><span>12 months</span></div>
+    <div class="sub d-flex justify-content-between gap-2"><span>{{ c.sub|default:"&nbsp;" }}</span><span>{{ c.period|default:"12 months" }}</span></div>
 </div>
