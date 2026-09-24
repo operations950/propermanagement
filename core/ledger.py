@@ -957,18 +957,14 @@ def add_recon_checks(rec, add):
     open_deposits, open_payouts = recon.problems(rec)
     if open_deposits:
         total = sum((i['amount'] for i in open_deposits), ZERO)
-        add('recon_deposits', 'block', f'{len(open_deposits)} income deposit{"" if len(open_deposits) == 1 else "s"} (${total:,.2f}) in the trust account {"has" if len(open_deposits) == 1 else "have"} no matching platform payout — re-code {"it" if len(open_deposits) == 1 else "them"} (a refund is an expense), fix QuickBooks, or accept as a reconciling item with a note.')
+        add('recon_deposits', 'block', f'{len(open_deposits)} income deposit{"" if len(open_deposits) == 1 else "s"} (${total:,.2f}) in the trust account {"has" if len(open_deposits) == 1 else "have"} no matching platform payout — match {"it" if len(open_deposits) == 1 else "them"} to a payout, re-code {"it" if len(open_deposits) == 1 else "them"} (a refund is an expense), fix QuickBooks, or explain {"it" if len(open_deposits) == 1 else "them"} as a reconciling item with a note.')
     if open_payouts:
         total = sum((i['amount'] for i in open_payouts), ZERO)
-        add('recon_payouts', 'block', f'{len(open_payouts)} platform payout{"" if len(open_payouts) == 1 else "s"} (${total:,.2f}) {"has" if len(open_payouts) == 1 else "have"} not reached the trust account — find the deposit in QuickBooks, or accept as a reconciling item with a note.')
+        add('recon_payouts', 'block', f'{len(open_payouts)} platform payout{"" if len(open_payouts) == 1 else "s"} (${total:,.2f}) {"has" if len(open_payouts) == 1 else "have"} not been matched to a deposit — match {"it" if len(open_payouts) == 1 else "them"} to a bank line, or explain {"it" if len(open_payouts) == 1 else "them"} (paid next month, or a bookkeeping error) with a note.')
     if rec['unassigned']:
         add('recon_unassigned', 'block', f'{rec["unassigned"]} platform payout{"" if rec["unassigned"] == 1 else "s"} belong to no unit yet — assign each reservation to its unit so the money can be reconciled.')
     if rec['undated']:
         add('recon_undated', 'warn', f'{rec["undated"]} reservation{"" if rec["undated"] == 1 else "s"} have a payout amount (${rec["undated_total"]:,.2f}) but no payout date, so {"it" if rec["undated"] == 1 else "they"} can\'t be matched to a deposit.')
-    transit = [i for i in rec['items'] if i['in_transit'] and not i['accepted'] and i['kind'] == 'payout']
-    if transit:
-        total = sum((i['amount'] for i in transit), ZERO)
-        add('recon_transit', 'ok', f'${total:,.2f} of payouts dated at month end are still on their way to the bank; they will clear next month.')
     accepted = [i for i in rec['items'] if i['accepted']]
     if accepted:
         add('recon_accepted', 'ok', f'{len(accepted)} reconciling item{"" if len(accepted) == 1 else "s"} accepted.')

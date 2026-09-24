@@ -7,7 +7,7 @@ onsite/services/bookings.py::_save_amounts) means a corrected/lower figure from 
 never replace a wrong one already on file.
 
 Deliberately does NOT delete Booking rows themselves, or touch anything on the QuickBooks/ledger
-side (core.LedgerLine, core.MonthClose, core.ReconAcceptance, core.ReconTie are never touched by
+side (core.LedgerLine, core.MonthClose, core.ReconAcceptance, core.ReconMatch are never touched by
 this command) — per the explicit request: "I don't want to delete anything from QuickBooks."
 Only Booking's own money fields (gross_amount, payout_amount, cleaning_fee, other_fees, tax_amount,
 platform_fee, pass_through_amount, other_payout_amount, payout_date, payout_status, amount_source)
@@ -27,9 +27,9 @@ human reviews the counts for and chooses to run, exactly like wipe_recurring_tic
 After running with --apply, re-upload every historical Airbnb/VRBO file again (in date order) at
 /onsite/import/ — the corrected import logic rebuilds every reservation's payout/pass-through/
 resolution figures from what's actually in those files, this time without any earlier bug's leftover
-data in the way. Existing ReconTie rows (manual deposit-to-reservation ties) for still-OPEN months
+data in the way. Existing ReconMatch rows (matches a person made by hand) for still-OPEN months
 reference specific dated payout lines that this command deletes — re-check those after reimporting
-(a re-import of the identical historical data should recreate the same dated lines, but a tie is
+(a re-import of the identical historical data should recreate the same dated lines, but a match is
 only as good as what it's currently pointing at); a CLOSED month's own frozen numbers are
 untouched either way, since MonthClose freezes its totals independently of live Booking data."""
 import json

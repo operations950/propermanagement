@@ -25,21 +25,22 @@ How it works
     resolution or adjustment on its own day. The reconciliation works on those dated payouts
     (onsite.PayoutLine, from the transactions file), so a $-100 resolution deposited on Aug 3 is matched to
     that piece of its reservation, not compared with the whole reservation.
-  * every other deposit is matched, to the cent, to a payout (or a couple of payouts that
-    landed together) dated shortly before it. Deposits arrive a day or a few days after
-    the payout date, so a payout dated at the very end of a month that arrives in the
-    next is normal: it is shown as "in transit" — not a problem — and matches the
-    deposit next month, because a payout stays in line until it has cleared.
-  * the question each month is "what hit the bank, and is there a payout behind each of it?".
-    Deposits (and take-backs: a negative income line) with no payout, and payouts dated within
-    the books that have not arrived, are what is left. A payout still outstanding from an
-    earlier month of the books is carried into the next month and can clear whenever it lands.
-    A payout dated before the books start is only ever a candidate for an early deposit in the
-    first month; if it matches nothing it reached the bank before the ledger begins, and is not
-    reported as missing.
-  * whatever is left over blocks the close until it is fixed (re-code the deposit, fix
-    the amount in QuickBooks, upload the missing report) or accepted as a reconciling
-    item with a note. An accepted item is remembered for that month at that amount.
+  * every other bank line is lined up with the platform payouts by amount and by date, to the cent, and NOT
+    only one to one: a payout can land as several deposits and a deposit can be several payouts, so the
+    program looks for any number on either side that add up to each other. Dates are the directional
+    evidence — the platform pays out a couple of days after check-in and the money reaches the bank a few
+    days after that — so only lines dated close enough to be the same money are considered, and the surest
+    kinds of match are made first (one to one, then one deposit made of several payouts, then one payout
+    paid as several deposits, then several against several) so a loose combination never takes what a
+    tighter match was waiting for.
+  * whatever the program cannot line up is left OPEN on each side, and a person matches lines from the two
+    sides by hand (any number of each; ReconMatch). A match they disagree with can be broken; it then stays
+    open until matched by hand. A payout still outstanding from an earlier month is carried into the next month
+    and matched automatically when its deposit finally lands there ("prior month").
+  * once everything that can be matched is, whatever is left is a reconciling item, and each one has to be
+    explained before the month closes: a timing difference (a stay near the end of the month paid out in the
+    next) or a genuine bookkeeping error, with a note (save_reconciliation). Accepted items are remembered
+    for that month at that amount.
   * a month that closes freezes its reconciliation, including which reservations it
     cleared, so a later month never re-counts them.
 
@@ -54,7 +55,7 @@ from itertools import combinations
 from django.utils import timezone
 
 from . import ledger
-from .models import LedgerLine, MonthClose, ReconAcceptance, ReconTie
+from .models import LedgerLine, MonthClose, ReconAcceptance, ReconMatch
 
 ZERO = Decimal('0.00')
 EARLY = timedelta(days=3)      # a deposit may be booked a little before the payout's own date
@@ -63,6 +64,7 @@ TRANSIT = timedelta(days=5)    # a payout dated this close to month end is expec
 LOOKBACK = timedelta(days=10)  # payouts this far before the books start can still land inside the first month
 MAX_MONTHS = 36
 MAX_PIECES = 8                 # the payouts of one reservation considered when adding them up to a deposit
+MAX_SIDE = 4                   # most payouts (or bank lines) in one automatic match
 TIE_DAYS = 7                   # how far either side of the month the manual tie lists reservations
 
 
@@ -165,19 +167,117 @@ def _pieces(hits, dep, pool, used):
     return [mine[0] for mine in per], False
 
 
-def _pair(events, dep, month, manual=False, note=''):
-    """A deposit matched to particular dated payouts of particular reservations (by code, or by hand)."""
-    books = [ev.booking for ev in events]
-    codes = ', '.join(sorted({b.external_uid for b in books}))
-    day = min(ev.date for ev in events)
-    expected = sum((ev.amount for ev in events), ZERO).quantize(Decimal('0.01'))
-    group = {
-        'key': ('tie:' if manual else 'codes:') + ','.join(sorted(ev.booking.external_uid + '@' + ev.date.isoformat() for ev in events)), 'source': books[0].source, 'date': day,
-        'total': expected, 'ids': sorted({b.pk for b in books}), 'events': [ev.key for ev in events], 'guests': [b.guest_name for b in books if b.guest_name][:3], 'count': len({b.pk for b in books}),
-        'codes': codes, 'label': f'{_source_label(books[0].source)} payout for {codes} dated {day:%b} {day.day}', 'carried': day < month,
-        'on_file': [(ev.booking.external_uid, ev.booking.payout_amount, ev.booking.pass_through_amount, ev.booking.other_payout_amount) for ev in events],
+def _local_day(dt):
+    return timezone.localtime(dt).date()
+
+
+def _event_row(ev, month):
+    b = ev.booking
+    return {
+        'key': f'{ev.pk}|{ev.date.isoformat()}', 'guest': b.guest_name or 'Guest', 'code': b.external_uid, 'source': _source_label(b.source),
+        'check_in': _local_day(b.check_in), 'check_out': _local_day(b.check_out), 'date': ev.date, 'amount': ev.amount, 'carried': ev.date < month,
     }
-    return {'line': dep, 'groups': [group], 'amount': dep.flow, 'expected': expected, 'difference': (dep.flow - expected).quantize(Decimal('0.01')), 'by_code': not manual, 'manual': manual, 'note': note}
+
+
+def _line_row(line):
+    return {'pk': line.pk, 'date': line.txn_date, 'desc': line.shown_memo or line.txn_type or line.payee, 'amount': line.flow}
+
+
+def _make_match(deps, evs, month, kind, note='', manual=False, by_code=False):
+    """One matched set: any number of bank lines against any number of dated platform payouts (one payout landing as
+    two deposits, two payouts as one, ...). kind is 'system' (found by the program), 'code' (the deposit's memo names
+    the reservation) or 'user' (matched by hand). Carries the old one-deposit-per-pair keys (`line`, `groups`, ...)
+    the close checks and the frozen snapshot still read."""
+    deps = sorted(deps, key=lambda l: (l.txn_date, l.pk))
+    evs = sorted(evs, key=lambda e: (e.date, e.booking.pk))
+    amount = sum((l.flow for l in deps), ZERO)
+    expected = sum((e.amount for e in evs), ZERO).quantize(Decimal('0.01'))
+    groups = _groups(evs)
+    for g in groups:
+        g['carried'] = g['date'] < month
+    return {
+        'kind': kind, 'lines': deps, 'events': evs, 'line': deps[0], 'groups': groups, 'amount': amount, 'expected': expected,
+        'difference': (amount - expected).quantize(Decimal('0.01')), 'manual': manual, 'by_code': by_code, 'note': note,
+        'prior': any(e.date < month for e in evs), 'carried': sum((g['total'] for g in groups if g['carried']), ZERO),
+        'line_rows': [_line_row(l) for l in deps], 'event_rows': [_event_row(e, month) for e in evs],
+        'dep_pks': [l.pk for l in deps], 'event_keys': [f'{e.pk}|{e.date.isoformat()}' for e in evs],
+    }
+
+
+def _compatible(dep, ev, month):
+    """Dates as directional evidence: a deposit lands a little before to a week or so after the payout's own date
+    (a payout carried over from an earlier month can land whenever it lands)."""
+    return ev.date - EARLY <= dep.txn_date and (dep.txn_date <= ev.date + LATE or ev.date < month)
+
+
+def _distance(dep, ev):
+    return abs((dep.txn_date - ev.date).days)
+
+
+def _auto_match(deps, evs, month):
+    """Lines up whatever bank lines and platform payouts add up to each other, in passes from the surest to the
+    loosest so a loose combination can never take something a tighter match was waiting for: one to one, then one
+    deposit made of several payouts, then one payout paid in several deposits, then several against several. Each
+    pass looks only at what is dated close enough to be the same money. Returns [(deposits, payouts), ...]."""
+    deps, evs = list(deps), list(evs)
+    found = []
+
+    def take(ds, es):
+        found.append((list(ds), list(es)))
+        for d in ds:
+            deps.remove(d)
+        for e in es:
+            evs.remove(e)
+
+    # one to one — nearest dates first
+    candidates = sorted(
+        ((_distance(d, e), d.txn_date, d.pk, e.date, e.booking.pk, d, e) for d in deps for e in evs if d.flow == e.amount and _compatible(d, e, month)),
+        key=lambda t: t[:5],
+    )
+    for *_key, d, e in candidates:
+        if d in deps and e in evs:
+            take([d], [e])
+
+    # one deposit made of several payouts
+    for size in range(2, MAX_SIDE + 1):
+        for d in sorted(deps, key=lambda l: (l.txn_date, l.pk)):
+            if d not in deps:
+                continue
+            near = sorted((e for e in evs if _compatible(d, e, month)), key=lambda e: (_distance(d, e), e.date, e.booking.pk))[:12]
+            for combo in combinations(near, size):
+                if sum((e.amount for e in combo), ZERO) == d.flow:
+                    take([d], combo)
+                    break
+
+    # one payout paid as several deposits
+    for size in range(2, MAX_SIDE + 1):
+        for e in sorted(evs, key=lambda x: (x.date, x.booking.pk)):
+            if e not in evs:
+                continue
+            near = sorted((d for d in deps if _compatible(d, e, month)), key=lambda d: (_distance(d, e), d.txn_date, d.pk))[:12]
+            for combo in combinations(near, size):
+                if sum((d.flow for d in combo), ZERO) == e.amount:
+                    take(combo, [e])
+                    break
+
+    # several deposits against several payouts
+    dep_pool = sorted(deps, key=lambda l: (l.txn_date, l.pk))[:14]
+    ev_pool = sorted(evs, key=lambda x: (x.date, x.booking.pk))[:14]
+    ev_sums = {}
+    for size in range(2, 4):
+        for combo in combinations(ev_pool, size):
+            ev_sums.setdefault(sum((e.amount for e in combo), ZERO), []).append(combo)
+    options = []
+    for size in range(2, 4):
+        for dcombo in combinations(dep_pool, size):
+            for ecombo in ev_sums.get(sum((d.flow for d in dcombo), ZERO), []):
+                if all(any(_compatible(d, e, month) for d in dcombo) for e in ecombo) and all(any(_compatible(d, e, month) for e in ecombo) for d in dcombo):
+                    spread = max(d.txn_date for d in dcombo) - min(d.txn_date for d in dcombo) + (max(e.date for e in ecombo) - min(e.date for e in ecombo))
+                    options.append((len(dcombo) + len(ecombo), spread, dcombo, ecombo))
+    for _n, _spread, dcombo, ecombo in sorted(options, key=lambda o: (o[0], o[1])):
+        if all(d in deps for d in dcombo) and all(e in evs for e in ecombo):
+            take(dcombo, ecombo)
+    return found
 
 
 def _match_month(book, month, cleared, scope, events):
@@ -186,88 +286,79 @@ def _match_month(book, month, cleared, scope, events):
     first = ledger.month_of(ledger.books_start())
     lower = first - LOOKBACK
     deposits = sorted(_income_deposits(book, month), key=lambda l: (l.txn_date, l.pk))
-    pool = [ev for ev in events if not _is_cleared(ev, cleared) and lower <= ev.date <= month_end + EARLY]
-    used = set()
-    # First, deposits that name their reservation(s) by confirmation code. A code names the reservation, not the
-    # day: a resolution is paid on its own day, a long stay in installments, so of each named reservation's
-    # payouts the one nearest the deposit is the one this deposit is (the exact amount first, for one code).
-    # Deposits a person tied by hand come first: they claim the payouts they picked.
-    ties = {t.line_id: t for t in ReconTie.objects.filter(month=month, **book.scope())}
+    by_line = {l.pk: l for l in deposits}
     by_key = {ev.key: ev for ev in events}
-    code_pairs, plain = [], []
-    untied = []
-    for dep in deposits:
-        tie = ties.get(dep.pk)
-        picked = None
-        if tie is not None and tie.amount == dep.flow:
-            found = [by_key.get((pk, date.fromisoformat(day))) for pk, day in tie.events]
-            if found and all(found) and not any(_is_cleared(ev, cleared) or ev.key in used for ev in found):
-                picked = found
-        if picked is None:
-            untied.append(dep)
+    pool = [ev for ev in events if not _is_cleared(ev, cleared) and lower <= ev.date <= month_end + EARLY]
+    used, used_lines = set(), set()
+    blocked_lines, blocked_events = set(), set()
+    manual_pairs, code_pairs, system_pairs = [], [], []
+
+    def keys_of(raw):
+        out = []
+        for pk, day in raw:
+            try:
+                out.append((int(pk), date.fromisoformat(day)))
+            except (TypeError, ValueError):
+                out.append(None)
+        return out
+
+    stored = list(ReconMatch.objects.filter(month=month, **book.scope()).order_by('pk'))
+    # Matches a person broke keep those lines open: they are not offered to the automatic matching again.
+    for m in stored:
+        if m.kind == ReconMatch.Kind.HOLD:
+            blocked_lines |= {int(pk) for pk in m.lines}
+            blocked_events |= {k for k in keys_of(m.events) if k}
+    # Matches a person made by hand come first: they claim the lines and payouts they picked.
+    for m in stored:
+        if m.kind != ReconMatch.Kind.USER:
             continue
-        used |= {ev.key for ev in picked}
-        code_pairs.append(_pair(picked, dep, month, manual=True, note=tie.note))
-    deposits = untied
+        dl = [by_line.get(int(pk)) for pk in m.lines]
+        el = [by_key.get(k) if k else None for k in keys_of(m.events)]
+        if not dl or not el or not all(dl) or not all(el):
+            continue
+        if any(l.pk in used_lines for l in dl) or any(_is_cleared(ev, cleared) or ev.key in used for ev in el):
+            continue
+        used_lines |= {l.pk for l in dl}
+        used |= {ev.key for ev in el}
+        manual_pairs.append(_make_match(dl, el, month, 'user', note=m.note, manual=True) | {'stored_pk': m.pk})
+
+    # Deposits that name their reservation(s) by confirmation code. A code names the reservation, not the day: a
+    # resolution is paid on its own day, a long stay in installments, so of each named reservation's payouts the one
+    # nearest the deposit is the one this deposit is (the exact amount first, for one code).
     named = [b for b in scope if b.external_uid]
     for dep in deposits:
+        if dep.pk in used_lines or dep.pk in blocked_lines:
+            continue
         text = f'{dep.payee} {dep.memo} {dep.description}'
         hits = [b for b in named if re.search(r'(?<![A-Za-z0-9])' + re.escape(b.external_uid) + r'(?![A-Za-z0-9])', text, re.IGNORECASE)]
-        chosen, _exact = _pieces(hits, dep, pool, used)
+        chosen, _exact = _pieces(hits, dep, pool, used | blocked_events)
         if not chosen:
-            plain.append(dep)
             continue
+        used_lines.add(dep.pk)
         used |= {ev.key for ev in chosen}
-        code_pairs.append(_pair(chosen, dep, month))
-    deposits = plain
-    free = _groups([ev for ev in pool if ev.key not in used])
-    pairs, open_deposits = list(code_pairs), []
-    # Two passes, not one: every deposit that matches exactly ONE group is given that group FIRST,
-    # before any deposit is allowed to reach for a 2- or 3-group combination. Doing this in a single
-    # date-ordered pass (try size 1, then 2, then 3, per deposit, claiming groups as you go) let an
-    # earlier deposit's multi-group combination coincidentally sum to the right total and grab a
-    # group that in fact belonged 1:1 to a LATER deposit — which then had nothing left to match and
-    # showed up as a false "payout not in the bank", even though its own matching deposit was sitting
-    # right there the whole time (a real production case: a reservation's exact-amount payout was
-    # stolen by another deposit that happened to equal that group's total plus another group's).
-    remaining = []
-    for dep in deposits:
-        # A payout carried over from an earlier month can land whenever it lands; one dated this month is expected within LATE.
-        cands = [g for g in free if g['date'] - EARLY <= dep.txn_date and (dep.txn_date <= g['date'] + LATE or g['date'] < month)]
-        match = next((g for g in cands if g['total'] == dep.flow), None)
-        if match:
-            match['carried'] = match['date'] < month
-            pairs.append({'line': dep, 'groups': [match], 'amount': dep.flow})
-            free = [g for g in free if g is not match]
-        else:
-            remaining.append(dep)
-    for dep in remaining:
-        cands = [g for g in free if g['date'] - EARLY <= dep.txn_date and (dep.txn_date <= g['date'] + LATE or g['date'] < month)]
-        cands.sort(key=lambda g: abs((dep.txn_date - g['date']).days))
-        chosen = None
-        for size in (2, 3):
-            for combo in combinations(cands[:14], size):
-                if sum((g['total'] for g in combo), ZERO) == dep.flow:
-                    chosen = combo
-                    break
-            if chosen:
-                break
-        if chosen:
-            for g in chosen:
-                g['carried'] = g['date'] < month
-            pairs.append({'line': dep, 'groups': list(chosen), 'amount': dep.flow})
-            free = [g for g in free if g not in chosen]
-        else:
-            open_deposits.append(dep)
-    for p in pairs:
-        p['carried'] = sum((g['total'] for g in p['groups'] if g.get('carried')), ZERO)
-    matched = {key for p in pairs for g in p['groups'] for key in g['events']}
+        code_pairs.append(_make_match([dep], chosen, month, 'code', by_code=True))
+
+    # Everything else lines up by amount and date, any number against any number.
+    rem_deps = [d for d in deposits if d.pk not in used_lines and d.pk not in blocked_lines]
+    rem_evs = [ev for ev in pool if ev.key not in used and ev.key not in blocked_events]
+    for ds, es in _auto_match(rem_deps, rem_evs, month):
+        used_lines |= {d.pk for d in ds}
+        used |= {e.key for e in es}
+        system_pairs.append(_make_match(ds, es, month, 'system'))
+
+    matches = manual_pairs + code_pairs + system_pairs
+    matches.sort(key=lambda p: (p['lines'][0].txn_date, p['lines'][0].pk))
+    matched = {key for p in matches for key in (ev.key for ev in p['events'])}
+    open_deposits = [d for d in deposits if d.pk not in used_lines]
     # Only payouts from inside the books are owed to the bank. One dated just before the books start is
     # let into the pool above so it can match a deposit that lands early in the first month, but if it
     # matched nothing it reached the bank before the ledger begins: not something this month can chase.
-    open_groups = [g for g in free if first <= g['date'] <= month_end]
-    return {'pairs': pairs, 'open_deposits': open_deposits, 'open_groups': open_groups, 'cleared_out': cleared | matched, 'month_end': month_end,
-            'mismatched': [p for p in code_pairs if p['difference'] != 0]}
+    open_events = [ev for ev in pool if ev.key not in used and first <= ev.date <= month_end]
+    return {
+        'matches': matches, 'pairs': matches, 'open_deposits': open_deposits, 'open_events': open_events,
+        'cleared_out': cleared | matched, 'month_end': month_end,
+        'mismatched': [p for p in matches if p['difference'] != 0],
+    }
 
 
 def _cleared_by_closes(prop, month):
@@ -308,24 +399,32 @@ def _month_sequence(month):
 
 
 def _items(book, month, result):
+    """What is left over, as items a person has to explain: a match whose two sides differ, a bank line with no
+    platform payout behind it, a platform payout that has not reached the bank."""
     accepted = {(a.kind, a.key): a for a in ReconAcceptance.objects.filter(month=month, **book.scope())}
     # In the first month of the books nothing could have been carried forward from the month before, so a deposit
     # that pays out an earlier stay may be marked as one.
     first_month = month == ledger.month_of(ledger.books_start())
+    month_end = result['month_end']
     items = []
     for pair in result.get('mismatched', []):
-        dep, diff, group = pair['line'], pair['difference'], pair['groups'][0]
-        who = dep.shown_memo or dep.txn_type
+        diff = pair['difference']
+        first_line = pair['lines'][0]
+        who = first_line.shown_memo or first_line.txn_type
+        codes = ', '.join(sorted({ev.booking.external_uid for ev in pair['events']}))
         hint = ''
-        if diff > 0 and not any((pt or 0) for _c, _p, pt, _o in group['on_file']):
+        if diff > 0 and pair['by_code'] and not any((ev.booking.pass_through_amount or 0) for ev in pair['events']):
             hint = " Airbnb's transactions file lists a separate 'Pass Through Tot' line (tax it pays the host) for each stay: upload the latest transactions file and it is included."
-        a = accepted.get(('deposit', f'line:{dep.pk}'))
+        a = accepted.get(('deposit', f'line:{first_line.pk}'))
+        n = len(pair['lines'])
         items.append({
-            'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False, 'mismatch': True,
-            'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${abs(dep.flow):,.2f} {"deposited" if dep.flow > 0 else "taken out"} ({who}) {"is tied by hand to" if pair.get("manual") else "names"} {group["codes"]}, but is ${abs(diff):,.2f} {"more" if diff > 0 else "less"} '
-                    f'than the ${pair["expected"]:,.2f} {"on the payouts it is tied to" if pair.get("manual") else "that platform payout is on file for"}.{"" if pair.get("manual") else hint}',
-            'tied': bool(pair.get('manual')),
-            'accepted': a if a and a.amount == dep.flow else None,
+            'kind': 'deposit', 'key': f'line:{first_line.pk}', 'amount': pair['amount'], 'date': first_line.txn_date, 'in_transit': False, 'mismatch': True,
+            'text': f'{first_line.txn_date:%b} {first_line.txn_date.day}: ${abs(pair["amount"]):,.2f} {"deposited" if pair["amount"] > 0 else "taken out"}{"" if n == 1 else f" across {n} bank lines"} ({who}) '
+                    f'{"is matched by hand to" if pair["manual"] else "names"} {codes}, but is ${abs(diff):,.2f} {"more" if diff > 0 else "less"} '
+                    f'than the ${pair["expected"]:,.2f} {"on the payouts it is matched to" if pair["manual"] else "that platform payout is on file for"}.{"" if pair["manual"] else hint}',
+            'tied': bool(pair['manual']), 'matched': True, 'note_hint': pair.get('note', ''), 'reason_hint': 'error',
+            'dep_pks': pair['dep_pks'], 'event_keys': pair['event_keys'], 'stored_pk': pair.get('stored_pk'),
+            'accepted': a if a and a.amount == pair['amount'] else None,
         })
     for dep in result['open_deposits']:
         who = dep.shown_memo or dep.txn_type
@@ -333,18 +432,22 @@ def _items(book, month, result):
         items.append({
             'kind': 'deposit', 'key': f'line:{dep.pk}', 'amount': dep.flow, 'date': dep.txn_date, 'in_transit': False, 'prior_ok': first_month,
             'text': f'{dep.txn_date:%b} {dep.txn_date.day}: ${abs(dep.flow):,.2f} {"deposited" if dep.flow > 0 else "taken out"} ({who}) with no matching platform payout',
-            'accepted': a if a and a.amount == dep.flow else None,
+            'reason_hint': 'error', 'accepted': a if a and a.amount == dep.flow else None,
         })
-    for g in result['open_groups']:
-        a = accepted.get(('payout', g['key']))
-        transit = g['date'] > result['month_end'] - TRANSIT
-        carried = g['date'] < month
+    for ev in result['open_events']:
+        key = f'event:{ev.pk}|{ev.date.isoformat()}'
+        a = accepted.get(('payout', key))
+        transit = ev.date > month_end - TRANSIT
+        carried = ev.date < month
+        b = ev.booking
+        label = f'{_source_label(b.source)} payout dated {ev.date:%b} {ev.date.day}'
         items.append({
-            'kind': 'payout', 'key': g['key'], 'amount': g['total'], 'date': g['date'], 'in_transit': transit, 'carried': carried,
-            'text': f'{"Carried over from " + format(g["date"], "%B") + ": " if carried else ""}{g["label"]}: ${g["total"]:,.2f} for {g["count"]} reservation{"" if g["count"] == 1 else "s"}'
-                    f'{" (" + ", ".join(g["guests"]) + ")" if g["guests"] else ""} has not reached the trust account'
+            'kind': 'payout', 'key': key, 'amount': ev.amount, 'date': ev.date, 'in_transit': transit, 'carried': carried,
+            'text': f'{"Carried over from " + format(ev.date, "%B") + ": " if carried else ""}{label}: ${ev.amount:,.2f} for 1 reservation'
+                    f'{" (" + b.guest_name + ")" if b.guest_name else ""} has not reached the trust account'
                     f'{" — it was still on its way at the end of that month and has not arrived yet" if carried else ""}',
-            'accepted': a if a and a.amount == g['total'] else None,
+            'reason_hint': 'timing' if (transit or carried) else 'error', 'event_key': f'{ev.pk}|{ev.date.isoformat()}',
+            'accepted': a if a and a.amount == ev.amount else None,
         })
     return items
 
@@ -375,8 +478,8 @@ def _reservations_view(book, month, scope):
 
 
 def reconcile(book, month):
-    """The live reconciliation of an open month: matches, what's left over, what has been
-    accepted, and the reservations view. None if the month is already closed."""
+    """The live reconciliation of an open month: every match (by the program, by memo code, or by hand), what's left
+    over on each side, what has been accepted, and the reservations view. None if the month is already closed."""
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         return None
@@ -387,7 +490,7 @@ def reconcile(book, month):
     items = _items(book, month, result)
     deposits = _income_deposits(book, month)
     month_end = result['month_end']
-    matched_payouts = sum((p.get('expected', p['amount']) for p in result['pairs']), ZERO)
+    matched_payouts = sum((p['expected'] for p in result['matches']), ZERO)
     booking_ids = {c for c in result['cleared_out'] if isinstance(c, int)}
     undated = [b for b in _undated(book) if b.pk not in booking_ids and month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
     unassigned = 0
@@ -397,10 +500,15 @@ def reconcile(book, month):
             property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
             payout_date__gte=ledger.month_of(ledger.books_start()), payout_date__lte=month_end, payout_amount__isnull=False,
         ).exclude(payout_amount=0).count()
+    acc = {(i['kind'], i['key']): i['accepted'] for i in items}
+    mismatch_keys = {i['key'] for i in items if i.get('matched')}
     return {
-        'closed': False, 'month': month, 'pairs': result['pairs'], 'items': items, 'cleared_out': result['cleared_out'],
+        'closed': False, 'month': month, 'pairs': result['matches'], 'matches': result['matches'], 'items': items, 'cleared_out': result['cleared_out'],
+        'open_lines': [{**_line_row(l), 'key': f'line:{l.pk}', 'accepted': acc.get(('deposit', f'line:{l.pk}'))} for l in result['open_deposits']],
+        'open_payouts': [{**_event_row(ev, month), 'accepted': acc.get(('payout', f'event:{ev.pk}|{ev.date.isoformat()}'))} for ev in result['open_events']],
+        'mismatch_keys': mismatch_keys,
         'payouts_matched': matched_payouts, 'deposits_total': sum((d.flow for d in deposits), ZERO),
-        'carried_payouts': sum((p['carried'] for p in result['pairs']), ZERO),
+        'carried_payouts': sum((p['carried'] for p in result['matches']), ZERO),
         'prior_total': sum((i['amount'] for i in items if i['accepted'] and i['accepted'].prior_period), ZERO),
         'undated': len(undated), 'undated_total': sum((b.payout_amount for b in undated), ZERO), 'unassigned': unassigned,
         'reservations': _reservations_view(book, month, scope),
@@ -416,9 +524,10 @@ def _undated(book):
 
 
 def problems(rec):
-    """(open deposits, open payouts that are not just in transit) still needing a fix or an acceptance."""
+    """(open deposits, open payouts) still needing to be matched or explained. A payout dated just before month end
+    that will clear next month is still a reconciling item: it needs its note like any other."""
     deposits = [i for i in rec['items'] if i['kind'] == 'deposit' and not i['accepted']]
-    payouts = [i for i in rec['items'] if i['kind'] == 'payout' and not i['accepted'] and not i['in_transit']]
+    payouts = [i for i in rec['items'] if i['kind'] == 'payout' and not i['accepted']]
     return deposits, payouts
 
 
@@ -427,9 +536,9 @@ def is_clean(rec):
     return not d and not p and not rec['unassigned']
 
 
-# --- accepting reconciling items ----------------------------------------------------------------
+# --- explaining what is left over ---------------------------------------------------------------
 
-def accept_item(book, month, user, kind, key, note, prior_period=False):
+def accept_item(book, month, user, kind, key, note, prior_period=False, reason=''):
     """A person accepts one open item as a reconciling item, with the reason. `prior_period` marks a deposit in the
     first month of the books as paying out something from before the books start (a reason is then optional)."""
     month = ledger.month_of(month)
@@ -444,13 +553,44 @@ def accept_item(book, month, user, kind, key, note, prior_period=False):
         if not item.get('prior_ok'):
             raise ledger.CloseError(f'Only an unmatched deposit in the first month of the books ({ledger.month_of(ledger.books_start()):%B %Y}) can be marked as from before the books.')
         note = note or f'Payout from before {month:%B %Y}, where the books start'
+        reason = ReconAcceptance.Reason.PRIOR_BOOKS
     elif not note:
         raise ledger.CloseError('Say why this is a reconciling item — a short note is required.')
+    if reason and reason not in ReconAcceptance.Reason.values:
+        raise ledger.CloseError('Choose why it is a reconciling item.')
     ReconAcceptance.objects.update_or_create(
         month=month, kind=kind, key=key, **book.scope(),
-        defaults={'amount': item['amount'], 'description': item['text'][:300], 'note': note[:300], 'prior_period': bool(prior_period), 'accepted_by': user},
+        defaults={'amount': item['amount'], 'description': item['text'][:300], 'note': note[:300], 'prior_period': bool(prior_period), 'reason': reason or '', 'accepted_by': user},
     )
     return item
+
+
+def save_reconciliation(book, month, user, entries):
+    """Finalize the reconciliation: everything still left over is a reconciling item, and each one has to be explained.
+    `entries` is [{'kind', 'key', 'reason', 'note'}, ...] — one for every open item. A reconciling item is either a
+    timing difference (a stay at the end of the month paid out in the next) or a genuine bookkeeping error."""
+    month = ledger.month_of(month)
+    if ledger.is_closed(book, month):
+        raise ledger.CloseError(f'{month:%B %Y} is closed; it can no longer be changed.')
+    rec = reconcile(book, month)
+    pending = [i for i in rec['items'] if not i['accepted']]
+    given = {(e.get('kind'), e.get('key')): e for e in entries}
+    blank = [i for i in pending if not (given.get((i['kind'], i['key'])) or {}).get('note', '').strip()]
+    if blank:
+        raise ledger.CloseError(f'{len(blank)} reconciling item{"" if len(blank) == 1 else "s"} still {"needs" if len(blank) == 1 else "need"} a note — say why each one is left over.')
+    unsure = [i for i in pending if (given[(i['kind'], i['key'])].get('reason') or '') not in (ReconAcceptance.Reason.TIMING, ReconAcceptance.Reason.ERROR, ReconAcceptance.Reason.PRIOR_BOOKS)]
+    if unsure:
+        raise ledger.CloseError('Say whether each reconciling item is a timing difference or a bookkeeping error.')
+    for i in pending:
+        e = given[(i['kind'], i['key'])]
+        prior = e['reason'] == ReconAcceptance.Reason.PRIOR_BOOKS
+        if prior and not i.get('prior_ok'):
+            raise ledger.CloseError('Only an unmatched deposit in the first month of the books can be marked as from before the books.')
+        ReconAcceptance.objects.update_or_create(
+            month=month, kind=i['kind'], key=i['key'], **book.scope(),
+            defaults={'amount': i['amount'], 'description': i['text'][:300], 'note': e['note'].strip()[:300], 'prior_period': prior, 'reason': e['reason'], 'accepted_by': user},
+        )
+    return len(pending)
 
 
 def unaccept_item(book, month, kind, key):
@@ -460,7 +600,7 @@ def unaccept_item(book, month, kind, key):
     return ReconAcceptance.objects.filter(month=month, kind=kind, key=key, **book.scope()).delete()[0]
 
 
-# --- tying a deposit to reservations by hand --------------------------------------------------------
+# --- matching by hand -----------------------------------------------------------------------------
 
 def _event_key(raw):
     pk, _sep, day = str(raw).partition('|')
@@ -470,105 +610,93 @@ def _event_key(raw):
         raise ledger.CloseError('One of the chosen payouts could not be read — reload the page and choose again.')
 
 
-def tie_candidates(book, month, rec):
-    """The reservations around the month (a stay checking in, or a payout, from TIE_DAYS before it to TIE_DAYS
-    after it) with their dated payouts, for a person to pick what a deposit is made of. Each payout says whether it
-    is free, already cleared by an earlier month, or matched to another deposit this month."""
-    from django.utils import timezone as tz
-
-    from onsite.models import Booking
-    month = ledger.month_of(month)
-    lo = month - timedelta(days=TIE_DAYS)
-    hi = ledger.next_month(month) - timedelta(days=1) + timedelta(days=TIE_DAYS)
-    scope = list(_bookings(book))
-    events = _events(scope)
-    cleared = _cleared_before(book, month, scope, events)
-    taken, soft = {}, {}
-    for p in rec['pairs']:
-        for g in p['groups']:
-            for key in g['events']:
-                # a payout the program paired with a deposit that does not add up is still open to be tied elsewhere; one a person tied is not
-                (soft if p.get('difference') and not p.get('manual') else taken)[key] = f'{p["line"].txn_date:%b} {p["line"].txn_date.day} deposit'
-    rows = {}
-    for ev in events:
-        if lo <= ev.date <= hi:
-            rows.setdefault(ev.pk, ev.booking)
-    stays = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO))
-    if book.unit is not None:
-        stays = stays.filter(unit=book.unit)
-    for b in stays:
-        if lo <= tz.localtime(b.check_in).date() <= hi and (b.status == Booking.Status.ACTIVE or b.payout_amount):
-            rows.setdefault(b.pk, b)
-    kinds = {'reservation': 'payout', 'pass_through': 'pass-through tax', 'other': 'resolution/adjustment'}
-    out = []
-    for b in rows.values():
-        lines = list(b.payout_lines.all()) if hasattr(b, 'payout_lines') else []
-        pieces = []
-        for ev in (e for e in events if e.pk == b.pk):
-            parts = [f'{kinds.get(l.kind, l.kind)} {l.amount:+,.2f}' for l in lines if l.date == ev.date] or [f'payout {ev.amount:+,.2f}']
-            state, label = ('cleared', 'already matched in an earlier month') if _is_cleared(ev, cleared) else (('taken', f'matched to the {taken[ev.key]}') if ev.key in taken else ('free', f'paired with the {soft[ev.key]}, which does not add up' if ev.key in soft else ''))
-            pieces.append({'key': f'{ev.pk}|{ev.date.isoformat()}', 'date': ev.date, 'amount': ev.amount, 'parts': '; '.join(parts), 'state': state, 'label': label})
-        out.append({
-            'id': b.pk, 'code': b.external_uid, 'guest': b.guest_name or 'Guest', 'source': _source_label(b.source), 'check_in': tz.localtime(b.check_in).date(), 'check_out': tz.localtime(b.check_out).date(),
-            'status': b.status, 'pieces': pieces, 'first': min([p['date'] for p in pieces] + [tz.localtime(b.check_in).date()]),
-        })
-    return sorted(out, key=lambda r: (r['first'], r['code']))
-
-
-def tie_deposit(book, month, user, key, event_keys, note='', new_amounts=None):
-    """Tie an open deposit to the payouts a person picked. Each has to exist and not be spoken for; the deposit
-    is then matched to them, and any difference is still an item to accept with a reason.
-
-    `new_amounts` is {booking id: (amount, date)} for a reservation the tie panel offered with NO payout on
-    file at all (nothing was ever imported for it, or the import missed it): the person is asserting, from
-    what they can see in the platform's own file, that it paid out this amount on this day. That is recorded
-    on the reservation itself (Booking.payout_amount/payout_date, a PayoutLine) — not just this one tie — so
-    the reservation is right from here on, in this month and any other deposit or month that names it."""
-    from onsite.models import Booking, PayoutLine
+def manual_match(book, month, user, line_ids, event_keys, note=''):
+    """Match open bank lines to open platform payouts by hand — any number of each. If the two sides add up to the
+    same amount that is the whole match; if they don't the difference is still an item to explain, and the match
+    needs a note saying why."""
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         raise ledger.CloseError(f'{month:%B %Y} is closed; it can no longer be changed.')
     rec = reconcile(book, month)
-    item = next((i for i in rec['items'] if i['kind'] == 'deposit' and i['key'] == key), None)
-    if item is None:
-        raise ledger.CloseError('That deposit is no longer open — the page has been refreshed.')
-    picked = [_event_key(k) for k in event_keys]
-    for b_pk, (amount, day) in (new_amounts or {}).items():
-        if not amount or amount <= 0 or day is None:
-            continue
-        booking = Booking.objects.filter(pk=b_pk, property=book.property, unit=book.unit, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).first()
-        if booking is None:
-            raise ledger.CloseError('One of the reservations is no longer on file — reload the page and try again.')
-        if booking.payout_amount is not None or booking.payout_lines.exists():
-            raise ledger.CloseError(f'{booking.external_uid} already has a payout on file now — reload the page and tie to that instead of entering a new one.')
-        PayoutLine.objects.create(booking=booking, kind=PayoutLine.Kind.RESERVATION, date=day, amount=amount)
-        booking.payout_amount, booking.payout_date, booking.amount_source = amount, day, 'reconciliation tie'
-        booking.save(update_fields=['payout_amount', 'payout_date', 'amount_source'])
-        picked.append((b_pk, day))
-    if not picked:
-        raise ledger.CloseError('Choose at least one payout to tie the deposit to.')
-    dep = LedgerLine.objects.get(pk=int(key.split(':')[1]))
-    scope = list(_bookings(book))
-    events = _events(scope)
-    by_key = {ev.key: ev for ev in events}
-    cleared = _cleared_before(book, month, scope, events)
-    elsewhere = {k for p in rec['pairs'] if p['line'].pk != dep.pk and (p.get('manual') or not p.get('difference')) for g in p['groups'] for k in g['events']}
-    for k in picked:
-        if k not in by_key:
-            raise ledger.CloseError('One of the chosen payouts is no longer on file — reload the page and choose again.')
-        if _is_cleared(by_key[k], cleared) or k in elsewhere:
-            raise ledger.CloseError(f'The payout for {by_key[k].booking.external_uid} on {k[1]:%b} {k[1].day} is already matched to another deposit.')
-    ReconTie.objects.update_or_create(
-        line=dep, defaults={'property': book.property, 'unit': book.unit, 'month': month, 'events': [[pk, day.isoformat()] for pk, day in sorted(set(picked))],
-                            'amount': dep.flow, 'note': (note or '').strip()[:300], 'tied_by': user},
+    open_lines = {r['pk']: r for r in rec['open_lines']}
+    open_payouts = {r['key']: r for r in rec['open_payouts']}
+    try:
+        line_ids = sorted({int(x) for x in line_ids})
+    except (TypeError, ValueError):
+        raise ledger.CloseError('One of the chosen bank lines could not be read — reload the page and choose again.')
+    keys = sorted({_event_key(k) for k in event_keys})
+    if not line_ids or not keys:
+        raise ledger.CloseError('Choose at least one bank line and at least one platform payout to match.')
+    if any(pk not in open_lines for pk in line_ids) or any(f'{pk}|{day.isoformat()}' not in open_payouts for pk, day in keys):
+        raise ledger.CloseError('One of those is no longer open — the page has been refreshed; choose again.')
+    bank = sum((open_lines[pk]['amount'] for pk in line_ids), ZERO)
+    platform = sum((open_payouts[f'{pk}|{day.isoformat()}']['amount'] for pk, day in keys), ZERO)
+    note = (note or '').strip()
+    if bank != platform and not note:
+        raise ledger.CloseError(f'The bank lines (${bank:,.2f}) and the payouts (${platform:,.2f}) differ by ${abs(bank - platform):,.2f} — say why in the note to match them anyway.')
+    return ReconMatch.objects.create(
+        kind=ReconMatch.Kind.USER, month=month, lines=line_ids, events=[[pk, day.isoformat()] for pk, day in keys],
+        note=note[:300], created_by=user, **book.scope(),
     )
 
 
-def untie_deposit(book, month, key):
+def unmatch(book, month, user, line_ids, event_keys, stored_pk=None):
+    """Break a match. One a person made is simply removed; one the program made is kept open from then on (a hold), so
+    it is not put straight back together."""
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         raise ledger.CloseError(f'{month:%B %Y} is closed; it can no longer be changed.')
-    return ReconTie.objects.filter(line_id=int(key.split(':')[1]), month=month, **book.scope()).delete()[0]
+    if stored_pk:
+        return ReconMatch.objects.filter(pk=stored_pk, kind=ReconMatch.Kind.USER, month=month, **book.scope()).delete()[0]
+    try:
+        line_ids = sorted({int(x) for x in line_ids})
+    except (TypeError, ValueError):
+        raise ledger.CloseError('One of the bank lines could not be read — reload the page.')
+    keys = sorted({_event_key(k) for k in event_keys})
+    if not line_ids:
+        raise ledger.CloseError('Nothing to unmatch.')
+    return ReconMatch.objects.create(
+        kind=ReconMatch.Kind.HOLD, month=month, lines=line_ids, events=[[pk, day.isoformat()] for pk, day in keys], created_by=user, **book.scope(),
+    )
+
+
+def payoutless_reservations(book, month):
+    """Reservations around the month (a stay checking in from TIE_DAYS before it to TIE_DAYS after) with NO payout on
+    file at all — nothing imported for them, or the import missed them — so a person can give the amount and day the
+    platform's own file shows they were paid (add_missing_payout)."""
+    from onsite.models import Booking
+    month = ledger.month_of(month)
+    lo = month - timedelta(days=TIE_DAYS)
+    hi = ledger.next_month(month) - timedelta(days=1) + timedelta(days=TIE_DAYS)
+    stays = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO), status=Booking.Status.ACTIVE, payout_amount__isnull=True, payout_lines__isnull=True)
+    if book.unit is not None:
+        stays = stays.filter(unit=book.unit)
+    rows = [b for b in stays if lo <= _local_day(b.check_in) <= hi]
+    return sorted(
+        ({'id': b.pk, 'code': b.external_uid, 'guest': b.guest_name or 'Guest', 'source': _source_label(b.source), 'check_in': _local_day(b.check_in), 'check_out': _local_day(b.check_out)} for b in rows),
+        key=lambda r: (r['check_in'], r['code']),
+    )
+
+
+def add_missing_payout(book, month, user, booking_id, amount, day):
+    """Record, from what the platform's own file shows, that a reservation with NO payout on file paid out this amount
+    on this day. Saved on the reservation itself (Booking.payout_amount/payout_date, a PayoutLine) — not just this
+    month — so it is right from here on, and it appears with the other open payouts to be matched."""
+    from onsite.models import Booking, PayoutLine
+    month = ledger.month_of(month)
+    if ledger.is_closed(book, month):
+        raise ledger.CloseError(f'{month:%B %Y} is closed; it can no longer be changed.')
+    if not amount or amount <= 0 or day is None:
+        raise ledger.CloseError('Give the amount and the day it was paid.')
+    booking = Booking.objects.filter(pk=booking_id, property=book.property, unit=book.unit, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).first()
+    if booking is None:
+        raise ledger.CloseError('That reservation is no longer on file — reload the page and try again.')
+    if booking.payout_amount is not None or booking.payout_lines.exists():
+        raise ledger.CloseError(f'{booking.external_uid} already has a payout on file now — reload the page.')
+    PayoutLine.objects.create(booking=booking, kind=PayoutLine.Kind.RESERVATION, date=day, amount=amount)
+    booking.payout_amount, booking.payout_date, booking.amount_source = amount, day, 'reconciliation entry'
+    booking.save(update_fields=['payout_amount', 'payout_date', 'amount_source'])
+    return booking
 
 
 # --- what a close freezes ----------------------------------------------------------------------
@@ -580,12 +708,19 @@ def snapshot(rec):
     res = rec['reservations']
     return {
         'payouts_matched': money(rec['payouts_matched']), 'deposits_total': money(rec['deposits_total']), 'prior_total': money(rec['prior_total']), 'carried_payouts': money(rec['carried_payouts']),
+        'matches': [{
+            'kind': p['kind'], 'amount': money(p['amount']), 'expected': money(p['expected']), 'difference': money(p['difference']), 'note': p.get('note', ''), 'prior': bool(p['prior']),
+            'lines': [{'date': r['date'].isoformat(), 'desc': r['desc'], 'amount': money(r['amount'])} for r in p['line_rows']],
+            'events': [{'guest': r['guest'], 'code': r['code'], 'source': r['source'], 'check_in': r['check_in'].isoformat(), 'check_out': r['check_out'].isoformat(),
+                        'date': r['date'].isoformat(), 'amount': money(r['amount']), 'carried': bool(r['carried'])} for r in p['event_rows']],
+        } for p in rec['matches']],
         'pairs': [{
             'date': p['line'].txn_date.isoformat(), 'amount': money(p['amount']), 'payee': p['line'].shown_memo or p['line'].txn_type, 'difference': money(p.get('difference', 0)),
             'manual': bool(p.get('manual')), 'payouts': [{'label': g['label'], 'amount': money(g['total']), 'count': g['count'], 'carried': bool(g.get('carried'))} for g in p['groups']],
-        } for p in rec['pairs']],
+        } for p in rec['matches']],
         'accepted': [{
-            'kind': i['kind'], 'amount': money(i['amount']), 'text': i['text'], 'note': i['accepted'].note, 'prior_period': i['accepted'].prior_period,
+            'kind': i['kind'], 'amount': money(i['amount']), 'text': i['text'], 'note': i['accepted'].note, 'prior_period': i['accepted'].prior_period, 'reason': i['accepted'].reason,
+            'reason_label': i['accepted'].get_reason_display() if i['accepted'].reason else '',
             'by': (i['accepted'].accepted_by.get_full_name() or i['accepted'].accepted_by.username) if i['accepted'].accepted_by else '',
         } for i in rec['items'] if i['accepted']],
         'in_transit': [{'amount': money(i['amount']), 'text': i['text']} for i in rec['items'] if i['in_transit'] and not i['accepted']],
@@ -610,6 +745,6 @@ def from_close(close):
     return {
         'closed': True, 'payouts_matched': Decimal(data.get('payouts_matched', '0')), 'deposits_total': Decimal(data.get('deposits_total', '0')), 'prior_total': Decimal(data.get('prior_total', '0')),
         'carried_payouts': Decimal(data.get('carried_payouts', '0')),
-        'pairs': data.get('pairs', []), 'accepted': data.get('accepted', []), 'in_transit': data.get('in_transit', []),
+        'pairs': data.get('pairs', []), 'matches': data.get('matches', []), 'accepted': data.get('accepted', []), 'in_transit': data.get('in_transit', []),
         'reservations': {k: (Decimal(v) if k in ('payout_total', 'paid_in_month', 'paid_later', 'carried_in') else v) for k, v in res.items()},
     }

@@ -40,3 +40,28 @@ def dictget(mapping, key):
         return mapping.get(key, [])
     except AttributeError:
         return []
+
+
+@register.filter
+def mdate(value):
+    """A date as "Aug 8" — from a date, or from the ISO string a closed month's frozen reconciliation keeps."""
+    from datetime import date as _date
+    if isinstance(value, str):
+        try:
+            value = _date.fromisoformat(value)
+        except ValueError:
+            return value
+    if not value:
+        return ''
+    return f'{value:%b} {value.day}'
+
+
+@register.filter
+def unaccepted(items):
+    """The reconciliation items nobody has explained yet."""
+    return [i for i in items if not i.get('accepted')]
+
+
+@register.filter
+def accepted_any(items):
+    return any(i.get('accepted') for i in items)

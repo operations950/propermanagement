@@ -1,0 +1,25 @@
+{% load core_extras %}{% comment %}One matched set: the platform payouts on the left (blue), the bank lines on the right (orange), any number of each.
+Works for a live match (p.event_rows / p.line_rows) and a closed month's frozen one (p.events / p.lines). Needs: p, editable.{% endcomment %}
+<div class="rc-match">
+    <div class="rc-tag">
+        <span class="rc-label{% if p.kind == 'user' %} rc-user{% endif %}">{% if p.kind == 'user' %}User match{% else %}Match{% endif %}</span>
+        {% if p.prior %}<span class="rc-prior">Prior month recon</span>{% endif %}
+        {% if p.difference and p.difference != '0.00' %}<span class="rc-diff">differs by ${{ p.difference|floatformat:"2g" }}</span>{% endif %}
+        {% if p.note %}<span class="rc-note">{{ p.note }}</span>{% endif %}
+        {% if editable %}
+        <form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="action" value="unmatch_recon">
+            {% for k in p.dep_pks %}<input type="hidden" name="lines" value="{{ k }}">{% endfor %}{% for k in p.event_keys %}<input type="hidden" name="events" value="{{ k }}">{% endfor %}
+            {% if p.stored_pk %}<input type="hidden" name="stored_pk" value="{{ p.stored_pk }}">{% endif %}
+            <button class="btn btn-link btn-sm p-0" title="Break this match — those lines go back to the open items">unmatch</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="rc-sides">
+        <div class="rc-left"><table class="rc-t">
+            {% for r in p.event_rows|default:p.events %}<tr><td>{{ r.guest }}</td><td class="rc-d">{{ r.check_in|mdate }} – {{ r.check_out|mdate }}</td><td class="rc-d">paid {{ r.date|mdate }}</td><td class="amt{% if r.amount|stringformat:"s"|first == "-" %} neg{% endif %}">${{ r.amount|floatformat:"2g" }}</td></tr>{% endfor %}
+        </table></div>
+        <div class="rc-right"><table class="rc-t">
+            {% for r in p.line_rows|default:p.lines %}<tr><td class="rc-d">{{ r.date|mdate }}</td><td>{{ r.desc }}</td><td class="amt{% if r.amount|stringformat:"s"|first == "-" %} neg{% endif %}">${{ r.amount|floatformat:"2g" }}</td></tr>{% endfor %}
+        </table></div>
+    </div>
+</div>

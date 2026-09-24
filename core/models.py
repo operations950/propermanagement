@@ -1125,6 +1125,11 @@ class ReconAcceptance(models.Model):
     description = models.CharField(max_length=300, blank=True)
     note = models.CharField(max_length=300)
     prior_period = models.BooleanField(default=False, help_text='A deposit that pays out something from before the books start (the first month could not have had it carried forward).')
+    class Reason(models.TextChoices):
+        TIMING = 'timing', 'Timing — paid out or deposited in another month'
+        ERROR = 'error', 'Bookkeeping error / something to chase'
+        PRIOR_BOOKS = 'prior_books', 'From before the books'
+    reason = models.CharField(max_length=12, choices=Reason.choices, blank=True, help_text='Why it is a reconciling item: a timing difference that clears itself, or a genuine bookkeeping error.')
     accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     accepted_at = models.DateTimeField(auto_now_add=True)
 
@@ -1133,8 +1138,31 @@ class ReconAcceptance(models.Model):
         indexes = [models.Index(fields=['property', 'month'])]
 
 
+class ReconMatch(models.Model):
+    """A person's decision about lines in a month's income reconciliation that the program should not decide on its own.
+    kind USER: these bank `lines` (LedgerLine ids) and these platform `events` ([booking id, day] payouts) ARE the same
+    money, matched by hand — any number on either side (one payout landing as two deposits, two payouts as one, ...).
+    kind HOLD: the program had matched these and the person broke that match, so they stay open (and are not
+    re-matched automatically) until matched by hand. Supersedes ReconTie, which could only tie ONE deposit to payouts."""
+    class Kind(models.TextChoices):
+        USER = 'user', 'Matched by hand'
+        HOLD = 'hold', 'Kept open'
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='recon_matches')
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, null=True, blank=True, related_name='recon_matches')
+    month = models.DateField()
+    kind = models.CharField(max_length=6, choices=Kind.choices, default=Kind.USER)
+    lines = models.JSONField(default=list)
+    events = models.JSONField(default=list)
+    note = models.CharField(max_length=300, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['property', 'month'])]
+
+
 class ReconTie(models.Model):
-    """A person tied one bank deposit to platform payouts BY HAND, when the reconciliation could not: it lists the
+    """SUPERSEDED by ReconMatch (existing rows were copied into it); no longer read or written. A person tied one bank deposit to platform payouts BY HAND, when the reconciliation could not: it lists the
     reservations around the month and they pick the ones the deposit is made of. `events` are the dated payouts
     chosen, [booking id, day]; `amount` is the deposit's amount when it was tied (the tie stops applying if that
     changes). If the payouts do not add up to the deposit the difference is still an item to accept with a reason."""

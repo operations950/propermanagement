@@ -202,27 +202,33 @@ def close_property(request, month, pk, unit_pk=None):
                 prior = request.POST.get('prior') == '1'
                 recon.accept_item(book, month, request.user, request.POST.get('kind', ''), request.POST.get('key', ''), request.POST.get('note', ''), prior_period=prior)
                 messages.success(request, 'Marked as from before the books.' if prior else 'Accepted as a reconciling item.')
-            elif action == 'tie_deposit':
-                new_amounts = {}
-                for k, v in request.POST.items():
-                    if k.startswith('new_amt_') and (v or '').strip():
-                        b_pk = k[len('new_amt_'):]
-                        try:
-                            amount = Decimal(v.strip())
-                        except InvalidOperation:
-                            continue
-                        raw_day = (request.POST.get(f'new_date_{b_pk}', '') or '').strip()
-                        try:
-                            day = datetime.strptime(raw_day, '%Y-%m-%d').date() if raw_day else None
-                        except ValueError:
-                            day = None
-                        if b_pk.isdigit() and day:
-                            new_amounts[int(b_pk)] = (amount, day)
-                recon.tie_deposit(book, month, request.user, request.POST.get('key', ''), request.POST.getlist('events'), request.POST.get('note', ''), new_amounts=new_amounts)
-                messages.success(request, 'Tied the deposit to those payouts.')
-            elif action == 'untie_deposit':
-                recon.untie_deposit(book, month, request.POST.get('key', ''))
-                messages.success(request, 'Untied.')
+            elif action == 'match_recon':
+                recon.manual_match(book, month, request.user, request.POST.getlist('lines'), request.POST.getlist('events'), request.POST.get('note', ''))
+                messages.success(request, 'Matched — it is in the matches below as a match by hand.')
+            elif action == 'unmatch_recon':
+                recon.unmatch(book, month, request.user, request.POST.getlist('lines'), request.POST.getlist('events'), stored_pk=request.POST.get('stored_pk') or None)
+                messages.success(request, 'Unmatched — those lines are open again.')
+            elif action == 'save_recon':
+                entries = []
+                for n in range(int(request.POST.get('item_count', '0') or 0)):
+                    entries.append({
+                        'kind': request.POST.get(f'item_kind_{n}', ''), 'key': request.POST.get(f'item_key_{n}', ''),
+                        'reason': request.POST.get(f'item_reason_{n}', ''), 'note': request.POST.get(f'item_note_{n}', ''),
+                    })
+                saved = recon.save_reconciliation(book, month, request.user, entries)
+                messages.success(request, f'Reconciliation saved — {saved} reconciling item{"" if saved == 1 else "s"} explained.')
+            elif action == 'add_payout':
+                b_pk = request.POST.get('booking_id', '')
+                try:
+                    amount = Decimal((request.POST.get('amount', '') or '').strip())
+                except InvalidOperation:
+                    amount = None
+                try:
+                    day = datetime.strptime((request.POST.get('date', '') or '').strip(), '%Y-%m-%d').date()
+                except ValueError:
+                    day = None
+                recon.add_missing_payout(book, month, request.user, int(b_pk) if b_pk.isdigit() else 0, amount, day)
+                messages.success(request, 'Payout added to that reservation — it is in the open payouts to match.')
             elif action == 'unaccept_recon':
                 recon.unaccept_item(book, month, request.POST.get('kind', ''), request.POST.get('key', ''))
                 messages.success(request, 'No longer accepted — it needs a fix or a fresh acceptance.')
@@ -254,7 +260,7 @@ def close_property(request, month, pk, unit_pk=None):
         'warn_keys': [i['key'] for i in items if i['level'] == 'warn'],
         'totals': ledger.closed_summary(close) if close else ledger.totals(book, month, lines),
         'recon': rec,
-        'tie_panel': recon.tie_candidates(book, month, rec) if (rec and close is None and any(i['kind'] == 'deposit' and not i['accepted'] for i in rec['items'])) else None,
+        'payoutless': recon.payoutless_reservations(book, month) if (rec and close is None) else [],
         'drift': ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()),
         'unreviewed': sum(1 for l in lines if not l.reviewed), 'changed': sum(1 for l in lines if l.changed_in_qb),
         'synced_at': book.ledger_synced_at,
