@@ -134,6 +134,18 @@ def parse_rating(html):
                 if rating is not None:
                     count = agg.get('reviewCount', agg.get('ratingCount'))
                     return rating, int(count) if str(count).isdigit() else None
+    # VRBO publishes it as page markup (itemprop="aggregateRating" holding <meta itemprop="ratingValue" content="9.0">, out of
+    # bestRating 10), and its "starRating" block beside it says "null"
+    m = re.search(r"""itemprop=["']aggregateRating["'][^>]*>(.*?)</div>""", html or '', flags=re.DOTALL | re.IGNORECASE)
+    if m:
+        def meta(name):
+            found = re.search(r"""itemprop=["']""" + name + r"""["'][^>]*content=["']([^"']*)["']""", m.group(1), flags=re.IGNORECASE)
+            return found.group(1) if found else None
+        value, best, count = _number(meta('ratingValue')), _number(meta('bestRating')), meta('reviewCount')
+        if value is not None and best and best > 0:
+            rating = _rating_from(value * 5 / best, ten_point=False)
+            if rating is not None:
+                return rating, int(count) if count and count.isdigit() else None
     rating = None
     for pattern in (r'"ratingValue"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)', r'"starRating"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)', r'"guestSatisfactionOverall"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)',
                     r'"averageRating"\s*:\s*"?([0-9]+(?:\.[0-9]+)?)'):
