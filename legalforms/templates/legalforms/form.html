@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% load lf_extras %}
+{% block title %}{{ template.name }}{% endblock %}
+{% block content %}
+<a href="{% if editing %}{% url 'legalforms:detail' editing.pk %}{% else %}{% url 'legalforms:list' %}?property={{ property.pk }}{% endif %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {% if editing %}The document{% else %}Documents{% endif %}</a>
+<h2 class="page-title mb-0">{{ template.name }}</h2>
+<p class="text-muted small mb-2">{{ property.name }}{% if unit %} — Unit {{ unit.label }}{% endif %}{% if template.statute %} · {{ template.statute }}{% endif %}{% if parent %} · goes with the {{ parent.template.name }} of {{ parent.subject }}{% endif %}</p>
+{% if template.reviewed_note %}<div class="alert alert-warning small py-2" style="max-width: 760px;"><strong>Have this checked before relying on it.</strong> {{ template.reviewed_note }}</div>{% endif %}
+{% if errors.general %}<div class="alert alert-danger small py-2" style="max-width: 760px;">{{ errors.general }}</div>{% endif %}
+
+<form method="post" class="card" style="border-radius: 12px; max-width: 760px;"><div class="card-body p-3">
+    {% csrf_token %}
+    <input type="hidden" name="property" value="{{ property.pk }}">
+    {% if unit %}<input type="hidden" name="unit" value="{{ unit.pk }}">{% endif %}
+    {% if parent %}<input type="hidden" name="parent" value="{{ parent.pk }}">{% endif %}
+    <p class="small text-muted">What the program already knows is filled in — check it. Everything else is typed here; nothing on this form comes from a record the system doesn't have.</p>
+    <div class="row g-3">
+    {% for f in fields %}
+        <div class="{% if f.type == 'textarea' %}col-12{% else %}col-md-6{% endif %}">
+            <label class="form-label small fw-semibold mb-1" for="f_{{ f.key }}">{{ f.label }}{% if f.required %} <span class="text-danger">*</span>{% endif %}</label>
+            {% with v=values|item:f.key %}
+            {% if f.type == 'textarea' %}<textarea class="form-control form-control-sm" rows="3" id="f_{{ f.key }}" name="f_{{ f.key }}">{{ v }}</textarea>
+            {% elif f.type == 'date' %}<input type="date" class="form-control form-control-sm" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}">
+            {% elif f.type == 'money' %}<div class="input-group input-group-sm"><span class="input-group-text">$</span><input type="text" inputmode="decimal" class="form-control" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}"></div>
+            {% elif f.type == 'percent' %}<div class="input-group input-group-sm"><input type="text" inputmode="decimal" class="form-control" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}"><span class="input-group-text">%</span></div>
+            {% elif f.type == 'integer' %}<input type="number" class="form-control form-control-sm" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}">
+            {% elif f.type == 'yesno' %}<select class="form-select form-select-sm" id="f_{{ f.key }}" name="f_{{ f.key }}"><option value="Yes" {% if v == 'Yes' %}selected{% endif %}>Yes</option><option value="No" {% if v != 'Yes' %}selected{% endif %}>No</option></select>
+            {% elif f.type == 'choice' %}<select class="form-select form-select-sm" id="f_{{ f.key }}" name="f_{{ f.key }}">{% for c in f.choices %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+            {% else %}<input type="text" class="form-control form-control-sm" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}">{% endif %}
+            {% endwith %}
+            {% if errors|item:f.key %}<div class="text-danger small">{{ errors|item:f.key }}</div>{% endif %}
+            {% if f.help %}<div class="text-muted" style="font-size: 0.72rem;">{{ f.help }}</div>{% endif %}
+        </div>
+    {% endfor %}
+    </div>
+    <div class="mt-3 d-flex gap-2"><button class="btn btn-primary btn-sm">{% if editing %}Save changes{% else %}Create draft{% endif %}</button></div>
+</div></form>
+{% endblock %}

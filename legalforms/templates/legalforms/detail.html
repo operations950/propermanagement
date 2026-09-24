@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}{{ doc.template.name }}{% endblock %}
+{% block content %}
+{% include 'legalforms/_paper_css.html' %}
+<a href="{% url 'legalforms:list' %}?property={{ doc.property.pk }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ doc.property.name }} documents</a>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title mb-0">{{ doc.template.name }} <span class="badge rounded-pill fs-6 {% if doc.status == 'final' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ doc.get_status_display }}</span></h2>
+        <div class="text-muted small">{{ doc.subject }} · {{ doc.property.name }}{% if doc.unit %} — Unit {{ doc.unit.label }}{% endif %} · made {{ doc.created_at|date:"M j, Y" }}{% if doc.created_by %} by {{ doc.created_by.get_full_name|default:doc.created_by.username }}{% endif %} · wording version {{ doc.template_version }}{% if doc.parent %} · goes with <a href="{% url 'legalforms:detail' doc.parent.pk %}">{{ doc.parent.template.name }}</a>{% endif %}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary btn-sm" target="_blank" href="{% url 'legalforms:print' doc.pk %}"><i data-lucide="printer" class="icon"></i> Print / save as PDF</a>
+        {% if doc.status == 'draft' %}
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'legalforms:edit' doc.pk %}"><i data-lucide="pencil" class="icon"></i> Edit</a>
+        <form method="post" action="{% url 'legalforms:act' doc.pk %}" onsubmit="return confirm('Make this final? It can no longer be changed — only copied.');">{% csrf_token %}<input type="hidden" name="action" value="finalize"><button class="btn btn-success btn-sm"><i data-lucide="lock" class="icon"></i> Make final</button></form>
+        <form method="post" action="{% url 'legalforms:act' doc.pk %}" onsubmit="return confirm('Delete this draft?');">{% csrf_token %}<input type="hidden" name="action" value="delete"><button class="btn btn-outline-danger btn-sm">Delete</button></form>
+        {% else %}
+        <form method="post" action="{% url 'legalforms:act' doc.pk %}">{% csrf_token %}<input type="hidden" name="action" value="revise"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="copy" class="icon"></i> Make a revised copy</button></form>
+        {% endif %}
+    </div>
+</div>
+
+{% if doc.status == 'draft' %}<div class="alert alert-secondary small py-2">A draft: read it through, fix anything, then make it final. Print only a final document.</div>{% endif %}
+
+<div class="row g-3">
+    <div class="col-lg-8"><div class="border rounded lf-paper" style="overflow-x: auto;">{{ html }}</div></div>
+    <div class="col-lg-4">
+        <div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+            <div class="small fw-semibold mb-1">Sending</div>
+            <form method="post" action="{% url 'legalforms:act' doc.pk %}" class="small">{% csrf_token %}<input type="hidden" name="action" value="mailing">
+                <label class="form-label mb-0">Date sent / mailed</label><input type="date" name="mailed_on" class="form-control form-control-sm mb-1" value="{{ doc.mailed_on|date:'Y-m-d' }}">
+                <label class="form-label mb-0">How</label><input type="text" name="mail_method" class="form-control form-control-sm mb-1" maxlength="60" placeholder="First class mail, certified, email…" value="{{ doc.mail_method }}">
+                <label class="form-label mb-0">Tracking number</label><input type="text" name="tracking" class="form-control form-control-sm mb-2" maxlength="80" value="{{ doc.tracking }}">
+                <button class="btn btn-outline-secondary btn-sm">Record</button>
+            </form>
+        </div></div>
+        {% if companions or children %}
+        <div class="card" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+            <div class="small fw-semibold mb-1">Goes with this</div>
+            {% for c in companions %}<a class="btn btn-outline-primary btn-sm mb-1 w-100 text-start" href="{% url 'legalforms:new' c.slug %}?parent={{ doc.pk }}"><i data-lucide="file-plus" class="icon"></i> {{ c.name }}</a>{% endfor %}
+            {% for ch in children %}<div class="small"><a href="{% url 'legalforms:detail' ch.pk %}">{{ ch.template.name }}</a> <span class="text-muted">— {{ ch.get_status_display }}, {{ ch.created_at|date:"M j" }}</span></div>{% endfor %}
+            {% if not doc.mailed_on and companions %}<div class="text-muted mt-1" style="font-size: 0.72rem;">Record the date it was mailed first — the affidavit starts from it, and swears to it.</div>{% endif %}
+        </div></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

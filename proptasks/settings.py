@@ -164,6 +164,7 @@ INSTALLED_APPS = [
     'onsite',
     'worksessions',
     'portfolio',
+    'legalforms',
 ]
 
 MIDDLEWARE = [

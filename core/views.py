@@ -1474,8 +1474,12 @@ def property_detail(request, pk):
     # a clear error naming which unit already has it.
     available_supply_items = SupplyItem.objects.filter(is_active=True).order_by('name')
 
+    from legalforms.models import DocumentTemplate
+    from legalforms.views import _allowed as _can_use_documents
     return render(request, 'core/property_detail.html', {
         'property': prop,
+        'can_use_documents': _can_use_documents(request.user),
+        'legal_templates': DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True) if prop.property_type == Property.Type.ASSOCIATION else [],
         'specs_summary': property_specs.summary(property_specs.missing_specs(prop)),
         'faqs': prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE).select_related('unit', 'created_by_key').order_by('reviewed', 'question'),
         'qb': _property_qb_context(prop) if (_is_admin(request.user) and qb_accounts.applies_to(prop)) else None,

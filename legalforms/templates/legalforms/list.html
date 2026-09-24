@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Documents{% endblock %}
+{% block content %}
+{% if property %}<a href="{% url 'property_detail' property.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ property.name }}</a>{% endif %}
+<h2 class="page-title mb-1">Legal documents{% if property %} <span class="text-muted fw-normal fs-6">· {{ property.name }}</span>{% endif %}</h2>
+<p class="text-muted small mb-3">Standard forms with legal or statutory wording, filled from the system's records plus what you type. Every document is kept exactly as it was made.</p>
+
+<div class="row g-2 mb-3">
+    {% for t in templates %}
+    <div class="col-md-4"><div class="card h-100" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+        <div class="small text-uppercase text-muted" style="letter-spacing: 0.04em;">{{ t.category }}</div>
+        <div class="fw-semibold">{{ t.name }}</div>
+        <div class="small text-muted mb-2">{{ t.description }}</div>
+        <a class="btn btn-outline-primary btn-sm" href="{% url 'legalforms:new' t.slug %}{% if property %}?property={{ property.pk }}{% endif %}"><i data-lucide="file-plus" class="icon"></i> New</a>
+    </div></div></div>
+    {% endfor %}
+</div>
+
+<div class="card" style="border-radius: 12px;"><div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+    <thead><tr class="small text-muted text-uppercase"><th>Made</th><th>Document</th><th>About</th><th>Association</th><th>Status</th><th>By</th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+    <tr>
+        <td class="text-nowrap small">{{ d.created_at|date:"M j, Y" }}</td>
+        <td><a href="{% url 'legalforms:detail' d.pk %}">{{ d.template.name }}</a></td>
+        <td class="small">{{ d.subject }}</td>
+        <td class="small">{{ d.property.name }}{% if d.unit %} — {{ d.unit.label }}{% endif %}</td>
+        <td><span class="badge rounded-pill {% if d.status == 'final' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ d.get_status_display }}</span>{% if d.mailed_on %} <span class="small text-muted">mailed {{ d.mailed_on|date:"M j" }}</span>{% endif %}</td>
+        <td class="small">{{ d.created_by.get_full_name|default:d.created_by.username }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="6" class="text-muted small p-3">Nothing made yet.</td></tr>{% endfor %}
+    </tbody>
+</table></div></div>
+{% endblock %}

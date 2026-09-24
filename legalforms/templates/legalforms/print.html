@@ -1,0 +1,15 @@
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>{{ doc.template.name }}{% if doc.subject %} — {{ doc.subject }}{% endif %}</title>
+{% include 'legalforms/_paper_css.html' %}
+<style>
+    body { margin: 0; background: #e9ecef; }
+    .lf-bar { position: sticky; top: 0; background: #212529; color: #fff; padding: 8px 16px; display: flex; gap: 12px; align-items: center; font-family: Arial, sans-serif; font-size: 14px; }
+    .lf-bar button { padding: 4px 12px; }
+    .lf-sheet { max-width: 8.5in; margin: 16px auto; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
+    @page { size: letter; margin: 0; }
+    @media print { body { background: #fff; } .lf-bar { display: none; } .lf-sheet { margin: 0; box-shadow: none; max-width: none; } }
+</style></head>
+<body>
+<div class="lf-bar"><button onclick="window.print()">Print / save as PDF</button><span>{{ doc.template.name }}{% if doc.status == 'draft' %} — DRAFT, not final{% endif %}</span></div>
+<div class="lf-sheet lf-paper">{{ html }}</div>
+</body></html>

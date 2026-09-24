@@ -20,6 +20,7 @@ urlpatterns = [
     path('onsite/', include('onsite.urls')),
     path('recurring/', include('worksessions.urls')),
     path('portfolio/', include('portfolio.urls')),
+    path('documents/', include('legalforms.urls')),
     path('', include('core.urls')),
     path('', include('intake.urls')),
     path('', include('tickets.urls')),

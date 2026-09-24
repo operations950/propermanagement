@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}{{ template.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'legalforms:list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Documents</a>
+<h2 class="page-title mb-1">{{ template.name }}</h2>
+<p class="text-muted small mb-3">{{ template.description }}</p>
+<form method="get" class="card" style="border-radius: 12px; max-width: 520px;"><div class="card-body p-3">
+    <label class="form-label small fw-semibold mb-1" for="lf-property">Association</label>
+    <select name="property" id="lf-property" class="form-select form-select-sm mb-2" required>
+        <option value="">Choose…</option>{% for p in properties %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+    </select>
+    <div id="lf-unit-wrap" hidden>
+        <label class="form-label small fw-semibold mb-1" for="lf-unit">Unit</label>
+        <select name="unit" id="lf-unit" class="form-select form-select-sm mb-2"><option value="">Not for one unit</option></select>
+    </div>
+    <button class="btn btn-primary btn-sm">Continue</button>
+</div></form>
+{{ units_json|json_script:"lf-units" }}
+<script>
+(function () {
+    var units = JSON.parse(document.getElementById('lf-units').textContent);
+    var prop = document.getElementById('lf-property'), unit = document.getElementById('lf-unit'), wrap = document.getElementById('lf-unit-wrap');
+    prop.addEventListener('change', function () {
+        var list = units[prop.value] || [];
+        unit.innerHTML = '<option value="">Not for one unit</option>';
+        list.forEach(function (u) { var o = document.createElement('option'); o.value = u.id; o.textContent = 'Unit ' + u.label; unit.appendChild(o); });
+        wrap.hidden = list.length === 0;
+    });
+})();
+</script>
+{% endblock %}
