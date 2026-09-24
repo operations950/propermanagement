@@ -78,6 +78,12 @@ def close_overview(request):
                 settings_row.books_start = start
                 settings_row.save(update_fields=['books_start'])
                 messages.success(request, f'Books start in {start:%B %Y}. Sync to pull in transactions from then.')
+        elif action == 'reopen_everything':
+            if (request.POST.get('confirm') or '').strip().upper() != 'REOPEN ALL':
+                messages.error(request, 'Type REOPEN ALL to confirm — nothing was changed.')
+            else:
+                months, props = ledger.reopen_everything(request.user)
+                messages.success(request, f'Reopened {months} closed month{"" if months == 1 else "s"} across {props} propert{"y" if props == 1 else "ies"}, and cleared every accepted reconciling item and hand match. The old closed figures are kept in the reopened-closes archive. Redo the months from the oldest.')
         elif action == 'close_ready':
             rows = [r for g in ledger.overview(month) for r in g['rows']]
             closed, skipped = _close_ready_rows(rows, month, request.user)
@@ -202,6 +208,9 @@ def close_property(request, month, pk, unit_pk=None):
                 prior = request.POST.get('prior') == '1'
                 recon.accept_item(book, month, request.user, request.POST.get('kind', ''), request.POST.get('key', ''), request.POST.get('note', ''), prior_period=prior)
                 messages.success(request, 'Marked as from before the books.' if prior else 'Accepted as a reconciling item.')
+            elif action == 'reopen':
+                ledger.reopen_month(prop, month, request.user)
+                messages.success(request, f'{month:%B %Y} is reopened for {prop.name}. Its old closed figures are kept in the reopened-closes archive.')
             elif action == 'match_recon':
                 recon.manual_match(book, month, request.user, request.POST.getlist('lines'), request.POST.getlist('events'), request.POST.get('note', ''))
                 messages.success(request, 'Matched — it is in the matches below as a match by hand.')

@@ -1111,6 +1111,29 @@ class MonthClose(models.Model):
         return f'{self.unit or self.property} {self.month:%B %Y} closed'
 
 
+class ReopenedClose(models.Model):
+    """A closed month that was reopened, kept as it was closed: the frozen figures and reconciliation are copied here
+    before the close is removed, so reopening a month (to redo it) never loses what was once signed off."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='reopened_closes')
+    unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    level = models.CharField(max_length=10, blank=True)
+    month = models.DateField()
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    closed_at = models.DateTimeField(null=True, blank=True)
+    totals = models.JSONField(default=dict)
+    recon = models.JSONField(default=dict, blank=True)
+    warnings_acknowledged = models.JSONField(default=list, blank=True)
+    note = models.CharField(max_length=500, blank=True)
+    reopened_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    reopened_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-reopened_at']
+
+    def __str__(self):
+        return f'{self.unit or self.property} {self.month:%B %Y} reopened'
+
+
 class ReconAcceptance(models.Model):
     """A person accepted one unmatched item in a month's income reconciliation as a
     reconciling item, with the reason (a platform payout still on its way to the

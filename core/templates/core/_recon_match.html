@@ -16,7 +16,7 @@ Works for a live match (p.event_rows / p.line_rows) and a closed month's frozen 
     </div>
     <div class="rc-sides">
         <div class="rc-left"><table class="rc-t">
-            {% for r in p.event_rows|default:p.events %}<tr><td>{{ r.guest }}</td><td class="rc-d">{{ r.check_in|mdate }} – {{ r.check_out|mdate }}</td><td class="rc-d">paid {{ r.date|mdate }}</td><td class="amt{% if r.amount|stringformat:"s"|first == "-" %} neg{% endif %}">${{ r.amount|floatformat:"2g" }}</td></tr>{% endfor %}
+            {% for r in p.event_rows|default:p.events %}<tr><td>{{ r.guest }}</td><td class="rc-d">{{ r.kind_label }}</td><td class="rc-d">{{ r.check_in|mdate }} – {{ r.check_out|mdate }}</td><td class="rc-d">paid {{ r.date|mdate }}</td><td class="amt{% if r.amount|stringformat:"s"|first == "-" %} neg{% endif %}">${{ r.amount|floatformat:"2g" }}</td></tr>{% endfor %}
         </table></div>
         <div class="rc-right"><table class="rc-t">
             {% for r in p.line_rows|default:p.lines %}<tr><td class="rc-d">{{ r.date|mdate }}</td><td>{{ r.desc }}</td><td class="amt{% if r.amount|stringformat:"s"|first == "-" %} neg{% endif %}">${{ r.amount|floatformat:"2g" }}</td></tr>{% endfor %}

@@ -1098,3 +1098,52 @@ def consolidate(rows):
         'payouts_matched': sum((r['recon']['payouts_matched'] for r in rows if r['recon']), ZERO),
         'deposits_total': sum((r['recon']['deposits_total'] for r in rows if r['recon']), ZERO),
     }
+
+
+# --- reopening ---------------------------------------------------------------------------------------------
+
+@transaction.atomic
+def reopen_month(prop, month, user, clear_recon=True):
+    """Undo a close so the month can be done again: the frozen figures are copied to ReopenedClose (nothing signed off is
+    ever lost), the close is removed, the month's transactions are unlocked (QuickBooks changes flow in again) and its
+    drift log is cleared. clear_recon also removes the month's accepted reconciling items and matches made by hand, so
+    the income reconciliation starts over. A month cannot be reopened while a LATER month is still closed (that
+    month's figures were built on this one): reopen the later one first."""
+    from .models import ReconAcceptance, ReconMatch, ReopenedClose
+    month = month_of(month)
+    closes = list(MonthClose.objects.filter(property=prop, month=month))
+    if not closes:
+        raise CloseError(f'{month:%B %Y} is not closed.')
+    later = MonthClose.objects.filter(property=prop, month__gt=month).order_by('month').first()
+    if later is not None:
+        raise CloseError(f'{later.month:%B %Y} is closed after {month:%B %Y} — reopen that month first.')
+    for c in closes:
+        ReopenedClose.objects.create(
+            property=prop, unit=c.unit, level=c.level, month=month, closed_by=c.closed_by, closed_at=c.closed_at, totals=c.totals,
+            recon=c.recon, warnings_acknowledged=c.warnings_acknowledged, note=c.note, reopened_by=user,
+        )
+    MonthClose.objects.filter(pk__in=[c.pk for c in closes]).delete()
+    LedgerLine.objects.filter(property=prop, month=month).update(locked_at=None)
+    ClosedMonthChange.objects.filter(property=prop, month=month).delete()
+    if clear_recon:
+        ReconAcceptance.objects.filter(property=prop, month=month).delete()
+        ReconMatch.objects.filter(property=prop, month=month).delete()
+    return len(closes)
+
+
+@transaction.atomic
+def reopen_everything(user):
+    """Start over: reopen every closed month of every property (newest first, so each is allowed) and clear every
+    accepted reconciling item and hand match, so the whole income reconciliation is done again in the new format.
+    Returns (months reopened, properties)."""
+    from .models import ReconAcceptance, ReconMatch
+    months = props = 0
+    for prop_id in sorted(set(MonthClose.objects.values_list('property_id', flat=True))):
+        prop = Property.objects.get(pk=prop_id)
+        for month in sorted(set(MonthClose.objects.filter(property=prop).values_list('month', flat=True)), reverse=True):
+            reopen_month(prop, month, user)
+            months += 1
+        props += 1
+    ReconAcceptance.objects.all().delete()
+    ReconMatch.objects.all().delete()
+    return months, props

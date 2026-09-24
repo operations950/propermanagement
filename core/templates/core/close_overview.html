@@ -83,4 +83,12 @@
     <button class="btn btn-outline-secondary btn-sm py-0">Save</button>
     <span class="text-muted">Earlier transactions are never pulled in. {% if not books_start_saved %}<strong>Not set yet</strong> — for now it is {{ books_start|date:"F Y" }} (last month).{% else %}Currently {{ books_start|date:"F Y" }}.{% endif %}</span>
 </form>
+<div class="card mt-3" style="border-radius: 12px; border-color: var(--status-warning);"><div class="card-body py-2 px-3">
+    <div class="small fw-semibold mb-1"><i data-lucide="rotate-ccw" class="icon"></i> Start over</div>
+    <div class="small text-muted mb-2">Reopen <strong>every</strong> closed month of every property and clear every accepted reconciling item and hand match, so the whole income reconciliation is redone in the new format. Each month's old closed figures are copied to an archive first. Transactions unlock; do the months again from the oldest.</div>
+    <form method="post" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="reopen_everything"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
+        <input type="text" name="confirm" class="form-control form-control-sm" style="max-width: 200px;" placeholder="Type REOPEN ALL" autocomplete="off">
+        <button class="btn btn-outline-danger btn-sm">Reopen everything</button>
+    </form>
+</div></div>
 {% endblock %}

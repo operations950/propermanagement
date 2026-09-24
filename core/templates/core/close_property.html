@@ -102,6 +102,7 @@
             {% if close %}
             <div class="small fw-semibold mb-1">Closed</div>
             <div class="small text-muted">{{ close.totals.lines }} transaction{{ close.totals.lines|pluralize }} locked.{% if close.warnings_acknowledged %} Warnings acknowledged: {{ close.warnings_acknowledged|join:", " }}.{% endif %}</div>
+            <form method="post" class="mt-2" onsubmit="return confirm('Reopen {{ month|date:"F Y" }} for {{ property.name }}? Its transactions unlock and its accepted reconciling items are cleared; the old closed figures are kept in an archive.');">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="lock-open" class="icon"></i> Reopen this month</button></form>
             {% else %}
             <div class="small fw-semibold mb-1">Before you can close</div>
             <form method="post">
@@ -156,12 +157,12 @@
                     <div class="rc-left">
                         <div class="rc-title">Platform payouts</div>
                         <table class="rc-t">
-                            <thead><tr><th></th><th>Name</th><th>Check-in</th><th>Check-out</th><th>Paid</th><th class="amt">Amount</th></tr></thead>
+                            <thead><tr><th></th><th>Name</th><th>What</th><th>Check-in</th><th>Check-out</th><th>Paid</th><th class="amt">Amount</th></tr></thead>
                             <tbody>
                             {% for r in recon.open_payouts %}{% if not r.accepted %}
                                 <tr><td><input type="checkbox" class="form-check-input rc-pick" data-side="p" data-amount="{{ r.amount }}" name="events" value="{{ r.key }}" aria-label="Select this payout"></td>
-                                    <td>{{ r.guest }}{% if r.carried %} <span class="rc-prior">carried</span>{% endif %}</td><td class="rc-d">{{ r.check_in|mdate }}</td><td class="rc-d">{{ r.check_out|mdate }}</td><td class="rc-d">{{ r.date|mdate }}</td><td class="amt">${{ r.amount|floatformat:"2g" }}</td></tr>
-                            {% endif %}{% empty %}<tr><td colspan="6" class="text-muted">Nothing open.</td></tr>{% endfor %}
+                                    <td>{{ r.guest }}{% if r.carried %} <span class="rc-prior">carried</span>{% endif %}</td><td class="rc-d">{{ r.kind_label }}</td><td class="rc-d">{{ r.check_in|mdate }}</td><td class="rc-d">{{ r.check_out|mdate }}</td><td class="rc-d">{{ r.date|mdate }}</td><td class="amt">${{ r.amount|floatformat:"2g" }}</td></tr>
+                            {% endif %}{% empty %}<tr><td colspan="7" class="text-muted">Nothing open.</td></tr>{% endfor %}
                             </tbody>
                         </table>
                         <div class="rc-sel">Selected total: <b id="rc-sum-p">$0.00</b></div>

@@ -87,10 +87,10 @@ def _source_label(source):
 class _Event:
     """One dated movement of a reservation's platform money: what was paid out on one day. A reservation has
     one (paid in one go), or several (a long stay's installments, a resolution paid later)."""
-    __slots__ = ('booking', 'date', 'amount')
+    __slots__ = ('booking', 'date', 'amount', 'kind')
 
-    def __init__(self, booking, date, amount):
-        self.booking, self.date, self.amount = booking, date, amount
+    def __init__(self, booking, date, amount, kind='reservation'):
+        self.booking, self.date, self.amount, self.kind = booking, date, amount, kind
 
     @property
     def pk(self):
@@ -98,17 +98,44 @@ class _Event:
 
     @property
     def key(self):
-        return (self.booking.pk, self.date)
+        return (self.booking.pk, self.date, self.kind)
+
+    @property
+    def label(self):
+        return KIND_LABELS.get(self.kind, self.kind)
+
+    @property
+    def id(self):
+        """The event as text, for forms and stored matches: booking id | day | kind."""
+        return f'{self.booking.pk}|{self.date.isoformat()}|{self.kind}'
+
+
+KIND_LABELS = {'reservation': 'Payout', 'pass_through': 'Pass-through tax', 'other': 'Resolution / adjustment'}
 
 
 def _events(scope):
-    return [_Event(b, d, a) for b in scope for d, a in sorted(b.cash_events().items())]
+    """Every line item of platform money, each its own event: the reservation's payout (one per installment of a long
+    stay), the pass-through occupancy tax, a resolution or adjustment - each is a real financial transaction on the
+    platform's report and has to be matched to the bank. From the dated payout lines when the transactions file gave
+    them; otherwise one of each kind on the payout date."""
+    out = []
+    for b in scope:
+        lines = list(b.payout_lines.all())
+        if lines:
+            for line in sorted(lines, key=lambda l: (l.date, l.kind)):
+                if line.amount != 0:
+                    out.append(_Event(b, line.date, line.amount, line.kind))
+        elif b.payout_date and b.payout_amount is not None:
+            for kind, amount in (('reservation', b.payout_amount), ('pass_through', b.pass_through_amount), ('other', b.other_payout_amount)):
+                if amount:
+                    out.append(_Event(b, b.payout_date, amount, kind))
+    return out
 
 
 def _is_cleared(event, cleared):
-    """`cleared` holds event keys (booking id, day) and, for months closed before payouts were tracked by
-    day, whole booking ids."""
-    return event.pk in cleared or event.key in cleared
+    """`cleared` holds event keys (booking id, day, kind) and, for months closed before each line item was its own
+    event, (booking id, day) or whole booking ids."""
+    return event.pk in cleared or event.key in cleared or (event.pk, event.date) in cleared
 
 
 def _groups(events):
@@ -145,7 +172,7 @@ def _pieces(hits, dep, pool, used):
     nearest payout of each named reservation (the deposit is then shown as a difference). Returns (events, exact)."""
     per = []
     for b in hits:
-        mine = sorted((ev for ev in pool if ev.pk == b.pk and ev.key not in used), key=lambda ev: (abs((dep.txn_date - ev.date).days), ev.date))
+        mine = sorted((ev for ev in pool if ev.pk == b.pk and ev.key not in used), key=lambda ev: (abs((dep.txn_date - ev.date).days), ev.date, ev.kind))
         if mine:
             per.append(mine[:MAX_PIECES])
     if not per:
@@ -174,7 +201,7 @@ def _local_day(dt):
 def _event_row(ev, month):
     b = ev.booking
     return {
-        'key': f'{ev.pk}|{ev.date.isoformat()}', 'guest': b.guest_name or 'Guest', 'code': b.external_uid, 'source': _source_label(b.source),
+        'key': ev.id, 'guest': b.guest_name or 'Guest', 'code': b.external_uid, 'source': _source_label(b.source), 'kind': ev.kind, 'kind_label': ev.label,
         'check_in': _local_day(b.check_in), 'check_out': _local_day(b.check_out), 'date': ev.date, 'amount': ev.amount, 'carried': ev.date < month,
     }
 
@@ -189,7 +216,7 @@ def _make_match(deps, evs, month, kind, note='', manual=False, by_code=False):
     the reservation) or 'user' (matched by hand). Carries the old one-deposit-per-pair keys (`line`, `groups`, ...)
     the close checks and the frozen snapshot still read."""
     deps = sorted(deps, key=lambda l: (l.txn_date, l.pk))
-    evs = sorted(evs, key=lambda e: (e.date, e.booking.pk))
+    evs = sorted(evs, key=lambda e: (e.date, e.booking.pk, e.kind))
     amount = sum((l.flow for l in deps), ZERO)
     expected = sum((e.amount for e in evs), ZERO).quantize(Decimal('0.01'))
     groups = _groups(evs)
@@ -200,7 +227,7 @@ def _make_match(deps, evs, month, kind, note='', manual=False, by_code=False):
         'difference': (amount - expected).quantize(Decimal('0.01')), 'manual': manual, 'by_code': by_code, 'note': note,
         'prior': any(e.date < month for e in evs), 'carried': sum((g['total'] for g in groups if g['carried']), ZERO),
         'line_rows': [_line_row(l) for l in deps], 'event_rows': [_event_row(e, month) for e in evs],
-        'dep_pks': [l.pk for l in deps], 'event_keys': [f'{e.pk}|{e.date.isoformat()}' for e in evs],
+        'dep_pks': [l.pk for l in deps], 'event_keys': [e.id for e in evs],
     }
 
 
@@ -231,8 +258,8 @@ def _auto_match(deps, evs, month):
 
     # one to one — nearest dates first
     candidates = sorted(
-        ((_distance(d, e), d.txn_date, d.pk, e.date, e.booking.pk, d, e) for d in deps for e in evs if d.flow == e.amount and _compatible(d, e, month)),
-        key=lambda t: t[:5],
+        ((_distance(d, e), d.txn_date, d.pk, e.date, e.booking.pk, e.kind, d, e) for d in deps for e in evs if d.flow == e.amount and _compatible(d, e, month)),
+        key=lambda t: t[:6],
     )
     for *_key, d, e in candidates:
         if d in deps and e in evs:
@@ -243,7 +270,7 @@ def _auto_match(deps, evs, month):
         for d in sorted(deps, key=lambda l: (l.txn_date, l.pk)):
             if d not in deps:
                 continue
-            near = sorted((e for e in evs if _compatible(d, e, month)), key=lambda e: (_distance(d, e), e.date, e.booking.pk))[:12]
+            near = sorted((e for e in evs if _compatible(d, e, month)), key=lambda e: (_distance(d, e), e.date, e.booking.pk, e.kind))[:12]
             for combo in combinations(near, size):
                 if sum((e.amount for e in combo), ZERO) == d.flow:
                     take([d], combo)
@@ -251,7 +278,7 @@ def _auto_match(deps, evs, month):
 
     # one payout paid as several deposits
     for size in range(2, MAX_SIDE + 1):
-        for e in sorted(evs, key=lambda x: (x.date, x.booking.pk)):
+        for e in sorted(evs, key=lambda x: (x.date, x.booking.pk, x.kind)):
             if e not in evs:
                 continue
             near = sorted((d for d in deps if _compatible(d, e, month)), key=lambda d: (_distance(d, e), d.txn_date, d.pk))[:12]
@@ -260,20 +287,27 @@ def _auto_match(deps, evs, month):
                     take(combo, [e])
                     break
 
-    # several deposits against several payouts
-    dep_pool = sorted(deps, key=lambda l: (l.txn_date, l.pk))[:14]
-    ev_pool = sorted(evs, key=lambda x: (x.date, x.booking.pk))[:14]
-    ev_sums = {}
-    for size in range(2, 4):
-        for combo in combinations(ev_pool, size):
-            ev_sums.setdefault(sum((e.amount for e in combo), ZERO), []).append(combo)
+    # several deposits against several payouts - looked for around each remaining deposit in turn, among the lines
+    # dated close enough to it
     options = []
-    for size in range(2, 4):
-        for dcombo in combinations(dep_pool, size):
-            for ecombo in ev_sums.get(sum((d.flow for d in dcombo), ZERO), []):
-                if all(any(_compatible(d, e, month) for d in dcombo) for e in ecombo) and all(any(_compatible(d, e, month) for e in ecombo) for d in dcombo):
-                    spread = max(d.txn_date for d in dcombo) - min(d.txn_date for d in dcombo) + (max(e.date for e in ecombo) - min(e.date for e in ecombo))
-                    options.append((len(dcombo) + len(ecombo), spread, dcombo, ecombo))
+    for anchor in sorted(deps, key=lambda l: (l.txn_date, l.pk)):
+        others = sorted((d for d in deps if d is not anchor and abs((d.txn_date - anchor.txn_date).days) <= LATE.days),
+                        key=lambda d: (abs((d.txn_date - anchor.txn_date).days), d.pk))[:6]
+        cand_deps = [anchor] + others
+        cand_evs = sorted((e for e in evs if any(_compatible(d, e, month) for d in cand_deps)), key=lambda e: (_distance(anchor, e), e.date, e.booking.pk, e.kind))[:12]
+        if len(cand_evs) < 2:
+            continue
+        ev_sums = {}
+        for size in range(2, 4):
+            for combo in combinations(cand_evs, size):
+                ev_sums.setdefault(sum((e.amount for e in combo), ZERO), []).append(combo)
+        for size in range(2, 4):
+            for rest in combinations(others, size - 1):
+                dcombo = (anchor,) + rest
+                for ecombo in ev_sums.get(sum((d.flow for d in dcombo), ZERO), []):
+                    if all(any(_compatible(d, e, month) for d in dcombo) for e in ecombo) and all(any(_compatible(d, e, month) for e in ecombo) for d in dcombo):
+                        spread = max(d.txn_date for d in dcombo) - min(d.txn_date for d in dcombo) + (max(e.date for e in ecombo) - min(e.date for e in ecombo))
+                        options.append((len(dcombo) + len(ecombo), spread, dcombo, ecombo))
     for _n, _spread, dcombo, ecombo in sorted(options, key=lambda o: (o[0], o[1])):
         if all(d in deps for d in dcombo) and all(e in evs for e in ecombo):
             take(dcombo, ecombo)
@@ -293,13 +327,24 @@ def _match_month(book, month, cleared, scope, events):
     blocked_lines, blocked_events = set(), set()
     manual_pairs, code_pairs, system_pairs = [], [], []
 
+    by_day = {}
+    for ev in events:
+        by_day.setdefault((ev.pk, ev.date), []).append(ev.key)
+
     def keys_of(raw):
+        """Stored payouts as event keys. One stored without its kind (made when a day's money was one payout) is every
+        line item of that reservation on that day."""
         out = []
-        for pk, day in raw:
+        for item in raw:
             try:
-                out.append((int(pk), date.fromisoformat(day)))
-            except (TypeError, ValueError):
+                pk, day = int(item[0]), date.fromisoformat(item[1])
+            except (TypeError, ValueError, IndexError):
                 out.append(None)
+                continue
+            if len(item) >= 3:
+                out.append((pk, day, item[2]))
+            else:
+                out.extend(by_day.get((pk, day), [None]))
         return out
 
     stored = list(ReconMatch.objects.filter(month=month, **book.scope()).order_by('pk'))
@@ -369,7 +414,7 @@ def _cleared_by_closes(prop, month):
     for close in closes:
         data = close.recon or {}
         cleared |= set(data.get('cleared_booking_ids', []))
-        cleared |= {(pk, date.fromisoformat(day)) for pk, day in data.get('cleared_events', [])}
+        cleared |= {(item[0], date.fromisoformat(item[1]), *item[2:]) for item in data.get('cleared_events', [])}
     return cleared
 
 
@@ -435,18 +480,18 @@ def _items(book, month, result):
             'reason_hint': 'error', 'accepted': a if a and a.amount == dep.flow else None,
         })
     for ev in result['open_events']:
-        key = f'event:{ev.pk}|{ev.date.isoformat()}'
+        key = f'event:{ev.id}'
         a = accepted.get(('payout', key))
         transit = ev.date > month_end - TRANSIT
         carried = ev.date < month
         b = ev.booking
-        label = f'{_source_label(b.source)} payout dated {ev.date:%b} {ev.date.day}'
+        label = f'{_source_label(b.source)} {"payout" if ev.kind == "reservation" else ev.label.lower()} dated {ev.date:%b} {ev.date.day}'
         items.append({
             'kind': 'payout', 'key': key, 'amount': ev.amount, 'date': ev.date, 'in_transit': transit, 'carried': carried,
             'text': f'{"Carried over from " + format(ev.date, "%B") + ": " if carried else ""}{label}: ${ev.amount:,.2f} for 1 reservation'
                     f'{" (" + b.guest_name + ")" if b.guest_name else ""} has not reached the trust account'
                     f'{" — it was still on its way at the end of that month and has not arrived yet" if carried else ""}',
-            'reason_hint': 'timing' if (transit or carried) else 'error', 'event_key': f'{ev.pk}|{ev.date.isoformat()}',
+            'reason_hint': 'timing' if (transit or carried) else 'error', 'event_key': ev.id,
             'accepted': a if a and a.amount == ev.amount else None,
         })
     return items
@@ -505,7 +550,7 @@ def reconcile(book, month):
     return {
         'closed': False, 'month': month, 'pairs': result['matches'], 'matches': result['matches'], 'items': items, 'cleared_out': result['cleared_out'],
         'open_lines': [{**_line_row(l), 'key': f'line:{l.pk}', 'accepted': acc.get(('deposit', f'line:{l.pk}'))} for l in result['open_deposits']],
-        'open_payouts': [{**_event_row(ev, month), 'accepted': acc.get(('payout', f'event:{ev.pk}|{ev.date.isoformat()}'))} for ev in result['open_events']],
+        'open_payouts': [{**_event_row(ev, month), 'accepted': acc.get(('payout', f'event:{ev.id}'))} for ev in result['open_events']],
         'mismatch_keys': mismatch_keys,
         'payouts_matched': matched_payouts, 'deposits_total': sum((d.flow for d in deposits), ZERO),
         'carried_payouts': sum((p['carried'] for p in result['matches']), ZERO),
@@ -603,10 +648,11 @@ def unaccept_item(book, month, kind, key):
 # --- matching by hand -----------------------------------------------------------------------------
 
 def _event_key(raw):
-    pk, _sep, day = str(raw).partition('|')
+    """'booking id|day|kind' -> (id, day, kind)."""
+    parts = str(raw).split('|')
     try:
-        return int(pk), date.fromisoformat(day)
-    except ValueError:
+        return int(parts[0]), date.fromisoformat(parts[1]), (parts[2] if len(parts) > 2 else '')
+    except (ValueError, IndexError):
         raise ledger.CloseError('One of the chosen payouts could not be read — reload the page and choose again.')
 
 
@@ -627,15 +673,15 @@ def manual_match(book, month, user, line_ids, event_keys, note=''):
     keys = sorted({_event_key(k) for k in event_keys})
     if not line_ids or not keys:
         raise ledger.CloseError('Choose at least one bank line and at least one platform payout to match.')
-    if any(pk not in open_lines for pk in line_ids) or any(f'{pk}|{day.isoformat()}' not in open_payouts for pk, day in keys):
+    if any(pk not in open_lines for pk in line_ids) or any(f'{pk}|{day.isoformat()}|{kind}' not in open_payouts for pk, day, kind in keys):
         raise ledger.CloseError('One of those is no longer open — the page has been refreshed; choose again.')
     bank = sum((open_lines[pk]['amount'] for pk in line_ids), ZERO)
-    platform = sum((open_payouts[f'{pk}|{day.isoformat()}']['amount'] for pk, day in keys), ZERO)
+    platform = sum((open_payouts[f'{pk}|{day.isoformat()}|{kind}']['amount'] for pk, day, kind in keys), ZERO)
     note = (note or '').strip()
     if bank != platform and not note:
         raise ledger.CloseError(f'The bank lines (${bank:,.2f}) and the payouts (${platform:,.2f}) differ by ${abs(bank - platform):,.2f} — say why in the note to match them anyway.')
     return ReconMatch.objects.create(
-        kind=ReconMatch.Kind.USER, month=month, lines=line_ids, events=[[pk, day.isoformat()] for pk, day in keys],
+        kind=ReconMatch.Kind.USER, month=month, lines=line_ids, events=[[pk, day.isoformat(), kind] for pk, day, kind in keys],
         note=note[:300], created_by=user, **book.scope(),
     )
 
@@ -656,7 +702,7 @@ def unmatch(book, month, user, line_ids, event_keys, stored_pk=None):
     if not line_ids:
         raise ledger.CloseError('Nothing to unmatch.')
     return ReconMatch.objects.create(
-        kind=ReconMatch.Kind.HOLD, month=month, lines=line_ids, events=[[pk, day.isoformat()] for pk, day in keys], created_by=user, **book.scope(),
+        kind=ReconMatch.Kind.HOLD, month=month, lines=line_ids, events=[[pk, day.isoformat(), kind] for pk, day, kind in keys], created_by=user, **book.scope(),
     )
 
 
@@ -711,7 +757,7 @@ def snapshot(rec):
         'matches': [{
             'kind': p['kind'], 'amount': money(p['amount']), 'expected': money(p['expected']), 'difference': money(p['difference']), 'note': p.get('note', ''), 'prior': bool(p['prior']),
             'lines': [{'date': r['date'].isoformat(), 'desc': r['desc'], 'amount': money(r['amount'])} for r in p['line_rows']],
-            'events': [{'guest': r['guest'], 'code': r['code'], 'source': r['source'], 'check_in': r['check_in'].isoformat(), 'check_out': r['check_out'].isoformat(),
+            'events': [{'guest': r['guest'], 'code': r['code'], 'source': r['source'], 'kind': r['kind'], 'kind_label': r['kind_label'], 'check_in': r['check_in'].isoformat(), 'check_out': r['check_out'].isoformat(),
                         'date': r['date'].isoformat(), 'amount': money(r['amount']), 'carried': bool(r['carried'])} for r in p['event_rows']],
         } for p in rec['matches']],
         'pairs': [{
@@ -732,7 +778,7 @@ def snapshot(rec):
         # what has cleared, so a later month never counts it again: whole reservations (months closed before payouts
         # were tracked by day) and dated payouts
         'cleared_booking_ids': sorted(c for c in rec['cleared_out'] if isinstance(c, int)),
-        'cleared_events': sorted([pk, day.isoformat()] for pk, day in (c for c in rec['cleared_out'] if isinstance(c, tuple))),
+        'cleared_events': sorted([c[0], c[1].isoformat(), *c[2:]] for c in rec['cleared_out'] if isinstance(c, tuple)),
     }
 
 
