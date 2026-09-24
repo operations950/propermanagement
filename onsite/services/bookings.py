@@ -9,7 +9,7 @@ been seeded yet (or was deactivated), Booking rows still import cleanly;
 only visit creation is skipped, with a clear message back to the caller
 rather than a crash — the same "degrade, don't break" house style used for
 every other integration in this app."""
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -455,6 +455,11 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
             # from before this field existed picks one up on its very next
             # ordinary re-upload, with no separate backfill needed.
             or (row.listing_name and existing.listing_name != row.listing_name)
+            # A calendar feed is for ONE listing, so it knows the unit a reservation belongs to. A stay that was
+            # filed earlier from a report with no unit (or a listing name not pinned to one) gets it from the
+            # calendar - without this it stays "800 Tropic" forever, invisible to that unit's turnovers and to
+            # its same-day check-in flag (both look only at the same unit).
+            or (default_unit is not None and existing.unit_id is None)
         ):
             changed_rows.append(row)
         elif (
@@ -611,6 +616,8 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
         if row.listing_name:
             booking.listing_name = row.listing_name
             booking.unit = listing_unit_map.get(row.listing_name)
+        if booking.unit_id is None and default_unit is not None:
+            booking.unit = default_unit       # the calendar's own unit, for a stay that was filed without one
         booking.last_seen_at = timezone.now()
         booking.save(update_fields=['property', 'status', 'check_in', 'check_out', 'listing_name', 'unit', 'last_seen_at'])
         visit = booking.visits.exclude(status__in=['submitted', 'verified', 'cancelled']).first()
@@ -704,3 +711,35 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
     _refresh_next_bookings_for_property(property)
 
     return len(diff['new']), len(diff['changed']), len(diff['reactivated']), len(diff['cancelled']), visit_note
+
+
+def next_arrival_diagnosis(visit):
+    """Why a cleaning that SHOULD be a same-day check-in isn't flagged as one — answered from what is actually on
+    file, since the flag is just "the next booking on file arrives the day this cleaning is scheduled" (see
+    Visit.is_same_day_checkin). None when there is nothing to explain (no date, already same-day, or the visit
+    is over). Otherwise {'arrivals': [...], 'feeds': [...], 'fixable': bool}: every reservation of this property
+    arriving that day (in any state, under any unit) with what is wrong with it, or none at all - meaning the
+    reservation never reached the system - plus the state of the property's calendar feeds."""
+    from ..models import BookingFeed
+    if not visit.scheduled_date or visit.status in (Visit.Status.SUBMITTED, Visit.Status.VERIFIED, Visit.Status.CANCELLED):
+        return None
+    if visit.is_same_day_checkin():
+        return None
+    day = visit.scheduled_date
+    start = timezone.make_aware(datetime.combine(day, time(0, 0)))
+    end = start + timedelta(days=1)
+    visit_unit_id = visit.unit_id if visit.unit_id else (visit.booking.unit_id if visit.booking_id else None)
+    arrivals, fixable = [], False
+    for b in Booking.objects.filter(property=visit.property, check_in__gte=start, check_in__lt=end).exclude(pk=visit.booking_id).select_related('unit'):
+        if b.status == Booking.Status.CANCELLED or b.manually_cancelled:
+            problem, ok = 'is cancelled, so it does not count', False
+        elif b.unit_id != visit_unit_id:
+            problem, ok = f'is filed under {b.unit.label if b.unit else "no unit"}, but this cleaning is for {visit.unit.label if visit.unit else "no unit"} — the same-day flag only looks at the same unit', False
+        else:
+            problem, ok = 'is on file and should count — this visit had not picked it up yet', True
+            fixable = True
+        arrivals.append({'guest': b.guest_name or 'Guest', 'code': b.external_uid, 'source': b.get_source_display(), 'check_in': timezone.localtime(b.check_in), 'problem': problem, 'ok': ok})
+    feeds = [{
+        'label': f.label(), 'source': f.get_source_display(), 'last_success_at': f.last_success_at, 'last_error': f.last_error, 'not_listed': f.not_listed, 'is_active': f.is_active,
+    } for f in BookingFeed.objects.filter(property=visit.property)]
+    return {'day': day, 'arrivals': arrivals, 'feeds': feeds, 'fixable': fixable}

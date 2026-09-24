@@ -1441,6 +1441,12 @@ def visit_detail(request, pk):
             item.completed_at = timezone.now() if item.is_completed else None
             item.save(update_fields=['is_completed', 'completed_at'])
 
+        elif action == 'recheck_next_booking':
+            from .services.bookings import _refresh_next_bookings_for_property
+            _refresh_next_bookings_for_property(visit.property)
+            visit.refresh_from_db()
+            messages.success(request, 'Rechecked the next reservation for every cleaning at this property.')
+
         elif action == 'toggle_deep_clean':
             try:
                 checklist_service.set_deep_clean(visit, enabled=request.POST.get('enabled') == '1')
@@ -1517,6 +1523,8 @@ def visit_detail(request, pk):
         for m in media_qs
     ]
 
+    from .services.bookings import next_arrival_diagnosis
+    arrival_diagnosis = next_arrival_diagnosis(visit)
     return render(request, 'onsite/visit_detail.html', {
         'visit': visit,
         'status_choices': Visit.Status.choices,
@@ -1527,6 +1535,7 @@ def visit_detail(request, pk):
         'staff_options': staff_options,
         'contact_options': contact_options,
         'is_admin': is_admin,
+        'arrival_diagnosis': arrival_diagnosis,
     })
 
 
