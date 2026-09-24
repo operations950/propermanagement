@@ -11,7 +11,7 @@ Every date gets `<key>_long` ("Tuesday, July 21, 2026") and `<key>_short` ("7/21
 ("$2,752.14") and `<key>_fmt0` ("$299" when whole); every percent `<key>_pct` ("1.5%").
 
 The wording of the first three is the management company's own (from its real letters and certificate), with the
-spelling corrected; the board approval certification is new. All of it should be reviewed by the association's attorney
+spelling corrected; the certificate of board approval follows the company's signed sample. All of it should be reviewed by the association's attorney
 before it is relied on — see each template's reviewed_note."""
 from datetime import timedelta
 from decimal import Decimal
@@ -185,14 +185,20 @@ def compute_estoppel(v):
 
 # ------------------------------------------------------------------------------------------- board approval certification
 APPROVAL_BODY = """<div class="lf-page">
-<p class="lf-center"><strong>CERTIFICATE OF BOARD APPROVAL</strong><br>{{ association_name }}</p>
-<p>I, {{ certifier_name }}, {{ certifier_title }} of {{ association_name }} (the "Association"), hereby certify that the Board of Directors of the Association, {{ action_phrase }} {{ approval_date_long }}, reviewed the application received {{ application_date_long }} and <strong>approved</strong> the following {{ applicant_word }} for Unit {{ unit_label }}:</p>
-<p class="lf-center"><strong>{{ applicant_names }}</strong><br>{{ unit_address }}</p>
+<table class="lf-head lf-letterhead"><tr>
+<td class="lf-logo-left"><img src="{{ logo_token }}" alt="{{ company_name }}"></td>
+<td class="lf-contact">{{ company_phone_display }}{% if company_email %} | {{ company_email }}{% endif %}</td>
+</tr></table>
+<p><strong>{{ applicant_names }}<br>Certificate of Approval<br>{{ association_name }}</strong></p>
+<p>THIS IS TO CERTIFY THAT <strong>the above referenced person and/or persons</strong> have been approved by <strong><u>{{ association_name }}</u></strong> as a <strong>{{ role_word }}</strong> of the following described real property{% if county %} in {{ county }}{% endif %}:</p>
+<p>Condominium Parcel ID No: {{ parcel_id }} ({{ unit_address }}{% if unit_label %}, #{{ unit_label }}{% endif %}) of <strong>{{ association_name }}</strong>.</p>
 {% if is_tenant %}<p>Approved lease term: {{ lease_start_long }} through {{ lease_end_long }}.</p>{% endif %}
 {% if conditions %}<p>Conditions of approval: {{ conditions|linebreaksbr }}</p>{% endif %}
-<p>This approval was given in accordance with the Association's governing documents and applicable Florida law, and is effective as of {{ approval_date_long }}.</p>
-<p>Dated: {{ issue_date_long }}</p>
-<div class="lf-sig"><div class="lf-line"></div><div>{{ certifier_name }}</div><div>{{ certifier_title }}</div></div>
+<p>According to the Declaration of Condominium, as recorded in the Public Records{% if county %} of {{ county }}{% endif %}.</p>
+<p>Such approval has been given pursuant to the provisions of the Declaration of the Association of such Condominium.</p>
+<p class="lf-r-block">DATED: This {{ issue_ordinal_day }} day of {{ issue_month_year }}.<br><strong>{{ association_name }}</strong></p>
+<div class="lf-by"><span>By:</span><div class="lf-line"></div></div>
+<p class="lf-r-block"><strong>Director/Board Member</strong>{% if director_name %}<br>{{ director_name }}{% endif %}</p>
 </div>"""
 
 APPROVAL_FIELDS = [
@@ -201,22 +207,28 @@ APPROVAL_FIELDS = [
     F('applicant_names', 'Name(s) of the purchaser / tenant', required=True),
     F('unit_label', 'Unit', prefill='unit_label', required=True),
     F('unit_address', 'Unit address', prefill='unit_address', required=True),
-    F('application_date', 'Date the application was received', 'date', required=True),
-    F('action', 'The Board acted', 'choice', choices=['at a meeting held on', 'by written action taken on'], default='at a meeting held on', required=True),
-    F('approval_date', 'Date of the Board\'s approval', 'date', required=True),
+    F('parcel_id', 'Condominium parcel ID number', remember=True, required=True),
+    F('application_date', 'Date the application was received', 'date'),
+    F('approval_date', "Date of the Board's approval", 'date', required=True),
     F('lease_start', 'Lease begins (tenants)', 'date'),
     F('lease_end', 'Lease ends (tenants)', 'date'),
     F('conditions', 'Conditions of approval (if any)', 'textarea'),
     F('issue_date', 'Date of this certificate', 'date', default='today', required=True),
-    F('certifier_name', 'Certified by', prefill='manager_name', required=True),
-    F('certifier_title', 'Title', prefill='manager_title', default='Property Manager, on behalf of the Board of Directors', required=True),
+    F('director_name', 'Director / board member who will sign (optional, printed under the line)'),
 ]
+
+
+def ordinal(n):
+    return f'{n}{"th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")}'
 
 
 def compute_approval(v):
     v['is_tenant'] = v['applicant_kind'] == 'Tenant'
     v['applicant_word'] = 'tenant(s)' if v['is_tenant'] else 'purchaser(s)'
-    v['action_phrase'] = v['action']
+    v['role_word'] = 'resident' if v['is_tenant'] else 'owner and resident'
+    d = v['issue_date']
+    v['issue_ordinal_day'] = ordinal(d.day)
+    v['issue_month_year'] = f'{d:%B}, {d.year}'
     if v['is_tenant'] and not (v.get('lease_start') and v.get('lease_end')):
         raise ValueError('A tenant approval needs the lease start and end dates.')
     v['subject'] = f'{v["applicant_names"]} — Unit {v["unit_label"]}'
