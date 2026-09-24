@@ -132,9 +132,9 @@ ESTOPPEL_BODY = """<div class="lf-page">
 <p class="lf-h">OTHER INFORMATION:</p>
 <table class="lf-kv">
 <tr><td>Capital Contribution, Resale, Transfer, or Other Fee Due:</td><td>{{ capital_fee_due }}{% if capital_fee_due == 'Yes' and capital_fee_detail %} — {{ capital_fee_detail }}{% endif %}</td></tr>
-<tr><td>Is there any open violation of rule or regulation noticed to the parcel</td><td>{{ open_violation }}</td></tr>
-<tr><td>Do the rules and regulations of the association applicable to the parcel</td><td>{{ rules_apply }}</td></tr>
-<tr><td>Is there a right of first refusal provided to the members or the</td><td>{{ right_of_first_refusal }}</td></tr>
+<tr><td>Is there any open violation of rule or regulation noticed to the parcel owner in the association official records?</td><td>{{ open_violation }}</td></tr>
+<tr><td>Do the rules and regulations of the association applicable to the parcel require approval by the board of directors of the association for the transfer of the parcel?</td><td>{{ rules_apply }}{% if rules_apply_note %}. {{ rules_apply_note }}{% endif %}</td></tr>
+<tr><td>Is there a right of first refusal provided to the members or the association?</td><td>{{ right_of_first_refusal }}</td></tr>
 <tr><td>Insurance Contact:</td><td>{{ insurance_contact }}</td></tr>
 </table>
 <p>This Estoppel Certificate is valid until {{ valid_until_short }}. No fee is charged for attorney information if the account is delinquent and has been turned over to an attorney for collection.</p>
@@ -165,7 +165,8 @@ ESTOPPEL_FIELDS = [
     F('capital_fee_due', 'Capital contribution, resale, transfer or other fee due?', 'yesno', default='No', required=True),
     F('capital_fee_detail', 'If yes: what and how much'),
     F('open_violation', 'Any open rule/regulation violation noticed to the parcel?', 'yesno', default='No', required=True),
-    F('rules_apply', 'Do the association\'s rules and regulations apply to the parcel?', 'yesno', default='Yes', required=True),
+    F('rules_apply', 'Do the rules require Board approval of a transfer of the parcel?', 'yesno', default='Yes', required=True),
+    F('rules_apply_note', 'Note on board approval (optional, e.g. Board approval in progress.)'),
     F('right_of_first_refusal', 'Right of first refusal?', 'yesno', default='No', required=True),
     F('insurance_contact', 'Insurance contact', remember=True),
     F('valid_days', 'Valid for (days)', 'integer', default='30', required=True),
@@ -267,7 +268,7 @@ TEMPLATES = [
         'statute': 'Chapter 718.116, Florida Statutes',
         'description': 'The certificate an association issues, on a title company\'s or owner\'s request, stating what is owed on a unit and other required facts.',
         'body': ESTOPPEL_BODY, 'fields': ESTOPPEL_FIELDS,
-        'reviewed_note': 'Wording is the management company\'s own certificate. Three labels in the sample under "Other Information" were cut off at the end ("…noticed to the parcel", "…applicable to the parcel", "…members or the") and are reproduced exactly as they were; complete them from the source form. Confirm the fee, delivery deadline and validity period against the statute in force.',
+        'reviewed_note': 'Wording is the management company\'s own certificate. Labels under "Other Information" use the full wording from the Argyle 602 certificate. Confirm the fee, delivery deadline and validity period against the statute in force.',
     },
     {
         'slug': 'board-approval', 'name': 'Certificate of Board Approval', 'category': 'Sales and transfers', 'order': 30,
