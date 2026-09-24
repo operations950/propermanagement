@@ -522,12 +522,34 @@ def _reservations_view(book, month, scope):
     }
 
 
+def assign_units_from_deposits(prop):
+    """A reservation filed under the property with no unit (a report with no listing on it) is given its unit when the bank
+    shows which one it was paid to: its confirmation code sits in the memo of a deposit booked to exactly one unit. Returns
+    how many were assigned. Never overrides a unit already set, and leaves a code that turns up under two units alone."""
+    from onsite.models import Booking
+    loose = list(Booking.objects.filter(property=prop, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).exclude(external_uid=''))
+    if not loose:
+        return 0
+    memos = list(LedgerLine.objects.filter(property=prop, unit__isnull=False, flow__gt=0).values_list('memo', 'unit_id'))
+    assigned = 0
+    for b in loose:
+        code = b.external_uid.upper()
+        units = {unit_id for memo, unit_id in memos if code in (memo or '').upper()}
+        if len(units) == 1:
+            b.unit_id = units.pop()
+            b.save(update_fields=['unit'])
+            assigned += 1
+    return assigned
+
+
 def reconcile(book, month):
     """The live reconciliation of an open month: every match (by the program, by memo code, or by hand), what's left
     over on each side, what has been accepted, and the reservations view. None if the month is already closed."""
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         return None
+    if book.unit is not None:
+        assign_units_from_deposits(book.property)
     scope = list(_bookings(book))
     events = _events(scope)
     cleared = _cleared_before(book, month, scope, events)

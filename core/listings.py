@@ -254,11 +254,15 @@ def due_links(now=None):
     return out
 
 
-def run_due(limit=25, pause=8, fetch=None, now=None, sleep=time.sleep):
-    """The monthly job: reads the links that are due, a few seconds apart so it is gentle. Returns
-    {'read': n, 'failed': n}."""
+def run_due(limit=25, pause=8, fetch=None, now=None, sleep=time.sleep, force=False):
+    """The monthly job: reads the links that are due, a few seconds apart so it is gentle. `force` reads every link of
+    an active property whatever its last reading or failures (a person asked for it). Returns {'read': n, 'failed': n}."""
     result = {'read': 0, 'failed': 0}
-    for i, link in enumerate(due_links(now)[:limit]):
+    if force:
+        links = list(ListingLink.objects.select_related('property', 'unit').filter(property__is_active=True).order_by('pk'))
+    else:
+        links = due_links(now)
+    for i, link in enumerate(links[:limit]):
         if i:
             sleep(pause)
         try:

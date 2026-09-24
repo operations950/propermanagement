@@ -12,6 +12,8 @@ class Command(BaseCommand):
         parser.add_argument('--limit', type=int, default=25, help='Most links to read in one run.')
         parser.add_argument('--pause', type=float, default=8, help='Seconds to wait between pages.')
 
+        parser.add_argument('--force', action='store_true', help='Read every link now, including ones that were read recently or gave up after failing.')
+
     def handle(self, *args, **options):
-        result = listings.run_due(limit=options['limit'], pause=options['pause'])
+        result = listings.run_due(limit=options['limit'], pause=options['pause'], force=options['force'])
         self.stdout.write(f'Listing ratings: {result["read"]} read, {result["failed"]} could not be read.')
