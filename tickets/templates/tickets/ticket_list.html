@@ -102,210 +102,127 @@
 })();
 </script>
 
-<div class="d-flex flex-wrap gap-2 mb-2" data-filter-parents>
-    <button type="button" class="bubble bubble-locked" data-filter-toggle="status">
-        {% if selected_status == 'active' %}Active tickets{% elif selected_status == 'complete' %}Completed & cancelled{% elif selected_status == 'all' %}All statuses{% else %}{{ selected_status_label }}{% endif %}
-    </button>
-
-    <button type="button" class="bubble bubble-locked" data-filter-toggle="source">
-        {% if selected_source == 'reactive' %}Tickets only{% elif selected_source == 'recurring' %}Recurring tasks only{% else %}Tickets & recurring tasks{% endif %}
-    </button>
-
-    {% if selected_role %}
-        <a href="{% querystring role=None %}" class="bubble bubble-locked">{% if selected_role == 'none' %}No department assigned{% else %}{{ selected_role_label }}{% endif %}</a>
-    {% else %}
-        <button type="button" class="bubble" data-filter-toggle="department">+ Add Department Filter</button>
-    {% endif %}
-
-    {% if selected_property %}
-        <a href="{% querystring property=None %}" class="bubble bubble-locked">{{ selected_property.name }}</a>
-    {% else %}
-        <button type="button" class="bubble" data-filter-toggle="property">+ Add Property Filter</button>
-    {% endif %}
-
-    {% if selected_due %}
-        <a href="{% querystring due=None due_on=None %}" class="bubble bubble-locked">{{ selected_due_label }}</a>
-    {% else %}
-        <button type="button" class="bubble" data-filter-toggle="due">+ Add Due Date Filter</button>
-    {% endif %}
-
-    {% if selected_assigned_staff_id %}
-        <a href="{% querystring assigned_staff=None %}" class="bubble bubble-locked">{% if selected_assigned_staff_id == 'none' %}Unassigned{% else %}{{ selected_assigned_staff }}{% endif %}</a>
-    {% else %}
-        <button type="button" class="bubble" data-filter-toggle="staff">+ Add Assigned Staff Filter</button>
-    {% endif %}
-
-    {% if selected_assigned_contact %}
-        <a href="{% querystring assigned_contact=None %}" class="bubble bubble-locked">{{ selected_assigned_contact.name }}</a>
-    {% else %}
-        <button type="button" class="bubble" data-filter-toggle="contractor">+ Add Assigned Contractor Filter</button>
-    {% endif %}
-</div>
-
-<div class="p-2 mb-2 rounded" data-filter-pool="status" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{% querystring status='active' %}" class="bubble{% if selected_status == 'active' %} bubble-locked{% endif %}">Active tickets</a>
-        <a href="{% querystring status='complete' %}" class="bubble{% if selected_status == 'complete' %} bubble-locked{% endif %}">Completed & cancelled</a>
-        <a href="{% querystring status='all' %}" class="bubble{% if selected_status == 'all' %} bubble-locked{% endif %}">All statuses</a>
-        {% for value, label in status_choices %}
-            <a href="{% querystring status=value %}" class="bubble{% if value == selected_status %} bubble-locked{% endif %}">{{ label }}</a>
-        {% endfor %}
-        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
+<style>
+    .tf-box { background: #fff; border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); padding: 0.55rem 0.8rem 0.7rem; margin-bottom: 0.9rem; }
+    .tf-box [hidden] { display: none !important; }
+    .tf-box .bubble.bubble-locked::after { content: none; }
+    .tf-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.45rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; }
+    .tf-head a { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 0.8rem; margin-left: auto; color: var(--brand-primary); text-decoration: none; }
+    .tf-layer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .tf-layer .tf-title { font-size: 0.78rem; color: var(--ink-muted); width: 100%; margin: 0.15rem 0 0; }
+    .tf-pair { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .tf-pair .tf-x { color: var(--ink-muted); text-decoration: none; font-size: 1.05rem; line-height: 1; padding: 0 0.3rem; border-radius: 50%; }
+    .tf-pair .tf-x:hover { color: var(--ink-primary); background: var(--surface-page); }
+    .tf-back { --bubble-color: var(--ink-muted); background: transparent; border-style: dashed; }
+    .tf-city { font-size: 0.75rem; color: var(--ink-muted); width: 100%; margin: 0.35rem 0 0; }
+</style>
+<div class="tf-box" id="tf-box">
+    <div class="tf-head">
+        <i data-lucide="sliders-horizontal" class="icon"></i> Filters
+        {% if selected_role or selected_property or selected_due or selected_assigned_staff_id or selected_assigned_contact %}
+        <a href="{% querystring role=None property=None due=None due_on=None assigned_staff=None assigned_contact=None %}">Clear filters</a>
+        {% endif %}
     </div>
-</div>
 
-<div class="p-2 mb-2 rounded" data-filter-pool="source" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{% querystring source=None %}" class="bubble{% if not selected_source %} bubble-locked{% endif %}">Tickets & recurring tasks</a>
+    {# Layer 1: one bubble per filter. Picking one replaces these with that filter's own layer, and a Back bubble. #}
+    <div class="tf-layer" data-tf-layer="root">
+        <button type="button" class="bubble{% if selected_status != 'active' %} bubble-locked{% endif %}" data-tf-open="status">Status{% if selected_status == 'active' %}: Active{% elif selected_status == 'complete' %}: Completed &amp; cancelled{% elif selected_status == 'all' %}: All{% else %}: {{ selected_status_label }}{% endif %}</button>
+
+        <span class="tf-pair"><button type="button" class="bubble{% if selected_source %} bubble-locked{% endif %}" data-tf-open="source">Type{% if selected_source == 'reactive' %}: Tickets{% elif selected_source == 'recurring' %}: Recurring{% endif %}</button>{% if selected_source %}<a class="tf-x" href="{% querystring source=None %}" title="Clear">&times;</a>{% endif %}</span>
+
+        <span class="tf-pair"><button type="button" class="bubble{% if selected_role %} bubble-locked{% endif %}" data-tf-open="department">Department{% if selected_role == 'none' %}: None{% elif selected_role %}: {{ selected_role_label }}{% endif %}</button>{% if selected_role %}<a class="tf-x" href="{% querystring role=None %}" title="Clear">&times;</a>{% endif %}</span>
+
+        <span class="tf-pair"><button type="button" class="bubble{% if selected_property %} bubble-locked{% endif %}" data-tf-open="property">Property{% if selected_property %}: {{ selected_property.name }}{% endif %}</button>{% if selected_property %}<a class="tf-x" href="{% querystring property=None %}" title="Clear">&times;</a>{% endif %}</span>
+
+        <span class="tf-pair"><button type="button" class="bubble{% if selected_due %} bubble-locked{% endif %}" data-tf-open="due">Due date{% if selected_due %}: {{ selected_due_label }}{% endif %}</button>{% if selected_due %}<a class="tf-x" href="{% querystring due=None due_on=None %}" title="Clear">&times;</a>{% endif %}</span>
+
+        <span class="tf-pair"><button type="button" class="bubble{% if selected_assigned_staff_id %} bubble-locked{% endif %}" data-tf-open="staff">Assigned staff{% if selected_assigned_staff_id == 'none' %}: Unassigned{% elif selected_assigned_staff %}: {{ selected_assigned_staff }}{% endif %}</button>{% if selected_assigned_staff_id %}<a class="tf-x" href="{% querystring assigned_staff=None %}" title="Clear">&times;</a>{% endif %}</span>
+
+        <span class="tf-pair"><button type="button" class="bubble{% if selected_assigned_contact %} bubble-locked{% endif %}" data-tf-open="contractor">Contractor{% if selected_assigned_contact %}: {{ selected_assigned_contact.name }}{% endif %}</button>{% if selected_assigned_contact %}<a class="tf-x" href="{% querystring assigned_contact=None %}" title="Clear">&times;</a>{% endif %}</span>
+    </div>
+
+    <div class="tf-layer" data-tf-layer="status" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        <a href="{% querystring status='active' %}" class="bubble{% if selected_status == 'active' %} bubble-locked{% endif %}">Active tickets</a>
+        <a href="{% querystring status='complete' %}" class="bubble{% if selected_status == 'complete' %} bubble-locked{% endif %}">Completed &amp; cancelled</a>
+        <a href="{% querystring status='all' %}" class="bubble{% if selected_status == 'all' %} bubble-locked{% endif %}">All statuses</a>
+        {% for value, label in status_choices %}<a href="{% querystring status=value %}" class="bubble{% if value == selected_status %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
+    </div>
+
+    <div class="tf-layer" data-tf-layer="source" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        <a href="{% querystring source=None %}" class="bubble{% if not selected_source %} bubble-locked{% endif %}">Tickets &amp; recurring tasks</a>
         <a href="{% querystring source='reactive' %}" class="bubble{% if selected_source == 'reactive' %} bubble-locked{% endif %}">Tickets only</a>
         <a href="{% querystring source='recurring' %}" class="bubble{% if selected_source == 'recurring' %} bubble-locked{% endif %}">Recurring tasks only</a>
-        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
     </div>
-</div>
 
-<div class="p-2 mb-2 rounded" data-filter-pool="department" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{% querystring role=None %}" class="bubble{% if not selected_role %} bubble-locked{% endif %}">All departments</a>
+    <div class="tf-layer" data-tf-layer="department" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
         <a href="{% querystring role='none' %}" class="bubble{% if selected_role == 'none' %} bubble-locked{% endif %}">No department assigned</a>
-        {% for value, label in role_choices %}
-            <a href="{% querystring role=value %}" class="bubble{% if value == selected_role %} bubble-locked{% endif %}">{{ label }}</a>
-        {% endfor %}
-        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
+        {% for value, label in role_choices %}<a href="{% querystring role=value %}" class="bubble{% if value == selected_role %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
     </div>
-</div>
 
-<div class="p-2 mb-2 rounded" data-filter-pool="property" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <div class="d-flex flex-wrap gap-2" data-tier="1">
-        <a href="{% querystring property=None %}" class="bubble{% if not selected_property %} bubble-locked{% endif %}">All properties</a>
-        {% for entry in properties_by_type %}
-            <button type="button" class="bubble" data-tier-toggle="{{ entry.type_key }}">{{ entry.type_label }}</button>
-        {% endfor %}
-        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
+    <div class="tf-layer" data-tf-layer="property" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        {% for entry in properties_by_type %}<button type="button" class="bubble" data-tf-open="property-{{ entry.type_key }}">{{ entry.type_label }}</button>{% endfor %}
     </div>
     {% for entry in properties_by_type %}
-    <div class="d-flex flex-wrap gap-2 mt-2" data-tier="2" data-tier-for="{{ entry.type_key }}" hidden>
-        <button type="button" class="bubble" data-tier-back style="--bubble-color: var(--ink-muted);">← {{ entry.type_label }}</button>
+    <div class="tf-layer" data-tf-layer="property-{{ entry.type_key }}" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="property">&larr; Back</button>
         {% if entry.needs_city_tier %}
             {% for city_entry in entry.cities %}
-                <span class="small text-muted w-100 mt-2 mb-0">{{ city_entry.city }}</span>
-                {% for p in city_entry.properties %}
-                    <a href="{% querystring property=p.id %}" class="bubble{% if selected_property.pk == p.id %} bubble-locked{% endif %}">{{ p.name }}</a>
-                {% endfor %}
+                <span class="tf-city">{{ city_entry.city }}</span>
+                {% for p in city_entry.properties %}<a href="{% querystring property=p.id %}" class="bubble{% if selected_property.pk == p.id %} bubble-locked{% endif %}">{{ p.name }}</a>{% endfor %}
             {% endfor %}
         {% else %}
-            {% for p in entry.properties %}
-                <a href="{% querystring property=p.id %}" class="bubble{% if selected_property.pk == p.id %} bubble-locked{% endif %}">{{ p.name }}</a>
-            {% endfor %}
+            {% for p in entry.properties %}<a href="{% querystring property=p.id %}" class="bubble{% if selected_property.pk == p.id %} bubble-locked{% endif %}">{{ p.name }}</a>{% empty %}<span class="small text-muted">No properties of this type.</span>{% endfor %}
         {% endif %}
     </div>
     {% endfor %}
-</div>
 
-<div class="p-2 mb-2 rounded" data-filter-pool="due" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <div class="d-flex flex-wrap align-items-center gap-2">
-        <a href="{% querystring due='overdue' due_on=None %}" class="bubble{% if selected_due == 'overdue' %} bubble-locked{% endif %}">Overdue</a>
-        <a href="{% querystring due='today' due_on=None %}" class="bubble{% if selected_due == 'today' %} bubble-locked{% endif %}">Today</a>
-        <a href="{% querystring due='tomorrow' due_on=None %}" class="bubble{% if selected_due == 'tomorrow' %} bubble-locked{% endif %}">Tomorrow</a>
-        <a href="{% querystring due='week' due_on=None %}" class="bubble{% if selected_due == 'week' %} bubble-locked{% endif %}">Next 7 days</a>
-        <a href="{% querystring due='month' due_on=None %}" class="bubble{% if selected_due == 'month' %} bubble-locked{% endif %}">Next 30 days</a>
-        <a href="{% querystring due='later' due_on=None %}" class="bubble{% if selected_due == 'later' %} bubble-locked{% endif %}">Due later</a>
-        <a href="{% querystring due='none' due_on=None %}" class="bubble{% if selected_due == 'none' %} bubble-locked{% endif %}">No due date</a>
-        <input type="date" class="form-control form-control-sm" style="width: auto;" data-due-custom-input value="{{ selected_due_on }}">
-        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
+    <div class="tf-layer" data-tf-layer="due" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        {% for value, label in due_options %}<a href="{% querystring due=value due_on=None %}" class="bubble{% if selected_due == value %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
+        <span class="tf-pair"><input type="date" class="form-control form-control-sm" style="width: auto;" data-due-custom-input value="{{ selected_due_on }}" aria-label="Custom date"><span class="small text-muted">custom date</span></span>
+        <span class="tf-title">"Next N days" shows everything due from today through then.</span>
     </div>
-</div>
 
-<div class="p-2 mb-2 rounded" data-filter-pool="staff" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <input type="text" class="form-control form-control-sm mb-2" style="max-width: 240px;" placeholder="Filter…" data-pool-filter-input>
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{% querystring assigned_staff=None %}" class="bubble{% if not selected_assigned_staff %} bubble-locked{% endif %}">All staff</a>
+    <div class="tf-layer" data-tf-layer="staff" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
         <a href="{% querystring assigned_staff='none' %}" class="bubble{% if selected_assigned_staff_id == 'none' %} bubble-locked{% endif %}">Unassigned</a>
-        {% for sp in staff_list %}
-            <a href="{% querystring assigned_staff=sp.id %}" class="bubble{% if selected_assigned_staff.id == sp.id %} bubble-locked{% endif %}" data-pool-filter-item>{{ sp.user.get_full_name|default:sp.user.username }}</a>
-        {% endfor %}
-        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
+        {% for sp in staff_list %}<a href="{% querystring assigned_staff=sp.id %}" class="bubble{% if selected_assigned_staff.id == sp.id %} bubble-locked{% endif %}">{{ sp.user.get_full_name|default:sp.user.username }}</a>{% endfor %}
     </div>
-</div>
 
-<div class="p-2 mb-2 rounded" data-filter-pool="contractor" hidden style="background: var(--surface-page); border: 1px solid var(--border-hairline);">
-    <div class="d-flex flex-wrap gap-2" data-tier="1">
-        <a href="{% querystring assigned_contact=None %}" class="bubble{% if not selected_assigned_contact %} bubble-locked{% endif %}">All contractors</a>
-        {% for group in vendor_groups %}
-            <button type="button" class="bubble" data-tier-toggle="{{ group.key }}">{{ group.label }}</button>
-        {% endfor %}
-        <button type="button" class="bubble" data-back style="--bubble-color: var(--ink-muted);">Done</button>
+    <div class="tf-layer" data-tf-layer="contractor" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        {% for group in vendor_groups %}<button type="button" class="bubble" data-tf-open="contractor-{{ group.key }}">{{ group.label }}</button>{% endfor %}
     </div>
     {% for group in vendor_groups %}
-    <div class="d-flex flex-wrap gap-2 mt-2" data-tier="2" data-tier-for="{{ group.key }}" hidden>
-        <button type="button" class="bubble" data-tier-back style="--bubble-color: var(--ink-muted);">← {{ group.label }}</button>
-        {% for c in group.contacts %}
-            <a href="{% querystring assigned_contact=c.id %}" class="bubble{% if selected_assigned_contact.id == c.id %} bubble-locked{% endif %}">{{ c.name }}</a>
-        {% endfor %}
+    <div class="tf-layer" data-tf-layer="contractor-{{ group.key }}" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="contractor">&larr; Back</button>
+        {% for c in group.contacts %}<a href="{% querystring assigned_contact=c.id %}" class="bubble{% if selected_assigned_contact.id == c.id %} bubble-locked{% endif %}">{{ c.name }}</a>{% endfor %}
     </div>
     {% endfor %}
 </div>
-
 <script>
 (function () {
-    var pools = document.querySelectorAll('[data-filter-pool]');
-    function closeAll() {
-        pools.forEach(function (p) { p.hidden = true; });
+    var box = document.getElementById('tf-box');
+    function show(name) {
+        box.querySelectorAll('[data-tf-layer]').forEach(function (layer) { layer.hidden = layer.dataset.tfLayer !== name; });
     }
-    document.querySelectorAll('[data-filter-toggle]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var target = document.querySelector('[data-filter-pool="' + btn.dataset.filterToggle + '"]');
-            var wasOpen = !target.hidden;
-            closeAll();
-            target.hidden = wasOpen;
-        });
+    box.querySelectorAll('[data-tf-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () { show(btn.dataset.tfOpen); });
     });
-    document.querySelectorAll('[data-filter-pool] [data-back]').forEach(function (btn) {
-        btn.addEventListener('click', closeAll);
-    });
-
-    // Any filter pool's tier-1 -> tier-2 drilldown (property: type ->
-    // property; contractor: trade -> vendor) — same show/hide mechanics
-    // regardless of what the two tiers actually represent.
-    document.querySelectorAll('[data-filter-pool]').forEach(function (pool) {
-        var tier1 = pool.querySelector('[data-tier="1"]');
-        if (!tier1) return;
-        pool.querySelectorAll('[data-tier-toggle]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                tier1.hidden = true;
-                var tier2 = pool.querySelector('[data-tier-for="' + btn.dataset.tierToggle + '"]');
-                if (tier2) tier2.hidden = false;
-            });
-        });
-        pool.querySelectorAll('[data-tier-back]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                pool.querySelectorAll('[data-tier="2"]').forEach(function (t) { t.hidden = true; });
-                tier1.hidden = false;
-            });
-        });
-    });
-
-    // Due Date pool's Custom date input navigates on change.
-    var dueCustomInput = document.querySelector('[data-due-custom-input]');
-    if (dueCustomInput) {
-        dueCustomInput.addEventListener('change', function () {
-            if (!dueCustomInput.value) return;
+    var custom = box.querySelector('[data-due-custom-input]');
+    if (custom) {
+        custom.addEventListener('change', function () {
+            if (!custom.value) return;
             var params = new URLSearchParams(window.location.search);
             params.set('due', 'custom');
-            params.set('due_on', dueCustomInput.value);
+            params.set('due_on', custom.value);
             window.location.search = params.toString();
         });
     }
-
-    // Staff/Contractor pools' live text filter over their own bubbles.
-    document.querySelectorAll('[data-pool-filter-input]').forEach(function (input) {
-        var items = input.parentElement.querySelectorAll('[data-pool-filter-item]');
-        input.addEventListener('input', function () {
-            var needle = input.value.trim().toLowerCase();
-            items.forEach(function (item) {
-                item.hidden = needle.length > 0 && item.textContent.toLowerCase().indexOf(needle) === -1;
-            });
-        });
-    });
 })();
 </script>
 

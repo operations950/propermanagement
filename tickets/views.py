@@ -828,6 +828,12 @@ def _ticket_sort_columns(sort_param):
     return columns
 
 
+# The due-date filter's bubbles: the same day counts the New Ticket form offers (today, tomorrow, 3-6 days, a week, two weeks,
+# a month). "Today" and "Tomorrow" are that one day; "Next N days" is everything due from today through N days out.
+DUE_WINDOWS = {'d3': 3, 'd4': 4, 'd5': 5, 'd6': 6, 'week': 7, 'd14': 14, 'month': 30}
+DUE_OPTIONS = [('overdue', 'Overdue'), ('today', 'Today'), ('tomorrow', 'Tomorrow')] + [(key, f'Next {days} days') for key, days in DUE_WINDOWS.items()] + [('none', 'No due date')]
+
+
 @login_required
 def ticket_list(request):
     """Defaults to the active bucket (open/assigned/in_progress/blocked) —
@@ -911,10 +917,8 @@ def ticket_list(request):
         qs = qs.filter(due_date=today)
     elif due == 'tomorrow':
         qs = qs.filter(due_date=today + timedelta(days=1))
-    elif due == 'week':
-        qs = qs.filter(due_date__gte=today, due_date__lte=today + timedelta(days=7))
-    elif due == 'month':
-        qs = qs.filter(due_date__gte=today, due_date__lte=today + timedelta(days=30))
+    elif due in DUE_WINDOWS:
+        qs = qs.filter(due_date__gte=today, due_date__lte=today + timedelta(days=DUE_WINDOWS[due]))
     elif due == 'later':
         # Mirrors department_dashboard's own soon_cutoff exactly (today +
         # 2 days) — this is what "N more later" on that dashboard actually
@@ -929,7 +933,7 @@ def ticket_list(request):
         due = ''
     due_labels = {
         'overdue': 'Overdue', 'today': 'Today', 'tomorrow': 'Tomorrow',
-        'week': 'Next 7 days', 'month': 'Next 30 days', 'later': 'Due later', 'none': 'No due date',
+        **{key: f'Next {days} days' for key, days in DUE_WINDOWS.items()}, 'later': 'Due later', 'none': 'No due date',
         # format_date (Django's own dateformat, not C strftime) — %-d isn't
         # portable: it's a glibc extension, absent on Windows and on
         # musl-libc Linux images, so it crashed outright wherever that flag
@@ -967,6 +971,7 @@ def ticket_list(request):
         'selected_due': due,
         'selected_due_on': due_on.isoformat() if due_on else '',
         'selected_due_label': due_labels.get(due),
+        'due_options': DUE_OPTIONS,
         'q': q,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_groups': group_vendors_by_trade(
