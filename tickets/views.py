@@ -1,3 +1,4 @@
+import logging
 import zlib
 from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta
@@ -171,6 +172,8 @@ def _department_boxes(open_tickets, now):
             'delayed_count': sum(1 for t in role_tickets if t.delayed),
         })
     return boxes
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -2379,11 +2382,16 @@ def ticket_document_upload(request, pk):
             max_mb = settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
             messages.error(request, f'File is too large (max {max_mb}MB).')
         else:
-            TicketAttachment.objects.create(
-                ticket=ticket, file=f, caption=request.POST.get('name', '').strip(), uploaded_by_user=request.user,
-                visible_to_vendor=False,
-            )
-            messages.success(request, 'Document added.')
+            try:
+                TicketAttachment.objects.create(
+                    ticket=ticket, file=f, caption=request.POST.get('name', '').strip(), uploaded_by_user=request.user,
+                    visible_to_vendor=False,
+                )
+                messages.success(request, 'Document added.')
+            except Exception:
+                # The file store (Cloudinary in production) refused it: say so instead of a 500, and log why.
+                logger.exception('Ticket %s document upload failed (%s, %s bytes, %s)', ticket.pk, f.name, f.size, f.content_type)
+                messages.error(request, "The document couldn't be saved to file storage, so nothing was added. Try a smaller file, or tell whoever maintains the site (the reason is in the server log).")
     return redirect('ticket_detail', pk=ticket.pk)
 
 

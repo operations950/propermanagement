@@ -572,6 +572,10 @@ LOGGING = {
         'intake': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
         'messaging': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
         'proptasks': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        # Django only prints a request's traceback to the console when DEBUG is on, so a production 500 left nothing in the
+        # Railway logs. This puts every one there (full traceback), on top of Django's own handlers.
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+        'tickets': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
         # Records Intuit's intuit_tid trace ID for every QuickBooks call
         # (Intuit support asks for it) — INFO-level, so it needs its own
         # entry; the rest of core.* still logs warnings and errors only.
