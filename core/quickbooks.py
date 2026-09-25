@@ -549,3 +549,72 @@ def fetch_ledger(token, account_qb_id, start, end):
     except Exception as exc:
         logger.error('QuickBooks General Ledger failed after retry: %s', _failure_summary(exc))
         return None, LEDGER_ERROR
+
+
+# --- reading and changing transactions (the deposit recoding) --------------------------------------
+
+WRITE_ERROR = "QuickBooks didn't accept the change."
+
+
+def _authorised(token):
+    """A token that is fresh enough to use, or the reason it isn't."""
+    if not is_configured():
+        return 'QuickBooks client ID/secret are not set — add them in Admin Tools.'
+    outcome = _refresh_with_retry(token)
+    if outcome == REFRESH_REJECTED:
+        return RECONNECT_ERROR
+    if outcome == REFRESH_FAILED:
+        return "Couldn't reach QuickBooks."
+    return ''
+
+
+def _headers(token):
+    return {'Authorization': f'Bearer {token.access_token}', 'Accept': 'application/json'}
+
+
+def _fault_text(response):
+    try:
+        errors = response.json().get('Fault', {}).get('Error', [])
+        return '; '.join(f'{e.get("Message", "")} {e.get("Detail", "")}'.strip() for e in errors)[:300]
+    except Exception:
+        return ''
+
+
+def query(token, sql):
+    """(rows, error) for one QuickBooks query, following its paging (1000 at a time). Returns the objects of the
+    entity the select names."""
+    problem = _authorised(token)
+    if problem:
+        return None, problem
+    entity = sql.split(' from ', 1)[1].split()[0]
+    out, start = [], 1
+    while True:
+        try:
+            resp = requests.get(f'{API_BASES[_environment()]}/{token.realm_id}/query', params={'query': f'{sql} startposition {start} maxresults 1000', 'minorversion': 70},
+                                headers=_headers(token), timeout=30)
+            resp.raise_for_status()
+        except Exception as exc:
+            logger.warning('QuickBooks query failed: %s', _failure_summary(exc))
+            return None, f"Couldn't read from QuickBooks ({_status_code(exc) or 'no answer'})."
+        rows = (resp.json().get('QueryResponse') or {}).get(entity, [])
+        out += rows
+        if len(rows) < 1000:
+            return out, ''
+        start += 1000
+
+
+def update_object(token, entity, body):
+    """(saved object, error): a sparse update of one QuickBooks object (it must carry its Id and SyncToken)."""
+    problem = _authorised(token)
+    if problem:
+        return None, problem
+    try:
+        resp = requests.post(f'{API_BASES[_environment()]}/{token.realm_id}/{entity.lower()}', params={'minorversion': 70},
+                             json={**body, 'sparse': True}, headers={**_headers(token), 'Content-Type': 'application/json'}, timeout=30)
+        if resp.status_code >= 400:
+            logger.warning('QuickBooks update of %s refused: HTTP %s %s', entity, resp.status_code, _fault_text(resp))
+            return None, f'{WRITE_ERROR} {_fault_text(resp)}'.strip()
+    except Exception as exc:
+        logger.warning('QuickBooks update failed: %s', _failure_summary(exc))
+        return None, f"{WRITE_ERROR} (no answer)"
+    return resp.json().get(entity), ''

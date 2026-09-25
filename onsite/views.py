@@ -1400,11 +1400,17 @@ def visit_detail(request, pk):
 
         elif action == 'save_schedule':
             raw_date = request.POST.get('scheduled_date', '').strip()
-            visit.scheduled_date = parse_date(raw_date) if raw_date else None
+            new_date = parse_date(raw_date) if raw_date else None
+            fields = ['scheduled_date', 'scheduled_start', 'notes']
+            if new_date != visit.scheduled_date:
+                # A person picked this day: remember who and when (the reservation calendar may still override it later)
+                visit.date_set_by, visit.date_set_at, visit.calendar_override_note = (request.user if new_date else None), (timezone.now() if new_date else None), ''
+                fields += ['date_set_by', 'date_set_at', 'calendar_override_note']
+            visit.scheduled_date = new_date
             raw_start = request.POST.get('scheduled_start', '').strip()
             visit.scheduled_start = raw_start or None
             visit.notes = request.POST.get('notes', '').strip()
-            visit.save(update_fields=['scheduled_date', 'scheduled_start', 'notes'])
+            visit.save(update_fields=fields)
             if visit.assigned_staff_id or visit.assigned_contact_id:
                 notify_service.dispatch_link(visit, request)  # no-op unless the date/assignee is new to them
             messages.success(request, 'Visit updated.')

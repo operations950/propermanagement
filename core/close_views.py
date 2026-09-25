@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import ledger, recon
+from . import ledger, payout_tracking, recon
 from .models import ClosedMonthChange, FinancialsSettings, LedgerLine, Property, QuickBooksToken, Unit
 from .views import _is_admin
 
@@ -100,6 +100,7 @@ def close_overview(request):
         'counts': {s: sum(1 for r in rows if r['state'] == s) for s in ('closed', 'ready', 'open', 'needs_accounts')},
         'ready_clean': sum(1 for r in rows if r['state'] == 'ready' and not _has_warning(r)),
         'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
+        'lingering_payouts': payout_tracking.lingering_count(),
     })
 
 
@@ -273,4 +274,43 @@ def close_property(request, month, pk, unit_pk=None):
         'drift': ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()),
         'unreviewed': sum(1 for l in lines if not l.reviewed), 'changed': sum(1 for l in lines if l.changed_in_qb),
         'synced_at': book.ledger_synced_at,
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def payouts(request):
+    """Every platform payout (a bank transfer and the lines that make it up), whether it has reached the bank, and the
+    ones that have been waiting too long."""
+    from . import payout_tracking, qb_recode
+    plan = None
+    if request.method == 'POST' and request.POST.get('action') in ('qb_preview', 'qb_apply'):
+        token = QuickBooksToken.objects.first()
+        if token is None:
+            messages.error(request, 'QuickBooks is not connected — connect it in Admin Tools first.')
+        else:
+            plan = qb_recode.plan(token)
+            if request.POST.get('action') == 'qb_apply':
+                applied, failed = qb_recode.apply_ready(token, plan, user=request.user)
+                if applied:
+                    messages.success(request, f'Recoded {applied} deposit{"" if applied == 1 else "s"} in QuickBooks.')
+                for item, why in failed:
+                    messages.error(request, f'Deposit of ${item["amount"]} on {item["date"]:%b} {item["date"].day} was not changed: {why}')
+                for error in plan['errors']:
+                    messages.error(request, error)
+                return redirect('close_payouts')
+    show = request.GET.get('show', 'open')
+    source = request.GET.get('source', '')
+    rows = payout_tracking.payout_rows(source=source or None)
+    counts = {k: sum(1 for r in rows if r['status'] == k) for k in ('received', 'waiting', 'scheduled', 'lingering')}
+    if show == 'lingering':
+        rows = [r for r in rows if r['status'] == 'lingering']
+    elif show == 'open':
+        rows = [r for r in rows if r['status'] in ('waiting', 'scheduled', 'lingering')]
+    elif show == 'received':
+        rows = [r for r in rows if r['status'] == 'received']
+    return render(request, 'core/payouts.html', {
+        'plan': plan, 'plan_ready': sum(1 for i in plan['items'] if i['status'] == 'ready') if plan else 0,
+        'rows': rows[:400], 'counts': counts, 'show': show, 'source': source, 'lingering_after': payout_tracking.LINGERING_AFTER.days,
+        'mismatched': sum(1 for r in rows if r['batch'].breakdown_ok is False),
     })

@@ -962,7 +962,9 @@ def add_recon_checks(rec, add):
         total = sum((i['amount'] for i in open_payouts), ZERO)
         add('recon_payouts', 'block', f'{len(open_payouts)} platform payout{"" if len(open_payouts) == 1 else "s"} (${total:,.2f}) {"has" if len(open_payouts) == 1 else "have"} not been matched to a deposit — match {"it" if len(open_payouts) == 1 else "them"} to a bank line, or explain {"it" if len(open_payouts) == 1 else "them"} (paid next month, or a bookkeeping error) with a note.')
     if rec['unassigned']:
-        add('recon_unassigned', 'block', f'{rec["unassigned"]} platform payout{"" if rec["unassigned"] == 1 else "s"} belong to no unit yet — assign each reservation to its unit so the money can be reconciled.')
+        names = '; '.join(f'{u["guest"]} ({u["code"]}, ${u["amount"]:,.2f}, paid {u["date"]:%b} {u["date"].day})' for u in rec.get('unassigned_list', [])[:4])
+        more = rec['unassigned'] - min(4, len(rec.get('unassigned_list', [])))
+        add('recon_unassigned', 'block', f'{rec["unassigned"]} platform payout{"" if rec["unassigned"] == 1 else "s"} in this building {"has" if rec["unassigned"] == 1 else "have"} no unit yet, so {"it" if rec["unassigned"] == 1 else "they"} might be this unit\'s: {names}{f" and {more} more" if more > 0 else ""}. Assign each reservation to its unit (Reservations, "Unit" button) — one that belongs to another unit stops blocking this one once it has its own.')
     if rec['undated']:
         add('recon_undated', 'warn', f'{rec["undated"]} reservation{"" if rec["undated"] == 1 else "s"} have a payout amount (${rec["undated_total"]:,.2f}) but no payout date, so {"it" if rec["undated"] == 1 else "they"} can\'t be matched to a deposit.')
     accepted = [i for i in rec['items'] if i['accepted']]

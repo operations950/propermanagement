@@ -560,13 +560,14 @@ def reconcile(book, month):
     matched_payouts = sum((p['expected'] for p in result['matches']), ZERO)
     booking_ids = {c for c in result['cleared_out'] if isinstance(c, int)}
     undated = [b for b in _undated(book) if b.pk not in booking_ids and month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
-    unassigned = 0
+    unassigned_rows = []
     if book.unit is not None:
         from onsite.models import Booking
-        unassigned = Booking.objects.filter(
+        unassigned_rows = list(Booking.objects.filter(
             property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
             payout_date__gte=ledger.month_of(ledger.books_start()), payout_date__lte=month_end, payout_amount__isnull=False,
-        ).exclude(payout_amount=0).count()
+        ).exclude(payout_amount=0).order_by('payout_date', 'pk'))
+    unassigned = len(unassigned_rows)
     acc = {(i['kind'], i['key']): i['accepted'] for i in items}
     mismatch_keys = {i['key'] for i in items if i.get('matched')}
     return {
@@ -578,6 +579,7 @@ def reconcile(book, month):
         'carried_payouts': sum((p['carried'] for p in result['matches']), ZERO),
         'prior_total': sum((i['amount'] for i in items if i['accepted'] and i['accepted'].prior_period), ZERO),
         'undated': len(undated), 'undated_total': sum((b.payout_amount for b in undated), ZERO), 'unassigned': unassigned,
+        'unassigned_list': [{'pk': b.pk, 'guest': b.guest_name or 'Guest', 'code': b.external_uid, 'amount': b.payout_amount, 'date': b.payout_date} for b in unassigned_rows],
         'reservations': _reservations_view(book, month, scope),
     }
 

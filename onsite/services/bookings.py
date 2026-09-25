@@ -20,7 +20,7 @@ from . import coverage
 from . import payouts as payouts_service
 from .checklist import create_visit
 from ..google_calendar_push import delete_visit_event, push_visit
-from ..models import Booking, BookingFeedHealth, PayoutBatch, PayoutLine, Visit, VisitType
+from ..models import Booking, BookingFeedHealth, PayoutBatch, PayoutItem, PayoutLine, Visit, VisitType
 from core.models import PropertyListingName
 
 TURNOVER_SLUG = 'turnover'
@@ -348,10 +348,30 @@ def save_payout_batches(source, payout_batches):
     nothing; a transfer with the same amount as one already on file but no reference of its own is still added
     (nothing here says they're the same transfer)."""
     for row in payout_batches or ():
-        PayoutBatch.objects.get_or_create(
+        batch, _created = PayoutBatch.objects.get_or_create(
             source=source, date=row.date, amount=row.amount, reference=row.reference,
             defaults={'detail': row.detail, 'arriving_by': row.arriving_by},
         )
+        save_payout_items(batch, row)
+
+
+def save_payout_items(batch, row):
+    """The lines that make up a payout, as the file listed them (importers.assign_breakdowns). A file that cuts a payout
+    short (the first or last one of a date range) must not replace a complete breakdown saved before, so the lines are
+    only replaced by ones that add up, or when none were saved yet."""
+    items = list(getattr(row, 'items', ()) or ())
+    if not items or not (row.breakdown_ok or not batch.items.exists()):
+        return
+    codes = {i.external_uid for i in items if i.external_uid}
+    bookings = {b.external_uid: b for b in Booking.objects.filter(source=batch.source, external_uid__in=codes)} if codes else {}
+    batch.items.all().delete()
+    PayoutItem.objects.bulk_create([
+        PayoutItem(payout=batch, booking=bookings.get(i.external_uid), external_uid=i.external_uid, type_label=i.type_label[:80], date=i.date, amount=i.amount,
+                   listing_name=i.listing_name[:200], guest_name=i.guest_name[:200])
+        for i in items
+    ])
+    # (the property stays unattributed on the batch itself, as before: where a payout belongs is read from its lines)
+    PayoutBatch.objects.filter(pk=batch.pk).update(items_total=sum((i.amount for i in items), Decimal('0')), breakdown_ok=row.breakdown_ok, sequence=row.sequence)
 
 
 def _fill_details(source, raw_bookings):
@@ -625,10 +645,19 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
             next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=booking.unit)
             visit.property = property
             visit.unit = booking.unit
-            visit.scheduled_date = booking.check_out.date()
+            new_day = booking.check_out.date()
+            extra = []
+            if visit.date_set_at and visit.scheduled_date != new_day:
+                # The calendar wins over a date a person chose: the guest's stay changed. Say so, so it isn't a mystery.
+                who = (visit.date_set_by.get_full_name() or visit.date_set_by.username) if visit.date_set_by_id else 'someone'
+                visit.calendar_override_note = (f'The reservation calendar moved this to {new_day:%b} {new_day.day}, replacing '
+                                                f'{visit.scheduled_date:%b} {visit.scheduled_date.day}, which {who} set on {timezone.localtime(visit.date_set_at):%b} {timezone.localtime(visit.date_set_at).day}.')[:300]
+                visit.date_set_by, visit.date_set_at = None, None
+                extra = ['date_set_by', 'date_set_at', 'calendar_override_note']
+            visit.scheduled_date = new_day
             visit.next_booking = next_booking
             visit.ready_by = next_booking.check_in if next_booking else None
-            visit.save(update_fields=['property', 'unit', 'scheduled_date', 'next_booking', 'ready_by'])
+            visit.save(update_fields=['property', 'unit', 'scheduled_date', 'next_booking', 'ready_by'] + extra)
             transaction.on_commit(lambda visit=visit: push_visit(visit))
         else:
             # No active visit survived — either genuinely none was ever

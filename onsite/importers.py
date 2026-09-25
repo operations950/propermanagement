@@ -62,6 +62,47 @@ class PayoutBatchRow:
     detail: str = ''
     reference: str = ''
     arriving_by: date | None = None
+    items: list = field(default_factory=list)        # the PayoutItemRows that make it up (see assign_breakdowns)
+    breakdown_ok: bool | None = None                 # do they add up to `amount`? None: no lines were found for it
+    sequence: str = ''                               # 'after' (the rows following the Payout row) or 'before' (the rows above it)
+
+
+@dataclass
+class PayoutItemRow:
+    """One money row of the transactions file (a reservation payout, pass-through tax, resolution, adjustment ...),
+    with the platform's own words for what it is. Belongs to the Payout row it adds up to."""
+    external_uid: str
+    type_label: str
+    date: date | None
+    amount: Decimal
+    listing_name: str = ''
+    guest_name: str = ''
+
+
+def assign_breakdowns(entries):
+    """`entries` is the file's rows in order, as ('payout', PayoutBatchRow) or ('item', PayoutItemRow). A Payout row is
+    the bank transfer; the money rows in sequence beside it make it up, until the next Payout row. The rows that follow a
+    Payout row are its breakdown; if that holds for fewer payouts than the rows above them do (a file sorted the other
+    way round), the rows above are used instead. Each payout records whether its rows add up to what it paid."""
+    marks = [i for i, (kind, _obj) in enumerate(entries) if kind == 'payout']
+    if not marks:
+        return
+
+    def between(a, b):
+        return [obj for kind, obj in entries[a + 1:b] if kind == 'item']
+
+    def total(rows):
+        return sum((r.amount for r in rows), Decimal('0'))
+    after = [between(i, marks[n + 1] if n + 1 < len(marks) else len(entries)) for n, i in enumerate(marks)]
+    before = [between(marks[n - 1] if n else -1, i) for n, i in enumerate(marks)]
+
+    def holding(sets):
+        return sum(1 for i, rows in zip(marks, sets) if rows and total(rows) == entries[i][1].amount)
+    use_before = holding(before) > holding(after)
+    for i, rows in zip(marks, before if use_before else after):
+        payout = entries[i][1]
+        payout.items, payout.sequence = list(rows), 'before' if use_before else 'after'
+        payout.breakdown_ok = (total(rows) == payout.amount) if rows else None
 
 
 @dataclass
@@ -260,6 +301,7 @@ _CSV_FIELD_ALIASES = {
     'platform_fee': ['deductions'],
     'tax_amount': ['lodging tax owner remits'],
     'address': ['address'],
+    'listing_property_id': ['property id'],
     'listing_unit_id': ['unit id'],
     'cleaning_fee': ['cleaning fee'],
     'resort_fee': ['resort fee'],
@@ -379,6 +421,26 @@ def parse_csv(file_bytes):
         bucket = dated.setdefault(uid, {})
         bucket[(kind, paid)] = _add_money(bucket.get((kind, paid)), amount)
     payout_batches = []
+    entries = []         # the file's payout rows and money rows in order, for assign_breakdowns
+    vrbo_rows = []       # VRBO payout summary rows: (payout date, VRBO property id, item)
+
+    def record_item(row, type_value, uid):
+        """Any money row after/before a Payout row: what it is, the day, the Amount cell."""
+        if not (columns['payout_amount'] and columns['txn_date']):
+            return
+        amount = _money(row.get(columns['payout_amount']))
+        raw_day = (row.get(columns['txn_date']) or '').strip()
+        if amount is None:
+            return
+        try:
+            paid = _parse_csv_date(raw_day) if raw_day else None
+        except BookingFileError:
+            paid = None
+        entries.append(('item', PayoutItemRow(
+            external_uid=uid, type_label=type_value, date=paid, amount=amount,
+            listing_name=(row.get(columns['listing_name']) or '').strip() if columns['listing_name'] else '',
+            guest_name=(row.get(columns['guest_name']) or '').strip() if columns['guest_name'] else '',
+        )))
 
     def read_payout_batch(row):
         """A 'Payout' row — the file's Type column exactly 'Payout', never anything with 'Payout' as part of a
@@ -402,17 +464,23 @@ def parse_csv(file_bytes):
                     arriving = _parse_csv_date(raw_arriving)
                 except BookingFileError:
                     pass
-        payout_batches.append(PayoutBatchRow(
+        payout = PayoutBatchRow(
             date=paid, amount=amount, arriving_by=arriving,
             detail=(row.get(columns['details']) or '').strip() if columns['details'] else '',
             reference=(row.get(columns['reference_code']) or '').strip() if columns['reference_code'] else '',
-        ))
+        )
+        payout_batches.append(payout)
+        entries.append(('payout', payout))
 
     for row in reader:
         uid = (row.get(columns['external_uid']) or '').strip()
+        row_type = (row.get(columns['transaction_type']) or '').strip() if columns['transaction_type'] else ''
+        if row_type.lower() == 'payout':
+            read_payout_batch(row)
+            continue
+        if row_type:
+            record_item(row, row_type, uid)
         if not uid:
-            if columns['transaction_type'] and (row.get(columns['transaction_type']) or '').strip().lower() == 'payout':
-                read_payout_batch(row)
             continue
         if columns['transaction_type']:
             type_value = (row.get(columns['transaction_type']) or '').strip()
@@ -513,10 +581,25 @@ def parse_csv(file_bytes):
         by_uid[uid] = raw
         bookings.append(raw)
         add_dated(uid, 'reservation', row)
+        if payout_date and raw.payout_amount is not None and columns['payout_date'] and not columns['transaction_type']:
+            # VRBO's Payout Summary lists a payout per reservation, with no id for the transfer: reservations paid the same day
+            # for the same VRBO listing are treated as one payout (see PayoutBatchRow).
+            vrbo_rows.append((payout_date, (row.get(columns['listing_property_id']) or '').strip() if columns['listing_property_id'] else '', PayoutItemRow(
+                external_uid=uid, type_label='Cancellation' if raw.is_cancelled else 'Reservation', date=payout_date, amount=raw.payout_amount,
+                listing_name=raw.listing_name, guest_name=guest_name)))
 
     if not bookings and not payout_batches:
         raise BookingFileError('No reservation rows found in this file.')
     bookings = ParsedBookings(bookings)
+    assign_breakdowns(entries)
+    grouped = {}
+    for paid, property_id, item in vrbo_rows:
+        grouped.setdefault((paid, property_id), []).append(item)
+    for (paid, property_id), items in sorted(grouped.items()):
+        payout_batches.append(PayoutBatchRow(
+            date=paid, amount=sum((i.amount for i in items), Decimal('0')), detail='VRBO payout summary', reference=f'vrbo-{property_id}'[:60],
+            items=items, breakdown_ok=True, sequence='grouped',
+        ))
     bookings.payout_batches = payout_batches
     bookings.money_only = [
         MoneyRow(uid, [(kind, paid, amount) for (kind, paid), amount in sorted(lines.items(), key=lambda kv: (kv[0][1], kv[0][0]))])

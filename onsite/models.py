@@ -614,6 +614,9 @@ class PayoutBatch(models.Model):
     detail = models.CharField(max_length=300, blank=True, help_text="The platform's own description of the transfer, e.g. which bank account it went to.")
     reference = models.CharField(max_length=60, blank=True, help_text="The platform's own reference/confirmation for this transfer.")
     arriving_by = models.DateField(null=True, blank=True, help_text='When the platform said the money would reach the bank.')
+    items_total = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="What the lines that make it up add to (should equal the amount).")
+    breakdown_ok = models.BooleanField(null=True, help_text='True when its lines add up to the amount; False when they do not; blank when no lines were found for it.')
+    sequence = models.CharField(max_length=6, blank=True, help_text="Whether its lines were the rows after it in the file ('after') or above it ('before').")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -622,6 +625,26 @@ class PayoutBatch(models.Model):
 
     def __str__(self):
         return f'{self.get_source_display()} {self.date} ${self.amount}'
+
+
+class PayoutItem(models.Model):
+    """One line of what a payout is made of, exactly as the platform's transactions file lists it (a reservation's payout,
+    pass-through tax, a resolution, an adjustment ...). Kept as read so any payout can be audited: these lines are the
+    reason the transfer is the size it is."""
+    payout = models.ForeignKey(PayoutBatch, on_delete=models.CASCADE, related_name='items')
+    booking = models.ForeignKey('Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='payout_items')
+    external_uid = models.CharField(max_length=80, blank=True, help_text='The confirmation code on the line, if it had one.')
+    type_label = models.CharField(max_length=80, help_text="The platform's own word for the line (Reservation, Pass Through Tot, Resolution Payout ...).")
+    date = models.DateField(null=True, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    listing_name = models.CharField(max_length=200, blank=True)
+    guest_name = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.type_label} {self.amount}'
 
 
 class GuestRequest(models.Model):
@@ -772,6 +795,10 @@ class Visit(models.Model):
     )
 
     scheduled_date = models.DateField(null=True, blank=True)
+    date_set_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+                                    help_text='Who moved this visit to a date of their own choosing (blank while the date is just what the calendar said).')
+    date_set_at = models.DateTimeField(null=True, blank=True)
+    calendar_override_note = models.CharField(max_length=300, blank=True, help_text='Set when the reservation calendar moved the visit off a date a person had chosen.')
     scheduled_start = models.TimeField(null=True, blank=True)
     ready_by = models.DateTimeField(
         null=True, blank=True,

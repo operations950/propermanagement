@@ -28,6 +28,7 @@
 <div class="alert alert-warning small py-2 mb-2">QuickBooks isn't connected — connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a> first.</div>
 {% endif %}
 {% if sync_error %}<div class="alert alert-warning small py-2 mb-2">{{ sync_error }}</div>{% endif %}
+{% if lingering_payouts %}<div class="alert alert-warning small py-2 mb-2 d-flex align-items-center gap-2"><i data-lucide="clock-alert" class="icon"></i> <span><strong>{{ lingering_payouts }}</strong> platform payout{{ lingering_payouts|pluralize }} reported paid 45+ days ago {% if lingering_payouts == 1 %}has{% else %}have{% endif %} no matching bank deposit.</span> <a href="{% url 'close_payouts' %}" class="ms-auto">Review</a></div>{% endif %}
 {% if not month_over %}<div class="alert alert-info small py-2 mb-2">{{ month|date:"F Y" }} isn't over yet. You can code what has come in so far, but it can't be closed until the month ends.</div>{% endif %}
 
 <div class="d-flex gap-2 flex-wrap align-items-center mb-2">

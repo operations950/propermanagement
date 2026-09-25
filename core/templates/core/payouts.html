@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Platform payouts{% endblock %}
+{% block content %}
+<style>
+    .po { font-size: 0.84rem; }
+    .po thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); }
+    .po td { padding: 5px 8px; vertical-align: middle; }
+    .po td.num, .po th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .po-chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+    .po-received { background: color-mix(in srgb, var(--status-good) 16%, white); color: var(--status-good); }
+    .po-waiting, .po-scheduled { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+    .po-lingering { background: color-mix(in srgb, var(--status-critical, #c0392b) 15%, white); color: var(--status-critical, #c0392b); }
+    .po details summary { cursor: pointer; list-style: none; }
+    .po details summary::-webkit-details-marker { display: none; }
+    .po-items { margin: 6px 0 4px; width: 100%; max-width: 620px; }
+    .po-items td { padding: 2px 8px; border-top: 1px solid var(--border-hairline); font-size: 0.8rem; }
+    .po-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 10px; border-radius: 999px; background: var(--bs-light, #f1f3f5); font-size: 0.8rem; text-decoration: none; color: inherit; }
+    .po-stat.on { outline: 2px solid var(--brand, #6c8ebf); }
+</style>
+<a href="{% url 'close_overview' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
+<h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="banknote" class="icon-lg"></i> Platform payouts</h2>
+<div class="small text-muted mb-2">Each payout Airbnb or VRBO reports, the lines that make it up, and whether a bank deposit of that amount has turned up. One waiting {{ lingering_after }}+ days is flagged.</div>
+
+<div class="card mb-2"><div class="card-body py-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="me-auto"><strong class="small">QuickBooks coding</strong>
+            <div class="small text-muted">Deposits in "Uncategorized Airbnb Income" / "Uncategorized VRBO Income" are matched to a payout by date and amount, then split into one line per reservation, "Guest | Code | Amount", in that unit's trust account.</div></div>
+        <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="qb_preview"><button class="btn btn-sm btn-outline-secondary">Check QuickBooks</button></form>
+        {% if plan_ready %}<form method="post" class="d-inline" onsubmit="return confirm('Change {{ plan_ready }} deposit{{ plan_ready|pluralize }} in QuickBooks?');">{% csrf_token %}<input type="hidden" name="action" value="qb_apply"><button class="btn btn-sm btn-primary">Send {{ plan_ready }} to QuickBooks</button></form>{% endif %}
+    </div>
+    {% if plan %}
+    {% for e in plan.errors %}<div class="alert alert-danger small py-1 mt-2 mb-0">{{ e }}</div>{% endfor %}
+    {% if plan.items %}
+    <table class="table table-sm po mt-2 mb-0">
+        <thead><tr><th>Deposit</th><th class="num">Amount</th><th>Payout</th><th>What would happen</th></tr></thead>
+        <tbody>
+        {% for i in plan.items %}
+        <tr>
+            <td class="text-nowrap">{{ i.date|date:"M j" }} <span class="text-muted">{{ i.source|title }}</span></td>
+            <td class="num">${{ i.amount|floatformat:2 }}</td>
+            <td>{% if i.payout %}{{ i.payout.date|date:"M j" }}{% else %}<span class="text-muted">none</span>{% endif %}</td>
+            <td>
+                {% if i.status == 'ready' %}<details><summary><span class="po-chip po-received">Ready</span> split into {{ i.lines|length }} line{{ i.lines|length|pluralize }}</summary>
+                    <table class="po-items">{% for l in i.lines %}<tr><td>{{ l.description }}</td><td class="text-muted">{{ l.where }}</td><td class="text-muted">{{ l.account_name }}</td></tr>{% endfor %}</table></details>
+                {% elif i.status == 'blocked' %}<span class="po-chip po-lingering">Can't code</span> {{ i.reason }}
+                {% else %}<span class="po-chip po-waiting">Left for you</span> {{ i.reason }}{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% elif not plan.errors %}<div class="small text-muted mt-2">Nothing is waiting in the uncategorized accounts.</div>{% endif %}
+    {% endif %}
+</div></div>
+
+<div class="d-flex gap-2 flex-wrap align-items-center mb-2">
+    <a class="po-stat {% if show == 'open' %}on{% endif %}" href="?show=open&source={{ source }}"><strong>{{ counts.waiting|add:counts.scheduled|add:counts.lingering }}</strong> not received yet</a>
+    <a class="po-stat {% if show == 'lingering' %}on{% endif %}" href="?show=lingering&source={{ source }}" {% if counts.lingering %}style="background: color-mix(in srgb, var(--status-critical, #c0392b) 15%, white);"{% endif %}><strong>{{ counts.lingering }}</strong> waiting {{ lingering_after }}+ days</a>
+    <a class="po-stat {% if show == 'received' %}on{% endif %}" href="?show=received&source={{ source }}"><strong>{{ counts.received }}</strong> received</a>
+    <a class="po-stat {% if show == 'all' %}on{% endif %}" href="?show=all&source={{ source }}">All</a>
+    <span class="ms-auto btn-group btn-group-sm">
+        <a class="btn btn-outline-secondary {% if not source %}active{% endif %}" href="?show={{ show }}">Both</a>
+        <a class="btn btn-outline-secondary {% if source == 'airbnb' %}active{% endif %}" href="?show={{ show }}&source=airbnb">Airbnb</a>
+        <a class="btn btn-outline-secondary {% if source == 'vrbo' %}active{% endif %}" href="?show={{ show }}&source=vrbo">VRBO</a>
+    </span>
+</div>
+{% if mismatched %}<div class="alert alert-warning small py-2 mb-2">{{ mismatched }} payout{{ mismatched|pluralize }} below {% if mismatched == 1 %}has{% else %}have{% endif %} lines that don't add up to the amount — open the row to see the difference.</div>{% endif %}
+
+<div class="card"><div class="table-responsive">
+<table class="table table-sm mb-0 po">
+    <thead><tr><th>Paid out</th><th>Platform</th><th class="num">Amount</th><th>Made up of</th><th>Where</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td class="text-nowrap">{{ r.batch.date|date:"M j, Y" }}</td>
+        <td>{{ r.batch.get_source_display }}</td>
+        <td class="num fw-semibold">${{ r.batch.amount|floatformat:2 }}</td>
+        <td>
+            {% if r.items %}
+            <details><summary>{{ r.items|length }} line{{ r.items|length|pluralize }}{% if r.reservations %} · {{ r.reservations }} reservation{{ r.reservations|pluralize }}{% endif %}{% if r.guests %}: {{ r.guests|slice:":2"|join:", " }}{% if r.guests|length > 2 %}…{% endif %}{% endif %}
+                {% if r.batch.breakdown_ok is False %}<span class="po-chip po-lingering" title="The lines add up to ${{ r.batch.items_total|floatformat:2 }}, not ${{ r.batch.amount|floatformat:2 }}">don't add up</span>{% endif %}</summary>
+                <table class="po-items">
+                    {% for i in r.items %}<tr><td>{{ i.date|date:"M j"|default:"" }}</td><td>{{ i.type_label }}</td><td>{{ i.guest_name|default:i.external_uid }}</td><td class="num">{{ i.amount|floatformat:2 }}</td></tr>{% endfor %}
+                    <tr><td colspan="3" class="fw-semibold">Lines total</td><td class="num fw-semibold">{{ r.batch.items_total|floatformat:2 }}</td></tr>
+                </table>
+                {% if r.coded %}<div class="small text-muted mb-1">Coded in QuickBooks {{ r.coded.applied_at|date:"M j, g:i A" }}{% if r.coded.applied_by %} by {{ r.coded.applied_by.get_full_name|default:r.coded.applied_by.username }}{% elif r.coded.automatic %} automatically{% endif %}, as:
+                    {% for l in r.coded.new_lines %}<div>{{ l.Description }}</div>{% endfor %}</div>{% endif %}
+            </details>
+            {% else %}<span class="text-muted">no lines on file — upload the transactions file again</span>{% endif %}
+        </td>
+        <td>{% for p in r.properties|slice:":2" %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if r.units %} <span class="text-muted">({{ r.units|join:", " }})</span>{% endif %}</td>
+        <td>
+            {% if r.status == 'received' %}{% if r.deposit %}<span class="po-chip po-received" title="Deposit {{ r.deposit.txn_date|date:'M j' }}: {{ r.deposit.memo|truncatechars:60 }}">Received {{ r.deposit.txn_date|date:"M j" }}</span>{% else %}<span class="po-chip po-received" title="A deposit in QuickBooks, coded from this payout">Coded {{ r.coded.deposit_date|date:"M j" }}</span>{% endif %}
+            {% elif r.status == 'lingering' %}<span class="po-chip po-lingering">Not received · {{ r.age_days }} days</span>
+            {% elif r.status == 'scheduled' %}<span class="po-chip po-scheduled">Scheduled</span>
+            {% else %}<span class="po-chip po-waiting">Waiting · {{ r.age_days }} day{{ r.age_days|pluralize }}</span>{% endif %}
+        </td>
+    </tr>
+    {% empty %}<tr><td colspan="6" class="text-muted p-3">Nothing here. Upload an Airbnb transactions file and its payouts will appear.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

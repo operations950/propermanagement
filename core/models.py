@@ -1317,3 +1317,26 @@ class ListingRating(models.Model):
 
     class Meta:
         ordering = ['-checked_at']
+
+
+class QBRecode(models.Model):
+    """The record of one bank deposit the program recoded in QuickBooks from an Airbnb / VRBO payout: what was on the
+    deposit before, what it was split into, who sent it and when. Kept for audit - a payout can always show how it was
+    coded, and the "before" lines are enough to put the deposit back by hand."""
+    payout_id = models.PositiveIntegerField(help_text='The onsite PayoutBatch this deposit was matched to.')
+    source = models.CharField(max_length=20)
+    deposit_qb_id = models.CharField(max_length=40)
+    deposit_date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    old_lines = models.JSONField(default=list)
+    new_lines = models.JSONField(default=list)
+    applied_at = models.DateTimeField(auto_now_add=True)
+    applied_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    automatic = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-applied_at']
+        constraints = [models.UniqueConstraint(fields=['deposit_qb_id'], name='uniq_qb_recode_deposit')]
+
+    def __str__(self):
+        return f'{self.source} deposit {self.deposit_qb_id} ${self.amount}'

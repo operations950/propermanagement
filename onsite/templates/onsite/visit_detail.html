@@ -102,6 +102,8 @@
                         <div class="col-6">
                             <label class="form-label small text-muted mb-1">Date</label>
                             <input type="date" name="scheduled_date" class="form-control form-control-sm" value="{{ visit.scheduled_date|date:'Y-m-d' }}">
+                            {% if visit.date_set_at %}<div class="form-text">Set by hand{% if visit.date_set_by %} by {{ visit.date_set_by.get_full_name|default:visit.date_set_by.username }}{% endif %}, {{ visit.date_set_at|date:"M j, g:i A" }}. If the reservation calendar changes, it will move this.</div>{% endif %}
+                            {% if visit.calendar_override_note %}<div class="form-text text-warning-emphasis">{{ visit.calendar_override_note }}</div>{% endif %}
                         </div>
                         <div class="col-6">
                             <label class="form-label small text-muted mb-1">Planned start time</label>

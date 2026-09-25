@@ -22,6 +22,7 @@ urlpatterns = [
     path('admin-tools/import-property-details/', views.property_data_import, name='property_data_import'),
     path('faq-review/', faq_views.faq_review_queue, name='faq_review_queue'),
     path('close/', close_views.close_overview, name='close_overview'),
+    path('close/payouts/', close_views.payouts, name='close_payouts'),
     path('close/statement/<int:pk>/', close_views.close_statement, name='close_statement'),
     path('close/<str:month>/<int:pk>/', close_views.close_property, name='close_property'),
     path('close/<str:month>/<int:pk>/unit/<int:unit_pk>/', close_views.close_property, name='close_unit'),
