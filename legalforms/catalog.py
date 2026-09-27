@@ -27,7 +27,7 @@ NOLA_BODY = """<div class="lf-page">
 <p>{{ letter_date_long }}</p>
 <p><strong>NOTICE OF LATE ASSESSMENT (Pursuant to §718.121(5), Florida Statutes)</strong></p>
 <p>Our records indicate that your assessment account with {{ association_name }} is past due. Pursuant to §718.121(5), Florida Statutes, this Notice of Late Assessment is provided to inform you of the amount currently due and to give you an opportunity to bring your account current.</p>
-<p>Payment must be made in full within {{ response_days }} days of the date of this letter (no later than {{ deadline_short }}). If payment is not received by that date, the Association intends to proceed with further collection action against your property, which may include attorney involvement, recording of a lien, and foreclosure proceedings, as permitted by Florida law.</p>
+<p>You have {{ response_days }} days from the date of this letter to pay the amount due in full (no later than {{ deadline_short }}). If payment is not received by that date, the Association will proceed with further collection activity, which may include recording of a lien and foreclosure proceedings, as permitted by Florida law.</p>
 <table class="lf-amounts">
 <tr><td colspan="3" class="lf-center"><strong>Amounts due as of {{ letter_date_long }}</strong></td></tr>
 <tr><td class="lf-r">Regular Assessments Due</td><td class="lf-r">{{ regular_assessments_fmt }}</td><td></td></tr>
@@ -254,7 +254,7 @@ TEMPLATES = [
         'statute': '§718.121(5), Florida Statutes',
         'description': 'The letter that gives an owner an opportunity to bring a past-due assessment account current before the association takes further collection action.',
         'body': NOLA_BODY, 'fields': NOLA_FIELDS,
-        'reviewed_note': 'Wording is the management company\'s own letter. Confirm with the association\'s attorney: the statute cited, the response period (30 days here — the seeded delinquency process defaults to 45), and that the late fee and interest rates match the governing documents.',
+        'reviewed_note': 'The response period is 30 days, matching the wait step in the Association Delinquency and Collection process. Confirm the late fee and interest rates match the governing documents.',
     },
     {
         'slug': 'nola-affidavit', 'name': 'Affidavit of Mailing — Notice of Late Assessment', 'category': 'Collections', 'order': 11, 'companion_of': 'nola',

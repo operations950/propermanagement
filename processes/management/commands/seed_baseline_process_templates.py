@@ -77,7 +77,7 @@ TEMPLATES = [
             ('Prepare and upload the required notice', StepType.DOCUMENT_UPLOAD, {'assignee_role': StaffProfile.Role.PROPERTY_MANAGER}),
             (
                 'Wait through the cure period', StepType.WAIT_TIMER,
-                {'help_text': 'Default 45 days — confirm against the association\'s bylaws.', 'config': {'wait_mode': 'duration', 'duration_days': 45}},
+                {'help_text': 'Default 30 days — confirm against the association\'s bylaws.', 'config': {'wait_mode': 'duration', 'duration_days': 30}},
             ),
             (
                 'Route: paid, payment plan, continue collection, or escalate', StepType.APPROVAL_DECISION,
