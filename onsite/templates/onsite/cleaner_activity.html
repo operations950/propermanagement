@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}Cleaner activity{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> On-Site Visits</a>
+<h2 class="page-title mb-1">Cleaner activity</h2>
+<p class="text-muted small mb-3">Every checklist note and reported issue one cleaner has left, and whether it became a ticket — a checklist note otherwise only ever shows on that one visit's own page.</p>
+
+<form method="get" class="d-flex flex-wrap gap-2 align-items-end mb-4">
+    <div>
+        <label class="form-label small mb-1">Who</label>
+        <select name="who" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">Choose…</option>
+            {% if cleaners %}<optgroup label="Staff">
+                {% for c in cleaners %}<option value="staff:{{ c.pk }}" {% if staff.pk == c.pk %}selected{% endif %}>{{ c.user.get_full_name|default:c.user.username }}</option>{% endfor %}
+            </optgroup>{% endif %}
+            {% if external %}<optgroup label="External / on-site">
+                {% for c in external %}<option value="contact:{{ c.pk }}" {% if contact.pk == c.pk %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+            </optgroup>{% endif %}
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-1">Last</label>
+        <select name="days" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="7" {% if days == 7 %}selected{% endif %}>7 days</option>
+            <option value="14" {% if days == 14 %}selected{% endif %}>14 days</option>
+            <option value="30" {% if days == 30 %}selected{% endif %}>30 days</option>
+            <option value="60" {% if days == 60 %}selected{% endif %}>60 days</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>90 days</option>
+        </select>
+    </div>
+</form>
+
+{% if staff or contact %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="triangle-alert" class="icon"></i> Issues reported ({{ issues|length }})</h6>
+    {% if issues %}
+    <div class="table-responsive"><table class="table table-sm mb-0">
+        <thead><tr class="small text-muted text-uppercase"><th>When</th><th>Property</th><th>What she said</th><th>Ticket</th></tr></thead>
+        <tbody>
+        {% for i in issues %}
+        <tr>
+            <td class="small text-nowrap">{{ i.created_at|date:"M j, g:i A" }}</td>
+            <td class="small">{{ i.visit.property.name }}{% if i.visit.unit %} — {{ i.visit.unit.label }}{% endif %}</td>
+            <td class="small">{{ i.description }}</td>
+            <td class="small">{% if i.created_ticket %}<a href="{% url 'ticket_detail' i.created_ticket.pk %}">#{{ i.created_ticket.pk }} · {{ i.created_ticket.get_status_display }}</a>{% else %}<span class="text-muted">Not yet — the visit hasn't been submitted</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    {% else %}<p class="text-muted small mb-0">None in this window.</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sticky-note" class="icon"></i> Checklist notes ({{ notes|length }})</h6>
+    <p class="text-muted small">Written next to a checklist step — these do <strong>not</strong> create a ticket on their own. If one of these needs maintenance, open the visit and use "Report an issue" instead.</p>
+    {% if notes %}
+    <div class="table-responsive"><table class="table table-sm mb-0">
+        <thead><tr class="small text-muted text-uppercase"><th>Visit</th><th>Property</th><th>Step</th><th>Note</th></tr></thead>
+        <tbody>
+        {% for n in notes %}
+        <tr>
+            <td class="small text-nowrap"><a href="{% url 'onsite_visit_detail' n.visit_id %}">{{ n.visit.started_at|date:"M j" }}</a></td>
+            <td class="small">{{ n.visit.property.name }}{% if n.visit.unit %} — {{ n.visit.unit.label }}{% endif %}</td>
+            <td class="small">{{ n.text }}</td>
+            <td class="small">{{ n.note }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    {% else %}<p class="text-muted small mb-0">None in this window.</p>{% endif %}
+</div></div>
+{% else %}
+<p class="text-muted small">Choose who above.</p>
+{% endif %}
+{% endblock %}

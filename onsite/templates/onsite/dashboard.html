@@ -13,6 +13,7 @@
         <a href="{% url 'onsite_checklist_templates' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="clipboard-list" class="icon"></i> Checklist templates</a>
         {% if is_admin %}
         <a href="{% url 'onsite_checklist_custom_items' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="list-checks" class="icon"></i> Custom checklist items</a>
+        <a href="{% url 'onsite_cleaner_activity' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="sticky-note" class="icon"></i> Cleaner activity</a>
         <a href="{% url 'onsite_cleaning_payments' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="dollar-sign" class="icon"></i> Cleaning payments</a>
         <a href="{% url 'onsite_booking_feeds' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-sync" class="icon"></i> Booking calendars</a>
         {% endif %}
