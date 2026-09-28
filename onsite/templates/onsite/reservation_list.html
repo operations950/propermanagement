@@ -85,4 +85,68 @@
     </div>
 </div>
 {% if truncated %}<p class="text-muted small mt-2">Showing the first 300 — narrow the search to see others.</p>{% endif %}
+
+{% comment %}
+One shared modal for every row's "Unit" button (see _reservation_actions.html) — a real Bootstrap modal instead of
+an absolutely-positioned popover, which used to get clipped by .table-responsive's own scroll area, forcing a
+scroll inside a slim box to reach it.
+{% endcomment %}
+<div class="modal fade" id="moveUnitModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" class="modal-content" id="moveUnitForm" style="border-radius: var(--bs-border-radius-lg);">
+      {% csrf_token %}
+      <input type="hidden" name="next" id="moveUnitNext">
+      <div class="modal-header">
+        <h5 class="modal-title">Which unit is this guest really in?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <select name="unit_id" id="moveUnitSelect" class="form-select mb-2"></select>
+        <label class="small d-flex gap-1 align-items-start" id="moveUnitListingLabel" hidden>
+          <input type="checkbox" name="apply_to_listing" value="1" checked class="mt-1">
+          <span>Also send future reservations from "<span id="moveUnitListingName"></span>" to this unit</span>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm">Move</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('moveUnitModal');
+    if (!modalEl || !window.bootstrap) return;
+    var modal = new bootstrap.Modal(modalEl);
+    var form = document.getElementById('moveUnitForm');
+    var select = document.getElementById('moveUnitSelect');
+    var nextInput = document.getElementById('moveUnitNext');
+    var listingLabel = document.getElementById('moveUnitListingLabel');
+    var listingName = document.getElementById('moveUnitListingName');
+    document.querySelectorAll('[data-move-unit-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var units = JSON.parse(btn.dataset.moveUnits || '[]');
+            var current = btn.dataset.moveCurrent;
+            select.innerHTML = '';
+            units.forEach(function (u) {
+                var opt = document.createElement('option');
+                opt.value = u.id;
+                opt.textContent = u.label;
+                if (String(u.id) === current) opt.selected = true;
+                select.appendChild(opt);
+            });
+            form.action = btn.dataset.moveUrl;
+            nextInput.value = btn.dataset.moveNext;
+            if (btn.dataset.moveListing) {
+                listingLabel.hidden = false;
+                listingName.textContent = btn.dataset.moveListing;
+            } else {
+                listingLabel.hidden = true;
+            }
+            modal.show();
+        });
+    });
+})();
+</script>
 {% endblock %}
