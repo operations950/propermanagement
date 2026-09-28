@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, F, Max, Prefetch, Q
@@ -88,6 +88,47 @@ _RANGE_SPANS = {
     'week': 6,     # today .. +6 (7 days)
     'month': 29,   # today .. +29 (30 days)
 }
+
+
+@login_required
+@user_passes_test(_is_admin)
+def cleaner_activity(request):
+    """Everything one cleaner (staff or an external, no-login contact) has reported over a stretch of time: every
+    checklist-item note she left, every issue she flagged, and whether that issue became a Ticket — the actual
+    record of what she told the app, in one place, since a checklist note otherwise only ever shows on that one
+    visit's own detail page and an issue's ticket can be buried in the Maintenance queue.
+
+    `who` is 'staff:<id>' or 'contact:<id>'; `days` how far back (default 30)."""
+    days = int(request.GET.get('days') or 30)
+    since = timezone.now() - timedelta(days=days)
+    who = request.GET.get('who', '')
+    kind, _, raw_id = who.partition(':')
+    staff = contact = None
+    if kind == 'staff' and raw_id.isdigit():
+        staff = StaffProfile.objects.select_related('user').filter(pk=raw_id).first()
+    elif kind == 'contact' and raw_id.isdigit():
+        contact = Contact.objects.filter(pk=raw_id).first()
+
+    cleaners = list(StaffProfile.objects.select_related('user').filter(role=StaffProfile.Role.CLEANER).order_by('user__first_name', 'user__last_name'))
+    external = list(Contact.objects.filter(Q(contact_type=Contact.ContactType.VENDOR, trade__icontains='clean') | Q(contact_type=Contact.ContactType.ON_SITE_STAFF)).order_by('name'))
+
+    notes = issues = []
+    if staff or contact:
+        visits_qs = Visit.objects.filter(started_at__gte=since).select_related('property', 'unit')
+        visits_qs = visits_qs.filter(assigned_staff=staff) if staff else visits_qs.filter(assigned_contact=contact)
+        visit_ids = list(visits_qs.values_list('pk', flat=True))
+        notes = list(
+            VisitChecklistItem.objects.filter(visit_id__in=visit_ids).exclude(note='')
+            .select_related('visit__property', 'visit__unit').order_by('-visit__started_at')
+        )
+        issues = list(
+            VisitIssue.objects.filter(visit_id__in=visit_ids).select_related('visit__property', 'visit__unit', 'created_ticket')
+            .order_by('-created_at')
+        )
+    return render(request, 'onsite/cleaner_activity.html', {
+        'cleaners': cleaners, 'external': external, 'staff': staff, 'contact': contact, 'who': who, 'days': days,
+        'notes': notes, 'issues': issues,
+    })
 
 
 @login_required
@@ -325,6 +366,24 @@ def _units_by_property_json():
     return dumps_for_script(grouped)
 
 
+def _open_batch_or_redirect(request, batch_id):
+    """The not-yet-applied ImportBatch for a review/apply/quick-add-property URL, or (None, a redirect) when there
+    is none. A batch that genuinely never existed (bad id, wrong deploy's data) is a real 404 — Http404 lets that
+    keep looking like one. One that DID exist but has since been applied is a much more common, everyday case (the
+    apply already went through in an earlier tab, a slow request that actually landed before a double-click's
+    second one arrived, the browser's Back button returning to a review page whose import is done) and staff seeing
+    a bare 'Not Found' for that reads as "my upload failed," when it didn't — so it gets its own message and a
+    normal redirect back to the import screen instead."""
+    from django.http import Http404
+    try:
+        return get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True), None
+    except Http404:
+        if ImportBatch.objects.filter(pk=batch_id, applied_at__isnull=False).exists():
+            messages.info(request, 'This file was already imported — nothing left to review.')
+            return None, redirect('onsite_booking_import')
+        raise
+
+
 def _create_payout_batch(user, source, uploaded_file):
     """A payouts-only report (VRBO "upcoming payouts"): money by confirmation
     code, no stay dates. Saved as a batch of its own kind; the preview shows what
@@ -485,7 +544,9 @@ def booking_import_preview(request, batch_id):
     preview has a real URL to land on (after the initial upload, or after a
     quick_add_property round trip) rather than only existing as an inline
     render of the upload POST."""
-    batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
+    batch, bounce = _open_batch_or_redirect(request, batch_id)
+    if bounce:
+        return bounce
     # TEMPORARY — see booking_import_apply's matching diagnostic try/except.
     # Popped (not just read) so it only ever shows once, right after the
     # crash that produced it.
@@ -530,7 +591,9 @@ def quick_add_property(request, batch_id):
     access info, ...) gets filled in later the normal way. Redirects back to
     the same batch's preview, where the new property now shows up in every
     listing-name picker."""
-    batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
+    batch, bounce = _open_batch_or_redirect(request, batch_id)
+    if bounce:
+        return bounce
     name = request.POST.get('new_property_name', '').strip()
     if not name:
         messages.error(request, 'Enter a name for the new property.')
@@ -552,7 +615,9 @@ def booking_import_apply(request, batch_id):
     apply and re-shows the preview with the specific problem(s) flagged —
     an all-or-nothing pass so a partial mapping never leaves some bookings
     silently un-imported with no record of why."""
-    batch = get_object_or_404(ImportBatch, pk=batch_id, applied_at__isnull=True)
+    batch, bounce = _open_batch_or_redirect(request, batch_id)
+    if bounce:
+        return bounce
     if request.method != 'POST':
         return redirect('onsite_booking_import')
 

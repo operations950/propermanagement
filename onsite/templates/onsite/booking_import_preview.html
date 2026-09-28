@@ -238,7 +238,7 @@
     </div>
     {% endif %}
 
-    <button class="btn btn-primary" type="submit">Apply import</button>
+    <button class="btn btn-primary" type="submit" data-once-submit>Apply import</button>
     <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary">Cancel</a>
 </form>
 
@@ -291,8 +291,22 @@
 
 <form method="post" action="{% url 'onsite_booking_import_apply' batch.pk %}">
     {% csrf_token %}
-    <button class="btn btn-primary" type="submit">Apply import</button>
+    <button class="btn btn-primary" type="submit" data-once-submit>Apply import</button>
     <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary">Cancel</a>
 </form>
 {% endif %}
+
+<script>
+// A big file can take a moment to apply — guards against a double-click (or an eager second
+// tap) sending the same import twice, which used to land the second request on a 404 once
+// the first had already applied the batch.
+document.querySelectorAll('form').forEach(function (form) {
+    var btn = form.querySelector('[data-once-submit]');
+    if (!btn) return;
+    form.addEventListener('submit', function () {
+        btn.disabled = true;
+        btn.textContent = 'Applying…';
+    });
+});
+</script>
 {% endblock %}
