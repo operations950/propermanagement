@@ -616,7 +616,7 @@ class PayoutBatch(models.Model):
     arriving_by = models.DateField(null=True, blank=True, help_text='When the platform said the money would reach the bank.')
     items_total = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="What the lines that make it up add to (should equal the amount).")
     breakdown_ok = models.BooleanField(null=True, help_text='True when its lines add up to the amount; False when they do not; blank when no lines were found for it.')
-    sequence = models.CharField(max_length=6, blank=True, help_text="Whether its lines were the rows after it in the file ('after') or above it ('before').")
+    sequence = models.CharField(max_length=10, blank=True, help_text="Whether its lines were the rows after it in the file ('after'), above it ('before'), or VRBO reservations grouped by payout date and listing ('grouped').")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
