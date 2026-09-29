@@ -187,8 +187,23 @@ def plan(token, today=None, days=LOOKBACK_DAYS):
 
 
 def apply(token, item, user=None, automatic=False):
-    """Sends one planned change. Returns (True, '') or (False, why). The deposit is read again first, so a change made in
-    QuickBooks since the plan was drawn up is never overwritten."""
+    """Sends one planned change. Returns (True, '') or (False, why). Locked per deposit so two overlapping
+    calls for the same one (e.g. a double-click before the first request's redirect lands) can't both pass
+    the "already recoded" check and each independently create+delete their own replacement - confirmed as
+    the real cause of one production deposit ending up recoded three times over instead of once."""
+    from django.core.cache import cache
+    lock_key = f'qb_recode_apply_{item["qb_id"]}'
+    if not cache.add(lock_key, True, timeout=120):
+        return False, 'already being sent to QuickBooks - try again shortly'
+    try:
+        return _apply_locked(token, item, user=user, automatic=automatic)
+    finally:
+        cache.delete(lock_key)
+
+
+def _apply_locked(token, item, user=None, automatic=False):
+    """The deposit is read again first, so a change made in QuickBooks since the plan was drawn up is never
+    overwritten."""
     if item['status'] != 'ready':
         return False, item['reason'] or 'not ready'
     if QBRecode.objects.filter(deposit_qb_id=item['qb_id']).exists():
@@ -211,17 +226,22 @@ def apply(token, item, user=None, automatic=False):
         if klass:
             detail['ClassRef'] = klass
         new.append({'Amount': float(ln['amount']), 'Description': ln['description'], 'DetailType': 'DepositLineDetail', 'DepositLineDetail': detail})
-    # A sparse update's Line array only MERGES by Id - a line we omit here is NOT removed, it's just left
-    # alone, so the old uncategorized line stayed and our new coded line was simply appended, DOUBLING the
-    # deposit (a real production bug, confirmed against Intuit's own docs: only a full update's Line array
-    # actually replaces the existing lines wholesale). Fixed by sending a full update instead - built from the
-    # complete deposit we just re-read, with only Line swapped out, so no other writable field gets nulled.
-    body = dict(deposit)
-    body['Line'] = keep + new
-    saved, error = quickbooks.update_object(token, 'Deposit', body, sparse=False)
+    # Neither a sparse NOR a full update can actually remove the old uncategorized line - confirmed directly
+    # against production: QuickBooks returns the object completely unchanged, SyncToken not even incremented,
+    # when a Line array omits an existing entry. An update can only ADD or EDIT-by-Id; genuinely shrinking the
+    # Line array means deleting the deposit and recreating it. Create the replacement FIRST and only delete
+    # the original once it's confirmed to exist, so a failure here never loses the deposit entirely.
+    create_body = {k: v for k, v in deposit.items() if k not in ('Id', 'SyncToken', 'MetaData', 'domain', 'sparse', 'TotalAmt', 'HomeTotalAmt')}
+    create_body['Line'] = [{k: v for k, v in ln.items() if k not in ('Id', 'LineNum')} for ln in (keep + new)]
+    created, error = quickbooks.create_object(token, 'Deposit', create_body)
     if error:
         return False, error
-    QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=deposit['Id'], deposit_date=item['date'], amount=item['amount'],
+    ok, error = quickbooks.delete_object(token, 'Deposit', deposit['Id'], deposit['SyncToken'])
+    if not ok:
+        return False, (f'created the corrected deposit (QuickBooks Id {created.get("Id")}) but could not delete the '
+                        f'original (Id {deposit["Id"]}): {error} - QuickBooks now has BOTH, please remove the '
+                        f'original by hand')
+    QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=created['Id'], deposit_date=item['date'], amount=item['amount'],
                             old_lines=uncat, new_lines=new, applied_by=user if getattr(user, 'pk', None) else None, automatic=automatic)
     return True, ''
 

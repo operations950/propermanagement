@@ -609,11 +609,15 @@ def query(token, sql):
 
 def update_object(token, entity, body, sparse=True):
     """(saved object, error): updates one QuickBooks object (it must carry its Id and SyncToken). Sparse
-    (the default) only touches the fields you include - anything else, INCLUDING items inside a Line array
-    you don't mention, is left exactly as-is (QuickBooks merges Line by Id; it never removes an existing
-    line just because your request omits it). Pass sparse=False for a full update when a field's old value
-    needs to be genuinely replaced/cleared - that requires the request to carry every writable field you
-    want to keep, since anything omitted is nulled."""
+    (the default) only touches the fields you include - anything else is left exactly as-is. Pass
+    sparse=False for a full update when a field's old value needs to be genuinely replaced/cleared - that
+    requires the request to carry every writable field you want to keep, since anything omitted is nulled.
+    Neither mode can REMOVE an existing item from a Line array, confirmed directly against production:
+    submitting a shorter Line array (sparse OR full) returns 200 with the object completely unchanged and
+    its SyncToken not even incremented - QuickBooks silently treats the omission as nothing to do, rather
+    than as a delete. Line entries can only be added (no Id) or edited (matched by Id); to genuinely shrink
+    a Line array, delete the object and recreate it with only the lines you want (see create_object/
+    delete_object)."""
     problem = _authorised(token)
     if problem:
         return None, problem
@@ -631,3 +635,44 @@ def update_object(token, entity, body, sparse=True):
     except ValueError:
         logger.warning('QuickBooks update of %s returned a non-JSON response (HTTP %s)', entity, resp.status_code)
         return None, f'{WRITE_ERROR} (an unreadable answer)'
+
+
+def create_object(token, entity, body):
+    """(saved object, error): creates a new QuickBooks object. Used to rebuild a transaction whose Line
+    array needs to genuinely shrink (see update_object) - create the replacement first and confirm it looks
+    right before deleting the original, so a failure here never leaves neither object behind."""
+    problem = _authorised(token)
+    if problem:
+        return None, problem
+    try:
+        resp = requests.post(f'{API_BASES[_environment()]}/{token.realm_id}/{entity.lower()}', params={'minorversion': 70},
+                             json=body, headers={**_headers(token), 'Content-Type': 'application/json'}, timeout=30)
+        if resp.status_code >= 400:
+            logger.warning('QuickBooks create of %s refused: HTTP %s %s', entity, resp.status_code, _fault_text(resp))
+            return None, f'{WRITE_ERROR} {_fault_text(resp)}'.strip()
+    except Exception as exc:
+        logger.warning('QuickBooks create failed: %s', _failure_summary(exc))
+        return None, f"{WRITE_ERROR} (no answer)"
+    try:
+        return resp.json().get(entity), ''
+    except ValueError:
+        logger.warning('QuickBooks create of %s returned a non-JSON response (HTTP %s)', entity, resp.status_code)
+        return None, f'{WRITE_ERROR} (an unreadable answer)'
+
+
+def delete_object(token, entity, qb_id, sync_token):
+    """(True, '') or (False, error): permanently deletes one QuickBooks object. Only call this after its
+    replacement has already been created and verified - there is no undo."""
+    problem = _authorised(token)
+    if problem:
+        return False, problem
+    try:
+        resp = requests.post(f'{API_BASES[_environment()]}/{token.realm_id}/{entity.lower()}', params={'operation': 'delete', 'minorversion': 70},
+                             json={'Id': qb_id, 'SyncToken': sync_token}, headers={**_headers(token), 'Content-Type': 'application/json'}, timeout=30)
+        if resp.status_code >= 400:
+            logger.warning('QuickBooks delete of %s refused: HTTP %s %s', entity, resp.status_code, _fault_text(resp))
+            return False, f'{WRITE_ERROR} {_fault_text(resp)}'.strip()
+    except Exception as exc:
+        logger.warning('QuickBooks delete failed: %s', _failure_summary(exc))
+        return False, f"{WRITE_ERROR} (no answer)"
+    return True, ''
