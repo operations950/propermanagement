@@ -596,7 +596,11 @@ def query(token, sql):
         except Exception as exc:
             logger.warning('QuickBooks query failed: %s', _failure_summary(exc))
             return None, f"Couldn't read from QuickBooks ({_status_code(exc) or 'no answer'})."
-        rows = (resp.json().get('QueryResponse') or {}).get(entity, [])
+        try:
+            rows = (resp.json().get('QueryResponse') or {}).get(entity, [])
+        except ValueError:
+            logger.warning('QuickBooks query returned a non-JSON response (HTTP %s)', resp.status_code)
+            return None, "QuickBooks answered, but not with something readable - try again."
         out += rows
         if len(rows) < 1000:
             return out, ''
@@ -617,4 +621,8 @@ def update_object(token, entity, body):
     except Exception as exc:
         logger.warning('QuickBooks update failed: %s', _failure_summary(exc))
         return None, f"{WRITE_ERROR} (no answer)"
-    return resp.json().get(entity), ''
+    try:
+        return resp.json().get(entity), ''
+    except ValueError:
+        logger.warning('QuickBooks update of %s returned a non-JSON response (HTTP %s)', entity, resp.status_code)
+        return None, f'{WRITE_ERROR} (an unreadable answer)'

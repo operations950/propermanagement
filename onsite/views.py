@@ -1182,9 +1182,12 @@ def reservation_move(request, pk):
         visit.save(update_fields=['unit'])
     fixed_listing = False
     if request.POST.get('apply_to_listing') and booking.listing_name:
-        fixed_listing = PropertyListingName.objects.filter(
-            property=booking.property, platform=booking.source, name=booking.listing_name,
-        ).update(unit=unit) > 0
+        # get_or_create, not filter().update(): a listing name that has never been seen/resolved before had no
+        # PropertyListingName row at all, so update() was a silent no-op - future reservations from that same
+        # listing kept arriving with no unit, forever, no matter how many times this button was used.
+        from .services.bookings import save_listing_name
+        save_listing_name(booking.property, booking.source, booking.listing_name, unit=unit)
+        fixed_listing = True
     from .services.bookings import _refresh_next_bookings_for_property
     _refresh_next_bookings_for_property(booking.property)
     messages.success(

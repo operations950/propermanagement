@@ -291,13 +291,15 @@ def payouts(request):
         else:
             plan = qb_recode.plan(token)
             if request.POST.get('action') == 'qb_apply':
-                applied, failed = qb_recode.apply_ready(token, plan, user=request.user)
+                applied, failed, remaining = qb_recode.apply_ready(token, plan, user=request.user, limit=qb_recode.MAX_PER_CLICK)
                 if applied:
                     messages.success(request, f'Recoded {applied} deposit{"" if applied == 1 else "s"} in QuickBooks.')
                 for item, why in failed:
                     messages.error(request, f'Deposit of ${item["amount"]} on {item["date"]:%b} {item["date"].day} was not changed: {why}')
                 for error in plan['errors']:
                     messages.error(request, error)
+                if remaining:
+                    messages.info(request, f'{remaining} more ready deposit{"" if remaining == 1 else "s"} are waiting — sent in batches so one click never times out. Click "Send to QuickBooks" again for the rest.')
                 return redirect('close_payouts')
     show = request.GET.get('show', 'open')
     source = request.GET.get('source', '')

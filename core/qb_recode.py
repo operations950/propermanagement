@@ -225,15 +225,26 @@ def apply(token, item, user=None, automatic=False):
     return True, ''
 
 
-def apply_ready(token, result, user=None, automatic=False):
-    """Sends every ready item. Returns (applied count, [(item, why not)])."""
-    applied, failed = 0, []
-    for item in result['items']:
-        if item['status'] != 'ready':
-            continue
+MAX_PER_CLICK = 15   # two real QuickBooks calls each, one at a time - a big backlog sent in one click ran the
+                      # request past the web server's own timeout and got killed mid-flight (a real production
+                      # crash, not a graceful error), leaving staff unsure what had and hadn't actually gone
+                      # through. A click now only ever sends a batch small enough to comfortably finish in time;
+                      # the rest wait for the next click.
+
+
+def apply_ready(token, result, user=None, automatic=False, limit=None):
+    """Sends up to `limit` ready items (all of them when limit is None - used by the automatic nightly run, which
+    has no request timeout to worry about). Returns (applied count, [(item, why not)], remaining count - how many
+    more ready items are still waiting because of the limit)."""
+    applied, failed, sent = 0, [], 0
+    ready = [item for item in result['items'] if item['status'] == 'ready']
+    for item in ready:
+        if limit is not None and sent >= limit:
+            break
+        sent += 1
         ok, why = apply(token, item, user=user, automatic=automatic)
         if ok:
             applied += 1
         else:
             failed.append((item, why))
-    return applied, failed
+    return applied, failed, len(ready) - sent

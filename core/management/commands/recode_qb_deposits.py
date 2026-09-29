@@ -25,7 +25,7 @@ class Command(BaseCommand):
             detail = item['reason'] if item['reason'] else f'{len(item["lines"])} line(s)'
             self.stdout.write(f'{item["date"]} ${item["amount"]} {item["source"]}: {item["status"].upper()} - {detail}')
         if options['apply']:
-            applied, failed = qb_recode.apply_ready(token, result, automatic=True)
+            applied, failed, _remaining = qb_recode.apply_ready(token, result, automatic=True)   # no limit - a shell command has no web-request timeout to worry about
             self.stdout.write(self.style.SUCCESS(f'{applied} deposit(s) recoded.'))
             for item, why in failed:
                 self.stdout.write(self.style.ERROR(f'{item["date"]} ${item["amount"]}: {why}'))
