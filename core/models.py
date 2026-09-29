@@ -133,6 +133,23 @@ class Property(models.Model):
         help_text="Our commission, as a percent of the month's income deposits (the top line: we are paid whether or not the month is profitable). Only an administrator can change it.",
     )
 
+    class CommissionBasis(models.TextChoices):
+        GROSS = 'gross', 'Gross income deposits'
+        NET = 'net', 'Net income (deposits, less expenses and Owner Baseline Expenses)'
+
+    commission_basis = models.CharField(
+        max_length=10, choices=CommissionBasis.choices, default=CommissionBasis.GROSS,
+        help_text='Whether the commission rate above applies to gross income deposits (the usual case) or to net income.',
+    )
+    owner_baseline_expense = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="A real monthly cost of the property that never runs through us — e.g. insurance the owner pays "
+                   "directly — subtracted from income before commission is calculated on net income. Has no "
+                   'effect unless the commission basis above is Net; never reduces the owner payment a second '
+                   "time (the owner already paid it themselves). Applies to months still open; a closed month "
+                   'keeps the figure it was closed with.',
+    )
+
     class FinancialsLevel(models.TextChoices):
         PROPERTY = 'property', 'One set of books for the whole property'
         UNIT = 'unit', 'Separate books for each unit'

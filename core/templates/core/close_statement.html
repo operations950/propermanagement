@@ -57,7 +57,13 @@
     <tbody>
         <tr><td><button type="button" class="st-tog" data-st-toggle="deposits" aria-expanded="false" aria-label="Show the deposits"><i data-lucide="chevron-right"></i></button>Income deposits</td>{% for c in st.columns %}<td>{{ c.t.deposits|money }}</td>{% endfor %}<td class="tot">{{ st.total.deposits|money }}</td></tr>
         {% include 'core/_statement_detail.html' with group='deposits' %}
+        {% if property.commission_basis == 'net' %}
+        <tr><td>− Owner Baseline Expenses <span class="text-muted">(insurance paid directly by the owner, a real cost)</span></td>{% for c in st.columns %}<td>{{ c.t.owner_baseline_expense|money }}</td>{% endfor %}<td class="tot">{{ st.total.owner_baseline_expense|money }}</td></tr>
+        <tr><td>= Net income</td>{% for c in st.columns %}<td>{{ c.t.net_income|money }}</td>{% endfor %}<td class="tot">{{ st.total.net_income|money }}</td></tr>
+        <tr><td>− Commission <span class="text-muted">(a percent of net income)</span></td>{% for c in st.columns %}<td><span title="{{ c.t.commission_rate|floatformat:'-2' }}% of net income">{{ c.t.commission_due|money }}</span></td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
+        {% else %}
         <tr><td>− Commission <span class="text-muted">(a percent of income deposits)</span></td>{% for c in st.columns %}<td><span title="{{ c.t.commission_rate|floatformat:'-2' }}% of income deposits">{{ c.t.commission_due|money }}</span></td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
+        {% endif %}
         <tr><td><button type="button" class="st-tog" data-st-toggle="reimbursable" aria-expanded="false" aria-label="Show the reimbursable expenses"><i data-lucide="chevron-right"></i></button>− Reimbursable expenses</td>{% for c in st.columns %}<td>{{ c.t.expenses_reimbursable|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
         {% include 'core/_statement_detail.html' with group='reimbursable' %}
         <tr><td><button type="button" class="st-tog" data-st-toggle="direct" aria-expanded="false" aria-label="Show what was paid from trust"><i data-lucide="chevron-right"></i></button>− Paid from trust</td>{% for c in st.columns %}<td>{{ c.t.expenses_direct|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>

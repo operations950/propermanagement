@@ -1022,16 +1022,24 @@ def _property_qb_action(request, prop, action):
             messages.success(request, f'Saved the accounts for {saved} unit{"" if saved == 1 else "s"}.')
     elif action == 'qb_set_commission':
         raw = (request.POST.get('commission_rate') or '').strip().rstrip('%')
+        basis = request.POST.get('commission_basis') or Property.CommissionBasis.GROSS
+        raw_baseline = (request.POST.get('owner_baseline_expense') or '').strip().lstrip('$').replace(',', '')
         try:
             rate = Decimal(raw).quantize(Decimal('0.01'))
             if not Decimal('0') <= rate <= Decimal('100'):
                 raise ValueError
+            if basis not in Property.CommissionBasis.values:
+                raise ValueError
+            baseline = Decimal(raw_baseline or '0').quantize(Decimal('0.01'))
+            if baseline < 0:
+                raise ValueError
         except (InvalidOperation, ValueError):
-            messages.error(request, 'The commission rate is a percent between 0 and 100.')
+            messages.error(request, 'The commission rate is a percent between 0 and 100, and Owner Baseline Expenses is a dollar amount of 0 or more.')
         else:
-            prop.commission_rate = rate
-            prop.save(update_fields=['commission_rate'])
-            messages.success(request, f'Commission for {prop.name} is now {rate}% of net income, from the months still open onward. Months already closed stay as they were closed.')
+            prop.commission_rate, prop.commission_basis, prop.owner_baseline_expense = rate, basis, baseline
+            prop.save(update_fields=['commission_rate', 'commission_basis', 'owner_baseline_expense'])
+            basis_note = f' of net income (income deposits less expenses{f" and the ${baseline:,.2f}/month Owner Baseline Expenses" if baseline else ""})' if basis == Property.CommissionBasis.NET else ' of gross income deposits'
+            messages.success(request, f'Commission for {prop.name} is now {rate}%{basis_note}, from the months still open onward. Months already closed stay as they were closed.')
     elif action == 'qb_set_level':
         try:
             result = ledger.set_financials_level(prop, request.POST.get('financials_level', ''))

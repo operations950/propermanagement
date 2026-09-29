@@ -310,6 +310,12 @@ def suggest(prop, role, flow, split, payee, memo):
         return Category.COMMISSION, LedgerLine.Source.SUGGESTED
     if re.search(r'owner (payment|draw|distribution|payout)|distribution', text):
         return Category.OWNER_PAYMENT, LedgerLine.Source.SUGGESTED
+    if 'airbnb' in text or 'vrbo' in text:
+        # The platform itself took money back out of the trust account - a resolution, an adjustment, a guest
+        # credit - not an expense we paid. recon.py already expects a negative deposit to be matched against a
+        # negative platform payout event; without this it silently fell through to Expense below and never
+        # showed up as an open item to match, so a real negative deposit just disappeared from reconciliation.
+        return Category.DEPOSIT, LedgerLine.Source.SUGGESTED
     return Category.EXPENSE, LedgerLine.Source.DEFAULT
 
 
@@ -665,7 +671,7 @@ def acknowledge_changes(book, month):
 # --- the month's figures and checks ----------------------------------------------------------------------
 
 TOTAL_KEYS = ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 'reimbursement_expense', 'expenses_reimbursable', 'expenses_direct', 'trust_net',
-              'commission_due', 'owner_due')
+              'commission_due', 'owner_due', 'net_income', 'owner_baseline_expense')
 CENT = Decimal('0.01')
 
 
@@ -674,9 +680,12 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
     `deposits` is income: only trust-account money in that is coded as a booking
     payout — a refund coded as an expense reduces expenses instead.
 
-    THE MONTH'S CALCULATION: our commission is the property's commission rate of the income
-    deposits (the top line: we are paid for our work whether or not the month is profitable);
-    the income deposits less that commission, less the reimbursable expenses (paid by us, out of
+    THE MONTH'S CALCULATION: our commission is normally the property's commission rate of the income deposits
+    (the top line: we are paid for our work whether or not the month is profitable) — or, for a property whose
+    commission_basis is Net, that rate of net income instead (deposits less this month's expenses less Owner
+    Baseline Expenses, a real cost of the property — insurance the owner pays directly, say — that never runs
+    through us and so would otherwise be invisible here). Either way, the income deposits less that commission,
+    less the reimbursable expenses (paid by us, out of
     the expense account) and the expenses paid from trust, is the owner payment (`owner_due`).
     The reimbursement to us and the commission actually taken out of the trust account this
     month (`reimbursement_trust`, `commission`) do NOT enter this month's calculation: they settle
@@ -705,8 +714,20 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
     total['expenses_total'] = total['expenses_reimbursable'] + total['expenses_direct']
     prop = _book(book).property
     rate = Decimal(prop.commission_rate if prop.commission_rate is not None else Decimal('10.00'))
-    due = (max(total['deposits'], ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
-    total.update(commission_rate=rate, commission_due=due, owner_due=total['deposits'] - due - total['expenses_total'], calc=True)
+    basis = getattr(prop, 'commission_basis', Property.CommissionBasis.GROSS)
+    if basis == Property.CommissionBasis.NET:
+        # owner_baseline_expense is a whole-property figure (Property, not Unit) — applied once, only when this
+        # book IS the whole property. A single unit's own book skips it, so a unit-level property never
+        # subtracts it once per unit and ends up over-counting it when the units are added back up.
+        baseline = Decimal(prop.owner_baseline_expense or ZERO) if _book(book).unit is None else ZERO
+        net_income = total['deposits'] - total['expenses_total'] - baseline
+        due = (max(net_income, ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+        total['net_income'], total['owner_baseline_expense'] = net_income, baseline
+    else:
+        due = (max(total['deposits'], ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+    # owner_due never subtracts owner_baseline_expense a second time — the owner already paid it themselves,
+    # outside the trust account; it only ever reduces our commission above, on the Net basis.
+    total.update(commission_rate=rate, commission_basis=basis, commission_due=due, owner_due=total['deposits'] - due - total['expenses_total'], calc=True)
     if with_prior:
         total.update(prior_settlement(book, month, memo))
     derive(total)
@@ -796,7 +817,7 @@ def sum_totals(parts):
     return derive(out)
 
 
-STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us')
+STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us', 'net_income', 'owner_baseline_expense')
 
 
 def _zero_totals():
@@ -892,6 +913,8 @@ def checks(book, month, now=None, rec=None):
         return items
     if not book.mapped:
         add('accounts', 'block', f'{"This unit" if book.unit else "This rental"} is not tied to both QuickBooks accounts yet.')
+    if book.unit is not None and book.property.commission_basis == Property.CommissionBasis.NET and book.property.owner_baseline_expense:
+        add('baseline_unit_books', 'warn', f'Owner Baseline Expenses (${book.property.owner_baseline_expense:,.2f}) is a whole-property figure and is not applied unit by unit — it has no effect while this rental is kept unit by unit.')
     if timezone.localdate() < next_month(month):
         add('month_over', 'block', f'{month:%B %Y} is not over yet.')
     synced = book.ledger_synced_at
@@ -1014,7 +1037,7 @@ def closed_summary(close):
             out[k] = int(v)
         elif k in ('calc', 'prior_closed'):
             out[k] = bool(v)
-        elif k == 'prior_status':
+        elif k in ('prior_status', 'commission_basis'):
             out[k] = v
         elif k == 'prior_month':
             out[k] = date.fromisoformat(v) if v else None

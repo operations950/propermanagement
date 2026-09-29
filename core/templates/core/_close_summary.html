@@ -12,8 +12,15 @@
     .cl-settle th:first-child, .cl-settle td:first-child { width: 28%; text-align: left; }
     .cl-settle tr.diff td { border-top: 2px solid var(--border-hairline, #ccd); }
 </style>
+{% if totals.commission_basis == 'net' %}
+<div class="table-responsive mb-1"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
+    <thead><tr><th>Income deposits</th><th>− Expenses</th><th>− Owner Baseline Expenses</th><th>= Net income</th></tr></thead>
+    <tbody><tr><td>{{ totals.deposits|money }}</td><td>{{ totals.expenses_total|money }}</td><td>{{ totals.owner_baseline_expense|money }}</td><td>{{ totals.net_income|money }}</td></tr></tbody>
+</table></div>
+<p class="small text-muted mb-2" style="font-size: 0.72rem;">Owner Baseline Expenses never runs through us (e.g. insurance the owner pays directly) — it's a real cost of the property, so it's subtracted before commission below, but it's never subtracted again from the owner's payment.</p>
+{% endif %}
 <div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum cl-calc">
-    <thead><tr><th>Income deposits</th><th>− Commission ({{ totals.commission_rate|floatformat:"-2" }}%)</th><th>− Reimbursable expenses</th><th>− Paid from trust</th><th>= Owner payment</th></tr></thead>
+    <thead><tr><th>Income deposits</th><th>− Commission ({{ totals.commission_rate|floatformat:"-2" }}%{% if totals.commission_basis == 'net' %} of net income{% endif %})</th><th>− Reimbursable expenses</th><th>− Paid from trust</th><th>= Owner payment</th></tr></thead>
     <tbody><tr>
         <td>{{ totals.deposits|money }}</td><td>{{ totals.commission_due|money }}</td><td>{{ totals.expenses_reimbursable|money }}</td><td>{{ totals.expenses_direct|money }}</td><td>{{ totals.owner_due|money }}</td>
     </tr></tbody>
