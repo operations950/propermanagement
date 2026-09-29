@@ -407,11 +407,21 @@ def parse_csv(file_bytes):
     dated = {}           # confirmation code -> {(kind, date): Decimal}: every money row, with the day it was paid out
 
     def add_dated(uid, kind, row):
-        """A transactions-export money row's amount, under the day it was paid."""
-        if not (columns['transaction_type'] and columns['txn_date'] and columns['payout_amount']):
+        """One money row's amount, under the day it was actually paid — from a transactions export's own 'Date'
+        column, or (VRBO's Payout Summary Report, which has no Type column of its own) its 'Payout date' column.
+        Called for every reservation row, first occurrence and any duplicate alike: a Reservation ID that repeats
+        with a DIFFERENT payout date (VRBO can pay a stay's original booking and a later adjustment on separate
+        days under the same code) must end up as two dated pieces here, not one row's amount silently added onto
+        the other's date — that combined figure could never match a single real bank deposit."""
+        if not columns['payout_amount']:
+            return
+        if columns['transaction_type'] and columns['txn_date']:
+            raw_day = (row.get(columns['txn_date']) or '').strip()
+        elif columns['payout_date']:
+            raw_day = (row.get(columns['payout_date']) or '').strip()
+        else:
             return
         amount = _money(row.get(columns['payout_amount']))
-        raw_day = (row.get(columns['txn_date']) or '').strip()
         if amount is None or not raw_day:
             return
         try:
