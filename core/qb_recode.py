@@ -69,10 +69,33 @@ def _uncategorized_lines(deposit, account_ids):
 
 
 def _fill_missing_units(items):
-    """Before giving up on a reservation with no unit, try the same trick the month-end reconciliation already
-    uses: a unit is inferable from the bank if a deposit already coded to one unit names this reservation's
-    confirmation code in its memo (see recon.assign_units_from_deposits). Tried once per property per call, not
-    once per line."""
+    """Before giving up on a reservation with no unit, try to resolve one - same as a normal booking import would,
+    just retroactively for a reservation that slipped through with none. Two tries, strongest first:
+      1. Its own listing name is already mapped to a unit (PropertyListingName) - a direct, certain match; this is
+         exactly what a normal import already does at the moment a reservation is created, so a booking still
+         missing its unit despite this usually means the mapping was only made (or corrected) afterward.
+      2. The same trick the month-end reconciliation already uses: a unit is inferable from the bank if a deposit
+         already coded to one unit names this reservation's confirmation code in its memo (see
+         recon.assign_units_from_deposits).
+    Tried once per property per call, not once per line."""
+    from .models import PropertyListingName
+    booking_ids = {item.booking_id for item in items if item.booking_id and item.booking.unit_id is None}
+    if booking_ids:
+        from onsite.models import Booking
+        by_prop_platform = {}
+        for b in Booking.objects.filter(pk__in=booking_ids).exclude(listing_name=''):
+            by_prop_platform.setdefault((b.property_id, b.source), []).append(b)
+        for (prop_id, source), bookings in by_prop_platform.items():
+            names = {b.listing_name for b in bookings}
+            mapped = {pln.name: pln.unit_id for pln in PropertyListingName.objects.filter(property_id=prop_id, platform=source, name__in=names, unit__isnull=False)}
+            for b in bookings:
+                if b.listing_name in mapped:
+                    b.unit_id = mapped[b.listing_name]
+                    b.save(update_fields=['unit'])
+        for item in items:
+            if item.booking_id and item.booking.unit_id is None:
+                item.booking.refresh_from_db(fields=['unit'])
+
     from . import recon
     tried = set()
     for item in items:
@@ -188,7 +211,13 @@ def apply(token, item, user=None, automatic=False):
         if klass:
             detail['ClassRef'] = klass
         new.append({'Amount': float(ln['amount']), 'Description': ln['description'], 'DetailType': 'DepositLineDetail', 'DepositLineDetail': detail})
-    saved, error = quickbooks.update_object(token, 'Deposit', {'Id': deposit['Id'], 'SyncToken': deposit['SyncToken'], 'Line': keep + new})
+    # A Deposit's sparse update still requires DepositToAccountRef even though it isn't changing - QuickBooks
+    # rejects the whole update outright without it ("Required parameter DepositToAccountRef is missing").
+    # Carried forward unchanged from the deposit we just re-read.
+    body = {'Id': deposit['Id'], 'SyncToken': deposit['SyncToken'], 'Line': keep + new}
+    if deposit.get('DepositToAccountRef'):
+        body['DepositToAccountRef'] = deposit['DepositToAccountRef']
+    saved, error = quickbooks.update_object(token, 'Deposit', body)
     if error:
         return False, error
     QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=deposit['Id'], deposit_date=item['date'], amount=item['amount'],
