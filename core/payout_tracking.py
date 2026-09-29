@@ -3,7 +3,7 @@ is expected, then received once a bank deposit of the same amount turns up close
 has been waiting too long. The matching is deliberately simple - the deposit's date and amount - because that is all a
 bank line reliably carries. The month-end income reconciliation does the fuller work; this is the running list of what
 the platforms have said they paid and whether it has reached the bank."""
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.utils import timezone
@@ -13,6 +13,7 @@ from .models import LedgerLine, QBRecode
 EARLY = timedelta(days=3)         # a deposit may be booked a little before the payout's own date
 LATE = timedelta(days=10)         # ... and normally lands within a few days after
 LINGERING_AFTER = timedelta(days=45)
+BOOKKEEPING_START = date(2026, 9, 1)   # nothing paid out before this date is worth looking at here
 
 
 def _deposits(properties, start, end):
@@ -30,8 +31,7 @@ def payout_rows(source=None, since=None, today=None):
     qs = PayoutBatch.objects.prefetch_related('items__booking__property', 'items__booking__unit')
     if source:
         qs = qs.filter(source=source)
-    if since:
-        qs = qs.filter(date__gte=since)
+    qs = qs.filter(date__gte=max(since, BOOKKEEPING_START) if since else BOOKKEEPING_START)
     batches = list(qs.order_by('date', 'pk'))
     if not batches:
         return []

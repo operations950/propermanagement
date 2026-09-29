@@ -43,7 +43,8 @@ def trust_account_for(booking):
     if prop.financials_level == Property.FinancialsLevel.UNIT:
         unit = booking.unit
         if unit is None:
-            return None, prop.name, f'{prop.name}: a reservation is not assigned to a unit yet'
+            who = f'{booking.guest_name or "a reservation"} ({booking.external_uid})' if booking.external_uid else (booking.guest_name or 'a reservation')
+            return None, prop.name, f'{prop.name}: {who} is not assigned to a unit yet - assign it on the Reservations page ("Unit" button), or match it to a unit-coded deposit first'
         label, account = f'{prop.name} - {unit.label}', unit.qb_trust_account
     else:
         label, account = prop.name, prop.qb_trust_account
@@ -67,6 +68,27 @@ def _uncategorized_lines(deposit, account_ids):
     return [ln for ln in deposit.get('Line', []) if ((ln.get('DepositLineDetail') or {}).get('AccountRef') or {}).get('value') in account_ids]
 
 
+def _fill_missing_units(items):
+    """Before giving up on a reservation with no unit, try the same trick the month-end reconciliation already
+    uses: a unit is inferable from the bank if a deposit already coded to one unit names this reservation's
+    confirmation code in its memo (see recon.assign_units_from_deposits). Tried once per property per call, not
+    once per line."""
+    from . import recon
+    tried = set()
+    for item in items:
+        if item.booking_id is None or item.booking.unit_id is not None:
+            continue
+        prop = item.booking.property
+        if prop.financials_level != Property.FinancialsLevel.UNIT or prop.pk in tried:
+            continue
+        tried.add(prop.pk)
+        recon.assign_units_from_deposits(prop)
+    if tried:
+        for item in items:
+            if item.booking_id and item.booking.unit_id is None and item.booking.property_id in tried:
+                item.booking.refresh_from_db(fields=['unit'])
+
+
 def _lines_for(batch):
     """(new lines, error) for one payout: a line per payout line, to the trust account of its reservation's property/unit."""
     items = list(batch.items.select_related('booking__property', 'booking__unit'))
@@ -74,6 +96,7 @@ def _lines_for(batch):
         return None, 'the payout file has no lines for this payout - upload the transactions file again'
     if batch.breakdown_ok is False:
         return None, f'the payout lines add up to {batch.items_total}, not {batch.amount}'
+    _fill_missing_units(items)
     lines, problems = [], []
     for item in items:
         if item.booking_id is None:
@@ -102,7 +125,8 @@ def plan(token, today=None, days=LOOKBACK_DAYS):
     result = {'items': [], 'errors': errors}
     if not accounts:
         return result
-    since = (today - timedelta(days=days)).isoformat()
+    from . import payout_tracking
+    since = max(today - timedelta(days=days), payout_tracking.BOOKKEEPING_START).isoformat()
     deposits, error = quickbooks.query(token, f"select * from Deposit where TxnDate >= '{since}' order by TxnDate")
     if error:
         result['errors'].append(error)
