@@ -211,13 +211,14 @@ def apply(token, item, user=None, automatic=False):
         if klass:
             detail['ClassRef'] = klass
         new.append({'Amount': float(ln['amount']), 'Description': ln['description'], 'DetailType': 'DepositLineDetail', 'DepositLineDetail': detail})
-    # A Deposit's sparse update still requires DepositToAccountRef even though it isn't changing - QuickBooks
-    # rejects the whole update outright without it ("Required parameter DepositToAccountRef is missing").
-    # Carried forward unchanged from the deposit we just re-read.
-    body = {'Id': deposit['Id'], 'SyncToken': deposit['SyncToken'], 'Line': keep + new}
-    if deposit.get('DepositToAccountRef'):
-        body['DepositToAccountRef'] = deposit['DepositToAccountRef']
-    saved, error = quickbooks.update_object(token, 'Deposit', body)
+    # A sparse update's Line array only MERGES by Id - a line we omit here is NOT removed, it's just left
+    # alone, so the old uncategorized line stayed and our new coded line was simply appended, DOUBLING the
+    # deposit (a real production bug, confirmed against Intuit's own docs: only a full update's Line array
+    # actually replaces the existing lines wholesale). Fixed by sending a full update instead - built from the
+    # complete deposit we just re-read, with only Line swapped out, so no other writable field gets nulled.
+    body = dict(deposit)
+    body['Line'] = keep + new
+    saved, error = quickbooks.update_object(token, 'Deposit', body, sparse=False)
     if error:
         return False, error
     QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=deposit['Id'], deposit_date=item['date'], amount=item['amount'],

@@ -607,14 +607,19 @@ def query(token, sql):
         start += 1000
 
 
-def update_object(token, entity, body):
-    """(saved object, error): a sparse update of one QuickBooks object (it must carry its Id and SyncToken)."""
+def update_object(token, entity, body, sparse=True):
+    """(saved object, error): updates one QuickBooks object (it must carry its Id and SyncToken). Sparse
+    (the default) only touches the fields you include - anything else, INCLUDING items inside a Line array
+    you don't mention, is left exactly as-is (QuickBooks merges Line by Id; it never removes an existing
+    line just because your request omits it). Pass sparse=False for a full update when a field's old value
+    needs to be genuinely replaced/cleared - that requires the request to carry every writable field you
+    want to keep, since anything omitted is nulled."""
     problem = _authorised(token)
     if problem:
         return None, problem
     try:
         resp = requests.post(f'{API_BASES[_environment()]}/{token.realm_id}/{entity.lower()}', params={'minorversion': 70},
-                             json={**body, 'sparse': True}, headers={**_headers(token), 'Content-Type': 'application/json'}, timeout=30)
+                             json={**body, 'sparse': sparse}, headers={**_headers(token), 'Content-Type': 'application/json'}, timeout=30)
         if resp.status_code >= 400:
             logger.warning('QuickBooks update of %s refused: HTTP %s %s', entity, resp.status_code, _fault_text(resp))
             return None, f'{WRITE_ERROR} {_fault_text(resp)}'.strip()
