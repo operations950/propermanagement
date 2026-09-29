@@ -33,19 +33,6 @@ class Reservation(models.Model):
         return f'{self.source} #{self.external_reservation_id} — {self.property}'
 
 
-class PollCursor(models.Model):
-    """Generic 'where did I leave off' marker for a pull-based adapter —
-    e.g. Quo's conversations list is filtered by `updatedAfter` so each
-    poll only asks for what's changed since the last one."""
-
-    key = models.CharField(max_length=100, unique=True)
-    value = models.CharField(max_length=200, blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f'{self.key} = {self.value}'
-
-
 class QuoThreadState(models.Model):
     """Tracks the last message we've seen per Quo conversation, so we only
     re-fetch/re-classify a thread when it actually has new activity — full-
@@ -67,8 +54,8 @@ class GmailInboxToken(models.Model):
     """OAuth credentials for one shared mailbox this adapter polls for new
     tickets (e.g. operations@proper-realty.com) — connected via
     intake/views.py's gmail_connect flow (admin-only, since it grants read
-    access to the whole inbox). Any number of these can exist at once (each
-    is polled independently — see GmailAdapter.pull); `is_send_from` marks
+    access to the whole inbox). Any number of these can exist at once;
+    `is_send_from` marks
     the ONE that outgoing follow-up email actually sends through
     (core/email_backends.py::GmailAPIBackend) — app code enforces at most
     one True at a time, not a DB constraint. Deliberately separate from
@@ -89,24 +76,6 @@ class GmailInboxToken(models.Model):
         return self.mailbox_email
 
 
-class GmailThreadState(models.Model):
-    """Same purpose as QuoThreadState, one row per (mailbox, Gmail thread)
-    instead of per Quo conversation — mailbox_email is part of the natural
-    key since multiple inboxes are now polled independently (see
-    GmailAdapter.pull) and Gmail thread ids are only guaranteed unique
-    within one account."""
-
-    mailbox_email = models.EmailField(blank=True)
-    thread_id = models.CharField(max_length=100)
-    last_message_id = models.CharField(max_length=100, blank=True)
-    last_classified_at = models.DateTimeField(null=True, blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = [('mailbox_email', 'thread_id')]
-
-    def __str__(self):
-        return f'Gmail thread {self.thread_id} ({self.mailbox_email})'
 
 
 class QuoWebhookLog(models.Model):

@@ -8,7 +8,6 @@ import re
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils.dateparse import parse_datetime
@@ -96,10 +95,9 @@ def gmail_callback(request):
         except Exception:
             logger.exception('Gmail: failed to look up connected mailbox address')
 
-    # Any number of mailboxes can be connected at once — each is polled
-    # independently for new tickets (see GmailAdapter.pull). The first one
-    # ever connected becomes the send-from mailbox by default (Admin Tools
-    # lets an admin change that later); reconnecting an already-connected
+    # Any number of mailboxes can be connected at once. The first one ever
+    # connected becomes the send-from mailbox by default (Admin Tools lets
+    # an admin change that later); reconnecting an already-connected
     # address just refreshes its token in place.
     is_first_mailbox = not GmailInboxToken.objects.exists()
     token, _ = GmailInboxToken.objects.update_or_create(
@@ -317,51 +315,6 @@ def _run_command_in_background(name, *args):
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _run_command_in_background_locked(name, lock_key, lock_timeout, *args):
-    """Same as _run_command_in_background, but guarded by a cache-based
-    mutex so a second trigger (an admin double-clicking, or clicking again
-    while a slow first pass is still running) is a no-op instead of a
-    second concurrent run — for commands where that's not just wasteful
-    but can actually produce bad data (see classify_quo_conversations'
-    caller, quo_classify_trigger: two overlapping classify passes over the
-    same conversation can each create their own Ticket for it if the LLM
-    happens to return a different "kind" on each call, since the DB-level
-    dedup constraint is keyed on (source, source_reference, kind)).
-    cache.add() is atomic (set-if-not-exists), so this is a real mutex
-    even under real concurrent requests — not a check-then-set race of its
-    own. LocMemCache is per-process, which is exactly the scope needed
-    here: this app runs a single gunicorn worker (see Procfile), the same
-    "single-process-only, not a practical concern at this scale" tradeoff
-    already accepted elsewhere (see the uniq_template_scheduled_for_property
-    migration comment). lock_timeout is a safety net in case the thread
-    dies without reaching its own finally block (e.g. the process itself
-    is killed mid-run) — without it a crashed run would wedge this lock
-    forever.
-
-    Returns True if a run was actually started, False if one was already
-    in progress and this call was skipped."""
-    import sys
-    import threading
-
-    from django.core.management import call_command
-
-    if not cache.add(lock_key, True, timeout=lock_timeout):
-        return False
-
-    def _run():
-        try:
-            call_command(name, *args)
-        except Exception:
-            logger.exception('%s (background, admin-triggered) failed', name)
-        finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            cache.delete(lock_key)
-
-    threading.Thread(target=_run, daemon=True).start()
-    return True
-
-
 @login_required
 @user_passes_test(_is_admin)
 def quo_backfill_trigger(request):
@@ -372,28 +325,6 @@ def quo_backfill_trigger(request):
     if request.method == 'POST':
         _run_command_in_background('backfill_quo_messages')
         messages.success(request, 'Quo backfill started in the background — check Railway logs for progress.')
-    return redirect('quo_webhook_log')
-
-
-@login_required
-@user_passes_test(_is_admin)
-def quo_classify_trigger(request):
-    """Admin-only: force a classify_quo_conversations pass. Not on any
-    schedule today — reactive/AI ticket intake was fully reversed (see
-    proptasks/scheduler.py's module docstring), so this button is
-    currently the only thing that ever runs it, for testing/verifying the
-    pipeline. Locked (see _run_command_in_background_locked) so clicking
-    it again while a pass is still running is a no-op rather than a
-    second overlapping pass — two overlapping passes over the same
-    conversation could each create their own duplicate Ticket for it."""
-    if request.method == 'POST':
-        started = _run_command_in_background_locked(
-            'classify_quo_conversations', 'quo_classify_running', 1800,
-        )
-        if started:
-            messages.success(request, 'Quo classification pass started in the background — check Railway logs for progress.')
-        else:
-            messages.warning(request, 'A classification pass is already running — try again once it finishes.')
     return redirect('quo_webhook_log')
 
 

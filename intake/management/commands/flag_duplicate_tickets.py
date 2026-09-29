@@ -1,10 +1,9 @@
 """One-time (safe to re-run) sweep for the "AI created near-duplicate
-tickets, none flagged" bug — the live intake pipeline now checks every
-newly-created ticket against other open tickets at the same property (see
-intake/duplicate_classifier.py, intake/classifier.py::_flag_if_duplicate),
-but that check only runs going forward. This retroactively looks for the
-same kind of match among tickets that already existed before that check
-was added.
+tickets, none flagged" bug — new tickets can be checked against other open
+tickets at the same property via intake/duplicate_classifier.py, but that
+check only runs going forward from wherever it's wired in. This
+retroactively looks for the same kind of match among tickets that already
+existed before that check was added.
 
 Only ever flags (sets Ticket.possible_duplicate_of/duplicate_reasoning) so
 the match shows up in the Pending screen's "Possible duplicate" queue for
@@ -16,10 +15,14 @@ import logging
 from django.core.management.base import BaseCommand
 
 from intake import duplicate_classifier
-from intake.classifier import ACTIVE_TICKET_STATUSES
 from tickets.models import Ticket
 
 logger = logging.getLogger(__name__)
+
+ACTIVE_TICKET_STATUSES = [
+    Ticket.Status.OPEN, Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS, Ticket.Status.BLOCKED,
+    Ticket.Status.UPCOMING, Ticket.Status.DEFERRED, Ticket.Status.VENDOR_COMPLETE,
+]
 
 
 class Command(BaseCommand):

@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from core.admin_utils import mask_secret
 
-from .models import GmailInboxToken, GmailThreadState, PollCursor, QuoMessage, QuoThreadState, Reservation
+from .models import GmailInboxToken, QuoMessage, QuoThreadState, Reservation
 
 
 @admin.register(Reservation)
@@ -10,11 +10,6 @@ class ReservationAdmin(admin.ModelAdmin):
     list_display = ['external_reservation_id', 'source', 'property', 'guest', 'check_in', 'check_out', 'status']
     list_filter = ['source', 'status']
     search_fields = ['external_reservation_id']
-
-
-@admin.register(PollCursor)
-class PollCursorAdmin(admin.ModelAdmin):
-    list_display = ['key', 'value', 'updated_at']
 
 
 @admin.register(QuoThreadState)
@@ -50,8 +45,3 @@ class GmailInboxTokenAdmin(admin.ModelAdmin):
     def access_token_masked(self, obj):
         return mask_secret(obj.access_token)
 
-
-@admin.register(GmailThreadState)
-class GmailThreadStateAdmin(admin.ModelAdmin):
-    list_display = ['mailbox_email', 'thread_id', 'last_message_id', 'last_classified_at', 'updated_at']
-    search_fields = ['mailbox_email', 'thread_id']

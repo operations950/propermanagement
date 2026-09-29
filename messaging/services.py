@@ -95,10 +95,9 @@ def _to_dash_format(phone):
 def fetch_quo_conversation(contact):
     """Recent Quo messages with this contact, live from Quo's API — or
     None if no Quo conversation has ever been linked to their phone number
-    (they've never texted the shared Quo line, or it hasn't been polled
-    yet). Read-only: only calls QuoAdapter._list_messages (a fetch, not
-    part of the poll loop) and never touches PollCursor/QuoThreadState, so
-    it can't interfere with the scheduled poller. Returns a list of
+    (they've never texted the shared Quo line, or it hasn't been synced
+    yet). Read-only: only calls QuoAdapter._list_messages, a plain fetch
+    that doesn't touch QuoThreadState. Returns a list of
     {'direction': 'out'|'in', 'body': str, 'at': iso datetime str} dicts,
     chronological — structured, not the flattened transcript text
     Ticket.raw_context stores, so the caller can render separate bubbles

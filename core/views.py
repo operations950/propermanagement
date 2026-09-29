@@ -705,7 +705,6 @@ def admin_tools(request):
         'quickbooks_token': QuickBooksToken.objects.first(),
         'quickbooks_redirect_uri': quickbooks.redirect_uri_for_display(request),
         'quo_phone_lines': _list_quo_phone_lines(),
-        'scan_phone_number_id': django_settings.QUO_SCAN_PHONE_NUMBER_ID,
         'outbound_from_number': django_settings.QUO_DEFAULT_FROM_NUMBER,
         'staff_profiles': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__last_name'),
         'role_choices': StaffProfile.Role.choices,
@@ -783,7 +782,6 @@ def staff_create(request):
 @user_passes_test(_is_admin)
 def admin_phone_settings_save(request):
     if request.method == 'POST':
-        app_settings.set_secret('QUO_SCAN_PHONE_NUMBER_ID', request.POST.get('scan_phone_number_id', ''), user=request.user)
         app_settings.set_secret('QUO_DEFAULT_FROM_NUMBER', request.POST.get('outbound_from_number', ''), user=request.user)
         messages.success(request, 'Phone line settings updated.')
     return redirect('admin_tools')

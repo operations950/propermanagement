@@ -9,7 +9,6 @@ urlpatterns = [
     path('integrations/gmail/set-primary/', views.gmail_set_primary, name='gmail_set_primary'),
     path('webhooks/quo/log/', views.quo_webhook_log, name='quo_webhook_log'),
     path('webhooks/quo/log/backfill/', views.quo_backfill_trigger, name='quo_backfill_trigger'),
-    path('webhooks/quo/log/classify/', views.quo_classify_trigger, name='quo_classify_trigger'),
     path('webhooks/quo/log/classify-contacts/', views.quo_classify_contacts_trigger, name='quo_classify_contacts_trigger'),
     path('webhooks/quo/log/sync-contacts/', views.quo_sync_contacts_trigger, name='quo_sync_contacts_trigger'),
     path(

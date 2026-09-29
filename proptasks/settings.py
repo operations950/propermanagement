@@ -364,37 +364,12 @@ VENDOR_TOKEN_EXPIRY_DAYS = int(os.environ.get('VENDOR_TOKEN_EXPIRY_DAYS', '30'))
 # --- Background scheduler (APScheduler, in-process) ---
 RUN_SCHEDULER = env_bool('RUN_SCHEDULER', True)
 RECURRING_TICKET_INTERVAL_MINUTES = int(os.environ.get('RECURRING_TICKET_INTERVAL_MINUTES', '30'))
-FAKE_POLL_INTERVAL_MINUTES = int(os.environ.get('FAKE_POLL_INTERVAL_MINUTES', '5'))
-# The fake/demo adapter (intake/adapters/fake.py) simulates events against
-# made-up properties ("Sunset Villa", etc). Now that real property data
-# exists, it's off by default — flip on only for demo/dev purposes.
-RUN_FAKE_ADAPTER = env_bool('RUN_FAKE_ADAPTER', False)
 
 # --- Future integrations (not wired live yet; read here so adapters/config
 # have one place to look once credentials exist) ---
 # Gmail auth is OAuth-based (intake/gmail_auth.py, GmailInboxToken), not a
 # static credentials file — see GOOGLE_OAUTH_CLIENT_ID/SECRET below.
-GMAIL_INITIAL_SYNC_DAYS = int(os.environ.get('GMAIL_INITIAL_SYNC_DAYS', '14'))
-GMAIL_POLL_INTERVAL_MINUTES = int(os.environ.get('GMAIL_POLL_INTERVAL_MINUTES', '10'))
-# Separate, wider window for the one-off/periodic import_gmail_contacts command — building a contact
-# base benefits from more history than the live per-thread ticket pipeline needs.
-GMAIL_CONTACT_IMPORT_DAYS = int(os.environ.get('GMAIL_CONTACT_IMPORT_DAYS', '90'))
 QUO_API_KEY = os.environ.get('QUO_API_KEY', '')
-# On the very first sync (no cursor yet), only look back this many days
-# instead of pulling the entire account history — a business with years of
-# call/text history would otherwise re-fetch and re-classify everything on
-# day one. Later polls are incremental from the last successful run.
-QUO_INITIAL_SYNC_DAYS = int(os.environ.get('QUO_INITIAL_SYNC_DAYS', '7'))
-# How often poll_quo runs, independent of the fake/demo adapter's interval —
-# Quo is a live customer-facing SMS line, so it deserves its own cadence
-# rather than piggybacking on FAKE_POLL_INTERVAL_MINUTES.
-QUO_POLL_INTERVAL_MINUTES = int(os.environ.get('QUO_POLL_INTERVAL_MINUTES', '5'))
-# How often classify_quo_conversations re-judges conversations with new
-# local activity (message capture itself is real-time via the Quo webhook —
-# this is just how often the "does this need a ticket" AI pass re-runs, kept
-# slower/decoupled on purpose so a conversation gets a chance to develop
-# before being judged, and so Claude isn't re-run on every single message).
-QUO_CLASSIFY_INTERVAL_MINUTES = int(os.environ.get('QUO_CLASSIFY_INTERVAL_MINUTES', '120'))
 # How often sync_quo_contacts checks Quo's saved contact list for brand-new
 # contacts and edits to already-approved ones — a person's own info changes
 # far less often than conversation content, so this defaults to once a day
@@ -405,11 +380,6 @@ QUO_CONTACT_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUO_CONTACT_SYNC_INTERVA
 # thread still always sends from whichever line that contact already talks
 # to, this is only the "we're initiating, not replying" fallback.
 QUO_DEFAULT_FROM_NUMBER = os.environ.get('QUO_DEFAULT_FROM_NUMBER', '+15615996300')
-# When set, QuoAdapter.pull() only scans conversations on this one phone line
-# (Quo's own phoneNumberId) instead of every line the account owns — see
-# core/views.py::admin_tools for the staff-facing picker. Blank means "scan
-# every line," the original/default behavior.
-QUO_SCAN_PHONE_NUMBER_ID = os.environ.get('QUO_SCAN_PHONE_NUMBER_ID', '')
 # How often link_quo_contact_threads runs — a cheap global conversation crawl
 # that fills in QuoThreadState rows purely by phone-number match, so a
 # contact's text history is discoverable (contact/property "view
