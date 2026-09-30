@@ -238,9 +238,18 @@ def _apply_locked(token, item, user=None, automatic=False):
         return False, error
     ok, error = quickbooks.delete_object(token, 'Deposit', deposit['Id'], deposit['SyncToken'])
     if not ok:
+        # Most commonly hit when the original deposit is matched to a downloaded bank-feed transaction -
+        # QuickBooks refuses to let the API delete a matched transaction at all, confirmed directly in
+        # production ("Matched Transaction Delete Error"). Roll back the replacement rather than leave a
+        # stray duplicate sitting in the books for someone to find and clean up later.
+        rollback_ok, rollback_error = quickbooks.delete_object(token, 'Deposit', created['Id'], created['SyncToken'])
+        if rollback_ok:
+            return False, (f"couldn't remove the original from Uncategorized income ({error}) - most likely "
+                            f"it's matched to a downloaded bank transaction, which QuickBooks won't let this "
+                            f"delete. Rolled back cleanly, nothing was changed.")
         return False, (f'created the corrected deposit (QuickBooks Id {created.get("Id")}) but could not delete the '
-                        f'original (Id {deposit["Id"]}): {error} - QuickBooks now has BOTH, please remove the '
-                        f'original by hand')
+                        f'original (Id {deposit["Id"]}): {error} - AND the rollback also failed ({rollback_error}). '
+                        f'QuickBooks now has BOTH, please remove one of them by hand.')
     QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=created['Id'], deposit_date=item['date'], amount=item['amount'],
                             old_lines=uncat, new_lines=new, applied_by=user if getattr(user, 'pk', None) else None, automatic=automatic)
     return True, ''
