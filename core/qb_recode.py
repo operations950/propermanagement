@@ -189,8 +189,8 @@ def plan(token, today=None, days=LOOKBACK_DAYS):
 def apply(token, item, user=None, automatic=False):
     """Sends one planned change. Returns (True, '') or (False, why). Locked per deposit so two overlapping
     calls for the same one (e.g. a double-click before the first request's redirect lands) can't both pass
-    the "already recoded" check and each independently create+delete their own replacement - confirmed as
-    the real cause of one production deposit ending up recoded three times over instead of once."""
+    the "already recoded" check and each independently recode it - confirmed as the real cause of one
+    production deposit ending up recoded three times over instead of once."""
     from django.core.cache import cache
     lock_key = f'qb_recode_apply_{item["qb_id"]}'
     if not cache.add(lock_key, True, timeout=120):
@@ -218,40 +218,38 @@ def _apply_locked(token, item, user=None, automatic=False):
     uncat = _uncategorized_lines(deposit, {a.qb_id for a in accounts.values()})
     if deposit.get('SyncToken') != item['raw'].get('SyncToken') or sum((_d(ln['Amount']) for ln in uncat), ZERO) != item['amount']:
         return False, 'the deposit was changed in QuickBooks after the check - run it again'
-    keep = [ln for ln in deposit['Line'] if ln not in uncat]
     klass = next((ln['DepositLineDetail']['ClassRef'] for ln in uncat if (ln.get('DepositLineDetail') or {}).get('ClassRef')), None)
-    new = []
-    for ln in item['lines']:
-        detail = {'AccountRef': {'value': ln['account_id'], 'name': ln['account_name']}}
+
+    def _coded(payout_line):
+        detail = {'AccountRef': {'value': payout_line['account_id'], 'name': payout_line['account_name']}}
         if klass:
             detail['ClassRef'] = klass
-        new.append({'Amount': float(ln['amount']), 'Description': ln['description'], 'DetailType': 'DepositLineDetail', 'DepositLineDetail': detail})
-    # Neither a sparse NOR a full update can actually remove the old uncategorized line - confirmed directly
-    # against production: QuickBooks returns the object completely unchanged, SyncToken not even incremented,
-    # when a Line array omits an existing entry. An update can only ADD or EDIT-by-Id; genuinely shrinking the
-    # Line array means deleting the deposit and recreating it. Create the replacement FIRST and only delete
-    # the original once it's confirmed to exist, so a failure here never loses the deposit entirely.
-    create_body = {k: v for k, v in deposit.items() if k not in ('Id', 'SyncToken', 'MetaData', 'domain', 'sparse', 'TotalAmt', 'HomeTotalAmt')}
-    create_body['Line'] = [{k: v for k, v in ln.items() if k not in ('Id', 'LineNum')} for ln in (keep + new)]
-    created, error = quickbooks.create_object(token, 'Deposit', create_body)
+        return {'Amount': float(payout_line['amount']), 'Description': payout_line['description'], 'DetailType': 'DepositLineDetail', 'DepositLineDetail': detail}
+
+    # Recode the uncategorized line(s) IN PLACE rather than remove-and-replace: confirmed directly against
+    # production that an existing line's Id can be reused to change its account, amount and description, and
+    # this works even on a deposit matched to a downloaded bank transaction - unlike removing a line, which
+    # QuickBooks silently ignores regardless of sparse/full (SyncToken doesn't even move). So the first
+    # uncategorized line becomes the first payout line directly (same Id, new account/amount/description) -
+    # no stray leftover, nothing to reverse out - and any further payout lines beyond the first are added
+    # fresh (an existing, already-proven-safe operation).
+    remaining = list(item['lines'])
+    if len(uncat) > len(remaining):
+        return False, (f'this deposit has {len(uncat)} separate uncategorized line(s) but only {len(remaining)} '
+                        f'payout line(s) to code them to - needs a person to look, not something to guess at')
+    new_lines = []
+    for ln in uncat:
+        edited = dict(ln)
+        edited.update(_coded(remaining.pop(0)))
+        new_lines.append(edited)
+    new_lines += [_coded(ln) for ln in remaining]
+
+    body = {'Id': deposit['Id'], 'SyncToken': deposit['SyncToken'], 'DepositToAccountRef': deposit.get('DepositToAccountRef'), 'Line': new_lines}
+    saved, error = quickbooks.update_object(token, 'Deposit', body, sparse=True)
     if error:
         return False, error
-    ok, error = quickbooks.delete_object(token, 'Deposit', deposit['Id'], deposit['SyncToken'])
-    if not ok:
-        # Most commonly hit when the original deposit is matched to a downloaded bank-feed transaction -
-        # QuickBooks refuses to let the API delete a matched transaction at all, confirmed directly in
-        # production ("Matched Transaction Delete Error"). Roll back the replacement rather than leave a
-        # stray duplicate sitting in the books for someone to find and clean up later.
-        rollback_ok, rollback_error = quickbooks.delete_object(token, 'Deposit', created['Id'], created['SyncToken'])
-        if rollback_ok:
-            return False, (f"couldn't remove the original from Uncategorized income ({error}) - most likely "
-                            f"it's matched to a downloaded bank transaction, which QuickBooks won't let this "
-                            f"delete. Rolled back cleanly, nothing was changed.")
-        return False, (f'created the corrected deposit (QuickBooks Id {created.get("Id")}) but could not delete the '
-                        f'original (Id {deposit["Id"]}): {error} - AND the rollback also failed ({rollback_error}). '
-                        f'QuickBooks now has BOTH, please remove one of them by hand.')
-    QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=created['Id'], deposit_date=item['date'], amount=item['amount'],
-                            old_lines=uncat, new_lines=new, applied_by=user if getattr(user, 'pk', None) else None, automatic=automatic)
+    QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=deposit['Id'], deposit_date=item['date'], amount=item['amount'],
+                            old_lines=uncat, new_lines=new_lines, applied_by=user if getattr(user, 'pk', None) else None, automatic=automatic)
     return True, ''
 
 
