@@ -2,17 +2,19 @@
 month, a coding + reconciliation screen for one set of books' month, and — for a
 property kept unit by unit — a consolidated page that adds its units up. The rules
 live in core/ledger.py and core/recon.py."""
+import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import ledger, payout_tracking, recon
-from .models import ClosedMonthChange, FinancialsSettings, LedgerLine, Property, QuickBooksToken, Unit
+from . import bank_tieout, ledger, payout_tracking, recon
+from .models import BankStatement, ClosedMonthChange, FinancialsSettings, LedgerLine, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
 from .views import _is_admin
 
 CATEGORY_LABELS = dict(LedgerLine.Category.choices)
@@ -315,4 +317,154 @@ def payouts(request):
         'plan': plan, 'plan_ready': sum(1 for i in plan['items'] if i['status'] == 'ready') if plan else 0,
         'rows': rows[:400], 'counts': counts, 'show': show, 'source': source, 'lingering_after': payout_tracking.LINGERING_AFTER.days,
         'mismatched': sum(1 for r in rows if r['batch'].breakdown_ok is False),
+    })
+
+
+# ---------------------------------------------------------------- the month's checklist, and its first step
+
+def _money_input(raw):
+    """A typed dollar amount ($1,234.56, 1234.56, (12.00), -12) as a Decimal, or None if it isn't one."""
+    text = (raw or '').strip().replace('$', '').replace(',', '').replace(' ', '')
+    negative = text.startswith('(') and text.endswith(')')
+    try:
+        value = Decimal(text.strip('()'))
+    except InvalidOperation:
+        return None
+    return -value if negative else value
+
+
+@login_required
+@user_passes_test(_is_admin)
+def close_home(request):
+    """The month-end checklist: the prior month by default, one numbered step after another."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
+    tie = bank_tieout.summary(month)
+    q = f'?month={month:%Y-%m}'
+    if tie['status'] == 'done':
+        tie_detail = "The statement, QuickBooks's bank account and the trust accounts all agree."
+    elif tie['status'] == 'attention':
+        bits = []
+        if abs(tie.get('statement_unexplained', 0)) >= bank_tieout.PENNY:
+            bits.append(f'statement vs QuickBooks bank: ${abs(tie["statement_unexplained"]):,.2f} unexplained')
+        if abs(tie['trust_unexplained']) >= bank_tieout.PENNY:
+            bits.append(f'bank vs trust accounts: ${abs(tie["trust_unexplained"]):,.2f} unexplained')
+        tie_detail = '; '.join(bits)
+    elif tie['statement'] is None:
+        tie_detail = 'Upload the bank statement, then run the check.'
+    else:
+        tie_detail = 'Run the check against QuickBooks.'
+    lingering = payout_tracking.lingering_count()
+    steps = [
+        {'n': 1, 'title': 'Bank tie-out', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q,
+         'blurb': "The bank statement, QuickBooks's bank account and the property trust accounts must all agree at month end."},
+        {'n': 2, 'title': 'Platform payouts into QuickBooks', 'status': 'attention' if lingering else None,
+         'detail': f'{lingering} payout{"" if lingering == 1 else "s"} reported paid 45+ days ago with no matching deposit.' if lingering else '',
+         'url': reverse('close_payouts'), 'blurb': 'Match Airbnb and VRBO payouts to their bank deposits and code each one to its unit.'},
+        {'n': 3, 'title': 'Code and close each rental', 'status': None, 'detail': '', 'url': reverse('close_overview') + q,
+         'blurb': "Code every QuickBooks transaction, review each rental's numbers, and lock the month."},
+    ]
+    return render(request, 'core/close_home.html', {
+        'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'steps': steps,
+        'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
+    })
+
+
+STATEMENT_EXTENSIONS = ('.pdf', '.csv')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def close_bank_tieout(request):
+    """Step 1: upload the bank statement, pull QuickBooks's bank and trust balances, and see why they don't match."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month') or request.POST.get('month'), ledger.previous_month(today))
+    back = f'{reverse("close_bank_tieout")}?month={month:%Y-%m}'
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'set_accounts':
+            bank = QuickBooksAccount.objects.filter(pk=request.POST.get('bank_account')).first()
+            parent = QuickBooksAccount.objects.filter(pk=request.POST.get('trust_parent_account')).first()
+            if bank is None or parent is None:
+                messages.error(request, 'Choose both accounts.')
+            else:
+                saved = FinancialsSettings.get()
+                saved.bank_account, saved.trust_parent_account = bank, parent
+                saved.save(update_fields=['bank_account', 'trust_parent_account'])
+                messages.success(request, 'Saved. Run the check again to use them.')
+        elif action == 'upload_statement':
+            file = request.FILES.get('file')
+            typed = (request.POST.get('ending_balance') or '').strip()
+            if file is None:
+                messages.error(request, 'Choose the statement file.')
+            elif os.path.splitext(file.name)[1].lower() not in STATEMENT_EXTENSIONS:
+                messages.error(request, 'Upload the statement as a PDF or a CSV.')
+            elif file.size > settings.PROCESS_ATTACHMENT_MAX_BYTES:
+                messages.error(request, f'File is too large (max {settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)}MB).')
+            else:
+                read, note = bank_tieout.read_statement_balance(file)
+                balance = _money_input(typed) if typed else read
+                if typed and balance is None:
+                    messages.error(request, f'"{typed}" is not an amount.')
+                elif balance is None:
+                    messages.error(request, note)
+                else:
+                    BankStatement.objects.update_or_create(month=month, defaults={
+                        'file': file, 'original_name': file.name[:255], 'ending_balance': balance, 'read_balance': read, 'uploaded_by': request.user,
+                    })
+                    if typed:
+                        messages.success(request, f'Statement saved with the ending balance you typed, ${balance:,.2f}.')
+                    else:
+                        messages.success(request, f'Statement saved. {note} Ending balance ${balance:,.2f} - correct it below if that is wrong.')
+        elif action == 'fix_balance':
+            statement = BankStatement.objects.filter(month=month).first()
+            balance = _money_input(request.POST.get('ending_balance'))
+            if statement is None or balance is None:
+                messages.error(request, 'Enter the ending balance as an amount.')
+            else:
+                statement.ending_balance = balance
+                statement.save(update_fields=['ending_balance'])
+                messages.success(request, f'Ending balance is now ${balance:,.2f}.')
+        elif action == 'run':
+            token = QuickBooksToken.objects.first()
+            if token is None:
+                messages.error(request, 'QuickBooks is not connected — connect it in Admin Tools first.')
+            else:
+                result, error = bank_tieout.run(token, month, request.user)
+                if error:
+                    messages.error(request, error)
+                else:
+                    messages.success(request, 'Pulled the balances and transactions from QuickBooks.')
+        elif action == 'accept':
+            tie = bank_tieout.summary(month)
+            row = next((d for d in tie.get('differences', []) if d['key'] == request.POST.get('key')), None)
+            note = (request.POST.get('note') or '').strip()
+            if row is None:
+                messages.error(request, 'That transaction is not in the last run - run the check again.')
+            elif not note:
+                messages.error(request, 'Say why it is fine, so the next person knows.')
+            else:
+                TieOutItem.objects.get_or_create(month=month, side=TieOutItem.Side.TRUST, txn_key=row['key'], defaults={
+                    'description': f'{row["type"]} {row["date"]} {row["name"] or row["memo"][:50]}'.strip()[:300],
+                    'amount': Decimal(row['diff']), 'note': note[:500], 'created_by': request.user})
+        elif action == 'add_item':
+            side = request.POST.get('side')
+            amount = _money_input(request.POST.get('amount'))
+            description = (request.POST.get('description') or '').strip()
+            if side not in (TieOutItem.Side.STATEMENT, TieOutItem.Side.TRUST) or amount is None or not description:
+                messages.error(request, 'A description and an amount are both needed.')
+            else:
+                TieOutItem.objects.create(month=month, side=side, description=description[:300], amount=amount, note=(request.POST.get('note') or '')[:500], created_by=request.user)
+        elif action == 'remove_item':
+            TieOutItem.objects.filter(pk=request.POST.get('item_id')).delete()
+        return redirect(back)
+
+    saved = FinancialsSettings.get()
+    bank, parent = bank_tieout.configured_accounts()
+    token = QuickBooksToken.objects.first()
+    return render(request, 'core/close_bank_tieout.html', {
+        'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 's': bank_tieout.summary(month),
+        'bank': bank, 'trust_parent': parent, 'accounts_saved': bool(saved.bank_account_id and saved.trust_parent_account_id),
+        'account_choices': QuickBooksAccount.objects.filter(active=True, classification__in=('Asset', 'Liability')).order_by('fully_qualified_name'),
+        'connected': token is not None, 'month_over': today >= ledger.next_month(month),
     })

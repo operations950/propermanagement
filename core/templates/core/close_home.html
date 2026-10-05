@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Month-end close{% endblock %}
+{% block content %}
+<style>
+    .ck-step { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); margin-bottom: 10px; text-decoration: none; color: inherit; }
+    .ck-step:hover { border-color: var(--brand, #6c8ebf); }
+    .ck-n { flex: 0 0 30px; height: 30px; border-radius: 50%; background: var(--bs-light, #f1f3f5); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; color: var(--ink-muted); }
+    .ck-n.done { background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; }
+    .ck-n.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
+    .ck-title { font-weight: 600; }
+    .ck-chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; margin-left: 6px; }
+    .ck-chip.done { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
+    .ck-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
+    .ck-chip.not_started { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+</style>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> Month-end close</h2>
+        <div class="small text-muted">Work down the list for the month. Each step says what is left.</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+{% if not month_over %}<div class="alert alert-info small py-2">{{ month|date:"F Y" }} isn't over yet — its steps can be looked at, but the month-end balances aren't final.</div>{% endif %}
+
+{% for step in steps %}
+<a class="ck-step" href="{{ step.url }}">
+    <div class="ck-n {{ step.status|default:'' }}">{% if step.status == 'done' %}<i data-lucide="check" class="icon"></i>{% else %}{{ step.n }}{% endif %}</div>
+    <div class="flex-grow-1">
+        <div><span class="ck-title">{{ step.title }}</span>
+            {% if step.status == 'done' %}<span class="ck-chip done">Done</span>{% elif step.status == 'attention' %}<span class="ck-chip attention">Needs attention</span>{% elif step.status == 'not_started' %}<span class="ck-chip not_started">Not started</span>{% endif %}</div>
+        <div class="small text-muted">{{ step.blurb }}</div>
+        {% if step.detail %}<div class="small mt-1">{{ step.detail }}</div>{% endif %}
+    </div>
+    <i data-lucide="chevron-right" class="icon text-muted align-self-center"></i>
+</a>
+{% endfor %}
+{% endblock %}

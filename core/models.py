@@ -1007,11 +1007,77 @@ class FinancialsSettings(models.Model):
     this month are never pulled in or asked about (a year of history would mean a
     year of closes)."""
     books_start = models.DateField(null=True, blank=True, help_text='The first month to manage; earlier transactions are ignored.')
+    bank_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='The property management bank account in QuickBooks - what the month-end bank tie-out compares to the statement.',
+    )
+    trust_parent_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='The parent of every property trust account in QuickBooks - its total should equal the bank account.',
+    )
 
     @classmethod
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+
+class BankStatement(models.Model):
+    """The bank's statement for one month: the file, and the ending balance a person confirmed from it. The month-end
+    bank tie-out compares that balance to QuickBooks."""
+    month = models.DateField(unique=True, help_text='First day of the month the statement covers.')
+    file = models.FileField(upload_to='bank_statements/')
+    original_name = models.CharField(max_length=255, blank=True)
+    ending_balance = models.DecimalField(max_digits=14, decimal_places=2)
+    read_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, help_text='What the program read from the file, kept so a correction is visible.')
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    uploaded_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Bank statement {self.month:%B %Y}'
+
+
+class BankTieOut(models.Model):
+    """The last bank tie-out run for a month: QuickBooks's bank and trust balances at month end and at the end of the month
+    before, and every transaction in the month whose effect on the bank account differs from its effect on the trust accounts
+    (`differences`: key, type, date, name, memo, split, bank, trust, diff as strings). Kept so the page opens without calling
+    QuickBooks again."""
+    month = models.DateField(unique=True)
+    run_at = models.DateTimeField(auto_now=True)
+    run_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    qb_bank = models.DecimalField(max_digits=14, decimal_places=2)
+    qb_trust = models.DecimalField(max_digits=14, decimal_places=2)
+    prior_bank = models.DecimalField(max_digits=14, decimal_places=2)
+    prior_trust = models.DecimalField(max_digits=14, decimal_places=2)
+    differences = models.JSONField(default=list)
+
+    def __str__(self):
+        return f'Bank tie-out {self.month:%B %Y}'
+
+
+class TieOutItem(models.Model):
+    """Something a person has explained so the tie-out can balance. side='trust': part of the gap between the QuickBooks bank
+    balance and the trust total (a listed transaction accepted with a reason, or one entered by hand); amount is its effect on
+    bank minus trust. side='statement': part of the gap between the bank statement and the QuickBooks bank balance (an outstanding
+    check, a deposit in transit); amount is its effect on statement minus QuickBooks bank."""
+    class Side(models.TextChoices):
+        STATEMENT = 'statement', 'Statement vs QuickBooks bank'
+        TRUST = 'trust', 'QuickBooks bank vs trust accounts'
+
+    month = models.DateField(help_text='The month it belongs to (first day).')
+    side = models.CharField(max_length=10, choices=Side.choices)
+    txn_key = models.CharField(max_length=120, blank=True, help_text='The QuickBooks transaction (type:id) when accepted from the list; blank for one entered by hand.')
+    description = models.CharField(max_length=300)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    note = models.CharField(max_length=500, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['month', 'created_at']
+
+    def __str__(self):
+        return f'{self.get_side_display()} {self.month:%b %Y}: {self.description} {self.amount}'
 
 
 class LedgerLine(models.Model):

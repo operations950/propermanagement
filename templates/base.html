@@ -313,6 +313,9 @@
                     {% if request.user.staff_profile.is_portfolio_owner %}
                     <a class="nav-link" href="{% url 'portfolio_dashboard' %}"><i data-lucide="briefcase" class="icon"></i> Portfolio</a>
                     {% endif %}
+                    {% if request.user.is_superuser or request.user.staff_profile.is_company_admin %}
+                    <a class="nav-link {% if request.resolver_match.url_name in 'close_home close_bank_tieout close_overview close_payouts close_statement close_property close_unit' %}active{% endif %}" href="{% url 'close_home' %}"><i data-lucide="landmark" class="icon"></i> Financials</a>
+                    {% endif %}
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
 
                     <div class="dropdown mx-lg-2 my-2 my-lg-0">

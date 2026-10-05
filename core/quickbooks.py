@@ -477,13 +477,18 @@ def parse_general_ledger(payload):
     """The transactions listed by a General Ledger report, one dict per report row:
     txn_id (QuickBooks's own), txn_type, date (ISO string), doc_num, name, memo, split
     and debit / credit (or, when the report has no such columns, the signed natural
-    `amount`). Section headers, totals and the beginning-balance row carry no
-    transaction id and are skipped."""
+    `amount`), plus account_id / account_name: the account section the row sits under (a
+    report for a parent account lists its sub-accounts as nested sections too). Section
+    headers, totals and the beginning-balance row carry no transaction id and are skipped."""
     keys = _column_keys(payload)
     found = []
 
-    def walk(rows):
+    def walk(rows, acct_id=None, acct_name=None):
         for row in rows or []:
+            header = (row.get('Header') or {}).get('ColData') or []
+            if header and row.get('Rows'):
+                walk(row['Rows'].get('Row', []), header[0].get('id') or acct_id, header[0].get('value') or acct_name)
+                continue
             cells = row.get('ColData')
             if cells and not row.get('Rows') and row.get('type', 'Data') == 'Data':
                 values = {keys[i]: c.get('value', '') for i, c in enumerate(cells) if i < len(keys) and keys[i]}
@@ -494,13 +499,14 @@ def parse_general_ledger(payload):
                         'txn_id': str(txn_id), 'txn_type': values['txn_type'].strip(), 'date': values['tx_date'].strip(),
                         'doc_num': values.get('doc_num', '').strip(), 'name': values.get('name', '').strip(),
                         'memo': values.get('memo', '').strip(), 'split': values.get('split_acc', '').strip(),
+                        'account_id': acct_id, 'account_name': acct_name,
                     }
                     if 'debt_amt' in values or 'credit_amt' in values:
                         item['debit'], item['credit'] = _money(values.get('debt_amt')), _money(values.get('credit_amt'))
                     else:
                         item['amount'] = _money(values.get('subt_nat_amount'))
                     found.append(item)
-            walk((row.get('Rows') or {}).get('Row', []))
+            walk((row.get('Rows') or {}).get('Row', []), acct_id, acct_name)
 
     walk((payload.get('Rows') or {}).get('Row', []))
     return found
@@ -639,3 +645,92 @@ def update_object(token, entity, body, sparse=True):
         return None, f'{WRITE_ERROR} (an unreadable answer)'
 
 
+
+
+# --- balance sheet and ledger reads for the month-end bank tie-out ---------------------------------
+
+REPORT_ERROR = "Couldn't read the report from QuickBooks - try again in a minute."
+
+
+def _fetch_report(token, name, params, timeout=90):
+    """(report json, error) for one QuickBooks report. Refreshes the token if needed and retries once, like the other reads."""
+    if not is_configured():
+        return None, 'QuickBooks client ID/secret are not set — add them in Admin Tools.'
+    outcome = _refresh_with_retry(token)
+    if outcome == REFRESH_REJECTED:
+        return None, RECONNECT_ERROR
+    if outcome == REFRESH_FAILED:
+        return None, REPORT_ERROR
+
+    def read():
+        resp = requests.get(f'{API_BASES[_environment()]}/{token.realm_id}/reports/{name}', params={**params, 'minorversion': 70},
+                            headers={'Authorization': f'Bearer {token.access_token}', 'Accept': 'application/json'}, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    try:
+        return read(), ''
+    except Exception as exc:
+        logger.warning('QuickBooks %s report failed, retrying once: %s', name, _failure_summary(exc))
+        if _status_code(exc) == 401:
+            outcome = _refresh_if_needed(token, force=True)
+            if outcome == REFRESH_REJECTED:
+                return None, RECONNECT_ERROR
+            if outcome != REFRESH_OK:
+                return None, REPORT_ERROR
+        else:
+            time.sleep(RETRY_DELAY_SECONDS)
+    try:
+        return read(), ''
+    except Exception as exc:
+        logger.error('QuickBooks %s report failed after retry: %s', name, _failure_summary(exc))
+        return None, REPORT_ERROR
+
+
+def parse_balance_sheet(payload):
+    """{'own': {account id: that account's own balance}, 'total': {account id: balance including its sub-accounts}}.
+    An account with sub-accounts is a Section (its Header names it, its Summary is the total); one with a balance of
+    its own is a Data row whose first cell carries the account id."""
+    from decimal import Decimal, InvalidOperation
+    own, total = {}, {}
+
+    def num(cell):
+        raw = ((cell or {}).get('value') or '').replace(',', '')
+        try:
+            return Decimal(raw) if raw else None
+        except InvalidOperation:
+            return None
+
+    def walk(rows):
+        for row in rows or []:
+            header = (row.get('Header') or {}).get('ColData') or []
+            summary = (row.get('Summary') or {}).get('ColData') or []
+            data = row.get('ColData') or []
+            if row.get('Rows') and header:
+                if header[0].get('id') and summary:
+                    total[header[0]['id']] = num(summary[-1])
+                walk(row['Rows'].get('Row'))
+            elif data and data[0].get('id'):
+                own[data[0]['id']] = num(data[-1])
+            elif row.get('Rows'):
+                walk(row['Rows'].get('Row'))
+
+    walk((payload.get('Rows') or {}).get('Row'))
+    return {'own': own, 'total': total}
+
+
+def fetch_balance_sheet(token, as_of):
+    """({'own', 'total'}, error): every account's balance as of a date (the books as they stand now, not as they stood then)."""
+    payload, error = _fetch_report(token, 'BalanceSheet', {'start_date': date(as_of.year, 1, 1).isoformat(), 'end_date': as_of.isoformat()}, timeout=60)
+    return (parse_balance_sheet(payload), '') if payload is not None else (None, error)
+
+
+def fetch_ledger_family(token, account_qb_id, start, end):
+    """(entries, error): the General Ledger for one account AND every account under it (QuickBooks nests the
+    sub-accounts as sections of the same report), each entry tagged with the account it sits in. Ask for a parent
+    once - not the parent and then each child, or every transaction is counted twice."""
+    payload, error = _fetch_report(token, 'GeneralLedger', {
+        'start_date': start.isoformat(), 'end_date': end.isoformat(), 'account': account_qb_id,
+        'columns': LEDGER_COLUMNS, 'sort_by': 'tx_date', 'sort_order': 'ascend',
+    })
+    return (parse_general_ledger(payload), '') if payload is not None else (None, error)

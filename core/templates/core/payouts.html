@@ -17,7 +17,7 @@
     .po-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 10px; border-radius: 999px; background: var(--bs-light, #f1f3f5); font-size: 0.8rem; text-decoration: none; color: inherit; }
     .po-stat.on { outline: 2px solid var(--brand, #6c8ebf); }
 </style>
-<a href="{% url 'close_overview' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
+<a href="{% url 'close_home' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
 <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="banknote" class="icon-lg"></i> Platform payouts</h2>
 <div class="small text-muted mb-2">Each payout Airbnb or VRBO reports, the lines that make it up, and whether a bank deposit of that amount has turned up. One waiting {{ lingering_after }}+ days is flagged.</div>
 

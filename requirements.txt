@@ -21,3 +21,6 @@ psycopg[binary]==3.3.4
 # AES encryption for stored OAuth tokens (core/fields.py). Was already installed
 # transitively via google-auth; pinned explicitly because the app now imports it directly.
 cryptography==49.0.0
+
+# Reads the ending balance off an uploaded bank statement PDF (core/bank_tieout.py) - best effort, always confirmed by a person.
+pypdf==6.19.0

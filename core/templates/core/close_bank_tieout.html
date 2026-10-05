@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}Bank tie-out{% endblock %}
+{% block content %}
+<style>
+    .bt { font-size: 0.86rem; }
+    .bt .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bt-big { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .bt-three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 640px) { .bt-three { grid-template-columns: 1fr; } }
+    .bt-box { border: 1px solid var(--border-hairline); border-radius: 10px; padding: 10px 14px; background: var(--surface-card, #fff); }
+    .bt-box .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+    .bt-chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+    .bt-ok { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
+    .bt-bad { background: color-mix(in srgb, var(--status-warning) 24%, white); color: #8a5a00; }
+    .bt table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); font-weight: 600; }
+    .bt-memo { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+<div class="bt">
+<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end checklist</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Step 1: Bank tie-out
+            {% if s.status == 'done' %}<span class="bt-chip bt-ok">Done</span>{% elif s.status == 'attention' %}<span class="bt-chip bt-bad">Needs attention</span>{% endif %}</h2>
+        <div class="small text-muted">The bank statement, QuickBooks's bank account and the property trust accounts must agree at the end of the month.</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+{% if not connected %}<div class="alert alert-warning small py-2">QuickBooks isn't connected — connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a> first.</div>{% endif %}
+{% if not month_over %}<div class="alert alert-info small py-2">{{ month|date:"F Y" }} isn't over yet, so these balances aren't final.</div>{% endif %}
+
+{# ---- the statement ---- #}
+<div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-3">
+    <div class="fw-semibold mb-2">The bank statement</div>
+    {% if s.statement %}
+    <div class="d-flex align-items-baseline gap-3 flex-wrap">
+        <div><span class="text-muted">Ending balance</span> <span class="bt-big">{{ s.statement.ending_balance|money }}</span></div>
+        <a href="{{ s.statement.file.url }}" target="_blank" rel="noopener" class="small">{{ s.statement.original_name|default:"View the statement" }}</a>
+        {% if s.statement.read_balance is not None and s.statement.read_balance != s.statement.ending_balance %}<span class="small text-muted">(read {{ s.statement.read_balance|money }} from the file, then corrected)</span>{% endif %}
+    </div>
+    <form method="post" class="d-flex gap-2 align-items-center flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="fix_balance">
+        <input type="text" name="ending_balance" class="form-control form-control-sm" style="max-width: 160px;" placeholder="Correct the balance" aria-label="Ending balance">
+        <button class="btn btn-outline-secondary btn-sm py-0">Correct it</button>
+    </form>
+    <details class="mt-2"><summary class="small text-muted" style="cursor: pointer;">Replace the statement file</summary>
+    {% else %}
+    <div class="small text-muted mb-2">Upload the statement for {{ month|date:"F Y" }} (PDF or CSV). The ending balance is read from it when possible; you confirm it.</div>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="upload_statement">
+        <input type="file" name="file" accept=".pdf,.csv" class="form-control form-control-sm" style="max-width: 280px;" required aria-label="Statement file">
+        <input type="text" name="ending_balance" class="form-control form-control-sm" style="max-width: 190px;" placeholder="Ending balance (if it can't be read)" aria-label="Ending balance">
+        <button class="btn btn-primary btn-sm">{% if s.statement %}Replace{% else %}Upload{% endif %}</button>
+    </form>
+    {% if s.statement %}</details>{% endif %}
+</div></div>
+
+{# ---- QuickBooks ---- #}
+<div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="me-auto">
+            <div class="fw-semibold">QuickBooks</div>
+            <div class="small text-muted">Bank account: <strong>{{ bank.fully_qualified_name|default:"not chosen" }}</strong> · Trust accounts: <strong>{{ trust_parent.fully_qualified_name|default:"not chosen" }}</strong> (and everything under it)
+                {% if s.tieout %} · last run {{ s.tieout.run_at|timesince }} ago{% endif %}</div>
+        </div>
+        <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="run">
+            <button class="btn btn-primary btn-sm" {% if not connected or not bank or not trust_parent %}disabled{% endif %}>{% if s.tieout %}Run it again{% else %}Run the check{% endif %}</button></form>
+    </div>
+    <details class="mt-2" {% if not bank or not trust_parent %}open{% endif %}><summary class="small text-muted" style="cursor: pointer;">{% if accounts_saved %}Change the accounts{% else %}Choose the accounts{% endif %}</summary>
+        <form method="post" class="row g-2 align-items-end mt-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_accounts">
+            <div class="col-md-5"><label class="form-label small mb-0">Property management bank account</label>
+                <select name="bank_account" class="form-select form-select-sm">{% for a in account_choices %}<option value="{{ a.pk }}" {% if bank and a.pk == bank.pk %}selected{% endif %}>{{ a.fully_qualified_name }} ({{ a.account_type }})</option>{% endfor %}</select></div>
+            <div class="col-md-5"><label class="form-label small mb-0">Trust parent account (its sub-accounts are the properties)</label>
+                <select name="trust_parent_account" class="form-select form-select-sm">{% for a in account_choices %}<option value="{{ a.pk }}" {% if trust_parent and a.pk == trust_parent.pk %}selected{% endif %}>{{ a.fully_qualified_name }} ({{ a.account_type }})</option>{% endfor %}</select></div>
+            <div class="col-md-2"><button class="btn btn-outline-secondary btn-sm w-100">Save</button></div>
+        </form>
+    </details>
+</div></div>
+
+{% if s.tieout %}
+<div class="bt-three mb-3">
+    <div class="bt-box"><div class="lbl">Bank statement</div><div class="bt-big">{% if s.statement %}{{ s.statement.ending_balance|money }}{% else %}<span class="text-muted">—</span>{% endif %}</div></div>
+    <div class="bt-box"><div class="lbl">QuickBooks bank account</div><div class="bt-big">{{ s.tieout.qb_bank|money }}</div></div>
+    <div class="bt-box"><div class="lbl">QuickBooks trust accounts</div><div class="bt-big">{{ s.tieout.qb_trust|money }}</div></div>
+</div>
+
+{# ---- statement vs QuickBooks bank ---- #}
+<div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+        <div class="fw-semibold">Statement vs QuickBooks bank account</div>
+        {% if s.statement %}{% if s.statement_unexplained == 0 %}<span class="bt-chip bt-ok">Agrees</span>{% else %}<span class="bt-chip bt-bad">{{ s.statement_unexplained|money }} unexplained</span>{% endif %}{% endif %}
+    </div>
+    {% if not s.statement %}<div class="small text-muted">Upload the statement above to compare it.</div>{% else %}
+    <div class="small text-muted mb-2">Statement {{ s.statement.ending_balance|money }} − QuickBooks bank {{ s.tieout.qb_bank|money }} = <strong>{{ s.statement_gap|money }}</strong>. Explain it with timing items: an outstanding check makes the statement higher than QuickBooks (enter it as a positive amount); a deposit in transit makes it lower (negative).</div>
+    {% if s.statement_items %}
+    <table class="table table-sm mb-2"><tbody>
+        {% for i in s.statement_items %}<tr><td>{{ i.description }}{% if i.note %} <span class="text-muted">— {{ i.note }}</span>{% endif %}</td><td class="num">{{ i.amount|money }}</td>
+            <td class="text-end"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="remove_item"><input type="hidden" name="item_id" value="{{ i.pk }}"><button class="btn btn-link btn-sm py-0 text-danger" aria-label="Remove">Remove</button></form></td></tr>{% endfor %}
+        <tr><td class="text-muted">Explained so far</td><td class="num">{{ s.statement_explained|money }}</td><td></td></tr>
+    </tbody></table>
+    {% endif %}
+    <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="add_item"><input type="hidden" name="side" value="statement">
+        <div class="col-md-6"><input type="text" name="description" class="form-control form-control-sm" placeholder="e.g. Check 142 not yet cashed" required></div>
+        <div class="col-md-3"><input type="text" name="amount" class="form-control form-control-sm" placeholder="Amount (+ / −)" required></div>
+        <div class="col-md-3"><button class="btn btn-outline-secondary btn-sm w-100">Add timing item</button></div>
+    </form>
+    {% endif %}
+</div></div>
+
+{# ---- QuickBooks bank vs trust ---- #}
+<div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+        <div class="fw-semibold">QuickBooks bank account vs trust accounts</div>
+        {% if s.trust_unexplained == 0 %}<span class="bt-chip bt-ok">Agrees</span>{% else %}<span class="bt-chip bt-bad">{{ s.trust_unexplained|money }} unexplained</span>{% endif %}
+    </div>
+    <div class="small text-muted mb-2">QuickBooks bank {{ s.tieout.qb_bank|money }} − trust accounts {{ s.tieout.qb_trust|money }} = <strong>{{ s.trust_gap|money }}</strong>
+        {% if s.prior_gap != 0 %}(it was already {{ s.prior_gap|money }} at the end of the month before){% endif %}.
+        Below is every transaction this month that moved the bank and the trust accounts by different amounts — that is where a gap comes from.</div>
+    {% if s.untraced != 0 %}<div class="alert alert-warning small py-2">{{ s.untraced|money }} of the gap is not tied to any transaction this month. An earlier month's transactions were probably changed in QuickBooks after that month tied out.</div>{% endif %}
+    {% if s.differences %}
+    <div class="table-responsive"><table class="table table-sm align-middle mb-2">
+        <thead><tr><th>Date</th><th>Transaction</th><th class="num">Bank</th><th class="num">Trust</th><th class="num">Difference</th><th></th></tr></thead>
+        <tbody>
+        {% for d in s.differences %}<tr {% if d.accepted %}class="text-muted"{% endif %}>
+            <td class="text-nowrap">{{ d.date }}</td>
+            <td><strong>{{ d.type }}</strong> {{ d.name }}<div class="bt-memo small text-muted" title="{{ d.memo }}">{{ d.memo }}{% if d.split %} · {{ d.split }}{% endif %}</div></td>
+            <td class="num">{{ d.bank|money }}</td><td class="num">{{ d.trust|money }}</td><td class="num"><strong>{{ d.diff|money }}</strong></td>
+            <td style="min-width: 250px;">{% if d.accepted %}<span class="bt-chip bt-ok">Explained</span>
+                {% else %}<form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="accept"><input type="hidden" name="key" value="{{ d.key }}">
+                    <input type="text" name="note" class="form-control form-control-sm" placeholder="Why this is fine" required><button class="btn btn-outline-secondary btn-sm py-0">Accept</button></form>{% endif %}</td>
+        </tr>{% endfor %}
+        </tbody>
+    </table></div>
+    {% else %}<div class="small mb-2">No transaction this month moved the bank and the trust accounts by different amounts.</div>{% endif %}
+    {% if s.trust_items %}
+    <table class="table table-sm mb-2"><tbody>
+        {% for i in s.trust_items %}<tr><td class="text-nowrap text-muted">{{ i.month|date:"M Y" }}</td><td>{{ i.description }}{% if i.note %} <span class="text-muted">— {{ i.note }}</span>{% endif %}</td><td class="num">{{ i.amount|money }}</td>
+            <td class="text-end"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="remove_item"><input type="hidden" name="item_id" value="{{ i.pk }}"><button class="btn btn-link btn-sm py-0 text-danger">Remove</button></form></td></tr>{% endfor %}
+        <tr><td></td><td class="text-muted">Explained so far (this and earlier months)</td><td class="num">{{ s.trust_explained|money }}</td><td></td></tr>
+    </tbody></table>
+    {% endif %}
+    <details><summary class="small text-muted" style="cursor: pointer;">Explain something that is not in the list</summary>
+    <form method="post" class="row g-2 align-items-end mt-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="add_item"><input type="hidden" name="side" value="trust">
+        <div class="col-md-6"><input type="text" name="description" class="form-control form-control-sm" placeholder="What it is" required></div>
+        <div class="col-md-3"><input type="text" name="amount" class="form-control form-control-sm" placeholder="Bank − trust effect" required></div>
+        <div class="col-md-3"><button class="btn btn-outline-secondary btn-sm w-100">Add</button></div>
+    </form></details>
+</div></div>
+
+{% if s.status == 'done' %}<div class="alert alert-success py-2"><i data-lucide="check-circle" class="icon"></i> The statement, QuickBooks's bank account and the trust accounts all agree for {{ month|date:"F Y" }}.</div>{% endif %}
+{% endif %}
+</div>
+{% endblock %}

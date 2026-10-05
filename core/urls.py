@@ -22,7 +22,9 @@ urlpatterns = [
     path('admin-tools/quickbooks-accounts/', views.quickbooks_accounts, name='quickbooks_accounts'),
     path('admin-tools/import-property-details/', views.property_data_import, name='property_data_import'),
     path('faq-review/', faq_views.faq_review_queue, name='faq_review_queue'),
-    path('close/', close_views.close_overview, name='close_overview'),
+    path('close/', close_views.close_home, name='close_home'),
+    path('close/rentals/', close_views.close_overview, name='close_overview'),
+    path('close/bank-tie-out/', close_views.close_bank_tieout, name='close_bank_tieout'),
     path('close/bookkeeping/', close_views.payouts, name='close_payouts'),
     path('close/payouts/', RedirectView.as_view(url=reverse_lazy('close_payouts'), permanent=True)),  # old URL — keep working for old bookmarks/links
     path('close/statement/<int:pk>/', close_views.close_statement, name='close_statement'),
