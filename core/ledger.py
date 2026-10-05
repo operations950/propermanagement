@@ -1071,6 +1071,8 @@ def closed_summary(close):
         else:
             out[k] = Decimal(v)
     out.setdefault('calc', False)
+    for k in ('commission_base', 'owner_owes_us'):
+        out.setdefault(k, ZERO)         # a month closed before the owner-collects figures existed has none: zero, not missing
     return derive(out)
 
 
