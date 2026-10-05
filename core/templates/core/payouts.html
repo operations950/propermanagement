@@ -53,6 +53,7 @@
     {% endif %}
 </div></div>
 
+{% if owner_collected %}<div class="small text-muted mb-1">{{ owner_collected }} payout{{ owner_collected|pluralize }} for rentals whose owner collects the income {% if owner_collected == 1 %}is{% else %}are{% endif %} left out: {% if owner_collected == 1 %}it never reaches{% else %}they never reach{% endif %} our bank.</div>{% endif %}
 <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
     <a class="po-stat {% if show == 'open' %}on{% endif %}" href="?show=open&source={{ source }}"><strong>{{ counts.waiting|add:counts.scheduled|add:counts.lingering }}</strong> not received yet</a>
     <a class="po-stat {% if show == 'lingering' %}on{% endif %}" href="?show=lingering&source={{ source }}" {% if counts.lingering %}style="background: color-mix(in srgb, var(--status-critical, #c0392b) 15%, white);"{% endif %}><strong>{{ counts.lingering }}</strong> waiting {{ lingering_after }}+ days</a>

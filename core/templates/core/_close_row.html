@@ -15,9 +15,9 @@
     {% else %}
     <td class="num">{{ r.lines }}</td>
     <td class="num">{% if r.state == 'closed' %}<span class="text-muted">—</span>{% elif r.unreviewed %}<strong style="color: #9a6a00;">{{ r.unreviewed }}</strong>{% else %}0{% endif %}</td>
-    <td class="num">{% if r.totals %}${{ r.totals.deposits|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+    <td class="num">{% if r.totals.owner_collects %}<span class="text-muted" title="The owner collects the booking income">owner collects</span>{% elif r.totals %}${{ r.totals.deposits|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
     <td class="num">{% if r.totals %}${{ r.totals.expenses_total|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-    <td class="num">{% if r.totals %}${% if r.totals.calc %}{{ r.totals.owner_due|floatformat:"2g" }}{% else %}{{ r.totals.owner_payment|floatformat:"2g" }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+    <td class="num">{% if r.totals.owner_collects %}<span class="text-muted" title="No owner payment: the owner pays us our expenses and commission">owes us ${{ r.totals.owner_owes_us|floatformat:"2g" }}</span>{% elif r.totals %}${% if r.totals.calc %}{{ r.totals.owner_due|floatformat:"2g" }}{% else %}{{ r.totals.owner_payment|floatformat:"2g" }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
     {% endif %}
     <td class="small">
         {% if r.state == 'needs_accounts' %}

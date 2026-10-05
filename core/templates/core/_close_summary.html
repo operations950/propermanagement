@@ -12,6 +12,13 @@
     .cl-settle th:first-child, .cl-settle td:first-child { width: 28%; text-align: left; }
     .cl-settle tr.diff td { border-top: 2px solid var(--border-hairline, #ccd); }
 </style>
+{% if totals.owner_collects %}
+<div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum cl-calc">
+    <thead><tr><th title="Platform payouts, collected by the owner">Payouts</th><th>Commission {{ totals.commission_rate|floatformat:"-2" }}%</th><th title="Reimbursable expenses">Expenses</th><th>From trust</th><th>= Owes us</th></tr></thead>
+    <tbody><tr><td>{{ totals.commission_base|money }}</td><td>{{ totals.commission_due|money }}</td><td>{{ totals.expenses_reimbursable|money }}</td><td>{{ totals.expenses_direct|money }}</td><td><strong>{{ totals.owner_owes_us|money }}</strong></td></tr></tbody>
+</table></div>
+<p class="small text-muted mb-2" style="font-size: 0.72rem;">The owner collects this rental's booking income themselves and pays us at month end, so there is no income in our books, no owner payment, and its payouts are not expected at our bank. The commission is the rate times {{ month|date:"F" }}'s platform payouts, by payout date.</p>
+{% else %}
 {% if totals.commission_basis == 'net' %}
 <div class="table-responsive mb-1"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
     <thead><tr><th>Income deposits</th><th>− Expenses</th><th>− Owner Baseline Expenses</th><th>= Net income</th></tr></thead>
@@ -44,6 +51,7 @@
     </table>
     <div class="text-muted mt-1" style="font-size: 0.72rem;">{% if totals.prior_status == 'ok' %}What is paid out in {{ month|date:"F" }} settles {{ totals.prior_month|date:"F" }}; the difference should be zero.{% if not totals.prior_closed %} {{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.{% endif %}{% else %}{% include 'core/_close_prior_note.html' %}{% endif %}</div>
 </div>
+{% endif %}
 {% else %}
 <div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum">
     <thead><tr><th>Income deposits</th><th>Expenses</th><th>Reimbursable</th><th>Paid from trust</th><th>Reimb. to us</th><th>Commission</th><th>Owner payment</th><th>Trust change</th></tr></thead>

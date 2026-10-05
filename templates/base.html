@@ -157,8 +157,9 @@
             gap: 0.4rem;
             font-weight: 500;
             border-radius: var(--bs-border-radius-sm);
-            padding-left: 0.6rem !important;
-            padding-right: 0.6rem !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+            white-space: nowrap;
             transition: background-color 0.15s ease, color 0.15s ease;
         }
         .brand-bar .nav-link:hover {
@@ -171,13 +172,35 @@
         }
         .brand-logo { height: 32px; width: auto; }
 
-        /* Below the lg breakpoint the nav collapses into a stacked list
-           (see navbar-expand-lg below) — the desktop nav-link padding is
+        /* The thin "the app is working" bar across the very top (static/js/progress-bar.js). */
+        #progress-bar {
+            position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 2000; pointer-events: none;
+            opacity: 0; transition: opacity 0.25s ease;
+            background-image: linear-gradient(90deg, transparent, var(--brand-primary), transparent);
+            background-size: 40% 100%; background-repeat: no-repeat;
+        }
+        #progress-bar.on { opacity: 1; animation: progress-slide 1.1s linear infinite; }
+        @keyframes progress-slide { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+        @media (prefers-reduced-motion: reduce) {
+            #progress-bar { background-image: none; background-color: var(--brand-primary); }
+            #progress-bar.on { animation: none; opacity: 0.55; }
+        }
+
+        /* Between 1200px and 1700px the row is full: the link icons go, the words stay, and Quick add and
+           Log out shrink to their icons (both keep a tooltip). */
+        @media (min-width: 1200px) and (max-width: 1699.98px) {
+            .brand-bar .navbar-nav > .nav-link > .icon { display: none; }
+            .brand-bar .nav-short-label { display: none; }
+            .brand-bar .navbar-nav > .nav-link { padding-left: 0.4rem !important; padding-right: 0.4rem !important; font-size: 0.9rem; }
+        }
+
+        /* Below the xl breakpoint the nav collapses into a stacked list
+           (see navbar-expand-xl below) — the desktop nav-link padding is
            tuned for a single horizontal row, so links there read a bit
            small/cramped as touch targets once stacked vertically. Bump
            padding/size and separate rows with a hairline so each is a
            clearly distinct, comfortably tappable row. */
-        @media (max-width: 991.98px) {
+        @media (max-width: 1199.98px) {
             .brand-bar .nav-link {
                 font-size: 1.05rem;
                 padding: 0.7rem 0.75rem !important;
@@ -293,7 +316,7 @@
 </head>
 <body>
     {% if user.is_authenticated %}
-    <nav class="navbar navbar-expand-lg brand-bar mb-4 sticky-top">
+    <nav class="navbar navbar-expand-xl brand-bar mb-4 sticky-top">
         <div class="container-fluid">
             <a class="navbar-brand" href="{% url 'dashboard' %}">
                 <img src="{% static 'img/proper-realty-logo.png' %}" alt="Proper Realty" class="brand-logo">
@@ -302,7 +325,7 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navMain">
-                <div class="navbar-nav ms-auto align-items-lg-center">
+                <div class="navbar-nav ms-auto align-items-xl-center">
                     <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'ticket_list' and request.GET.source != 'recurring' %}active{% endif %}" href="{% url 'ticket_list' %}?source=reactive"><i data-lucide="ticket" class="icon"></i> Tickets</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties</a>
@@ -318,9 +341,9 @@
                     {% endif %}
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
 
-                    <div class="dropdown mx-lg-2 my-2 my-lg-0">
-                        <button class="btn btn-primary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i data-lucide="plus" class="icon"></i> Quick add
+                    <div class="dropdown mx-xl-2 my-2 my-xl-0">
+                        <button class="btn btn-primary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Quick add" aria-label="Quick add">
+                            <i data-lucide="plus" class="icon"></i><span class="nav-short-label">Quick add</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: var(--bs-border-radius);">
                             <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'ticket_create' %}"><i data-lucide="ticket" class="icon"></i> New ticket</a></li>
@@ -331,7 +354,7 @@
 
                     <form method="post" action="{% url 'logout' %}" class="d-inline">
                         {% csrf_token %}
-                        <button class="btn btn-link nav-link" type="submit"><i data-lucide="log-out" class="icon"></i> Log out ({{ user.username }})</button>
+                        <button class="btn btn-link nav-link" type="submit" title="Log out ({{ user.username }})" aria-label="Log out"><i data-lucide="log-out" class="icon"></i><span class="nav-short-label"> Log out</span></button>
                     </form>
                 </div>
             </div>
@@ -363,6 +386,7 @@
     <script src="{% static 'js/photo-capture.js' %}"></script>
     <script src="{% static 'js/weather-widget.js' %}"></script>
     <script src="{% static 'js/toast-messages.js' %}"></script>
+    <script src="{% static 'js/progress-bar.js' %}"></script>
     <script>lucide.createIcons();</script>
     <script>
     (function () {

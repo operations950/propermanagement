@@ -1021,6 +1021,9 @@ def _property_qb_action(request, prop, action):
     elif action == 'qb_set_commission':
         raw = (request.POST.get('commission_rate') or '').strip().rstrip('%')
         basis = request.POST.get('commission_basis') or Property.CommissionBasis.GROSS
+        owner_collects = request.POST.get('income_collected_by_owner') == 'on'
+        if owner_collects:
+            basis = Property.CommissionBasis.GROSS      # no deposits to net expenses against: commission is always on the gross payouts
         raw_baseline = (request.POST.get('owner_baseline_expense') or '').strip().lstrip('$').replace(',', '')
         try:
             rate = Decimal(raw).quantize(Decimal('0.01'))
@@ -1035,9 +1038,13 @@ def _property_qb_action(request, prop, action):
             messages.error(request, 'The commission rate is a percent between 0 and 100, and Owner Baseline Expenses is a dollar amount of 0 or more.')
         else:
             prop.commission_rate, prop.commission_basis, prop.owner_baseline_expense = rate, basis, baseline
-            prop.save(update_fields=['commission_rate', 'commission_basis', 'owner_baseline_expense'])
-            basis_note = f' of net income (income deposits less expenses{f" and the ${baseline:,.2f}/month Owner Baseline Expenses" if baseline else ""})' if basis == Property.CommissionBasis.NET else ' of gross income deposits'
-            messages.success(request, f'Commission for {prop.name} is now {rate}%{basis_note}, from the months still open onward. Months already closed stay as they were closed.')
+            prop.income_collected_by_owner = owner_collects
+            prop.save(update_fields=['commission_rate', 'commission_basis', 'owner_baseline_expense', 'income_collected_by_owner'])
+            if owner_collects:
+                messages.success(request, f'{prop.name}: the owner collects the booking income. Commission is {rate}% of each month\'s platform payouts, its payouts are no longer expected at our bank, and its statement shows only our expenses and commission — from the months still open onward.')
+            else:
+                basis_note = f' of net income (income deposits less expenses{f" and the ${baseline:,.2f}/month Owner Baseline Expenses" if baseline else ""})' if basis == Property.CommissionBasis.NET else ' of gross income deposits'
+                messages.success(request, f'Commission for {prop.name} is now {rate}%{basis_note}, from the months still open onward. Months already closed stay as they were closed.')
     elif action == 'qb_set_level':
         try:
             result = ledger.set_financials_level(prop, request.POST.get('financials_level', ''))

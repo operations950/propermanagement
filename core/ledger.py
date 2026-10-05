@@ -671,7 +671,7 @@ def acknowledge_changes(book, month):
 # --- the month's figures and checks ----------------------------------------------------------------------
 
 TOTAL_KEYS = ('deposits', 'owner_payment', 'commission', 'reimbursement_trust', 'reimbursement_expense', 'expenses_reimbursable', 'expenses_direct', 'trust_net',
-              'commission_due', 'owner_due', 'net_income', 'owner_baseline_expense')
+              'commission_due', 'owner_due', 'net_income', 'owner_baseline_expense', 'commission_base', 'owner_owes_us')
 CENT = Decimal('0.01')
 
 
@@ -715,7 +715,17 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
     prop = _book(book).property
     rate = Decimal(prop.commission_rate if prop.commission_rate is not None else Decimal('10.00'))
     basis = getattr(prop, 'commission_basis', Property.CommissionBasis.GROSS)
-    if basis == Property.CommissionBasis.NET:
+    owner_collects = bool(getattr(prop, 'income_collected_by_owner', False))
+    if owner_collects:
+        # The owner collects the booking income (the platform pays them, not our trust account), so there are no deposits to
+        # take a percent of: the commission is the rate times the month's platform payouts by payout date - what the deposits
+        # would have been - always on the gross. There is no owner payment; the owner pays us for our expenses and commission.
+        from . import recon
+        income = recon.owner_collected_income(_book(book), month)
+        due = (max(income, ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+        total['commission_base'] = income
+        basis = Property.CommissionBasis.GROSS
+    elif basis == Property.CommissionBasis.NET:
         # owner_baseline_expense is a whole-property figure (Property, not Unit) — applied once, only when this
         # book IS the whole property. A single unit's own book skips it, so a unit-level property never
         # subtracts it once per unit and ends up over-counting it when the units are added back up.
@@ -727,7 +737,8 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
         due = (max(total['deposits'], ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
     # owner_due never subtracts owner_baseline_expense a second time — the owner already paid it themselves,
     # outside the trust account; it only ever reduces our commission above, on the Net basis.
-    total.update(commission_rate=rate, commission_basis=basis, commission_due=due, owner_due=total['deposits'] - due - total['expenses_total'], calc=True)
+    total.update(commission_rate=rate, commission_basis=basis, commission_due=due, owner_collects=owner_collects, calc=True,
+                 owner_due=ZERO if owner_collects else total['deposits'] - due - total['expenses_total'])
     if with_prior:
         total.update(prior_settlement(book, month, memo))
     derive(total)
@@ -761,6 +772,16 @@ def derive(t):
     t['comm_payable'] = t['commission_due'] + t['comm_carry']
     t['us_payable'] = t['reimb_payable'] + t['comm_payable']
     t['owner_payable'] = t['owner_due'] + t['owner_carry']
+    if t.get('owner_collects'):
+        # The owner pays us outside the trust account, so nothing is taken from it to compare with last month, nothing is carried,
+        # and there is no owner payment: what is owed is this month's expenses and commission.
+        for k in ('reimbursement_diff', 'commission_diff', 'owner_diff'):
+            t[k] = None
+        for k in ('reimb_carry', 'comm_carry', 'owner_carry', 'us_carry'):
+            t[k] = ZERO
+        t['reimb_payable'], t['comm_payable'], t['owner_payable'] = t['expenses_reimbursable'], t['commission_due'], ZERO
+        t['us_payable'] = t['reimb_payable'] + t['comm_payable']
+        t['owner_owes_us'] = t['expenses_total'] + t['commission_due']
     return t
 
 
@@ -806,6 +827,7 @@ def sum_totals(parts):
             out[k] += part.get(k, ZERO)
     out['calc'] = bool(parts) and all(p.get('calc') for p in parts)
     out['commission_rate'] = next((p['commission_rate'] for p in parts if p.get('commission_rate') is not None), None)
+    out['owner_collects'] = bool(parts) and all(p.get('owner_collects') for p in parts)
     priors = [p.get('prior_reimbursable') for p in parts]
     ok = bool(parts) and all(v is not None for v in priors)
     out['prior_reimbursable'] = sum(priors, ZERO) if ok else None
@@ -817,7 +839,7 @@ def sum_totals(parts):
     return derive(out)
 
 
-STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us', 'net_income', 'owner_baseline_expense')
+STATEMENT_KEYS = ('deposits', 'expenses_reimbursable', 'expenses_direct', 'commission_due', 'owner_due', 'owner_payment', 'taken_to_us', 'net_income', 'owner_baseline_expense', 'commission_base', 'owner_owes_us')
 
 
 def _zero_totals():
@@ -888,11 +910,11 @@ def statement(prop, end=None, months=12, year=None):
             columns.append({'month': m, 'state': 'future' if m > this_month else ('empty' if m >= start else 'before'), 't': _zero_totals(), 'accounted': None, 'cleared': None, 'detail': detail})
             continue
         t = parts[0] if len(parts) == 1 else sum_totals(parts)
-        accounted = t['deposits'] - (t['expenses_reimbursable'] + t['expenses_direct'] + t['commission_due'] + t['owner_due'])
+        accounted = None if t.get('owner_collects') else t['deposits'] - (t['expenses_reimbursable'] + t['expenses_direct'] + t['commission_due'] + t['owner_due'])
         cleared = None if t.get('prior_status') != 'ok' else (t['us_carry'] == 0 and t['owner_carry'] == 0)
         columns.append({'month': m, 'state': 'closed' if closed == len(parts) else 'open', 't': t, 'accounted': accounted, 'cleared': cleared, 'detail': detail})
     total = {k: sum((c['t'][k] for c in columns), ZERO) for k in STATEMENT_KEYS}
-    return {'columns': columns, 'total': total, 'property': prop, 'first': span[0], 'last': span[-1]}
+    return {'columns': columns, 'total': total, 'property': prop, 'first': span[0], 'last': span[-1], 'owner_collects': bool(prop.income_collected_by_owner)}
 
 
 def checks(book, month, now=None, rec=None):
@@ -945,6 +967,9 @@ def add_settlement_checks(book, month, lines, add):
     """What is paid out of the trust account this month settles LAST month's dues: the reimbursement to us and
     the commission (last month's reimbursable expenses and commission) and the owner payment (last month's).
     Compare each with last month's figure."""
+    if _book(book).property.income_collected_by_owner:
+        add('settle_prior', 'ok', "The owner pays us directly, outside the trust account, so there is no reimbursement, commission or owner payment taken from it to check against last month.")
+        return
     t = totals(book, month, lines)
     prior = t['prior_month']
     name = f'{prior:%B}'
@@ -1035,7 +1060,7 @@ def closed_summary(close):
     for k, v in close.totals.items():
         if k == 'lines':
             out[k] = int(v)
-        elif k in ('calc', 'prior_closed'):
+        elif k in ('calc', 'prior_closed', 'owner_collects'):
             out[k] = bool(v)
         elif k in ('prior_status', 'commission_basis'):
             out[k] = v

@@ -8,8 +8,10 @@ account, and QuickBooks's total for every property trust account under the trust
                                    up, transaction by transaction, what each did to the bank and to the trust accounts
 
 Whatever a person has explained is kept (TieOutItem); what is left is "unexplained", and the step is done when nothing is."""
+import base64
 import csv
 import io
+import logging
 import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -19,6 +21,7 @@ from .models import BankStatement, BankTieOut, FinancialsSettings, QuickBooksAcc
 
 ZERO = Decimal('0.00')
 PENNY = Decimal('0.005')
+logger = logging.getLogger(__name__)
 
 
 def month_end(month):
@@ -67,20 +70,21 @@ def _amount(text):
     return -value if negative else value
 
 
-def read_statement_balance(uploaded_file):
+def read_statement_balance(uploaded_file, month=None):
     """(balance or None, note): a best guess at the statement's ending balance from a PDF or CSV. It only suggests - the
-    person always confirms the number - so anything unreadable just returns (None, why)."""
+    person always confirms the number - so anything unreadable just returns (None, why). `month` lets a scanned statement's
+    period be checked against the month it was uploaded for."""
     name = (getattr(uploaded_file, 'name', '') or '').lower()
     data = uploaded_file.read()
     uploaded_file.seek(0)
     if name.endswith('.csv'):
         return _balance_from_csv(data)
     if name.endswith('.pdf'):
-        return _balance_from_pdf(data)
+        return _balance_from_pdf(data, month)
     return None, 'Only PDF and CSV statements can be read automatically - type the ending balance.'
 
 
-def _balance_from_pdf(data):
+def _balance_from_pdf(data, month=None):
     try:
         from pypdf import PdfReader
     except ImportError:
@@ -95,7 +99,72 @@ def _balance_from_pdf(data):
             value = _amount(match.group(1))
             if value is not None:
                 return value, f'Read from the PDF ("{match.group(0).strip()[:60]}").'
-    return None, "Couldn't find an ending balance in that PDF - type it."
+    # no text to search: a scanned statement is a picture, so a person (or Claude's vision) has to read it
+    scanned = not text.strip()
+    value, note = _balance_from_scan(data, month)
+    if value is not None:
+        return value, note
+    return None, (f'This PDF is a scan with no readable text. {note}' if scanned else note)
+
+
+STATEMENT_MODEL = 'claude-sonnet-5'
+STATEMENT_TOOL = {
+    'name': 'report_statement_balance',
+    'description': "Report the ending balance of a bank statement for the statement period.",
+    'input_schema': {
+        'type': 'object',
+        'properties': {
+            'ending_balance': {'type': ['number', 'null'], 'description': "The account's balance at the END of the statement period (the ending or closing balance), as a plain number; negative if overdrawn; null if the document does not show one. Not the beginning balance, a total of deposits or withdrawals, or an average balance."},
+            'period_end': {'type': ['string', 'null'], 'description': 'The last date of the statement period, as YYYY-MM-DD, or null.'},
+        },
+        'required': ['ending_balance'],
+    },
+}
+
+
+def _ask_claude_for_balance(data):
+    """{'ending_balance': ..., 'period_end': ...} read by Claude from a scanned statement. Raises if Claude can't be reached."""
+    import anthropic
+    from django.conf import settings
+    from .app_settings import sanitized_setting
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError('no key')
+    client = anthropic.Anthropic(api_key=sanitized_setting('ANTHROPIC_API_KEY'))
+    message = client.messages.create(
+        model=STATEMENT_MODEL, max_tokens=512, tools=[STATEMENT_TOOL], tool_choice={'type': 'tool', 'name': 'report_statement_balance'},
+        messages=[{'role': 'user', 'content': [
+            {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': base64.b64encode(data).decode()}},
+            {'type': 'text', 'text': 'This is a bank statement, possibly a scan. Find the ending balance for the statement period and the last date of the period.'},
+        ]}],
+    )
+    block = next((b for b in message.content if b.type == 'tool_use'), None)
+    if block is None:
+        raise RuntimeError('no answer')
+    return block.input
+
+
+def _balance_from_scan(data, month=None):
+    """(balance or None, note) for a PDF with nothing to search - Claude reads the page images."""
+    try:
+        found = _ask_claude_for_balance(data)
+    except Exception:
+        logger.warning('Reading a scanned bank statement failed', exc_info=True)
+        return None, "It couldn't be read automatically (Claude isn't available right now) - type the ending balance."
+    value = found.get('ending_balance')
+    if value is None:
+        return None, "Claude couldn't find an ending balance in it - type the ending balance."
+    try:
+        balance = money(value)
+    except (InvalidOperation, ValueError):
+        return None, "Claude's answer wasn't a number - type the ending balance."
+    note = 'Read by Claude from the scanned statement - check it against the statement.'
+    try:
+        period_end = datetime.strptime(found.get('period_end') or '', '%Y-%m-%d').date()
+    except ValueError:
+        period_end = None
+    if period_end and month and (period_end.year, period_end.month) != (month.year, month.month):
+        note += f' It says the statement ends {period_end:%b} {period_end.day}, {period_end.year}, which is not {month:%B %Y} - is this the right statement?'
+    return balance, note
 
 
 def _balance_from_csv(data):
@@ -218,6 +287,7 @@ def summary(month):
     out = {'month': month, 'statement': statement, 'tieout': tieout, 'items': items,
            'statement_items': [i for i in items if i.side == TieOutItem.Side.STATEMENT and i.month == month],
            'trust_items': [i for i in items if i.side == TieOutItem.Side.TRUST], 'status': 'not_started'}
+    out['has_balance'] = statement is not None and statement.ending_balance is not None
     if tieout is None:
         return out
     accepted_keys = {i.txn_key for i in out['trust_items'] if i.txn_key and i.month == month}
@@ -231,7 +301,7 @@ def summary(month):
     out['month_diffs_total'] = sum((Decimal(d['diff']) for d in tieout.differences), ZERO)
     # the gap at month end should be the gap at the end of the month before plus this month's differing transactions
     out['untraced'] = trust_gap - out['prior_gap'] - out['month_diffs_total']
-    if statement is not None:
+    if out['has_balance']:
         out['statement_gap'] = statement.ending_balance - tieout.qb_bank
         out['statement_explained'] = sum((i.amount for i in out['statement_items']), ZERO)
         out['statement_unexplained'] = out['statement_gap'] - out['statement_explained']

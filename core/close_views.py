@@ -313,8 +313,10 @@ def payouts(request):
         rows = [r for r in rows if r['status'] in ('waiting', 'scheduled', 'lingering')]
     elif show == 'received':
         rows = [r for r in rows if r['status'] == 'received']
+    from onsite.models import PayoutBatch
+    owner_collected = PayoutBatch.objects.filter(pk__in=payout_tracking.owner_collected_batch_ids(), date__gte=payout_tracking.BOOKKEEPING_START).count()
     return render(request, 'core/payouts.html', {
-        'plan': plan, 'plan_ready': sum(1 for i in plan['items'] if i['status'] == 'ready') if plan else 0,
+        'owner_collected': owner_collected, 'plan': plan, 'plan_ready': sum(1 for i in plan['items'] if i['status'] == 'ready') if plan else 0,
         'rows': rows[:400], 'counts': counts, 'show': show, 'source': source, 'lingering_after': payout_tracking.LINGERING_AFTER.days,
         'mismatched': sum(1 for r in rows if r['batch'].breakdown_ok is False),
     })
@@ -352,6 +354,8 @@ def close_home(request):
         tie_detail = '; '.join(bits)
     elif tie['statement'] is None:
         tie_detail = 'Upload the bank statement, then run the check.'
+    elif not tie['has_balance']:
+        tie_detail = "Type the statement's ending balance."
     else:
         tie_detail = 'Run the check against QuickBooks.'
     lingering = payout_tracking.lingering_count()
@@ -402,18 +406,18 @@ def close_bank_tieout(request):
             elif file.size > settings.PROCESS_ATTACHMENT_MAX_BYTES:
                 messages.error(request, f'File is too large (max {settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)}MB).')
             else:
-                read, note = bank_tieout.read_statement_balance(file)
+                read, note = bank_tieout.read_statement_balance(file, month)
                 balance = _money_input(typed) if typed else read
                 if typed and balance is None:
                     messages.error(request, f'"{typed}" is not an amount.')
-                elif balance is None:
-                    messages.error(request, note)
                 else:
                     BankStatement.objects.update_or_create(month=month, defaults={
                         'file': file, 'original_name': file.name[:255], 'ending_balance': balance, 'read_balance': read, 'uploaded_by': request.user,
                     })
                     if typed:
                         messages.success(request, f'Statement saved with the ending balance you typed, ${balance:,.2f}.')
+                    elif balance is None:
+                        messages.warning(request, f'Statement saved, but its ending balance could not be read. {note}')
                     else:
                         messages.success(request, f'Statement saved. {note} Ending balance ${balance:,.2f} - correct it below if that is wrong.')
         elif action == 'fix_balance':

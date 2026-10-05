@@ -156,7 +156,7 @@ def plan(token, today=None, days=LOOKBACK_DAYS):
         return result
     source_of = {a.qb_id: s for s, a in accounts.items()}
     done_deposits = set(QBRecode.objects.values_list('deposit_qb_id', flat=True))
-    used_payouts = set(QBRecode.objects.values_list('payout_id', flat=True))
+    used_payouts = set(QBRecode.objects.values_list('payout_id', flat=True)) | payout_tracking.owner_collected_batch_ids()   # an owner-collected payout never reaches our bank, so it is never what a deposit is
     for dep in deposits:
         uncat = _uncategorized_lines(dep, set(source_of))
         if not uncat or dep['Id'] in done_deposits:

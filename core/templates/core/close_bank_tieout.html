@@ -38,13 +38,14 @@
     <div class="fw-semibold mb-2">The bank statement</div>
     {% if s.statement %}
     <div class="d-flex align-items-baseline gap-3 flex-wrap">
-        <div><span class="text-muted">Ending balance</span> <span class="bt-big">{{ s.statement.ending_balance|money }}</span></div>
+        {% if s.has_balance %}<div><span class="text-muted">Ending balance</span> <span class="bt-big">{{ s.statement.ending_balance|money }}</span></div>
+        {% else %}<div class="alert alert-warning small py-2 mb-0">The file is saved, but its ending balance could not be read. Type it below, from the statement.</div>{% endif %}
         <a href="{{ s.statement.file.url }}" target="_blank" rel="noopener" class="small">{{ s.statement.original_name|default:"View the statement" }}</a>
         {% if s.statement.read_balance is not None and s.statement.read_balance != s.statement.ending_balance %}<span class="small text-muted">(read {{ s.statement.read_balance|money }} from the file, then corrected)</span>{% endif %}
     </div>
     <form method="post" class="d-flex gap-2 align-items-center flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="fix_balance">
-        <input type="text" name="ending_balance" class="form-control form-control-sm" style="max-width: 160px;" placeholder="Correct the balance" aria-label="Ending balance">
-        <button class="btn btn-outline-secondary btn-sm py-0">Correct it</button>
+        <input type="text" name="ending_balance" class="form-control form-control-sm" style="max-width: 160px;" placeholder="{% if s.has_balance %}Correct the balance{% else %}Ending balance{% endif %}" aria-label="Ending balance" {% if not s.has_balance %}required{% endif %}>
+        <button class="btn {% if s.has_balance %}btn-outline-secondary{% else %}btn-primary{% endif %} btn-sm py-0">{% if s.has_balance %}Correct it{% else %}Save the balance{% endif %}</button>
     </form>
     <details class="mt-2"><summary class="small text-muted" style="cursor: pointer;">Replace the statement file</summary>
     {% else %}
@@ -82,7 +83,7 @@
 
 {% if s.tieout %}
 <div class="bt-three mb-3">
-    <div class="bt-box"><div class="lbl">Bank statement</div><div class="bt-big">{% if s.statement %}{{ s.statement.ending_balance|money }}{% else %}<span class="text-muted">—</span>{% endif %}</div></div>
+    <div class="bt-box"><div class="lbl">Bank statement</div><div class="bt-big">{% if s.has_balance %}{{ s.statement.ending_balance|money }}{% else %}<span class="text-muted">—</span>{% endif %}</div></div>
     <div class="bt-box"><div class="lbl">QuickBooks bank account</div><div class="bt-big">{{ s.tieout.qb_bank|money }}</div></div>
     <div class="bt-box"><div class="lbl">QuickBooks trust accounts</div><div class="bt-big">{{ s.tieout.qb_trust|money }}</div></div>
 </div>
@@ -91,9 +92,9 @@
 <div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-3">
     <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
         <div class="fw-semibold">Statement vs QuickBooks bank account</div>
-        {% if s.statement %}{% if s.statement_unexplained == 0 %}<span class="bt-chip bt-ok">Agrees</span>{% else %}<span class="bt-chip bt-bad">{{ s.statement_unexplained|money }} unexplained</span>{% endif %}{% endif %}
+        {% if s.has_balance %}{% if s.statement_unexplained == 0 %}<span class="bt-chip bt-ok">Agrees</span>{% else %}<span class="bt-chip bt-bad">{{ s.statement_unexplained|money }} unexplained</span>{% endif %}{% endif %}
     </div>
-    {% if not s.statement %}<div class="small text-muted">Upload the statement above to compare it.</div>{% else %}
+    {% if not s.has_balance %}<div class="small text-muted">{% if s.statement %}Type the statement's ending balance above to compare it.{% else %}Upload the statement above to compare it.{% endif %}</div>{% else %}
     <div class="small text-muted mb-2">Statement {{ s.statement.ending_balance|money }} − QuickBooks bank {{ s.tieout.qb_bank|money }} = <strong>{{ s.statement_gap|money }}</strong>. Explain it with timing items: an outstanding check makes the statement higher than QuickBooks (enter it as a positive amount); a deposit in transit makes it lower (negative).</div>
     {% if s.statement_items %}
     <table class="table table-sm mb-2"><tbody>

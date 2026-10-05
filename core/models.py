@@ -150,6 +150,14 @@ class Property(models.Model):
                    'keeps the figure it was closed with.',
     )
 
+    income_collected_by_owner = models.BooleanField(
+        default=False,
+        help_text="The owner collects this rental's booking income themselves (the platform pays them, not our trust account) "
+                   "and pays us at the end of the month for our expenses and commission. Its platform payouts are never expected "
+                   "at our bank; commission is a percent of the month's payouts (gross only); and its statement shows no income, "
+                   "only our expenses and commission.",
+    )
+
     class FinancialsLevel(models.TextChoices):
         PROPERTY = 'property', 'One set of books for the whole property'
         UNIT = 'unit', 'Separate books for each unit'
@@ -1028,7 +1036,7 @@ class BankStatement(models.Model):
     month = models.DateField(unique=True, help_text='First day of the month the statement covers.')
     file = models.FileField(upload_to='bank_statements/')
     original_name = models.CharField(max_length=255, blank=True)
-    ending_balance = models.DecimalField(max_digits=14, decimal_places=2)
+    ending_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, help_text='Blank until a person types or confirms it, when the file could not be read.')
     read_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, help_text='What the program read from the file, kept so a correction is visible.')
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     uploaded_at = models.DateTimeField(auto_now=True)

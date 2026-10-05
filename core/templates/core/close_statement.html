@@ -55,6 +55,16 @@
         <th class="tot">Total</th>
     </tr></thead>
     <tbody>
+        {% if st.owner_collects %}
+        <tr><td><button type="button" class="st-tog" data-st-toggle="reimbursable" aria-expanded="false" aria-label="Show the expenses"><i data-lucide="chevron-right"></i></button>Expenses paid by Proper Realty</td>{% for c in st.columns %}<td>{{ c.t.expenses_reimbursable|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
+        {% include 'core/_statement_detail.html' with group='reimbursable' %}
+        {% if st.total.expenses_direct %}
+        <tr><td><button type="button" class="st-tog" data-st-toggle="direct" aria-expanded="false" aria-label="Show the expenses paid from trust"><i data-lucide="chevron-right"></i></button>Expenses paid from trust</td>{% for c in st.columns %}<td>{{ c.t.expenses_direct|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>
+        {% include 'core/_statement_detail.html' with group='direct' %}
+        {% endif %}
+        <tr><td>Commission <span class="text-muted">(a percent of the month's platform payouts)</span></td>{% for c in st.columns %}<td><span title="{{ c.t.commission_rate|floatformat:'-2' }}% of {{ c.t.commission_base|money }}">{{ c.t.commission_due|money }}</span></td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
+        <tr class="sum"><td>= Owed to Proper Realty</td>{% for c in st.columns %}<td>{{ c.t.owner_owes_us|money }}</td>{% endfor %}<td class="tot">{{ st.total.owner_owes_us|money }}</td></tr>
+        {% else %}
         <tr><td><button type="button" class="st-tog" data-st-toggle="deposits" aria-expanded="false" aria-label="Show the deposits"><i data-lucide="chevron-right"></i></button>Income deposits</td>{% for c in st.columns %}<td>{{ c.t.deposits|money }}</td>{% endfor %}<td class="tot">{{ st.total.deposits|money }}</td></tr>
         {% include 'core/_statement_detail.html' with group='deposits' %}
         {% if property.commission_basis == 'net' %}
@@ -81,9 +91,11 @@
         <tr class="section"><td colspan="{{ st.columns|length|add:2 }}">Checks</td></tr>
         <tr class="check"><td>Last month's payables cleared</td>{% for c in st.columns %}<td>{% if c.cleared is None %}<span title="Nothing to check against: last month is not in the books, or this month has no transactions">–</span>{% elif c.cleared %}<span style="color: var(--status-good);">✓ cleared</span>{% else %}<span style="color: #9a6a00;" title="What last month left to pay, less what was paid: owner {{ c.t.owner_carry|money }}, Proper Realty {{ c.t.us_carry|money }} (negative = paid more than was owed)">⚠ off</span>{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
         <tr class="check"><td>All income accounted for <span class="text-muted">(reimbursable + paid from trust + commission + owner payment = deposits)</span></td>{% for c in st.columns %}<td>{% if c.accounted is None %}–{% elif c.accounted == 0 %}<span style="color: var(--status-good);">✓ 100%</span>{% else %}<span style="color: #a02020;">{{ c.accounted|money }} unaccounted</span>{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
+        {% endif %}
     </tbody>
 </table></div>
-<p class="text-muted" style="font-size: 0.72rem;">The reimbursable expenses, our commission and the owner payment for a month are paid out of the trust account early the next month, so the payables above go to zero the month after: what leaves the trust account in a month settles the month before, and "cleared" says it did, to the cent. Commission is worked out at each month's own rate.</p>
+{% if st.owner_collects %}<p class="text-muted" style="font-size: 0.72rem;">The owner collects this rental's booking income directly, so there is no income here and no owner payment: this shows what Proper Realty is owed for the month, our expenses and our commission, which the owner pays at month end. Commission is worked out at each month's own rate.</p>
+{% else %}<p class="text-muted" style="font-size: 0.72rem;">The reimbursable expenses, our commission and the owner payment for a month are paid out of the trust account early the next month, so the payables above go to zero the month after: what leaves the trust account in a month settles the month before, and "cleared" says it did, to the cent. Commission is worked out at each month's own rate.</p>{% endif %}
 <script>
 document.querySelectorAll('[data-st-toggle]').forEach(function (btn) {
     btn.addEventListener('click', function () {

@@ -23,12 +23,20 @@ def _deposits(properties, start, end):
     return list(qs.order_by('txn_date', 'pk'))
 
 
+def owner_collected_batch_ids():
+    """Payouts that go to an owner who collects the booking income themselves: every reservation on the payout is at such a
+    rental. They never reach our bank, so they are not waited for, flagged as lingering, or coded in QuickBooks."""
+    from onsite.models import PayoutBatch
+    return set(PayoutBatch.objects.filter(items__booking__property__income_collected_by_owner=True)
+               .exclude(items__booking__property__income_collected_by_owner=False).values_list('pk', flat=True))
+
+
 def payout_rows(source=None, since=None, today=None):
     """Every payout with its lines, where it belongs, and whether it has been received, newest first. Each bank deposit
     is used for at most one payout (the nearest by date wins)."""
     from onsite.models import PayoutBatch
     today = today or timezone.localdate()
-    qs = PayoutBatch.objects.prefetch_related('items__booking__property', 'items__booking__unit')
+    qs = PayoutBatch.objects.prefetch_related('items__booking__property', 'items__booking__unit').exclude(pk__in=owner_collected_batch_ids())
     if source:
         qs = qs.filter(source=source)
     qs = qs.filter(date__gte=max(since, BOOKKEEPING_START) if since else BOOKKEEPING_START)

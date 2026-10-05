@@ -542,15 +542,26 @@ def assign_units_from_deposits(prop):
     return assigned
 
 
+def owner_collected_income(book, month):
+    """For a rental whose owner collects the booking income themselves: the platform money for the month by payout date - exactly
+    what the income deposits would have been had it come into our trust account (payouts, pass-through tax, resolutions). It is
+    what the commission is worked out on; none of it is ever expected at our bank."""
+    start = ledger.month_of(month)
+    end = ledger.next_month(start) - timedelta(days=1)
+    return sum((e.amount for e in _events(list(_bookings(book))) if start <= e.date <= end), ZERO)
+
+
 def reconcile(book, month):
     """The live reconciliation of an open month: every match (by the program, by memo code, or by hand), what's left
-    over on each side, what has been accepted, and the reservations view. None if the month is already closed."""
+    over on each side, what has been accepted, and the reservations view. None if the month is already closed.
+    A rental whose owner collects the income has no platform payouts to expect at the bank, so none are looked for."""
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         return None
+    owner_collects = book.property.income_collected_by_owner
     if book.unit is not None:
         assign_units_from_deposits(book.property)
-    scope = list(_bookings(book))
+    scope = [] if owner_collects else list(_bookings(book))
     events = _events(scope)
     cleared = _cleared_before(book, month, scope, events)
     result = _match_month(book, month, cleared, scope, events)
@@ -559,9 +570,9 @@ def reconcile(book, month):
     month_end = result['month_end']
     matched_payouts = sum((p['expected'] for p in result['matches']), ZERO)
     booking_ids = {c for c in result['cleared_out'] if isinstance(c, int)}
-    undated = [b for b in _undated(book) if b.pk not in booking_ids and month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
+    undated = [] if owner_collects else [b for b in _undated(book) if b.pk not in booking_ids and month_end >= timezone.localtime(b.check_in).date() >= ledger.month_of(ledger.books_start()) - LOOKBACK]
     unassigned_rows = []
-    if book.unit is not None:
+    if book.unit is not None and not owner_collects:
         from onsite.models import Booking
         unassigned_rows = list(Booking.objects.filter(
             property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
