@@ -128,7 +128,7 @@
                 {% for c in checks %}
                     <li class="d-flex gap-2 align-items-start">
                         {% if c.level == 'block' %}<span style="color: var(--status-critical);"><i data-lucide="circle-x" class="icon"></i></span>{% elif c.level == 'warn' %}<span style="color: var(--status-warning);"><i data-lucide="triangle-alert" class="icon"></i></span>{% else %}<span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i></span>{% endif %}
-                        <span>{{ c.text }}{% if c.level == 'warn' %} <label class="ms-1 text-nowrap"><input class="form-check-input me-1" type="checkbox" name="ack_{{ c.key }}" id="ack-{{ c.key }}">I've looked — close anyway</label>{% endif %}</span>
+                        <span>{{ c.text }}{% if c.key == 'changed' %} <button class="btn btn-outline-secondary btn-sm py-0 ms-1 text-nowrap" name="action" value="acknowledge_changes" formnovalidate title="Mark the lines QuickBooks changed as looked at">I've looked — they're fine</button>{% endif %}{% if c.level == 'warn' %} <label class="ms-1 text-nowrap"><input class="form-check-input me-1" type="checkbox" name="ack_{{ c.key }}" id="ack-{{ c.key }}">I've looked — close anyway</label>{% endif %}</span>
                     </li>
                 {% empty %}<li style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> Everything checks out.</li>{% endfor %}
                 </ul>

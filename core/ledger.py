@@ -671,7 +671,8 @@ def _guard_open(book, month):
 @transaction.atomic
 def code_lines(book, month, user, assignments):
     """Apply {line id: category} chosen on the coding screen. A line whose category
-    changes becomes "coded by a person"; every line included is marked reviewed.
+    changes becomes "coded by a person"; every line included is marked reviewed, and a line QuickBooks
+    changed that is saved here has been looked at, so it no longer counts as changed.
     Returns how many changed category."""
     _guard_open(book, month)
     lines = {l.pk: l for l in month_lines(book, month)}
@@ -682,12 +683,12 @@ def code_lines(book, month, user, assignments):
             continue
         if category not in ROLE_CATEGORIES[line.role]:
             raise CloseError(f'"{category}" is not a category for the {line.get_role_display().lower()}.')
-        update = ['reviewed', 'coded_by', 'coded_at']
+        update = ['reviewed', 'coded_by', 'coded_at', 'changed_in_qb']
         if category != line.category:
             line.category, line.category_source = category, LedgerLine.Source.USER
             update += ['category', 'category_source']
             changed += 1
-        line.reviewed, line.coded_by, line.coded_at = True, user, now
+        line.reviewed, line.coded_by, line.coded_at, line.changed_in_qb = True, user, now, False
         line.save(update_fields=update)
     return changed
 
@@ -715,10 +716,13 @@ def describe_lines(book, month, edits):
 
 @transaction.atomic
 def accept_all(book, month, user):
-    """Marks every line of the month reviewed as it stands (defaults included).
-    Returns how many were newly reviewed."""
+    """Marks every line of the month reviewed as it stands (defaults included). Accepting everything as shown also
+    confirms the lines QuickBooks changed - they are on the screen, highlighted, and accepted with the rest.
+    Returns how many lines were newly reviewed or confirmed."""
     _guard_open(book, month)
-    return month_lines(book, month).filter(reviewed=False).update(reviewed=True, coded_by=user, coded_at=timezone.now())
+    confirmed = month_lines(book, month).filter(reviewed=True, changed_in_qb=True).update(changed_in_qb=False)
+    reviewed = month_lines(book, month).filter(reviewed=False).update(reviewed=True, changed_in_qb=False, coded_by=user, coded_at=timezone.now())
+    return confirmed + reviewed
 
 
 @transaction.atomic
