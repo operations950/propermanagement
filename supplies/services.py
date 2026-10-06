@@ -331,6 +331,10 @@ def blind_spots(now=None):
         )
     }
 
+    turnovers = {}
+    for property_id, unit_id, day in Visit.objects.filter(visit_type__slug='turnover').values_list('property_id', 'unit_id', 'scheduled_date'):
+        turnovers.setdefault((property_id, unit_id), []).append(day)
+
     stale = []
     for p in str_properties:
         units = [u for u in p.units.all() if u.is_active]
@@ -338,11 +342,11 @@ def blind_spots(now=None):
             latest = latest_by_property_unit.get((p.pk, unit.pk if unit else None))
             if latest is not None and latest >= stale_cutoff:
                 continue
-            turnovers_since = Visit.objects.filter(property=p, unit=unit, visit_type__slug='turnover')
+            days = turnovers.get((p.pk, unit.pk if unit else None), [])
             if latest:
-                turnovers_since = turnovers_since.filter(scheduled_date__gte=latest.date())
+                days = [d for d in days if d is not None and d >= latest.date()]      # an undated visit is not "since" anything, as the date filter left it out
             stale.append({
-                'property': p, 'unit': unit, 'latest_reading_at': latest, 'turnovers_since': turnovers_since.count(),
+                'property': p, 'unit': unit, 'latest_reading_at': latest, 'turnovers_since': len(days),
             })
 
     return {'stale': stale}

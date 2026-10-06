@@ -44,3 +44,60 @@ class TimezoneMiddleware:
         else:
             timezone.deactivate()
         return self.get_response(request)
+
+
+class RequestMemoMiddleware:
+    """Opens a core.memo scope around every GET/HEAD request (a page load never changes data, so what it reads once it can reuse).
+    Anything else - a POST, which saves and redirects - runs with no memo at all."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.method not in ('GET', 'HEAD'):
+            return self.get_response(request)
+        from . import memo
+        memo.begin()
+        try:
+            return self.get_response(request)
+        finally:
+            memo.end()
+
+
+class RequestTimingMiddleware:
+    """Times every request and counts its database queries. A request slower than SLOW_REQUEST_MS (or with more than
+    SLOW_REQUEST_QUERIES queries) is logged to the Railway log as one line - method, path, seconds, queries, database seconds,
+    status, user - so which pages are slow, and why, is read straight from the log instead of guessed. Every response also
+    carries a Server-Timing header (the browser's Network tab shows it under Timing). Static files never reach this."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        import logging
+        import time
+
+        from django.conf import settings
+        from django.db import connection
+
+        count = [0]
+        db = [0.0]
+
+        def wrapper(execute, sql, params, many, context):
+            started = time.perf_counter()
+            try:
+                return execute(sql, params, many, context)
+            finally:
+                count[0] += 1
+                db[0] += time.perf_counter() - started
+
+        started = time.perf_counter()
+        with connection.execute_wrapper(wrapper):
+            response = self.get_response(request)
+        total = time.perf_counter() - started
+        response['Server-Timing'] = f'app;dur={total * 1000:.0f}, db;dur={db[0] * 1000:.0f};desc="{count[0]} queries"'
+        if total * 1000 >= settings.SLOW_REQUEST_MS or count[0] >= settings.SLOW_REQUEST_QUERIES:
+            user = getattr(getattr(request, 'user', None), 'username', '') or '-'
+            logging.getLogger('proptasks.perf').warning(
+                'SLOW %s %s %.2fs  %d queries (db %.2fs)  status=%s  user=%s', request.method, request.get_full_path()[:200], total, count[0], db[0], response.status_code, user)
+        return response

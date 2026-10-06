@@ -170,6 +170,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'core.middleware.RequestTimingMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -178,6 +179,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.NoStoreHtmlMiddleware',
+    'core.middleware.RequestMemoMiddleware',
 ]
 
 ROOT_URLCONF = 'proptasks.urls'
@@ -206,7 +208,8 @@ WSGI_APPLICATION = 'proptasks.wsgi.application'
 # the SQLite timeout below only papers over, and required anyway since
 # Railway's filesystem isn't reliably persistent across deploys.
 if os.environ.get('DATABASE_URL'):
-    DATABASES = {'default': dj_database_url.config(conn_max_age=600)}
+    # conn_health_checks: a connection kept open between requests that the proxy has since dropped is replaced, not a failed request.
+    DATABASES = {'default': dj_database_url.config(conn_max_age=600, conn_health_checks=True)}
 else:
     DATABASES = {
         'default': {
@@ -363,6 +366,10 @@ VENDOR_TOKEN_EXPIRY_DAYS = int(os.environ.get('VENDOR_TOKEN_EXPIRY_DAYS', '30'))
 
 # --- Background scheduler (APScheduler, in-process) ---
 RUN_SCHEDULER = env_bool('RUN_SCHEDULER', True)
+# A request slower than this many milliseconds, or with this many database queries, is logged as one 'SLOW ...' line
+# (core.middleware.RequestTimingMiddleware) so slow pages are found in the Railway log, not guessed at.
+SLOW_REQUEST_MS = int(os.environ.get('SLOW_REQUEST_MS', '1000'))
+SLOW_REQUEST_QUERIES = int(os.environ.get('SLOW_REQUEST_QUERIES', '150'))
 RECURRING_TICKET_INTERVAL_MINUTES = int(os.environ.get('RECURRING_TICKET_INTERVAL_MINUTES', '30'))
 
 # --- Future integrations (not wired live yet; read here so adapters/config

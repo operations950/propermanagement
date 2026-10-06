@@ -44,6 +44,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from . import memo as request_memo
 from . import quickbooks
 from .models import ClosedMonthChange, FinancialsSettings, LedgerLine, MonthClose, OpeningBalance, Property, QuickBooksToken, ReconAcceptance, Unit
 
@@ -81,7 +82,7 @@ def previous_month(day):
 
 def books_start():
     """The first month managed here: the saved start, else last month."""
-    return FinancialsSettings.get().books_start or previous_month(timezone.localdate())
+    return request_memo.get(('books_start',), lambda: FinancialsSettings.get().books_start or previous_month(timezone.localdate()))
 
 
 def rentals():
@@ -138,7 +139,8 @@ class Book:
     @property
     def ledger_synced_at(self):
         """Read fresh: a sync stamps the row, whichever object the caller holds."""
-        return type(self.owner).objects.filter(pk=self.owner.pk).values_list('ledger_synced_at', flat=True).first()
+        return request_memo.get(('synced', type(self.owner).__name__, self.owner.pk),
+                                lambda: type(self.owner).objects.filter(pk=self.owner.pk).values_list('ledger_synced_at', flat=True).first())
 
     @property
     def mapped(self):
@@ -177,8 +179,60 @@ def _book(target):
 def month_level(prop, month):
     """The shape a month's books have: what it was closed in, else the property's
     current setting. (A month already closed never changes shape.)"""
-    level = MonthClose.objects.filter(property=prop, month=month_of(month)).values_list('level', flat=True).first()
+    month = month_of(month)
+    if request_memo.active():
+        level = next((c.level for c in _closes(prop) if c.month == month), None)
+    else:
+        level = MonthClose.objects.filter(property=prop, month=month).values_list('level', flat=True).first()
     return level or prop.financials_level
+
+
+def _closes(prop):
+    """Every close of a property, newest first (its frozen reconciliation left unread until something asks for it): one query
+    per page load however many months and units are looked at."""
+    return request_memo.get(('closes', prop.pk), lambda: _load_closes([prop.pk])[prop.pk])
+
+
+def _load_closes(prop_ids):
+    out = {pid: [] for pid in prop_ids}
+    for c in MonthClose.objects.filter(property_id__in=prop_ids).defer('recon'):
+        out[c.property_id].append(c)
+    return out
+
+
+def close_of(book, month):
+    """The close of this set of books' month, or None."""
+    book = _book(book)
+    month = month_of(month)
+    if request_memo.active():
+        unit_id = book.unit.pk if book.unit is not None else None
+        return next((c for c in _closes(book.property) if c.month == month and c.unit_id == unit_id), None)
+    return MonthClose.objects.filter(month=month, **book.scope()).first()
+
+
+def book_month_lines(book, month):
+    """The month's active lines of a set of books, as a list, in screen order. During a page load every month of the property is
+    read in one query and handed out from memory (the matching of earlier months asks for dozens of them)."""
+    book = _book(book)
+    month = month_of(month)
+    if not request_memo.active():
+        return list(month_lines(book, month))
+
+    return request_memo.get(('lines', book.property.pk), lambda: _load_lines([book.property.pk])[book.property.pk]).get((book.unit.pk if book.unit is not None else None, month), [])
+
+
+def _load_lines(prop_ids):
+    out = {pid: {} for pid in prop_ids}
+    for l in LedgerLine.objects.filter(property_id__in=prop_ids, status=LedgerLine.Status.ACTIVE).order_by('role', 'txn_date', 'txn_type', 'txn_id'):
+        out[l.property_id].setdefault((l.unit_id, l.month), []).append(l)
+    return out
+
+
+def _load_line_units(prop_ids):
+    out = {pid: set() for pid in prop_ids}
+    for pid, unit_id, m in LedgerLine.objects.filter(property_id__in=prop_ids, unit__isnull=False).values_list('property_id', 'unit_id', 'month').distinct():
+        out[pid].add((unit_id, m))
+    return out
 
 
 def _units_of(prop):
@@ -192,8 +246,12 @@ def books_for(prop, month):
     if month_level(prop, month) != Property.FinancialsLevel.UNIT:
         return [Book(prop)]
     units = {u.pk: u for u in _units_of(prop)}
-    extra = set(MonthClose.objects.filter(property=prop, month=month, unit__isnull=False).values_list('unit_id', flat=True))
-    extra |= set(LedgerLine.objects.filter(property=prop, month=month, unit__isnull=False).values_list('unit_id', flat=True))
+    if request_memo.active():
+        extra = {c.unit_id for c in _closes(prop) if c.month == month and c.unit_id is not None}
+        extra |= {u for (u, m) in request_memo.get(('line_units', prop.pk), lambda: _load_line_units([prop.pk])[prop.pk]) if m == month}
+    else:
+        extra = set(MonthClose.objects.filter(property=prop, month=month, unit__isnull=False).values_list('unit_id', flat=True))
+        extra |= set(LedgerLine.objects.filter(property=prop, month=month, unit__isnull=False).values_list('unit_id', flat=True))
     for u in Unit.objects.filter(pk__in=extra - set(units)).select_related('qb_expense_account', 'qb_trust_account'):
         units[u.pk] = u
     return [Book(prop, u) for u in sorted(units.values(), key=lambda u: u.label)]
@@ -224,6 +282,8 @@ def closed_months(book):
 
 
 def is_closed(book, month):
+    if request_memo.active():
+        return close_of(book, month) is not None
     return MonthClose.objects.filter(month=month_of(month), **_book(book).scope()).exists()
 
 
@@ -691,7 +751,13 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
     month (`reimbursement_trust`, `commission`) do NOT enter this month's calculation: they settle
     LAST month's, so they are compared with last month's figures (`prior_*`, see
     prior_settlement) instead. `owner_payment` is what was coded as paid to the owner."""
-    lines = list(month_lines(book, month)) if lines is None else lines
+    memo_key = None
+    if lines is None and with_prior and request_memo.active():
+        memo_key = ('totals', _book(book)._key(), month_of(month))
+        hit = request_memo.lookup(memo_key)
+        if hit is not None:
+            return dict(hit)
+    lines = list(book_month_lines(book, month)) if lines is None else lines
     total = {k: ZERO for k in TOTAL_KEYS}
     for l in lines:
         if l.role == Role.EXPENSE:
@@ -744,6 +810,8 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
     derive(total)
     if memo is not None:
         memo[(_book(book)._key(), month_of(month))] = total
+    if memo_key is not None:
+        request_memo.put(memo_key, dict(total))
     return total
 
 
@@ -809,8 +877,8 @@ def prior_settlement(book, month, memo=None):
     if month_level(book.property, prior) != book.level:
         out['prior_status'] = 'other_shape'
         return out
-    close = MonthClose.objects.filter(month=prior, **book.scope()).first()
-    if close is None and not month_lines(book, prior).exists():
+    close = close_of(book, prior)
+    if close is None and not book_month_lines(book, prior):
         out['prior_status'] = 'no_data'
         return out
     if close is not None and 'reimb_payable' in close.totals:
@@ -830,7 +898,16 @@ def opening_balance(book, month):
     month = month_of(month)
     if month != month_of(books_start()):
         return None
+    if request_memo.active():
+        return request_memo.get(('openings', book.property.pk), lambda: _load_openings([book.property.pk])[book.property.pk]).get((book.unit.pk if book.unit is not None else None, month))
     return OpeningBalance.objects.filter(month=month, **book.scope()).first()
+
+
+def _load_openings(prop_ids):
+    out = {pid: {} for pid in prop_ids}
+    for o in OpeningBalance.objects.filter(property_id__in=prop_ids):
+        out[o.property_id][(o.unit_id, o.month)] = o
+    return out
 
 
 def set_opening_balance(book, month, user, owner, reimbursable, commission):
@@ -891,7 +968,7 @@ def _detail(book, month):
     add up to them (each amount signed as it counts: a refund is negative)."""
     out = {'deposits': [], 'reimbursable': [], 'direct': []}
     label = book.unit.label if book.unit is not None else ''
-    for l in month_lines(book, month).order_by('txn_date', 'pk'):
+    for l in sorted(book_month_lines(book, month), key=lambda l: (l.txn_date, l.pk)):
         if l.role == Role.TRUST and l.category == Category.DEPOSIT:
             group, amount = 'deposits', l.flow
         elif l.role == Role.EXPENSE and l.category != Category.REIMBURSEMENT:
@@ -933,10 +1010,10 @@ def statement(prop, end=None, months=12, year=None):
         parts, closed, detail = [], 0, {'deposits': [], 'reimbursable': [], 'direct': []}
         books = books_for(prop, m) if start <= m <= this_month else []
         for b in books:
-            close = MonthClose.objects.filter(month=m, **b.scope()).first()
+            close = close_of(b, m)
             if close is not None and 'reimb_payable' in close.totals:
                 parts.append(closed_summary(close))
-            elif close is not None or month_lines(b, m).exists():
+            elif close is not None or book_month_lines(b, m):
                 parts.append(totals(b, m, memo=memo))       # closed before the balances were kept, or open: from its lines
             else:
                 continue
@@ -981,7 +1058,7 @@ def checks(book, month, now=None, rec=None):
         add('sync', 'block', 'Its transactions have never been pulled in from QuickBooks — sync first.')
     elif now - synced > STALE_AFTER:
         add('sync', 'block', f'The last sync was {timezone.localtime(synced):%b} {timezone.localtime(synced).day}; sync again so you close what QuickBooks shows now.')
-    lines = list(month_lines(book, month))
+    lines = list(book_month_lines(book, month))
     if not lines:
         add('empty', 'warn', 'No transactions in either account this month.')
     unreviewed = sum(1 for l in lines if not l.reviewed)
@@ -1116,16 +1193,31 @@ def closed_summary(close):
     return derive(out)
 
 
+def _drift_count(book, month):
+    """How many QuickBooks changes to this closed month are still unresolved."""
+    if not request_memo.active():
+        return ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()).count()
+
+    return request_memo.get(('drift', book.property.pk), lambda: _load_drift([book.property.pk])[book.property.pk]).get((book.unit.pk if book.unit is not None else None, month), 0)
+
+
+def _load_drift(prop_ids):
+    out = {pid: {} for pid in prop_ids}
+    for pid, unit_id, m in ClosedMonthChange.objects.filter(property_id__in=prop_ids, resolved=False).values_list('property_id', 'unit_id', 'month'):
+        out[pid][(unit_id, m)] = out[pid].get((unit_id, m), 0) + 1
+    return out
+
+
 def status_row(book, month, now=None):
     """Everything the close overview shows for one set of books' month."""
     from . import recon
     book = _book(book)
     month = month_of(month)
-    close = MonthClose.objects.filter(month=month, **book.scope()).first()
-    lines = list(month_lines(book, month))
+    close = close_of(book, month)
+    lines = list(book_month_lines(book, month))
     live = recon.reconcile(book, month) if (close is None and book.mapped) else None
     items = checks(book, month, now, rec=live) if close is None else []
-    drift = ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()).count()
+    drift = _drift_count(book, month)
     if close:
         state = 'closed'
     elif not book.mapped:
@@ -1150,13 +1242,30 @@ def status_row(book, month, now=None):
     }
 
 
+def preload(props):
+    """Read what the overview needs for every rental at once (a few queries instead of a handful per rental) and remember it for
+    this page load, in the same shapes the one-rental loaders above and in recon.py produce. Does nothing outside a page load."""
+    from . import recon
+    if not request_memo.active() or not props:
+        return
+    ids = [p.pk for p in props]
+    for key, data in (('closes', _load_closes(ids)), ('lines', _load_lines(ids)), ('line_units', _load_line_units(ids)), ('openings', _load_openings(ids)), ('drift', _load_drift(ids))):
+        for pid in ids:
+            request_memo.put((key, pid), data[pid])
+    recon.preload(ids)
+    for p in props:
+        request_memo.put(('synced', 'Property', p.pk), p.ledger_synced_at)      # rentals() has just read the row
+
+
 def overview(month, now=None):
     """The close overview: for each rental, its set of books for the month (one row, or
     one per unit) and — for a unit-level property — the consolidated figures, which are
     just its units added up."""
     month = month_of(month)
     groups = []
-    for prop in rentals():
+    props = rentals()
+    preload(props)
+    for prop in props:
         level = month_level(prop, month)
         rows = [status_row(b, month, now) for b in books_for(prop, month)]
         group = {'property': prop, 'level': level, 'rows': rows, 'consolidated': None}

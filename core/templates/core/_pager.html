@@ -1,0 +1,11 @@
+{% comment %}Previous / next for a long list. Expects page_obj (a Django Page). Every other query parameter - filters, search, sort - is kept.{% endcomment %}
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-2 small" aria-label="Pages">
+    <span class="text-muted">{{ page_obj.start_index }}&ndash;{{ page_obj.end_index }} of {{ page_obj.paginator.count }}</span>
+    <span class="d-flex align-items-center gap-2">
+        {% if page_obj.has_previous %}<a class="btn btn-outline-secondary btn-sm py-0" data-pager-link href="{% querystring page=page_obj.previous_page_number %}">Previous</a>{% endif %}
+        <span class="text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="btn btn-outline-secondary btn-sm py-0" data-pager-link href="{% querystring page=page_obj.next_page_number %}">Next</a>{% endif %}
+    </span>
+</nav>
+{% endif %}

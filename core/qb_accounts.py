@@ -18,6 +18,7 @@ Liability and Equity are balance-sheet accounts; Revenue and Expense are
 income-statement accounts. That is what each picker is limited to."""
 import re
 
+from . import memo as request_memo
 from . import property_specs
 from .models import Property, QuickBooksAccount, Unit
 
@@ -124,13 +125,14 @@ def suggestions(prop, pool=None, limit=3):
     for side, spec in SIDES.items():
         current = getattr(prop, spec['field'] + '_id')
         field = spec['field']
-        taken_by_properties = Property.objects.exclude(**{field + '__isnull': True})
-        taken_by_units = Unit.objects.exclude(**{field + '__isnull': True})
-        if isinstance(prop, Property):
-            taken_by_properties = taken_by_properties.exclude(pk=prop.pk)
-        else:
-            taken_by_units = taken_by_units.exclude(pk=prop.pk)
-        taken = set(taken_by_properties.values_list(field + '_id', flat=True)) | set(taken_by_units.values_list(field + '_id', flat=True))
+        # who holds which account: one read per page load (this is called for every rental and unit on the accounts screen)
+        held_by_properties, held_by_units = request_memo.get(('qb_taken', field), lambda: (
+            list(Property.objects.exclude(**{field + '__isnull': True}).values_list('pk', field + '_id')),
+            list(Unit.objects.exclude(**{field + '__isnull': True}).values_list('pk', field + '_id')),
+        ))
+        own_property = prop.pk if isinstance(prop, Property) else None
+        own_unit = prop.pk if not isinstance(prop, Property) else None
+        taken = {a for pk, a in held_by_properties if pk != own_property} | {a for pk, a in held_by_units if pk != own_unit}
         found = []
         for account in pool:
             if account.classification not in spec['classes'] or account.pk in taken or account.pk == current:

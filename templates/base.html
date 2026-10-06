@@ -4,12 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Proper Management{% endblock %}</title>
+    {% comment %}Fewer, faster things in front of the first paint: Bootstrap is our own hashed, compressed, long-cached copy (the same files the vendor
+    portal already serves) instead of a third-party fetch; htmx and Lucide are pinned to an exact file, so there is no redirect to follow first
+    ("@latest" was one on every cold load) and an icon set that changes underneath us cannot happen. Connections to the remaining hosts open early.{% endcomment %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <link href="{% static 'vendor/bootstrap5.3.3/css/bootstrap.min.css' %}" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+    <script src="{% static 'vendor/bootstrap5.3.3/js/bootstrap.bundle.min.js' %}"></script>
+    <script src="https://unpkg.com/lucide@1.52.0/dist/umd/lucide.min.js"></script>
     <link href="{% static 'css/bubble-picker.css' %}" rel="stylesheet">
     <link href="{% static 'css/checklist-mobile.css' %}" rel="stylesheet">
     <link href="{% static 'css/imessage-thread.css' %}" rel="stylesheet">

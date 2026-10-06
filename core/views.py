@@ -16,6 +16,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from django.core.paginator import Paginator
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 
@@ -1885,15 +1886,19 @@ def _flag_candidate_duplicates(candidates):
         cand.possible_duplicates = reasons
 
 
+CANDIDATES_PER_PAGE = 25
+
+
 @login_required
 def contact_review(request):
     candidates = list(ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING))
-    _flag_candidate_duplicates(candidates)
+    _flag_candidate_duplicates(candidates)         # against every pending candidate, not just this page's
+    page_obj = Paginator(candidates, CANDIDATES_PER_PAGE).get_page(request.GET.get('page'))      # each card carries the whole property picker: a long queue was 8MB of page
     update_candidates = ContactUpdateCandidate.objects.filter(
         status=ContactUpdateCandidate.Status.PENDING,
     ).select_related('contact')
     return render(request, 'core/contact_review.html', {
-        'candidates': candidates,
+        'candidates': list(page_obj), 'page_obj': page_obj, 'total_candidates': len(candidates),
         'update_candidates': update_candidates,
         'type_choices': creatable_contact_types(),
         'trade_choices': TRADE_CHOICES,

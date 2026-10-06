@@ -69,6 +69,7 @@
         var params = new URLSearchParams(window.location.search);
         if (input.value) params.set('q', input.value);
         else params.delete('q');
+        params.delete('page');     // a new search starts at its first page
         fetch('{% url "ticket_list" %}?' + params.toString(), {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         })
@@ -79,6 +80,8 @@
             .then(function (data) {
                 desktopTable.innerHTML = data.desktop;
                 mobileCards.innerHTML = data.mobile;
+                var pager = document.getElementById('ticket-pager');
+                if (pager && data.pager !== undefined) pager.innerHTML = data.pager;
                 if (window.lucide) lucide.createIcons();
                 // Re-wire the freshly-injected rows — their old DOM nodes
                 // (and whatever listeners were attached to them) are gone,
@@ -248,4 +251,5 @@ just laid out top-to-bottom rather than in cells.
 <div class="d-md-none" id="ticket-mobile-cards">
 {% include 'tickets/_ticket_mobile_cards.html' %}
 </div>
+<div id="ticket-pager">{% include 'core/_pager.html' %}</div>
 {% endblock %}

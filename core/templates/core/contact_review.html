@@ -23,9 +23,9 @@
                 <button type="submit" class="btn btn-primary btn-sm">Analyze Quo for Contacts</button>
             </form>
             <form method="post" action="{% url 'contact_candidates_clear_all' %}" class="d-inline"
-                  onsubmit="return confirm('Permanently delete all {{ candidates|length }} pending contact candidate(s) below? This cannot be undone.');">
+                  onsubmit="return confirm('Permanently delete all {{ total_candidates }} pending contact candidate(s) below? This cannot be undone.');">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-outline-danger btn-sm">Clear all pending ({{ candidates|length }})</button>
+                <button type="submit" class="btn btn-outline-danger btn-sm">Clear all pending ({{ total_candidates }})</button>
             </form>
         </div>
         <div class="form-check mt-2">
@@ -92,7 +92,7 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
 <hr class="my-4">
 {% endif %}
 
-<h2 class="page-title my-3">Contacts to review ({{ candidates|length }})</h2>
+<h2 class="page-title my-3">Contacts to review ({{ total_candidates }})</h2>
 <p class="text-muted">Imported from Quo/Gmail — not usable anywhere in the app (ticket pickers, property pages) until approved. Edit any field before approving if the import got something wrong. Mark Approve/Reject on as many as you like, then Save Changes once — nothing happens until then.</p>
 
 {% for c in candidates %}
@@ -214,6 +214,16 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
 </div>
 {% endfor %}
 </form>
+{% include 'core/_pager.html' %}
+<script>
+// Decisions are marked on the page and saved together; leaving the page for another would lose them.
+document.querySelectorAll('[data-pager-link]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+        var btn = document.getElementById('review-save-changes-btn');
+        if (btn && btn.style.display !== 'none' && !confirm('You have decisions marked on this page that are not saved yet. Leave without saving them?')) e.preventDefault();
+    });
+});
+</script>
 
 <button type="button" id="review-save-changes-btn" class="btn btn-primary shadow"
         style="position: fixed; top: 84px; right: 24px; z-index: 1040; display: none;">

@@ -55,6 +55,7 @@ from itertools import combinations
 from django.utils import timezone
 
 from . import ledger
+from . import memo as request_memo
 from .models import LedgerLine, MonthClose, ReconAcceptance, ReconMatch
 
 ZERO = Decimal('0.00')
@@ -78,6 +79,69 @@ def _bookings(book):
     if book.unit is not None:
         qs = qs.filter(unit=book.unit)
     return qs.prefetch_related('payout_lines')
+
+
+def _platform_bookings(prop):
+    """Every Airbnb / VRBO reservation of a property with its payout lines, read once per page load."""
+    return request_memo.get(('bookings', prop.pk), lambda: _load_bookings([prop.pk])[prop.pk])
+
+
+def _load_bookings(prop_ids):
+    from onsite.models import Booking
+    out = {pid: [] for pid in prop_ids}
+    for b in Booking.objects.filter(property_id__in=prop_ids, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).prefetch_related('payout_lines'):
+        out[b.property_id].append(b)
+    return out
+
+
+def _load_acceptances(prop_ids):
+    out = {pid: {} for pid in prop_ids}
+    for a in ReconAcceptance.objects.filter(property_id__in=prop_ids):
+        out[a.property_id].setdefault((a.unit_id, a.month), []).append(a)
+    return out
+
+
+def _load_matches(prop_ids):
+    out = {pid: {} for pid in prop_ids}
+    for m in ReconMatch.objects.filter(property_id__in=prop_ids).order_by('pk'):
+        out[m.property_id].setdefault((m.unit_id, m.month), []).append(m)
+    return out
+
+
+def preload(prop_ids):
+    """The reservations, accepted items and hand matches of every property in one go, for the overview (see ledger.preload)."""
+    if not request_memo.active():
+        return
+    for key, data in (('bookings', _load_bookings(prop_ids)), ('accepted', _load_acceptances(prop_ids)), ('matches', _load_matches(prop_ids))):
+        for pid in prop_ids:
+            request_memo.put((key, pid), data[pid])
+
+
+def _bookings_list(book):
+    """_bookings as a list: the reservations with a payout amount or dated payout lines. During a page load they are picked out of
+    the property's one read (each unit's by its unit)."""
+    if not request_memo.active():
+        return list(_bookings(book))
+    mine = [b for b in _platform_bookings(book.property) if (b.payout_amount is not None and b.payout_amount != 0) or b.payout_lines.all()]
+    return mine if book.unit is None else [b for b in mine if b.unit_id == book.unit.pk]
+
+
+def _acceptances(book, month):
+    """This month's accepted reconciling items (one query per property during a page load)."""
+    month = ledger.month_of(month)
+    if not request_memo.active():
+        return list(ReconAcceptance.objects.filter(month=month, **book.scope()))
+
+    return list(request_memo.get(('accepted', book.property.pk), lambda: _load_acceptances([book.property.pk])[book.property.pk]).get((book.unit.pk if book.unit is not None else None, month), []))
+
+
+def _stored_matches(book, month):
+    """The matches a person made or broke for this month, oldest first (one query per property during a page load)."""
+    month = ledger.month_of(month)
+    if not request_memo.active():
+        return list(ReconMatch.objects.filter(month=month, **book.scope()).order_by('pk'))
+
+    return list(request_memo.get(('matches', book.property.pk), lambda: _load_matches([book.property.pk])[book.property.pk]).get((book.unit.pk if book.unit is not None else None, month), []))
 
 
 def _source_label(source):
@@ -161,7 +225,7 @@ def _groups(events):
 def _income_deposits(book, month):
     # Negative ones count too: a platform can take money back (a resolution, an adjustment), and QuickBooks
     # shows that as a negative line in the trust account, matched by the negative payout.
-    return [l for l in ledger.month_lines(book, month) if l.role == LedgerLine.Role.TRUST and l.category == LedgerLine.Category.DEPOSIT and l.flow != 0]
+    return [l for l in ledger.book_month_lines(book, month) if l.role == LedgerLine.Role.TRUST and l.category == LedgerLine.Category.DEPOSIT and l.flow != 0]
 
 
 def _pieces(hits, dep, pool, used):
@@ -347,7 +411,7 @@ def _match_month(book, month, cleared, scope, events):
                 out.extend(by_day.get((pk, day), [None]))
         return out
 
-    stored = list(ReconMatch.objects.filter(month=month, **book.scope()).order_by('pk'))
+    stored = _stored_matches(book, month)
     # Matches a person broke keep those lines open: they are not offered to the automatic matching again.
     for m in stored:
         if m.kind == ReconMatch.Kind.HOLD:
@@ -371,11 +435,15 @@ def _match_month(book, month, cleared, scope, events):
     # resolution is paid on its own day, a long stay in installments, so of each named reservation's payouts the one
     # nearest the deposit is the one this deposit is (the exact amount first, for one code).
     named = [b for b in scope if b.external_uid]
+    # A plain alphanumeric code is named when it is one whole run of letters and digits in the text, so the text is split into its
+    # runs once per deposit; only an odd code (with punctuation in it) needs a pattern of its own.
+    plain = {b.pk: b.external_uid.upper() for b in named if b.external_uid.isascii() and b.external_uid.isalnum()}
     for dep in deposits:
         if dep.pk in used_lines or dep.pk in blocked_lines:
             continue
         text = f'{dep.payee} {dep.memo} {dep.description}'
-        hits = [b for b in named if re.search(r'(?<![A-Za-z0-9])' + re.escape(b.external_uid) + r'(?![A-Za-z0-9])', text, re.IGNORECASE)]
+        runs = set(re.findall(r'[A-Za-z0-9]+', text.upper()))
+        hits = [b for b in named if (plain[b.pk] in runs if b.pk in plain else re.search(r'(?<![A-Za-z0-9])' + re.escape(b.external_uid) + r'(?![A-Za-z0-9])', text, re.IGNORECASE))]
         chosen, _exact = _pieces(hits, dep, pool, used | blocked_events)
         if not chosen:
             continue
@@ -407,7 +475,11 @@ def _match_month(book, month, cleared, scope, events):
 
 
 def _cleared_by_closes(prop, month):
-    closes = list(MonthClose.objects.filter(property=prop, month=month))
+    if request_memo.active():
+        month = ledger.month_of(month)
+        closes = [c for c in request_memo.get(('closes_recon', prop.pk), lambda: list(MonthClose.objects.filter(property=prop))) if c.month == month]
+    else:
+        closes = list(MonthClose.objects.filter(property=prop, month=month))
     if not closes:
         return None
     cleared = set()
@@ -446,7 +518,7 @@ def _month_sequence(month):
 def _items(book, month, result):
     """What is left over, as items a person has to explain: a match whose two sides differ, a bank line with no
     platform payout behind it, a platform payout that has not reached the bank."""
-    accepted = {(a.kind, a.key): a for a in ReconAcceptance.objects.filter(month=month, **book.scope())}
+    accepted = {(a.kind, a.key): a for a in _acceptances(book, month)}
     # In the first month of the books nothing could have been carried forward from the month before, so a deposit
     # that pays out an earlier stay may be marked as one.
     first_month = month == ledger.month_of(ledger.books_start())
@@ -501,9 +573,12 @@ def _reservations_view(book, month, scope):
     """The reservations that check in during the month and when their money arrives."""
     from onsite.models import Booking
     month_end = ledger.next_month(month) - timedelta(days=1)
-    stays = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO))
-    if book.unit is not None:
-        stays = stays.filter(unit=book.unit)
+    if request_memo.active():
+        stays = [b for b in _platform_bookings(book.property) if book.unit is None or b.unit_id == book.unit.pk]
+    else:
+        stays = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO))
+        if book.unit is not None:
+            stays = stays.filter(unit=book.unit)
     rows = [b for b in stays if month <= timezone.localtime(b.check_in).date() <= month_end and (b.status == Booking.Status.ACTIVE or b.payout_amount)]
     paid_now = paid_later = ZERO
     later = []
@@ -539,6 +614,8 @@ def assign_units_from_deposits(prop):
             b.unit_id = units.pop()
             b.save(update_fields=['unit'])
             assigned += 1
+    if assigned:
+        request_memo.forget('bookings')         # what was read before is out of date
     return assigned
 
 
@@ -548,7 +625,7 @@ def owner_collected_income(book, month):
     what the commission is worked out on; none of it is ever expected at our bank."""
     start = ledger.month_of(month)
     end = ledger.next_month(start) - timedelta(days=1)
-    return sum((e.amount for e in _events(list(_bookings(book))) if start <= e.date <= end), ZERO)
+    return sum((e.amount for e in _events(_bookings_list(book)) if start <= e.date <= end), ZERO)
 
 
 def reconcile(book, month):
@@ -560,8 +637,8 @@ def reconcile(book, month):
         return None
     owner_collects = book.property.income_collected_by_owner
     if book.unit is not None:
-        assign_units_from_deposits(book.property)
-    scope = [] if owner_collects else list(_bookings(book))
+        request_memo.get(('assigned', book.property.pk), lambda: assign_units_from_deposits(book.property))
+    scope = [] if owner_collects else _bookings_list(book)
     events = _events(scope)
     cleared = _cleared_before(book, month, scope, events)
     result = _match_month(book, month, cleared, scope, events)
@@ -574,10 +651,15 @@ def reconcile(book, month):
     unassigned_rows = []
     if book.unit is not None and not owner_collects:
         from onsite.models import Booking
-        unassigned_rows = list(Booking.objects.filter(
-            property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
-            payout_date__gte=ledger.month_of(ledger.books_start()), payout_date__lte=month_end, payout_amount__isnull=False,
-        ).exclude(payout_amount=0).order_by('payout_date', 'pk'))
+        if request_memo.active():
+            start = ledger.month_of(ledger.books_start())
+            unassigned_rows = sorted((b for b in _platform_bookings(book.property) if b.unit_id is None and b.payout_date is not None and start <= b.payout_date <= month_end
+                                      and b.payout_amount is not None and b.payout_amount != 0), key=lambda b: (b.payout_date, b.pk))
+        else:
+            unassigned_rows = list(Booking.objects.filter(
+                property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
+                payout_date__gte=ledger.month_of(ledger.books_start()), payout_date__lte=month_end, payout_amount__isnull=False,
+            ).exclude(payout_amount=0).order_by('payout_date', 'pk'))
     unassigned = len(unassigned_rows)
     acc = {(i['kind'], i['key']): i['accepted'] for i in items}
     mismatch_keys = {i['key'] for i in items if i.get('matched')}
@@ -597,6 +679,9 @@ def reconcile(book, month):
 
 def _undated(book):
     from onsite.models import Booking
+    if request_memo.active():
+        return [b for b in _platform_bookings(book.property) if (book.unit is None or b.unit_id == book.unit.pk) and b.payout_date is None
+                and b.payout_amount is not None and b.payout_amount != 0 and not b.payout_lines.all() and b.status != 'cancelled']
     qs = Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO), payout_date__isnull=True, payout_amount__isnull=False, payout_lines__isnull=True).exclude(payout_amount=0)
     if book.unit is not None:
         qs = qs.filter(unit=book.unit)

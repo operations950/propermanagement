@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
+from django.core.paginator import Paginator
 from django.db.models import Count, F, Max, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -833,6 +834,9 @@ DUE_WINDOWS = {'d3': 3, 'd4': 4, 'd5': 5, 'd6': 6, 'week': 7, 'd14': 14, 'month'
 DUE_OPTIONS = [('overdue', 'Overdue'), ('today', 'Today'), ('tomorrow', 'Tomorrow')] + [(key, f'Next {days} days') for key, days in DUE_WINDOWS.items()] + [('none', 'No due date')]
 
 
+TICKETS_PER_PAGE = 50     # each row carries its own edit form (twice, for table and phone cards): fifty a page keeps the page light
+
+
 @login_required
 def ticket_list(request):
     """Defaults to the active bucket (open/assigned/in_progress/blocked) —
@@ -948,9 +952,10 @@ def ticket_list(request):
         qs = qs.filter(Q(title__icontains=q) | Q(property__name__icontains=q))
 
     qs = qs.order_by(*_ticket_sort_order(request.GET.get('sort', '')))
+    page_obj = Paginator(qs, TICKETS_PER_PAGE).get_page(request.GET.get('page'))
 
     context = {
-        'tickets': qs,
+        'tickets': page_obj.object_list, 'page_obj': page_obj,
         'now': timezone.now(),
         'status_choices': Ticket.Status.choices,
         'role_choices': StaffProfile.Role.choices,
@@ -989,6 +994,7 @@ def ticket_list(request):
         return JsonResponse({
             'desktop': render_to_string('tickets/_ticket_table_rows.html', context, request=request),
             'mobile': render_to_string('tickets/_ticket_mobile_cards.html', context, request=request),
+            'pager': render_to_string('core/_pager.html', context, request=request),
         })
 
     return render(request, 'tickets/ticket_list.html', context)
