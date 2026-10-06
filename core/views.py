@@ -22,7 +22,7 @@ from django.views.decorators.cache import never_cache
 from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
 from processes.models import ProcessTemplate
 from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
-from tickets.views import OPEN_STATUSES, _parse_quo_timestamp, _safe_back_url
+from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
 from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, listings as listings_service, nudges, places, property_actions, property_specs, qb_accounts, quickbooks, trash as trash_service, usps
 from onsite import google_calendar_push as onsite_calendar_push
@@ -1160,14 +1160,7 @@ def property_detail(request, pk):
     send_followup_bulk/_group_followups machinery the ticket detail screen's
     Follow-Up card uses, and this property's open tickets/tasks."""
     prop = get_object_or_404(Property, pk=pk)
-    # Wherever the browser actually came from (a filtered property list, the
-    # dashboard, a ticket's own property link, ...) — see _safe_back_url's
-    # own docstring. exclude_path=request.path stops every in-page POST
-    # action here (save notes, add/remove an attribute, ...), which all
-    # redirect right back to this same page, from making "back" a no-op
-    # loop pointing at itself instead of at whatever the user actually
-    # navigated from.
-    back_url = _safe_back_url(request, exclude_path=request.path, fallback_view='property_list')
+    back_url = reverse('property_list')         # up one level: the property list (not wherever the browser came from)
 
     if request.method == 'POST':
         action = request.POST.get('action')

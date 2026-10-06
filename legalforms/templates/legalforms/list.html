@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Documents{% endblock %}
 {% block content %}
-{% if property %}<a href="{% url 'property_detail' property.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ property.name }}</a>{% endif %}
+{% if property %}<a href="{% url 'property_detail' property.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ property.name }}</a>{% endif %}
 <h2 class="page-title mb-1">Legal documents{% if property %} <span class="text-muted fw-normal fs-6">· {{ property.name }}</span>{% endif %}</h2>
 <p class="text-muted small mb-3">Standard forms with legal or statutory wording, filled from the system's records plus what you type. Every document is kept exactly as it was made.</p>
 

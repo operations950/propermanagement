@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Preview — {{ template.name }}{% endblock %}
 {% block content %}
-<a href="{% url 'process_template_edit' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Back to builder</a>
+<a href="{% url 'process_template_edit' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Back to builder</a>
 <h2 class="page-title my-3">{{ template.name }} <span class="badge bg-secondary">Preview</span></h2>
 {% if template.description %}<p class="text-muted">{{ template.description }}</p>{% endif %}
 

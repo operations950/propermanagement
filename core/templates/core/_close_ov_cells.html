@@ -1,0 +1,21 @@
+{% load core_extras %}{% comment %}The eight money cells of an overview row. t = a month's totals (live, or as closed; None when there are none).
+The first five are the month (income, reimbursable expenses, paid from trust, the owner payment and our commission: income less
+commission, reimbursable and paid from trust is the owner payment). The last three are what is payable at month end, which also
+holds anything unpaid from earlier months. A month closed before the calculation existed has no payables.{% endcomment %}
+{% if t %}
+<td class="num">{% if t.owner_collects %}<span class="text-muted" title="The owner collects the booking income">owner collects</span>{% else %}{{ t.deposits|money }}{% endif %}</td>
+<td class="num">{{ t.expenses_reimbursable|money }}</td>
+<td class="num">{{ t.expenses_direct|money }}</td>
+<td class="num">{% if t.owner_collects %}<span class="text-muted" title="No owner payment: the owner pays us our expenses and commission">—</span>{% elif t.calc %}{{ t.owner_due|money }}{% else %}{{ t.owner_payment|money }}{% endif %}</td>
+<td class="num">{% if t.calc %}{{ t.commission_due|money }}{% else %}{{ t.commission|money }}{% endif %}</td>
+{% if t.calc %}
+<td class="num ap">{{ t.owner_payable|money }}</td>
+<td class="num ap">{{ t.reimb_payable|money }}</td>
+<td class="num ap">{{ t.comm_payable|money }}</td>
+{% else %}
+<td class="num ap text-muted">—</td><td class="num ap text-muted">—</td><td class="num ap text-muted">—</td>
+{% endif %}
+{% else %}
+<td class="num text-muted">—</td><td class="num text-muted">—</td><td class="num text-muted">—</td><td class="num text-muted">—</td><td class="num text-muted">—</td>
+<td class="num ap text-muted">—</td><td class="num ap text-muted">—</td><td class="num ap text-muted">—</td>
+{% endif %}

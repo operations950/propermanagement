@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ order.property.name }} order{% endblock %}
 {% block content %}
-<a href="{% url 'supplies:cart' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Today's cart</a>
+<a href="{% url 'supplies:cart' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Today's cart</a>
 <h2 class="page-title mb-1">{{ order.property.name }} — order</h2>
 <p class="text-muted mb-3">
     {% if order.sent_at %}Sent {{ order.sent_at|date:"M j, Y g:i A" }}{% if order.created_by %} by {{ order.created_by.get_full_name|default:order.created_by.username }}{% endif %}{% else %}Not sent (undone).{% endif %}

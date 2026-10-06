@@ -2,7 +2,7 @@
 {% load lf_extras %}
 {% block title %}{{ template.name }}{% endblock %}
 {% block content %}
-<a href="{% if editing %}{% url 'legalforms:detail' editing.pk %}{% else %}{% url 'legalforms:list' %}?property={{ property.pk }}{% endif %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {% if editing %}The document{% else %}Documents{% endif %}</a>
+<a href="{% if editing %}{% url 'legalforms:detail' editing.pk %}{% else %}{% url 'legalforms:list' %}?property={{ property.pk }}{% endif %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {% if editing %}The document{% else %}Documents{% endif %}</a>
 <h2 class="page-title mb-0">{{ template.name }}</h2>
 <p class="text-muted small mb-2">{{ property.name }}{% if unit %} — Unit {{ unit.label }}{% endif %}{% if template.statute %} · {{ template.statute }}{% endif %}{% if parent %} · goes with the {{ parent.template.name }} of {{ parent.subject }}{% endif %}</p>
 {% if template.reviewed_note %}<div class="alert alert-warning small py-2" style="max-width: 760px;"><strong>Have this checked before relying on it.</strong> {{ template.reviewed_note }}</div>{% endif %}

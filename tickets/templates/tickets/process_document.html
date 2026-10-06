@@ -2,7 +2,7 @@
 {% block title %}{{ label }}{% endblock %}
 {% block content %}
 <div class="my-3">
-    <a href="{% url 'ticket_detail' ticket.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Back to ticket</a>
+    <a href="{% url 'ticket_detail' ticket.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Back to ticket</a>
     <h2 class="page-title">{{ label }}</h2>
     <p class="text-muted mb-0">{{ ticket.title }}{% if ticket.property %} — {{ ticket.property.name }}{% endif %}</p>
 </div>

@@ -58,14 +58,14 @@
     .rc-item { padding: 6px 0; border-top: 1px solid var(--border-hairline, #e5e7ea); }
     @media (max-width: 767px) { .rc-open, .rc-sides { grid-template-columns: 1fr; } }
 </style>
-<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ back_label }}</a>
+<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ back_label }}</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0">{{ title }} <span class="text-muted fw-normal fs-6">· {{ month|date:"F Y" }}{% if close %} · <strong>closed</strong>{% endif %}</span></h2>
         <div class="small text-muted">{% if synced_at %}Synced from QuickBooks {{ synced_at|timesince }} ago{% else %}Not synced yet{% endif %}</div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'close_statement' property.pk %}?end={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="table-2" class="icon"></i> 12-month statement</a>
+        <a href="{% url 'close_statement' property.pk %}?month={{ month|date:'Y-m' }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="table-2" class="icon"></i> 12-month statement</a>
         <div class="btn-group btn-group-sm">
             <a href="{{ prev_url }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
             <a href="{{ next_url }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
@@ -93,6 +93,23 @@
 {% endif %}
 
 {% include 'core/_close_summary.html' with totals=totals month=month %}
+
+{% if opening.show and opening.editable or opening.show and opening.ob %}
+<div class="card mb-2" id="opening-balance" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+    <div class="small fw-semibold mb-1">Opening balance <span class="text-muted fw-normal">— what was still owed when the books began</span></div>
+    <div class="small text-muted mb-2">{{ month|date:"F" }} is the first month in the books, so there is no earlier month for what is paid out to settle. Enter what was still unpaid at the end of {{ previous|date:"F Y" }}: a positive figure is owed, a negative one was paid ahead. {{ month|date:"F" }}'s payments are then checked against it, and a payment made early (an advance) is credited and carries into the next month instead of showing as a shortfall. Leave all three blank to skip the check.</div>
+    {% if opening.editable %}
+    <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="save_opening">
+        <div class="col-6 col-md-3"><label class="form-label small mb-0" for="opening-owner">Owed to the owner</label><input class="form-control form-control-sm" id="opening-owner" name="opening_owner" inputmode="decimal" placeholder="0.00" value="{% if opening.ob %}{{ opening.ob.owner_payable }}{% endif %}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small mb-0" for="opening-reimbursable">Reimbursement owed to us</label><input class="form-control form-control-sm" id="opening-reimbursable" name="opening_reimbursable" inputmode="decimal" placeholder="0.00" value="{% if opening.ob %}{{ opening.ob.reimbursable }}{% endif %}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small mb-0" for="opening-commission">Commission owed to us</label><input class="form-control form-control-sm" id="opening-commission" name="opening_commission" inputmode="decimal" placeholder="0.00" value="{% if opening.ob %}{{ opening.ob.commission }}{% endif %}"></div>
+        <div class="col-6 col-md-3 d-flex gap-2"><button class="btn btn-outline-secondary btn-sm">{% if opening.ob %}Update{% else %}Save{% endif %}</button>{% if opening.ob %}<button class="btn btn-link btn-sm text-muted" name="action" value="clear_opening" formnovalidate>Clear</button>{% endif %}</div>
+    </form>
+    {% else %}
+    <div class="small">Owner {{ opening.ob.owner_payable|money }} · Reimbursement {{ opening.ob.reimbursable|money }} · Commission {{ opening.ob.commission|money }} <span class="text-muted">— reopen the month to change them.</span></div>
+    {% endif %}
+</div></div>
+{% endif %}
 
 <div class="row g-2 mb-2">
     {% comment %}An open month's reconciliation is two side-by-side panels and needs the full width, so the two cards stack;

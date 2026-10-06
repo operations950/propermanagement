@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ template.name }}{% endblock %}
 {% block content %}
-<a href="{% url 'legalforms:list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Documents</a>
+<a href="{% url 'legalforms:list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Documents</a>
 <h2 class="page-title mb-1">{{ template.name }}</h2>
 <p class="text-muted small mb-3">{{ template.description }}</p>
 <form method="get" class="card" style="border-radius: 12px; max-width: 520px;"><div class="card-body p-3">

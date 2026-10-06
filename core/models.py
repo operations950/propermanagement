@@ -1252,6 +1252,25 @@ class ReconAcceptance(models.Model):
         indexes = [models.Index(fields=['property', 'month'])]
 
 
+class OpeningBalance(models.Model):
+    """What was still owed when a set of books began: the payables at the end of the month before its first month. The
+    first month has no prior month in the books to settle, so without this its payments are not compared with anything
+    (and an advance paid in it is never credited). With it the month settles like any other: what is paid out is
+    compared with these figures, and what is left over carries on. All three are positive when owed (a negative one is
+    paid ahead). Entered on the first month's close page; a book without one is simply not compared, as before."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='opening_balances')
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, null=True, blank=True, related_name='opening_balances')
+    month = models.DateField(help_text='The first month of the books these are the opening figures for.')
+    owner_payable = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text='Owed to the owner.')
+    reimbursable = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text='Reimbursable expenses the trust account still owed us.')
+    commission = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text='Commission still owed to us.')
+    entered_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    entered_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['property', 'unit', 'month'], name='uniq_opening_balance')]
+
+
 class ReconMatch(models.Model):
     """A person's decision about lines in a month's income reconciliation that the program should not decide on its own.
     kind USER: these bank `lines` (LedgerLine ids) and these platform `events` ([booking id, day] payouts) ARE the same

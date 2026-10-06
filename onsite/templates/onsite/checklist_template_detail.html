@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ visit_type.name }} checklist{% endblock %}
 {% block content %}
-<a href="{% url 'onsite_checklist_templates' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Checklist templates</a>
+<a href="{% url 'onsite_checklist_templates' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Checklist templates</a>
 
 <h2 class="page-title mb-1">{{ visit_type.name }}{% if not visit_type.is_active %} <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.6em;">Inactive</span>{% endif %}</h2>
 <p class="text-muted small mb-4">{{ items|length }} checklist item{{ items|length|pluralize }}. This is the standard list every property of this visit type gets — a property can hide an item or add its own on top (see <a href="{% url 'onsite_checklist_custom_items' %}">custom checklist items</a>), but this is the shared baseline.</p>

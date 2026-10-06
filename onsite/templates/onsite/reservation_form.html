@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{% if booking %}Edit reservation{% else %}New in-house reservation{% endif %}{% endblock %}
 {% block content %}
-<a href="{% url 'onsite_reservation_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Reservations</a>
+<a href="{% url 'onsite_reservation_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Reservations</a>
 
 <h2 class="page-title mb-1">{% if booking %}Edit in-house reservation{% else %}New in-house reservation{% endif %}</h2>
 <p class="text-muted small mb-4">For a stay booked directly (phone, text, a friend of the owner) that isn't on Airbnb or VRBO. It works like any other reservation: a turnover cleaning is scheduled for the checkout day, the cleaner is sent the link, and it counts toward occupancy.</p>

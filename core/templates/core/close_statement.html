@@ -6,7 +6,8 @@
     .st-wrap { overflow-x: auto; }
     .st-table { font-variant-numeric: tabular-nums; font-size: 0.82rem; white-space: nowrap; }
     .st-table th, .st-table td { padding: 4px 10px; text-align: right; }
-    .st-table th:first-child, .st-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--bs-body-bg, #fff); z-index: 1; min-width: 250px; }
+    .st-table th:first-child, .st-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--bs-body-bg, #fff); z-index: 1; width: 170px; min-width: 170px; max-width: 170px; white-space: normal; line-height: 1.25; padding-right: 6px; }
+    .st-table td:first-child .text-muted { display: block; font-size: 0.66rem; line-height: 1.2; }
     .st-table thead th { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); background: var(--bs-light, #f8f9fa); }
     .st-table thead th:first-child { background: var(--bs-light, #f8f9fa); }
     .st-table tr.sum td { font-weight: 700; border-top: 1px solid var(--border-hairline, #ccd); }
@@ -32,7 +33,7 @@
         @page { size: landscape; margin: 0.5in; }
     }
 </style>
-<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 no-print" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end close</a>
+<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 no-print" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ back_label }}</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· {{ year }} statement</span></h2>

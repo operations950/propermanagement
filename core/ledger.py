@@ -45,7 +45,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import quickbooks
-from .models import ClosedMonthChange, FinancialsSettings, LedgerLine, MonthClose, Property, QuickBooksToken, ReconAcceptance, Unit
+from .models import ClosedMonthChange, FinancialsSettings, LedgerLine, MonthClose, OpeningBalance, Property, QuickBooksToken, ReconAcceptance, Unit
 
 logger = logging.getLogger(__name__)
 
@@ -797,9 +797,14 @@ def prior_settlement(book, month, memo=None):
     book = _book(book)
     month = month_of(month)
     prior = previous_month(month)
-    out = {'prior_month': prior, 'prior_reimbursable': None, 'prior_commission': None, 'prior_owner': None, 'prior_status': 'ok', 'prior_closed': False}
+    out = {'prior_month': prior, 'prior_reimbursable': None, 'prior_commission': None, 'prior_owner': None, 'prior_status': 'ok', 'prior_closed': False, 'prior_opening': False}
     if prior < month_of(books_start()):
-        out['prior_status'] = 'not_in_books'
+        opening = opening_balance(book, month)
+        if opening is None:
+            out['prior_status'] = 'not_in_books'
+            return out
+        # the books' first month, with what was owed at the start entered by hand: it settles against that like any other month
+        out.update(prior_reimbursable=opening.reimbursable, prior_commission=opening.commission, prior_owner=opening.owner_payable, prior_closed=True, prior_opening=True)
         return out
     if month_level(book.property, prior) != book.level:
         out['prior_status'] = 'other_shape'
@@ -819,6 +824,37 @@ def prior_settlement(book, month, memo=None):
     return out
 
 
+def opening_balance(book, month):
+    """The opening balance entered for this book's first month, or None (not the first month, or none entered)."""
+    book = _book(book)
+    month = month_of(month)
+    if month != month_of(books_start()):
+        return None
+    return OpeningBalance.objects.filter(month=month, **book.scope()).first()
+
+
+def set_opening_balance(book, month, user, owner, reimbursable, commission):
+    """Save what was owed when the books began (the payables at the end of the month before this one). Only the first
+    month of the books, and only while it is open: a closed month's figures are frozen - reopen it first."""
+    book = _book(book)
+    month = month_of(month)
+    if month != month_of(books_start()):
+        raise CloseError(f'Opening balances belong to the first month of the books ({month_of(books_start()):%B %Y}), not {month:%B %Y}.')
+    if is_closed(book, month):
+        raise CloseError(f'{month:%B %Y} is closed, so its figures are frozen. Reopen it to change the opening balance.')
+    OpeningBalance.objects.update_or_create(month=month, **book.scope(), defaults={
+        'owner_payable': Decimal(owner).quantize(CENT), 'reimbursable': Decimal(reimbursable).quantize(CENT), 'commission': Decimal(commission).quantize(CENT), 'entered_by': user})
+
+
+def clear_opening_balance(book, month):
+    """Forget the opening balance: the first month goes back to not being compared with anything."""
+    book = _book(book)
+    month = month_of(month)
+    if is_closed(book, month):
+        raise CloseError(f'{month:%B %Y} is closed, so its figures are frozen. Reopen it to change the opening balance.')
+    return OpeningBalance.objects.filter(month=month, **book.scope()).delete()[0]
+
+
 def sum_totals(parts):
     """The property's figures: its units' added up."""
     out = {k: ZERO for k in TOTAL_KEYS + ('expenses_total',)}
@@ -836,6 +872,7 @@ def sum_totals(parts):
     out['prior_status'] = 'ok' if ok else next((p.get('prior_status') for p in parts if p.get('prior_status') not in (None, 'ok')), 'no_data')
     out['prior_month'] = next((p.get('prior_month') for p in parts if p.get('prior_month')), None)
     out['prior_closed'] = ok and all(p.get('prior_closed') for p in parts)
+    out['prior_opening'] = ok and all(p.get('prior_opening') for p in parts)
     return derive(out)
 
 
@@ -975,7 +1012,8 @@ def add_settlement_checks(book, month, lines, add):
     name = f'{prior:%B}'
     status = t['prior_status']
     if status == 'not_in_books':
-        add('settle_prior', 'ok', f'{name} is before the books start, so this month\'s reimbursement, commission and owner payment can\'t be checked against it.')
+        add('settle_prior', 'ok', f'{name} is before the books start, so this month\'s reimbursement, commission and owner payment can\'t be checked against it.'
+            + (' Enter the opening balance (what was still owed at the start) to have them checked, and any advance credited.' if month_of(month) == month_of(books_start()) else ''))
         return
     if status == 'other_shape':
         add('settle_prior', 'ok', f'{name} was kept in a different shape (property books against unit books), so this month\'s reimbursement, commission and owner payment can\'t be checked against it.')
@@ -994,7 +1032,9 @@ def add_settlement_checks(book, month, lines, add):
             continue
         diff = taken - owed
         if diff != 0:
-            add(key, 'warn', f'{label} taken this month (${taken:,.2f}) does not match {name}\'s {what} (${owed:,.2f}): ${abs(diff):,.2f} {"more" if diff > 0 else "less"}.')
+            source = f'the opening balance ({what})' if t.get('prior_opening') else f"{name}'s {what}"
+            ahead = ' That is paid ahead of what was owed (an advance): it is credited and carries into next month.' if diff > 0 else ''
+            add(key, 'warn', f'{label} taken this month (${taken:,.2f}) does not match {source} (${owed:,.2f}): ${abs(diff):,.2f} {"more" if diff > 0 else "less"}.{ahead}')
 
 
 def add_recon_checks(rec, add):
@@ -1060,7 +1100,7 @@ def closed_summary(close):
     for k, v in close.totals.items():
         if k == 'lines':
             out[k] = int(v)
-        elif k in ('calc', 'prior_closed', 'owner_collects'):
+        elif k in ('calc', 'prior_closed', 'owner_collects', 'prior_opening'):
             out[k] = bool(v)
         elif k in ('prior_status', 'commission_basis'):
             out[k] = v
@@ -1155,18 +1195,23 @@ def consolidate(rows):
 # --- reopening ---------------------------------------------------------------------------------------------
 
 @transaction.atomic
-def reopen_month(prop, month, user, clear_recon=True):
+def reopen_month(prop, month, user, clear_recon=True, book=None):
     """Undo a close so the month can be done again: the frozen figures are copied to ReopenedClose (nothing signed off is
     ever lost), the close is removed, the month's transactions are unlocked (QuickBooks changes flow in again) and its
     drift log is cleared. clear_recon also removes the month's accepted reconciling items and matches made by hand, so
     the income reconciliation starts over. A month cannot be reopened while a LATER month is still closed (that
-    month's figures were built on this one): reopen the later one first."""
+    month's figures were built on this one): reopen the later one first. Given a UNIT's book it is that unit alone: its own
+    later months are what matter (a unit's figures are built only on its own earlier months), and only its close, lines and
+    reconciliation are touched - the building's other units stay as they are."""
     from .models import ReconAcceptance, ReconMatch, ReopenedClose
     month = month_of(month)
-    closes = list(MonthClose.objects.filter(property=prop, month=month))
+    scope = {'property': prop}
+    if book is not None and book.unit is not None:
+        scope['unit'] = book.unit
+    closes = list(MonthClose.objects.filter(month=month, **scope))
     if not closes:
         raise CloseError(f'{month:%B %Y} is not closed.')
-    later = MonthClose.objects.filter(property=prop, month__gt=month).order_by('month').first()
+    later = MonthClose.objects.filter(month__gt=month, **scope).order_by('month').first()
     if later is not None:
         raise CloseError(f'{later.month:%B %Y} is closed after {month:%B %Y} — reopen that month first.')
     for c in closes:
@@ -1175,11 +1220,11 @@ def reopen_month(prop, month, user, clear_recon=True):
             recon=c.recon, warnings_acknowledged=c.warnings_acknowledged, note=c.note, reopened_by=user,
         )
     MonthClose.objects.filter(pk__in=[c.pk for c in closes]).delete()
-    LedgerLine.objects.filter(property=prop, month=month).update(locked_at=None)
-    ClosedMonthChange.objects.filter(property=prop, month=month).delete()
+    LedgerLine.objects.filter(month=month, **scope).update(locked_at=None)
+    ClosedMonthChange.objects.filter(month=month, **scope).delete()
     if clear_recon:
-        ReconAcceptance.objects.filter(property=prop, month=month).delete()
-        ReconMatch.objects.filter(property=prop, month=month).delete()
+        ReconAcceptance.objects.filter(month=month, **scope).delete()
+        ReconMatch.objects.filter(month=month, **scope).delete()
     return len(closes)
 
 

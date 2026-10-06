@@ -96,7 +96,7 @@ def close_overview(request):
     rows = [r for g in groups for r in g['rows']]
     token = QuickBooksToken.objects.first()
     return render(request, 'core/close_overview.html', {
-        'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'groups': groups,
+        'foot': _overview_foot(groups), 'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'groups': groups,
         'connected': token is not None, 'synced_at': token.ledger_synced_at if token else None, 'sync_error': token.ledger_sync_error if token else '',
         'books_start': ledger.books_start(), 'books_start_saved': FinancialsSettings.get().books_start is not None,
         'counts': {s: sum(1 for r in rows if r['state'] == s) for s in ('closed', 'ready', 'open', 'needs_accounts')},
@@ -104,6 +104,32 @@ def close_overview(request):
         'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
         'lingering_payouts': payout_tracking.lingering_count(),
     })
+
+
+def _overview_foot(groups):
+    """The overview's bottom line: each money column added up over the rentals (a property kept unit by unit counts once, as
+    its units added up - never again for the units listed under it). A month closed before the calculation existed has no
+    payables, so it adds nothing to those three columns."""
+    keys = ('income', 'reimbursable', 'direct', 'owner', 'commission', 'ap_owner', 'ap_reimbursable', 'ap_commission')
+    foot = {k: Decimal('0') for k in keys}
+    foot['rentals'] = 0
+    for g in groups:
+        parts = [g['consolidated']['totals']] if g['level'] == Property.FinancialsLevel.UNIT and g['consolidated'] else [r['totals'] for r in g['rows']]
+        for t in parts:
+            if not t:
+                continue
+            foot['rentals'] += 1
+            calc = t.get('calc')
+            foot['income'] += t.get('deposits') or 0
+            foot['reimbursable'] += t.get('expenses_reimbursable') or 0
+            foot['direct'] += t.get('expenses_direct') or 0
+            foot['owner'] += (t.get('owner_due') if calc else t.get('owner_payment')) or 0
+            foot['commission'] += (t.get('commission_due') if calc else t.get('commission')) or 0
+            if calc:
+                foot['ap_owner'] += t.get('owner_payable') or 0
+                foot['ap_reimbursable'] += t.get('reimb_payable') or 0
+                foot['ap_commission'] += t.get('comm_payable') or 0
+    return foot
 
 
 def _page_url(month, prop, unit=None):
@@ -148,16 +174,18 @@ def close_statement(request, pk):
     """A rental's calendar year, month by month, the way the owner sees it: the calculation, what is owed and paid.
     The arrows move to the year before or after."""
     prop = get_object_or_404(Property, pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
-    this_year = timezone.localdate().year
+    today = timezone.localdate()
+    this_year = today.year
+    month = _parse_month(request.GET.get('month'), ledger.previous_month(today))      # the month page it was opened from
     try:
-        year = min(max(int(request.GET.get('year', this_year)), 2000), this_year)
+        year = min(max(int(request.GET.get('year', month.year)), 2000), this_year)
     except ValueError:
-        year = this_year
+        year = month.year
     data = ledger.statement(prop, year=year)
     return render(request, 'core/close_statement.html', {
-        'property': prop, 'st': data, 'year': year, 'earlier': year - 1, 'later': year + 1,
+        'property': prop, 'st': data, 'year': year, 'earlier': year - 1, 'later': year + 1, 'month': month,
         'can_go_later': year < this_year, 'can_go_earlier': year > 2000,
-        'back_url': reverse('close_overview'),
+        'back_url': _page_url(month, prop), 'back_label': f'{prop.name} — {month:%B %Y}',
     })
 
 
@@ -212,8 +240,22 @@ def close_property(request, month, pk, unit_pk=None):
                 recon.accept_item(book, month, request.user, request.POST.get('kind', ''), request.POST.get('key', ''), request.POST.get('note', ''), prior_period=prior)
                 messages.success(request, 'Marked as from before the books.' if prior else 'Accepted as a reconciling item.')
             elif action == 'reopen':
-                ledger.reopen_month(prop, month, request.user)
-                messages.success(request, f'{month:%B %Y} is reopened for {prop.name}. Its old closed figures are kept in the reopened-closes archive.')
+                ledger.reopen_month(prop, month, request.user, book=book)
+                messages.success(request, f'{month:%B %Y} is reopened for {book.name}. Its old closed figures are kept in the reopened-closes archive.')
+            elif action == 'save_opening':
+                raw = [(request.POST.get(k) or '').strip() for k in ('opening_owner', 'opening_reimbursable', 'opening_commission')]
+                amounts = [_money_input(r) if r else None for r in raw]
+                if any(r and a is None for r, a in zip(raw, amounts)):
+                    messages.error(request, 'Each opening figure is a dollar amount, like 1,250.00 (or blank).')
+                elif all(a is None for a in amounts):
+                    ledger.clear_opening_balance(book, month)
+                    messages.success(request, f'Opening balance cleared: {month:%B} is not checked against what was owed before it.')
+                else:
+                    ledger.set_opening_balance(book, month, request.user, *[a or Decimal('0') for a in amounts])
+                    messages.success(request, f'Opening balance saved: what is paid out in {month:%B} is now checked against it.')
+            elif action == 'clear_opening':
+                ledger.clear_opening_balance(book, month)
+                messages.success(request, f'Opening balance cleared: {month:%B} is not checked against what was owed before it.')
             elif action == 'match_recon':
                 recon.manual_match(book, month, request.user, request.POST.getlist('lines'), request.POST.getlist('events'), request.POST.get('note', ''))
                 messages.success(request, 'Matched — it is in the matches below as a match by hand.')
@@ -272,6 +314,7 @@ def close_property(request, month, pk, unit_pk=None):
         'warn_keys': [i['key'] for i in items if i['level'] == 'warn'],
         'totals': ledger.closed_summary(close) if close else ledger.totals(book, month, lines),
         'recon': rec,
+        'opening': {'ob': ledger.opening_balance(book, month), 'show': month == ledger.month_of(ledger.books_start()) and not prop.income_collected_by_owner, 'editable': close is None},
         'payoutless': recon.payoutless_reservations(book, month) if (rec and close is None) else [],
         'drift': ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()),
         'unreviewed': sum(1 for l in lines if not l.reviewed), 'changed': sum(1 for l in lines if l.changed_in_qb),

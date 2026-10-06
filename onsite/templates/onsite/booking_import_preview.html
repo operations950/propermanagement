@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Review import{% endblock %}
 {% block content %}
-<a href="{% url 'onsite_booking_import' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Import bookings</a>
+<a href="{% url 'onsite_booking_import' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Import bookings</a>
 
 {% if debug_last_import_error %}
 {# TEMPORARY — see the matching diagnostic try/except in

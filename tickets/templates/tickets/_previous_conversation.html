@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Previous conversation — {{ ticket.title }}{% endblock %}
 {% block content %}
-<a href="{% url 'ticket_detail' ticket.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 my-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Back to ticket</a>
+<a href="{% url 'ticket_detail' ticket.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 my-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Back to ticket</a>
 <h2 class="page-title mb-1">Previous conversation</h2>
 <p class="text-muted">
     With {{ log.from_contact.name|default:"the previous contractor" }}, before the contractor changed to

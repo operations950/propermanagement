@@ -8,10 +8,14 @@
     .cl-ov td.num, .cl-ov th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .cl-ov tr.cl-group td { background: var(--bs-light, #f4f6f8); border-top: 2px solid var(--border-hairline); }
     .cl-ov tr.cl-unit td { background: #fbfcfd; }
+    .cl-ov th.ap, .cl-ov td.ap { background: color-mix(in srgb, var(--bs-light, #f4f6f8) 55%, white); }
+    .cl-ov th.cl-grp, .cl-ov tr.cl-grp th { border-bottom: 1px solid var(--border-hairline); padding-bottom: 2px; }
+    .cl-ov tfoot td { font-weight: 700; border-top: 2px solid var(--border-hairline); background: var(--bs-light, #f4f6f8); }
+    .cl-ov thead th { white-space: normal; vertical-align: bottom; }
     .cl-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 10px; border-radius: 999px; background: var(--bs-light, #f1f3f5); font-size: 0.8rem; }
     .cl-stat strong { font-size: 0.95rem; }
 </style>
-<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Month-end checklist</a>
+<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end checklist</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="lock-keyhole" class="icon-lg"></i> Month-end close</h2>
@@ -49,33 +53,48 @@
     </span>
 </div>
 
+{% load core_extras %}
 <div class="card mb-3" style="border-radius: 12px;"><div class="table-responsive">
 <table class="table table-sm table-hover mb-0 cl-ov">
-    <thead><tr><th>Rental</th><th>Status</th><th class="num">Lines</th><th class="num">To review</th><th class="num">Income deposits</th><th class="num">Expenses</th><th class="num">Owner payment</th><th>Notes</th><th></th></tr></thead>
+    <thead>
+        <tr class="cl-grp"><th colspan="2"></th><th colspan="5" class="text-center">{{ month|date:"F" }}</th><th colspan="3" class="text-center ap" title="What is still to be paid at month end: this month's, plus anything unpaid from earlier months">Payable at month end</th><th></th></tr>
+        <tr>
+            <th>Rental</th><th>Status</th>
+            <th class="num">Income</th><th class="num" title="Expenses we paid, to be reimbursed from the trust account">Reimbursable expenses</th><th class="num" title="Expenses paid straight from the trust account">Paid from trust</th><th class="num" title="Income less commission, reimbursable expenses and paid from trust">Owner payment</th><th class="num">Commission</th>
+            <th class="num ap">Owner</th><th class="num ap">Reimbursable</th><th class="num ap">Commission</th>
+            <th>Notes</th>
+        </tr>
+    </thead>
     <tbody>
     {% for g in groups %}
     {% if g.level == 'unit' %}
     {% with c=g.consolidated %}
     <tr class="cl-group">
-        <td><a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="fw-semibold text-decoration-none">{{ g.property.name }}</a> <span class="badge rounded-pill text-bg-light border">books kept unit by unit</span></td>
-        <td>{% if c.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>{% elif c.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready to close</span>{% elif c.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">Units need accounts</span>{% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}</td>
-        <td class="num">{{ c.lines }}</td>
-        <td class="num">{% if c.unreviewed %}<strong style="color: #9a6a00;">{{ c.unreviewed }}</strong>{% else %}0{% endif %}</td>
-        <td class="num">{% if c.totals.owner_collects %}<span class="text-muted" title="The owner collects the booking income">owner collects</span>{% elif c.totals %}${{ c.totals.deposits|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-        <td class="num">{% if c.totals %}${{ c.totals.expenses_total|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-        <td class="num">{% if c.totals.owner_collects %}<span class="text-muted" title="No owner payment: the owner pays us our expenses and commission">owes us ${{ c.totals.owner_owes_us|floatformat:"2g" }}</span>{% elif c.totals %}${% if c.totals.calc %}{{ c.totals.owner_due|floatformat:"2g" }}{% else %}{{ c.totals.owner_payment|floatformat:"2g" }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-        <td class="small text-muted">{% if c.units %}{{ c.closed_units }} of {{ c.units }} unit{{ c.units|pluralize }} closed · consolidated = the units added up{% else %}No active units yet — add its units on the property page.{% endif %}</td>
-        <td class="text-end text-nowrap"><a href="{% url 'close_statement' g.property.pk %}" class="btn btn-link btn-sm py-0" title="Twelve months side by side">Statement</a> <a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="btn btn-outline-secondary btn-sm py-0">Consolidated</a></td>
+        <td><a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="fw-semibold text-decoration-none">{{ g.property.name }}</a> <span class="badge rounded-pill text-bg-light border">unit by unit</span></td>
+        <td>{% if c.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>{% elif c.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready</span>{% elif c.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">Units need accounts</span>{% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}</td>
+        {% include 'core/_close_ov_cells.html' with t=c.totals %}
+        <td class="small text-muted">{% if c.units %}{{ c.closed_units }} of {{ c.units }} unit{{ c.units|pluralize }} closed · the units added up{% else %}No active units yet — add its units on the property page.{% endif %}</td>
     </tr>
     {% endwith %}
-    {% for r in g.rows %}{% include 'core/_close_row.html' with r=r indent=True %}{% endfor %}
+    {% for r in g.rows %}{% include 'core/_close_ov_row.html' with r=r indent=True %}{% endfor %}
     {% else %}
-    {% for r in g.rows %}{% include 'core/_close_row.html' with r=r indent=False %}{% endfor %}
+    {% for r in g.rows %}{% include 'core/_close_ov_row.html' with r=r indent=False %}{% endfor %}
     {% endif %}
-    {% empty %}<tr><td colspan="9" class="text-muted small p-3">No active short-term rentals.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="11" class="text-muted small p-3">No active short-term rentals.</td></tr>{% endfor %}
     </tbody>
+    {% if groups %}
+    <tfoot>
+        <tr class="cl-foot">
+            <td colspan="2">Total <span class="text-muted fw-normal">· {{ foot.rentals }} rental{{ foot.rentals|pluralize }}</span></td>
+            <td class="num">{{ foot.income|money }}</td><td class="num">{{ foot.reimbursable|money }}</td><td class="num">{{ foot.direct|money }}</td><td class="num">{{ foot.owner|money }}</td><td class="num">{{ foot.commission|money }}</td>
+            <td class="num ap">{{ foot.ap_owner|money }}</td><td class="num ap">{{ foot.ap_reimbursable|money }}</td><td class="num ap">{{ foot.ap_commission|money }}</td>
+            <td></td>
+        </tr>
+    </tfoot>
+    {% endif %}
 </table>
 </div></div>
+<p class="small text-muted mb-3" style="font-size: 0.72rem;">Income less commission, reimbursable expenses and paid from trust is the owner payment. The payable columns are what is still to be paid at month end: the month's own, plus anything unpaid from earlier months. A rental kept unit by unit counts once, as its units added up. Click a rental's name to open its month; its statement is there.</p>
 
 <form method="post" class="d-flex gap-2 flex-wrap align-items-center small">
     {% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_start">

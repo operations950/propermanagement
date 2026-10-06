@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}QuickBooks accounts for each rental{% endblock %}
 {% block content %}
-<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Admin Tools</a>
+<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Admin Tools</a>
 <h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> QuickBooks accounts for each rental</h2>
 <p class="text-muted small mb-3">
     Every short-term rental runs through two QuickBooks accounts. The <strong>income-statement</strong> account is its reimbursable-expense account (expenses we pay are coded to it; the monthly reimbursement comes back into it). The <strong>balance-sheet</strong> account is the owner's trust account (deposits in; direct expenses, reimbursements to us, commission and owner payments out). Choose both for each rental; an account can belong to one rental only.

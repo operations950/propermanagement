@@ -38,7 +38,7 @@
         <thead><tr><th></th><th>Reimbursement</th><th>Commission</th><th>Owner payment</th></tr></thead>
         <tbody>
             {% if totals.prior_status == 'ok' %}
-            <tr><td>Owed from {{ totals.prior_month|date:"F" }}</td><td>{{ totals.prior_reimbursable|money }}</td><td>{{ totals.prior_commission|money }}</td><td>{% if totals.prior_owner is not None %}{{ totals.prior_owner|money }}{% else %}–{% endif %}</td></tr>
+            <tr><td>{% if totals.prior_opening %}Opening balance{% else %}Owed from {{ totals.prior_month|date:"F" }}{% endif %}</td><td>{{ totals.prior_reimbursable|money }}</td><td>{{ totals.prior_commission|money }}</td><td>{% if totals.prior_owner is not None %}{{ totals.prior_owner|money }}{% else %}–{% endif %}</td></tr>
             {% endif %}
             <tr><td>Paid in {{ month|date:"F" }}</td><td>{{ totals.reimbursement_trust|money }}</td><td>{{ totals.commission|money }}</td><td>{{ totals.owner_payment|money }}</td></tr>
             {% if totals.prior_status == 'ok' %}
@@ -49,7 +49,7 @@
             {% endif %}
         </tbody>
     </table>
-    <div class="text-muted mt-1" style="font-size: 0.72rem;">{% if totals.prior_status == 'ok' %}What is paid out in {{ month|date:"F" }} settles {{ totals.prior_month|date:"F" }}; the difference should be zero.{% if not totals.prior_closed %} {{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.{% endif %}{% else %}{% include 'core/_close_prior_note.html' %}{% endif %}</div>
+    <div class="text-muted mt-1" style="font-size: 0.72rem;">{% if totals.prior_status == 'ok' %}What is paid out in {{ month|date:"F" }} settles {% if totals.prior_opening %}what was still owed at the end of {{ totals.prior_month|date:"F" }} (the opening balance, entered by hand){% else %}{{ totals.prior_month|date:"F" }}{% endif %}; the difference should be zero.{% if not totals.prior_closed %} {{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.{% endif %}{% else %}{% include 'core/_close_prior_note.html' %}{% endif %}</div>
 </div>
 {% endif %}
 {% else %}

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Recalibrate from calendars{% endblock %}
 {% block content %}
-<a href="{% url 'onsite_booking_feeds' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Booking calendars</a>
+<a href="{% url 'onsite_booking_feeds' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Booking calendars</a>
 <h2 class="page-title mb-1">Recalibrate from the calendars</h2>
 <p class="text-muted small mb-3">
     The synced calendars are the single source of truth for who is checking in and out, so the cleaning schedule should be exactly what they show. Payment reports are the source of truth for money. This page finds upcoming reservations that only a payment report brought in — on a listing whose calendar is connected and reading fine — and tidies them <strong>quietly</strong>: their cleanings and calendar events are removed <strong>without any cancellation notices or messages</strong>. Nothing is done until you press the button.

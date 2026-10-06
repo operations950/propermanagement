@@ -1,0 +1,27 @@
+{% comment %}One set of books' month as a row of the rentals overview. r = a ledger.status_row; indent = a unit under its property. The name is the way in.{% endcomment %}
+<tr {% if indent %}class="cl-unit"{% endif %}>
+    <td style="{% if indent %}padding-left: 1.6rem;{% endif %}">
+        {% if r.unit %}<a href="{% url 'close_unit' month|date:'Y-m' r.property.pk r.unit.pk %}" class="fw-semibold text-decoration-none">{{ r.label }}</a>
+        {% else %}<a href="{% url 'close_property' month|date:'Y-m' r.property.pk %}" class="fw-semibold text-decoration-none">{{ r.property.name }}</a>{% endif %}
+    </td>
+    <td>
+        {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>
+        {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready</span>
+        {% elif r.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">No accounts</span>
+        {% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
+    </td>
+    {% if r.state == 'needs_accounts' %}
+    <td colspan="8" class="small"><a href="{% url 'property_detail' r.property.pk %}#quickbooks" class="text-muted">Tie it to its QuickBooks accounts first</a></td>
+    {% else %}
+    {% include 'core/_close_ov_cells.html' with t=r.totals %}
+    {% endif %}
+    <td class="small">
+        {% if r.state == 'needs_accounts' %}
+        {% elif r.state == 'closed' %}<span class="text-muted">Closed {{ r.close.closed_at|date:"M j" }}{% if r.close.closed_by %} · {{ r.close.closed_by.get_full_name|default:r.close.closed_by.username }}{% endif %}</span>
+        {% elif r.recon_ok is False %}<span style="color: var(--status-critical);">income doesn't reconcile yet</span>
+        {% elif r.recon_ok %}<span style="color: var(--status-good);">income reconciles</span>{% endif %}
+        {% if r.unreviewed and r.state != 'closed' and r.state != 'needs_accounts' %}<span style="color: #9a6a00;"> · {{ r.unreviewed }} to review</span>{% endif %}
+        {% if r.changed %}<span style="color: var(--status-warning);"> · {{ r.changed }} changed in QuickBooks</span>{% endif %}
+        {% if r.drift %}<span style="color: var(--status-critical);"> · {{ r.drift }} QuickBooks change{{ r.drift|pluralize }} to this closed month were not applied</span>{% endif %}
+    </td>
+</tr>

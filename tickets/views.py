@@ -1,6 +1,5 @@
 import logging
 import zlib
-from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta
 from itertools import groupby
 
@@ -1334,25 +1333,6 @@ def ticket_contractor_thread_refresh(request, pk):
     return render(request, 'tickets/_contractor_thread_entries.html', thread)
 
 
-def _safe_back_url(request, exclude_path=None, fallback_view='ticket_list'):
-    """Wherever the browser actually navigated from (dashboard, a filtered
-    ticket list, a property page, the pending screen, ...), so the ticket
-    detail's back button returns to the real point of entry instead of a
-    fixed destination that loses whatever filter/scroll position the user
-    had. Falls back to fallback_view if there's no referrer, it points
-    off-site (open-redirect guard, same check Django's login view uses),
-    or it's the ticket detail page's own URL — every in-page action here
-    (status change, reassign, ...) POSTs to its own endpoint and redirects
-    right back to this page, so a same-day-old referrer would otherwise
-    make "back" a no-op loop."""
-    referer = request.META.get('HTTP_REFERER', '')
-    if not referer or not url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}):
-        return reverse(fallback_view)
-    if exclude_path and urlsplit(referer).path == exclude_path:
-        return reverse(fallback_view)
-    return referer
-
-
 @login_required
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
@@ -1409,7 +1389,7 @@ def ticket_detail(request, pk):
         if elapsed < timedelta(hours=24):
             vendor_link_cooldown_hours_left = max(1, round(24 - elapsed.total_seconds() / 3600))
 
-    back_url = _safe_back_url(request, exclude_path=request.path)
+    back_url = reverse('ticket_list')       # up one level: the ticket list (not wherever the browser came from)
     all_attachments = list(ticket.attachments.all().order_by('-created_at'))
 
     return render(request, 'tickets/ticket_detail.html', {

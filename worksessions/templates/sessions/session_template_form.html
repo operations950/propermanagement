@@ -3,9 +3,9 @@
 {% block title %}{% if template %}Edit recurring rule{% else %}New recurring rule{% endif %}{% endblock %}
 {% block content %}
 {% if template %}
-<a href="{% url 'session_template_detail' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> {{ template.name }}</a>
+<a href="{% url 'session_template_detail' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ template.name }}</a>
 {% else %}
-<a href="{% url 'session_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-left" class="icon"></i> Recurring Rules</a>
+<a href="{% url 'session_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Recurring Rules</a>
 {% endif %}
 <h2 class="page-title mb-3">{% if template %}Edit recurring rule{% else %}New recurring rule{% endif %}</h2>
 
