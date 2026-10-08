@@ -1,0 +1,35 @@
+{% extends 'core/owner/base.html' %}
+{% load core_extras %}
+{% block title %}Your financials{% endblock %}
+{% block content %}
+{% if not props %}
+<div class="op-card p-4 text-center"><h1 class="fs-4">Nothing here yet</h1>
+    <p class="muted mb-0">No financials have been released to this login yet. You will get an email when they are ready.</p></div>
+{% else %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h1 class="fs-3 mb-0">{{ prop.name }}</h1>
+        <div class="muted small">{% if prop.address %}{{ prop.address }} · {% endif %}Financials, released month by month</div>
+    </div>
+    <form method="get" class="d-flex gap-2 no-print">
+        {% if props|length > 1 %}<select name="property" class="form-select form-select-sm" onchange="this.form.submit()">{% for p in props %}<option value="{{ p.pk }}" {% if p.pk == prop.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>{% endif %}
+        {% if years|length > 1 %}<select name="year" class="form-select form-select-sm" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>{% endif %}
+    </form>
+</div>
+{% if not table %}
+<div class="op-card p-4 text-center"><p class="muted mb-0">No months have been released for {{ prop.name }} yet. You will get an email when they are.</p></div>
+{% else %}
+<div class="op-card"><div class="table-responsive">
+<table class="table table-sm mb-0" style="font-size: 0.9rem;">
+    <thead><tr><th></th>{% for r in table.releases %}<th class="amt"><a href="{% url 'owner_month' prop.pk r.month|date:'Y-m' %}">{{ r.month|date:"M" }}</a>{% if r.revised_at %}<span title="Revised {{ r.revised_at|date:'M j' }}" style="color: #9a6a00;"> ●</span>{% endif %}</th>{% endfor %}<th class="amt">Total</th></tr></thead>
+    <tbody>
+    {% for row in table.rows %}
+    <tr><td>{{ row.label }}</td>{% for v in row.values %}<td class="amt">{{ v|money }}</td>{% endfor %}<td class="amt fw-semibold">{% if row.total is not None %}{{ row.total|money }}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+<p class="muted mt-2" style="font-size: 0.75rem;">Click a month to see its full statement, with the transactions behind every line.{% if table.releases|length %} A <span style="color: #9a6a00;">●</span> marks a month that was revised after it was first released.{% endif %}</p>
+{% endif %}
+{% endif %}
+{% endblock %}

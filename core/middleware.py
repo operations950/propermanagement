@@ -101,3 +101,23 @@ class RequestTimingMiddleware:
             logging.getLogger('proptasks.perf').warning(
                 'SLOW %s %s %.2fs  %d queries (db %.2fs)  status=%s  user=%s', request.method, request.get_full_path()[:200], total, count[0], db[0], response.status_code, user)
         return response
+
+
+class OwnerWallMiddleware:
+    """An owner's login can open the owner portal and nothing else. Every staff page, the admin, the APIs: a signed-in owner is sent to the portal (or
+    refused, for anything that is not a plain page view). It is a default-deny rule applied here to every request, not a check each page remembers to
+    make - many staff pages only ask "is someone logged in?", so without this an owner could browse tickets, contacts and every property."""
+    ALLOWED_PREFIXES = ('/owner/',)
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from . import owner_portal
+        if owner_portal.is_owner_user(request.user) and not request.path.startswith(self.ALLOWED_PREFIXES):
+            from django.http import HttpResponseForbidden
+            from django.shortcuts import redirect
+            if request.method in ('GET', 'HEAD'):
+                return redirect('owner_home')
+            return HttpResponseForbidden('This area is not available to owner logins.')
+        return self.get_response(request)

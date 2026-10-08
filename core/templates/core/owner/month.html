@@ -1,0 +1,27 @@
+{% extends 'core/owner/base.html' %}
+{% load core_extras %}
+{% block title %}{{ prop.name }} — {{ month|date:"F Y" }}{% endblock %}
+{% block content %}
+<a href="{% url 'owner_home' %}?property={{ prop.pk }}&year={{ month.year }}" class="small text-decoration-none d-inline-block mb-2 no-print">↑ All months</a>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h1 class="fs-3 mb-0">{{ month|date:"F Y" }}</h1>
+        <div class="muted small">{{ prop.name }}{% if prop.address %} · {{ prop.address }}{% endif %}</div>
+    </div>
+    <div class="d-flex gap-2 no-print">
+        {% if earlier %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'owner_month' prop.pk earlier|date:'Y-m' %}">← {{ earlier|date:"M Y" }}</a>{% endif %}
+        {% if later %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'owner_month' prop.pk later|date:'Y-m' %}">{{ later|date:"M Y" }} →</a>{% endif %}
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">Print / save as PDF</button>
+    </div>
+</div>
+{% if release.revised_at %}
+<div class="alert alert-warning small py-2">
+    <strong>Revised {{ release.revised_at|date:"F j, Y" }}.</strong> Changes were made to this month after it was first released:
+    {% with last=release.revisions|last %}{% for c in last.changes %}{{ c.label }} was {{ c.was|money }}, now {{ c.now|money }}{% if not forloop.last %}; {% endif %}{% endfor %}{% if last.lines_changed %}{% if last.changes %}; {% endif %}some individual transactions changed{% endif %}.{% endwith %}
+</div>
+{% endif %}
+<div class="op-card p-3 p-md-4">
+    {% include 'core/_month_statement.html' %}
+</div>
+<p class="muted mt-2" style="font-size: 0.75rem;">The reimbursable expenses, Proper Realty's commission and your owner payment for a month are paid out of the trust account early the next month. Open any line with an arrow to see the transactions behind it.</p>
+{% endblock %}

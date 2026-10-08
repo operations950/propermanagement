@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}{{ property.name }} — {{ month|date:"F Y" }}{% endblock %}
+{% block content %}
+<style>.ms-wrap { max-width: 860px; } :root { --hair: #dde2e8; --muted: #6b7280; }</style>
+<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 no-print" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ property.name }} — statement</a>
+<div class="ms-wrap">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· {{ month|date:"F Y" }}</span></h2>
+        <div class="small text-muted">This is the statement an owner sees. {% if released %}It has been released to owners.{% else %}It has not been released to owners.{% endif %}</div>
+    </div>
+    <div class="d-flex gap-2 no-print">
+        <div class="btn-group btn-group-sm">
+            <a href="{% url 'close_month_statement' property.pk previous|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+            <a href="{% url 'close_month_statement' property.pk next|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print / save as PDF</button>
+    </div>
+</div>
+{% if live %}<div class="alert alert-warning small py-2">{{ month|date:"F Y" }} is not closed: these are the figures as coded now and can still change.</div>{% endif %}
+<div class="card" style="border-radius: 12px;"><div class="card-body">{% include 'core/_month_statement.html' %}</div></div>
+</div>
+{% endblock %}

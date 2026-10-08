@@ -48,6 +48,8 @@ class EmailOrUsernameModelBackend(ModelBackend):
             user = User.objects.get(Q(email__iexact=identifier) | Q(username__iexact=identifier))
         except (User.DoesNotExist, User.MultipleObjectsReturned):
             return None
+        if user.username.startswith('ownerportal-'):
+            return None             # an owner portal login belongs to /owner/ only
         if user.check_password(password) and self.user_can_authenticate(user):
             return user
         return None

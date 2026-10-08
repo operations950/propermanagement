@@ -37,7 +37,7 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· {{ year }} statement</span></h2>
-        <div class="small text-muted">Each month a column: what came in, what came out, what the owner and Proper Realty are owed, and what was paid out. A closed month is as closed; an open month is as coded now. Open income, reimbursable expenses or paid from trust to see the transactions.</div>
+        <div class="small text-muted">Each month a column: what came in, what came out, what the owner and Proper Realty are owed, and what was paid out. A closed month is as closed; an open month is as coded now. Click a month's heading to open that month, with the transactions behind every line.</div>
     </div>
     <div class="d-flex gap-2 flex-wrap no-print">
         <div class="btn-group btn-group-sm">
@@ -52,22 +52,19 @@
 <div class="st-wrap"><table class="table table-sm table-borderless mb-2 st-table">
     <thead><tr>
         <th></th>
-        {% for c in st.columns %}<th>{{ c.month|date:"M Y" }}{% if c.state == 'closed' %}<span class="st-closed">closed</span>{% elif c.state == 'open' %}<span class="st-open">open</span>{% elif c.state == 'before' %}<span class="st-closed">before the books</span>{% elif c.state == 'future' %}<span class="st-closed">not yet</span>{% else %}<span class="st-closed">no transactions</span>{% endif %}</th>{% endfor %}
+        {% for c in st.columns %}<th>{% if c.state == 'closed' or c.state == 'open' %}<a href="{% url 'close_month_statement' property.pk c.month|date:'Y-m' %}" class="text-decoration-none" title="Open {{ c.month|date:'F Y' }}: every line with the transactions behind it">{{ c.month|date:"M Y" }}</a>{% else %}{{ c.month|date:"M Y" }}{% endif %}{% if c.state == 'closed' %}<span class="st-closed">closed</span>{% elif c.state == 'open' %}<span class="st-open">open</span>{% elif c.state == 'before' %}<span class="st-closed">before the books</span>{% elif c.state == 'future' %}<span class="st-closed">not yet</span>{% else %}<span class="st-closed">no transactions</span>{% endif %}</th>{% endfor %}
         <th class="tot">Total</th>
     </tr></thead>
     <tbody>
         {% if st.owner_collects %}
-        <tr><td><button type="button" class="st-tog" data-st-toggle="reimbursable" aria-expanded="false" aria-label="Show the expenses"><i data-lucide="chevron-right"></i></button>Expenses paid by Proper Realty</td>{% for c in st.columns %}<td>{{ c.t.expenses_reimbursable|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
-        {% include 'core/_statement_detail.html' with group='reimbursable' %}
+        <tr><td>Expenses paid by Proper Realty</td>{% for c in st.columns %}<td>{{ c.t.expenses_reimbursable|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
         {% if st.total.expenses_direct %}
-        <tr><td><button type="button" class="st-tog" data-st-toggle="direct" aria-expanded="false" aria-label="Show the expenses paid from trust"><i data-lucide="chevron-right"></i></button>Expenses paid from trust</td>{% for c in st.columns %}<td>{{ c.t.expenses_direct|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>
-        {% include 'core/_statement_detail.html' with group='direct' %}
+        <tr><td>Expenses paid from trust</td>{% for c in st.columns %}<td>{{ c.t.expenses_direct|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>
         {% endif %}
         <tr><td>Commission <span class="text-muted">(a percent of the month's platform payouts)</span></td>{% for c in st.columns %}<td><span title="{{ c.t.commission_rate|floatformat:'-2' }}% of {{ c.t.commission_base|money }}">{{ c.t.commission_due|money }}</span></td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
         <tr class="sum"><td>= Owed to Proper Realty</td>{% for c in st.columns %}<td>{{ c.t.owner_owes_us|money }}</td>{% endfor %}<td class="tot">{{ st.total.owner_owes_us|money }}</td></tr>
         {% else %}
-        <tr><td><button type="button" class="st-tog" data-st-toggle="deposits" aria-expanded="false" aria-label="Show the deposits"><i data-lucide="chevron-right"></i></button>Income deposits</td>{% for c in st.columns %}<td>{{ c.t.deposits|money }}</td>{% endfor %}<td class="tot">{{ st.total.deposits|money }}</td></tr>
-        {% include 'core/_statement_detail.html' with group='deposits' %}
+        <tr><td>Income deposits</td>{% for c in st.columns %}<td>{{ c.t.deposits|money }}</td>{% endfor %}<td class="tot">{{ st.total.deposits|money }}</td></tr>
         {% if property.commission_basis == 'net' %}
         <tr><td>− Owner Baseline Expenses <span class="text-muted">(insurance paid directly by the owner, a real cost)</span></td>{% for c in st.columns %}<td>{{ c.t.owner_baseline_expense|money }}</td>{% endfor %}<td class="tot">{{ st.total.owner_baseline_expense|money }}</td></tr>
         <tr><td>= Net income</td>{% for c in st.columns %}<td>{{ c.t.net_income|money }}</td>{% endfor %}<td class="tot">{{ st.total.net_income|money }}</td></tr>
@@ -75,10 +72,8 @@
         {% else %}
         <tr><td>− Commission <span class="text-muted">(a percent of income deposits)</span></td>{% for c in st.columns %}<td><span title="{{ c.t.commission_rate|floatformat:'-2' }}% of income deposits">{{ c.t.commission_due|money }}</span></td>{% endfor %}<td class="tot">{{ st.total.commission_due|money }}</td></tr>
         {% endif %}
-        <tr><td><button type="button" class="st-tog" data-st-toggle="reimbursable" aria-expanded="false" aria-label="Show the reimbursable expenses"><i data-lucide="chevron-right"></i></button>− Reimbursable expenses</td>{% for c in st.columns %}<td>{{ c.t.expenses_reimbursable|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
-        {% include 'core/_statement_detail.html' with group='reimbursable' %}
-        <tr><td><button type="button" class="st-tog" data-st-toggle="direct" aria-expanded="false" aria-label="Show what was paid from trust"><i data-lucide="chevron-right"></i></button>− Paid from trust</td>{% for c in st.columns %}<td>{{ c.t.expenses_direct|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>
-        {% include 'core/_statement_detail.html' with group='direct' %}
+        <tr><td>− Reimbursable expenses</td>{% for c in st.columns %}<td>{{ c.t.expenses_reimbursable|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_reimbursable|money }}</td></tr>
+        <tr><td>− Paid from trust</td>{% for c in st.columns %}<td>{{ c.t.expenses_direct|money }}</td>{% endfor %}<td class="tot">{{ st.total.expenses_direct|money }}</td></tr>
         <tr class="sum"><td>= Owner payment</td>{% for c in st.columns %}<td>{{ c.t.owner_due|money }}</td>{% endfor %}<td class="tot">{{ st.total.owner_due|money }}</td></tr>
 
         <tr class="section"><td colspan="{{ st.columns|length|add:2 }}">Accounts payable at month end — paid out early next month</td></tr>
@@ -97,13 +92,4 @@
 </table></div>
 {% if st.owner_collects %}<p class="text-muted" style="font-size: 0.72rem;">The owner collects this rental's booking income directly, so there is no income here and no owner payment: this shows what Proper Realty is owed for the month, our expenses and our commission, which the owner pays at month end. Commission is worked out at each month's own rate.</p>
 {% else %}<p class="text-muted" style="font-size: 0.72rem;">The reimbursable expenses, our commission and the owner payment for a month are paid out of the trust account early the next month, so the payables above go to zero the month after: what leaves the trust account in a month settles the month before, and "cleared" says it did, to the cent. Commission is worked out at each month's own rate.</p>{% endif %}
-<script>
-document.querySelectorAll('[data-st-toggle]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-        var open = btn.getAttribute('aria-expanded') !== 'true';
-        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        document.querySelectorAll('tr[data-st-detail="' + btn.dataset.stToggle + '"]').forEach(function (tr) { tr.hidden = !open; });
-    });
-});
-</script>
 {% endblock %}

@@ -1,7 +1,7 @@
 from django.urls import path, reverse_lazy
 from django.views.generic import RedirectView
 
-from . import bot_api, close_views, faq_views, views
+from . import bot_api, close_views, faq_views, owner_views, views
 
 urlpatterns = [
     path('privacy/', views.privacy_policy, name='privacy_policy'),
@@ -22,12 +22,21 @@ urlpatterns = [
     path('admin-tools/quickbooks-accounts/', views.quickbooks_accounts, name='quickbooks_accounts'),
     path('admin-tools/import-property-details/', views.property_data_import, name='property_data_import'),
     path('faq-review/', faq_views.faq_review_queue, name='faq_review_queue'),
+    path('owner/', owner_views.owner_home, name='owner_home'),
+    path('owner/login/', owner_views.owner_login, name='owner_login'),
+    path('owner/signup/', owner_views.owner_signup, name='owner_signup'),
+    path('owner/verify/', owner_views.owner_verify, name='owner_verify'),
+    path('owner/forgot/', owner_views.owner_forgot, name='owner_forgot'),
+    path('owner/logout/', owner_views.owner_logout, name='owner_logout'),
+    path('owner/<int:pk>/<str:month>/', owner_views.owner_month, name='owner_month'),
+    path('admin-tools/owner-portal/', close_views.owner_portal_admin, name='owner_portal_admin'),
     path('close/', close_views.close_home, name='close_home'),
     path('close/rentals/', close_views.close_overview, name='close_overview'),
     path('close/bank-tie-out/', close_views.close_bank_tieout, name='close_bank_tieout'),
     path('close/bookkeeping/', close_views.payouts, name='close_payouts'),
     path('close/payouts/', RedirectView.as_view(url=reverse_lazy('close_payouts'), permanent=True)),  # old URL — keep working for old bookmarks/links
     path('close/statement/<int:pk>/', close_views.close_statement, name='close_statement'),
+    path('close/statement/<int:pk>/<str:month>/', close_views.close_month_statement, name='close_month_statement'),
     path('close/<str:month>/<int:pk>/', close_views.close_property, name='close_property'),
     path('close/<str:month>/<int:pk>/unit/<int:unit_pk>/', close_views.close_property, name='close_unit'),
     # JSON API for the message-answering assistant (Bearer key; see BOT_API.md)

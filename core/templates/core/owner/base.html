@@ -1,0 +1,45 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Owner portal{% endblock %} — Proper Realty</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
+    <link href="{% static 'vendor/bootstrap5.3.3/css/bootstrap.min.css' %}" rel="stylesheet">
+    <style>
+        :root { --brand: #6e95b2; --slate: #64768a; --ink: #2b2b2e; --muted: #6b7280; --hair: #dde2e8; --good: #0ca30c; --warn: #9a6a00; }
+        body { background: #efedf3; color: var(--ink); font-family: 'Inter', system-ui, sans-serif; }
+        h1, h2, .serif { font-family: 'IBM Plex Serif', Georgia, serif; font-weight: 600; }
+        .op-top { background: #fff; border-bottom: 1px solid var(--hair); }
+        .op-top img { height: 30px; max-width: 60vw; }
+        .op-card { background: #fff; border: 1px solid var(--hair); border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+        .op-narrow { max-width: 460px; margin: 0 auto; }
+        .btn-brand { background: var(--slate); border-color: var(--slate); color: #fff; }
+        .btn-brand:hover { background: #4f5e70; border-color: #4f5e70; color: #fff; }
+        a { color: #3d6178; }
+        .amt { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .muted { color: var(--muted); }
+        @media print { .op-top, .no-print { display: none !important; } body { background: #fff; } .op-card { border: 0; box-shadow: none; } }
+    </style>
+</head>
+<body>
+<header class="op-top no-print">
+    <div class="container d-flex align-items-center justify-content-between py-2 gap-2 flex-wrap">
+        <a href="{% url 'owner_home' %}" class="d-flex align-items-center gap-2 text-decoration-none"><img src="{% static 'img/proper-realty-logo.png' %}" alt="Proper Realty"><span class="muted small d-none d-sm-inline">Owner portal</span></a>
+        {% if account %}
+        <form method="post" action="{% url 'owner_logout' %}" class="d-flex align-items-center gap-2">{% csrf_token %}
+            <span class="small muted">{{ account.email }}</span><button class="btn btn-outline-secondary btn-sm">Sign out</button>
+        </form>
+        {% endif %}
+    </div>
+</header>
+<main class="container py-4">
+    {% for message in messages %}
+    <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} small py-2" role="alert">{{ message }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>

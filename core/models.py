@@ -150,6 +150,11 @@ class Property(models.Model):
                    'keeps the figure it was closed with.',
     )
 
+    owner_portal_open = models.BooleanField(
+        default=False,
+        help_text="The owner portal is open for this rental: its owner contacts (with an email address) can sign up and see the months you release to owners, "
+                  "and are emailed when you release one. Off for every rental until you turn it on.",
+    )
     income_collected_by_owner = models.BooleanField(
         default=False,
         help_text="The owner collects this rental's booking income themselves (the platform pays them, not our trust account) "
@@ -1269,6 +1274,62 @@ class OpeningBalance(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['property', 'unit', 'month'], name='uniq_opening_balance')]
+
+
+class OwnerAccount(models.Model):
+    """An owner's login to the owner portal. A separate kind of login from staff: its User has a random username (never the owner's email, which would
+    clash with a staff login that uses the same address) and the portal walls it off from every staff page (core.middleware.OwnerWallMiddleware). What the
+    owner can see is not stored here: it follows their owner Contact (same email, linked to a rental) every time, so unlinking a contact or closing a
+    rental's portal ends access at once."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='owner_account')
+    email = models.EmailField(unique=True, help_text='Lower case. The address they signed up with and the contact they are matched to.')
+    is_active = models.BooleanField(default=True, help_text='Staff can switch an owner off here without deleting anything.')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True, help_text='Too many wrong passwords: no login until then.')
+
+    class Meta:
+        ordering = ['email']
+
+    def __str__(self):
+        return self.email
+
+
+class OwnerCode(models.Model):
+    """A sign-up (or forgotten-password) waiting for its emailed 6-digit code. Holds the password the owner chose, already scrambled, and the code, also
+    scrambled; nothing becomes a login until the right code is typed. Expires, and allows only a few tries."""
+    class Purpose(models.TextChoices):
+        SIGNUP = 'signup', 'Sign-up'
+        RESET = 'reset', 'Forgotten password'
+    email = models.EmailField()
+    purpose = models.CharField(max_length=10, choices=Purpose.choices)
+    code_hash = models.CharField(max_length=64)
+    password_hash = models.CharField(max_length=256)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['email', 'purpose'])]
+
+
+class MonthRelease(models.Model):
+    """One rental's month, released to its owners. `snapshot` is exactly what they see (the frozen figures and the transactions behind them), kept here
+    so a month you reopen to correct still shows the last released version until you close it again; if closing it again changes any figure the snapshot
+    is replaced, the change is written to `revisions` and the owners are emailed."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='month_releases')
+    month = models.DateField(help_text='First day of the month.')
+    released_at = models.DateTimeField()
+    released_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    snapshot = models.JSONField()
+    revised_at = models.DateTimeField(null=True, blank=True)
+    revisions = models.JSONField(default=list, help_text='Each time a released month changed: when, and what (figure, was, now).')
+
+    class Meta:
+        ordering = ['month']
+        constraints = [models.UniqueConstraint(fields=['property', 'month'], name='uniq_month_release')]
 
 
 class ReconMatch(models.Model):

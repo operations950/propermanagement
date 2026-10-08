@@ -1,0 +1,21 @@
+{% extends 'core/owner/base.html' %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="op-narrow">
+    <h1 class="fs-3 text-center mb-1">Owner portal</h1>
+    <p class="text-center muted small mb-3">See your property's financials.</p>
+    <div class="op-card p-4">
+        <form method="post">{% csrf_token %}
+            <label class="form-label small mb-1" for="id_email">Email</label>
+            <input class="form-control mb-3" type="email" id="id_email" name="email" value="{{ email }}" autocomplete="username" required autofocus>
+            <label class="form-label small mb-1" for="id_password">Password</label>
+            <input class="form-control mb-3" type="password" id="id_password" name="password" autocomplete="current-password" required>
+            <button class="btn btn-brand w-100">Sign in</button>
+        </form>
+        <div class="d-flex justify-content-between small mt-3">
+            <a href="{% url 'owner_signup' %}">Create your login</a>
+            <a href="{% url 'owner_forgot' %}">Forgot your password?</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

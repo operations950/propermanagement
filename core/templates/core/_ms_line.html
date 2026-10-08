@@ -1,0 +1,5 @@
+{% load core_extras %}{% comment %}One line of a month statement. label, amount, and (when there is detail behind it) rows: the transactions of THIS month only, shown when the line is expanded across the full width. sum=True for a total line.{% endcomment %}
+{% if rows %}<tr class="{% if sum %}ms-sum{% endif %}"><td colspan="2"><details><summary><span>{{ label }}<span class="muted"> · {{ rows|length }} item{{ rows|length|pluralize }}</span></span><span class="amt">{{ amount|money }}</span></summary>
+<table class="ms-sub">{% for x in rows %}<tr><td class="d">{{ x.date|date:"M j" }}</td><td>{{ x.text }}{% if x.unit %} <span class="muted">· {{ x.unit }}</span>{% endif %}</td><td class="amt">{{ x.amount|money }}</td></tr>{% endfor %}</table></details></td></tr>
+{% else %}<tr class="{% if sum %}ms-sum{% endif %}"><td>{{ label }}{% if note %} <span class="muted">{{ note }}</span>{% endif %}</td><td class="amt">{{ amount|money }}</td></tr>
+{% endif %}

@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Owner portal{% endblock %}
+{% block content %}
+<a href="{% url 'close_overview' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Rentals</a>
+<div class="mb-3">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Owner portal</h2>
+    <div class="small text-muted">The address to give owners: <strong>{{ portal_url }}</strong>. They choose "Create your login", use the email address on their owner contact, and type the 6-digit code we email them. Turn a rental on with "Owner portal open" on its property page.</div>
+</div>
+
+<h3 class="fs-6 fw-semibold">Rentals the portal is open for</h3>
+{% for r in rentals %}
+<div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+    <div class="fw-semibold">{{ r.property.name }} <span class="text-muted fw-normal small">· {{ r.released }} month{{ r.released|pluralize }} released</span></div>
+    <table class="table table-sm mb-0 small">
+        <thead><tr><th>Owner contact</th><th>Email</th><th>Login</th></tr></thead>
+        <tbody>
+        {% for o in r.owners %}<tr><td>{{ o.contact.name }}</td><td>{% if o.contact.email %}{{ o.contact.email }}{% else %}<span style="color: #9a6a00;">no email — they cannot sign up or be told</span>{% endif %}</td>
+            <td>{% if o.login %}{% if o.login.is_active %}signed up{% else %}switched off{% endif %}{% if o.login.last_login_at %} · last in {{ o.login.last_login_at|date:"M j" }}{% endif %}{% else %}<span class="text-muted">not signed up yet</span>{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="3" style="color: #9a6a00;">No owner contact is linked to this rental. Add one on its property page (type Owner).</td></tr>{% endfor %}
+        </tbody>
+    </table>
+</div></div>
+{% empty %}<div class="alert alert-info small py-2">The portal isn't open for any rental yet. Open it on a property's page ("Owner portal open").</div>{% endfor %}
+
+<h3 class="fs-6 fw-semibold mt-3">Owner logins</h3>
+<div class="card" style="border-radius: 12px;"><div class="table-responsive">
+<table class="table table-sm mb-0 small">
+    <thead><tr><th>Email</th><th>Sees</th><th>Created</th><th>Last signed in</th><th></th><th></th></tr></thead>
+    <tbody>
+    {% for a in accounts %}
+    <tr><td>{{ a.email }}</td><td>{% for p in a.properties %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">nothing (not an owner of an open rental now)</span>{% endfor %}</td>
+        <td>{{ a.created_at|date:"M j, Y" }}</td><td>{% if a.last_login_at %}{{ a.last_login_at|date:"M j, Y g:i a" }}{% else %}—{% endif %}</td>
+        <td>{% if not a.is_active %}<span class="badge text-bg-secondary">switched off</span>{% elif a.locked_until and a.locked_until > now %}<span class="badge text-bg-warning">locked</span>{% else %}<span class="badge text-bg-light border">on</span>{% endif %}</td>
+        <td class="text-end text-nowrap">
+            <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="account" value="{{ a.pk }}"><input type="hidden" name="action" value="toggle"><button class="btn btn-outline-secondary btn-sm py-0">{% if a.is_active %}Switch off{% else %}Switch on{% endif %}</button></form>
+            {% if a.locked_until and a.locked_until > now %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="account" value="{{ a.pk }}"><input type="hidden" name="action" value="unlock"><button class="btn btn-outline-secondary btn-sm py-0">Unlock</button></form>{% endif %}
+        </td></tr>
+    {% empty %}<tr><td colspan="6" class="text-muted p-3">No owner has signed up yet.</td></tr>{% endfor %}
+    </tbody>
+</table>
+</div></div>
+{% endblock %}

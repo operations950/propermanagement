@@ -1,0 +1,21 @@
+{% extends 'core/owner/base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="op-narrow">
+    <h1 class="fs-3 text-center mb-1">{{ title }}</h1>
+    <p class="text-center muted small mb-3">Use the email address Proper Realty has for you. We will email you a 6-digit code to confirm it is you.</p>
+    <div class="op-card p-4">
+        <form method="post">{% csrf_token %}
+            <label class="form-label small mb-1" for="id_email">Email</label>
+            <input class="form-control mb-3" type="email" id="id_email" name="email" value="{{ email }}" autocomplete="username" required autofocus>
+            <label class="form-label small mb-1" for="id_password">{% if title == 'Create your login' %}Choose a password{% else %}New password{% endif %}</label>
+            <input class="form-control mb-1" type="password" id="id_password" name="password" autocomplete="new-password" required>
+            <div class="muted mb-3" style="font-size: 0.75rem;">At least 8 characters, not a common password, and not all numbers.</div>
+            <label class="form-label small mb-1" for="id_password2">Type it again</label>
+            <input class="form-control mb-3" type="password" id="id_password2" name="password2" autocomplete="new-password" required>
+            <button class="btn btn-brand w-100">Send me a code</button>
+        </form>
+        <div class="small mt-3"><a href="{% url 'owner_login' %}">Already have a login? Sign in</a></div>
+    </div>
+</div>
+{% endblock %}

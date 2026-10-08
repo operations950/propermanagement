@@ -35,6 +35,28 @@
 {% if lingering_payouts %}<div class="alert alert-warning small py-2 mb-2 d-flex align-items-center gap-2"><i data-lucide="clock-alert" class="icon"></i> <span><strong>{{ lingering_payouts }}</strong> platform payout{{ lingering_payouts|pluralize }} reported paid 45+ days ago {% if lingering_payouts == 1 %}has{% else %}have{% endif %} no matching bank deposit.</span> <a href="{% url 'close_payouts' %}" class="ms-auto">Review</a></div>{% endif %}
 {% if not month_over %}<div class="alert alert-info small py-2 mb-2">{{ month|date:"F Y" }} isn't over yet. You can code what has come in so far, but it can't be closed until the month ends.</div>{% endif %}
 
+{% with o=owner_release %}
+{% if o.open %}
+<div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3 small d-flex gap-2 flex-wrap align-items-center">
+    <i data-lucide="send" class="icon"></i>
+    <span><strong>Owner portal</strong> · open for {{ o.open }} rental{{ o.open|pluralize }} ({% for p in o.properties %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}).</span>
+    {% if o.all_released %}
+    <span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> {{ month|date:"F Y" }} is released to owners{% if o.released_at %} ({{ o.released_at|date:"M j" }}{% if o.released_by %} by {{ o.released_by.get_full_name|default:o.released_by.username }}{% endif %}){% endif %}.</span>
+    {% elif o.blockers %}
+    <span style="color: #9a6a00;">Can't release {{ month|date:"F Y" }} yet: {% for b in o.blockers %}{{ b }} {% endfor %}</span>
+    {% elif o.pending %}
+    <form method="post" class="ms-auto d-flex gap-2 align-items-center" onsubmit="return confirm('Release {% if o.pending_months|length > 1 %}{{ o.pending_months.0|date:"F" }} through {{ o.pending_months|last|date:"F Y" }}{% else %}{{ month|date:"F Y" }}{% endif %} to owners now?\n\nThis emails {{ o.recipients|length }} owner address{{ o.recipients|length|pluralize:"es" }} right away:\n{% for e in o.recipients %}{{ e }}\n{% endfor %}\nAfter this, any change to a released month emails the owners it affects.');">
+        {% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="release_owners">
+        <span class="text-muted">{{ o.pending_months|length }} month{{ o.pending_months|length|pluralize }} ready · {{ o.recipients|length }} owner email{{ o.recipients|length|pluralize }}</span>
+        <button class="btn btn-primary btn-sm py-0"><i data-lucide="send" class="icon"></i> Release {% if o.pending_months|length > 1 %}{{ o.pending_months.0|date:"F" }} – {{ o.pending_months|last|date:"F Y" }}{% else %}{{ month|date:"F Y" }}{% endif %} to owners</button>
+    </form>
+    {% endif %}
+    {% if o.no_email %}<span style="color: #9a6a00;">No email on file for: {{ o.no_email|join:", " }}.</span>{% endif %}
+    <a href="{% url 'owner_portal_admin' %}" class="small ms-auto">Owner logins</a>
+</div></div>
+{% endif %}
+{% endwith %}
+
 <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
     <span class="cl-stat"><strong>{{ counts.closed }}</strong> closed</span>
     <span class="cl-stat" {% if counts.ready %}style="background: color-mix(in srgb, var(--status-good) 16%, white);"{% endif %}><strong>{{ counts.ready }}</strong> ready to close</span>

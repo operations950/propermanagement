@@ -1,0 +1,19 @@
+{% extends 'core/owner/base.html' %}
+{% block title %}Enter your code{% endblock %}
+{% block content %}
+<div class="op-narrow">
+    <h1 class="fs-3 text-center mb-1">Enter your code</h1>
+    <p class="text-center muted small mb-3">If <strong>{{ email }}</strong> is the email address Proper Realty has for you, we have sent it a 6-digit code. It works for {{ minutes }} minutes.</p>
+    <div class="op-card p-4">
+        <form method="post">{% csrf_token %}
+            <label class="form-label small mb-1" for="id_code">6-digit code</label>
+            <input class="form-control form-control-lg text-center mb-3" id="id_code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required autofocus style="letter-spacing: 0.4em;">
+            <button class="btn btn-brand w-100">{% if reset %}Change my password{% else %}Create my login{% endif %}</button>
+        </form>
+        <div class="d-flex justify-content-between small mt-3">
+            <a href="{% if reset %}{% url 'owner_forgot' %}{% else %}{% url 'owner_signup' %}{% endif %}">Start again (get a new code)</a>
+            <a href="{% url 'owner_login' %}">Sign in</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

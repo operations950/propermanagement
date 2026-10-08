@@ -76,6 +76,9 @@
     </div>
 </div>
 
+{% if released_to_owners %}
+<div class="alert alert-info small py-2 mb-2 d-flex align-items-start gap-2"><i data-lucide="send" class="icon mt-1"></i><div><strong>Released to owners.</strong> They see the released version. {% if close %}If you reopen this month and a figure changes when you close it again, they are emailed what changed.{% else %}You have reopened it: they still see the released version until you close it again, and if any figure changed they will be emailed.{% endif %}</div></div>
+{% endif %}
 {% if close %}
 <div class="alert alert-secondary small py-2 mb-2 d-flex align-items-start gap-2"><i data-lucide="lock" class="icon mt-1"></i><div><strong>Closed {{ close.closed_at|date:"F j, Y" }}{% if close.closed_by %} by {{ close.closed_by.get_full_name|default:close.closed_by.username }}{% endif %}.</strong> These figures are frozen — nothing in QuickBooks changes them. Correct anything wrong in the current month.{% if close.note %} Note: {{ close.note }}{% endif %}</div></div>
 {% endif %}
@@ -119,7 +122,7 @@
             {% if close %}
             <div class="small fw-semibold mb-1">Closed</div>
             <div class="small text-muted">{{ close.totals.lines }} transaction{{ close.totals.lines|pluralize }} locked.{% if close.warnings_acknowledged %} Warnings acknowledged: {{ close.warnings_acknowledged|join:", " }}.{% endif %}</div>
-            <form method="post" class="mt-2" onsubmit="return confirm('Reopen {{ month|date:"F Y" }} for {{ property.name }}? Its transactions unlock and its accepted reconciling items are cleared; the old closed figures are kept in an archive.');">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="lock-open" class="icon"></i> Reopen this month</button></form>
+            <form method="post" class="mt-2" onsubmit="return confirm('Reopen {{ month|date:"F Y" }} for {{ property.name }}? Its transactions unlock and its accepted reconciling items are cleared; the old closed figures are kept in an archive.{% if released_to_owners %}\n\nThis month HAS BEEN RELEASED TO OWNERS. They keep seeing the released version while you work, but when you close it again, if any figure changed, they are emailed what changed.{% endif %}');">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="lock-open" class="icon"></i> Reopen this month</button></form>
             {% else %}
             <div class="small fw-semibold mb-1">Before you can close</div>
             <form method="post">

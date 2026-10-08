@@ -13,7 +13,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import bank_tieout, ledger, payout_tracking, recon
+from . import bank_tieout, ledger, owner_portal, payout_tracking, recon
 from .models import BankStatement, ClosedMonthChange, FinancialsSettings, LedgerLine, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
 from .views import _is_admin
 
@@ -90,6 +90,22 @@ def close_overview(request):
             rows = [r for g in ledger.overview(month) for r in g['rows']]
             closed, skipped = _close_ready_rows(rows, month, request.user)
             messages.success(request, _closed_message(closed, skipped, month))
+        elif action == 'release_owners':
+            try:
+                result = owner_portal.release_through(month, request.user)
+            except owner_portal.ReleaseBlocked as exc:
+                messages.error(request, 'Nothing was released: ' + ' '.join(exc.reasons))
+            else:
+                if not result['months']:
+                    messages.info(request, f'Everything through {month:%B %Y} had already been released to owners.')
+                else:
+                    text = (f'Released {result["months"]} month{"" if result["months"] == 1 else "s"} to owners of {result["properties"]} rental{"" if result["properties"] == 1 else "s"}; '
+                            f'{result["emailed"]} email{"" if result["emailed"] == 1 else "s"} sent.')
+                    messages.success(request, text)
+                    if result['failed']:
+                        messages.warning(request, 'These emails could not be sent (nothing else was affected): ' + ', '.join(result['failed']))
+                if result['no_email']:
+                    messages.warning(request, 'These owner contacts have no email address, so nobody told them: ' + ', '.join(result['no_email']))
         return redirect(f'{reverse("close_overview")}?month={month:%Y-%m}')
 
     groups = ledger.overview(month)
@@ -102,7 +118,7 @@ def close_overview(request):
         'counts': {s: sum(1 for r in rows if r['state'] == s) for s in ('closed', 'ready', 'open', 'needs_accounts')},
         'ready_clean': sum(1 for r in rows if r['state'] == 'ready' and not _has_warning(r)),
         'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
-        'lingering_payouts': payout_tracking.lingering_count(),
+        'lingering_payouts': payout_tracking.lingering_count(), 'owner_release': owner_portal.release_status(month),
     })
 
 
@@ -186,6 +202,22 @@ def close_statement(request, pk):
         'property': prop, 'st': data, 'year': year, 'earlier': year - 1, 'later': year + 1, 'month': month,
         'can_go_later': year < this_year, 'can_go_earlier': year > 2000,
         'back_url': _page_url(month, prop), 'back_label': f'{prop.name} — {month:%B %Y}',
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def close_month_statement(request, pk, month):
+    """One month of a rental as its owner sees it: every line with transactions behind it expands to that month's transactions."""
+    prop = get_object_or_404(Property, pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
+    first = _parse_month(month, None)
+    if first is None:
+        return redirect('close_statement', pk=pk)
+    data = owner_portal.statement_data(prop, first, require_closed=False)
+    return render(request, 'core/month_statement.html', {
+        'property': prop, 'month': first, 's': owner_portal.display(data), 'previous': ledger.previous_month(first), 'next': ledger.next_month(first),
+        'released': owner_portal.is_released(prop, first), 'back_url': reverse('close_statement', args=[prop.pk]) + f'?month={first:%Y-%m}',
+        'live': not data['closed'],
     })
 
 
@@ -313,7 +345,7 @@ def close_property(request, month, pk, unit_pk=None):
         'lines': lines, 'all_categories': list(CATEGORY_LABELS.items()), 'removed': removed, 'checks': items, 'can_close': ledger.can_close(items),
         'warn_keys': [i['key'] for i in items if i['level'] == 'warn'],
         'totals': ledger.closed_summary(close) if close else ledger.totals(book, month, lines),
-        'recon': rec,
+        'recon': rec, 'released_to_owners': owner_portal.is_released(prop, month),
         'opening': {'ob': ledger.opening_balance(book, month), 'show': month == ledger.month_of(ledger.books_start()) and not prop.income_collected_by_owner, 'editable': close is None},
         'payoutless': recon.payoutless_reservations(book, month) if (rec and close is None) else [],
         'drift': ClosedMonthChange.objects.filter(month=month, resolved=False, **book.scope()),
@@ -515,3 +547,32 @@ def close_bank_tieout(request):
         'account_choices': QuickBooksAccount.objects.filter(active=True, classification__in=('Asset', 'Liability')).order_by('fully_qualified_name'),
         'connected': token is not None, 'month_over': today >= ledger.next_month(month),
     })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def owner_portal_admin(request):
+    """Who is set up for the owner portal: the rentals it is open for and their owner contacts, and every owner login (switch one off, unlock one)."""
+    from .models import Contact, OwnerAccount
+    if request.method == 'POST':
+        account = OwnerAccount.objects.filter(pk=request.POST.get('account')).first()
+        action = request.POST.get('action')
+        if account is not None and action == 'toggle':
+            account.is_active = not account.is_active
+            account.save(update_fields=['is_active'])
+            messages.success(request, f'{account.email} is now {"switched on" if account.is_active else "switched off"}.')
+        elif account is not None and action == 'unlock':
+            account.failed_attempts, account.locked_until = 0, None
+            account.save(update_fields=['failed_attempts', 'locked_until'])
+            messages.success(request, f'{account.email} is unlocked.')
+        return redirect('owner_portal_admin')
+    accounts = list(OwnerAccount.objects.order_by('email'))
+    logins = {a.email: a for a in accounts}
+    rentals = []
+    for prop in owner_portal.open_properties():
+        owners = list(Contact.objects.filter(contact_type=Contact.ContactType.OWNER, properties=prop).order_by('name'))
+        rentals.append({'property': prop, 'released': prop.month_releases.count(), 'owners': [
+            {'contact': c, 'login': logins.get((c.email or '').strip().lower())} for c in owners]})
+    for a in accounts:
+        a.properties = owner_portal.visible_properties(a.email)
+    return render(request, 'core/owner_portal_admin.html', {'rentals': rentals, 'accounts': accounts, 'portal_url': owner_portal.portal_url(), 'now': timezone.now()})

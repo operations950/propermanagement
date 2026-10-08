@@ -1171,6 +1171,12 @@ def close_month(book, month, user, acknowledged=(), note=''):
         recon=recon.snapshot(recon.reconcile(book, month)), warnings_acknowledged=warns, note=note.strip()[:500],
     )
     LedgerLine.objects.filter(month=month, **book.scope()).update(locked_at=timezone.now())
+    try:
+        with transaction.atomic():          # its own savepoint: nothing in the owner portal can ever stop a month from closing
+            from . import owner_portal
+            owner_portal.after_close(book.property, month)
+    except Exception:
+        logger.exception('Owner portal: could not refresh a released month after closing it')
     return close
 
 

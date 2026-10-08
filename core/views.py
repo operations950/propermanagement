@@ -1019,6 +1019,12 @@ def _property_qb_action(request, prop, action):
             saved += not errors
         if saved:
             messages.success(request, f'Saved the accounts for {saved} unit{"" if saved == 1 else "s"}.')
+    elif action == 'qb_set_owner_portal':
+        opened = request.POST.get('owner_portal_open') == 'on'
+        prop.owner_portal_open = opened
+        prop.save(update_fields=['owner_portal_open'])
+        messages.success(request, f'The owner portal is now {"open" if opened else "closed"} for {prop.name}.' + (
+            ' Its owner contacts (with an email address) can sign up, and are emailed when you release a month to owners.' if opened else ' Nobody can see its financials in the portal.'))
     elif action == 'qb_set_commission':
         raw = (request.POST.get('commission_rate') or '').strip().rstrip('%')
         basis = request.POST.get('commission_basis') or Property.CommissionBasis.GROSS

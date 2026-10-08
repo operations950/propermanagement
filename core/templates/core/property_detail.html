@@ -657,6 +657,15 @@
             <p class="small text-muted mb-0 mt-1">A percent of each month's income deposits (or, on net income, deposits less that month's expenses and Owner Baseline Expenses) — the top line: we are paid whether or not the month is profitable. What is left after the commission, the reimbursable expenses and what is paid from trust is the owner payment. Applies to months still open; closed months keep the rate (and basis) they were closed with.</p>
         </form>
 
+        <form method="post" class="border rounded p-2 mb-3" id="owner-portal">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_owner_portal">
+            <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" name="owner_portal_open" id="owner-portal-open" {% if property.owner_portal_open %}checked{% endif %}>
+                <label class="form-check-label small" for="owner-portal-open"><strong>Owner portal open</strong> — this rental's owner contacts (the contacts of type Owner, with an email address) can sign up at the owner portal and see the months you release to owners; they are emailed when you release a month. Off for every rental until you turn it on.</label>
+            </div>
+            <button class="btn btn-outline-secondary btn-sm">Save</button>
+        </form>
+
         <form method="post" class="border rounded p-2 mb-3" onsubmit="return confirmLevelChange(this);" data-open-lines="{{ qb.open_lines.total }}" data-open-reviewed="{{ qb.open_lines.reviewed }}">
             {% csrf_token %}<input type="hidden" name="action" value="qb_set_level">
             <div class="d-flex gap-2 flex-wrap align-items-center">
