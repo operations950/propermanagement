@@ -26,16 +26,17 @@ NOLA_BODY = """<div class="lf-page">
 <p>{{ owner_name }}<br>{{ owner_address|linebreaksbr }}</p>
 <p>{{ letter_date_long }}</p>
 <p><strong>NOTICE OF LATE ASSESSMENT (Pursuant to §718.121(5), Florida Statutes)</strong></p>
-<p>Our records indicate that your assessment account with {{ association_name }} is past due. Pursuant to §718.121(5), Florida Statutes, this Notice of Late Assessment is provided to inform you of the amount currently due and to give you an opportunity to bring your account current.</p>
+<p>Our records indicate that your assessment account with {{ association_name }} is past due. Pursuant to §718.121(5), Florida Statutes, this Notice of Late Assessment is provided to inform you of the amount due {% if balance_is_earlier %}through {{ balance_as_of_long }}{% else %}as of the date of this letter{% endif %} and to give you an opportunity to bring your account current.</p>
 <p>You have {{ response_days }} days from the date of this letter to pay the amount due in full (no later than {{ deadline_short }}). If payment is not received by that date, the Association will proceed with further collection activity, which may include recording of a lien and foreclosure proceedings, as permitted by Florida law.</p>
 <table class="lf-amounts">
-<tr><td colspan="3" class="lf-center"><strong>Amounts due as of {{ letter_date_long }}</strong></td></tr>
+<tr><td colspan="3" class="lf-center"><strong>Amounts due as of {{ balance_as_of_long }}</strong></td></tr>
 <tr><td class="lf-r">Regular Assessments Due</td><td class="lf-r">{{ regular_assessments_fmt }}</td><td></td></tr>
 <tr><td class="lf-r">Late Fees Due</td><td class="lf-r">{{ late_fees_fmt }}</td><td>Accumulated late fees at {{ late_fee_rate_pct }}</td></tr>
 <tr><td class="lf-r">Interest Due</td><td class="lf-r">{{ interest_fmt }}</td><td>Accumulated interest at {{ interest_rate_pct }}</td></tr>
 <tr><td class="lf-r"><strong>Total Amount Due</strong></td><td class="lf-r"><strong>{{ total_fmt }}</strong></td><td></td></tr>
 </table>
-<p><em>Interest will continue to accrue on all unpaid assessments at the rate of {{ interest_rate_pct }} per annum, and additional late fees may be imposed as authorized by the condominium documents and Florida law.</em></p>
+{% if balance_is_earlier %}<p>The amounts above are the balance of your account as of {{ balance_as_of_long }}. Payments received after that date are not reflected in them. Assessments that have come due since {{ balance_as_of_long }}, and late fees and interest accruing after it, are not included in the amounts above but remain owed and will be added to your account as they come due.</p>
+{% endif %}<p><em>Interest will continue to accrue on all unpaid assessments at the rate of {{ interest_rate_pct }} per annum, and additional late fees may be imposed as authorized by the condominium documents and Florida law.</em></p>
 <p>If you believe this balance is incorrect or have already made payment, please contact us at {{ contact_phone }} or {{ contact_email }}.</p>
 <p>Sincerely,<br>The Board of Directors</p>
 </div>"""
@@ -45,6 +46,7 @@ NOLA_FIELDS = [
     F('owner_name', 'Owner(s)', prefill='owner_names', remember=True, required=True),
     F('owner_address', 'Mailing address (as furnished to the association)', 'textarea', prefill='owner_address', remember=True, required=True, help='One line per row, as it should print under the name.'),
     F('letter_date', 'Date of the letter', 'date', default='today', required=True),
+    F('balance_as_of', 'Balance as of', 'date', default='last_month_end', required=True, help='The date the amounts below are good through, usually the end of the last month you closed. It may be earlier than the date of the letter; the letter then says so, and that later payments are not reflected and later assessments will be added.'),
     F('response_days', 'Days to pay', 'integer', default='30', required=True, help='The letter gives this many days from its date. Confirm the period the statute and the governing documents require before sending.'),
     F('regular_assessments', 'Regular assessments due', 'money', required=True),
     F('late_fees', 'Late fees due', 'money', default='0', required=True),
@@ -57,6 +59,9 @@ NOLA_FIELDS = [
 
 
 def compute_nola(v):
+    if v['balance_as_of'] > v['letter_date']:
+        raise ValueError('The balance date cannot be after the date of the letter.')
+    v['balance_is_earlier'] = v['balance_as_of'] < v['letter_date']
     v['total'] = v['regular_assessments'] + v['late_fees'] + v['interest']
     v['total_fmt'] = money(v['total'])
     v['deadline'] = v['letter_date'] + timedelta(days=v['response_days'])
@@ -254,7 +259,7 @@ TEMPLATES = [
         'statute': '§718.121(5), Florida Statutes',
         'description': 'The letter that gives an owner an opportunity to bring a past-due assessment account current before the association takes further collection action.',
         'body': NOLA_BODY, 'fields': NOLA_FIELDS,
-        'reviewed_note': 'The response period is 30 days, matching the wait step in the Association Delinquency and Collection process. Confirm the late fee and interest rates match the governing documents.',
+        'reviewed_note': 'The response period is 30 days, matching the wait step in the Association Delinquency and Collection process. Confirm the late fee and interest rates match the governing documents. The letter may state the balance as of an earlier date (the last closed month) than the date of the letter, and then says that later payments are not reflected and later assessments will be added: have counsel confirm that wording, and that a letter stating an earlier balance date starts the process.',
     },
     {
         'slug': 'nola-affidavit', 'name': 'Affidavit of Mailing — Notice of Late Assessment', 'category': 'Collections', 'order': 11, 'companion_of': 'nola',

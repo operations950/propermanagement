@@ -1,5 +1,6 @@
 """Making a document: start from what the program knows, take what the person types, work out the derived figures, render
 the wording, and freeze the result (see models.GeneratedDocument)."""
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.template import Context, Engine
@@ -66,6 +67,8 @@ def initial_values(template, prop, unit, user, parent=None):
         value = f.get('default', '')
         if value == 'today':
             value = timezone.localdate().isoformat()
+        elif value == 'last_month_end':
+            value = (timezone.localdate().replace(day=1) - timedelta(days=1)).isoformat()
         if f.get('prefill') and tokens.get(f['prefill']):
             value = tokens[f['prefill']]
         if f.get('remember'):
