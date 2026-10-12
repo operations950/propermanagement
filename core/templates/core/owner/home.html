@@ -16,12 +16,18 @@
         {% if years|length > 1 %}<select name="year" class="form-select form-select-sm" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>{% endif %}
     </form>
 </div>
+{% if units %}
+<div class="d-flex flex-wrap gap-1 mb-3 no-print" role="group" aria-label="Whole property or one unit">
+    <a class="btn btn-sm {% if not unit %}btn-brand{% else %}btn-outline-secondary{% endif %}" href="?property={{ prop.pk }}&year={{ year }}">Whole property</a>
+    {% for u in units %}<a class="btn btn-sm {% if u == unit %}btn-brand{% else %}btn-outline-secondary{% endif %}" href="?property={{ prop.pk }}&year={{ year }}&unit={{ u|urlencode }}">{{ u }}</a>{% endfor %}
+</div>
+{% endif %}
 {% if not table %}
 <div class="op-card p-4 text-center"><p class="muted mb-0">No months have been released for {{ prop.name }} yet. You will get an email when they are.</p></div>
 {% else %}
 <div class="op-card"><div class="table-responsive">
 <table class="table table-sm mb-0" style="font-size: 0.9rem;">
-    <thead><tr><th></th>{% for r in table.releases %}<th class="amt"><a href="{% url 'owner_month' prop.pk r.month|date:'Y-m' %}">{{ r.month|date:"M" }}</a>{% if r.revised_at %}<span title="Revised {{ r.revised_at|date:'M j' }}" style="color: #9a6a00;"> ●</span>{% endif %}</th>{% endfor %}<th class="amt">Total</th></tr></thead>
+    <thead><tr><th></th>{% for r in table.releases %}<th class="amt"><a href="{% url 'owner_month' prop.pk r.month|date:'Y-m' %}{% if unit %}?unit={{ unit|urlencode }}{% endif %}">{{ r.month|date:"M" }}</a>{% if r.revised_at %}<span title="Revised {{ r.revised_at|date:'M j' }}" style="color: #9a6a00;"> ●</span>{% endif %}</th>{% endfor %}<th class="amt">Total</th></tr></thead>
     <tbody>
     {% for row in table.rows %}
     <tr><td>{{ row.label }}</td>{% for v in row.values %}<td class="amt">{{ v|money }}</td>{% endfor %}<td class="amt fw-semibold">{% if row.total is not None %}{{ row.total|money }}{% endif %}</td></tr>

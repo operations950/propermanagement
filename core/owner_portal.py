@@ -203,8 +203,16 @@ def statement_data(prop, month, require_closed=True):
     expenses and expenses paid from trust. A rental kept unit by unit is its units added up. With require_closed (the default, and always for a release)
     every set of books must be closed, so the figures are the frozen ones."""
     month = ledger.month_of(month)
+    books = ledger.books_for(prop, month)
+    snap = _statement(prop, month, books, require_closed)
+    if len(books) > 1:                          # kept unit by unit: the whole property above, and each unit's own statement beside it
+        snap['units'] = [dict(_statement(prop, month, [book], require_closed), unit=book.unit.label) for book in books]
+    return snap
+
+
+def _statement(prop, month, books, require_closed):
     parts, detail, closed = [], {'deposits': [], 'reimbursable': [], 'direct': []}, True
-    for book in ledger.books_for(prop, month):
+    for book in books:
         close = ledger.close_of(book, month)
         if close is not None:
             parts.append(ledger.closed_summary(close))
@@ -223,6 +231,28 @@ def statement_data(prop, month, require_closed=True):
         'detail': {g: sorted(({'date': r['date'].isoformat(), 'text': r['text'], 'amount': str(Decimal(r['amount']).quantize(CENT)), 'unit': r.get('unit', '')} for r in rows),
                              key=lambda r: (r['date'], r['text'])) for g, rows in detail.items()},
     }
+
+
+def unit_labels(releases):
+    """The units a rental's released months can be looked at by (empty for a rental that is not kept unit by unit)."""
+    labels = []
+    for r in releases:
+        for u in r.snapshot.get('units', []):
+            if u['unit'] not in labels:
+                labels.append(u['unit'])
+    return labels
+
+
+def view_of(snapshot, unit=''):
+    """The stored month as the whole property (the default) or as one unit's own statement; None when that unit's statement was not stored."""
+    if not unit:
+        return snapshot
+    found = next((u for u in snapshot.get('units', []) if u['unit'] == unit), None)
+    if found is None:
+        return None
+    one = {k: v for k, v in found.items() if k != 'unit'}
+    one['detail'] = {g: [dict(r, unit='') for r in rows] for g, rows in one['detail'].items()}
+    return one
 
 
 def display(snapshot):
@@ -250,7 +280,7 @@ def diff_snapshots(old, new):
             if abs(was - now) >= CENT:
                 changes.append({'label': label, 'was': str(was), 'now': str(now)})
     def lines(s):
-        return sorted((g, r['date'], r['amount']) for g, rows in s['detail'].items() for r in rows)
+        return sorted((g, r['date'], r['amount'], r.get('unit', '')) for g, rows in s['detail'].items() for r in rows)
     return changes, lines(old) != lines(new)
 
 
@@ -380,11 +410,15 @@ def notify_revision(prop, month, changes, lines_changed):
 
 # --------------------------------------------------------------------------------------------------------------------- the year view
 
-def year_table(releases):
-    """The released months of one year as columns: {'months': [...], 'rows': [{label, values, total, kind}], 'collects': bool}."""
+def year_table(releases, unit=''):
+    """The released months of one year as columns: {'months': [...], 'rows': [{label, values, total, kind}], 'collects': bool}. unit picks one unit's
+    figures for a rental kept unit by unit (months stored without that unit's statement are left out)."""
     releases = sorted(releases, key=lambda r: r.month)
-    snaps = [(r, figures_of(r.snapshot)) for r in releases]
-    collects = bool(releases) and bool(releases[-1].snapshot.get('owner_collects'))
+    views = [(r, view_of(r.snapshot, unit)) for r in releases]
+    views = [(r, v) for r, v in views if v is not None]
+    releases = [r for r, _ in views]
+    snaps = [(r, figures_of(v)) for r, v in views]
+    collects = bool(views) and bool(views[-1][1].get('owner_collects'))
     if collects:
         spec = (('Expenses paid by Proper Realty', 'expenses_reimbursable', True), ('Commission', 'commission_due', True), ('Owed to Proper Realty', 'owner_owes_us', True))
     else:

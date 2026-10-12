@@ -160,8 +160,13 @@ def owner_home(request):
         year = None
     if year not in years:
         year = years[-1] if years else None
-    table = owner_portal.year_table([r for r in all_releases if r.month.year == year]) if year else None
-    return render(request, 'core/owner/home.html', {'props': props, 'prop': prop, 'years': years, 'year': year, 'table': table, 'account': request.owner_account})
+    units = owner_portal.unit_labels(all_releases)
+    unit = request.GET.get('unit', '')
+    if unit not in units:
+        unit = ''
+    table = owner_portal.year_table([r for r in all_releases if r.month.year == year], unit) if year else None
+    return render(request, 'core/owner/home.html', {'props': props, 'prop': prop, 'years': years, 'year': year, 'table': table, 'account': request.owner_account,
+                                                    'units': units, 'unit': unit})
 
 
 @owner_required
@@ -176,7 +181,12 @@ def owner_month(request, pk, month):
         raise Http404
     others = list(MonthRelease.objects.filter(property=prop).order_by('month').values_list('month', flat=True))
     i = others.index(first)
+    units = [u['unit'] for u in release.snapshot.get('units', [])]
+    unit = request.GET.get('unit', '')
+    if unit not in units:
+        unit = ''
     return render(request, 'core/owner/month.html', {
-        'prop': prop, 'release': release, 's': owner_portal.display(release.snapshot), 'month': first, 'account': request.owner_account,
+        'prop': prop, 'release': release, 's': owner_portal.display(owner_portal.view_of(release.snapshot, unit)), 'month': first, 'account': request.owner_account,
+        'units': units, 'unit': unit,
         'earlier': others[i - 1] if i else None, 'later': others[i + 1] if i + 1 < len(others) else None,
     })
