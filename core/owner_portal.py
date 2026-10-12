@@ -388,9 +388,8 @@ def year_table(releases):
     if collects:
         spec = (('Expenses paid by Proper Realty', 'expenses_reimbursable', True), ('Commission', 'commission_due', True), ('Owed to Proper Realty', 'owner_owes_us', True))
     else:
-        spec = (('Income deposits', 'deposits', True), ('Commission', 'commission_due', True), ('Reimbursable expenses', 'expenses_reimbursable', True),
-                ('Expenses paid from trust', 'expenses_direct', True), ('Owner payment for the month', 'owner_due', True), ('Paid to you this month', 'owner_payment', True),
-                ('Owed to you at month end', 'owner_payable', False), ('Owed to Proper Realty at month end', 'us_payable', False))
+        spec = (('Income deposits', 'deposits', True), ('Reimbursable expenses', 'expenses_reimbursable', True), ('Expenses paid from trust', 'expenses_direct', True),
+                ('Commission', 'commission_due', True), ('Owner payment', 'owner_due', True))
     rows = []
     for label, key, summed in spec:
         values = [f.get(key, ZERO) for _, f in snaps]
