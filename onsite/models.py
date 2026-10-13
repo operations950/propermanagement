@@ -536,6 +536,13 @@ class Booking(models.Model):
                    'import recognize the same reservation (same property, same dates) and adopt its '
                    'confirmation code instead of creating a duplicate booking and cleaning.',
     )
+    ended_early_from = models.DateField(
+        null=True, blank=True,
+        help_text="Set when the calendar stopped showing a stay that had already started (the guest left or cancelled after checking in): the "
+                   "check-out date it was booked to. The stay's check-out is then the last night we know it was there, until a person confirms the "
+                   "real departure on the review screen.",
+    )
+    ended_early_review = models.BooleanField(default=False, help_text='A person still has to confirm when this guest actually left.')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

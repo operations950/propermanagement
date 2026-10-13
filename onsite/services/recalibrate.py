@@ -15,6 +15,8 @@ The reservation itself is treated according to what it is worth:
     nothing else depends on it (otherwise marked cancelled).
 Stays that have already started, finished cleanings and anything in progress are
 never touched. Nothing is done for a listing without a working calendar."""
+from datetime import datetime
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -86,6 +88,27 @@ def demote_booking(booking):
         visit.save(update_fields=['status'])
     booking.on_calendar = False
     booking.save(update_fields=['on_calendar'])
+    _refresh_next_bookings_for_property(booking.property)
+
+
+def end_started_stay(booking):
+    """A stay that had already started, was on the calendar, and has now gone from it: the guest left or cancelled after checking in. It is kept (the
+    nights really slept there still count toward occupancy and income) but shortened to the last day the calendar still showed it, taken off the
+    calendar, and its unfinished cleanings are cancelled the normal way. A person then confirms the real departure date on the review screen."""
+    start_day = timezone.localtime(booking.check_in).date()
+    original = timezone.localtime(booking.check_out).date()
+    seen = timezone.localtime(booking.calendar_seen_at).date() if booking.calendar_seen_at else timezone.localdate()
+    end_day = min(max(seen, start_day), original)
+    out_time = timezone.localtime(booking.check_out).time()
+    new_out = timezone.make_aware(datetime.combine(end_day, out_time))
+    booking.ended_early_from = original
+    booking.ended_early_review = True
+    booking.on_calendar = False
+    booking.check_out = max(new_out, booking.check_in)
+    booking.save(update_fields=['ended_early_from', 'ended_early_review', 'on_calendar', 'check_out'])
+    for visit in _removable_visits(booking):
+        visit.status = Visit.Status.CANCELLED
+        visit.save(update_fields=['status'])
     _refresh_next_bookings_for_property(booking.property)
 
 

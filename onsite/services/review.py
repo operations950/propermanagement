@@ -97,6 +97,12 @@ def paid_not_on_calendar(today=None):
     return list(rows)
 
 
+def ended_early():
+    """Stays that had started and then left the calendar: shortened to the last day the calendar showed them; a person confirms the real departure."""
+    return list(Booking.objects.filter(ended_early_review=True, status=Booking.Status.ACTIVE, property__is_general=False)
+                .select_related('property', 'unit').order_by('check_in'))
+
+
 def counts(today=None):
     """(overlapping pairs, upcoming reservations with no payout)."""
     return len(conflicts(today)), len(unpaid_upcoming(today))

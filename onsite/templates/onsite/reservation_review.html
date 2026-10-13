@@ -8,6 +8,26 @@
     {% if reach %}Payout reports on file reach through {% for name, day in reach %}<strong>{{ name }} {{ day|date:"M j, Y" }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}; a reservation paying out after that can't be checked yet — upload a payouts report with a longer date range to check further ahead.{% else %}No payout report has been uploaded yet, so there is nothing to compare against — upload the VRBO payouts (past and upcoming) on the import screen.{% endif %}
 </p>
 
+{% if ended_early %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: #e0c36a;"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> Left after checking in ({{ ended_early|length }})</h6>
+    <p class="text-muted small">These guests checked in and then disappeared from the calendar (they cancelled or left early). Each is counted only through the last day the calendar showed it, so the nights actually stayed still count and nothing after. Enter the day the guest really left. The cleaning that was booked for the original check-out has been cancelled.</p>
+    {% for b in ended_early %}
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap border-top py-2">
+        <span class="small"><strong>{{ b.property.name }}{% if b.unit %} — {{ b.unit.label }}{% endif %}</strong><br>{{ b.guest_name|default:"Guest" }} · checked in {{ b.check_in|date:"D M j" }} · was booked to {{ b.ended_early_from|date:"D M j" }} · counted through {{ b.check_out|date:"D M j" }} · {{ b.get_source_display }}</span>
+        <span class="d-inline-flex gap-2 align-items-center flex-wrap">
+            <form method="post" action="{% url 'onsite_reservation_ended' b.pk %}" class="d-inline-flex gap-1 align-items-center">{% csrf_token %}
+                <label class="small text-muted mb-0" for="left-{{ b.pk }}">Left on</label>
+                <input type="date" id="left-{{ b.pk }}" name="left_on" class="form-control form-control-sm" style="width: 9.5rem;" value="{{ b.check_out|date:'Y-m-d' }}" min="{{ b.check_in|date:'Y-m-d' }}" max="{{ b.ended_early_from|date:'Y-m-d' }}">
+                <button class="btn btn-outline-success btn-sm">Confirm</button>
+            </form>
+            {% include 'onsite/_reservation_actions.html' with b=b next=request.get_full_path %}
+        </span>
+    </div>
+    {% endfor %}
+    <p class="text-muted small mt-2 mb-0">Cancel removes the stay altogether, so none of its nights count.</p>
+</div></div>
+{% endif %}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="copy" class="icon"></i> Overlapping on the calendars ({{ conflicts|length }})</h6>
     <p class="text-muted small">Two guests can't share a night at one unit. This is about what the synced calendars (and in-house bookings) show — overlaps inside payment reports are normal and aren't listed. Usually a calendar link is attached to the wrong unit, or a stay is filed under the wrong unit: use <strong>Unit</strong> to move one, or Cancel the one that isn't real.</p>

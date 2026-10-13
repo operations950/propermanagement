@@ -17,6 +17,7 @@ urlpatterns = [
     path('feeds/recalibrate/', views.feeds_recalibrate, name='onsite_feeds_recalibrate'),
     path('reservations/<int:pk>/', views.reservation_edit, name='onsite_reservation_edit'),
     path('reservations/<int:pk>/cancel/', views.reservation_cancel, name='onsite_reservation_cancel'),
+    path('reservations/<int:pk>/ended/', views.reservation_ended, name='onsite_reservation_ended'),
     path('calendar/', views.calendar_view, name='onsite_calendar'),
     path('import/', views.booking_import_upload, name='onsite_booking_import'),
     path('import/slot/<int:slot_id>/', views.upload_slot, name='onsite_upload_slot'),

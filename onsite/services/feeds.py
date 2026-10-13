@@ -30,7 +30,11 @@ look cancelled), and a live feed can glitch the same way:
     upcoming bookings, nothing is cancelled and the feed is flagged for a
     person to confirm (see poll_feed's allow_mass_cancel).
 A cancellation then goes through the normal cancel path (visit cancelled,
-calendar event deleted); if the reservation reappears it's reactivated."""
+calendar event deleted); if the reservation reappears it's reactivated.
+
+A stay that had ALREADY STARTED and was on the calendar is treated the same way, with one difference: it is not cancelled outright, because the
+nights the guest really slept there still count. It is cut short to the last day the calendar showed it, taken off the calendar, and put on the
+Reservations to review screen for a person to confirm the real departure date (recalibrate.end_started_stay)."""
 import ipaddress
 import logging
 import socket
@@ -164,9 +168,14 @@ def _poll(feed, allow_mass_cancel):
     Booking.objects.filter(source=feed.source, external_uid__in=[r.external_uid for r in rows]).update(
         on_calendar=True, calendar_seen_at=now,
     )
+    # A stay we had cut short because the calendar stopped showing it, and which the calendar shows again: back to what the calendar says
+    # (the normal "changed dates" step below restores its dates and its cleaning).
+    Booking.objects.filter(source=feed.source, external_uid__in=[r.external_uid for r in rows], ended_early_from__isnull=False).update(
+        ended_early_from=None, ended_early_review=False,
+    )
 
     upcoming = list(Booking.objects.filter(
-        property=feed.property, unit=feed.unit, source=feed.source, status=Booking.Status.ACTIVE, check_in__gt=now,
+        property=feed.property, unit=feed.unit, source=feed.source, status=Booking.Status.ACTIVE, check_out__gt=now, ended_early_from__isnull=True,
     ))
     window_end = max((e.check_out for e in live), default=None)
     missing = []
@@ -174,6 +183,8 @@ def _poll(feed, allow_mass_cancel):
         for booking in upcoming:
             if booking.external_uid in seen:
                 continue
+            if booking.check_in <= now and not booking.on_calendar:
+                continue         # a started stay that only a payment report knows about: the calendar says nothing about it
             check_in, check_out = _local_date(booking.check_in), _local_date(booking.check_out)
             if check_in > window_end or (check_in, check_out) in every_entry_dates:
                 continue
@@ -187,9 +198,15 @@ def _poll(feed, allow_mass_cancel):
     if due and not allow_mass_cancel and len(due) > MASS_CANCEL_MIN and len(due) * 2 >= len(upcoming):
         held, due = len(due), []
     retired = 0
+    ended = 0
     for booking in due:
         streak.pop(booking.external_uid, None)
-        if not booking.on_calendar:
+        if booking.check_in <= now:
+            # It had started, was on the calendar, and is gone: the guest left or cancelled after checking in. Kept for the nights actually
+            # stayed, and put on the review screen for a person to confirm the real departure.
+            recalibrate.end_started_stay(booking)
+            ended += 1
+        elif not booking.on_calendar:
             # Never on the calendar: a stay only a payment report knows about.
             # Its (stale) cleaning is removed quietly; a paid one stays as a record.
             recalibrate.retire_booking(booking)
@@ -219,6 +236,8 @@ def _poll(feed, allow_mass_cancel):
         f'{len(live)} upcoming reservation{"" if len(live) == 1 else "s"} — '
         f'{new} new, {changed} changed, {reactivated} restored, {cancelled + retired} cancelled.'
     )
+    if ended:
+        summary += f' {ended} stay{"" if ended == 1 else "s"} that had already started left the calendar and need{"s" if ended == 1 else ""} a departure date (Reservations to review).'
     if held:
         summary += (
             f' {held} reservations vanished from the calendar at once, so none were cancelled automatically — '

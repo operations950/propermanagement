@@ -449,6 +449,8 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
         existing = existing_by_uid.get(row.external_uid) or _feed_twin(property, source, row, listing_unit_map, default_unit)
         if existing is not None and existing.manually_cancelled:
             continue    # a person cancelled it; a file or calendar still listing it must not bring it back
+        if existing is not None and existing.ended_early_from is not None and row.check_out == existing.ended_early_from:
+            continue    # the calendar dropped this stay after it started and it was cut short: a report still listing the original dates must not stretch it back
         if row.is_cancelled:
             # Only this property's own row can be cancelled by a row it
             # received — a reservation currently filed under some OTHER

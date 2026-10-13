@@ -1228,11 +1228,35 @@ def reservation_review(request):
     payout — for a person to cancel or confirm. See services/review.py."""
     reach = review_service.coverage()
     return render(request, 'onsite/reservation_review.html', {
+        'ended_early': review_service.ended_early(),
         'conflicts': review_service.conflicts(), 'unpaid': review_service.unpaid_upcoming(),
         'paid_only': review_service.paid_not_on_calendar(),
         'reach': [(dict(Booking.Source.choices).get(src, src), day) for src, day in sorted(reach.items())],
         'is_admin': _is_admin(request.user),
     })
+
+
+@login_required
+@require_http_methods(['POST'])
+def reservation_ended(request, pk):
+    """Confirm the day a guest actually left a stay the calendar dropped after it started: the nights up to that day count, nothing after it."""
+    booking = get_object_or_404(Booking, pk=pk, ended_early_review=True)
+    who = booking.guest_name or 'The reservation'
+    try:
+        day = datetime.strptime((request.POST.get('left_on') or '').strip(), '%Y-%m-%d').date()
+    except ValueError:
+        messages.error(request, 'Choose the date the guest left.')
+        return redirect('onsite_reservation_review')
+    first, last = timezone.localtime(booking.check_in).date(), booking.ended_early_from
+    if not first <= day <= last:
+        messages.error(request, f'The departure has to be between {first:%b} {first.day} (check-in) and {last:%b} {last.day} (when it was booked to end).')
+        return redirect('onsite_reservation_review')
+    new_out = timezone.make_aware(datetime.combine(day, timezone.localtime(booking.check_out).time()))
+    booking.check_out = max(new_out, booking.check_in)
+    booking.ended_early_review = False
+    booking.save(update_fields=['check_out', 'ended_early_review'])
+    messages.success(request, f'{who}: counted through {day:%b} {day.day}.')
+    return redirect('onsite_reservation_review')
 
 
 @login_required
