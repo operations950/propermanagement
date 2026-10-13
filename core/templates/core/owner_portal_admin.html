@@ -4,19 +4,27 @@
 <a href="{% url 'close_overview' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Rentals</a>
 <div class="mb-3">
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Owner portal</h2>
-    <div class="small text-muted">The address to give owners: <strong>{{ portal_url }}</strong>. They choose "Create your login", use the email address on their owner contact, and type the 6-digit code we email them. Turn a rental on with "Owner portal open" on its property page.</div>
+    <div class="small text-muted">The address to give owners: <strong>{{ portal_url }}</strong>. They choose "Create your login", use the email address on their owner contact, and type the 6-digit code we email them. If the email never reaches them, give them a temporary password (button on their row below). Turn a rental on with "Owner portal open" on its property page.</div>
 </div>
 
+{% if temp %}
+<div class="alert alert-success py-3" id="temp-password-box">
+    <div class="fw-semibold mb-1">Temporary password for {{ temp.email }}</div>
+    <div class="mb-2" style="font-size: 1.6rem; letter-spacing: 0.12em;"><span id="temp-pw" style="font-family: monospace;">{{ temp.password }}</span></div>
+    <div class="small">This is shown once. Tell them: go to <strong>{{ portal_url }}</strong>, choose <em>Sign in</em>, and use their email address and this password. They will then be asked to choose their own password. It works for {{ temp.hours }} hours. Don't send it by email; read it out or text it only after you have confirmed it is them.</div>
+</div>
+{% endif %}
 <h3 class="fs-6 fw-semibold">Rentals the portal is open for</h3>
 {% for r in rentals %}
 <div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3">
     <div class="fw-semibold">{{ r.property.name }} <span class="text-muted fw-normal small">· {{ r.released }} month{{ r.released|pluralize }} released</span></div>
     <table class="table table-sm mb-0 small">
-        <thead><tr><th>Owner contact</th><th>Email</th><th>Login</th></tr></thead>
+        <thead><tr><th>Owner contact</th><th>Email</th><th>Login</th><th></th></tr></thead>
         <tbody>
         {% for o in r.owners %}<tr><td>{{ o.contact.name }}</td><td>{% if o.contact.email %}{{ o.contact.email }}{% else %}<span style="color: #9a6a00;">no email — they cannot sign up or be told</span>{% endif %}</td>
-            <td>{% if o.login %}{% if o.login.is_active %}signed up{% else %}switched off{% endif %}{% if o.login.last_login_at %} · last in {{ o.login.last_login_at|date:"M j" }}{% endif %}{% else %}<span class="text-muted">not signed up yet</span>{% endif %}</td></tr>
-        {% empty %}<tr><td colspan="3" style="color: #9a6a00;">No owner contact is linked to this rental. Add one on its property page (type Owner).</td></tr>{% endfor %}
+            <td>{% if o.login %}{% if o.login.is_active %}signed up{% else %}switched off{% endif %}{% if o.login.last_login_at %} · last in {{ o.login.last_login_at|date:"M j" }}{% endif %}{% if o.login.must_change_password %} · <span style="color: #9a6a00;">temporary password pending</span>{% endif %}{% else %}<span class="text-muted">not signed up yet</span>{% endif %}</td>
+            <td class="text-end text-nowrap">{% if o.contact.email %}<form method="post" class="d-inline" onsubmit="return confirm('Give {{ o.contact.email }} a temporary password? Only do this once you are sure you are speaking to that person.');">{% csrf_token %}<input type="hidden" name="action" value="temp_password"><input type="hidden" name="email" value="{{ o.contact.email }}"><button class="btn btn-outline-secondary btn-sm py-0">Temporary password</button></form>{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="4" style="color: #9a6a00;">No owner contact is linked to this rental. Add one on its property page (type Owner).</td></tr>{% endfor %}
         </tbody>
     </table>
 </div></div>
@@ -30,9 +38,10 @@
     {% for a in accounts %}
     <tr><td>{{ a.email }}</td><td>{% for p in a.properties %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">nothing (not an owner of an open rental now)</span>{% endfor %}</td>
         <td>{{ a.created_at|date:"M j, Y" }}</td><td>{% if a.last_login_at %}{{ a.last_login_at|date:"M j, Y g:i a" }}{% else %}—{% endif %}</td>
-        <td>{% if not a.is_active %}<span class="badge text-bg-secondary">switched off</span>{% elif a.locked_until and a.locked_until > now %}<span class="badge text-bg-warning">locked</span>{% else %}<span class="badge text-bg-light border">on</span>{% endif %}</td>
+        <td>{% if not a.is_active %}<span class="badge text-bg-secondary">switched off</span>{% elif a.locked_until and a.locked_until > now %}<span class="badge text-bg-warning">locked</span>{% else %}<span class="badge text-bg-light border">on</span>{% endif %}{% if a.must_change_password %} <span class="badge text-bg-warning" title="Set {{ a.temp_set_at|date:'M j, g:i a' }}{% if a.temp_set_by %} by {{ a.temp_set_by.get_username }}{% endif %}">temporary password</span>{% endif %}</td>
         <td class="text-end text-nowrap">
             <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="account" value="{{ a.pk }}"><input type="hidden" name="action" value="toggle"><button class="btn btn-outline-secondary btn-sm py-0">{% if a.is_active %}Switch off{% else %}Switch on{% endif %}</button></form>
+            <form method="post" class="d-inline" onsubmit="return confirm('Give {{ a.email }} a temporary password? Only do this once you are sure you are speaking to that person.');">{% csrf_token %}<input type="hidden" name="action" value="temp_password"><input type="hidden" name="email" value="{{ a.email }}"><button class="btn btn-outline-secondary btn-sm py-0">Temporary password</button></form>
             {% if a.locked_until and a.locked_until > now %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="account" value="{{ a.pk }}"><input type="hidden" name="action" value="unlock"><button class="btn btn-outline-secondary btn-sm py-0">Unlock</button></form>{% endif %}
         </td></tr>
     {% empty %}<tr><td colspan="6" class="text-muted p-3">No owner has signed up yet.</td></tr>{% endfor %}

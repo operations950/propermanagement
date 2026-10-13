@@ -1288,6 +1288,10 @@ class OwnerAccount(models.Model):
     last_login_at = models.DateTimeField(null=True, blank=True)
     failed_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True, help_text='Too many wrong passwords: no login until then.')
+    must_change_password = models.BooleanField(default=False, help_text='A temporary password from staff is set: the owner must choose their own before seeing anything.')
+    temp_password_until = models.DateTimeField(null=True, blank=True, help_text='The temporary password stops working after this.')
+    temp_set_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    temp_set_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['email']

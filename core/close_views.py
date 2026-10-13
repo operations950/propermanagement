@@ -553,7 +553,7 @@ def close_bank_tieout(request):
 @user_passes_test(_is_admin)
 def owner_portal_admin(request):
     """Who is set up for the owner portal: the rentals it is open for and their owner contacts, and every owner login (switch one off, unlock one)."""
-    from .models import Contact, OwnerAccount
+    from .models import OwnerAccount
     if request.method == 'POST':
         account = OwnerAccount.objects.filter(pk=request.POST.get('account')).first()
         action = request.POST.get('action')
@@ -565,7 +565,21 @@ def owner_portal_admin(request):
             account.failed_attempts, account.locked_until = 0, None
             account.save(update_fields=['failed_attempts', 'locked_until'])
             messages.success(request, f'{account.email} is unlocked.')
+        elif action == 'temp_password':
+            email = (request.POST.get('email') or '').strip()
+            try:
+                password = owner_portal.set_temp_password(email, request.user)
+            except ValueError as exc:
+                messages.error(request, str(exc))
+            else:                    # shown right here, once, and never stored as typed; reloading the page does not show it again
+                temp = {'email': owner_portal.norm_email(email), 'password': password, 'hours': owner_portal.TEMP_HOURS}
+                return _owner_admin_page(request, temp)
         return redirect('owner_portal_admin')
+    return _owner_admin_page(request, None)
+
+
+def _owner_admin_page(request, temp):
+    from .models import Contact, OwnerAccount
     accounts = list(OwnerAccount.objects.order_by('email'))
     logins = {a.email: a for a in accounts}
     rentals = []
@@ -575,4 +589,4 @@ def owner_portal_admin(request):
             {'contact': c, 'login': logins.get((c.email or '').strip().lower())} for c in owners]})
     for a in accounts:
         a.properties = owner_portal.visible_properties(a.email)
-    return render(request, 'core/owner_portal_admin.html', {'rentals': rentals, 'accounts': accounts, 'portal_url': owner_portal.portal_url(), 'now': timezone.now()})
+    return render(request, 'core/owner_portal_admin.html', {'rentals': rentals, 'accounts': accounts, 'portal_url': owner_portal.portal_url(), 'now': timezone.now(), 'temp': temp})

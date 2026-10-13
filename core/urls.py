@@ -28,6 +28,7 @@ urlpatterns = [
     path('owner/verify/', owner_views.owner_verify, name='owner_verify'),
     path('owner/forgot/', owner_views.owner_forgot, name='owner_forgot'),
     path('owner/logout/', owner_views.owner_logout, name='owner_logout'),
+    path('owner/password/', owner_views.owner_set_password, name='owner_set_password'),
     path('owner/<int:pk>/<str:month>/', owner_views.owner_month, name='owner_month'),
     path('admin-tools/owner-portal/', close_views.owner_portal_admin, name='owner_portal_admin'),
     path('close/', close_views.close_home, name='close_home'),

@@ -6,7 +6,7 @@ from decimal import Decimal
 from functools import wraps
 
 from django.contrib import messages
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -28,7 +28,7 @@ def _throttled(request):
     return AccessAttempt.is_rate_limited(_client_ip(request), limit=20)
 
 
-def owner_required(view):
+def _guard(view, allow_temp):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
         if not owner_portal.is_owner_user(request.user):
@@ -39,8 +39,18 @@ def owner_required(view):
             messages.error(request, 'This login is not active. Please contact Proper Realty.')
             return redirect('owner_login')
         request.owner_account = account
+        if account.must_change_password and not allow_temp:           # signed in with a temporary password: nothing else until they choose their own
+            return redirect('owner_set_password')
         return view(request, *args, **kwargs)
     return wrapper
+
+
+def owner_required(view):
+    return _guard(view, False)
+
+
+def owner_required_even_on_temp(view):
+    return _guard(view, True)
 
 
 def _start_session(request, user):
@@ -64,6 +74,7 @@ def owner_login(request):
             messages.error(request, {
                 'locked': 'Too many wrong passwords. This login is locked for 15 minutes; you can also choose "Forgot your password?".',
                 'disabled': 'This login has been switched off. Please contact Proper Realty.',
+                'expired': 'That temporary password has expired. Please ask Proper Realty for a new one.',
             }.get(why, "That email and password don't match."))
     return render(request, 'core/owner/login.html', {'email': email})
 
@@ -127,6 +138,35 @@ def owner_verify(request):
                 return redirect('owner_home')
             messages.error(request, "That code isn't right, or it has expired. Check the latest email, or start again.")
     return render(request, 'core/owner/verify.html', {'email': pending['email'], 'minutes': owner_portal.CODE_MINUTES, 'reset': pending['purpose'] == OwnerCode.Purpose.RESET})
+
+
+@owner_required_even_on_temp
+def owner_set_password(request):
+    """After signing in with a temporary password from staff: choose your own. (Anyone signed in may also use it to change theirs.)"""
+    account = request.owner_account
+    if request.method == 'POST':
+        password, again = request.POST.get('password', ''), request.POST.get('password2', '')
+        errors = []
+        if password != again:
+            errors.append('The two passwords do not match.')
+        else:
+            if account.user.check_password(password):
+                errors.append('Choose a different password from the temporary one.')
+            try:
+                validate_password(password, account.user)
+            except ValidationError as exc:
+                errors.extend(exc.messages)
+        if not errors:
+            account.user.set_password(password)
+            account.user.save(update_fields=['password'])
+            account.must_change_password, account.temp_password_until = False, None
+            account.save(update_fields=['must_change_password', 'temp_password_until'])
+            update_session_auth_hash(request, account.user)              # keeps this sign-in alive after the password changes
+            messages.success(request, 'Your password is set.')
+            return redirect('owner_home')
+        for error in errors:
+            messages.error(request, error)
+    return render(request, 'core/owner/set_password.html', {'account': account, 'temporary': account.must_change_password})
 
 
 @require_POST

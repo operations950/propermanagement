@@ -86,6 +86,40 @@ def released_months(prop):
 
 # ---------------------------------------------------------------------------------------------------------------------------- sending
 
+TEMP_HOURS = 72
+_TEMP_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'          # no 0/O or 1/I/L: it is read out over the phone
+
+
+def set_temp_password(email, staff_user):
+    """For an owner who cannot get the emailed code: staff (who have confirmed it is that person) give them a temporary password. Creates the login if there
+    is none (the email counts as confirmed by staff), or replaces the password and unlocks one that exists. The owner must choose their own password
+    before seeing anything, and the temporary one stops working after TEMP_HOURS. Returns the password to read out; it is never stored as typed.
+    Raises ValueError (with a sentence for the screen) when it should not be done."""
+    email = norm_email(email)
+    if not email or not visible_properties(email):
+        raise ValueError(f'{email or "That address"} is not an owner contact of a rental the portal is open for, so there is nothing for them to see.')
+    password = ''.join(secrets.choice(_TEMP_ALPHABET) for _ in range(10))
+    now = timezone.now()
+    with transaction.atomic():
+        account = OwnerAccount.objects.select_related('user').filter(email=email).first()
+        if account is not None and not account.is_active:
+            raise ValueError(f'The login for {email} is switched off. Switch it on first.')
+        if account is None:
+            user = get_user_model()(username=f'{USERNAME_PREFIX}{uuid.uuid4().hex[:20]}', is_staff=False, is_superuser=False)
+            user.set_password(password)
+            user.save()
+            account = OwnerAccount.objects.create(user=user, email=email)
+        else:
+            account.user.set_password(password)
+            account.user.save(update_fields=['password'])
+        account.failed_attempts, account.locked_until = 0, None
+        account.must_change_password, account.temp_password_until = True, now + timezone.timedelta(hours=TEMP_HOURS)
+        account.temp_set_by, account.temp_set_at = staff_user, now
+        account.save(update_fields=['failed_attempts', 'locked_until', 'must_change_password', 'temp_password_until', 'temp_set_by', 'temp_set_at'])
+    logger.info('Owner portal temporary password set for %s by %s', email, getattr(staff_user, 'username', '?'))
+    return password
+
+
 def send_email(to, subject, body):
     """True if the mail went out. Uses the same sender as follow-ups, which refuses (rather than pretends) when no real email delivery is connected."""
     from messaging.services import _send_email
@@ -154,7 +188,8 @@ def verify_code(email, purpose, code):
             account.user.password = row.password_hash
             account.user.save(update_fields=['password'])
             account.failed_attempts, account.locked_until = 0, None
-            account.save(update_fields=['failed_attempts', 'locked_until'])
+            account.must_change_password, account.temp_password_until = False, None
+            account.save(update_fields=['failed_attempts', 'locked_until', 'must_change_password', 'temp_password_until'])
     return 'ok', account
 
 
@@ -177,6 +212,8 @@ def authenticate_owner(email, password):
             account.failed_attempts, account.locked_until = 0, now + timezone.timedelta(minutes=LOCK_MINUTES)
         account.save(update_fields=['failed_attempts', 'locked_until'])
         return None, 'invalid'
+    if account.must_change_password and account.temp_password_until and account.temp_password_until < now:
+        return None, 'expired'
     account.failed_attempts, account.locked_until, account.last_login_at = 0, None, now
     account.save(update_fields=['failed_attempts', 'locked_until', 'last_login_at'])
     return account.user, None
