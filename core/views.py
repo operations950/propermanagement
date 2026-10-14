@@ -583,10 +583,10 @@ def _qb_mapping_targets(rentals):
 @login_required
 @user_passes_test(_is_admin)
 def quickbooks_accounts(request):
-    """Admin: every short-term rental with the two QuickBooks accounts it is tied to,
+    """Admin: every short-term and long-term rental with the two QuickBooks accounts it is tied to,
     for mapping them all in one pass (each rental's own page has the same picker)."""
     rentals = list(
-        Property.objects.filter(is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL)
+        Property.objects.filter(is_active=True, is_general=False, property_type__in=(Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL))
         .select_related('qb_expense_account', 'qb_trust_account').order_by('name'),
     )
     if request.method == 'POST':
@@ -1032,7 +1032,12 @@ def _property_qb_action(request, prop, action):
         if owner_collects:
             basis = Property.CommissionBasis.GROSS      # no deposits to net expenses against: commission is always on the gross payouts
         raw_baseline = (request.POST.get('owner_baseline_expense') or '').strip().lstrip('$').replace(',', '')
+        raw_flat = (request.POST.get('commission_flat') or '').strip().lstrip('$').replace(',', '')
+        paid_in = request.POST.get('owner_paid_in') or Property.OwnerPaidIn.NEXT_MONTH
         try:
+            flat = Decimal(raw_flat or '0').quantize(Decimal('0.01'))
+            if flat < 0 or paid_in not in Property.OwnerPaidIn.values:
+                raise ValueError
             rate = Decimal(raw).quantize(Decimal('0.01'))
             if not Decimal('0') <= rate <= Decimal('100'):
                 raise ValueError
@@ -1046,7 +1051,8 @@ def _property_qb_action(request, prop, action):
         else:
             prop.commission_rate, prop.commission_basis, prop.owner_baseline_expense = rate, basis, baseline
             prop.income_collected_by_owner = owner_collects
-            prop.save(update_fields=['commission_rate', 'commission_basis', 'owner_baseline_expense', 'income_collected_by_owner'])
+            prop.commission_flat, prop.owner_paid_in = flat, paid_in
+            prop.save(update_fields=['commission_rate', 'commission_basis', 'owner_baseline_expense', 'income_collected_by_owner', 'commission_flat', 'owner_paid_in'])
             if owner_collects:
                 messages.success(request, f'{prop.name}: the owner collects the booking income. Commission is {rate}% of each month\'s platform payouts, its payouts are no longer expected at our bank, and its statement shows only our expenses and commission — from the months still open onward.')
             else:

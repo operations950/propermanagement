@@ -2,7 +2,7 @@
 <tr {% if indent %}class="cl-unit"{% endif %}>
     <td style="{% if indent %}padding-left: 1.6rem;{% endif %}">
         {% if r.unit %}<a href="{% url 'close_unit' month|date:'Y-m' r.property.pk r.unit.pk %}" class="fw-semibold text-decoration-none">{{ r.label }}</a>
-        {% else %}<a href="{% url 'close_property' month|date:'Y-m' r.property.pk %}" class="fw-semibold text-decoration-none">{{ r.property.name }}</a>{% endif %}
+        {% else %}<a href="{% url 'close_property' month|date:'Y-m' r.property.pk %}" class="fw-semibold text-decoration-none">{{ r.property.name }}</a>{% if r.property.property_type == 'ltr' %} <span class="badge rounded-pill text-bg-light border" style="font-weight: 500;">Long-term</span>{% endif %}{% endif %}
     </td>
     <td>
         {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>

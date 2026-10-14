@@ -644,6 +644,16 @@
                 </select>
                 <button class="btn btn-outline-secondary btn-sm">Save</button>
             </div>
+            <div class="d-flex gap-2 flex-wrap align-items-center mt-2">
+                <label class="small mb-0" for="qb-flat">plus a flat</label>
+                <div class="input-group input-group-sm" style="max-width: 140px;"><span class="input-group-text">$</span><input type="number" name="commission_flat" id="qb-flat" class="form-control" step="0.01" min="0" value="{{ property.commission_flat|floatformat:'2u' }}"></div>
+                <span class="small text-muted">/ month, in months with income deposits.</span>
+                <label class="small fw-semibold mb-0 ms-2" for="qb-paid-in">Owner is paid</label>
+                <select name="owner_paid_in" id="qb-paid-in" class="form-select form-select-sm" style="max-width: 260px;">
+                    <option value="next_month" {% if property.owner_paid_in == 'next_month' %}selected{% endif %}>for last month, early next month (in arrears)</option>
+                    <option value="same_month" {% if property.owner_paid_in == 'same_month' %}selected{% endif %}>in the same month it is collected</option>
+                </select>
+            </div>
             <div class="form-check mt-2 mb-0">
                 <input class="form-check-input" type="checkbox" name="income_collected_by_owner" id="qb-owner-collects" {% if property.income_collected_by_owner %}checked{% endif %}
                        onchange="document.getElementById('qb-commission-basis').disabled = this.checked; if (this.checked) { document.getElementById('qb-commission-basis').value = 'gross'; document.getElementById('qb-baseline-row').hidden = true; }">

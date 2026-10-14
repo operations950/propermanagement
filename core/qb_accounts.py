@@ -31,8 +31,8 @@ _GENERIC = frozenset('ct court st street ave avenue blvd boulevard rd road dr dr
 
 
 def applies_to(prop):
-    """Only real, active short-term rentals are tied to accounts."""
-    return property_specs.applies_to(prop)
+    """Real, active short-term and long-term rentals are tied to accounts (the month-end close runs through them)."""
+    return bool(prop.is_active and not prop.is_general and prop.property_type in (Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL))
 
 
 def accounts_for(side, include_inactive_pk=None):
@@ -171,4 +171,4 @@ def status(prop):
 
 
 def rentals_needing_accounts():
-    return [p for p in Property.objects.filter(is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL) if status(p) != 'mapped']
+    return [p for p in Property.objects.filter(is_active=True, is_general=False, property_type__in=(Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL)) if status(p) != 'mapped']

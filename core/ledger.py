@@ -85,10 +85,13 @@ def books_start():
     return request_memo.get(('books_start',), lambda: FinancialsSettings.get().books_start or previous_month(timezone.localdate()))
 
 
+CLOSE_TYPES = (Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL)
+
+
 def rentals():
-    """The rentals that go through the close: active real short-term rentals."""
+    """The rentals that go through the close: active real short-term and long-term rentals."""
     return list(
-        Property.objects.filter(is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL)
+        Property.objects.filter(is_active=True, is_general=False, property_type__in=CLOSE_TYPES)
         .select_related('qb_expense_account', 'qb_trust_account').order_by('name'),
     )
 
@@ -805,6 +808,9 @@ def totals(book, month, lines=None, with_prior=True, memo=None):
         total['net_income'], total['owner_baseline_expense'] = net_income, baseline
     else:
         due = (max(total['deposits'], ZERO) * rate / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+    flat = Decimal(prop.commission_flat or ZERO)
+    if flat and not owner_collects and total['deposits'] > 0:
+        due += flat                      # a flat monthly commission on top of the percent, in months that had income
     # owner_due never subtracts owner_baseline_expense a second time — the owner already paid it themselves,
     # outside the trust account; it only ever reduces our commission above, on the Net basis.
     total.update(commission_rate=rate, commission_basis=basis, commission_due=due, owner_collects=owner_collects, calc=True,
@@ -873,6 +879,10 @@ def prior_settlement(book, month, memo=None):
     if prior < month_of(books_start()):
         opening = opening_balance(book, month)
         if opening is None:
+            if book.property.owner_paid_in == Property.OwnerPaidIn.SAME_MONTH:
+                # paid in the month it is collected: nothing was owed before the books began unless an opening balance says so, so this month's payments count
+                out.update(prior_reimbursable=ZERO, prior_commission=ZERO, prior_owner=ZERO, prior_closed=True)
+                return out
             out['prior_status'] = 'not_in_books'
             return out
         # the books' first month, with what was owed at the start entered by hand: it settles against that like any other month
@@ -1104,12 +1114,20 @@ def add_settlement_checks(book, month, lines, add):
         if taken:
             add('settle_prior', 'warn', f'Nothing has been pulled in for {name}, so the ${taken:,.2f} paid out this month (reimbursement, commission and owner payment) can\'t be checked against it.')
         return
-    for key, label, taken, owed, what in (
-        ('reimbursement_vs_prior', 'Reimbursement to us', t['reimbursement_trust'], t['prior_reimbursable'], 'reimbursable expenses'),
-        ('commission_vs_prior', 'Commission', t['commission'], t['prior_commission'], 'commission'),
-        ('owner_vs_prior', 'Owner payment', t['owner_payment'], t['prior_owner'], 'owner payment'),
+    same_month = _book(book).property.owner_paid_in == Property.OwnerPaidIn.SAME_MONTH
+    if same_month:
+        add('settle_prior', 'ok', 'The owner is paid in the same month it is collected: each payment is checked against what was owed at the start of the month plus what this month earned, and anything left carries to next month as still owed.')
+    for key, label, taken, owed, what, earned in (
+        ('reimbursement_vs_prior', 'Reimbursement to us', t['reimbursement_trust'], t['prior_reimbursable'], 'reimbursable expenses', t['expenses_reimbursable']),
+        ('commission_vs_prior', 'Commission', t['commission'], t['prior_commission'], 'commission', t['commission_due']),
+        ('owner_vs_prior', 'Owner payment', t['owner_payment'], t['prior_owner'], 'owner payment', t['owner_due']),
     ):
         if owed is None:
+            continue
+        if same_month:
+            limit = owed + earned
+            if taken - limit >= CENT:
+                add(key, 'warn', f'{label} taken this month (${taken:,.2f}) is ${taken - limit:,.2f} more than was owed at the start of the month plus what this month earned (${limit:,.2f}): it is paid ahead and carries into next month as an advance.')
             continue
         diff = taken - owed
         if diff != 0:
@@ -1122,6 +1140,9 @@ def add_recon_checks(rec, add):
     """The income reconciliation's part of the checklist."""
     from . import recon
     if rec is None:
+        return
+    if rec.get('no_platform'):
+        add('recon_ok', 'ok', f'A long-term rental has no platform payouts to match: ${rec["deposits_total"]:,.2f} of rent and other income was collected this month.')
         return
     open_deposits, open_payouts = recon.problems(rec)
     if open_deposits:

@@ -635,6 +635,8 @@ def reconcile(book, month):
     month = ledger.month_of(month)
     if ledger.is_closed(book, month):
         return None
+    if book.property.is_long_term:
+        return _rent_only(book, month)
     owner_collects = book.property.income_collected_by_owner
     if book.unit is not None:
         request_memo.get(('assigned', book.property.pk), lambda: assign_units_from_deposits(book.property))
@@ -674,6 +676,18 @@ def reconcile(book, month):
         'undated': len(undated), 'undated_total': sum((b.payout_amount for b in undated), ZERO), 'unassigned': unassigned,
         'unassigned_list': [{'pk': b.pk, 'guest': b.guest_name or 'Guest', 'code': b.external_uid, 'amount': b.payout_amount, 'date': b.payout_date} for b in unassigned_rows],
         'reservations': _reservations_view(book, month, scope),
+    }
+
+
+def _rent_only(book, month):
+    """A long-term rental has no Airbnb/VRBO payouts: the rent collected in the trust account is simply its income, so there is nothing to match
+    and nothing to explain. Same shape as a reconciliation, with nothing open."""
+    deposits = _income_deposits(book, month)
+    return {
+        'closed': False, 'month': month, 'no_platform': True, 'pairs': [], 'matches': [], 'items': [], 'cleared_out': [], 'open_lines': [], 'open_payouts': [],
+        'mismatch_keys': set(), 'payouts_matched': ZERO, 'deposits_total': sum((d.flow for d in deposits), ZERO), 'carried_payouts': ZERO, 'prior_total': ZERO,
+        'undated': 0, 'undated_total': ZERO, 'unassigned': 0, 'unassigned_list': [],
+        'reservations': {'count': 0, 'payout_total': ZERO, 'paid_in_month': ZERO, 'paid_later': ZERO, 'paid_later_items': [], 'carried_in': ZERO},
     }
 
 

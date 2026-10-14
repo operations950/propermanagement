@@ -102,7 +102,7 @@
     {% else %}
     {% for r in g.rows %}{% include 'core/_close_ov_row.html' with r=r indent=False %}{% endfor %}
     {% endif %}
-    {% empty %}<tr><td colspan="11" class="text-muted small p-3">No active short-term rentals.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="11" class="text-muted small p-3">No active rentals.</td></tr>{% endfor %}
     </tbody>
     {% if groups %}
     <tfoot>

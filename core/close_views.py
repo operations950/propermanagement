@@ -13,8 +13,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import bank_tieout, ledger, owner_portal, payout_tracking, recon
-from .models import BankStatement, ClosedMonthChange, FinancialsSettings, LedgerLine, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
+from . import bank_tieout, escrow, ledger, owner_portal, payout_tracking, recon
+from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
 from .views import _is_admin
 
 CATEGORY_LABELS = dict(LedgerLine.Category.choices)
@@ -189,7 +189,7 @@ def _consolidated_page(request, prop, month):
 def close_statement(request, pk):
     """A rental's calendar year, month by month, the way the owner sees it: the calculation, what is owed and paid.
     The arrows move to the year before or after."""
-    prop = get_object_or_404(Property, pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
+    prop = get_object_or_404(Property, pk=pk, property_type__in=ledger.CLOSE_TYPES)
     today = timezone.localdate()
     this_year = today.year
     month = _parse_month(request.GET.get('month'), ledger.previous_month(today))      # the month page it was opened from
@@ -209,7 +209,7 @@ def close_statement(request, pk):
 @user_passes_test(_is_admin)
 def close_month_statement(request, pk, month):
     """One month of a rental as its owner sees it: every line with transactions behind it expands to that month's transactions."""
-    prop = get_object_or_404(Property, pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
+    prop = get_object_or_404(Property, pk=pk, property_type__in=ledger.CLOSE_TYPES)
     first = _parse_month(month, None)
     if first is None:
         return redirect('close_statement', pk=pk)
@@ -224,7 +224,7 @@ def close_month_statement(request, pk, month):
 @login_required
 @user_passes_test(_is_admin)
 def close_property(request, month, pk, unit_pk=None):
-    prop = get_object_or_404(Property.objects.select_related('qb_expense_account', 'qb_trust_account'), pk=pk, property_type=Property.Type.SHORT_TERM_RENTAL)
+    prop = get_object_or_404(Property.objects.select_related('qb_expense_account', 'qb_trust_account'), pk=pk, property_type__in=ledger.CLOSE_TYPES)
     month = _parse_month(month, None)
     if month is None:
         return redirect('close_overview')
@@ -335,6 +335,8 @@ def close_property(request, month, pk, unit_pk=None):
     for line in lines:
         line.options = [(c, CATEGORY_LABELS[c]) for c in ledger.ROLE_CATEGORIES[line.role]]
     rec = recon.from_close(close) if close else (recon.reconcile(book, month) if book.mapped else None)
+    if prop.is_long_term:
+        rec = None          # no platform payouts to reconcile: the rent collected is simply the income (the checks say so)
     items = ledger.checks(book, month, rec=rec) if close is None else []
     return render(request, 'core/close_property.html', {
         'property': prop, 'book': book, 'unit': unit, 'title': book.name, 'month': month, 'close': close,
@@ -410,6 +412,165 @@ def _money_input(raw):
     return -value if negative else value
 
 
+def _ledger_step(month, kind):
+    """(status, detail) for one of the list-against-balance checks (escrow, misc trust) on the month-end checklist."""
+    esc = escrow.summary(month, kind)
+    if esc['account'] is None:
+        return None, ('Choose the escrow account, then list whose money is in it.' if kind == escrow.ESCROW
+                      else 'Choose the Misc Property Management trust account, then list what is in it.')
+    if esc['status'] == 'done':
+        if kind == escrow.MISC and esc['qb_balance']:
+            return 'done', f"The ${esc['qb_balance']:,.2f} balance is fully listed. This account should be zero, so correct these in QuickBooks next month."
+        return 'done', ("The balance is zero." if kind == escrow.MISC else f"The ${esc['total']:,.2f} listed adds up to what the escrow account holds.")
+    if esc['status'] == 'attention':
+        gap = esc['qb_gap'] if esc['qb_gap'] else esc['bank_gap']
+        return 'attention', f'The list is ${abs(gap):,.2f} {"more" if gap > 0 else "less"} than the account holds.'
+    return 'not_started', "Pull the account's balance from QuickBooks and check it against the list."
+
+
+def _payout_step(month, today):
+    """(status, detail) for the platform payouts step of one month: done when every payout dated in it (other than the last ten days, which are still on their
+    way to the bank) has a matching deposit."""
+    if month < ledger.month_of(payout_tracking.BOOKKEEPING_START):
+        return None, ''
+    end = bank_tieout.month_end(month)
+    rows = [r for r in payout_tracking.payout_rows(today=today) if month <= r['batch'].date <= end]
+    unmatched = [r for r in rows if not r['received']]
+    month_over = today > end
+    if not rows:
+        return ('done' if month_over else None), 'No platform payouts to match this month.'
+    overdue = [r for r in unmatched if r['batch'].date <= end - payout_tracking.LATE]
+    transit = [r for r in unmatched if r['batch'].date > end - payout_tracking.LATE]
+    if overdue:
+        old = sum(1 for r in overdue if r['status'] == 'lingering')
+        return 'attention', (f'{len(overdue)} of {len(rows)} payout{"" if len(rows) == 1 else "s"} dated in {month:%B} {"has" if len(overdue) == 1 else "have"} no matching deposit yet'
+                             + (f' ({old} for 45+ days).' if old else '.'))
+    if not month_over:
+        return None, f'{len(rows) - len(unmatched)} of {len(rows)} payouts matched so far.'
+    return 'done', (f'All {len(rows)} payout{"" if len(rows) == 1 else "s"} matched to a deposit' if not transit else
+                    f'{len(rows) - len(transit)} of {len(rows)} matched; {len(transit)} from the last days of the month {"is" if len(transit) == 1 else "are"} still on the way to the bank') + '.'
+
+
+def _closed_step(month):
+    """(status, detail) for closing each rental in one month: done when every active rental is closed."""
+    if month < ledger.month_of(ledger.books_start()):
+        return None, ''
+    rentals = ledger.rentals()
+    if not rentals:
+        return None, ''
+    closed = 0
+    for prop in rentals:
+        books = ledger.books_for(prop, month)
+        if books and all(ledger.close_of(b, month) is not None for b in books):
+            closed += 1
+    detail = f'{closed} of {len(rentals)} rental{"" if len(rentals) == 1 else "s"} closed.'
+    return ('done' if closed == len(rentals) else ('not_started' if closed == 0 else None)), detail
+
+
+LEDGER_PAGES = {
+    escrow.ESCROW: {
+        'title': 'Escrow check', 'h2': 'General escrow account check', 'icon': 'vault', 'url': 'close_escrow',
+        'blurb': "Whose money is in the escrow account at the end of the month. The list must add up to what QuickBooks holds in the escrow account. It is never income and never touches a property's trust account.",
+        'account_phrase': 'the escrow account', 'account_label': 'Escrow account in QuickBooks', 'short': 'escrow account',
+        'total_label': "Everyone's money, added up (the list below)", 'list_title': 'Whose money it is',
+        'list_help': 'Change an amount, add a line or delete one; the total above updates. Money that belongs to us as a business goes on its own line.',
+        'placeholder': 'Name, e.g. 300 Ross tenants',
+    },
+    escrow.MISC: {
+        'title': 'Misc trust check', 'h2': 'Misc property management trust check', 'icon': 'circle-help', 'url': 'close_misc',
+        'blurb': "This account is where things spent or received by mistake from the property management bank account get booked. It should not carry a balance: each month, list what makes up the balance so each item can be corrected in QuickBooks next month.",
+        'account_phrase': 'the Misc Property Management trust account', 'account_label': 'Misc trust account in QuickBooks', 'short': 'Misc trust account',
+        'total_label': 'What the balance is made of (the list below)', 'list_title': 'What is in the balance',
+        'list_help': 'One line for each item that should not be here, with a note on where it really belongs. Delete a line once it has been corrected in QuickBooks.',
+        'placeholder': 'What it is, e.g. Duke Energy bill for 300 Ross',
+    },
+}
+
+
+def _ledger_page(request, kind):
+    """The month-end check of an account against a hand-kept list of what is in it (escrow, or the misc property management trust account)."""
+    cfg = LEDGER_PAGES[kind]
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month') or request.POST.get('month'), ledger.previous_month(today))
+    here = f'{reverse(cfg["url"])}?month={month:%Y-%m}'
+    field = escrow.SETTINGS_FIELD[kind]
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'set_account':
+            account = QuickBooksAccount.objects.filter(pk=request.POST.get('account')).first()
+            if account is None:
+                messages.error(request, 'Choose the account.')
+            else:
+                saved = FinancialsSettings.get()
+                setattr(saved, field, account)
+                saved.save(update_fields=[field])
+                messages.success(request, 'Saved. Pull the balance from QuickBooks to run the check.')
+        elif action == 'clear_account':
+            saved = FinancialsSettings.get()
+            setattr(saved, field, None)
+            saved.save(update_fields=[field])
+        elif action == 'pull':
+            token = QuickBooksToken.objects.first()
+            if token is None:
+                messages.error(request, 'QuickBooks is not connected — connect it in Admin Tools first.')
+            else:
+                em, error = escrow.pull_balance(token, month, kind)
+                if error:
+                    messages.error(request, error)
+                else:
+                    messages.success(request, f'QuickBooks says the account holds ${em.qb_balance:,.2f} at the end of {month:%B}.')
+        elif action == 'set_bank' and kind == escrow.ESCROW:
+            raw = (request.POST.get('bank_balance') or '').strip()
+            em = escrow.ensure_month(month, request.user, kind)
+            value = _money_input(raw) if raw else None
+            if raw and value is None:
+                messages.error(request, f'"{raw}" is not an amount.')
+            else:
+                em.bank_balance = value
+                em.save(update_fields=['bank_balance'])
+        elif action in ('add_line', 'edit_line', 'delete_line'):
+            escrow.ensure_month(month, request.user, kind)
+            line = EscrowLine.objects.filter(pk=request.POST.get('line'), kind=kind, month=month).first() if action != 'add_line' else None
+            name = (request.POST.get('name') or '').strip()
+            amount = _money_input(request.POST.get('amount'))
+            prop = Property.objects.filter(pk=request.POST.get('property')).first() if request.POST.get('property') else None
+            if action == 'delete_line':
+                if line is not None:
+                    line.delete()
+            elif not name or amount is None:
+                messages.error(request, 'A line needs a name and an amount.')
+            elif action == 'edit_line' and line is None:
+                messages.error(request, 'That line is no longer there — the page has been refreshed.')
+            else:
+                if line is None:
+                    line = EscrowLine(kind=kind, month=month)
+                line.name, line.amount, line.property = name[:200], amount, prop
+                line.note, line.updated_by = (request.POST.get('note') or '').strip()[:500], request.user
+                line.save()
+        return redirect(here)
+    em = escrow.ensure_month(month, request.user, kind)
+    prior = EscrowMonth.objects.filter(kind=kind, month__lt=month).order_by('-month').first()
+    s = escrow.summary(month, kind)
+    return render(request, 'core/close_escrow.html', {
+        's': s, 'cfg': cfg, 'kind': kind, 'month': month, 'month_end': bank_tieout.month_end(month), 'previous': ledger.previous_month(month), 'next': ledger.next_month(month),
+        'carried': prior.month if (prior is not None and s['lines'] and not em.qb_pulled_at) else None,
+        'properties': Property.objects.filter(is_active=True, is_general=False).order_by('name'),
+        'account_choices': QuickBooksAccount.objects.filter(active=True, classification__in=('Asset', 'Liability')).order_by('fully_qualified_name'),
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def close_escrow(request):
+    return _ledger_page(request, escrow.ESCROW)
+
+
+@login_required
+@user_passes_test(_is_admin)
+def close_misc(request):
+    return _ledger_page(request, escrow.MISC)
+
+
 @login_required
 @user_passes_test(_is_admin)
 def close_home(request):
@@ -433,14 +594,20 @@ def close_home(request):
         tie_detail = "Type the statement's ending balance."
     else:
         tie_detail = 'Run the check against QuickBooks.'
-    lingering = payout_tracking.lingering_count()
+    esc_status, esc_detail = _ledger_step(month, escrow.ESCROW)
+    misc_status, misc_detail = _ledger_step(month, escrow.MISC)
+    pay_status, pay_detail = _payout_step(month, today)
+    close_status, close_detail = _closed_step(month)
     steps = [
-        {'n': 1, 'title': 'Bank tie-out', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q,
+        {'n': 1, 'title': 'Bank tie-out: verify the property management account', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q,
          'blurb': "The bank statement, QuickBooks's bank account and the property trust accounts must all agree at month end."},
-        {'n': 2, 'title': 'Platform payouts into QuickBooks', 'status': 'attention' if lingering else None,
-         'detail': f'{lingering} payout{"" if lingering == 1 else "s"} reported paid 45+ days ago with no matching deposit.' if lingering else '',
+        {'n': 2, 'title': 'Misc property management trust check', 'status': misc_status, 'detail': misc_detail, 'url': reverse('close_misc') + q,
+         'blurb': 'This account should not carry a balance. List what is in it so each item can be corrected next month, and check the list against QuickBooks.'},
+        {'n': 3, 'title': 'General escrow account check', 'status': esc_status, 'detail': esc_detail, 'url': reverse('close_escrow') + q,
+         'blurb': 'Security deposits and advance rents we hold for other people: the list of whose money it is must add up to the escrow account.'},
+        {'n': 4, 'title': 'Platform payouts into QuickBooks', 'status': pay_status, 'detail': pay_detail,
          'url': reverse('close_payouts'), 'blurb': 'Match Airbnb and VRBO payouts to their bank deposits and code each one to its unit.'},
-        {'n': 3, 'title': 'Code and close each rental', 'status': None, 'detail': '', 'url': reverse('close_overview') + q,
+        {'n': 5, 'title': 'Code and close each rental', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q,
          'blurb': "Code every QuickBooks transaction, review each rental's numbers, and lock the month."},
     ]
     return render(request, 'core/close_home.html', {

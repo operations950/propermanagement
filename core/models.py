@@ -163,6 +163,24 @@ class Property(models.Model):
                    "only our expenses and commission.",
     )
 
+    class OwnerPaidIn(models.TextChoices):
+        NEXT_MONTH = 'next_month', 'In arrears: the month after it is collected'
+        SAME_MONTH = 'same_month', 'The same month it is collected'
+
+    owner_paid_in = models.CharField(
+        max_length=12, choices=OwnerPaidIn.choices, default=OwnerPaidIn.NEXT_MONTH,
+        help_text="When the owner is paid: for the month that just ended (early next month: 'in arrears', how short-term rentals are paid), or for the "
+                   "month itself (rent collected and paid out in the same month). The balance still owed carries to the next month either way.",
+    )
+    commission_flat = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text='A flat amount of commission charged, in addition to the percent, in every month that has income deposits.',
+    )
+
+    @property
+    def is_long_term(self):
+        return self.property_type == self.Type.LONG_TERM_RENTAL
+
     class FinancialsLevel(models.TextChoices):
         PROPERTY = 'property', 'One set of books for the whole property'
         UNIT = 'unit', 'Separate books for each unit'
@@ -1028,11 +1046,59 @@ class FinancialsSettings(models.Model):
         'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
         help_text='The parent of every property trust account in QuickBooks - its total should equal the bank account.',
     )
+    misc_trust_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text="The Misc Property Management trust account in QuickBooks: where things spent or received by mistake from the property management bank account are booked. It should not carry a balance; the month-end check lists what is in it.",
+    )
+    escrow_account = models.ForeignKey(
+        'QuickBooksAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text="The escrow account in QuickBooks (security deposits and advance rents held for other people) - the month-end escrow check compares the list of who it belongs to against its balance.",
+    )
 
     @classmethod
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+
+class EscrowMonth(models.Model):
+    """One month's escrow check: QuickBooks's balance of the escrow account at month end (pulled when asked, kept so an old month's check never
+    changes) and, if typed, the escrow bank statement's ending balance. The people the money belongs to are its EscrowLines."""
+    class Kind(models.TextChoices):
+        ESCROW = 'escrow', 'Escrow account'
+        MISC = 'misc', 'Misc property management trust'
+
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.ESCROW)
+    month = models.DateField(help_text='First day of the month.')
+    qb_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    qb_pulled_at = models.DateTimeField(null=True, blank=True)
+    bank_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, help_text="The escrow bank statement's ending balance, if typed.")
+    activity = models.JSONField(default=list, blank=True, help_text="The month's transactions in the account as QuickBooks showed them when the balance was pulled (date, type, name, memo, amount).")
+
+    class Meta:
+        unique_together = [('kind', 'month')]
+
+    def __str__(self):
+        return f'{self.get_kind_display()} {self.month:%B %Y}'
+
+
+class EscrowLine(models.Model):
+    """Whose money is in the escrow account in a given month: a name (a person, or a group such as "300 Ross tenants", or us), the property it
+    relates to if any, the amount and a note. A new month starts as a copy of the one before it."""
+    kind = models.CharField(max_length=10, choices=EscrowMonth.Kind.choices, default=EscrowMonth.Kind.ESCROW, db_index=True)
+    month = models.DateField(db_index=True)
+    name = models.CharField(max_length=200)
+    property = models.ForeignKey(Property, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    note = models.CharField(max_length=500, blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.name} {self.amount} ({self.month:%b %Y})'
 
 
 class BankStatement(models.Model):
