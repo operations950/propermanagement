@@ -12,10 +12,11 @@ circular. If a status is ever added to Ticket.Status, both copies need
 updating; there are only two, and it's cheaper than restructuring
 views.py's many existing call sites for a redesign that doesn't need to
 touch them."""
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.conf import settings
-from django.db.models import Exists, Max, OuterRef, Subquery
+from django.contrib.auth import get_user_model
+from django.db.models import Exists, Max, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
@@ -261,6 +262,95 @@ def movement_today():
         'updated_notes': updated_notes,
         'closed_reactive': closed_reactive,
         'closed_recurring': closed_recurring,
+    }
+
+
+AUTOMATIC = 'Automatic (email, calendar, booking feeds)'
+NOT_RECORDED = 'Not recorded (vendor link or automatic)'
+
+
+def ticket_flow(days=30, now=None):
+    """How tickets have been opening and closing, for the owner dashboard: who opened and who closed how many in the last `days` days, and the number
+    of tickets still open at the end of each of those days (the line that shows work piling up or being cleared).
+
+    Opened by = Ticket.created_by (blank for anything an email, calendar, booking feed or a cleaner's own link made: shown as one automatic row).
+    Closed by = the person on the ticket's latest closing note when it reached a final status (completed, verified, cancelled, skipped, not
+    applicable); with no closing note on record (a vendor's completion link, or an automatic cancel) it is "not recorded". A ticket counts as closed on
+    the day of that closing note, else its completed/cancelled time. Tickets made by the recurring schedules or sessions, and ones still "upcoming", are left out:
+    this is about work people actually opened and closed. A ticket reopened after it was closed counts only as open from then (the history of the
+    reopening is not kept), so the line is accurate for today and close to right for the days before."""
+    now = now or timezone.now()
+    today = timezone.localdate(now)
+    first = today - timedelta(days=days - 1)
+    start = timezone.make_aware(datetime.combine(first, time.min))
+    latest_note = TicketClosingNote.objects.filter(ticket=OuterRef('pk'), status__in=COMPLETE_STATUSES).order_by('-created_at')
+    rows = (
+        Ticket.objects.exclude(source__in=[Ticket.Source.RECURRING, Ticket.Source.SESSION]).exclude(status=Ticket.Status.UPCOMING)
+        .annotate(note_at=Subquery(latest_note.values('created_at')[:1]), note_by=Subquery(latest_note.values('created_by')[:1]))
+        .annotate(closed_ts=Coalesce('note_at', 'completed_at', 'cancelled_at', 'status_changed_at', 'updated_at'))
+        .filter(created_at__lte=now)
+        .filter(Q(status__in=OPEN_STATUSES) | Q(closed_ts__gte=start))
+        .values_list('created_at', 'status', 'closed_ts', 'created_by_id', 'note_by')
+    )
+    delta = [0] * (days + 1)
+    opened_day, closed_day = [0] * days, [0] * days
+    opened_by, closed_by = {}, {}
+    local = timezone.localtime
+    for created, status, closed_ts, creator, closer in rows:
+        is_closed = status in COMPLETE_STATUSES
+        si = (local(created).date() - first).days
+        if created >= start:
+            opened_by[creator] = opened_by.get(creator, 0) + 1
+            if si < days:
+                opened_day[max(si, 0)] += 1
+        ci = None
+        if is_closed:
+            ci = (local(closed_ts).date() - first).days
+            if closed_ts >= start and closed_ts <= now:
+                closed_by[closer] = closed_by.get(closer, 0) + 1
+                closed_day[min(max(ci, 0), days - 1)] += 1
+        s = max(si, 0)
+        e = days if ci is None else min(ci, days)
+        if s < days and e > s:
+            delta[s] += 1
+            delta[e] -= 1
+    series, running = [], 0
+    for i in range(days):
+        running += delta[i]
+        day = first + timedelta(days=i)
+        series.append({'date': day, 'open': running, 'opened': opened_day[i], 'closed': closed_day[i]})
+
+    User = get_user_model()
+    names = {u.pk: (u.get_full_name() or u.username) for u in User.objects.filter(pk__in=[k for k in set(opened_by) | set(closed_by) if k])}
+    named = sorted(
+        ({'name': names[key], 'opened': opened_by.get(key, 0), 'closed': closed_by.get(key, 0)} for key in (set(opened_by) | set(closed_by)) if key in names),
+        key=lambda p: (-(p['opened'] + p['closed']), p['name'].lower()),
+    )
+    tail = []
+    if opened_by.get(None):
+        tail.append({'name': AUTOMATIC, 'opened': opened_by[None], 'closed': 0})
+    if closed_by.get(None):
+        tail.append({'name': NOT_RECORDED, 'opened': 0, 'closed': closed_by[None]})
+    people = named + tail
+
+    top = max([p['open'] for p in series] + [1])
+    ymax = max(5, ((top * 11 // 10) // 5 + 1) * 5)
+    width, height, left, right, upper, lower = 720, 230, 42, 14, 14, 30
+    plot_w, plot_h = width - left - right, height - upper - lower
+    step = plot_w / max(days - 1, 1)
+    xy = lambda i, v: (round(left + i * step, 1), round(upper + plot_h - (v / ymax) * plot_h, 1))
+    points = [xy(i, p['open']) for i, p in enumerate(series)]
+    chart = {
+        'width': width, 'height': height, 'left': left, 'right': width - right, 'bottom': upper + plot_h, 'top': upper,
+        'line': ' '.join(f'{x},{y}' for x, y in points),
+        'dots': [{'x': x, 'y': y, 'open': p['open'], 'date': p['date'], 'opened': p['opened'], 'closed': p['closed']} for (x, y), p in zip(points, series)],
+        'xticks': [{'x': points[i][0], 'label': series[i]['date'].strftime('%b ') + str(series[i]['date'].day)} for i in range(0, days, 5)] + [{'x': points[-1][0], 'label': 'Today'}],
+        'yticks': [{'y': xy(0, v)[1], 'label': v} for v in sorted({0, ymax // 2, ymax})],
+    }
+    return {
+        'days': days, 'series': series, 'people': people, 'chart': chart,
+        'opened': sum(opened_by.values()), 'closed': sum(closed_by.values()), 'open_now': series[-1]['open'] if series else 0,
+        'open_then': series[0]['open'] if series else 0,
     }
 
 

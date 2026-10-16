@@ -229,9 +229,8 @@ def _owner_dashboard(request):
 
     off_track = owner_dashboard_queries.off_track_tickets(now)
     onsite = owner_dashboard_queries.onsite_next_48h(now)
-    session_drift = owner_dashboard_queries.session_templates_drifting()
     movement = owner_dashboard_queries.movement_today()
-    quiet = owner_dashboard_queries.gone_quiet(now)
+    flow = owner_dashboard_queries.ticket_flow(30, now)
 
     staff_profile = request.user.staff_profile
     calendar_token = getattr(staff_profile, 'google_calendar_token', None)
@@ -255,9 +254,8 @@ def _owner_dashboard(request):
         'department_boxes': department_boxes,
         'off_track': off_track,
         'onsite': onsite,
-        'session_drift': session_drift,
         'movement': movement,
-        'quiet': quiet,
+        'flow': flow,
         'calendar_configured': calendar_is_configured(),
         'calendar_token': calendar_token,
         'calendar_days': calendar_days,

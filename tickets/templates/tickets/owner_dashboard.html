@@ -24,6 +24,56 @@
     [data-bs-toggle="collapse"] .collapse-chevron { transition: transform 0.15s ease; }
     [data-bs-toggle="collapse"].collapsed .collapse-chevron { transform: rotate(-90deg); }
 </style>
+{# ============================== TICKET FLOW — who opens and closes, and how the pile moves ============================== #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="trending-up" class="icon"></i> Tickets — last {{ flow.days }} days
+        </span>
+        <span class="small" style="color: var(--ink-muted);"><strong>{{ flow.opened }}</strong> opened · <strong>{{ flow.closed }}</strong> closed · <strong>{{ flow.open_now }}</strong> open now, up from <strong>{{ flow.open_then }}</strong> at the end of {{ flow.series.0.date|date:"M j" }}</span>
+    </div>
+    <div class="card-body">
+        <div class="small mb-1" style="color: var(--ink-muted);">Tickets still open at the end of each day</div>
+        <svg viewBox="0 0 {{ flow.chart.width }} {{ flow.chart.height }}" width="100%" role="img" aria-label="Open tickets at the end of each of the last {{ flow.days }} days, from {{ flow.open_then }} to {{ flow.open_now }}" style="max-width: 100%; height: auto; overflow: visible;">
+            {% for t in flow.chart.yticks %}
+            <line x1="{{ flow.chart.left }}" x2="{{ flow.chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}" stroke="currentColor" stroke-opacity="0.12"/>
+            <text x="{{ flow.chart.left|add:'-6' }}" y="{{ t.y }}" text-anchor="end" dominant-baseline="middle" font-size="11" fill="currentColor" fill-opacity="0.6">{{ t.label }}</text>
+            {% endfor %}
+            {% for t in flow.chart.xticks %}
+            <text x="{{ t.x }}" y="{{ flow.chart.bottom|add:'18' }}" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity="0.6">{{ t.label }}</text>
+            {% endfor %}
+            <polyline points="{{ flow.chart.line }}" fill="none" stroke="var(--brand-primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            {% for d in flow.chart.dots %}
+            <circle cx="{{ d.x }}" cy="{{ d.y }}" r="{% if forloop.last %}4.5{% else %}3{% endif %}" fill="var(--brand-primary)" stroke="white" stroke-width="1.5"><title>{{ d.date|date:"D M j" }}: {{ d.open }} open ({{ d.opened }} opened, {{ d.closed }} closed that day)</title></circle>
+            {% endfor %}
+        </svg>
+        <details class="small mt-2">
+            <summary style="cursor: pointer; color: var(--ink-muted);">Show the numbers day by day</summary>
+            <div class="table-responsive mt-2"><table class="table table-sm mb-0" style="max-width: 460px; font-variant-numeric: tabular-nums;">
+                <thead><tr><th>Day</th><th class="text-end">Open at end of day</th><th class="text-end">Opened</th><th class="text-end">Closed</th></tr></thead>
+                <tbody>{% for p in flow.series reversed %}<tr><td>{{ p.date|date:"D M j" }}</td><td class="text-end">{{ p.open }}</td><td class="text-end">{{ p.opened }}</td><td class="text-end">{{ p.closed }}</td></tr>{% endfor %}</tbody>
+            </table></div>
+        </details>
+    </div>
+</div>
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
+            <i data-lucide="users" class="icon"></i> Who opened and who closed — last {{ flow.days }} days
+        </span>
+    </div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0" style="font-variant-numeric: tabular-nums;">
+        <thead><tr><th class="ps-3">Person</th><th class="text-end">Opened</th><th class="text-end pe-3">Closed</th></tr></thead>
+        <tbody>
+        {% for p in flow.people %}
+        <tr><td class="ps-3">{{ p.name }}</td><td class="text-end">{{ p.opened }}</td><td class="text-end pe-3">{{ p.closed }}</td></tr>
+        {% empty %}<tr><td colspan="3" class="text-center py-3" style="color: var(--ink-muted);">No tickets opened or closed in the last {{ flow.days }} days.</td></tr>{% endfor %}
+        </tbody>
+        {% if flow.people %}<tfoot><tr class="fw-semibold"><td class="ps-3">Total</td><td class="text-end">{{ flow.opened }}</td><td class="text-end pe-3">{{ flow.closed }}</td></tr></tfoot>{% endif %}
+    </table></div>
+    <div class="card-footer bg-white small" style="color: var(--ink-muted);">Closed means it reached completed, verified, cancelled, skipped or not applicable, counted for the person who closed it. Tickets the recurring schedules create are left out.</div>
+</div>
+
 <div class="card mb-3" style="border-top: 4px solid var(--status-critical); border-radius: var(--bs-border-radius-lg);">
     <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
         <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--status-critical);">
@@ -147,50 +197,6 @@
     </div>
 </div>
 
-{# ============================== 3. SESSIONS — rules drifting ============================== #}
-{# The old TicketTemplate-based "Recurring — rules drifting" panel that used to sit here was #}
-{# removed once the sessions app fully replaced it and the old system was wiped from #}
-{# production — see the "Recurring work overhaul — sessions" build brief. #}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
-    <div class="card-header bg-white border-bottom py-3">
-        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-            <i data-lucide="layers" class="icon"></i> Recurring — rules drifting ({{ session_drift|length }})
-        </span>
-    </div>
-    {% if session_drift %}
-    <div class="list-group list-group-flush">
-    {% for row in session_drift %}
-        <a href="{% url 'session_template_detail' row.template.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none" style="border-left: 3px solid var(--role-{{ row.template.department|default:'admin' }});">
-            <div class="d-flex justify-content-between align-items-center gap-2">
-                <span class="fw-medium" style="color: var(--ink-primary);">{{ row.template.name }}</span>
-                <span class="badge" style="{% if row.status == 'skipping' %}background: var(--priority-urgent); color: #fff;{% elif row.status == 'never_submitted' or row.status == 'never_opened' %}background: color-mix(in srgb, var(--status-warning) 20%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% endif %}">
-                    {% if row.status == 'skipping' %}Skipping{% elif row.status == 'never_submitted' %}Never submitted{% elif row.status == 'never_opened' %}Never opened{% else %}Running late{% endif %}
-                </span>
-            </div>
-            {% if row.sessions %}
-            <div class="d-flex gap-1 mt-2">
-                {% for run in row.sessions %}
-                <span title="{{ run.session.period_label }}" style="width: 14px; height: 14px; border-radius: 4px; display: inline-block; background: {% if run.outcome == 'submitted' %}var(--status-good){% elif run.outcome == 'late' or run.outcome == 'overdue' %}var(--status-warning){% else %}var(--brand-primary){% endif %};"></span>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="small mt-1" style="color: var(--ink-muted);">No sessions opened yet.</div>
-            {% endif %}
-            {% if row.repeated_skips %}
-            <div class="small mt-2" style="color: var(--ink-muted);">
-                Repeatedly skipped: {% for skip in row.repeated_skips %}{{ skip.label }} ({% for reason, count in skip.reasons.items %}{{ reason }}&times;{{ count }}{% if not forloop.last %}, {% endif %}{% endfor %}){% if not forloop.last %}; {% endif %}{% endfor %}
-            </div>
-            {% endif %}
-        </a>
-    {% endfor %}
-    </div>
-    {% else %}
-    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
-        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Every recurring rule is on pattern
-    </div>
-    {% endif %}
-</div>
-
 {# ============================== 4. DEPARTMENTS + CALENDAR ============================== #}
 <div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
     <div class="col">
@@ -293,39 +299,6 @@
             {% endif %}
         </div>
     </div>
-</div>
-
-{# ============================== 6. GONE QUIET — never urgent, always last ============================== #}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
-    <div class="card-header bg-white border-bottom py-3">
-        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-            <i data-lucide="moon" class="icon"></i> Gone quiet ({{ quiet|length }})
-        </span>
-    </div>
-    {% if quiet %}
-    <div class="list-group list-group-flush">
-    {% for row in quiet %}
-        <a href="{% url 'ticket_detail' row.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-1 gap-sm-2 text-decoration-none">
-            <div style="min-width: 0; max-width: 100%; overflow: hidden;">
-                <div class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ row.ticket.title|truncatechars:48 }}</div>
-                <div class="text-truncate small" style="color: var(--ink-muted);">{{ row.ticket.property.name|default:'—' }} · {{ row.ticket.get_assigned_role_display|default:'Unrouted' }}</div>
-            </div>
-            <div class="d-flex flex-wrap gap-1 flex-sm-shrink-0 justify-content-sm-end" style="max-width: 100%;">
-            {% for r in row.reasons %}
-                <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary); border: 1px solid var(--bs-border-color, #e5e7eb);">
-                    {% if r.reason == 'no_activity' %}Quiet {{ r.since|timesince }}
-                    {% elif r.reason == 'blocked_long' %}Blocked {{ r.since|timesince }}
-                    {% elif r.reason == 'auto_untouched' %}Never opened by assignee
-                    {% else %}No due date, quiet{% endif %}
-                </span>
-            {% endfor %}
-            </div>
-        </a>
-    {% endfor %}
-    </div>
-    {% else %}
-    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">Nothing's gone quiet.</div>
-    {% endif %}
 </div>
 
 {# ============================== Financials + Weather — unchanged, kept below the redesign's core panels ============================== #}
