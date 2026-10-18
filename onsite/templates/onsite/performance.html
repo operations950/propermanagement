@@ -39,6 +39,7 @@
 {% endif %}
 
 {% include 'onsite/_overlaps.html' with overlaps=report.overlaps next=request.get_full_path %}
+{% include 'onsite/_blocks.html' with next=request.get_full_path %}
 
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">

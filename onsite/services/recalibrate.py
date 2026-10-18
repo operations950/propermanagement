@@ -122,6 +122,8 @@ def plan(now=None):
         coverage.payment_only(Booking.objects.filter(status=Booking.Status.ACTIVE, check_in__gt=now), covered)
         .select_related('property', 'unit').order_by('property__name', 'check_in')
     )
+    # Only where a calendar is healthy and vouching for the listing: a broken or paused link must never be the reason a real stay's cleaning is removed.
+    candidates = [b for b in candidates if (b.property_id, b.unit_id, b.source) in covered]
     keep, remove = [], []
     for booking in candidates:
         entry = {'booking': booking, 'visits': _removable_visits(booking).count()}

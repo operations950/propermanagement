@@ -72,7 +72,7 @@
         {% for booking in checkouts_missing_visit %}
         <div class="d-flex justify-content-between align-items-center py-1 border-top">
             <span class="small">{{ booking.property.name }} — checkout today, no visit scheduled</span>
-            <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary btn-sm">Schedule</a>
+            <a href="{% url 'onsite_visit_create' %}?property={{ booking.property_id }}" class="btn btn-outline-secondary btn-sm">Schedule</a>
         </div>
         {% endfor %}
         {% for visit in unassigned_visits %}

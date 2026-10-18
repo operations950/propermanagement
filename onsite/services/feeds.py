@@ -51,7 +51,7 @@ from ..feed_ics import parse_feed_ics
 from ..importers import BookingFileError, RawBooking
 from core.models import Property
 
-from ..models import Booking, BookingFeed, ImportBatch
+from ..models import Booking, BookingFeed, CalendarBlock, ImportBatch
 from . import recalibrate
 from .bookings import apply_bookings_for_property, update_feed_health
 
@@ -60,6 +60,7 @@ logger = logging.getLogger(__name__)
 MAX_FEED_BYTES = 5 * 1024 * 1024
 MAX_REDIRECTS = 3
 MASS_CANCEL_MIN = 5
+STALE_MISSING_FOR = timedelta(hours=24)       # a stay the calendar has not shown for a full day (successful checks only) is gone, however far out it is
 STALE_AFTER = timedelta(hours=3)
 
 # One poll at a time: the timer and a "Check now" click could otherwise
@@ -145,12 +146,31 @@ def _resolve_uid(feed, event, taken):
     return event.code or event.uid
 
 
+def _sync_blocks(feed, events, today):
+    """Keep the calendar's blocked stretches (not reservations, still ahead) as they are now: add new ones, drop the ones the calendar no longer shows."""
+    now = timezone.now()
+    current = {}
+    for e in events:
+        if not e.is_reservation and e.check_out > e.check_in and e.check_out > today:
+            current[(e.check_in, e.check_out)] = (e.summary or '')[:200]
+    have = {(b.start, b.end): b for b in CalendarBlock.objects.filter(feed=feed)}
+    for key, summary in current.items():
+        if key in have:
+            CalendarBlock.objects.filter(pk=have[key].pk).update(last_seen_at=now, summary=summary)
+        else:
+            CalendarBlock.objects.create(feed=feed, property=feed.property, unit=feed.unit, source=feed.source, start=key[0], end=key[1], summary=summary)
+    for key, block in have.items():
+        if key not in current:
+            block.delete()
+
+
 def _poll(feed, allow_mass_cancel):
     now = timezone.now()
     today = timezone.localdate()
     events = parse_feed_ics(fetch_feed(feed.url))
     live = [e for e in events if e.is_reservation and e.check_out > e.check_in and e.check_out >= today]
     every_entry_dates = {(e.check_in, e.check_out) for e in events}
+    _sync_blocks(feed, events, today)
 
     rows, seen = [], set()
     for event in live:
@@ -174,9 +194,16 @@ def _poll(feed, allow_mass_cancel):
         ended_early_from=None, ended_early_review=False,
     )
 
+    Booking.objects.filter(source=feed.source, external_uid__in=[r.external_uid for r in rows], calendar_missing_since__isnull=False).update(calendar_missing_since=None)
+
     upcoming = list(Booking.objects.filter(
         property=feed.property, unit=feed.unit, source=feed.source, status=Booking.Status.ACTIVE, check_out__gt=now, ended_early_from__isnull=True,
     ))
+    # Remember when a stay that had been on the calendar first stopped showing (only a successful check gets here), so a stay missing for a full day can be
+    # dealt with even where the two-checks rule can't reach it (past the furthest date the calendar shows, or on a calendar that shows nothing).
+    first_missing = [b.pk for b in upcoming if b.on_calendar and b.external_uid not in seen and b.calendar_missing_since is None]
+    if first_missing:
+        Booking.objects.filter(pk__in=first_missing).update(calendar_missing_since=now)
     window_end = max((e.check_out for e in live), default=None)
     missing = []
     if window_end:
@@ -194,6 +221,12 @@ def _poll(feed, allow_mass_cancel):
     streak = {b.external_uid: previous.get(b.external_uid, 0) + 1 for b in missing}
     threshold = settings.BOOKING_FEED_MISSING_POLLS_BEFORE_CANCEL
     due = [b for b in missing if streak[b.external_uid] >= threshold]
+    due_pks = {b.pk for b in due}
+    for b in upcoming:
+        if (b.pk not in due_pks and b.on_calendar and b.external_uid not in seen and b.calendar_missing_since
+                and now - b.calendar_missing_since >= STALE_MISSING_FOR
+                and (_local_date(b.check_in), _local_date(b.check_out)) not in every_entry_dates):
+            due.append(b)
     held = 0
     if due and not allow_mass_cancel and len(due) > MASS_CANCEL_MIN and len(due) * 2 >= len(upcoming):
         held, due = len(due), []

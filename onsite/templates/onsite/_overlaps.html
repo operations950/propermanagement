@@ -1,7 +1,7 @@
 {# Warning for reservations that share a night at one unit. `overlaps` from performance.build_performance; `next` = this page. #}
 {% if overlaps %}
 <div class="alert alert-warning small py-2">
-    <strong>{{ overlaps|length }} pair{{ overlaps|length|pluralize }} of reservations overlap at the same unit</strong> — one unit can't have two guests at once, so one of each pair is probably a duplicate, a cancellation the platform never reported, or a listing mapped to the wrong unit. Occupancy counts each night once, but check these. Cancel the one that isn't real:
+    <strong>{{ overlaps|length }} pair{{ overlaps|length|pluralize }} of reservations overlap at the same unit</strong> — one unit can't have two guests at once. The calendars are the truth, so this usually means two calendar links feed one unit: check which link belongs to which unit on Booking calendars. Occupancy counts each night once. Fix the link; a stay from Airbnb or VRBO is only ever cancelled on the platform:
     {% for o in overlaps|slice:":8" %}
     <div class="border-top mt-2 pt-2">
         <div class="fw-semibold">{{ o.label }}</div>

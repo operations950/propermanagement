@@ -1,18 +1,18 @@
-"""Which bookings are OPERATIONAL — real for cleanings and the Rentals board.
+"""Which bookings are OPERATIONAL — real for cleanings, occupancy and the Rentals board.
 
 The synced platform calendars are the single source of truth for who is
 actually checking in and out. The payment reports (CSV imports) are the single
-source of truth for money. A reservation that only a payment report knows about
-is a valid financial record, but where a listing's calendar is connected and
-healthy it never gets a cleaning and doesn't appear on the board: it could be a
-payment for a cancellation or an old reservation.
+source of truth for money, and only for money. A reservation that only a payment
+report knows about is a valid financial record, but it is never a stay: no
+cleaning, no board row, no occupancy from today on, whether or not its listing
+has a calendar. A listing with no calendar link is a problem to fix (it is
+flagged everywhere), not a reason to let files stand in for the calendar.
+In-house (manual) reservations are the one exception: they are entered by hand,
+have no platform calendar, and are always operational.
 
-"Covered" is per listing and platform: an active, connected, recently-polled
-calendar for that (property, unit, source). Where a listing has no working
-calendar yet, its imported reservations stay operational (the way they always
-were) until the calendar is connected — otherwise those rentals would lose their
-cleanings the moment this rule arrived. In-house (manual) reservations have no
-platform calendar and are always operational."""
+"Covered" is still worked out per listing and platform (an active, connected,
+recently-polled calendar for that (property, unit, source)); it says whether a
+calendar is vouching for a listing, not whether files may count."""
 from datetime import timedelta
 
 from django.db.models import Q
@@ -39,31 +39,16 @@ def is_operational(booking, covered=None):
     """True if this booking counts for cleanings and the board. Accepts a
     Booking or a dict with the same keys (property_id, unit_id, source,
     on_calendar)."""
-    covered = covered_keys() if covered is None else covered
     get = booking.get if isinstance(booking, dict) else (lambda k: getattr(booking, k))
-    if get('source') == Booking.Source.MANUAL or get('on_calendar'):
-        return True
-    return (get('property_id'), get('unit_id'), get('source')) not in covered
+    return bool(get('source') == Booking.Source.MANUAL or get('on_calendar'))
 
 
 def operational(qs, covered=None):
-    """The bookings in `qs` that are operational."""
-    covered = covered_keys() if covered is None else covered
-    hidden = Q()
-    for property_id, unit_id, source in covered:
-        hidden |= Q(property_id=property_id, unit_id=unit_id, source=source)
-    if not covered:
-        return qs
-    return qs.exclude(hidden & Q(on_calendar=False) & ~Q(source=Booking.Source.MANUAL))
+    """The bookings in `qs` that are operational: on a calendar, or entered by hand."""
+    return qs.filter(Q(on_calendar=True) | Q(source=Booking.Source.MANUAL))
 
 
 def payment_only(qs, covered=None):
     """The bookings in `qs` that are financial records only: known from a
-    payment report, not on a connected calendar."""
-    covered = covered_keys() if covered is None else covered
-    hidden = Q()
-    for property_id, unit_id, source in covered:
-        hidden |= Q(property_id=property_id, unit_id=unit_id, source=source)
-    if not covered:
-        return qs.none()
-    return qs.filter(hidden & Q(on_calendar=False) & ~Q(source=Booking.Source.MANUAL))
+    payment report, not on a calendar."""
+    return qs.filter(on_calendar=False).exclude(source=Booking.Source.MANUAL)

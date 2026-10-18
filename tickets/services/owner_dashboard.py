@@ -108,10 +108,9 @@ def onsite_next_48h(now=None):
         .select_related('property')
         .prefetch_related('visits')
     )
-    unassigned_tomorrow_checkouts = [
-        b for b in tomorrow_checkouts
-        if not any(v.status not in (Visit.Status.CANCELLED, Visit.Status.SKIPPED) for v in b.visits.all())
-    ]
+    from onsite.services.checkouts import without_visit
+    from onsite.services.coverage import operational
+    unassigned_tomorrow_checkouts = without_visit(operational(tomorrow_checkouts))
 
     # A file not landing for 2 days running is the "upload agent is
     # broken" alarm condition from BookingFeedHealth's own docstring —

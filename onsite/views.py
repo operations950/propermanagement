@@ -30,11 +30,13 @@ from . import google_calendar_push
 from .google_calendar_push import delete_visit_event
 from .importers import BookingFileError, detect_format, is_payout_file, parse_booking_file, parse_payouts_file, read_csv_header
 from .models import (
-    Booking, BookingFeed, BookingFeedHealth, CleaningPaymentBatch, GuestRequest, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
+    BlockReview, Booking, BookingFeed, BookingFeedHealth, CleaningPaymentBatch, GuestRequest, CleaningPricingSettings, DailyUploadSlot, ImportBatch,
     NO_CHECKLIST_VISIT_TYPE_SLUG, PropertyChecklistItem, StandardChecklistItem, Visit, VisitChecklistItem, VisitIssue, VisitMedia, VisitRule,
     VisitType,
 )
+from .services import blocks as blocks_service
 from .services import checklist as checklist_service
+from .services import checkouts as checkout_service
 from .services import feeds as feed_service
 from .services import recurring as recurring_service
 from .services import performance as performance_service
@@ -201,10 +203,7 @@ def dashboard(request):
         .select_related('property')
         .prefetch_related('visits')
     )
-    checkouts_missing_visit = [
-        b for b in checkouts_today
-        if not any(v.status not in (Visit.Status.CANCELLED, Visit.Status.SKIPPED) for v in b.visits.all())
-    ]
+    checkouts_missing_visit = checkout_service.without_visit(coverage_service.operational(checkouts_today))
     unassigned_visits = [v for v in todays_visits if v.status == Visit.Status.UNASSIGNED]
     at_risk_visits = [v for v in todays_visits if v.derived_status == 'at_risk']
 
@@ -978,6 +977,7 @@ def performance(request):
     property_id = int(raw) if raw.isdigit() else None
     report = performance_service.build_performance(property_id=property_id)
     return render(request, 'onsite/performance.html', {
+        'blocks': blocks_service.unexplained(property_id=property_id), 'no_calendar': blocks_service.without_calendar(),
         'report': report, 'property_id': property_id, 'is_admin': _is_admin(request.user),
         'properties': list(str_board.eligible_properties()),
     })
@@ -1058,6 +1058,7 @@ def performance_property(request, property_id):
     unit_id = int(raw) if raw.isdigit() else None
     data = performance_service.build_property_performance(prop, unit_id=unit_id)
     is_admin = _is_admin(request.user)
+    block_rows, no_calendar = blocks_service.unexplained(property_id=prop.pk, unit_id=unit_id), [l for l in blocks_service.without_calendar() if l == prop.name or l.startswith(prop.name + ' — ')]
     months = data['months']
     charts = {
         'occupancy': {'type': 'bar', 'format': 'pct', 'max': 100, 'labels': [m['label'] for m in months], 'full': [m['full'] + (' (to date)' if m['partial'] else '') for m in months],
@@ -1074,7 +1075,7 @@ def performance_property(request, property_id):
         charts['revenue'] = {'type': 'bar', 'format': 'money', 'labels': [m['label'] for m in months], 'full': [m['full'] + (' (to date)' if m['partial'] else '') for m in months],
                              'series': [{'name': 'Revenue (payouts)', 'color': '#3d6178', 'values': [None if m['revenue'] is None else round(m['revenue'], 2) for m in months]}]}
     return render(request, 'onsite/performance_property.html', {
-        'data': data, 'charts': charts, 'is_admin': is_admin, 'property': prop,
+        'data': data, 'charts': charts, 'is_admin': is_admin, 'property': prop, 'blocks': block_rows, 'no_calendar': no_calendar,
         'kpis': performance_service.kpi_cards(data, is_admin, prop=prop, unit_id=unit_id),
     })
 
@@ -1238,6 +1239,25 @@ def reservation_review(request):
 
 @login_required
 @require_http_methods(['POST'])
+def block_review(request):
+    """Mark blocked days nothing else explains as fine (maintenance, say), with the reason."""
+    prop = get_object_or_404(Property, pk=request.POST.get('property'))
+    unit = Unit.objects.filter(pk=request.POST.get('unit'), property=prop).first() if request.POST.get('unit') else None
+    start, end = parse_date(request.POST.get('start', '')), parse_date(request.POST.get('end', ''))
+    note = (request.POST.get('note') or '').strip()
+    if start is None or end is None or end <= start or not note:
+        messages.error(request, 'Say why those blocked days are fine.')
+    else:
+        BlockReview.objects.create(property=prop, unit=unit, start=start, end=end, note=note[:300], reviewed_by=request.user)
+        messages.success(request, 'Marked fine: those blocked days will not be flagged.')
+    target = request.POST.get('next', '')
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+        target = reverse('onsite_performance')
+    return redirect(target)
+
+
+@login_required
+@require_http_methods(['POST'])
 def reservation_ended(request, pk):
     """Confirm the day a guest actually left a stay the calendar dropped after it started: the nights up to that day count, nothing after it."""
     booking = get_object_or_404(Booking, pk=pk, ended_early_review=True)
@@ -1276,8 +1296,10 @@ def reservation_cancel(request, pk):
             booking.save(update_fields=['confirmed_real'])
             messages.success(request, f'{who} confirmed as a real reservation.')
         else:
+            if booking.source != Booking.Source.MANUAL and booking.on_calendar:
+                raise reservation_service.ReservationError('A stay the calendar shows cannot be cancelled here: the calendar decides. Cancel it on Airbnb or VRBO and the calendar will show that. Only an in-house reservation, or a payment record the calendar does not show, can be cancelled by hand.')
             reservation_service.cancel_booking(booking, request.user)
-            messages.success(request, f'{who} marked cancelled. Its cleaning was removed and imports won\'t bring it back.')
+            messages.success(request, f'{who} marked cancelled. Its cleaning was removed.')
     except reservation_service.ReservationError as e:
         messages.error(request, str(e))
     target = request.POST.get('next', '')

@@ -112,14 +112,10 @@ def _needs_visit(check_out_date):
 
 
 def _cleaning_allowed(property_id, unit_id, source, from_calendar, covered, on_calendar=False):
-    """A cleaning is made only for a stay the calendar shows. Where a listing's
-    calendar is connected and healthy, a reservation that only a payment report
-    knows about is a financial record: no cleaning, no board row. Where there is
-    no working calendar yet, imports keep scheduling cleanings as before."""
-    return bool(
-        from_calendar or on_calendar or source == Booking.Source.MANUAL
-        or (property_id, unit_id, source) not in covered
-    )
+    """A cleaning is made only for a stay the calendar shows (or an in-house one).
+    A reservation that only a payment report knows about is a financial record:
+    no cleaning, no board row, whether or not its listing has a calendar yet."""
+    return bool(from_calendar or on_calendar or source == Booking.Source.MANUAL)
 
 
 def _record_paid_cancellations(property, source, raw_bookings, listing_unit_map, default_unit=None):
@@ -397,7 +393,7 @@ def _fill_details(source, raw_bookings):
             booking.save(update_fields=changed)
 
 
-def diff_bookings(property, source, raw_bookings, default_unit=None):
+def diff_bookings(property, source, raw_bookings, default_unit=None, from_feed=False):
     """Read-only preview diff — nothing written. Returns a dict with 'new'/
     'changed'/'reactivated'/'missing_visit' (lists of RawBooking) and
     'cancelled' (list of existing Booking rows).
@@ -448,7 +444,11 @@ def diff_bookings(property, source, raw_bookings, default_unit=None):
     for row in raw_bookings:
         existing = existing_by_uid.get(row.external_uid) or _feed_twin(property, source, row, listing_unit_map, default_unit)
         if existing is not None and existing.manually_cancelled:
-            continue    # a person cancelled it; a file or calendar still listing it must not bring it back
+            if from_feed and existing.source != Booking.Source.MANUAL and not row.is_cancelled and existing.property_id == property.pk:
+                reactivated_rows.append(row)      # the calendar still shows a stay someone cancelled by hand: the calendar wins
+            continue    # an in-house reservation cancelled by hand, or one a file lists: stays cancelled
+        if existing is not None and not from_feed and existing.on_calendar and existing.source != Booking.Source.MANUAL:
+            continue    # the calendar decides this stay (its dates, whether it is cancelled, its cleaning); a file only adds money and details to it
         if existing is not None and existing.ended_early_from is not None and row.check_out == existing.ended_early_from:
             continue    # the calendar dropped this stay after it started and it was cut short: a report still listing the original dates must not stretch it back
         if row.is_cancelled:
@@ -562,7 +562,7 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
     listing_unit_map = _listing_unit_map(property, source)
     covered = coverage.covered_keys()
     _adopt_feed_twins(property, source, raw_bookings, listing_unit_map, default_unit)
-    diff = diff_bookings(property, source, raw_bookings, default_unit)
+    diff = diff_bookings(property, source, raw_bookings, default_unit, from_feed=from_feed)
     turnover_type = VisitType.objects.filter(slug=TURNOVER_SLUG, is_active=True).first()
     if property.is_general:
         # A general placeholder (e.g. "Short-Term Rentals (general)") is the
@@ -699,7 +699,8 @@ def apply_bookings_for_property(property, source, raw_bookings, default_unit=Non
             booking.listing_name = row.listing_name
             booking.unit = listing_unit_map.get(row.listing_name)
         booking.last_seen_at = timezone.now()
-        booking.save(update_fields=['status', 'check_in', 'check_out', 'listing_name', 'unit', 'last_seen_at'])
+        booking.manually_cancelled = False        # the calendar showing it again settles it, even if someone had cancelled it by hand
+        booking.save(update_fields=['status', 'check_in', 'check_out', 'listing_name', 'unit', 'last_seen_at', 'manually_cancelled'])
 
         next_booking = _find_next_booking(property, booking.check_out, exclude_pk=booking.pk, unit=booking.unit)
         cancelled_visit = booking.visits.filter(status=Visit.Status.CANCELLED).order_by('-pk').first()

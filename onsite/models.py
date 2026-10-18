@@ -306,6 +306,37 @@ class BookingFeedHealth(models.Model):
         return f'{self.get_source_display()} feed health'
 
 
+class CalendarBlock(models.Model):
+    """A stretch of nights a platform calendar shows as unavailable that is not a reservation (an owner stay or a handyman day blocked by hand, or another
+    platform's reservation echoed onto this calendar). Replaced on every successful poll: it exists only while the calendar still shows it. Blocks never
+    count toward occupancy; the performance page flags the ones nothing explains. `end` is the first night not blocked (like a check-out date)."""
+    feed = models.ForeignKey('BookingFeed', on_delete=models.CASCADE, related_name='blocks')
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='calendar_blocks')
+    unit = models.ForeignKey(Unit, on_delete=models.CASCADE, null=True, blank=True, related_name='calendar_blocks')
+    source = models.CharField(max_length=20)
+    start = models.DateField()
+    end = models.DateField()
+    summary = models.CharField(max_length=200, blank=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['start']
+        unique_together = [('feed', 'start', 'end')]
+
+
+class BlockReview(models.Model):
+    """A person looked at blocked nights nothing else explains and said they are fine (a handyman day, say). Covers those nights at that unit, so they
+    stop being flagged."""
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='+')
+    unit = models.ForeignKey(Unit, on_delete=models.CASCADE, null=True, blank=True, related_name='+')
+    start = models.DateField()
+    end = models.DateField(help_text='The first night not covered.')
+    note = models.CharField(max_length=300)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    reviewed_at = models.DateTimeField(auto_now_add=True)
+
+
 class BookingFeed(models.Model):
     """A listing's Airbnb/VRBO calendar (.ics) link that the app polls on a
     timer, so reservations — and their turnover visits — appear, move and
@@ -543,6 +574,11 @@ class Booking(models.Model):
                    "real departure on the review screen.",
     )
     ended_early_review = models.BooleanField(default=False, help_text='A person still has to confirm when this guest actually left.')
+    calendar_missing_since = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Set by the first successful calendar check that did not show this stay (it had been on the calendar), cleared the moment it shows again. A failed "
+                   "download never sets it. A stay missing for a full day is treated as gone however far out it is.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

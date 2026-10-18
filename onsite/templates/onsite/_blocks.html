@@ -1,0 +1,20 @@
+{# Warnings on the performance pages: units with no calendar link, and blocked days that no reservation explains. `no_calendar` and `blocks` come from the view; `next` = this page. #}
+{% if no_calendar %}
+<div class="alert alert-danger small py-2">
+    <strong>{{ no_calendar|length }} listing{{ no_calendar|length|pluralize }} {{ no_calendar|length|pluralize:"has,have" }} no calendar link</strong> — nothing tells us who is staying there, and a payment report cannot stand in for the calendar: {% for l in no_calendar|slice:":8" %}{{ l }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if no_calendar|length > 8 %}, and {{ no_calendar|length|add:"-8" }} more{% endif %}.
+    <a href="{% url 'onsite_booking_feeds' %}" class="alert-link">Booking calendars</a> — connect each one.
+</div>
+{% endif %}
+{% if blocks %}
+<div class="alert alert-warning small py-2">
+    <strong>{{ blocks|length }} stretch{{ blocks|length|pluralize:",es" }} of blocked days with no reservation</strong> — days blocked on a platform calendar are not occupied nights. If an owner is staying, add an in-house reservation for those days (Reservations, New); if it is maintenance, mark it fine:
+    {% for b in blocks|slice:":10" %}
+    <form method="post" action="{% url 'onsite_block_review' %}" class="border-top mt-2 pt-2 d-flex flex-wrap gap-2 align-items-center justify-content-between">{% csrf_token %}
+        <input type="hidden" name="property" value="{{ b.property.pk }}"><input type="hidden" name="unit" value="{{ b.unit.pk|default:'' }}"><input type="hidden" name="start" value="{{ b.start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ b.end|date:'Y-m-d' }}"><input type="hidden" name="next" value="{{ next }}">
+        <span><span class="fw-semibold">{{ b.label }}</span> · {{ b.start|date:"M j" }}{% if b.nights > 1 %}–{{ b.end|date:"M j" }} ({{ b.nights }} nights){% else %} (1 night){% endif %} · blocked on {% for s in b.sources %}{{ s|capfirst }}{% if not forloop.last %} and {% endif %}{% endfor %}</span>
+        <span class="d-inline-flex gap-1"><input type="text" name="note" class="form-control form-control-sm" style="width: 12rem;" placeholder="Why it is fine" maxlength="300" required><button class="btn btn-outline-secondary btn-sm">Fine</button></span>
+    </form>
+    {% endfor %}
+    {% if blocks|length > 10 %}<div class="mt-2">…and {{ blocks|length|add:"-10" }} more.</div>{% endif %}
+</div>
+{% endif %}
