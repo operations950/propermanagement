@@ -148,10 +148,11 @@ def suggestions(prop, pool=None, limit=3):
 def own_status(target):
     """'mapped' (both accounts), 'partial' or 'unmapped' — for a property's own pair
     or a unit's."""
-    have = [target.qb_expense_account_id, target.qb_trust_account_id]
-    if all(have):
+    prop = target if isinstance(target, Property) else target.property
+    needed = [target.qb_trust_account_id] + ([target.qb_expense_account_id] if prop.has_expense_account else [])
+    if all(needed):
         return 'mapped'
-    return 'partial' if any(have) else 'unmapped'
+    return 'partial' if any([target.qb_expense_account_id, target.qb_trust_account_id]) else 'unmapped'
 
 
 def active_units(prop):
@@ -171,4 +172,4 @@ def status(prop):
 
 
 def rentals_needing_accounts():
-    return [p for p in Property.objects.filter(is_active=True, is_general=False, property_type__in=(Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL)) if status(p) != 'mapped']
+    return [p for p in Property.objects.filter(is_active=True, is_general=False, financials_managed=True, property_type__in=(Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL)) if status(p) != 'mapped']

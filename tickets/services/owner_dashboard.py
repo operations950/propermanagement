@@ -264,7 +264,7 @@ def movement_today():
     }
 
 
-AUTOMATIC = 'Automatic (email, calendar, booking feeds)'
+AUTOMATIC = 'Automatic (cleaner-reported issues)'
 NOT_RECORDED = 'Not recorded (vendor link or automatic)'
 
 
@@ -272,7 +272,7 @@ def ticket_flow(days=30, now=None):
     """How tickets have been opening and closing, for the owner dashboard: who opened and who closed how many in the last `days` days, and the number
     of tickets still open at the end of each of those days (the line that shows work piling up or being cleared).
 
-    Opened by = Ticket.created_by (blank for anything an email, calendar, booking feed or a cleaner's own link made: shown as one automatic row).
+    Opened by = Ticket.created_by (blank for what a cleaner's own link reports from a visit: shown as one automatic row).
     Closed by = the person on the ticket's latest closing note when it reached a final status (completed, verified, cancelled, skipped, not
     applicable); with no closing note on record (a vendor's completion link, or an automatic cancel) it is "not recorded". A ticket counts as closed on
     the day of that closing note, else its completed/cancelled time. Tickets made by the recurring schedules or sessions, and ones still "upcoming", are left out:

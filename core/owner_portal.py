@@ -59,7 +59,7 @@ def portal_url():
 # ------------------------------------------------------------------------------------------------------------- what an owner may see
 
 def open_properties():
-    return Property.objects.filter(owner_portal_open=True, is_active=True, property_type=Property.Type.SHORT_TERM_RENTAL, is_general=False).order_by('name')
+    return Property.objects.filter(owner_portal_open=True, is_active=True, property_type=Property.Type.SHORT_TERM_RENTAL, is_general=False, financials_managed=True).order_by('name')
 
 
 def owner_contacts(prop):

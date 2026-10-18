@@ -189,7 +189,7 @@ def _consolidated_page(request, prop, month):
 def close_statement(request, pk):
     """A rental's calendar year, month by month, the way the owner sees it: the calculation, what is owed and paid.
     The arrows move to the year before or after."""
-    prop = get_object_or_404(Property, pk=pk, property_type__in=ledger.CLOSE_TYPES)
+    prop = get_object_or_404(Property, pk=pk, property_type__in=ledger.CLOSE_TYPES, financials_managed=True)
     today = timezone.localdate()
     this_year = today.year
     month = _parse_month(request.GET.get('month'), ledger.previous_month(today))      # the month page it was opened from
@@ -209,7 +209,7 @@ def close_statement(request, pk):
 @user_passes_test(_is_admin)
 def close_month_statement(request, pk, month):
     """One month of a rental as its owner sees it: every line with transactions behind it expands to that month's transactions."""
-    prop = get_object_or_404(Property, pk=pk, property_type__in=ledger.CLOSE_TYPES)
+    prop = get_object_or_404(Property, pk=pk, property_type__in=ledger.CLOSE_TYPES, financials_managed=True)
     first = _parse_month(month, None)
     if first is None:
         return redirect('close_statement', pk=pk)
@@ -224,7 +224,7 @@ def close_month_statement(request, pk, month):
 @login_required
 @user_passes_test(_is_admin)
 def close_property(request, month, pk, unit_pk=None):
-    prop = get_object_or_404(Property.objects.select_related('qb_expense_account', 'qb_trust_account'), pk=pk, property_type__in=ledger.CLOSE_TYPES)
+    prop = get_object_or_404(Property.objects.select_related('qb_expense_account', 'qb_trust_account'), pk=pk, property_type__in=ledger.CLOSE_TYPES, financials_managed=True)
     month = _parse_month(month, None)
     if month is None:
         return redirect('close_overview')

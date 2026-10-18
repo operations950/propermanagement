@@ -36,19 +36,19 @@
 <nav class="d-flex flex-wrap gap-2 mb-3 small" aria-label="Sections of this property">
     <a href="#units" class="btn btn-sm btn-outline-secondary">{% if units %}Units{% else %}Details{% endif %}</a>
     <a href="#building" class="btn btn-sm btn-outline-secondary">{% if units %}Building{% else %}Property-wide{% endif %}</a>
-    <a href="#trash" class="btn btn-sm btn-outline-secondary">Trash</a>
+    {% if 'trash' in sections %}<a href="#trash" class="btn btn-sm btn-outline-secondary">Trash</a>{% endif %}
     <a href="#contacts" class="btn btn-sm btn-outline-secondary">Contacts</a>
     <a href="#tickets" class="btn btn-sm btn-outline-secondary">Tickets</a>
-    <a href="#faq" class="btn btn-sm btn-outline-secondary">FAQ</a>
-    <a href="#supplies" class="btn btn-sm btn-outline-secondary">Supplies</a>
-    {% if qb %}<a href="#quickbooks" class="btn btn-sm btn-outline-secondary">QuickBooks</a>{% endif %}
+    {% if 'faq' in sections %}<a href="#faq" class="btn btn-sm btn-outline-secondary">FAQ</a>{% endif %}
+    {% if 'supplies' in sections %}<a href="#supplies" class="btn btn-sm btn-outline-secondary">Supplies</a>{% endif %}
+    {% if qb and 'quickbooks' in sections %}<a href="#quickbooks" class="btn btn-sm btn-outline-secondary">QuickBooks</a>{% endif %}
 </nav>
 
 <section id="units" class="mb-3">
     <div id="property-size"></div>
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
         <h5 class="mb-0 d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> {% if units %}Units{% else %}This property{% endif %}</h5>
-        <span class="small text-muted">{% if units %}Each unit keeps its own size, codes, wifi, shutoffs and listings.{% else %}It is one unit: its size, codes, wifi, shutoffs and listings.{% endif %}</span>
+        <span class="small text-muted">{% if 'size' in sections %}{% if units %}Each unit keeps its own size, codes, wifi, shutoffs and listings.{% else %}It is one unit: its size, codes, wifi, shutoffs and listings.{% endif %}{% else %}{% if units %}Each unit keeps its own codes, wifi and shutoffs.{% else %}Its codes, wifi and shutoffs.{% endif %}{% endif %}</span>
     </div>
     {% if own_card %}
     {% include 'core/_unit_card.html' with u=None target=property c=own_card open_it=True %}
@@ -93,7 +93,7 @@
 {% include 'core/_property_building.html' %}
 
 <div class="row g-3 mb-3">
-    <div class="col-md-6">
+    {% if 'amenities' in sections %}<div class="col-md-{% if 'platforms' in sections %}6{% else %}12{% endif %}">
         <div class="card h-100">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Amenities</h6>
@@ -140,7 +140,8 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6">
+{% endif %}
+{% if 'platforms' in sections %}    <div class="col-md-6">
         <div class="card h-100">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Booking platforms</h6>
@@ -204,9 +205,10 @@
             </div>
         </div>
     </div>
+{% endif %}
 </div>
 
-{% include 'core/_property_trash.html' %}
+{% if 'trash' in sections %}{% include 'core/_property_trash.html' %}{% endif %}
 
 <div class="card mb-3" id="contacts">
     <div class="card-body">
@@ -390,6 +392,7 @@
     </div>
 </div>
 
+{% if 'faq' in sections %}
 {# FAQ: what the message assistant knows about this property, kept on the record. #}
 <details class="card mb-3" id="faq">
     <summary class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2" style="cursor: pointer; list-style: none;">
@@ -478,6 +481,8 @@
     })();
 </script>
 
+{% endif %}
+{% if 'supplies' in sections %}
 <div class="card mb-3" id="supplies">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -569,6 +574,7 @@
     </div>
 </div>
 
+{% endif %}
 <div class="card mb-3">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> Documents</h6>
@@ -608,19 +614,7 @@
     </div>
 </div>
 
-<div class="card mb-3">
-    <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Processes</h6>
-
-        {% for run in process_runs %}
-        {% include "processes/_run_card.html" with run=run %}
-        {% endfor %}
-
-        {% include "processes/_attach_form.html" with target_type="property" target_id=property.pk has_runs=process_runs %}
-    </div>
-</div>
-
-{% if qb %}
+{% if qb and 'quickbooks' in sections %}
 {# QuickBooks: the two accounts this rental's money runs through (admin only). #}
 <style>#qb-baseline-row[hidden] { display: none !important; }</style>
 <div class="card mb-3" id="quickbooks">
@@ -632,6 +626,21 @@
         </div>
         <p class="text-muted small mb-3">Each rental runs through two accounts. The <strong>income-statement</strong> account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The <strong>balance-sheet</strong> account is the owner's trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner's payment.</p>
 
+        <form method="post" class="border rounded p-2 mb-3" id="financials-switch">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_financials">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="financials_managed" id="fin-managed" {% if property.financials_managed %}checked{% endif %}>
+                <label class="form-check-label small" for="fin-managed"><strong>We do this property's financials</strong> — we collect or pay its money and close it each month. Untick it for a property we only manage: it stays out of the month-end close, the QuickBooks setup and every financial warning.</label>
+            </div>
+            {% if property.financials_managed %}
+            <div class="form-check mt-1">
+                <input class="form-check-input" type="checkbox" name="no_expense_account" id="fin-expense" {% if not property.has_expense_account %}checked{% endif %}>
+                <label class="form-check-label small" for="fin-expense"><strong>No income statement account for this property</strong> — it has only a trust account, so whatever it spends comes out of the trust account.</label>
+            </div>
+            {% endif %}
+            <button class="btn btn-outline-secondary btn-sm mt-2">Save</button>
+        </form>
+        {% if property.financials_managed %}
         <form method="post" class="border rounded p-2 mb-3">
             {% csrf_token %}<input type="hidden" name="action" value="qb_set_commission">
             <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -781,6 +790,7 @@
             <span class="small text-muted">{% if qb.synced_at %}{{ qb.account_count }} accounts, last read {{ qb.synced_at|timesince }} ago{% else %}not read yet{% endif %}. Not seeing a new account? Refresh.</span>
         </form>
         {% endif %}
+        {% endif %}{# financials_managed #}
     </div>
 </div>
 {% endif %}

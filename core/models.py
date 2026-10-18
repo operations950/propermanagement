@@ -172,6 +172,16 @@ class Property(models.Model):
         help_text="When the owner is paid: for the month that just ended (early next month: 'in arrears', how short-term rentals are paid), or for the "
                    "month itself (rent collected and paid out in the same month). The balance still owed carries to the next month either way.",
     )
+    financials_managed = models.BooleanField(
+        default=True,
+        help_text="We do this property's financials: we collect or pay its money and close it each month. Off for a property we only manage: it stays out of the "
+                   "month-end close, the QuickBooks setup and every financial warning.",
+    )
+    has_expense_account = models.BooleanField(
+        default=True,
+        help_text='The property has an income statement account (a reimbursable-expense account) for what we spend on its behalf. Off for a property with only a '
+                   'trust account: whatever it spends comes out of the trust account.',
+    )
     commission_flat = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0.00'),
         help_text='A flat amount of commission charged, in addition to the percent, in every month that has income deposits.',

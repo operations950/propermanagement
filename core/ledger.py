@@ -91,7 +91,7 @@ CLOSE_TYPES = (Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL)
 def rentals():
     """The rentals that go through the close: active real short-term and long-term rentals."""
     return list(
-        Property.objects.filter(is_active=True, is_general=False, property_type__in=CLOSE_TYPES)
+        Property.objects.filter(is_active=True, is_general=False, financials_managed=True, property_type__in=CLOSE_TYPES)
         .select_related('qb_expense_account', 'qb_trust_account').order_by('name'),
     )
 
@@ -147,7 +147,8 @@ class Book:
 
     @property
     def mapped(self):
-        return self.qb_expense_account_id is not None and self.qb_trust_account_id is not None
+        """Tied to its trust account and, unless the property has only a trust account, to its expense account too."""
+        return self.qb_trust_account_id is not None and (self.qb_expense_account_id is not None or not self.property.has_expense_account)
 
     def scope(self):
         """Filter/create arguments that pick this book's rows out of the ledger tables."""
@@ -1062,7 +1063,7 @@ def checks(book, month, now=None, rec=None):
         add('closed', 'block', f'{month:%B %Y} is already closed.')
         return items
     if not book.mapped:
-        add('accounts', 'block', f'{"This unit" if book.unit else "This rental"} is not tied to both QuickBooks accounts yet.')
+        add('accounts', 'block', f'{"This unit" if book.unit else "This rental"} is not tied to its QuickBooks account{"s" if book.property.has_expense_account else ""} yet.')
     if book.unit is not None and book.property.commission_basis == Property.CommissionBasis.NET and book.property.owner_baseline_expense:
         add('baseline_unit_books', 'warn', f'Owner Baseline Expenses (${book.property.owner_baseline_expense:,.2f}) is a whole-property figure and is not applied unit by unit — it has no effect while this rental is kept unit by unit.')
     if timezone.localdate() < next_month(month):

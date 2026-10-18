@@ -586,7 +586,7 @@ def quickbooks_accounts(request):
     """Admin: every short-term and long-term rental with the two QuickBooks accounts it is tied to,
     for mapping them all in one pass (each rental's own page has the same picker)."""
     rentals = list(
-        Property.objects.filter(is_active=True, is_general=False, property_type__in=(Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL))
+        Property.objects.filter(is_active=True, is_general=False, financials_managed=True, property_type__in=(Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL))
         .select_related('qb_expense_account', 'qb_trust_account').order_by('name'),
     )
     if request.method == 'POST':
@@ -991,6 +991,20 @@ def _refresh_qb_accounts(request):
     return True
 
 
+# What a property's page shows depends on what kind of property it is: a commercial building has no booking platforms, a rental has no board meetings.
+# Each name is a card or block on core/property_detail.html (or inside the unit card); anything not listed for a type is simply not shown. Nothing is
+# deleted: the data stays on the record if the type changes.
+PROPERTY_SECTIONS_COMMON = frozenset({'units', 'building', 'amenities', 'contacts', 'communication', 'followups', 'tickets', 'notes', 'documents'})
+PROPERTY_SECTIONS = {
+    Property.Type.SHORT_TERM_RENTAL: PROPERTY_SECTIONS_COMMON | {'size', 'listings', 'platforms', 'trash', 'faq', 'supplies', 'quickbooks'},
+    Property.Type.LONG_TERM_RENTAL: PROPERTY_SECTIONS_COMMON | {'quickbooks'},
+    Property.Type.ASSOCIATION: PROPERTY_SECTIONS_COMMON | {'legal'},
+    Property.Type.COMMERCIAL: PROPERTY_SECTIONS_COMMON,
+    Property.Type.SNOWBIRD: PROPERTY_SECTIONS_COMMON,
+    Property.Type.GENERAL: PROPERTY_SECTIONS_COMMON,
+}
+
+
 def _property_qb_action(request, prop, action):
     """Admin: tie this rental to its two QuickBooks accounts, or refresh the list."""
     if not _is_admin(request.user):
@@ -1019,6 +1033,15 @@ def _property_qb_action(request, prop, action):
             saved += not errors
         if saved:
             messages.success(request, f'Saved the accounts for {saved} unit{"" if saved == 1 else "s"}.')
+    elif action == 'qb_set_financials':
+        prop.financials_managed = request.POST.get('financials_managed') == 'on'
+        if prop.financials_managed:
+            prop.has_expense_account = request.POST.get('no_expense_account') != 'on'
+        prop.save(update_fields=['financials_managed', 'has_expense_account'])
+        if not prop.financials_managed:
+            messages.success(request, f"{prop.name} is now a property we only manage: it is out of the month-end close and the financial warnings.")
+        else:
+            messages.success(request, f"We do {prop.name}'s financials" + ('.' if prop.has_expense_account else ', with no income statement account: whatever it spends comes out of the trust account.'))
     elif action == 'qb_set_owner_portal':
         opened = request.POST.get('owner_portal_open') == 'on'
         prop.owner_portal_open = opened
@@ -1497,6 +1520,7 @@ def property_detail(request, pk):
     from legalforms.views import _allowed as _can_use_documents
     return render(request, 'core/property_detail.html', {
         'property': prop,
+        'sections': PROPERTY_SECTIONS.get(prop.property_type, PROPERTY_SECTIONS_COMMON),
         'can_use_documents': _can_use_documents(request.user),
         'legal_templates': DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True) if prop.property_type == Property.Type.ASSOCIATION else [],
         'specs_summary': property_specs.summary(property_specs.missing_specs(prop)),
@@ -1531,7 +1555,6 @@ def property_detail(request, pk):
         'attributes': PropertyAttribute.objects.filter(is_active=True),
         'assigned_attribute_ids': assigned_attribute_ids,
         'followup_batches': _group_followups(prop.followups.select_related('contact')[:30]),
-        'process_runs': prop.process_runs.select_related('process_template').prefetch_related('steps__attachments'),
         'attachable_process_templates': ProcessTemplate.objects.filter(is_active=True),
         'now': timezone.now(),
         'is_admin': _is_admin(request.user),
