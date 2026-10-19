@@ -63,7 +63,7 @@
             <span><i class="legend-dot" style="background: repeating-linear-gradient(45deg, #fab219 0 2px, #fde9b3 2px 4px);"></i>empty between two stays</span>
             <span><i class="legend-dot" style="background: #e3e7ec;"></i>open</span>
         </div>
-        <p class="text-muted small mt-2 mb-0">A <em>vacancy gap</em> is a stretch of empty nights between two reservations at the same unit; <em>open</em> nights have nothing booked after them yet.</p>
+        <p class="text-muted small mt-2 mb-0">Vacancy gap: empty nights between two reservations.</p>
     </div>
 </div>
 
@@ -87,14 +87,14 @@
             </div></div>
             {% endfor %}
         </div>
-        {% if is_admin %}<p class="text-muted small mt-2 mb-0">Rates and revenue are the payouts in the Airbnb/VRBO reports you upload (and what in-house guests pay): what you are actually paid for the stay, cleaning fees included. Stays without a payout yet are left out, so the numbers get more reliable as more reports go in.</p>{% endif %}
+        {% if is_admin %}<p class="text-muted small mt-2 mb-0">Revenue is what you are actually paid per stay. {% include '_tip.html' with text="Rates and revenue are the payouts in the Airbnb/VRBO reports you upload (and what in-house guests pay): what you are actually paid for the stay, cleaning fees included. Stays without a payout yet are left out, so the numbers get more reliable as more reports go in." %}</p>{% endif %}
     </div>
 </div>
 
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
         <h6 class="card-title">By property — occupancy, next 30 / 60 / 90 days</h6>
-        <p class="text-muted small mb-2">The share of nights already booked (higher is better; the rest is still open). Click a number to see that property's calendar for that stretch.</p>
+        <p class="text-muted small mb-2">Share of nights booked. Click a number for that property's calendar.</p>
         <div class="d-flex flex-wrap gap-3 small text-muted mb-2">
             <span><i class="legend-dot" style="background: #3d6178;"></i>booked (darker = more of the units booked)</span>
             <span><i class="legend-dot" style="background: #e3e7ec;"></i>open</span>

@@ -3,6 +3,7 @@ month, a coding + reconciliation screen for one set of books' month, and — for
 property kept unit by unit — a consolidated page that adds its units up. The rules
 live in core/ledger.py and core/recon.py."""
 import os
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -599,19 +600,21 @@ def close_home(request):
     pay_status, pay_detail = _payout_step(month, today)
     close_status, close_detail = _closed_step(month)
     steps = [
-        {'n': 1, 'title': 'Bank tie-out: verify the property management account', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q,
-         'blurb': "The bank statement, QuickBooks's bank account and the property trust accounts must all agree at month end."},
-        {'n': 2, 'title': 'Misc property management trust check', 'status': misc_status, 'detail': misc_detail, 'url': reverse('close_misc') + q,
-         'blurb': 'This account should not carry a balance. List what is in it so each item can be corrected next month, and check the list against QuickBooks.'},
-        {'n': 3, 'title': 'General escrow account check', 'status': esc_status, 'detail': esc_detail, 'url': reverse('close_escrow') + q,
-         'blurb': 'Security deposits and advance rents we hold for other people: the list of whose money it is must add up to the escrow account.'},
-        {'n': 4, 'title': 'Platform payouts into QuickBooks', 'status': pay_status, 'detail': pay_detail,
-         'url': reverse('close_payouts'), 'blurb': 'Match Airbnb and VRBO payouts to their bank deposits and code each one to its unit.'},
-        {'n': 5, 'title': 'Code and close each rental', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q,
-         'blurb': "Code every QuickBooks transaction, review each rental's numbers, and lock the month."},
+        {'n': 1, 'title': 'Bank tie-out', 'icon': 'landmark', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q},
+        {'n': 2, 'title': 'Misc trust account', 'icon': 'wallet', 'status': misc_status, 'detail': misc_detail, 'url': reverse('close_misc') + q},
+        {'n': 3, 'title': 'Escrow account', 'icon': 'shield-check', 'status': esc_status, 'detail': esc_detail, 'url': reverse('close_escrow') + q},
+        {'n': 4, 'title': 'Platform payouts', 'icon': 'banknote', 'status': pay_status, 'detail': pay_detail, 'url': reverse('close_payouts')},
+        {'n': 5, 'title': 'Close each rental', 'icon': 'lock', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q},
     ]
+    for step in steps:
+        # A step under way (not started, needs attention and done each have their own chip) shows just its count, such as "12 of 38"; the full sentence is the link's hover text.
+        found = re.match(r'(\d+ of \d+)', step['detail'] or '')
+        step['progress'] = found.group(1) if found and step['status'] not in ('done', 'attention', 'not_started') else ''
+        if not step['status'] and not step['progress']:
+            step['status'] = 'not_started'   # nothing done yet reads the same as a step not begun: a grey chip
     return render(request, 'core/close_home.html', {
         'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'steps': steps,
+        'done_count': sum(1 for s in steps if s['status'] == 'done'),
         'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
     })
 

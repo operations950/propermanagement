@@ -35,7 +35,7 @@
 
 {% if not ticket.property %}
 <div class="alert alert-warning">
-    <div class="mb-2">No property assigned yet. If it's not about one specific address, choose the general option for its business line, or "No specific property" if it's company-wide.</div>
+    <div class="mb-2">No property yet. Pick one, a general option for its business line, or "No specific property".</div>
     <form method="post" action="{% url 'ticket_set_property' ticket.pk %}">
         {% csrf_token %}
         <div class="bubble-picker mb-2" data-bubble-picker data-mode="drilldown" data-name="property_id">

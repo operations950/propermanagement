@@ -4,29 +4,22 @@
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
-    <h2 class="page-title mb-0">Booking calendars</h2>
+    <h2 class="page-title mb-0">Booking calendars {% include '_tip.html' with text='Every short-term rental gets an Airbnb line and a VRBO line (one pair per unit for a building). Paste that listing’s calendar link, found in the listing’s calendar settings on the platform under Export calendar (an .ics link). The app checks it regularly: new reservations get a turnover visit and calendar event, changed dates move it, and a reservation that has disappeared is cancelled once it has been missing for several checks in a row. If a property is not on a platform, mark it Not listed so it stops being flagged. Each link is stored encrypted and shown partly hidden.' %}</h2>
     <a href="{% url 'onsite_feeds_recalibrate' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="scale" class="icon"></i> Recalibrate cleanings from the calendars</a>
 </div>
-<p class="text-muted small mb-3">
-    Every short-term rental gets an Airbnb line and a VRBO line (one pair per unit for a building). Paste that listing's calendar link and the app checks it every {{ poll_minutes }} minutes:
-    new reservations get a turnover visit and calendar event, changed dates move it, and a reservation that has disappeared is cancelled once it has been missing for
-    {{ missing_polls }} checks in a row. If a property isn't on a platform, mark it <em>Not listed</em> so it stops being flagged. General placeholders (like "Short-Term Rentals (general)") never appear here and never get visits.
-    Each link is private, so it is stored encrypted and shown only partly hidden. Where to find it: the listing's calendar settings on the platform — look for <em>Export calendar</em> (an .ics link). CSV uploads still work alongside this.
-</p>
 
 {% if coverage.attention %}
 <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
     <i data-lucide="triangle-alert" class="icon mt-1"></i>
     <div class="small">
         <strong>{{ coverage.attention|length }} of {{ coverage.total }} calendar line{{ coverage.total|pluralize }} need{{ coverage.attention|length|pluralize:"s," }} attention.</strong>
-        Until they're connected (or marked not listed), reservations from these listings are <strong>not flowing in automatically</strong>.
         {% if attention_only %}<a href="{% url 'onsite_booking_feeds' %}" class="alert-link ms-1">Show everything</a>{% else %}<a href="?show=attention" class="alert-link ms-1">Show only these</a>{% endif %}
     </div>
 </div>
 {% else %}
 <div class="alert alert-success d-flex align-items-center gap-2 mb-3" role="alert">
     <i data-lucide="check-circle" class="icon"></i>
-    <div class="small">All {{ coverage.total }} calendar line{{ coverage.total|pluralize }} are connected or marked not listed.</div>
+    <div class="small">All {{ coverage.total }} calendar line{{ coverage.total|pluralize }} connected.</div>
 </div>
 {% endif %}
 
@@ -91,14 +84,14 @@
 </div>
 {% endif %}
 {% empty %}
-<p class="text-muted small">No short-term rental properties yet. A property appears here once its type is Short-Term Rental (and it isn't a general placeholder).</p>
+<p class="text-muted small">No short-term rentals yet.</p>
 {% endfor %}
 
 {% if coverage.orphans %}
 <div class="card mt-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">
         <h6 class="card-title">Other calendars</h6>
-        <p class="text-muted small">These are still being checked but no longer match a short-term rental row above (the property changed type, was deactivated, or was split into units). Remove them, or fix the property.</p>
+        <p class="text-muted small">Still being checked, but they no longer match a rental above. Remove them, or fix the property.</p>
         {% for feed in coverage.orphans %}
         <div class="d-flex justify-content-between align-items-center py-1 border-top">
             <span class="small">{{ feed.get_source_display }} — {{ feed.label }} <code class="ms-1">{{ feed.masked_url }}</code></span>

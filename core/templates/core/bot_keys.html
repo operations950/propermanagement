@@ -2,10 +2,8 @@
 {% block title %}Message assistant access{% endblock %}
 {% block content %}
 <a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Admin Tools</a>
-<h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="bot" class="icon-lg"></i> Message assistant access</h2>
-<p class="text-muted small mb-3">
-    The AI that answers your messages reads property information — and keeps each property's FAQ — through a small API. It signs in with a key made here. Each key is limited to what you tick, the key itself is shown once and never stored (only a fingerprint is), and you can revoke it whenever you like.
-</p>
+<h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="bot" class="icon-lg"></i> AI assistant keys</h2>
+<p class="text-muted small mb-3">Keys the AI that answers messages uses to read property details and keep the FAQ. {% include '_tip.html' with text='Each key is limited to what you tick. The key itself is shown once and never stored (only a fingerprint is), and you can revoke it any time. Without the extra boxes ticked, the assistant still reads the everyday facts: bedrooms, beds, bathrooms, square footage, address, check-in and check-out times, amenities, shutoff locations, the wifi network name and the FAQ.' %}</p>
 
 {% if new_key %}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border: 2px solid var(--status-good);">
@@ -28,7 +26,6 @@
         <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="allow_faq_write" value="1" id="k-faq" checked><label class="form-check-label" for="k-faq"><strong>Add and correct FAQ entries.</strong> It can never overwrite an entry you have reviewed or written.</label></div>
         <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="allow_access_info" value="1" id="k-access"><label class="form-check-label" for="k-access"><strong>Read access information</strong> — gate, door, lockbox and alarm codes, the wifi password, access notes. Tick this only if the assistant is meant to hand codes to guests.</label></div>
         <div class="form-check small mb-3"><input class="form-check-input" type="checkbox" name="allow_internal_info" value="1" id="k-internal"><label class="form-check-label" for="k-internal"><strong>Read internal information</strong> — staff notes, contacts (names, phones, emails) and document names.</label></div>
-        <p class="text-muted small">Without these, the assistant still reads the everyday facts: bedrooms, beds, bathrooms, square footage, address, check-in and check-out times, amenities, where the shutoffs are, the wifi network name and the FAQ.</p>
         <button class="btn btn-primary btn-sm">Make key</button>
     </form>
 </div></div>
@@ -58,11 +55,11 @@
 </div></div>
 
 {% if unreviewed %}
-<div class="alert alert-info small py-2"><i data-lucide="clipboard-list" class="icon"></i> <strong>{{ unreviewed }} FAQ entr{{ unreviewed|pluralize:"y,ies" }}</strong> the assistant wrote {{ unreviewed|pluralize:"is,are" }} still unreviewed. <a href="{% url 'faq_review_queue' %}" class="alert-link">Review them all in one place</a> — reviewing an entry (or editing it) locks it so the assistant can't overwrite it.</div>
+<div class="alert alert-info small py-2"><i data-lucide="clipboard-list" class="icon"></i> <strong>{{ unreviewed }} FAQ entr{{ unreviewed|pluralize:"y,ies" }}</strong> to review. <a href="{% url 'faq_review_queue' %}" class="alert-link">Review them</a> {% include '_tip.html' with text='Reviewing or editing an entry locks it so the assistant cannot overwrite it.' %}</div>
 {% endif %}
 
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-    <h6 class="card-title">How the assistant uses it</h6>
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body"><details>
+    <summary class="fw-semibold" style="cursor: pointer;">How the assistant uses a key (technical)</summary>
     <p class="small text-muted mb-2">Send the key as <code>Authorization: Bearer &lt;key&gt;</code>. Base address: <code>{{ api_base }}/api/v1/</code></p>
     <ul class="small mb-2">
         <li><code>GET properties/?q=…</code> — find the property from any part of its name, address, a unit label or the Airbnb/VRBO listing title.</li>
@@ -71,6 +68,6 @@
         <li><code>POST properties/&lt;id&gt;/faq/</code> with <code>{"question": …, "answer": …, "basis": "host_reply"}</code> — add or correct an entry. Access codes and the wifi password are refused: they live in the access info, so a changed code never leaves a stale copy behind.</li>
         <li><code>POST properties/&lt;id&gt;/faq/&lt;n&gt;/used/</code> — count a use, so you can see which entries earn their keep.</li>
     </ul>
-    <p class="small text-muted mb-0">The full reference, with a suggested set of instructions for the assistant, is in <code>BOT_API.md</code> in the code repository. One suggestion above all: let the assistant save an answer only when it comes from something <em>you</em> told a guest (<code>basis: "host_reply"</code>) or from the property record — not from what a guest claims — so a guest can't teach it something false.</p>
-</div></div>
+    <p class="small text-muted mb-0">Full reference: <code>BOT_API.md</code> in the code repository. Let the assistant save an answer only when it comes from something <em>you</em> told a guest (<code>basis: "host_reply"</code>) or from the property record, so a guest cannot teach it something false.</p>
+</details></div></div>
 {% endblock %}

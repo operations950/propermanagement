@@ -4,14 +4,14 @@
 <a href="{% url 'close_overview' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Rentals</a>
 <div class="mb-3">
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Owner portal</h2>
-    <div class="small text-muted">The address to give owners: <strong>{{ portal_url }}</strong>. They choose "Create your login", use the email address on their owner contact, and type the 6-digit code we email them. If the email never reaches them, give them a temporary password (button on their row below). Turn a rental on with "Owner portal open" on its property page.</div>
+    <div class="small text-muted">Owner sign-in address: <strong>{{ portal_url }}</strong> {% include '_tip.html' with text="Owners choose Create your login, use the email address on their owner contact, and type the 6-digit code we email them. If the email never reaches them, give them a temporary password (button on their row below). Turn a rental on with Owner portal open on its property page." %}</div>
 </div>
 
 {% if temp %}
 <div class="alert alert-success py-3" id="temp-password-box">
     <div class="fw-semibold mb-1">Temporary password for {{ temp.email }}</div>
     <div class="mb-2" style="font-size: 1.6rem; letter-spacing: 0.12em;"><span id="temp-pw" style="font-family: monospace;">{{ temp.password }}</span></div>
-    <div class="small">This is shown once. Tell them: go to <strong>{{ portal_url }}</strong>, choose <em>Sign in</em>, and use their email address and this password. They will then be asked to choose their own password. It works for {{ temp.hours }} hours. Don't send it by email; read it out or text it only after you have confirmed it is them.</div>
+    <div class="small">Shown once. Read it out or text it only after you have confirmed it is them; never email it. It works for {{ temp.hours }} hours, and they choose their own password at first sign-in.</div>
 </div>
 {% endif %}
 <h3 class="fs-6 fw-semibold">Rentals the portal is open for</h3>

@@ -1,79 +1,43 @@
 {% extends 'base.html' %}
 {% block title %}Admin Tools{% endblock %}
 {% block content %}
-<h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="shield" class="icon-lg"></i> Admin Tools</h2>
-<p class="text-muted">Administrative actions kept separate from the day-to-day screens. Anything not covered here yet is still available in <a href="/admin/">Django admin</a>.</p>
-
-<div class="card mb-3">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="file-up" class="icon"></i> Import property details</h6>
-            <p class="text-muted small mb-0">Paste a JSON file of wifi, check-in times, parking, laundry and how-to-get-in for many properties and units at once. You see what would change before anything is saved.</p>
-        </div>
-        <a href="{% url 'property_data_import' %}" class="btn btn-outline-secondary btn-sm flex-shrink-0"><i data-lucide="arrow-right" class="icon"></i> Open the importer</a>
-    </div>
+<style>
+    .ad-tile { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 0.95rem; border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius); background: var(--surface-card); color: var(--ink-primary); text-decoration: none; font-weight: 600; box-shadow: var(--shadow-card); }
+    .ad-tile:hover { border-color: var(--brand-primary); color: var(--ink-primary); }
+    .ad-tile .icon { color: var(--brand-slate); width: 1.3em; height: 1.3em; flex: none; }
+    .ad-tile .go { margin-left: auto; color: var(--ink-muted); width: 1em; height: 1em; }
+    .ad-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); margin: 1.4rem 0 0.5rem; }
+    .ad-status { margin-left: auto; font-size: 0.82rem; font-weight: 400; color: var(--ink-muted); white-space: nowrap; }
+    .ad-status.warn { color: #8a5a00; } .ad-status.good { color: #0b6a0b; }
+    .ad-head { cursor: pointer; }
+</style>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="shield" class="icon-lg"></i> Admin Tools</h2>
+    <a href="/admin/" class="small text-decoration-none" style="color: var(--ink-muted);">Django admin <i data-lucide="arrow-up-right" class="icon"></i></a>
 </div>
 
-<div class="card mb-3">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="lock-keyhole" class="icon"></i> Month-end close</h6>
-            <p class="text-muted small mb-0">Code each rental's QuickBooks transactions for the month (deposits, owner payment, reimbursement, commission, expenses), then close and lock the month.</p>
-        </div>
-        <a href="{% url 'close_home' %}" class="btn btn-outline-secondary btn-sm flex-shrink-0"><i data-lucide="arrow-right" class="icon"></i> Open the close</a>
-    </div>
+<div class="ad-label" style="margin-top: 0;">Tools</div>
+<div class="row g-2">
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'property_data_import' %}"><i data-lucide="file-up" class="icon"></i> Import property details <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'close_home' %}"><i data-lucide="lock-keyhole" class="icon"></i> Month-end close <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'quickbooks_accounts' %}"><i data-lucide="link" class="icon"></i> Link rentals to QuickBooks accounts <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'bot_keys' %}"><i data-lucide="bot" class="icon"></i> AI assistant keys <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'process_template_list' %}"><i data-lucide="clipboard-check" class="icon"></i> Procedure templates <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'supplies:catalog' %}"><i data-lucide="package" class="icon"></i> Supply catalog <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'timeclock_setup' %}"><i data-lucide="clock" class="icon"></i> Time clock and schedules <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'owner_portal_admin' %}"><i data-lucide="door-open" class="icon"></i> Owner portal <i data-lucide="chevron-right" class="icon go"></i></a></div>
+    <div class="col-12 col-sm-6 col-lg-4"><a class="ad-tile" href="{% url 'supplies:blind_spots' %}"><i data-lucide="eye-off" class="icon"></i> Supply blind spots <i data-lucide="chevron-right" class="icon go"></i></a></div>
 </div>
 
-<div class="card mb-3">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon"></i> QuickBooks accounts for each rental</h6>
-            <p class="text-muted small mb-0">Tie every short-term rental to its reimbursable-expense account (income statement) and its owner trust account (balance sheet), so its expenses and owner money can be found in QuickBooks.</p>
-        </div>
-        <a href="{% url 'quickbooks_accounts' %}" class="btn btn-outline-secondary btn-sm flex-shrink-0"><i data-lucide="arrow-right" class="icon"></i> Map accounts</a>
-    </div>
-</div>
-
-<div class="card mb-3">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="bot" class="icon"></i> Message assistant access</h6>
-            <p class="text-muted small mb-0">Keys the AI that answers messages uses to read property details and keep each property's FAQ. Choose what each key may see, and revoke one at any time.</p>
-        </div>
-        <a href="{% url 'bot_keys' %}" class="btn btn-outline-secondary btn-sm flex-shrink-0"><i data-lucide="arrow-right" class="icon"></i> Manage access</a>
-    </div>
-</div>
-
-<div class="card mb-3">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Procedures</h6>
-            <p class="text-muted small mb-0">Reusable multi-step procedure templates — attach one from a ticket, property, or contact's own Processes card. Add, edit, or reorder steps here.</p>
-        </div>
-        <a href="{% url 'process_template_list' %}" class="btn btn-outline-secondary btn-sm flex-shrink-0"><i data-lucide="arrow-right" class="icon"></i> Manage procedures</a>
-    </div>
-</div>
-
-<div class="card mb-3">
-    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h6 class="card-title mb-1 d-flex align-items-center gap-2"><i data-lucide="package" class="icon"></i> Supplies</h6>
-            <p class="text-muted small mb-0">The shared catalog of purchasable items — which of them each property stocks (with its reorder quantity) is assigned from that property's own page. See also <a href="{% url 'supplies:blind_spots' %}">Supply blind spots</a> for coverage gaps.</p>
-        </div>
-        <div class="d-flex gap-2 flex-shrink-0">
-            <a href="{% url 'supplies:catalog' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="arrow-right" class="icon"></i> Manage catalog</a>
-        </div>
-    </div>
-</div>
+<div class="ad-label">Settings</div>
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-secrets" style="cursor: pointer;">
-            <i data-lucide="key-round" class="icon"></i> API Keys &amp; Secrets <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0 ad-head" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-secrets">
+            <i data-lucide="key-round" class="icon"></i> API keys and secrets <span class="ad-status {% if secrets_unset %}warn{% endif %}">{% if secrets_unset %}{{ secrets_unset }} not set{% else %}All set{% endif %}</span><i data-lucide="chevron-down" class="icon"></i>
         </h6>
         <div class="collapse" id="admin-section-secrets">
-        <p class="text-muted small mt-3">Set once here to override whatever's in the environment — takes effect immediately, no redeploy needed. Already-set values are masked; leave a field locked (or blank if you unlock it) to keep it unchanged.</p>
-        <form method="post" action="{% url 'admin_settings_save' %}" autocomplete="off">
+        <form method="post" action="{% url 'admin_settings_save' %}" autocomplete="off" class="mt-3">
             {% csrf_token %}
             <div class="row g-3">
             {% for s in secrets %}
@@ -114,7 +78,7 @@
         </script>
         {% if google_redirect_uris %}
         <hr class="my-3">
-        <p class="text-muted small mb-1">Google OAuth client's <strong>Authorized redirect URIs</strong> must include all of these (staff sign-on, calendar connect, gmail connect share one client):</p>
+        <p class="text-muted small mb-1">Google redirect addresses {% include '_tip.html' with text='The Google OAuth client must list all of these as authorized redirect URIs. Staff sign-on, calendar connect and Gmail connect share one client.' %}</p>
         <ul class="text-muted small mb-0">
         {% for uri in google_redirect_uris %}
             <li><code>{{ uri }}</code></li>
@@ -126,30 +90,24 @@
 </div>
 
 <div class="card mb-3">
-    <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-check" class="icon"></i> On-site visits &rarr; Google Calendar</h6>
-        <p class="small mb-0 d-flex align-items-start gap-2">
-            {% if onsite_calendar_status.ok %}
-            <i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i>
-            {% else %}
-            <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
-            {% endif %}
-            <span>{{ onsite_calendar_status.message }}</span>
-        </p>
+    <div class="card-body py-3">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="calendar-check" class="icon"></i> Google Calendar for on-site visits
+            <span class="ad-status {% if onsite_calendar_status.ok %}good{% else %}warn{% endif %}">{% if onsite_calendar_status.ok %}Connected{% else %}Not set up{% endif %} {% include '_tip.html' with text=onsite_calendar_status.message %}</span>
+        </h6>
     </div>
 </div>
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-quickbooks" style="cursor: pointer;">
-            <i data-lucide="landmark" class="icon"></i> Company Financials (QuickBooks) <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0 ad-head" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-quickbooks">
+            <i data-lucide="landmark" class="icon"></i> QuickBooks <span class="ad-status {% if quickbooks_token and not quickbooks_token.last_sync_error %}good{% else %}warn{% endif %}">{% if not quickbooks_configured %}Keys not set{% elif quickbooks_token %}{% if quickbooks_token.last_sync_error %}Last sync failed{% else %}Connected{% endif %}{% else %}Not connected{% endif %}</span><i data-lucide="chevron-down" class="icon"></i>
         </h6>
         <div class="collapse" id="admin-section-quickbooks">
-        <p class="text-muted small mt-3">Powers the Company Financials box on the Owner Dashboard. Set the client ID/secret above first, then connect the company file below.</p>
+        <div class="mt-3"></div>
         {% if not quickbooks_configured %}
         <p class="small mb-0 d-flex align-items-center gap-2">
             <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
-            QuickBooks OAuth client ID/secret aren't set yet — add them in API Keys &amp; Secrets above.
+            Add the QuickBooks client ID and secret under API keys and secrets first.
         </p>
         {% elif quickbooks_token %}
         <p class="small mb-2 d-flex align-items-center gap-2">
@@ -173,7 +131,7 @@
         </a>
         {% endif %}
         <hr class="my-3">
-        <p class="text-muted small mb-1">The QuickBooks Developer app's <strong>Redirect URI</strong> must be exactly:</p>
+        <p class="text-muted small mb-1">Redirect address for the QuickBooks developer app</p>
         <code class="small">{{ quickbooks_redirect_uri }}</code>
         </div>
     </div>
@@ -181,12 +139,12 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-email" style="cursor: pointer;">
-            <i data-lucide="mail" class="icon"></i> Email Configuration <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0 ad-head" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-email">
+            <i data-lucide="mail" class="icon"></i> Email <span class="ad-status {% if gmail_inbox_tokens %}good{% else %}warn{% endif %}">{% if gmail_inbox_tokens %}Gmail connected{% else %}No mailbox connected{% endif %}</span><i data-lucide="chevron-down" class="icon"></i>
         </h6>
         <div class="collapse" id="admin-section-email">
         <hr class="my-3">
-        <p class="small mb-1"><strong>Gmail mailboxes</strong> — inbound polling for automatic ticket creation has been turned off; a connected mailbox now exists only to send outgoing follow-up email. SMTP (below) is confirmed blocked outbound on Railway, on every port tested, so at least one mailbox needs to be connected for sending to work at all.</p>
+        <p class="small mb-1"><strong>Gmail mailboxes</strong> {% include '_tip.html' with text='Gmail sends all outgoing follow-up email, so at least one mailbox has to be connected. Reading incoming email to make tickets is turned off. The SMTP fields further down are only a fallback, and SMTP is blocked on Railway on every port tested.' %}</p>
         {% if gmail_inbox_tokens %}
         <div class="table-responsive mb-2">
         <table class="table table-sm align-middle mb-0">
@@ -227,20 +185,14 @@
         {% else %}
         <p class="small mb-2 d-flex align-items-center gap-2">
             <i data-lucide="circle-alert" class="icon" style="color: var(--status-warning);"></i>
-            No Gmail mailbox connected — outgoing follow-up email falls back to SMTP below (doesn't work on Railway).
+            No Gmail mailbox connected, so email cannot send from Railway.
         </p>
         {% endif %}
         <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-outline-primary btn-sm">
             <i data-lucide="plus" class="icon"></i> Connect {% if gmail_inbox_tokens %}another {% endif %}mailbox
         </a>
         <hr class="my-3">
-        <p class="text-muted small mb-1">
-            {% if gmail_inbox_tokens %}
-            <strong>SMTP fields below aren't used right now</strong> — the primary Gmail mailbox handles every send. They only matter as a fallback if every Gmail mailbox is ever disconnected.
-            {% else %}
-            Shown in the clear, not masked — this is what's actually driving (or breaking) follow-up emails via SMTP, so it needs to be readable, not just "set/not set".
-            {% endif %}
-        </p>
+        <p class="text-muted small mb-1"><strong>SMTP fallback</strong>{% if gmail_inbox_tokens %} (not used while Gmail is connected){% endif %}</p>
         <form method="post" action="{% url 'admin_settings_save' %}" autocomplete="off">
             {% csrf_token %}
             <div class="row g-3">
@@ -259,7 +211,7 @@
             &middot; SMTP port: <code>{{ email_port }}</code> &middot; TLS: <code>{{ email_use_tls }}</code> &middot; SSL: <code>{{ email_use_ssl }}</code> &middot; Connect timeout: <code>{{ email_timeout }}s</code>
         </p>
         <hr class="my-3">
-        <p class="small mb-2"><strong>Send a test email</strong> — the most direct way to see the real failure (or confirm success) right now.</p>
+        <p class="small mb-2"><strong>Send a test email</strong></p>
         <form method="post" action="{% url 'admin_test_email_send' %}" class="d-flex gap-2">
             {% csrf_token %}
             <input type="email" name="to_address" class="form-control form-control-sm" placeholder="you@example.com" value="{{ test_email_default_to }}" required style="max-width: 280px;">
@@ -271,11 +223,11 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-phone" style="cursor: pointer;">
-            <i data-lucide="phone" class="icon"></i> Phone Lines <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0 ad-head" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-phone">
+            <i data-lucide="phone" class="icon"></i> Phone lines <span class="ad-status">{{ quo_phone_lines|length }} line{{ quo_phone_lines|length|pluralize }}</span><i data-lucide="chevron-down" class="icon"></i>
         </h6>
         <div class="collapse" id="admin-section-phone">
-        <p class="text-muted small mt-3">This Quo account has {{ quo_phone_lines|length }} phone line{{ quo_phone_lines|length|pluralize }}. Pick which one to send outbound texts from.</p>
+        <div class="mt-3"></div>
         {% if quo_phone_lines %}
         <form method="post" action="{% url 'admin_phone_settings_save' %}">
             {% csrf_token %}
@@ -292,7 +244,7 @@
             <button class="btn btn-outline-primary btn-sm mt-3" type="submit">Save changes</button>
         </form>
         {% else %}
-        <p class="text-muted small mb-0">No phone lines available — set the Quo API key above to load them.</p>
+        <p class="text-muted small mb-0">No phone lines yet. Add the Quo API key under API keys and secrets.</p>
         {% endif %}
         </div>
     </div>
@@ -300,12 +252,11 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-properties" style="cursor: pointer;">
-            <i data-lucide="building-2" class="icon"></i> Properties <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0 ad-head" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-properties">
+            <i data-lucide="building-2" class="icon"></i> Properties <span class="ad-status">{{ properties_active }} active{% if properties_inactive %} &middot; {{ properties_inactive }} inactive{% endif %}</span><i data-lucide="chevron-down" class="icon"></i>
         </h6>
         <div class="collapse" id="admin-section-properties">
-        <p class="text-muted small mt-3">Deactivating hides a property from active lists and pickers everywhere else in the app — every linked ticket, contact, and follow-up history stays intact and can be restored anytime.</p>
-        <div class="table-responsive">
+        <div class="table-responsive mt-3">
         <table class="table table-sm align-middle mb-0">
             <thead><tr><th>Name</th><th>Type</th><th>Status</th><th></th></tr></thead>
             <tbody>
@@ -339,12 +290,11 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2 mb-0" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-staff" style="cursor: pointer;">
-            <i data-lucide="users" class="icon"></i> Staff <i data-lucide="chevron-down" class="icon ms-auto"></i>
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0 ad-head" role="button" data-bs-toggle="collapse" data-bs-target="#admin-section-staff">
+            <i data-lucide="users" class="icon"></i> Staff <span class="ad-status">{{ staff_profiles|length }} {{ staff_profiles|length|pluralize:"person,people" }}</span><i data-lucide="chevron-down" class="icon"></i>
         </h6>
         <div class="collapse" id="admin-section-staff">
-        <p class="text-muted small mt-3">The only way to create a staff account short of Django admin.</p>
-        <div class="table-responsive">
+        <div class="table-responsive mt-3">
         <table class="table table-sm align-middle mb-0">
             <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Phone</th><th>Company Admin</th></tr></thead>
             <tbody>
@@ -382,15 +332,12 @@
         <a href="{% url 'staff_create' %}" class="btn btn-outline-primary btn-sm mt-3">
             <i data-lucide="user-plus" class="icon"></i> New staff
         </a>
-        <a href="{% url 'timeclock_setup' %}" class="btn btn-outline-primary btn-sm mt-3">
-            <i data-lucide="clock" class="icon"></i> Time clock, hire dates and schedules
-        </a>
         </div>
     </div>
 </div>
 
 <style>
-[data-bs-toggle="collapse"] .icon.ms-auto { transition: transform 0.15s; }
-[data-bs-toggle="collapse"][aria-expanded="true"] .icon.ms-auto { transform: rotate(180deg); }
+[data-bs-toggle="collapse"] .icon:last-child { transition: transform 0.15s; color: var(--ink-muted); }
+[data-bs-toggle="collapse"][aria-expanded="true"] .icon:last-child { transform: rotate(180deg); }
 </style>
 {% endblock %}

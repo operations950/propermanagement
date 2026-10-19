@@ -4,8 +4,8 @@
 {% block content %}
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
 <h2 class="page-title mb-1">Import bookings</h2>
-<p class="text-muted small mb-1">Drag today's Airbnb or VRBO export onto its box below, or click to browse. One file covers your whole portfolio — new reservations, date/detail changes, and cancellations are all handled from the same drop, and each row is matched to the right property automatically (a listing name it hasn't seen before will ask you to confirm it once, then remembers it from then on). Nothing is saved until you review and confirm the changes on the next screen.</p>
-<p class="text-muted small mb-3">Airbnb ships cancellations as a <em>separate</em> export from its regular reservations report — both get dropped onto the same Airbnb box below, just at different times, so make sure both are part of the regular pull.</p>
+<p class="text-muted small mb-1">Drop today's Airbnb or VRBO export on its box, or click to browse. Nothing is saved until you confirm. {% include '_tip.html' with text="Drag today's Airbnb or VRBO export onto its box below, or click to browse. One file covers your whole portfolio — new reservations, date/detail changes, and cancellations are all handled from the same drop, and each row is matched to the right property automatically (a listing name it hasn't seen before will ask you to confirm it once, then remembers it from then on). Nothing is saved until you review and confirm the changes on the next screen." %}</p>
+<p class="text-muted small mb-3">Airbnb's cancellations come as a separate export; drop it on the same box.</p>
 
 {% if slots %}
 <div class="upload-slot-grid mb-2">
@@ -30,7 +30,7 @@
     <summary class="text-muted small" style="cursor: pointer;">Uploading for just one property instead?</summary>
     <div class="card mt-2" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
         <div class="card-body p-4">
-            <p class="text-muted small">Only needed for a single-listing file — a property's own calendar export (.ics), or a reservation report scoped to just one property with no listing/property column. The boxes above already handle a portfolio-wide report on their own; this is for the one-property case, where the system needs to be told which property since the file itself won't say.</p>
+            <p class="text-muted small">For a single-property file only. {% include '_tip.html' with text="Only needed for a single-listing file — a property's own calendar export (.ics), or a reservation report scoped to just one property with no listing/property column. The boxes above already handle a portfolio-wide report on their own; this is for the one-property case, where the system needs to be told which property since the file itself won't say." %}</p>
             <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 <div class="mb-4">

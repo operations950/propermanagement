@@ -5,8 +5,7 @@
 <a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
-        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{{ cfg.icon }}" class="icon-lg"></i> {{ cfg.h2 }}</h2>
-        <div class="small text-muted">{{ cfg.blurb }}</div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{{ cfg.icon }}" class="icon-lg"></i> {{ cfg.h2 }} {% include '_tip.html' with text=cfg.blurb %}</h2>
     </div>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
@@ -20,7 +19,7 @@
 {% if not s.account %}
 <div class="card mb-3" style="border-radius: 12px;"><div class="card-body">
     <h6 class="card-title">Which account is {{ cfg.account_phrase }}?</h6>
-    <p class="small text-muted">Choose it as it appears in QuickBooks. This is done once.</p>
+    <p class="small text-muted">Choose it as it appears in QuickBooks (once).</p>
     <form method="post" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="set_account"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
         <select name="account" class="form-select form-select-sm" style="max-width: 420px;" required>
             <option value="">Choose…</option>
@@ -72,7 +71,7 @@
 
 <div class="card mb-3" style="border-radius: 12px;"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="users" class="icon"></i> {{ cfg.list_title }} ({{ s.lines|length }})</h6>
-    <p class="small text-muted">{% if carried %}This month started as a copy of {{ carried|date:"F" }}'s list. {% endif %}{{ cfg.list_help }}</p>
+    <p class="small text-muted">{% if carried %}Started as a copy of {{ carried|date:"F" }}'s list. {% endif %}{% include '_tip.html' with text=cfg.list_help %}</p>
     <div class="table-responsive"><table class="table table-sm align-middle mb-0">
         <thead><tr><th>Name</th><th>Property</th><th class="text-end" style="width: 9rem;">Amount</th><th>Note</th><th style="width: 9rem;"></th></tr></thead>
         <tbody>

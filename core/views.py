@@ -701,6 +701,8 @@ def admin_tools(request):
     gmail_inbox_tokens = GmailInboxToken.objects.all().order_by('connected_at')
     return render(request, 'core/admin_tools.html', {
         'properties': properties, 'secrets': secrets, 'google_redirect_uris': google_redirect_uris,
+        'secrets_unset': sum(1 for s in secrets if not s['is_set']),
+        'properties_active': sum(1 for p in properties if p.is_active), 'properties_inactive': sum(1 for p in properties if not p.is_active),
         'onsite_calendar_status': onsite_calendar_push.status(),
         'quickbooks_configured': quickbooks.is_configured(),
         'quickbooks_token': QuickBooksToken.objects.first(),

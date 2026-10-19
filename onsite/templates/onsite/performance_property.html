@@ -46,7 +46,7 @@
 {% include 'onsite/_blocks.html' with next=request.get_full_path %}
 
 {% if not data.has_data %}
-<div class="alert alert-info small">There are no reservations on record for this rental yet, and no connected Airbnb/VRBO calendar. Upload a report or connect the calendars and this page fills in.</div>
+<div class="alert alert-info small">No reservations and no connected calendar yet.</div>
 {% else %}
 
 <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-{{ kpis|length }} g-2 mb-3">
@@ -191,7 +191,7 @@
             });
         });
     </script>
-    <p class="text-muted small mt-2 mb-0">The current month counts only nights that have already happened; what is still to come is under Looking ahead. Months before the first reservation on record show a dash — the app wasn't watching yet.</p>
+    <p class="text-muted small mt-2 mb-0">Current month counts nights that have happened; the rest is under Looking ahead.</p>
 </div></div>
 
 {% if data.per_unit %}

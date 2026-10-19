@@ -3,7 +3,7 @@
 {% block content %}
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
 <h2 class="page-title mb-1">Cleaner activity</h2>
-<p class="text-muted small mb-3">Every checklist note and reported issue one cleaner has left, and whether it became a ticket — a checklist note otherwise only ever shows on that one visit's own page.</p>
+<p class="text-muted small mb-3">Every note and issue this cleaner has left, and whether it became a ticket.</p>
 
 <form method="get" class="d-flex flex-wrap gap-2 align-items-end mb-4">
     <div>
@@ -52,7 +52,7 @@
 
 <div class="card"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sticky-note" class="icon"></i> Checklist notes ({{ notes|length }})</h6>
-    <p class="text-muted small">Written next to a checklist step — these do <strong>not</strong> create a ticket on their own. If one of these needs maintenance, open the visit and use "Report an issue" instead.</p>
+    <p class="text-muted small">Notes do not create tickets. For maintenance, use Report an issue on the visit.</p>
     {% if notes %}
     <div class="table-responsive"><table class="table table-sm mb-0">
         <thead><tr class="small text-muted text-uppercase"><th>Visit</th><th>Property</th><th>Step</th><th>Note</th></tr></thead>

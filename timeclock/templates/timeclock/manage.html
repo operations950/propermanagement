@@ -58,7 +58,7 @@
             {% elif it.kind == 'noout' %}
             <span class="tc-type">No clock-out</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.day|short_date }}</span>
             <span class="tc-sub">in {{ it.punch.clock_in|time:"g:i A" }}</span>
-            {% include '_tip.html' with text='They clocked in and never clocked out. Enter the time they say they left and their lunch. The original punch is kept in its history.' %}
+           
             {% elif it.kind == 'fix' %}
             <span class="tc-type">Fix punch</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.day|short_date }}</span>
             <span class="tc-sub">{% if it.obj.clock_in %}in {{ it.obj.clock_in|time:"g:i A" }} {% endif %}{% if it.obj.clock_out %}out {{ it.obj.clock_out|time:"g:i A" }} {% endif %}{% if it.obj.lunch_minutes is not None %}lunch {{ it.obj.lunch_minutes }}{% endif %}</span>
@@ -70,7 +70,7 @@
             <span class="tc-type">Time off</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.obj.start_date|short_date }}{% if it.obj.end_date != it.obj.start_date %} – {{ it.obj.end_date|short_date }}{% endif %}</span>
             <span class="tc-sub">{{ it.obj.days|length }} day{{ it.obj.days|length|pluralize }} · left {% if it.left < 0 %}<span class="tc-over">{{ it.left|hrs1 }} h</span>{% else %}{{ it.left|hrs1 }} h{% endif %}</span>
             {% if it.gaps %}<span class="tc-over" title="No one else is scheduled {{ it.gaps.0|short_date }}"><i data-lucide="alert-triangle" class="icon"></i></span>{% endif %}
-            {% include '_tip.html' with text=it.obj.note|default:'No note. You can approve time that takes the balance below zero; approved days are paid days and are earned back over time.' %}
+            {% if it.obj.note %}{% include '_tip.html' with text=it.obj.note %}{% endif %}
             {% else %}
             <span class="tc-type">Change day</span>
             <span><strong>{{ it.profile.first_name }}</strong> · {% if it.obj.add_date %}works {{ it.obj.add_date|short_date }}{% endif %}{% if it.obj.add_date and it.obj.drop_date %}, not {% elif it.obj.drop_date %}not works {% endif %}{% if it.obj.drop_date %}{{ it.obj.drop_date|short_date }}{% endif %}</span>

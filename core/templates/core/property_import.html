@@ -5,19 +5,17 @@
 <h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="file-up" class="icon-lg"></i> Import property details</h2>
 
 {% if stage == 'paste' %}
-<p class="text-muted small">Paste a JSON file of property details. Nothing is saved yet — you'll see, record by record, what would change. Passwords are never displayed on this screen, and the pasted text isn't stored — passwords are kept only on the property or unit they belong to.</p>
+<p class="text-muted small">Paste a JSON file of property details. Nothing is saved until you review each record. {% include '_tip.html' with text="Paste a JSON file of property details. Nothing is saved yet — you'll see, record by record, what would change. Passwords are never displayed on this screen, and the pasted text isn't stored — passwords are kept only on the property or unit they belong to." %}</p>
 <form method="post" class="card" style="border-radius: var(--bs-border-radius-lg);">
     {% csrf_token %}<input type="hidden" name="action" value="preview">
     <div class="card-body">
         <label class="form-label small fw-medium" for="payload">The JSON</label>
         <textarea name="payload" id="payload" rows="14" class="form-control font-monospace small" spellcheck="false" autocomplete="off" placeholder='{"records": [ {"property_id": 12, "unit": "Wave", "wifi_network": "...", ...} ]}'>{{ payload }}</textarea>
-        <div class="form-text">Each record is one listing: <code>property_id</code>, <code>unit</code>, <code>listing</code>, <code>check_in_time</code>, <code>check_out_time</code>, <code>wifi_network</code>, <code>wifi_password</code>, <code>access_note</code>, <code>parking</code>, <code>laundry</code>, <code>trash</code>, <code>amenity_notes</code>. Anything missing or null is left alone.</div>
+        <div class="form-text">What a record can contain {% include '_tip.html' with text="Each record is one listing: property_id, unit, listing, check_in_time, check_out_time, wifi_network, wifi_password, access_note, parking, laundry, trash, amenity_notes. Anything missing or null is left alone." %}</div>
         <button class="btn btn-primary btn-sm mt-3">Preview what would change</button>
     </div>
 </form>
-<div class="text-muted small mt-3">
-    <strong>Where things go.</strong> Check-in/check-out times and wifi go on the property (or on each unit, when the units' wifi differs). How-to-get-in goes on the unit (or the property). Parking, laundry, trash and house tips become FAQ answers written as staff — for the whole property when the same words apply to two or more units, otherwise for one unit — so the message assistant can read them but can't overwrite them. Addresses are never changed.
-</div>
+<div class="text-muted small mt-3">Where things go {% include '_tip.html' with text="Where things go. Check-in/check-out times and wifi go on the property (or on each unit, when the units' wifi differs). How-to-get-in goes on the unit (or the property). Parking, laundry, trash and house tips become FAQ answers written as staff — for the whole property when the same words apply to two or more units, otherwise for one unit — so the message assistant can read them but can't overwrite them. Addresses are never changed." %}</div>
 
 {% elif stage == 'done' %}
 <div class="alert alert-success">

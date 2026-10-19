@@ -37,7 +37,7 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· {{ year }} statement</span></h2>
-        <div class="small text-muted">Each month a column: what came in, what came out, what the owner and Proper Realty are owed, and what was paid out. A closed month is as closed; an open month is as coded now. Click a month's heading to open that month, with the transactions behind every line.</div>
+        <div class="small text-muted">Click a month to open its transactions.</div>
     </div>
     <div class="d-flex gap-2 flex-wrap no-print">
         <div class="btn-group btn-group-sm">
@@ -90,6 +90,5 @@
         {% endif %}
     </tbody>
 </table></div>
-{% if st.owner_collects %}<p class="text-muted" style="font-size: 0.72rem;">The owner collects this rental's booking income directly, so there is no income here and no owner payment: this shows what Proper Realty is owed for the month, our expenses and our commission, which the owner pays at month end. Commission is worked out at each month's own rate.</p>
-{% else %}<p class="text-muted" style="font-size: 0.72rem;">The reimbursable expenses, our commission and the owner payment for a month are paid out of the trust account early the next month, so the payables above go to zero the month after: what leaves the trust account in a month settles the month before, and "cleared" says it did, to the cent. Commission is worked out at each month's own rate.</p>{% endif %}
+<p class="small text-muted">About these figures {% if st.owner_collects %}{% include '_tip.html' with text="The owner collects this rental's booking income directly, so there is no income here and no owner payment: this shows what Proper Realty is owed for the month, our expenses and our commission, which the owner pays at month end. A closed month is as closed; an open month is as coded now. Commission is worked out at each month's own rate." %}{% else %}{% include '_tip.html' with text="The reimbursable expenses, our commission and the owner payment for a month are paid out of the trust account early the next month, so the payables go to zero the month after. A closed month is as closed; an open month is as coded now. Commission is worked out at each month's own rate." %}{% endif %}</p>
 {% endblock %}

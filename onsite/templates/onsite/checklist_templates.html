@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
     <h2 class="page-title mb-1">Checklist templates</h2>
 </div>
-<p class="text-muted small mb-4">Every kind of on-site visit (turnover, deep clean, inspection, ...) and its standard checklist — build or edit one here instead of Django admin. A property's actual checklist is this standard list plus anything added just for that property (see <a href="{% url 'onsite_checklist_custom_items' %}">custom checklist items</a>).</p>
+<p class="text-muted small mb-4">Each visit type and its standard checklist. A property's own checklist adds its <a href="{% url 'onsite_checklist_custom_items' %}">custom items</a>.</p>
 
 {% if is_admin %}
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">

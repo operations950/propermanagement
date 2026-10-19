@@ -13,7 +13,7 @@
             <div class="col-6"><label class="form-label small mb-1">Last day <span class="text-muted">(if more than one)</span></label><input type="date" name="end" class="form-control" value="{{ form.end }}" min="{{ today|date:'Y-m-d' }}"></div>
         </div>
         {% if pto.has_hire %}<div class="small text-muted">You have {{ pto.available|hrs1 }} hours ({{ pto.available|days1 }} days) available.
-            {% include '_tip.html' with text='A manager approves every request, and may approve time you have not earned yet. Approved days are paid days. If it takes your balance below zero, you earn it back as you work.' %}</div>{% endif %}
+           </div>{% endif %}
         {% elif kind == 'change' %}
         <div class="small text-muted">Pick the day you will not work, the day you will work instead, or both.</div>
         <div class="row g-2">

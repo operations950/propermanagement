@@ -77,10 +77,10 @@
 </div>
 
 {% if released_to_owners %}
-<div class="alert alert-info small py-2 mb-2 d-flex align-items-start gap-2"><i data-lucide="send" class="icon mt-1"></i><div><strong>Released to owners.</strong> They see the released version. {% if close %}If you reopen this month and a figure changes when you close it again, they are emailed what changed.{% else %}You have reopened it: they still see the released version until you close it again, and if any figure changed they will be emailed.{% endif %}</div></div>
+<div class="alert alert-info small py-2 mb-2 d-flex align-items-start gap-2"><i data-lucide="send" class="icon mt-1"></i><div><strong>Released to owners.</strong> {% if close %}If you reopen it and a figure changes when you close it again, they are emailed.{% else %}Reopened: they still see the released version until you close it again.{% endif %}</div></div>
 {% endif %}
 {% if close %}
-<div class="alert alert-secondary small py-2 mb-2 d-flex align-items-start gap-2"><i data-lucide="lock" class="icon mt-1"></i><div><strong>Closed {{ close.closed_at|date:"F j, Y" }}{% if close.closed_by %} by {{ close.closed_by.get_full_name|default:close.closed_by.username }}{% endif %}.</strong> These figures are frozen — nothing in QuickBooks changes them. Correct anything wrong in the current month.{% if close.note %} Note: {{ close.note }}{% endif %}</div></div>
+<div class="alert alert-secondary small py-2 mb-2 d-flex align-items-start gap-2"><i data-lucide="lock" class="icon mt-1"></i><div><strong>Closed {{ close.closed_at|date:"F j, Y" }}{% if close.closed_by %} by {{ close.closed_by.get_full_name|default:close.closed_by.username }}{% endif %}.</strong> Frozen: correct anything wrong in the current month.{% if close.note %} Note: {{ close.note }}{% endif %}</div></div>
 {% endif %}
 
 {% if drift %}
@@ -100,7 +100,7 @@
 {% if opening.show and opening.editable or opening.show and opening.ob %}
 <div class="card mb-2" id="opening-balance" style="border-radius: 12px;"><div class="card-body py-2 px-3">
     <div class="small fw-semibold mb-1">Opening balance <span class="text-muted fw-normal">— what was still owed when the books began</span></div>
-    <div class="small text-muted mb-2">{{ month|date:"F" }} is the first month in the books, so there is no earlier month for what is paid out to settle. Enter what was still unpaid at the end of {{ previous|date:"F Y" }}: a positive figure is owed, a negative one was paid ahead. {{ month|date:"F" }}'s payments are then checked against it, and a payment made early (an advance) is credited and carries into the next month instead of showing as a shortfall. Leave all three blank to skip the check.</div>
+    {% include '_tip.html' with text='The first month in the books has no earlier month for what is paid out to settle. Enter what was still unpaid at the end of the month before: a positive figure is owed, a negative one was paid ahead. This month’s payments are checked against it, and a payment made early (an advance) is credited and carries into the next month instead of showing as a shortfall. Leave all three blank to skip the check.' %}
     {% if opening.editable %}
     <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="save_opening">
         <div class="col-6 col-md-3"><label class="form-label small mb-0" for="opening-owner">Owed to the owner</label><input class="form-control form-control-sm" id="opening-owner" name="opening_owner" inputmode="decimal" placeholder="0.00" value="{% if opening.ob %}{{ opening.ob.owner_payable }}{% endif %}"></div>

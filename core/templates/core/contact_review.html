@@ -5,13 +5,7 @@
 <div class="card mb-4">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> One-time baseline pass</h6>
-        <p class="small text-muted mb-2">
-            Import Quo's saved contacts, drop anyone who already matches an existing Contact, then check
-            Quo's own conversation and call history for real activity in the last 12 months. Contacts
-            we've texted get their conversation read and AI-classified by Claude; contacts with only a
-            phone call on file get staged with whatever's available. Anyone with neither is left alone.
-            Preview the count first — it still reads Quo's history so it's not instant, but it's free.
-        </p>
+        <p class="small text-muted mb-2">Import Quo's contacts and check for recent activity. {% include '_tip.html' with text="Import Quo's saved contacts, drop anyone who already matches an existing Contact, then check Quo's own conversation and call history for real activity in the last 12 months. Contacts we've texted get their conversation read and AI-classified by Claude; contacts with only a phone call on file get staged with whatever's available. Anyone with neither is left alone. Preview the count first — it still reads Quo's history so it's not instant, but it's free." %}</p>
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <form method="post" action="{% url 'quo_analyze_contacts_count' %}" class="d-inline d-flex align-items-center gap-2">
                 {% csrf_token %}
@@ -58,7 +52,7 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
 {% csrf_token %}
 {% if update_candidates %}
 <h2 class="page-title my-3">Contact updates ({{ update_candidates|length }})</h2>
-<p class="text-muted">These contacts already exist and are in use — their info changed in Quo since we last synced. Mark Apply to update the real Contact, or Dismiss to keep what's on file, then Save Changes.</p>
+<p class="text-muted">Existing contacts whose info changed in Quo. Apply or Dismiss, then Save.</p>
 {% for u in update_candidates %}
 <div class="card mb-3" data-review-card data-kind="update" data-pk="{{ u.pk }}">
     <div class="card-body">
@@ -93,7 +87,7 @@ document.querySelectorAll('form[action$="/analyze-contacts/count/"], form[action
 {% endif %}
 
 <h2 class="page-title my-3">Contacts to review ({{ total_candidates }})</h2>
-<p class="text-muted">Imported from Quo/Gmail — not usable anywhere in the app (ticket pickers, property pages) until approved. Edit any field before approving if the import got something wrong. Mark Approve/Reject on as many as you like, then Save Changes once — nothing happens until then.</p>
+<p class="text-muted">Imported from Quo/Gmail; unusable until approved. Approve or Reject, then Save.</p>
 
 {% for c in candidates %}
 <div class="card mb-3" data-review-card data-kind="candidate" data-pk="{{ c.pk }}" {% if c.possible_duplicates %}style="border-left: 4px solid var(--status-warning);"{% endif %}>

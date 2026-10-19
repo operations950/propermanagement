@@ -61,7 +61,7 @@
                 <form method="post" action="{% url 'timeclock_out' %}" class="d-flex flex-column gap-2">
                     {% csrf_token %}
                     <div class="d-flex align-items-center gap-2">
-                        <label for="lunch" class="small mb-0 flex-shrink-0">Lunch today {% include '_tip.html' with text='Did you take a lunch, and how long? We rely on your honesty. It is taken out of your hours. You may work through lunch: pick No lunch.' %}</label>
+                        <label for="lunch" class="small mb-0 flex-shrink-0">Lunch today</label>
                         <select name="lunch" id="lunch" class="form-select" required>
                             <option value="" selected disabled>Choose…</option>
                             <option value="0">No lunch</option>
@@ -91,7 +91,7 @@
     <div class="col-12 col-md-4">
         <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body d-flex flex-column">
             <div class="tc-label">Vacation
-                {% if pto.has_hire %}{% include '_tip.html' with text='Earned minus taken. A vacation day is 8 hours. Sick and missed days come out of it too, and it can go below zero. Unused vacation carries over.' %}{% endif %}
+                
             </div>
             {% if pto.has_hire %}
             <div class="tc-big mt-1 {% if pto.negative %}tc-neg{% endif %}">{{ pto.balance|days1 }} days</div>

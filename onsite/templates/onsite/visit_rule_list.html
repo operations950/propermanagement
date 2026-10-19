@@ -4,7 +4,7 @@
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
 
 <h2 class="page-title mb-1">Recurring visits</h2>
-<p class="text-muted small mb-4">Standing rules for anything that happens on its own schedule — deep cleans, inspections, a weekly commercial common-area clean, whatever doesn't come from a booking file. Each generates a new visit automatically once its interval elapses (see the visit type's own checklist for what's on it). For a multi-unit property, add one rule per unit — leave unit blank for a rule that covers the whole property.</p>
+<p class="text-muted small mb-4">Standing rules for visits on a schedule (deep cleans, inspections). One rule per unit for a multi-unit property. {% include '_tip.html' with text="Standing rules for anything that happens on its own schedule — deep cleans, inspections, a weekly commercial common-area clean, whatever doesn't come from a booking file. Each generates a new visit automatically once its interval elapses (see the visit type's own checklist for what's on it). For a multi-unit property, add one rule per unit — leave unit blank for a rule that covers the whole property." %}</p>
 
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-body">

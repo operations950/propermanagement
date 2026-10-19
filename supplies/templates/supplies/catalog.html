@@ -2,7 +2,7 @@
 {% block title %}Supply catalog{% endblock %}
 {% block content %}
 <h2 class="page-title my-3 d-flex align-items-center gap-2"><i data-lucide="package" class="icon-lg"></i> Supply catalog</h2>
-<p class="text-muted">The shared list of purchasable items — one row per real-world product, used across every property. Product identity (the Walmart item id) is resolved once here, so cart-building downstream never has to re-guess it. Check <strong>Standard</strong> to put an item on every property/unit's supply list automatically — no per-property setup needed. Leave it unchecked to add the item only where a specific property needs it, from that <a href="{% url 'property_list' %}">property's own page</a>.</p>
+<p class="text-muted">One row per real product, used across every property. <strong>Standard</strong> puts an item on every property's list; otherwise add it from the <a href="{% url 'property_list' %}">property's own page</a>.</p>
 
 <div class="card mb-3">
     <div class="card-body">

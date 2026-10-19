@@ -5,7 +5,6 @@
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
     <div>
         <h2 class="page-title mb-0">Owner Dashboard</h2>
-        <p class="mb-0" style="color: var(--ink-muted);">What needs a decision, not what's normal.</p>
     </div>
     <a href="{% url 'ticket_create' %}" class="btn btn-primary flex-shrink-0"><i data-lucide="plus" class="icon"></i> New ticket</a>
 </div>
@@ -73,7 +72,7 @@
         </tbody>
         {% if flow.people %}<tfoot><tr class="fw-semibold"><td class="ps-3">Total</td><td class="text-end">{{ flow.opened }}</td><td class="text-end pe-3">{{ flow.closed }}</td></tr></tfoot>{% endif %}
     </table></div>
-    <div class="card-footer bg-white small" style="color: var(--ink-muted);">Closed means it reached completed, verified, cancelled, skipped or not applicable, counted for the person who closed it. Tickets the recurring schedules create are left out.</div>
+    <div class="card-footer bg-white small" style="color: var(--ink-muted);">Closed = completed, verified, cancelled, skipped or not applicable. Recurring tickets are left out.</div>
 </div>
 
 <div class="card mb-3" style="border-top: 4px solid var(--status-critical); border-radius: var(--bs-border-radius-lg);">

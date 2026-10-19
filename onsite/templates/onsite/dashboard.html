@@ -47,8 +47,7 @@
 <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
     <i data-lucide="calendar-x" class="icon mt-1"></i>
     <div class="small">
-        <strong>Google Calendar isn't being updated.</strong> {{ calendar_status.message }}
-        <a href="{% url 'admin_tools' %}" class="alert-link ms-1">Admin Tools</a>
+        <strong>Google Calendar isn't updating.</strong> <a href="{% url 'admin_tools' %}" class="alert-link ms-1">Fix in Admin Tools</a>
     </div>
 </div>
 {% endif %}
@@ -57,10 +56,8 @@
 <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
     <i data-lucide="calendar-sync" class="icon mt-1"></i>
     <div class="small">
-        <strong>{{ feeds_attention|length }} booking calendar line{{ feeds_attention|length|pluralize }} need{{ feeds_attention|length|pluralize:"s," }} attention</strong> — reservations from these aren't flowing in automatically:
-        {% for line in feeds_attention|slice:":8" %}<span class="d-none d-md-block">{{ line.label }} · {{ line.source_label }}: {{ line.status_text }}</span>{% endfor %}
-        {% if feeds_attention|length > 8 %}<span class="d-none d-md-block">…and {{ feeds_attention|length|add:"-8" }} more.</span>{% endif %}
-        <a href="{% url 'onsite_booking_feeds' %}" class="alert-link">Open Booking calendars</a>
+        <strong>{{ feeds_attention|length }} booking calendar line{{ feeds_attention|length|pluralize }} need{{ feeds_attention|length|pluralize:"s," }} attention.</strong>
+        <a href="{% url 'onsite_booking_feeds' %}" class="alert-link ms-1">Open Booking calendars</a>
     </div>
 </div>
 {% endif %}

@@ -28,7 +28,7 @@
 
 {% if specs_summary %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
-    <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>Size details needed for cleaning estimates.</strong> {{ specs_summary }}. A blank counts as zero, so this rental's cleaning time and price come out too low. The fields are under Access &amp; systems{% if property.units.exists %}; for a building you can also set them per unit further down{% endif %}.</span>
+    <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>Size needed for cleaning estimates:</strong> {{ specs_summary }}.</span>
     <a href="#property-size" class="btn btn-outline-secondary btn-sm">Go to the size fields</a>
 </div>
 {% endif %}
@@ -48,7 +48,6 @@
     <div id="property-size"></div>
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
         <h5 class="mb-0 d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> {% if units %}Units{% else %}This property{% endif %}</h5>
-        <span class="small text-muted">{% if 'size' in sections %}{% if units %}Each unit keeps its own size, codes, wifi, shutoffs and listings.{% else %}It is one unit: its size, codes, wifi, shutoffs and listings.{% endif %}{% else %}{% if units %}Each unit keeps its own codes, wifi and shutoffs.{% else %}Its codes, wifi and shutoffs.{% endif %}{% endif %}</span>
     </div>
     {% if own_card %}
     {% include 'core/_unit_card.html' with u=None target=property c=own_card open_it=True %}
@@ -59,7 +58,6 @@
         {% csrf_token %}<input type="hidden" name="action" value="add_unit">
         <input type="text" name="label" class="form-control form-control-sm" style="max-width: 260px;" placeholder="Add a unit — e.g. Bamboo, 3B, Unit 204">
         <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="plus" class="icon"></i> Add unit</button>
-        {% if not units %}<span class="small text-muted">A single-unit property has none: add units only for a building with several listings.</span>{% endif %}
     </form>
 </section>
 {% if property.property_type == 'association' and can_use_documents %}
@@ -97,7 +95,6 @@
         <div class="card h-100">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Amenities</h6>
-                <p class="small text-muted">Services, physical features, and compliance tags — also used by recurring task rules to auto-apply.</p>
                 <div class="d-flex flex-wrap gap-2 mb-2">
                     {% for attr in attributes %}
                         {% if attr.pk in assigned_attribute_ids %}
@@ -145,7 +142,6 @@
         <div class="card h-100">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Booking platforms</h6>
-                <p class="small text-muted">Every name/title this property answers to on each platform — used to automatically match reservations during an on-site visit booking import. A property can have more than one per platform (e.g. several units at one address). Usually set for you the first time an unrecognized listing name is resolved during an import.</p>
 
                 <div class="small fw-bold text-uppercase mb-1" style="color: var(--ink-muted); letter-spacing: 0.05em;">Airbnb</div>
                 {% for ln in airbnb_listing_names %}
@@ -403,7 +399,7 @@
         </span>
     </summary>
     <div class="card-body pt-0">
-        <p class="text-muted small mb-3">{% if units %}<strong>Answers can belong to the whole building or to one unit</strong> (does <em>this</em> unit have an oven?) — the assistant is told which unit a guest is in and reads the building's answers plus that unit's. {% endif %}Questions guests ask about this property, and the answers. The assistant reads these when it replies and adds to them as it learns. Anything you write or review is locked, so the assistant can use it but not change it. Door codes and the wifi password can't be saved here — they stay in Access &amp; systems, so a changed code never leaves an old copy behind. <a href="{% url 'faq_review_queue' %}">Review every property's new answers in one place →</a></p>
+        <p class="small mb-3 d-flex align-items-center gap-1"><a href="{% url 'faq_review_queue' %}">Review new answers across every property →</a> {% include '_tip.html' with text='Answers can belong to the whole building or to one unit. The assistant is told which unit a guest is in and reads the building’s answers plus that unit’s. It reads these when it replies and adds to them as it learns. Anything you write or review is locked, so it can use it but not change it. Door codes and the wifi password cannot be saved here; they stay in Access and systems.' %}</p>
 
         {% for f in faqs %}
         <div class="border-top py-2">
@@ -488,7 +484,7 @@
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
             <div>
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="package" class="icon"></i> Supplies</h6>
-                <p class="small text-muted mb-0">Every property follows the <a href="{% url 'supplies:catalog' %}">portfolio-wide standard list</a> ({{ supply_standard_count }} item{{ supply_standard_count|pluralize }}) automatically. Add an exception below only where this property differs — hide something it doesn't need, change a quantity, or stock something non-standard.</p>
+                <p class="small text-muted mb-0">Follows the <a href="{% url 'supplies:catalog' %}">standard list</a> ({{ supply_standard_count }} item{{ supply_standard_count|pluralize }}). Add exceptions below.</p>
             </div>
         </div>
 
@@ -578,7 +574,6 @@
 <div class="card mb-3">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> Documents</h6>
-        <p class="small text-muted">Governing documents (for associations), or anything else worth keeping on hand for this property.</p>
         {% for doc in documents %}
         <div class="d-flex justify-content-between align-items-start py-1 border-top">
             <div>
@@ -624,7 +619,7 @@
             {% if qb.status == 'mapped' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Both accounts tied</span>
             {% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{% if qb.status == 'partial' %}One account still needed{% else %}Not tied to QuickBooks yet{% endif %}</span>{% endif %}
         </div>
-        <p class="text-muted small mb-3">Each rental runs through two accounts. The <strong>income-statement</strong> account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The <strong>balance-sheet</strong> account is the owner's trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner's payment.</p>
+        <p class="small text-muted mb-3">Two accounts per rental {% include '_tip.html' with text='The income-statement account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The balance-sheet account is the owner’s trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner’s payment.' %}</p>
 
         <form method="post" class="border rounded p-2 mb-3" id="financials-switch">
             {% csrf_token %}<input type="hidden" name="action" value="qb_set_financials">
@@ -671,9 +666,9 @@
             <div id="qb-baseline-row" class="d-flex gap-2 flex-wrap align-items-center mt-2" {% if property.commission_basis != 'net' %}hidden{% endif %}>
                 <label class="small fw-semibold mb-0" for="qb-baseline">Owner Baseline Expenses</label>
                 <div class="input-group input-group-sm" style="max-width: 150px;"><span class="input-group-text">$</span><input type="number" name="owner_baseline_expense" id="qb-baseline" class="form-control" step="0.01" min="0" value="{{ property.owner_baseline_expense|floatformat:'2u' }}"></div>
-                <span class="small text-muted">/ month, e.g. insurance the owner pays directly — never runs through us, but is a real cost, so it's subtracted before commission is worked out. Never subtracted a second time from the owner's payment.</span>
+                <span class="small text-muted">/ month {% include '_tip.html' with text='For example insurance the owner pays directly. It never runs through us, but it is a real cost, so it is subtracted before commission is worked out and never again from the owner’s payment.' %}</span>
             </div>
-            <p class="small text-muted mb-0 mt-1">A percent of each month's income deposits (or, on net income, deposits less that month's expenses and Owner Baseline Expenses) — the top line: we are paid whether or not the month is profitable. What is left after the commission, the reimbursable expenses and what is paid from trust is the owner payment. Applies to months still open; closed months keep the rate (and basis) they were closed with.</p>
+            <p class="small text-muted mb-0 mt-1">Applies to months still open; closed months keep the rate they were closed with. {% include '_tip.html' with text='A percent of each month’s income deposits (or, on net income, deposits less that month’s expenses and Owner Baseline Expenses). The owner payment is what is left after commission, reimbursable expenses and what is paid from trust.' %}</p>
         </form>
 
         <form method="post" class="border rounded p-2 mb-3" id="owner-portal">
@@ -694,7 +689,7 @@
                 </select>
                 <button class="btn btn-outline-secondary btn-sm">Change</button>
             </div>
-            <p class="small text-muted mb-0 mt-1">{% if qb.unit_mode %}Each unit has its own two accounts and is closed on its own; the property's financials are its units added up.{% else %}One pair of accounts for the whole property; its units aren't kept separately.{% endif %} Switching applies from the months still open — months already closed keep the way they were closed.</p>
+            <p class="small text-muted mb-0 mt-1">{% if qb.unit_mode %}Each unit is closed on its own; the property is its units added up.{% else %}One pair of accounts for the whole property.{% endif %} Applies from the months still open.</p>
         </form>
         <script>
         function confirmLevelChange(form) {
@@ -787,7 +782,7 @@
         <form method="post" class="mt-2 d-flex gap-2 flex-wrap align-items-center">
             {% csrf_token %}<input type="hidden" name="action" value="qb_refresh_accounts">
             <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Refresh accounts from QuickBooks</button>
-            <span class="small text-muted">{% if qb.synced_at %}{{ qb.account_count }} accounts, last read {{ qb.synced_at|timesince }} ago{% else %}not read yet{% endif %}. Not seeing a new account? Refresh.</span>
+            <span class="small text-muted">{% if qb.synced_at %}{{ qb.account_count }} accounts, read {{ qb.synced_at|timesince }} ago{% else %}not read yet{% endif %}</span>
         </form>
         {% endif %}
         {% endif %}{# financials_managed #}

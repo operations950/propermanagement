@@ -1,7 +1,6 @@
 {# What is true of the whole property, not of one unit. Context: property, units, system_locations (building-wide only), is_admin. #}
 <div class="card mb-3" id="building" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon"></i> {% if units %}Building-wide{% else %}Property-wide{% endif %}</h6>
-    <p class="small text-muted">{% if units %}What is the same for every unit: the gate, the check-in and check-out times, how to reach the building. Each unit's own codes, wifi, size and shutoffs are on its card above.{% else %}The gate, the check-in and check-out times. The property's own codes, wifi, size and shutoffs are on its card above.{% endif %}</p>
     <form method="post" class="mb-3">
         {% csrf_token %}<input type="hidden" name="action" value="save_access_info">
         <div class="row g-2 mb-2">

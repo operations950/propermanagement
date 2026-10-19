@@ -16,7 +16,7 @@
 
 {% if incomplete_specs %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
-    <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>{{ incomplete_specs }} short-term rental{{ incomplete_specs|pluralize }}</strong> {{ incomplete_specs|pluralize:"is,are" }} missing bedrooms, beds, bathrooms or square footage. Cleaning time estimates and prices use those, and a blank counts as zero, so they come out too low.</span>
+    <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>{{ incomplete_specs }} short-term rental{{ incomplete_specs|pluralize }}</strong> {{ incomplete_specs|pluralize:"is,are" }} missing size details (bedrooms, beds, baths, square feet).</span>
     {% if needs_details %}<a href="?{% if selected_type %}type={{ selected_type }}{% endif %}" class="btn btn-outline-secondary btn-sm">Show all</a>{% else %}<a href="?needs=details" class="btn btn-outline-secondary btn-sm">Show only these</a>{% endif %}
 </div>
 {% endif %}

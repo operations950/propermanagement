@@ -140,8 +140,7 @@
         <div>
             <h6 class="mb-1 d-flex align-items-center gap-2"><i data-lucide="sparkles" class="icon"></i> Deep clean</h6>
             <p class="small mb-0" style="color: var(--ink-muted);">
-                {% if visit.is_deep_clean %}This visit also includes the deep-clean extras — turn off to remove them.
-                {% else %}Adds the deep-clean extra checklist items onto this turnover. Only changeable before it starts.{% endif %}
+                {% if visit.is_deep_clean %}Includes the deep-clean extras.{% else %}Adds the deep-clean extras to this turnover (before it starts).{% endif %}
             </p>
         </div>
         <form method="post">
@@ -366,22 +365,20 @@
         {% if price is not None %}
         <p class="mb-1">${{ price|floatformat:2 }}{% if visit.manual_price_override is not None %} <span class="badge rounded-pill bg-light text-muted border">Manual override</span>{% elif visit.price_source == 'checklist' %} <span class="badge rounded-pill bg-light text-muted border">Fixed price for this checklist</span>{% elif visit.price_source == 'property' %} <span class="badge rounded-pill bg-light text-muted border">Negotiated turnover price</span>{% endif %}</p>
         {% if visit.no_checklist and price == 0 and visit.manual_price_override is None %}
-        <p class="small mb-1" style="color: var(--status-warning);"><i data-lucide="triangle-alert" class="icon"></i> This is $0 because there's no checklist to time — set a manual price below if this visit should be paid.</p>
+        <p class="small mb-1" style="color: var(--status-warning);"><i data-lucide="triangle-alert" class="icon"></i> $0: no checklist to time. Set a manual price below if it should be paid.</p>
         {% endif %}
         {% else %}
-        <p class="small mb-1" style="color: var(--ink-muted);">Not priced yet — set a cleaning rate on the <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a> screen, or a turnover price override on this property.</p>
+        <p class="small mb-1" style="color: var(--ink-muted);">Not priced yet. Set a rate on <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a>, or a turnover price on the property.</p>
         {% endif %}
         {% endwith %}
         <p class="small mb-0" style="color: var(--ink-muted);">
             Estimated {{ visit.estimated_minutes }} min
             {% with actual=visit.actual_minutes %}{% if actual %} · actually took {{ actual }} min{% endif %}{% endwith %}
-            — comparing the two over time is how to check whether the checklist's own time estimates are realistic.
         </p>
 
         {% if visit.payment_batch_id %}
         <p class="small mt-2 mb-0" style="color: var(--ink-muted);">
-            This visit is already paid — ${{ visit.paid_amount|floatformat:2 }} was locked in and won't change here.
-            Undo the payment batch on <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a> first if that amount needs correcting.
+            Paid: ${{ visit.paid_amount|floatformat:2 }}, locked. To change it, undo the batch on <a href="{% url 'onsite_cleaning_payments' %}">Cleaning Payments</a>.
         </p>
         {% else %}
         <div class="d-flex align-items-end gap-2 mt-2 flex-wrap">
@@ -407,7 +404,7 @@
             </form>
             {% endif %}
         </div>
-        <p class="small mt-1 mb-0" style="color: var(--ink-muted);">Forces this one visit's price to an exact amount, bypassing the property's turnover price override and the hourly-rate calculation. Leave blank and save to clear it.</p>
+        <p class="small mt-1 mb-0" style="color: var(--ink-muted);">Overrides the price for this visit only. Blank clears it.</p>
         {% endif %}
     </div>
 </div>
@@ -416,7 +413,7 @@
     <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h6 class="mb-1" style="color: var(--status-critical);">Delete this visit</h6>
-            <p class="small mb-0" style="color: var(--ink-muted);">Permanent — removes the checklist, photos, issue records, and any supply-level readings taken during this visit. Admin only.</p>
+            <p class="small mb-0" style="color: var(--ink-muted);">Permanent: removes its checklist, photos, issues and supply readings.</p>
         </div>
         <form method="post" onsubmit="return confirm('Delete this visit permanently? This also permanently deletes its checklist, photos, issue records, and any supply readings taken during it. This cannot be undone.');">
             {% csrf_token %}

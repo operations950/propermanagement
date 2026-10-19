@@ -19,12 +19,12 @@
 </style>
 <a href="{% url 'close_home' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
 <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="banknote" class="icon-lg"></i> Platform payouts</h2>
-<div class="small text-muted mb-2">Each payout Airbnb or VRBO reports, the lines that make it up, and whether a bank deposit of that amount has turned up. One waiting {{ lingering_after }}+ days is flagged.</div>
+<div class="small text-muted mb-2">Each payout, its lines, and whether its bank deposit has arrived. Flagged after {{ lingering_after }}+ days waiting.</div>
 
 <div class="card mb-2"><div class="card-body py-2">
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <div class="me-auto"><strong class="small">QuickBooks coding</strong>
-            <div class="small text-muted">Deposits in "Uncategorized Airbnb Income" / "Uncategorized VRBO Income" are matched to a payout by date and amount, then split into one line per reservation, "Guest | Code | Amount", in that unit's trust account.</div></div>
+            <div class="small text-muted">Uncategorized Airbnb/VRBO deposits are matched to a payout by date and amount, then split per reservation in the unit's trust account.</div></div>
         <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="qb_preview"><button class="btn btn-sm btn-outline-secondary">Check QuickBooks</button></form>
         {% if plan_ready %}<form method="post" class="d-inline" onsubmit="return confirm('Change {{ plan_ready }} deposit{{ plan_ready|pluralize }} in QuickBooks?');">{% csrf_token %}<input type="hidden" name="action" value="qb_apply"><button class="btn btn-sm btn-primary">Send {{ plan_ready }} to QuickBooks</button></form>{% endif %}
     </div>

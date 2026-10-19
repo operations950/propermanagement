@@ -5,7 +5,7 @@
 <h2 class="page-title my-3">Pending</h2>
 
 <h5 class="d-flex align-items-center gap-2 mb-1"><i data-lucide="copy-x" class="icon"></i> Possible duplicate ({{ duplicate_tickets|length }})</h5>
-<p class="text-muted">Claude flagged this newly-created ticket as probably the same real-world issue as one already open at the same property. Nothing else about it (due date, department, ...) matters until this is resolved either way.</p>
+<p class="text-muted small">Probably the same issue as one already open at that property.</p>
 
 {% for t in duplicate_tickets %}
 <div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-warning, #c99a3f) 45%, var(--border-hairline));">
@@ -70,7 +70,7 @@
 <hr class="my-4">
 
 <h5 class="d-flex align-items-center gap-2 mb-1"><i data-lucide="sparkles" class="icon"></i> AI Property Match ({{ ai_match_tickets|length }})</h5>
-<p class="text-muted">Auto-detected from email — Claude has read the thread and guessed a property, but a due date and department still need a human before this becomes a real queued ticket. Fix the ticket name/description if needed, confirm/set the property if it's missing, then lock in a date and department.</p>
+<p class="text-muted small">Property guessed from the email. Confirm it, then set a date and department.</p>
 
 {% for t in ai_match_tickets %}
 <div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--accent-contrast, #6e95b2) 35%, var(--border-hairline));">
@@ -198,7 +198,7 @@
 <hr class="my-4">
 
 <h5 class="d-flex align-items-center gap-2 mb-1"><i data-lucide="calendar-clock" class="icon"></i> Needs a due date ({{ needs_date_tickets|length }})</h5>
-<p class="text-muted">Property and department are already set — a ticket isn't solidified until it has a due date too, so these stay out of the regular lists until one's picked.</p>
+<p class="text-muted small">Pick a due date to move these into the regular lists.</p>
 
 {% for t in needs_date_tickets %}
 <div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
@@ -270,7 +270,7 @@
 <hr class="my-4">
 
 <h5 class="mb-1">No property yet ({{ tickets|length }})</h5>
-<p class="text-muted">These are unconfirmed candidates, not real tickets yet — usually auto-detected from Quo with no clear property. For each one: fix the description if needed, then either lock in a property (which moves it into its department's real queue — pick a "general" bubble if it's not about one specific address) or delete it if it isn't actually a ticket.</p>
+<p class="text-muted small">Not real tickets yet. Pick a property (a "general" one if it is not about an address) or delete it.</p>
 
 {% for t in tickets %}
 <div class="card mb-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">

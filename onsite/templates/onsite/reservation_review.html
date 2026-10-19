@@ -4,14 +4,13 @@
 <a href="{% url 'onsite_reservation_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Reservations</a>
 <h2 class="page-title mb-1">Reservations to review</h2>
 <p class="text-muted small mb-3">
-    The synced calendars decide who is actually checking in and out (and so which cleanings exist); the payment reports decide what you are paid. A stay on the calendar should have a payout, and a payout for a stay the calendar doesn't show is still real money — it just gets no cleaning. Nothing here is cancelled automatically.
-    {% if reach %}Payout reports on file reach through {% for name, day in reach %}<strong>{{ name }} {{ day|date:"M j, Y" }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}; a reservation paying out after that can't be checked yet — upload a payouts report with a longer date range to check further ahead.{% else %}No payout report has been uploaded yet, so there is nothing to compare against — upload the VRBO payouts (past and upcoming) on the import screen.{% endif %}
+    {% if reach %}Payout reports reach through {% for name, day in reach %}<strong>{{ name }} {{ day|date:"M j, Y" }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.{% else %}No payout report uploaded yet.{% endif %}
+    {% include '_tip.html' with text='The synced calendars decide who is checking in and out, and so which cleanings exist. The payment reports decide what you are paid. A stay on the calendar should have a payout; a payout for a stay the calendar does not show is still real money, it just gets no cleaning. Nothing here is cancelled automatically. A reservation paying out after the last date a payout report reaches cannot be checked yet; upload a payouts report with a longer date range to check further ahead.' %}
 </p>
 
 {% if ended_early %}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: #e0c36a;"><div class="card-body">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> Left after checking in ({{ ended_early|length }})</h6>
-    <p class="text-muted small">These guests checked in and then disappeared from the calendar (they cancelled or left early). Each is counted only through the last day the calendar showed it, so the nights actually stayed still count and nothing after. Enter the day the guest really left. The cleaning that was booked for the original check-out has been cancelled.</p>
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> Left after checking in ({{ ended_early|length }}) {% include '_tip.html' with text='These guests checked in and then disappeared from the calendar. Each is counted only through the last day the calendar showed it, so the nights stayed still count and nothing after. Enter the day the guest really left. The cleaning booked for the original check-out was cancelled. Cancel removes the stay altogether, so none of its nights count.' %}</h6>
     {% for b in ended_early %}
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap border-top py-2">
         <span class="small"><strong>{{ b.property.name }}{% if b.unit %} — {{ b.unit.label }}{% endif %}</strong><br>{{ b.guest_name|default:"Guest" }} · checked in {{ b.check_in|date:"D M j" }} · was booked to {{ b.ended_early_from|date:"D M j" }} · counted through {{ b.check_out|date:"D M j" }} · {{ b.get_source_display }}</span>
@@ -25,12 +24,10 @@
         </span>
     </div>
     {% endfor %}
-    <p class="text-muted small mt-2 mb-0">Cancel removes the stay altogether, so none of its nights count.</p>
 </div></div>
 {% endif %}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="copy" class="icon"></i> Overlapping on the calendars ({{ conflicts|length }})</h6>
-    <p class="text-muted small">Two guests can't share a night at one unit. This is about what the synced calendars (and in-house bookings) show — overlaps inside payment reports are normal and aren't listed. Usually a calendar link is attached to the wrong unit, or a stay is filed under the wrong unit: use <strong>Unit</strong> to move one, or Cancel the one that isn't real.</p>
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="copy" class="icon"></i> Overlapping on the calendars ({{ conflicts|length }}) {% include '_tip.html' with text='Two guests cannot share a night at one unit. This is about what the synced calendars and in-house bookings show; overlaps inside payment reports are normal and are not listed. Usually a calendar link is attached to the wrong unit, or a stay is filed under the wrong unit: use Unit to move one, or Cancel the one that is not real.' %}</h6>
     {% for c in conflicts %}
     <div class="border-top pt-2 mt-2">
         <div class="fw-semibold">{{ c.label }}</div>
@@ -47,8 +44,7 @@
 </div></div>
 
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="banknote-x" class="icon"></i> On the calendar, no payout yet ({{ unpaid|length }})</h6>
-    <p class="text-muted small">These stays are on the synced calendar and their payout would fall inside what the payout reports cover, but no payout is matched. Most likely the payout report doesn't list it yet, or its confirmation code hasn't been linked (upload the VRBO inbox / reservations report). It could also be dates someone blocked rather than a guest. Mark it real, or cancel it if it isn't a guest.</p>
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="banknote-x" class="icon"></i> On the calendar, no payout yet ({{ unpaid|length }}) {% include '_tip.html' with text='These stays are on the synced calendar and their payout would fall inside what the payout reports cover, but no payout is matched. Most likely the payout report does not list it yet, or its confirmation code has not been linked (upload the VRBO inbox / reservations report). It could also be dates someone blocked rather than a guest. Mark it real, or cancel it if it is not a guest.' %}</h6>
     {% for b in unpaid %}
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap border-top py-2">
         <span class="small"><strong>{{ b.property.name }}{% if b.unit %} — {{ b.unit.label }}{% endif %}</strong><br>{{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }} · {{ b.get_source_display }}{% if b.guest_name %} · {{ b.guest_name }}{% endif %}</span>
@@ -58,8 +54,7 @@
 </div></div>
 
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-x" class="icon"></i> Paid, but not on the calendar ({{ paid_only|length }})</h6>
-    <p class="text-muted small">Upcoming reservations known only from a payment report, on a listing whose calendar is connected. The money is real and counts as income, but no cleaning is scheduled for them and they aren't on the Rentals board. If one is a genuine guest, the calendar is missing it — check the platform.</p>
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-x" class="icon"></i> Paid, but not on the calendar ({{ paid_only|length }}) {% include '_tip.html' with text='Upcoming reservations known only from a payment report, on a listing whose calendar is connected. The money is real and counts as income, but no cleaning is scheduled and they are not on the Rentals board. If one is a genuine guest, the calendar is missing it; check the platform.' %}</h6>
     {% for b in paid_only %}
     <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap border-top py-2">
         <span class="small"><strong>{{ b.property.name }}{% if b.unit %} — {{ b.unit.label }}{% endif %}</strong><br>{{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }} · {{ b.get_source_display }}{% if b.guest_name %} · {{ b.guest_name }}{% endif %}
