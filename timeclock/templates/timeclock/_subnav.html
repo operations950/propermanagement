@@ -1,0 +1,6 @@
+<div class="d-flex gap-2 flex-wrap mb-3">
+    <a href="{% url 'timeclock_manage' %}" class="btn btn-sm {% if tab == 'today' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Today</a>
+    <a href="{% url 'timeclock_hours' %}" class="btn btn-sm {% if tab == 'hours' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Hours</a>
+    <a href="{% url 'timeclock_calendar' %}" class="btn btn-sm {% if tab == 'calendar' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Calendar</a>
+    <a href="{% url 'timeclock_setup' %}" class="btn btn-sm {% if tab == 'setup' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Team</a>
+</div>

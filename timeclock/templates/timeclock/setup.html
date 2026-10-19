@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% load tc %}
+{% block title %}Team — Proper Management{% endblock %}
+{% block extra_head %}
+<style>
+    .tc-sub { color: var(--ink-muted); font-size: 0.875rem; }
+    .tc-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
+    .tc-days label { margin-right: 0.6rem; font-size: 0.875rem; white-space: nowrap; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="my-3"><h2 class="page-title mb-0">Time</h2></div>
+{% include 'timeclock/_subnav.html' with tab='setup' %}
+
+{% for r in rows %}
+<form method="post" action="{% url 'timeclock_setup_save' r.staff.pk %}" class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    {% csrf_token %}
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <div><span class="fw-semibold">{{ r.staff }}</span> <span class="tc-sub">· {{ r.staff.get_role_display|default:"No department" }}</span></div>
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch" name="applies" id="applies-{{ r.staff.pk }}" {% if r.tp.applies %}checked{% endif %}>
+                <label class="form-check-label" for="applies-{{ r.staff.pk }}">On the time clock {% include '_tip.html' with text='Turn this on for people who must clock in and are covered by the vacation and holiday policy. They must read and sign the policy before they can use anything else.' %}</label>
+            </div>
+        </div>
+        <div class="row g-3 align-items-end tc-fields" {% if not r.tp.applies %}hidden{% endif %}>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Pay</label>
+                <select name="pay_type" class="form-select form-select-sm"><option value="hourly" {% if r.tp.pay_type == 'hourly' or not r.tp %}selected{% endif %}>Hourly</option><option value="salaried" {% if r.tp.pay_type == 'salaried' %}selected{% endif %}>Salaried</option></select></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Hire date {% include '_tip.html' with text='Sets the year of employment and so the vacation earned. Nobody earns vacation until this is filled in.' %}</label>
+                <input type="date" name="hire_date" class="form-control form-control-sm" value="{{ r.tp.hire_date|date:'Y-m-d' }}"></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Day starts</label>
+                <input type="time" name="day_start" class="form-control form-control-sm" value="{% if r.tp %}{{ r.tp.day_start|time:'H:i' }}{% else %}09:00{% endif %}"></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Day ends</label>
+                <input type="time" name="day_end" class="form-control form-control-sm" value="{% if r.tp %}{{ r.tp.day_end|time:'H:i' }}{% else %}17:00{% endif %}"></div>
+            <div class="col-12 tc-days">
+                <span class="small me-2">Works</span>
+                {% for n, name in weekdays %}<label><input type="checkbox" class="form-check-input" name="days" value="{{ n }}" {% if n in r.days %}checked{% endif %}> {{ name }}</label>{% endfor %}
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+            <div class="tc-sub">
+                {% if r.tp.applies %}
+                {% if r.sig %}<i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i> Policy signed {{ r.sig.signed_at|date:"M j" }}{% else %}<i data-lucide="alert-circle" class="icon" style="color: var(--status-warning);"></i> Policy not signed yet{% endif %}
+                {% if r.pto and r.pto.has_hire %} · vacation {{ r.pto.balance|hrs1 }} h{% elif r.pto %} · no hire date{% endif %}
+                {% endif %}
+            </div>
+            <button class="btn btn-primary btn-sm" type="submit">Save</button>
+        </div>
+    </div>
+</form>
+{% endfor %}
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="tc-label">Office connection {% include '_tip.html' with text='Clock-ins from a listed connection count as in the office. Anywhere else is marked remote, and the employee must give a reason. Nothing is marked remote until at least one connection is listed. Press the button while on the office wifi.' %}</span>
+        <form method="post" action="{% url 'timeclock_office' %}">{% csrf_token %}
+            <button class="btn btn-outline-secondary btn-sm" {% if office_here %}disabled{% endif %}><i data-lucide="wifi" class="icon"></i> {% if office_here %}This connection is the office{% else %}Use my current connection as the office{% endif %}</button></form>
+    </div>
+    {% for o in offices %}
+    <form method="post" action="{% url 'timeclock_office' %}" class="d-flex justify-content-between align-items-center mt-2 small">{% csrf_token %}
+        <span>{{ o.ip }} <span class="tc-sub">· added {{ o.added_at|date:"M j" }}</span></span><input type="hidden" name="action" value="remove"><input type="hidden" name="pk" value="{{ o.pk }}"><button class="btn btn-link btn-sm p-0">Remove</button></form>
+    {% empty %}<div class="tc-sub mt-2">None set. Your connection right now is {{ my_ip }}.</div>{% endfor %}
+</div></div>
+<div class="tc-sub mb-4"><a href="{% url 'timeclock_policy' %}">Read the policy</a> as employees see it (version {{ policy_version }}).</div>
+<script>
+document.querySelectorAll('input[name=applies]').forEach(function (cb) {
+    cb.addEventListener('change', function () { cb.closest('form').querySelector('.tc-fields').hidden = !cb.checked; });
+});
+</script>
+{% endblock %}

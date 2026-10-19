@@ -1,0 +1,24 @@
+{% if tc_card %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3 px-3 py-2 rounded" style="background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); font-size: 0.9rem;">
+    {% if tc_card.me %}
+    <div class="d-flex align-items-center gap-2">
+        <i data-lucide="clock" class="icon"></i>
+        {% if tc_card.me.done %}<span>Done for the day</span>
+        {% elif tc_card.me.in %}<span>Clocked in since <strong>{{ tc_card.me.punch.clock_in|time:"g:i A" }}</strong></span>
+        {% else %}<span>Not clocked in</span>{% endif %}
+    </div>
+    {% if not tc_card.me.done %}<a href="{% url 'timeclock_home' %}" class="btn btn-sm btn-primary">{% if tc_card.me.in %}Clock out{% else %}Clock in{% endif %}</a>
+    {% else %}<a href="{% url 'timeclock_home' %}" class="btn btn-sm btn-outline-secondary">My time</a>{% endif %}
+    {% endif %}
+    {% if tc_card.board %}
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <i data-lucide="calendar-clock" class="icon"></i>
+        {% for row in tc_card.board %}
+        <span>{{ row.profile.first_name }}
+            {% if row.state == 'in' %}<span class="badge text-bg-success">in</span>{% elif row.state == 'done' %}<span class="badge text-bg-secondary">done</span>{% elif row.state == 'not_in' %}{% if row.late %}<span class="badge text-bg-danger">{{ row.late }} min late</span>{% else %}<span class="badge text-bg-light">not in yet</span>{% endif %}{% elif row.state == 'vacation' %}<span class="badge" style="background: var(--accent-contrast);">vacation</span>{% elif row.state == 'closed' %}<span class="badge text-bg-warning">closed</span>{% else %}<span class="text-muted small">off</span>{% endif %}</span>
+        {% empty %}<span class="text-muted">Time clock</span>{% endfor %}
+    </div>
+    <a href="{% url 'timeclock_manage' %}" class="small text-decoration-none">{% if tc_card.waiting %}<strong>{{ tc_card.waiting }}</strong> to decide{% else %}Time{% endif %} →</a>
+    {% endif %}
+</div>
+{% endif %}

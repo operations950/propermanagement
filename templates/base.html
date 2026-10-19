@@ -230,6 +230,12 @@
 
         .badge { font-weight: 500; }
 
+        /* The small (i) next to a label: the full explanation lives in a bubble that opens on click, so a screen can stay short.
+           Use: {% include '_tip.html' with text='...' %}. Wired up at the bottom of this file. */
+        .info-tip { border: 0; background: none; padding: 0 0.15rem; color: var(--ink-muted); line-height: 1; cursor: pointer; vertical-align: -0.12em; }
+        .info-tip:hover, .info-tip:focus-visible { color: var(--brand-primary); }
+        .popover { font-family: var(--font-ui); font-size: 0.875rem; max-width: 300px; }
+
         .btn { transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease; }
         .btn:active { transform: translateY(1px); }
 
@@ -338,6 +344,12 @@
                     <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site</a>
                     <a class="nav-link" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i> Recurring</a>
                     <a class="nav-link" href="{% url 'supplies:cart' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
+                    {% if tc_employee %}
+                    <a class="nav-link {% if request.resolver_match.url_name in 'timeclock_home timeclock_time_off timeclock_change timeclock_fix timeclock_policy' %}active{% endif %}" href="{% url 'timeclock_home' %}"><i data-lucide="clock" class="icon"></i> My time</a>
+                    {% endif %}
+                    {% if tc_manager %}
+                    <a class="nav-link {% if request.resolver_match.url_name in 'timeclock_manage timeclock_hours timeclock_setup timeclock_calendar timeclock_punch' %}active{% endif %}" href="{% url 'timeclock_manage' %}"><i data-lucide="calendar-clock" class="icon"></i> Time</a>
+                    {% endif %}
                     {% if request.user.staff_profile.is_portfolio_owner %}
                     <a class="nav-link" href="{% url 'portfolio_dashboard' %}"><i data-lucide="briefcase" class="icon"></i> Portfolio</a>
                     {% endif %}
@@ -392,6 +404,22 @@
     <script src="{% static 'js/toast-messages.js' %}"></script>
     <script src="{% static 'js/progress-bar.js' %}"></script>
     <script>lucide.createIcons();</script>
+    <script>
+    (function () {
+        // The (i) bubbles: click one to read it, click anywhere else (or another one) to put it away.
+        var tips = [];
+        document.querySelectorAll('.info-tip').forEach(function (el) {
+            tips.push(new bootstrap.Popover(el, { trigger: 'manual', placement: 'top', content: el.dataset.tip, container: 'body' }));
+            el.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                var mine = bootstrap.Popover.getInstance(el), open = el.getAttribute('aria-describedby');
+                tips.forEach(function (t) { t.hide(); });
+                if (!open) mine.show();
+            });
+        });
+        document.addEventListener('click', function (ev) { if (!ev.target.closest('.popover')) tips.forEach(function (t) { t.hide(); }); });
+    })();
+    </script>
     <script>
     (function () {
         // Keep the reader where they were ONLY right after they submit a form

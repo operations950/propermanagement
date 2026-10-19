@@ -165,6 +165,7 @@ INSTALLED_APPS = [
     'worksessions',
     'portfolio',
     'legalforms',
+    'timeclock',
 ]
 
 MIDDLEWARE = [
@@ -176,6 +177,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'core.middleware.OwnerWallMiddleware',
+    'timeclock.middleware.PolicyWallMiddleware',
     'core.middleware.TimezoneMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -195,6 +197,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'timeclock.context_processors.nav',
             ],
         },
     },

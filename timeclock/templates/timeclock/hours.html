@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% load tc %}
+{% block title %}Hours — Proper Management{% endblock %}
+{% block extra_head %}
+<style>
+    .tc-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
+    .tc-sub { color: var(--ink-muted); font-size: 0.875rem; }
+    .tc-over { color: var(--status-critical); font-weight: 600; }
+    .tc-hours td, .tc-hours th { white-space: nowrap; }
+    .tc-hours tr.wk td { font-weight: 700; background: var(--surface-page); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="my-3"><h2 class="page-title mb-0">Time</h2></div>
+{% include 'timeclock/_subnav.html' with tab='hours' %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div class="d-flex align-items-center gap-2">
+        <a href="?start={{ prev|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Previous pay period"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="fw-semibold">{% span start end %}</span>
+        <a href="?start={{ next|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Next pay period"><i data-lucide="chevron-right" class="icon"></i></a>
+        {% if locked %}<span class="badge text-bg-success">Entered</span>{% elif in_progress %}<span class="badge text-bg-light">In progress</span>{% endif %}
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        {% if blockers %}<span class="tc-over small"><i data-lucide="alert-circle" class="icon"></i> {{ blockers }} to settle</span>{% endif %}
+        <a href="?start={{ start|date:'Y-m-d' }}&csv=1" class="btn btn-outline-secondary btn-sm {% if blockers %}disabled{% endif %}"><i data-lucide="download" class="icon"></i> Download for payroll</a>
+        {% if locked %}
+        <form method="post" action="{% url 'timeclock_lock' %}">{% csrf_token %}<input type="hidden" name="start" value="{{ start|date:'Y-m-d' }}"><input type="hidden" name="action" value="unlock"><button class="btn btn-outline-secondary btn-sm">Reopen</button></form>
+        {% elif not in_progress %}
+        <form method="post" action="{% url 'timeclock_lock' %}">{% csrf_token %}<input type="hidden" name="start" value="{{ start|date:'Y-m-d' }}"><button class="btn btn-primary btn-sm" {% if blockers %}disabled{% endif %}>Mark as entered</button></form>
+        {% endif %}
+        {% include '_tip.html' with text='Marked as entered means you have put these hours in payroll. The period is then locked: punches in it cannot be changed unless you reopen it. Hourly pay is the paid hours below (worked + approved vacation and sick + approved holiday). Salaried staff are paid their salary; their hours are attendance only.' %}
+    </div>
+</div>
+
+{% for rep in reports %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2 mb-2">
+        <span><span class="fw-semibold">{{ rep.profile.name }}</span> <span class="tc-sub">· {{ rep.profile.get_pay_type_display }}</span></span>
+        <span>{% if rep.profile.is_hourly %}<span class="tc-label">Enter in payroll</span> <span class="fs-5 fw-semibold tabular-nums">{{ rep.paid|hrs }} h</span>{% else %}<span class="tc-sub">Salary · {{ rep.worked_min|mins }} clocked</span>{% endif %}</span>
+    </div>
+    {% if rep.blockers %}<div class="small mb-2">{% for d, why in rep.blockers %}<span class="badge text-bg-warning me-1">{{ d|short_date }} · {{ why }}</span>{% endfor %}</div>{% endif %}
+    <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 tabular-nums tc-hours">
+        <thead><tr><th>Day</th><th>In</th><th>Out</th><th>Lunch</th><th>What</th><th class="text-end">Hours</th><th></th></tr></thead>
+        <tbody>
+        {% for wk in rep.weeks %}
+        {% for r in wk.rows %}{% if r.punch or r.kind != 'none' %}
+        <tr>
+            <td>{{ r.date|short_date }}</td>
+            {% if r.punch %}
+            <td>{{ r.punch.clock_in|time:"g:i A" }}</td>
+            <td>{% if r.punch.clock_out %}{{ r.punch.clock_out|time:"g:i A" }}{% else %}<span class="tc-over">missing</span>{% endif %}</td>
+            <td>{% if r.punch.lunch_minutes is not None %}{{ r.punch.lunch_minutes }} min{% endif %}</td>
+            <td class="tc-sub">{% if r.punch.in_remote or r.punch.out_remote %}<span class="badge text-bg-light" title="{{ r.punch.remote_reason }}">remote</span> {% endif %}{% if r.punch.changes.all %}<span class="badge text-bg-light" title="{% for c in r.punch.changes.all %}{{ c.at|date:'M j' }}: {{ c.reason }}. {% endfor %}">fixed</span>{% endif %}</td>
+            <td class="text-end">{% if r.punch.clock_out %}{{ r.worked_min|mins }}{% endif %}</td>
+            {% else %}
+            <td colspan="3" class="tc-sub">{% if r.kind == 'vacation' %}Vacation{% elif r.kind == 'sick' %}Sick{% elif r.kind == 'other' %}Off, nothing taken{% elif r.kind == 'holiday' %}{{ r.holiday }}{% elif r.kind == 'missed' %}<span class="tc-over">No punch</span>{% elif r.kind == 'pending_off' %}Time off waiting{% endif %}</td>
+            <td class="tc-sub">{% if r.holiday_hours %}<span class="badge text-bg-success">holiday paid</span>{% elif rep.profile.is_hourly and r.holiday and r.hp %}<span class="badge text-bg-light">not paid</span>{% elif r.needs and r.holiday %}<span class="badge text-bg-warning">decide</span>{% endif %}</td>
+            <td class="text-end">{% if r.off_hours %}{{ r.off_hours|hrs }} h{% elif r.holiday_hours %}{{ r.holiday_hours|hrs }} h{% endif %}</td>
+            {% endif %}
+            <td class="text-end"><a href="{% url 'timeclock_punch' %}?pid={{ rep.profile.pk }}&day={{ r.date|date:'Y-m-d' }}" class="small" title="Fix this day">Edit</a></td>
+        </tr>
+        {% endif %}{% endfor %}
+        <tr class="wk"><td colspan="5">Week of {{ wk.start|date:"M j" }}{% if wk.over %} <span class="tc-over">· over 40</span>{% endif %}</td><td class="text-end">{% if rep.profile.is_hourly %}{{ wk.paid|hrs }} h{% else %}{{ wk.worked_min|mins }}{% endif %}</td><td></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% if rep.profile.is_hourly %}<div class="tc-sub mt-2">Worked {{ rep.worked_hours|hrs }} h · vacation and sick {{ rep.off_hours|hrs }} h · holiday {{ rep.holiday_hours|hrs }} h. Lunch is already taken out.</div>{% endif %}
+</div></div>
+{% empty %}
+<div class="card"><div class="card-body tc-sub">Nobody is on the time clock yet.</div></div>
+{% endfor %}
+{% endblock %}

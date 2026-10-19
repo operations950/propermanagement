@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% load tc %}
+{% block title %}Time — Proper Management{% endblock %}
+{% block extra_head %}
+<style>
+    .tc-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
+    .tc-sub { color: var(--ink-muted); font-size: 0.875rem; }
+    .tc-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border-hairline); flex-wrap: wrap; }
+    .tc-row:last-child { border-bottom: 0; }
+    .tc-ctl { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .tc-ctl .form-control, .tc-ctl .form-select { width: auto; }
+    .tc-type { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); min-width: 4.2rem; }
+    .tc-over { color: var(--status-critical); font-weight: 600; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="my-3"><h2 class="page-title mb-0">Time</h2></div>
+{% include 'timeclock/_subnav.html' with tab='today' %}
+
+{% if not profiles %}
+<div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">Nobody is on the time clock yet. <a href="{% url 'timeclock_setup' %}">Choose who it applies to.</a></div></div>
+{% else %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="tc-label mb-1">{{ now|date:"l, F j" }}</div>
+    {% for row in board %}
+    <div class="tc-row py-2">
+        <span class="fw-semibold">{{ row.profile.name }}{% if row.kind == 'working' or row.punch %} <span class="tc-sub fw-normal">{{ row.profile.day_start|time:"g:i" }}–{{ row.profile.day_end|time:"g:i" }}</span>{% endif %}</span>
+        <span>
+            {% if row.state == 'in' %}<span class="badge text-bg-success">In</span> <span class="tc-sub">since {{ row.punch.clock_in|time:"g:i A" }}{% if row.punch.in_remote %} · remote{% endif %}</span>
+            {% elif row.state == 'done' %}<span class="badge text-bg-secondary">Done</span> <span class="tc-sub">{{ row.punch.minutes|mins }}</span>
+            {% elif row.state == 'not_in' %}{% if row.late %}<span class="badge text-bg-danger">Not in · {{ row.late }} min late</span>{% else %}<span class="badge text-bg-light">Not in yet</span>{% endif %}
+            {% elif row.state == 'vacation' %}<span class="badge" style="background: var(--accent-contrast);">Vacation</span>
+            {% elif row.state == 'off' %}<span class="badge text-bg-secondary">Off</span>
+            {% elif row.state == 'closed' %}<span class="badge text-bg-warning">Office closed</span>
+            {% else %}<span class="tc-sub">Not scheduled</span>{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+</div></div>
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+        <span class="tc-label">Needs you{% if items %} · {{ items|length }}{% endif %}</span>
+        <a href="{% url 'timeclock_hours' %}?start={{ last_start|date:'Y-m-d' }}" class="small text-decoration-none">
+            {% span last_start last_end %} {% if last_locked %}<i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i> entered{% elif last_blockers %}· {{ last_blockers }} to settle{% else %}<i data-lucide="check" class="icon" style="color: var(--status-good);"></i> ready for payroll{% endif %} →</a>
+    </div>
+    {% for it in items %}
+    <form method="post" action="{% url 'timeclock_decide' %}" class="tc-row" data-who="{{ it.profile.first_name }}">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="{{ it.kind }}"><input type="hidden" name="pid" value="{{ it.profile.pk }}"><input type="hidden" name="day" value="{{ it.day|date:'Y-m-d' }}">
+        {% if it.obj %}<input type="hidden" name="obj" value="{{ it.obj.pk }}">{% endif %}
+        <input type="hidden" name="note" value="">
+        <div class="d-flex align-items-baseline gap-2 flex-wrap" style="min-width: 0;">
+            {% if it.kind == 'holiday' %}
+            <span class="tc-type">Holiday pay</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.name }}, {{ it.day|short_date }}</span>
+            <span class="tc-sub">week {{ it.week_before|hrs }} → <span class="{% if it.week_after > 40 %}tc-over{% endif %}">{{ it.week_after|hrs }} h</span></span>
+            {% include '_tip.html' with text='Hourly, and the office was closed. Pay is your decision each time: think about that week’s hours, whether the closure cost them work, and their performance. The numbers are paid hours that week without and with 8 holiday hours.' %}
+            {% elif it.kind == 'noout' %}
+            <span class="tc-type">No clock-out</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.day|short_date }}</span>
+            <span class="tc-sub">in {{ it.punch.clock_in|time:"g:i A" }}</span>
+            {% include '_tip.html' with text='They clocked in and never clocked out. Enter the time they say they left and their lunch. The original punch is kept in its history.' %}
+            {% elif it.kind == 'fix' %}
+            <span class="tc-type">Fix punch</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.day|short_date }}</span>
+            <span class="tc-sub">{% if it.obj.clock_in %}in {{ it.obj.clock_in|time:"g:i A" }} {% endif %}{% if it.obj.clock_out %}out {{ it.obj.clock_out|time:"g:i A" }} {% endif %}{% if it.obj.lunch_minutes is not None %}lunch {{ it.obj.lunch_minutes }}{% endif %}</span>
+            {% if it.obj.note %}{% include '_tip.html' with text=it.obj.note %}{% endif %}
+            {% elif it.kind == 'missed' %}
+            <span class="tc-type">Missed day</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.day|short_date }}</span>
+            {% include '_tip.html' with text='Scheduled to work, no punch, no time off asked for. Sick and vacation come out of their vacation balance and are paid days. Worked enters a normal 9 to 5 day with a one hour lunch.' %}
+            {% elif it.kind == 'off' %}
+            <span class="tc-type">Time off</span><span><strong>{{ it.profile.first_name }}</strong> · {{ it.obj.start_date|short_date }}{% if it.obj.end_date != it.obj.start_date %} – {{ it.obj.end_date|short_date }}{% endif %}</span>
+            <span class="tc-sub">{{ it.obj.days|length }} day{{ it.obj.days|length|pluralize }} · left {% if it.left < 0 %}<span class="tc-over">{{ it.left|hrs1 }} h</span>{% else %}{{ it.left|hrs1 }} h{% endif %}</span>
+            {% if it.gaps %}<span class="tc-over" title="No one else is scheduled {{ it.gaps.0|short_date }}"><i data-lucide="alert-triangle" class="icon"></i></span>{% endif %}
+            {% include '_tip.html' with text=it.obj.note|default:'No note. You can approve time that takes the balance below zero; approved days are paid days and are earned back over time.' %}
+            {% else %}
+            <span class="tc-type">Change day</span>
+            <span><strong>{{ it.profile.first_name }}</strong> · {% if it.obj.add_date %}works {{ it.obj.add_date|short_date }}{% endif %}{% if it.obj.add_date and it.obj.drop_date %}, not {% elif it.obj.drop_date %}not works {% endif %}{% if it.obj.drop_date %}{{ it.obj.drop_date|short_date }}{% endif %}</span>
+            {% if it.gaps %}<span class="tc-over" title="No one else is scheduled {{ it.gaps.0|short_date }}"><i data-lucide="alert-triangle" class="icon"></i> nobody in {{ it.gaps.0|date:"M j" }}</span>{% endif %}
+            {% if it.obj.note %}{% include '_tip.html' with text=it.obj.note %}{% endif %}
+            {% endif %}
+        </div>
+        <div class="tc-ctl">
+            {% if it.kind == 'holiday' %}<input type="number" name="hours" class="form-control form-control-sm" value="8" min="0" max="24" step="0.25" style="width: 5rem;" aria-label="Hours to pay">
+            {% elif it.kind == 'noout' %}<input type="time" name="out" class="form-control form-control-sm" value="{{ it.profile.day_end|time:'H:i' }}" aria-label="Clock-out time"><input type="number" name="lunch" class="form-control form-control-sm" placeholder="lunch min" min="0" max="240" style="width: 6rem;" required>
+            {% elif it.kind == 'missed' %}<select name="cls" class="form-select form-select-sm" aria-label="What was it"><option value="sick">Sick</option><option value="vacation">Vacation</option><option value="worked">Worked</option><option value="other">Other</option></select>
+            {% endif %}
+            <button type="submit" name="action" value="ok" class="btn btn-sm btn-success" title="{% if it.kind == 'holiday' %}Approve{% elif it.kind == 'noout' or it.kind == 'missed' %}Save{% else %}Approve{% endif %}"><i data-lucide="check" class="icon"></i></button>
+            {% if it.kind != 'noout' and it.kind != 'missed' %}<button type="button" class="btn btn-sm btn-outline-danger" title="{% if it.kind == 'holiday' %}Don’t pay{% else %}Decline{% endif %}" onclick="declineItem(this)"><i data-lucide="x" class="icon"></i></button>{% endif %}
+        </div>
+    </form>
+    {% empty %}
+    <div class="tc-sub py-3">Nothing waiting. You are caught up.</div>
+    {% endfor %}
+</div></div>
+{% if not office_set %}<div class="tc-sub mb-4"><i data-lucide="wifi" class="icon"></i> The office connection is not set, so nobody is marked remote yet. <a href="{% url 'timeclock_setup' %}">Set it from the office</a>.</div>{% endif %}
+{% endif %}
+<script>
+function declineItem(btn) {
+    var form = btn.closest('form');
+    var note = window.prompt('Note for ' + form.dataset.who + ' (optional)', '');
+    if (note === null) return;
+    form.querySelector('input[name=note]').value = note;
+    var a = document.createElement('input'); a.type = 'hidden'; a.name = 'action'; a.value = 'no'; form.appendChild(a);
+    form.submit();
+}
+</script>
+{% endblock %}

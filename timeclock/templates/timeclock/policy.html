@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Time clock policy — Proper Management{% endblock %}
+{% block extra_head %}
+<style>
+    .tc-policy { max-width: 760px; margin: 0 auto; }
+    .tc-policy h3 { font-size: 1.05rem; font-weight: 600; margin: 0 0 0.6rem; }
+    .tc-short, .tc-sec { background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); box-shadow: var(--shadow-card); padding: 1rem 1.25rem; margin-bottom: 0.9rem; }
+    .tc-short { background: color-mix(in srgb, var(--brand-primary) 10%, white); }
+    .tc-n { display: inline-flex; width: 1.5rem; height: 1.5rem; align-items: center; justify-content: center; border-radius: 50%; background: var(--brand-slate); color: #fff; font-size: 0.8rem; margin-right: 0.3rem; }
+    .tc-line { margin: 0 0 0.45rem; }
+    .tc-short ul { margin: 0; padding-left: 1.2rem; } .tc-short li { margin-bottom: 0.35rem; }
+    .tc-example { background: var(--surface-page); border-radius: var(--bs-border-radius); padding: 0.6rem 0.9rem; margin: 0.5rem 0 0; }
+    .tc-table { width: 100%; border-collapse: collapse; margin: 0.3rem 0 0.7rem; font-size: 0.92rem; }
+    .tc-table th, .tc-table td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--border-hairline); text-align: left; }
+    .tc-table th { font-size: 0.75rem; color: var(--ink-secondary); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="tc-policy">
+<div class="my-3">
+    {% if signature %}<a href="{% url 'timeclock_home' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> My time</a>{% endif %}
+    <h2 class="page-title mb-0 mt-1">{{ doc.title }}</h2>
+    <p class="mb-0" style="color: var(--ink-muted);">{{ doc.effective }}{% if not signature and not preview %} · Read it, then sign at the bottom.{% endif %}</p>
+</div>
+{% if preview %}<div class="alert alert-info py-2 small">Preview of what employees see. <a href="?as=salaried">Salaried</a> · <a href="?as=hourly">Hourly</a></div>{% endif %}
+{% include 'timeclock/_policy_body.html' %}
+{% if profile %}
+<div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    {% if signature %}
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i data-lucide="check-circle" class="icon" style="color: var(--status-good);"></i> Signed by <strong>{{ signature.typed_name }}</strong> on {{ signature.signed_at|date:"M j, Y" }} at {{ signature.signed_at|time:"g:i A" }} (version {{ signature.version }})</span>
+        <a href="{% url 'timeclock_policy_download' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="download" class="icon"></i> Download a copy</a>
+    </div>
+    {% else %}
+    <h5 class="mb-3">Your agreement</h5>
+    <form method="post" class="d-flex flex-column gap-3">
+        {% csrf_token %}
+        <label class="d-flex gap-2 align-items-start"><input class="form-check-input mt-1" type="checkbox" name="agree" required> <span>I have read this policy, I understand it, and I agree to it.</span></label>
+        <div><label class="form-label small mb-1">Type your full name to sign</label><input type="text" name="typed_name" class="form-control" autocomplete="off" required placeholder="First and last name"></div>
+        <div><button class="btn btn-primary" type="submit">Sign and continue</button>
+        {% include '_tip.html' with text='Your signature, the date and time and this version of the policy are saved. You can download a copy any time. If the policy changes you will be asked to read and sign it again.' %}</div>
+    </form>
+    {% endif %}
+</div></div>
+{% endif %}
+</div>
+{% endblock %}

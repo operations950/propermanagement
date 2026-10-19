@@ -21,6 +21,7 @@ urlpatterns = [
     path('recurring/', include('worksessions.urls')),
     path('portfolio/', include('portfolio.urls')),
     path('documents/', include('legalforms.urls')),
+    path('clock/', include('timeclock.urls')),
     path('', include('core.urls')),
     path('', include('intake.urls')),
     path('', include('tickets.urls')),

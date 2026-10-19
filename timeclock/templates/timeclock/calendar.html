@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load tc %}
+{% block title %}Team calendar — Proper Management{% endblock %}
+{% block extra_head %}
+<style>
+    .tc-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.35rem; }
+    .tc-cal .h { text-align: center; font-size: 0.75rem; font-weight: 700; color: var(--ink-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+    .tc-cell { border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius); min-height: 5.6rem; padding: 0.25rem 0.3rem; background: var(--surface-card); font-size: 0.78rem; }
+    .tc-cell.out { opacity: 0.45; }
+    .tc-cell.today { border: 2px solid var(--brand-slate); }
+    .tc-cell.closed { background: color-mix(in srgb, var(--status-warning) 16%, white); }
+    .tc-cell .n { font-weight: 700; font-size: 0.82rem; }
+    .tc-chip { display: block; border-radius: 6px; padding: 1px 5px; margin-top: 3px; background: color-mix(in srgb, var(--brand-primary) 24%, white); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tc-chip.vacation { background: color-mix(in srgb, var(--accent-contrast) 22%, white); white-space: normal; }
+    .tc-chip.pending { background: transparent; border: 1px dashed var(--ink-muted); color: var(--ink-secondary); }
+    .tc-hol { color: var(--ink-secondary); font-size: 0.72rem; margin-top: 2px; }
+    .tc-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--ink-secondary); }
+    .tc-legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; vertical-align: -1px; margin-right: 0.3rem; }
+    @media (max-width: 575.98px) { .tc-cell { min-height: 4.2rem; font-size: 0.68rem; padding: 0.15rem; } .tc-chip { padding: 0 3px; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="my-3"><h2 class="page-title mb-0">{% if manager %}Time{% else %}Team calendar{% endif %}</h2></div>
+{% if manager %}{% include 'timeclock/_subnav.html' with tab='calendar' %}{% endif %}
+<div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <a href="?month={{ prev }}" class="btn btn-outline-secondary btn-sm" aria-label="Previous month"><i data-lucide="chevron-left" class="icon"></i></a>
+            <span class="fw-semibold" style="min-width: 8rem; text-align: center;">{{ first|date:"F Y" }}</span>
+            <a href="?month={{ next }}" class="btn btn-outline-secondary btn-sm" aria-label="Next month"><i data-lucide="chevron-right" class="icon"></i></a>
+            {% if not is_current %}<a href="{% url 'timeclock_calendar' %}" class="btn btn-link btn-sm">Today</a>{% endif %}
+        </div>
+        {% include '_tip.html' with text='Everyone on the time clock can see this calendar: who is working, who is on approved vacation, and when the office is closed. It does not show sick days, reasons, or requests still waiting.' %}
+    </div>
+    <div class="tc-cal mb-1"><div class="h">Mon</div><div class="h">Tue</div><div class="h">Wed</div><div class="h">Thu</div><div class="h">Fri</div><div class="h">Sat</div><div class="h">Sun</div></div>
+    <div class="tc-cal">
+        {% for week in weeks %}{% for c in week %}
+        <div class="tc-cell {% if not c.in_month %}out{% endif %} {% if c.today %}today{% endif %} {% if c.holiday %}closed{% endif %}">
+            <div class="n">{{ c.date|date:"j" }}</div>
+            {% if c.holiday %}<div class="tc-hol">Closed · {{ c.holiday }}</div>{% else %}{% for chip in c.chips %}<span class="tc-chip {{ chip.kind }}">{{ chip.text }}</span>{% endfor %}{% endif %}
+        </div>
+        {% endfor %}{% endfor %}
+    </div>
+    <div class="tc-legend mt-3">
+        <span><i style="background: color-mix(in srgb, var(--brand-primary) 40%, white);"></i>Working</span>
+        <span><i style="background: color-mix(in srgb, var(--accent-contrast) 40%, white);"></i>Vacation</span>
+        <span><i style="background: color-mix(in srgb, var(--status-warning) 30%, white);"></i>Office closed</span>
+        {% if manager %}<span><i style="border: 1px dashed var(--ink-muted);"></i>Asked, not decided</span>{% endif %}
+    </div>
+</div></div>
+{% endblock %}

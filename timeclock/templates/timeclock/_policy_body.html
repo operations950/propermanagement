@@ -1,0 +1,14 @@
+<div class="tc-policy">
+<div class="tc-short"><h3>The short version</h3><ul>{% for kind, html in doc.short %}<li>{{ html|safe }}</li>{% endfor %}</ul></div>
+{% for heading, items in doc.sections %}
+<div class="tc-sec"><h3><span class="tc-n">{{ forloop.counter }}</span> {{ heading }}</h3>
+{% for kind, html in items %}
+{% if kind == 'table' %}
+<table class="tc-table"><thead><tr><th>Your year here</th><th>Vacation days</th><th>Hours</th>{% if doc.pay_type == 'salaried' %}<th>Earned each week</th>{% else %}<th>One hour earned per</th>{% endif %}</tr></thead>
+<tbody>{% for r in doc.table %}<tr><td>{{ r.year }}</td><td>{{ r.days }}</td><td>{{ r.hours }}</td><td>{% if doc.pay_type == 'salaried' %}{{ r.weekly }}{% else %}{{ r.per }}{% endif %}</td></tr>{% endfor %}</tbody></table>
+{% elif kind == 'example' %}<p class="tc-example">{{ html|safe }}</p>
+{% else %}<p class="tc-line">{{ html|safe }}</p>{% endif %}
+{% endfor %}
+</div>
+{% endfor %}
+</div>

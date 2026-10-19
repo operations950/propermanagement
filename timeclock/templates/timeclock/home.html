@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% load tc %}
+{% block title %}My time — Proper Management{% endblock %}
+{% block extra_head %}
+<style>
+    .tc-big { font-family: var(--font-display); font-weight: 600; font-size: 2rem; line-height: 1.1; letter-spacing: -0.01em; }
+    .tc-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
+    .tc-sub { color: var(--ink-muted); font-size: 0.875rem; }
+    .tc-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.4rem; }
+    .tc-day { border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius); padding: 0.4rem 0.3rem; text-align: center; font-size: 0.8rem; background: var(--surface-card); min-height: 4.2rem; }
+    .tc-day.today { border: 2px solid var(--brand-slate); }
+    .tc-day .d { font-weight: 700; }
+    .tc-day.on { background: color-mix(in srgb, var(--brand-primary) 14%, white); }
+    .tc-day.vac { background: color-mix(in srgb, var(--accent-contrast) 14%, white); }
+    .tc-day.closed { background: color-mix(in srgb, var(--status-warning) 16%, white); }
+    .tc-neg { color: var(--status-critical); }
+    .tc-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.45rem 0; border-bottom: 1px solid var(--border-hairline); flex-wrap: wrap; }
+    .tc-row:last-child { border-bottom: 0; }
+    @media (max-width: 575.98px) { .tc-day { font-size: 0.7rem; padding: 0.3rem 0.1rem; } .tc-big { font-size: 1.6rem; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+    <h2 class="page-title mb-0">My time</h2>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'timeclock_calendar' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-days" class="icon"></i> Team calendar</a>
+        <a href="{% url 'timeclock_policy' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="file-text" class="icon"></i> Policy</a>
+    </div>
+</div>
+
+{# ---------------- clock ---------------- #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div>
+                <div class="tc-label">{{ today|date:"l, F j" }}</div>
+                <div class="tc-sub mt-1">
+                    {% if kind == 'working' %}Scheduled {{ profile.day_start|time:"g:i A" }} – {{ profile.day_end|time:"g:i A" }}
+                    {% elif kind == 'vacation' %}You are on vacation today
+                    {% elif kind == 'off' %}You are off today
+                    {% elif kind == 'closed' %}Office closed today
+                    {% else %}Not scheduled today{% endif %}
+                </div>
+                {% if punch and punch.clock_out %}
+                <div class="tc-big mt-2">{{ punch.minutes|mins }}</div>
+                <div class="tc-sub">{{ punch.clock_in|time:"g:i A" }} – {{ punch.clock_out|time:"g:i A" }}, lunch {% if punch.lunch_minutes %}{{ punch.lunch_minutes }} min{% else %}none{% endif %}</div>
+                {% elif punch %}
+                <div class="tc-big mt-2">In since {{ punch.clock_in|time:"g:i A" }}</div>
+                {% endif %}
+            </div>
+            <div style="min-width: min(100%, 320px);">
+                {% if not punch %}
+                <form method="post" action="{% url 'timeclock_in' %}" class="d-flex flex-column gap-2">
+                    {% csrf_token %}
+                    {% if remote %}
+                    <input type="text" name="reason" class="form-control" placeholder="Why are you remote? (required)" maxlength="200" required>
+                    {% endif %}
+                    <button class="btn btn-primary btn-lg" type="submit"><i data-lucide="log-in" class="icon"></i> Clock in</button>
+                </form>
+                {% elif not punch.clock_out %}
+                <form method="post" action="{% url 'timeclock_out' %}" class="d-flex flex-column gap-2">
+                    {% csrf_token %}
+                    <div class="d-flex align-items-center gap-2">
+                        <label for="lunch" class="small mb-0 flex-shrink-0">Lunch today {% include '_tip.html' with text='Did you take a lunch, and how long? We rely on your honesty. It is taken out of your hours. You may work through lunch: pick No lunch.' %}</label>
+                        <select name="lunch" id="lunch" class="form-select" required>
+                            <option value="" selected disabled>Choose…</option>
+                            <option value="0">No lunch</option>
+                            {% for m in lunch_choices %}{% if m %}<option value="{{ m }}">{{ m }} min</option>{% endif %}{% endfor %}
+                        </select>
+                    </div>
+                    {% if remote and not punch.in_remote %}
+                    <input type="text" name="reason" class="form-control" placeholder="Why are you remote? (required)" maxlength="200" required>
+                    {% endif %}
+                    <button class="btn btn-primary btn-lg" type="submit"><i data-lucide="log-out" class="icon"></i> Clock out</button>
+                </form>
+                {% endif %}
+                {% if remote and not punch.clock_out and office_set %}<div class="tc-sub mt-2"><i data-lucide="wifi-off" class="icon"></i> Not on the office connection: this will be marked remote.</div>{% endif %}
+            </div>
+        </div>
+        {% for p in open_before %}
+        <div class="alert alert-warning py-2 mt-3 mb-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>You did not clock out on <strong>{{ p.day|short_date }}</strong>.</span>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'timeclock_fix' %}?day={{ p.day|date:'Y-m-d' }}">Fix it</a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{# ---------------- vacation, hours, who is in ---------------- #}
+<div class="row g-3 mb-3">
+    <div class="col-12 col-md-4">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body d-flex flex-column">
+            <div class="tc-label">Vacation
+                {% if pto.has_hire %}{% include '_tip.html' with text='Earned minus taken. A vacation day is 8 hours. Sick and missed days come out of it too, and it can go below zero. Unused vacation carries over.' %}{% endif %}
+            </div>
+            {% if pto.has_hire %}
+            <div class="tc-big mt-1 {% if pto.negative %}tc-neg{% endif %}">{{ pto.balance|days1 }} days</div>
+            <div class="tc-sub">{{ pto.balance|hrs1 }} hours{% if pto.coming %} · {{ pto.coming|hrs1 }} booked{% endif %}</div>
+            <div class="tc-sub mt-1">Year {{ pto.year }} · earning {{ pto.rate }}</div>
+            {% if pto.negative %}<div class="tc-sub mt-1 tc-neg">Below zero. You earn it back as you work.</div>{% endif %}
+            {% else %}
+            <div class="tc-sub mt-2">Starts once a manager adds your hire date.</div>
+            {% endif %}
+            <div class="mt-auto pt-3"><a href="{% url 'timeclock_time_off' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="plane" class="icon"></i> Request time off</a></div>
+        </div></div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body d-flex flex-column">
+            <div class="tc-label">This pay period</div>
+            <div class="tc-big mt-1">{{ report.worked_min|mins }}</div>
+            <div class="tc-sub">{% span period_start period_end %}{% if profile.is_hourly and report.paid != report.worked_hours %} · {{ report.paid|hrs }} h paid{% endif %}</div>
+            {% if attendance %}<div class="tc-sub mt-1">30 days: {{ attendance.worked }} of {{ attendance.scheduled }} days{% if attendance.late %} · {{ attendance.late }} late{% endif %}{% if attendance.remote %} · {{ attendance.remote }} remote{% endif %}{% if attendance.missed %} · {{ attendance.missed }} missed{% endif %}</div>{% endif %}
+        </div></div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body d-flex flex-column">
+            <div class="tc-label">Who is in today</div>
+            <div class="mt-2">
+                {% for row in team %}
+                <div class="tc-row py-1">
+                    <span>{{ row.profile.first_name }}{% if row.profile.id == profile.id %} <span class="tc-sub">(you)</span>{% endif %}</span>
+                    <span class="tc-sub">
+                        {% if row.state == 'in' %}<i data-lucide="check" class="icon" style="color: var(--status-good);"></i> in{% elif row.state == 'done' %}done{% elif row.state == 'not_in' %}scheduled{% elif row.state == 'vacation' %}vacation{% elif row.state == 'off' %}off{% elif row.state == 'closed' %}closed{% else %}off today{% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="mt-auto pt-3"><a href="{% url 'timeclock_calendar' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-days" class="icon"></i> Calendar</a></div>
+        </div></div>
+    </div>
+</div>
+
+{# ---------------- this week ---------------- #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="tc-label">This week</span>
+        <a href="{% url 'timeclock_change' %}" class="btn btn-outline-secondary btn-sm">Change a day</a>
+    </div>
+    <div class="tc-week">
+        {% for d in week %}
+        <div class="tc-day {% if d.today %}today{% endif %} {% if d.kind == 'working' or d.kind == 'pending_add' %}on{% elif d.kind == 'vacation' %}vac{% elif d.kind == 'closed' %}closed{% endif %}">
+            <div class="tc-sub">{{ d.date|date:"D" }}</div>
+            <div class="d">{{ d.date|date:"j" }}</div>
+            <div>{% if d.kind == 'working' %}{{ profile.day_start|time:"g" }}–{{ profile.day_end|time:"g" }}{% elif d.kind == 'vacation' %}Vacation{% elif d.kind == 'closed' %}Closed{% elif d.kind == 'pending_add' %}<span class="tc-sub">asked</span>{% elif d.kind == 'pending_drop' %}<span class="tc-sub">asked off</span>{% elif d.kind == 'pending_off' %}<span class="tc-sub">asked off</span>{% else %}<span class="tc-sub">—</span>{% endif %}</div>
+            {% if d.punch.clock_out %}<div class="tc-sub">{{ d.punch.minutes|mins }}</div>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div></div>
+
+{# ---------------- requests ---------------- #}
+{% if mine.off or mine.change or mine.fix or decided %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="tc-label mb-1">Your requests</div>
+    {% for t in mine.off %}
+    <div class="tc-row"><span>Vacation {{ t.start_date|short_date }}{% if t.end_date != t.start_date %} – {{ t.end_date|short_date }}{% endif %} <span class="tc-sub">· {{ t.days|length }} day{{ t.days|length|pluralize }}</span></span>
+        <span class="d-flex align-items-center gap-2"><span class="badge text-bg-light">Waiting</span><form method="post" action="{% url 'timeclock_withdraw' 'off' t.pk %}">{% csrf_token %}<button class="btn btn-link btn-sm p-0">Withdraw</button></form></span></div>
+    {% endfor %}
+    {% for c in mine.change %}
+    <div class="tc-row"><span>{% if c.add_date %}Work {{ c.add_date|short_date }}{% endif %}{% if c.add_date and c.drop_date %}, not {% elif c.drop_date %}Not work {% endif %}{% if c.drop_date %}{{ c.drop_date|short_date }}{% endif %}</span>
+        <span class="d-flex align-items-center gap-2"><span class="badge text-bg-light">Waiting</span><form method="post" action="{% url 'timeclock_withdraw' 'change' c.pk %}">{% csrf_token %}<button class="btn btn-link btn-sm p-0">Withdraw</button></form></span></div>
+    {% endfor %}
+    {% for f in mine.fix %}
+    <div class="tc-row"><span>Fix a punch · {{ f.day|short_date }}</span>
+        <span class="d-flex align-items-center gap-2"><span class="badge text-bg-light">Waiting</span><form method="post" action="{% url 'timeclock_withdraw' 'fix' f.pk %}">{% csrf_token %}<button class="btn btn-link btn-sm p-0">Withdraw</button></form></span></div>
+    {% endfor %}
+    {% for r in decided %}
+    <div class="tc-row"><span class="tc-sub">{% if r.kind %}Vacation {{ r.start_date|short_date }}{% else %}Day change {% if r.add_date %}{{ r.add_date|short_date }}{% else %}{{ r.drop_date|short_date }}{% endif %}{% endif %}{% if r.decision_note %} · “{{ r.decision_note }}”{% endif %}</span>
+        <span class="badge {% if r.status == 'approved' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ r.get_status_display }}</span></div>
+    {% endfor %}
+</div></div>
+{% endif %}
+
+{# ---------------- the days ---------------- #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <details>
+        <summary class="tc-label" style="cursor: pointer;">Days this period · {% span period_start period_end %}</summary>
+        <div class="table-responsive mt-2">
+        <table class="table table-sm align-middle mb-0 tabular-nums">
+            <thead><tr><th>Day</th><th>In</th><th>Out</th><th>Lunch</th><th class="text-end">Hours</th><th></th></tr></thead>
+            <tbody>
+            {% for r in report.rows %}{% if r.punch or r.kind != 'none' %}
+            <tr>
+                <td>{{ r.date|short_date }}</td>
+                {% if r.punch %}
+                <td>{{ r.punch.clock_in|time:"g:i A" }}{% if r.punch.in_remote %} <span class="badge text-bg-light">remote</span>{% endif %}</td>
+                <td>{% if r.punch.clock_out %}{{ r.punch.clock_out|time:"g:i A" }}{% elif r.kind == 'open' %}<span class="text-danger">missing</span>{% else %}…{% endif %}</td>
+                <td>{% if r.punch.lunch_minutes is not None %}{% if r.punch.lunch_minutes %}{{ r.punch.lunch_minutes }} min{% else %}none{% endif %}{% endif %}</td>
+                <td class="text-end">{% if r.punch.clock_out %}{{ r.worked_min|mins }}{% endif %}</td>
+                <td class="text-end">{% if r.date < today %}<a href="{% url 'timeclock_fix' %}?day={{ r.date|date:'Y-m-d' }}" class="small">Fix</a>{% endif %}</td>
+                {% else %}
+                <td colspan="4" class="tc-sub">{% if r.kind == 'vacation' %}Vacation{% elif r.kind == 'sick' %}Sick{% elif r.kind == 'other' %}Off{% elif r.kind == 'holiday' %}{{ r.holiday }}{% if r.holiday_hours %} · {{ r.holiday_hours|hrs }} h paid{% elif profile.is_hourly and r.hp %} · not paid{% endif %}{% elif r.kind == 'missed' %}<span class="text-danger">No punch</span>{% elif r.kind == 'pending_off' %}Time off asked{% endif %}</td>
+                <td class="text-end">{% if r.kind == 'missed' %}<a href="{% url 'timeclock_fix' %}?day={{ r.date|date:'Y-m-d' }}" class="small">I worked</a>{% endif %}</td>
+                {% endif %}
+            </tr>
+            {% endif %}{% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </details>
+</div></div>
+
+<div class="tc-sub mb-4">
+    {% if holidays %}Office closed next: {% for d, n in holidays|slice:":2" %}{{ n }} {{ d|date:"D M j" }}{% if not forloop.last %}, {% endif %}{% endfor %}. {% endif %}
+    <a href="{% url 'timeclock_policy' %}">Policy</a> · <a href="{% url 'timeclock_policy_download' %}">Download my signed copy</a>
+</div>
+{% endblock %}

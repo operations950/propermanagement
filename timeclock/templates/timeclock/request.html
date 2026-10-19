@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% load tc %}
+{% block title %}{% if kind == 'off' %}Request time off{% elif kind == 'change' %}Change a day{% else %}Fix a punch{% endif %} — Proper Management{% endblock %}
+{% block content %}
+<div class="my-3"><a href="{% url 'timeclock_home' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> My time</a></div>
+<div class="card mx-auto" style="max-width: 520px; border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <h4 class="page-title mb-3">{% if kind == 'off' %}Request time off{% elif kind == 'change' %}Change a day{% else %}Fix a punch{% endif %}</h4>
+    <form method="post" class="d-flex flex-column gap-3">
+        {% csrf_token %}
+        {% if kind == 'off' %}
+        <div class="row g-2">
+            <div class="col-6"><label class="form-label small mb-1">First day</label><input type="date" name="start" class="form-control" value="{{ form.start }}" min="{{ today|date:'Y-m-d' }}" required></div>
+            <div class="col-6"><label class="form-label small mb-1">Last day <span class="text-muted">(if more than one)</span></label><input type="date" name="end" class="form-control" value="{{ form.end }}" min="{{ today|date:'Y-m-d' }}"></div>
+        </div>
+        {% if pto.has_hire %}<div class="small text-muted">You have {{ pto.available|hrs1 }} hours ({{ pto.available|days1 }} days) available.
+            {% include '_tip.html' with text='A manager approves every request, and may approve time you have not earned yet. Approved days are paid days. If it takes your balance below zero, you earn it back as you work.' %}</div>{% endif %}
+        {% elif kind == 'change' %}
+        <div class="small text-muted">Pick the day you will not work, the day you will work instead, or both.</div>
+        <div class="row g-2">
+            <div class="col-6"><label class="form-label small mb-1">Not working</label><input type="date" name="drop" class="form-control" value="{{ form.drop }}" min="{{ today|date:'Y-m-d' }}"></div>
+            <div class="col-6"><label class="form-label small mb-1">Working instead</label><input type="date" name="add" class="form-control" value="{{ form.add }}" min="{{ today|date:'Y-m-d' }}"></div>
+        </div>
+        {% else %}
+        <div><label class="form-label small mb-1">Which day</label>
+            <select name="day" class="form-select">{% for d in days %}<option value="{{ d|date:'Y-m-d' }}" {% if d == day %}selected{% endif %}>{{ d|short_date }}</option>{% endfor %}</select></div>
+        <div class="small text-muted">Fill in only what is wrong or missing.</div>
+        <div class="row g-2">
+            <div class="col-4"><label class="form-label small mb-1">Clock in</label><input type="time" name="in" class="form-control" value="{{ form.in }}"></div>
+            <div class="col-4"><label class="form-label small mb-1">Clock out</label><input type="time" name="out" class="form-control" value="{{ form.out }}"></div>
+            <div class="col-4"><label class="form-label small mb-1">Lunch (min)</label><input type="number" name="lunch" class="form-control" min="0" max="240" value="{{ form.lunch }}" placeholder="0 = none"></div>
+        </div>
+        {% endif %}
+        <div><label class="form-label small mb-1">Note <span class="text-muted">(optional)</span></label><input type="text" name="note" class="form-control" maxlength="300" value="{{ form.note }}"></div>
+        <button class="btn btn-primary" type="submit">Send to a manager</button>
+    </form>
+</div></div>
+{% endblock %}
