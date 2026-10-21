@@ -1591,3 +1591,17 @@ class QBRecode(models.Model):
 
     def __str__(self):
         return f'{self.source} deposit {self.deposit_qb_id} ${self.amount}'
+
+
+class TouristTaxFiling(models.Model):
+    """A month's Palm Beach County tourist tax return, marked as filed: when, for how much, and the county's confirmation number. The month-end
+    checklist shows the step green once it is filed, and amber if the month's figures have changed since (say a late deposit was matched)."""
+    month = models.DateField(unique=True, help_text='The first day of the month the return covers.')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text='The tax due on the return as filed.')
+    filed_on = models.DateField()
+    confirmation = models.CharField(max_length=60, blank=True)
+    filed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'Tourist tax {self.month:%Y-%m}: {self.amount}'

@@ -7,9 +7,9 @@
     .tt-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
     .tt-big { font-family: var(--font-display); font-weight: 600; font-size: 2rem; line-height: 1.1; }
     .tt-sub { color: var(--ink-muted); font-size: 0.85rem; }
-    .tt-cols, .tt-sum { display: grid; grid-template-columns: 1fr 7.5rem 6rem 1.5rem; gap: 0.5rem; align-items: center; }
+    .tt-cols, .tt-sum { display: grid; grid-template-columns: 1fr 4rem 7.5rem 6rem 1.5rem; gap: 0.5rem; align-items: center; }
     .tt-cols { padding: 0 1rem 0.25rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-secondary); }
-    .tt-cols span:nth-child(2), .tt-cols span:nth-child(3), .tt-sum .n { text-align: right; font-variant-numeric: tabular-nums; }
+    .tt-cols span:nth-child(2), .tt-cols span:nth-child(3), .tt-cols span:nth-child(4), .tt-sum .n { text-align: right; font-variant-numeric: tabular-nums; }
     details.tt-prop { background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius); margin-bottom: 0.5rem; box-shadow: var(--shadow-card); }
     details.tt-prop > summary { list-style: none; cursor: pointer; padding: 0.75rem 1rem; }
     details.tt-prop > summary::-webkit-details-marker { display: none; }
@@ -17,11 +17,16 @@
     details.tt-prop[open] .tt-chev { transform: rotate(90deg); }
     .tt-chev { color: var(--ink-muted); transition: transform 0.15s; }
     .tt-total { font-weight: 700; border-top: 2px solid var(--border-hairline); padding: 0.75rem 1rem; margin-top: 0.25rem; }
+    .tt-return { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.5rem; }
+    .tt-return > div { background: var(--surface-page); border-radius: var(--bs-border-radius-sm); padding: 0.4rem 0.7rem; }
+    .tt-return span { display: block; font-size: 0.72rem; color: var(--ink-secondary); }
+    .tt-return b { font-variant-numeric: tabular-nums; }
+    .tt-return .due { background: color-mix(in srgb, var(--brand-primary) 14%, white); }
     .tt-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
     .tt-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
     .tt-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
     .tt-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
-    @media (max-width: 575.98px) { .tt-hero { grid-template-columns: 1fr; } .tt-big { font-size: 1.6rem; } .tt-cols, .tt-sum { grid-template-columns: 1fr 5.5rem 4.5rem 1.2rem; } }
+    @media (max-width: 575.98px) { .tt-hero { grid-template-columns: 1fr; } .tt-big { font-size: 1.6rem; } .tt-cols, .tt-sum { grid-template-columns: 1fr 2.6rem 5.2rem 4.2rem 1.2rem; } }
 </style>
 <a href="{% url 'close_home' %}?month={{ rep.month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -35,13 +40,26 @@
 
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
     <div class="tt-hero">
-        <div><div class="tt-label">Taxable receipts</div><div class="tt-big tabular-nums">${{ rep.taxable|floatformat:"2g" }}</div><div class="tt-sub">${{ rep.deposited|floatformat:"2g" }} deposited + ${{ rep.fees|floatformat:"2g" }} host fees</div></div>
-        <div><div class="tt-label">Tax due (6%)</div><div class="tt-big tabular-nums">${{ rep.tax|floatformat:"2g" }}</div><div class="tt-sub">to Palm Beach County</div></div>
+        <div><div class="tt-label">Taxable receipts</div><div class="tt-big tabular-nums">${{ rep.taxable|floatformat:"2g" }}</div><div class="tt-sub">{{ rep.days }} day{{ rep.days|pluralize }} rented &middot; ${{ rep.deposited|floatformat:"2g" }} deposited + ${{ rep.fees|floatformat:"2g" }} host fees</div></div>
+        <div><div class="tt-label">Amount due</div><div class="tt-big tabular-nums">${{ rep.due|floatformat:"2g" }}</div><div class="tt-sub">6% is ${{ rep.tax|floatformat:"2g" }}, less ${{ rep.allowance|floatformat:"2g" }} collection allowance</div></div>
     </div>
     <div class="d-flex align-items-center flex-wrap gap-2 border-top mt-3 pt-3 small">
         <i data-lucide="calendar" class="icon"></i> Return due <strong>{{ rep.due_on|date:"M j" }}</strong>, late after <strong>{{ rep.late_after|date:"M j" }}</strong>
-        {% if rep.flags %}<span class="tt-chip attention">Needs a look</span>{% elif rep.in_progress %}<span class="tt-chip progress">Month in progress</span>{% else %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Every deposit matched</span>{% endif %}
+        {% if rep.late and filing_state == 'open' %}<span class="tt-chip attention">Late: the county adds penalty and interest</span>{% elif rep.flags %}<span class="tt-chip attention">Needs a look</span>{% elif rep.in_progress %}<span class="tt-chip progress">Month in progress</span>{% else %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Every deposit matched</span>{% endif %}
         <a href="?month={{ rep.month|date:'Y-m' }}&csv=1" class="btn btn-outline-secondary btn-sm ms-auto"><i data-lucide="download" class="icon"></i> Download deposits (CSV)</a>
+    </div>
+    <div class="d-flex align-items-center flex-wrap gap-2 border-top mt-3 pt-3 small">
+        {% if filing_state == 'filed' %}
+        <span class="tt-chip good"><i data-lucide="check" class="icon"></i> Filed {{ filing.filed_on|date:"M j" }} &middot; ${{ filing.amount|floatformat:"2g" }}</span>{% if filing.confirmation %}<span class="text-muted">Confirmation {{ filing.confirmation }}</span>{% endif %}
+        <form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="action" value="unfile"><button class="btn btn-link btn-sm text-muted p-0">Mark as not filed</button></form>
+        {% else %}
+        {% if filing_state == 'changed' %}<span class="tt-chip attention">Changed since it was filed for ${{ filing.amount|floatformat:"2g" }}</span>{% endif %}
+        <form method="post" class="d-flex align-items-center gap-2 flex-wrap {% if filing_state != 'changed' %}ms-auto{% endif %}">{% csrf_token %}
+            <input type="text" name="confirmation" class="form-control form-control-sm" style="width: 12rem;" placeholder="Confirmation number (optional)" maxlength="60" value="{{ filing.confirmation|default:'' }}">
+            <button class="btn btn-primary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Mark as filed</button>
+        </form>
+        {% if filing_state == 'changed' %}<form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="action" value="unfile"><button class="btn btn-link btn-sm text-muted p-0">Mark as not filed</button></form>{% endif %}
+        {% endif %}
     </div>
 </div></div>
 
@@ -52,24 +70,32 @@
 {% endif %}
 
 {% if rep.rows %}
-<div class="tt-cols"><span>Property</span><span>Taxable</span><span>Tax</span><span></span></div>
+<div class="tt-cols"><span>Property</span><span>Days</span><span>Taxable</span><span>Due</span><span></span></div>
 {% for r in rep.rows %}
 <details class="tt-prop">
-    <summary><div class="tt-sum"><span class="fw-semibold">{{ r.property.name }}{% if r.unmatched or r.missing_fee %} <i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i>{% endif %}</span><span class="n">${{ r.taxable|floatformat:"2g" }}</span><span class="n fw-semibold">${{ r.tax|floatformat:"2g" }}</span><i data-lucide="chevron-right" class="icon tt-chev"></i></div></summary>
-    <div class="px-3 pb-3 pt-1 border-top">
+    <summary><div class="tt-sum"><span class="fw-semibold">{{ r.property.name }}{% if r.unmatched or r.missing_fee %} <i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i>{% endif %}</span><span class="n">{{ r.days }}</span><span class="n">${{ r.taxable|floatformat:"2g" }}</span><span class="n fw-semibold">${{ r.due|floatformat:"2g" }}</span><i data-lucide="chevron-right" class="icon tt-chev"></i></div></summary>
+    <div class="px-3 pb-3 pt-2 border-top">
+        <div class="tt-return mb-3">
+            <div><span>Number of nights</span><b>{{ r.days }}</b></div>
+            <div><span>Gross rental receipts</span><b>${{ r.taxable|floatformat:"2g" }}</b></div>
+            <div><span>Tax collected, 6%</span><b>${{ r.tax|floatformat:"2g" }}</b></div>
+            <div><span>Collection allowance</span><b>&minus;${{ r.allowance|floatformat:"2g" }}</b></div>
+            <div class="due"><span>Amount due</span><b>${{ r.due|floatformat:"2g" }}</b></div>
+        </div>
+        {% if not r.lines %}<div class="text-muted small py-2">No deposits reached the trust account this month.</div>{% else %}
         <div class="table-responsive"><table class="table table-sm align-middle mb-0 tabular-nums">
             <thead><tr><th>In trust</th><th>Guest</th><th>Platform</th><th class="text-end">Deposited</th><th class="text-end">Host fee</th><th class="text-end">Taxable</th></tr></thead>
             <tbody>{% for l in r.lines %}
             <tr{% if l.flag %} class="table-warning"{% endif %}><td class="text-nowrap">{{ l.date|date:"M j" }}</td><td>{{ l.guest }}{% if l.code %} <span class="text-muted small">{{ l.code }}</span>{% endif %}</td><td>{{ l.source }}</td><td class="text-end">${{ l.deposited|floatformat:"2g" }}</td><td class="text-end">{% if l.fee %}${{ l.fee|floatformat:"2g" }}{% else %}—{% endif %}</td><td class="text-end">${{ l.taxable|floatformat:"2g" }}</td></tr>
             {% endfor %}</tbody>
-        </table></div>
+        </table></div>{% endif %}
     </div>
 </details>
 {% endfor %}
-<div class="tt-total tt-sum"><span>Total</span><span class="n">${{ rep.taxable|floatformat:"2g" }}</span><span class="n">${{ rep.tax|floatformat:"2g" }}</span><span></span></div>
+<div class="tt-total tt-sum"><span>Total</span><span class="n">{{ rep.days }}</span><span class="n">${{ rep.taxable|floatformat:"2g" }}</span><span class="n">${{ rep.due|floatformat:"2g" }}</span><span></span></div>
 {% else %}
-<div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body text-muted">No rental deposits reached the trust accounts in {{ rep.month|date:"F Y" }}. File a $0.00 return.</div></div>
+<div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body text-muted">No rental days and no deposits in {{ rep.month|date:"F Y" }}. File a $0.00 return.</div></div>
 {% endif %}
 
-<p class="small text-muted mt-3">Counted when it reaches the trust account {% include '_tip.html' with text='Each deposit counts in the month it reaches the trust account, not the platform payout date, so a payout dated the 31st that lands on the 2nd belongs to next month. Taxable is the reservation payout plus the host service fee the platform kept, so cleaning and other fees are included.' %}</p>
+<p class="small text-muted mt-3">Counted when it reaches the trust account {% include '_tip.html' with text='Each deposit counts in the month it reaches the trust account, not the platform payout date, so a payout dated the 31st that lands on the 2nd belongs to next month. Taxable is the reservation payout plus the host service fee the platform kept, so cleaning and other fees are included. The collection allowance is 2.5% of the tax, up to $30 a return, for a return filed and paid on time. Days rented are counted from the reservations&#39; own dates, not from the payouts.' %}</p>
 {% endblock %}

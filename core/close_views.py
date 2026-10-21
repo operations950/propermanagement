@@ -468,6 +468,21 @@ def _closed_step(month):
     return ('done' if closed == len(rentals) else ('not_started' if closed == 0 else None)), detail
 
 
+def _tourist_tax_step(month):
+    """(status, detail) for the Palm Beach County tourist tax return: done once it is marked filed for the amount now due, amber if the month
+    has changed since, grey until filed. The figures are only worked out when there is a filing to compare with, so the checklist stays quick."""
+    if month < ledger.month_of(ledger.books_start()):
+        return None, ''
+    from .models import TouristTaxFiling
+    filing = TouristTaxFiling.objects.filter(month=month).first()
+    if filing is None:
+        return 'not_started', ''
+    state, filing = tourist_tax_service.filing_state(month)
+    if state == 'filed':
+        return 'done', f'Filed {filing.filed_on:%b} {filing.filed_on.day}: ${filing.amount:,.2f}.'
+    return 'attention', f'Changed since it was filed for ${filing.amount:,.2f}.'
+
+
 LEDGER_PAGES = {
     escrow.ESCROW: {
         'title': 'Escrow check', 'h2': 'General escrow account check', 'icon': 'vault', 'url': 'close_escrow',
@@ -599,12 +614,14 @@ def close_home(request):
     misc_status, misc_detail = _ledger_step(month, escrow.MISC)
     pay_status, pay_detail = _payout_step(month, today)
     close_status, close_detail = _closed_step(month)
+    tax_status, tax_detail = _tourist_tax_step(month)
     steps = [
         {'n': 1, 'title': 'Bank tie-out', 'icon': 'landmark', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q},
         {'n': 2, 'title': 'Misc trust account', 'icon': 'wallet', 'status': misc_status, 'detail': misc_detail, 'url': reverse('close_misc') + q},
         {'n': 3, 'title': 'Escrow account', 'icon': 'shield-check', 'status': esc_status, 'detail': esc_detail, 'url': reverse('close_escrow') + q},
         {'n': 4, 'title': 'Platform payouts', 'icon': 'banknote', 'status': pay_status, 'detail': pay_detail, 'url': reverse('close_payouts')},
         {'n': 5, 'title': 'Close each rental', 'icon': 'lock', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q},
+        {'n': 6, 'title': 'Tourist tax', 'icon': 'receipt', 'status': tax_status, 'detail': tax_detail, 'url': reverse('tourist_tax') + q},
     ]
     for step in steps:
         # A step under way (not started, needs attention and done each have their own chip) shows just its count, such as "12 of 38"; the full sentence is the link's hover text.
@@ -625,13 +642,25 @@ def tourist_tax(request):
     """Palm Beach County tourist development tax for a month: the short-term rental receipts that reached the trust accounts, by property."""
     today = timezone.localdate()
     month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
+    if request.method == 'POST':
+        from .models import TouristTaxFiling
+        if request.POST.get('action') == 'unfile':
+            TouristTaxFiling.objects.filter(month=month).delete()
+            messages.success(request, 'Marked as not filed.')
+        else:
+            tax = tourist_tax_service.report(month)['due']
+            TouristTaxFiling.objects.update_or_create(month=month, defaults={
+                'amount': tax, 'filed_on': today, 'confirmation': (request.POST.get('confirmation') or '').strip()[:60], 'filed_by': request.user})
+            messages.success(request, f'Marked as filed: ${tax:,.2f}.')
+        return redirect(reverse('tourist_tax') + f'?month={month:%Y-%m}')
     rep = tourist_tax_service.report(month)
+    state, filing = tourist_tax_service.filing_state(month, rep['due'])
     if request.GET.get('csv'):
         from django.http import HttpResponse
         response = HttpResponse(tourist_tax_service.csv_text(rep), content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="tourist-tax-{month:%Y-%m}.csv"'
         return response
-    return render(request, 'core/tourist_tax.html', {'rep': rep, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month)})
+    return render(request, 'core/tourist_tax.html', {'rep': rep, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'filing_state': state, 'filing': filing})
 
 
 STATEMENT_EXTENSIONS = ('.pdf', '.csv')

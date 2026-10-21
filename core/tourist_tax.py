@@ -14,16 +14,29 @@ in the bank two days into the next month is matched there, not in the month the 
 simply the reservation payouts of that month's matched deposits, plus the host fee that belongs to each. A deposit nothing was matched
 to is counted at face value (we cannot know its host fee) and flagged, so the total never quietly comes up short."""
 from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
 from django.utils import timezone
 
 from . import ledger, recon
-from .models import LedgerLine, Property
+from .models import LedgerLine, Property, TouristTaxFiling
 
 ZERO = Decimal('0.00')
 RATE = Decimal('0.06')
 TRANSIENT_MAX_DAYS = 180          # a rental of more than six months is not taxed
+# The dealer's collection allowance (Florida s. 212.12(1), which the county ordinance applies to TDT dealers): 2.5% of the tax, with none on tax
+# above $1,200 a return, so at most $30; for a return filed and paid electronically on time. The county's own return form rounds the way the
+# figures below do: the tax up to the next cent, the allowance down (its sample return: $1,192.70 -> tax $71.57, allowance $1.78, due $69.79).
+ALLOWANCE_RATE = Decimal('0.025')
+ALLOWANCE_TAX_CAP = Decimal('1200.00')
+
+
+def tax_for(taxable):
+    return (max(taxable, ZERO) * RATE).quantize(Decimal('0.01'), rounding=ROUND_CEILING)
+
+
+def allowance_for(tax):
+    return (min(tax, ALLOWANCE_TAX_CAP) * ALLOWANCE_RATE).quantize(Decimal('0.01'), rounding=ROUND_FLOOR)
 
 
 def _money(value):
@@ -111,6 +124,41 @@ def _book_receipts(book, month):
     return lines, {'unmatched': unmatched, 'missing_fee': missing_fee}
 
 
+def days_rented(props, month, today=None):
+    """{property id: days rented in the month}: the nights its units were booked, from the reservations' own dates, never from the payouts. A
+    platform lists a long booking on every payout line, but the money comes in pieces, so the money says nothing about the days. Counted like
+    the occupancy figures: a night two reservations share at one unit counts once; a stay only a payment report knows about counts only for
+    nights already past (the calendar says what is booked ahead); a stay of more than six months is not a transient rental and is left out.
+    A building's days are its units' days added up (unit-days)."""
+    from onsite.services import performance
+    today = today or timezone.localdate()
+    start = ledger.month_of(month)
+    end = ledger.next_month(start)
+    units, _unattributed = performance._collect_units(props, today)
+    out = {}
+    for u in units.values():
+        nights = set()
+        for b in u.active:
+            ns = performance._nights(b)
+            if len(ns) > TRANSIENT_MAX_DAYS:
+                continue
+            if b.pk in u.non_operational:
+                ns = [n for n in ns if n < today]
+            nights.update(n for n in ns if start <= n < end)
+        out[u.prop.pk] = out.get(u.prop.pk, 0) + len(nights)
+    return out
+
+
+def filing_state(month, due=None):
+    """('filed' | 'changed' | 'open', filing). Changed means it was filed, and the amount due now is not what was filed."""
+    filing = TouristTaxFiling.objects.filter(month=ledger.month_of(month)).first()
+    if filing is None:
+        return 'open', None
+    if due is None:
+        due = report(month)['due']
+    return ('filed' if due == filing.amount else 'changed'), filing
+
+
 def report(month):
     """The month's tourist tax: a row per property (its units added up) with the reservation payouts behind it, the total and the tax due."""
     month = ledger.month_of(month)
@@ -132,8 +180,17 @@ def report(month):
         lines.sort(key=lambda l: (l['date'], l['guest']))
         taxable = sum((l['taxable'] for l in lines), ZERO)
         rows.append({'property': prop, 'lines': lines, 'deposited': sum((l['deposited'] for l in lines), ZERO), 'fees': sum((l['fee'] for l in lines), ZERO),
-                     'taxable': taxable, 'tax': (taxable * RATE).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
-                     'unmatched': flags['unmatched'], 'missing_fee': flags['missing_fee']})
+                     'taxable': taxable, 'unmatched': flags['unmatched'], 'missing_fee': flags['missing_fee']})
+    days = days_rented(props, month)
+    shown = {r['property'].pk for r in rows}
+    for prop in props:
+        if prop.pk not in shown and days.get(prop.pk):
+            rows.append({'property': prop, 'lines': [], 'deposited': ZERO, 'fees': ZERO, 'taxable': ZERO, 'unmatched': ZERO, 'missing_fee': 0})
+    for r in rows:
+        r['days'] = days.get(r['property'].pk, 0)
+        r['tax'] = tax_for(r['taxable'])                  # each property is its own return
+        r['allowance'] = allowance_for(r['tax'])
+        r['due'] = r['tax'] - r['allowance']
     rows.sort(key=lambda r: r['property'].name)
     taxable_total = sum((r['taxable'] for r in rows), ZERO)
     due_on = ledger.next_month(month)
@@ -149,8 +206,9 @@ def report(month):
         flags.append(f'{len(unmapped)} rental{"" if len(unmapped) == 1 else "s"} without QuickBooks accounts: {", ".join(sorted(set(unmapped))[:4])}{"…" if len(set(unmapped)) > 4 else ""}')
     return {
         'month': month, 'rows': rows, 'deposited': sum((r['deposited'] for r in rows), ZERO), 'fees': sum((r['fees'] for r in rows), ZERO),
-        'taxable': taxable_total, 'tax': sum((r['tax'] for r in rows), ZERO), 'flags': flags, 'due_on': due_on, 'late_after': due_on + timedelta(days=19),
-        'in_progress': today < due_on, 'rate': RATE,
+        'taxable': taxable_total, 'tax': sum((r['tax'] for r in rows), ZERO), 'allowance': sum((r['allowance'] for r in rows), ZERO),
+        'due': sum((r['due'] for r in rows), ZERO), 'days': sum(r['days'] for r in rows), 'flags': flags, 'due_on': due_on, 'late_after': due_on + timedelta(days=19),
+        'in_progress': today < due_on, 'late': today > due_on + timedelta(days=19), 'rate': RATE,
     }
 
 
@@ -159,11 +217,11 @@ def csv_text(rep):
     import io
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(['Property', 'Date in trust account', 'Guest', 'Confirmation code', 'Platform', 'Deposited', 'Host fee', 'Taxable receipts', 'Note'])
+    w.writerow(['Property', 'Date in trust account', 'Guest', 'Confirmation code', 'Platform', 'Deposited', 'Host fee', 'Taxable receipts', 'Days rented', 'Note'])
     for r in rep['rows']:
         for l in r['lines']:
-            w.writerow([r['property'].name, l['date'].isoformat(), l['guest'], l['code'], l['source'], f'{l["deposited"]:.2f}', f'{l["fee"]:.2f}', f'{l["taxable"]:.2f}',
+            w.writerow([r['property'].name, l['date'].isoformat(), l['guest'], l['code'], l['source'], f'{l["deposited"]:.2f}', f'{l["fee"]:.2f}', f'{l["taxable"]:.2f}', '',
                         'not matched to a reservation' if l['flag'] else ''])
-        w.writerow([r['property'].name, 'TOTAL', '', '', '', f'{r["deposited"]:.2f}', f'{r["fees"]:.2f}', f'{r["taxable"]:.2f}', f'tax {r["tax"]:.2f}'])
-    w.writerow(['ALL PROPERTIES', 'TOTAL', '', '', '', f'{rep["deposited"]:.2f}', f'{rep["fees"]:.2f}', f'{rep["taxable"]:.2f}', f'tax {rep["tax"]:.2f}'])
+        w.writerow([r['property'].name, 'TOTAL', '', '', '', f'{r["deposited"]:.2f}', f'{r["fees"]:.2f}', f'{r["taxable"]:.2f}', r['days'], f'tax {r["tax"]:.2f}, collection allowance {r["allowance"]:.2f}, due {r["due"]:.2f}'])
+    w.writerow(['ALL PROPERTIES', 'TOTAL', '', '', '', f'{rep["deposited"]:.2f}', f'{rep["fees"]:.2f}', f'{rep["taxable"]:.2f}', rep['days'], f'tax {rep["tax"]:.2f}, collection allowance {rep["allowance"]:.2f}, due {rep["due"]:.2f}'])
     return out.getvalue()
