@@ -4,6 +4,13 @@ This file exists so a fresh Claude session (or a human) can understand this
 codebase well enough to design a new module that actually fits how the app
 already works, instead of reinventing patterns that already exist here.
 
+## Working rule from the owner: do not build until told
+
+The owner has said repeatedly (2026-10-08, 2026-10-20) that nothing in this app is to be built, changed, regression-tested or pushed until they have said to build it.
+This includes follow-up changes to something just built: discuss the change, send a preview or a plain-words plan, list the questions, and wait for "go".
+Read-only research, investigation and HTML previews are fine. When a go is given: build everything approved, run the full regression once, and push once
+(only if the go says to push). The app is large; builds and regression runs take a long time, and a wrong build wastes it.
+
 ## What this app is
 
 A property-management task-tracking webapp for a real business (associations/

@@ -149,14 +149,16 @@ def days_rented(props, month, today=None):
     return out
 
 
-def filing_state(month, due=None):
-    """('filed' | 'changed' | 'open', filing). Changed means it was filed, and the amount due now is not what was filed."""
-    filing = TouristTaxFiling.objects.filter(month=ledger.month_of(month)).first()
-    if filing is None:
-        return 'open', None
-    if due is None:
-        due = report(month)['due']
-    return ('filed' if due == filing.amount else 'changed'), filing
+def attach_filings(rep):
+    """Put each property's filing on its row: state is 'filed' (marked filed for the amount due now), 'changed' (filed for a different amount) or 'open'."""
+    filings = {f.property_id: f for f in TouristTaxFiling.objects.filter(month=rep['month'])}
+    for r in rep['rows']:
+        f = filings.get(r['property'].pk)
+        r['filing'] = f
+        r['state'] = 'open' if f is None else ('filed' if f.amount == r['due'] else 'changed')
+    rep['filed'] = sum(1 for r in rep['rows'] if r['state'] == 'filed')
+    rep['changed'] = sum(1 for r in rep['rows'] if r['state'] == 'changed')
+    return rep
 
 
 def report(month):
@@ -204,12 +206,12 @@ def report(month):
         flags.append(f'{missing_n} reservation{"" if missing_n == 1 else "s"} with no host fee on file (counted without it)')
     if unmapped:
         flags.append(f'{len(unmapped)} rental{"" if len(unmapped) == 1 else "s"} without QuickBooks accounts: {", ".join(sorted(set(unmapped))[:4])}{"…" if len(set(unmapped)) > 4 else ""}')
-    return {
+    return attach_filings({
         'month': month, 'rows': rows, 'deposited': sum((r['deposited'] for r in rows), ZERO), 'fees': sum((r['fees'] for r in rows), ZERO),
         'taxable': taxable_total, 'tax': sum((r['tax'] for r in rows), ZERO), 'allowance': sum((r['allowance'] for r in rows), ZERO),
         'due': sum((r['due'] for r in rows), ZERO), 'days': sum(r['days'] for r in rows), 'flags': flags, 'due_on': due_on, 'late_after': due_on + timedelta(days=19),
         'in_progress': today < due_on, 'late': today > due_on + timedelta(days=19), 'rate': RATE,
-    }
+    })
 
 
 def csv_text(rep):

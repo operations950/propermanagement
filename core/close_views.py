@@ -469,18 +469,21 @@ def _closed_step(month):
 
 
 def _tourist_tax_step(month):
-    """(status, detail) for the Palm Beach County tourist tax return: done once it is marked filed for the amount now due, amber if the month
-    has changed since, grey until filed. The figures are only worked out when there is a filing to compare with, so the checklist stays quick."""
+    """(status, detail) for the Palm Beach County tourist tax step: grey until a property is marked filed, a count while some are, green Complete
+    once every property listed for the month is filed, amber if a filed one has changed since. The figures are only worked out once something
+    has been filed, so the checklist stays quick."""
     if month < ledger.month_of(ledger.books_start()):
         return None, ''
     from .models import TouristTaxFiling
-    filing = TouristTaxFiling.objects.filter(month=month).first()
-    if filing is None:
+    if not TouristTaxFiling.objects.filter(month=month).exists():
         return 'not_started', ''
-    state, filing = tourist_tax_service.filing_state(month)
-    if state == 'filed':
-        return 'done', f'Filed {filing.filed_on:%b} {filing.filed_on.day}: ${filing.amount:,.2f}.'
-    return 'attention', f'Changed since it was filed for ${filing.amount:,.2f}.'
+    rep = tourist_tax_service.report(month)
+    total = len(rep['rows'])
+    if rep['changed']:
+        return 'attention', f'{rep["changed"]} filed return{"" if rep["changed"] == 1 else "s"} changed since it was filed.'
+    if total and rep['filed'] == total:
+        return 'done', f'All {total} return{"" if total == 1 else "s"} filed.'
+    return None, f'{rep["filed"]} of {total} filed.'
 
 
 LEDGER_PAGES = {
@@ -644,23 +647,26 @@ def tourist_tax(request):
     month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
     if request.method == 'POST':
         from .models import TouristTaxFiling
+        prop = get_object_or_404(Property, pk=request.POST.get('property'))
         if request.POST.get('action') == 'unfile':
-            TouristTaxFiling.objects.filter(month=month).delete()
-            messages.success(request, 'Marked as not filed.')
+            TouristTaxFiling.objects.filter(month=month, property=prop).delete()
+            messages.success(request, f'{prop.name} marked as not filed.')
         else:
-            tax = tourist_tax_service.report(month)['due']
-            TouristTaxFiling.objects.update_or_create(month=month, defaults={
-                'amount': tax, 'filed_on': today, 'confirmation': (request.POST.get('confirmation') or '').strip()[:60], 'filed_by': request.user})
-            messages.success(request, f'Marked as filed: ${tax:,.2f}.')
+            row = next((r for r in tourist_tax_service.report(month)['rows'] if r['property'].pk == prop.pk), None)
+            if row is None:
+                messages.error(request, f'{prop.name} has nothing to file for {month:%B %Y}.')
+            else:
+                TouristTaxFiling.objects.update_or_create(month=month, property=prop, defaults={
+                    'amount': row['due'], 'filed_on': today, 'confirmation': (request.POST.get('confirmation') or '').strip()[:60], 'filed_by': request.user})
+                messages.success(request, f'{prop.name} marked as filed: ${row["due"]:,.2f}.')
         return redirect(reverse('tourist_tax') + f'?month={month:%Y-%m}')
     rep = tourist_tax_service.report(month)
-    state, filing = tourist_tax_service.filing_state(month, rep['due'])
     if request.GET.get('csv'):
         from django.http import HttpResponse
         response = HttpResponse(tourist_tax_service.csv_text(rep), content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="tourist-tax-{month:%Y-%m}.csv"'
         return response
-    return render(request, 'core/tourist_tax.html', {'rep': rep, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'filing_state': state, 'filing': filing})
+    return render(request, 'core/tourist_tax.html', {'rep': rep, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month)})
 
 
 STATEMENT_EXTENSIONS = ('.pdf', '.csv')

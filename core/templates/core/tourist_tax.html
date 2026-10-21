@@ -45,21 +45,9 @@
     </div>
     <div class="d-flex align-items-center flex-wrap gap-2 border-top mt-3 pt-3 small">
         <i data-lucide="calendar" class="icon"></i> Return due <strong>{{ rep.due_on|date:"M j" }}</strong>, late after <strong>{{ rep.late_after|date:"M j" }}</strong>
-        {% if rep.late and filing_state == 'open' %}<span class="tt-chip attention">Late: the county adds penalty and interest</span>{% elif rep.flags %}<span class="tt-chip attention">Needs a look</span>{% elif rep.in_progress %}<span class="tt-chip progress">Month in progress</span>{% else %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Every deposit matched</span>{% endif %}
+        {% if rep.late and rep.filed < rep.rows|length %}<span class="tt-chip attention">Late: the county adds penalty and interest</span>{% elif rep.flags %}<span class="tt-chip attention">Needs a look</span>{% elif rep.in_progress %}<span class="tt-chip progress">Month in progress</span>{% else %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Every deposit matched</span>{% endif %}
+        {% if rep.rows %}{% if rep.filed == rep.rows|length %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> All filed</span>{% elif rep.filed or rep.changed %}<span class="tt-chip progress">{{ rep.filed }} of {{ rep.rows|length }} filed</span>{% endif %}{% endif %}
         <a href="?month={{ rep.month|date:'Y-m' }}&csv=1" class="btn btn-outline-secondary btn-sm ms-auto"><i data-lucide="download" class="icon"></i> Download deposits (CSV)</a>
-    </div>
-    <div class="d-flex align-items-center flex-wrap gap-2 border-top mt-3 pt-3 small">
-        {% if filing_state == 'filed' %}
-        <span class="tt-chip good"><i data-lucide="check" class="icon"></i> Filed {{ filing.filed_on|date:"M j" }} &middot; ${{ filing.amount|floatformat:"2g" }}</span>{% if filing.confirmation %}<span class="text-muted">Confirmation {{ filing.confirmation }}</span>{% endif %}
-        <form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="action" value="unfile"><button class="btn btn-link btn-sm text-muted p-0">Mark as not filed</button></form>
-        {% else %}
-        {% if filing_state == 'changed' %}<span class="tt-chip attention">Changed since it was filed for ${{ filing.amount|floatformat:"2g" }}</span>{% endif %}
-        <form method="post" class="d-flex align-items-center gap-2 flex-wrap {% if filing_state != 'changed' %}ms-auto{% endif %}">{% csrf_token %}
-            <input type="text" name="confirmation" class="form-control form-control-sm" style="width: 12rem;" placeholder="Confirmation number (optional)" maxlength="60" value="{{ filing.confirmation|default:'' }}">
-            <button class="btn btn-primary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Mark as filed</button>
-        </form>
-        {% if filing_state == 'changed' %}<form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="action" value="unfile"><button class="btn btn-link btn-sm text-muted p-0">Mark as not filed</button></form>{% endif %}
-        {% endif %}
     </div>
 </div></div>
 
@@ -73,7 +61,7 @@
 <div class="tt-cols"><span>Property</span><span>Days</span><span>Taxable</span><span>Due</span><span></span></div>
 {% for r in rep.rows %}
 <details class="tt-prop">
-    <summary><div class="tt-sum"><span class="fw-semibold">{{ r.property.name }}{% if r.unmatched or r.missing_fee %} <i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i>{% endif %}</span><span class="n">{{ r.days }}</span><span class="n">${{ r.taxable|floatformat:"2g" }}</span><span class="n fw-semibold">${{ r.due|floatformat:"2g" }}</span><i data-lucide="chevron-right" class="icon tt-chev"></i></div></summary>
+    <summary><div class="tt-sum"><span class="fw-semibold">{{ r.property.name }}{% if r.unmatched or r.missing_fee %} <i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i>{% endif %} {% if r.state == 'filed' %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Filed</span>{% elif r.state == 'changed' %}<span class="tt-chip attention">Changed</span>{% endif %}</span><span class="n">{{ r.days }}</span><span class="n">${{ r.taxable|floatformat:"2g" }}</span><span class="n fw-semibold">${{ r.due|floatformat:"2g" }}</span><i data-lucide="chevron-right" class="icon tt-chev"></i></div></summary>
     <div class="px-3 pb-3 pt-2 border-top">
         <div class="tt-return mb-3">
             <div><span>Number of nights</span><b>{{ r.days }}</b></div>
@@ -81,6 +69,18 @@
             <div><span>Tax collected, 6%</span><b>${{ r.tax|floatformat:"2g" }}</b></div>
             <div><span>Collection allowance</span><b>&minus;${{ r.allowance|floatformat:"2g" }}</b></div>
             <div class="due"><span>Amount due</span><b>${{ r.due|floatformat:"2g" }}</b></div>
+        </div>
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-3 small">
+            {% if r.state == 'filed' %}
+            <span class="tt-chip good"><i data-lucide="check" class="icon"></i> Filed {{ r.filing.filed_on|date:"M j" }} &middot; ${{ r.filing.amount|floatformat:"2g" }}</span>{% if r.filing.confirmation %}<span class="text-muted">Confirmation {{ r.filing.confirmation }}</span>{% endif %}
+            <form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="property" value="{{ r.property.pk }}"><input type="hidden" name="action" value="unfile"><button class="btn btn-link btn-sm text-muted p-0">Mark as not filed</button></form>
+            {% else %}
+            {% if r.state == 'changed' %}<span class="tt-chip attention">Changed since it was filed for ${{ r.filing.amount|floatformat:"2g" }}</span>{% endif %}
+            <form method="post" class="d-flex align-items-center gap-2 flex-wrap ms-auto">{% csrf_token %}<input type="hidden" name="property" value="{{ r.property.pk }}">
+                <input type="text" name="confirmation" class="form-control form-control-sm" style="width: 12rem;" placeholder="Confirmation number (optional)" maxlength="60" value="{{ r.filing.confirmation|default:'' }}">
+                <button class="btn btn-primary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Mark as filed</button>
+            </form>
+            {% endif %}
         </div>
         {% if not r.lines %}<div class="text-muted small py-2">No deposits reached the trust account this month.</div>{% else %}
         <div class="table-responsive"><table class="table table-sm align-middle mb-0 tabular-nums">
