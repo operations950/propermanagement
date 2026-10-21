@@ -14,7 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import bank_tieout, escrow, ledger, owner_portal, payout_tracking, recon
+from . import bank_tieout, escrow, ledger, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
 from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
 from .views import _is_admin
 
@@ -617,6 +617,21 @@ def close_home(request):
         'done_count': sum(1 for s in steps if s['status'] == 'done'),
         'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
     })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def tourist_tax(request):
+    """Palm Beach County tourist development tax for a month: the short-term rental receipts that reached the trust accounts, by property."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
+    rep = tourist_tax_service.report(month)
+    if request.GET.get('csv'):
+        from django.http import HttpResponse
+        response = HttpResponse(tourist_tax_service.csv_text(rep), content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="tourist-tax-{month:%Y-%m}.csv"'
+        return response
+    return render(request, 'core/tourist_tax.html', {'rep': rep, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month)})
 
 
 STATEMENT_EXTENSIONS = ('.pdf', '.csv')

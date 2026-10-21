@@ -19,10 +19,13 @@
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> Month-end close</h2>
         <div class="small text-muted">{{ done_count }} of {{ steps|length }} complete</div>
     </div>
+    <div class="d-flex align-items-center gap-2">
+    <a href="{% url 'tourist_tax' %}?month={{ month|date:'Y-m' }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="receipt" class="icon"></i> Tourist tax</a>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
         <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
     </div>
 </div>
 {% if not month_over %}<div class="small text-muted mb-2"><i data-lucide="clock" class="icon"></i> {{ month|date:"F" }} isn't over yet, so month-end balances aren't final.</div>{% endif %}

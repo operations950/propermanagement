@@ -33,6 +33,7 @@ urlpatterns = [
     path('admin-tools/owner-portal/', close_views.owner_portal_admin, name='owner_portal_admin'),
     path('close/', close_views.close_home, name='close_home'),
     path('close/rentals/', close_views.close_overview, name='close_overview'),
+    path('close/tourist-tax/', close_views.tourist_tax, name='tourist_tax'),
     path('close/bank-tie-out/', close_views.close_bank_tieout, name='close_bank_tieout'),
     path('close/bookkeeping/', close_views.payouts, name='close_payouts'),
     path('close/escrow/', close_views.close_escrow, name='close_escrow'),
