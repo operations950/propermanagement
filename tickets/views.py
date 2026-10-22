@@ -8,7 +8,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Max, Q
+from django.db.models import Case, Count, F, IntegerField, Max, OuterRef, Q, Subquery, When
+from django.db.models.functions import Coalesce
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -766,63 +767,53 @@ def ticket_pending_delete(request, pk):
 # both _ticket_sort_order (build the .order_by()) and _ticket_sort_columns
 # (build each header's click-to-sort link) so the two never drift apart.
 TICKET_SORT_FIELDS = [
-    ('department', 'assigned_role', 'Department'),
+    ('priority', 'priority', 'Priority'),
     ('property', 'property__name', 'Property'),
     ('issue', 'title', 'Issue'),
     ('due', 'due_date', 'Due'),
-    ('status', 'status', 'Status'),
-    ('staff', 'assigned_staff__user__first_name', 'Assigned Staff'),
-    ('contractor', 'assigned_contact__name', 'Assigned Contractor'),
+    ('assigned', 'assigned', 'Assigned to'),
 ]
 
-# The list always opens sorted by due date, soonest first — not just "most
-# recently created" — until staff picks a different column.
-DEFAULT_TICKET_SORT = 'due'
+# With no column chosen the list puts Urgent tickets first, then everything by due date, soonest first. Clicking the Due heading sorts by date
+# alone, so an urgent ticket then sits where its date puts it.
+_PRIORITY_RANK = Case(
+    When(priority=Priority.URGENT, then=0), When(priority=Priority.HIGH, then=1), When(priority=Priority.MEDIUM, then=2), default=3, output_field=IntegerField())
+_URGENT_FIRST = Case(When(priority=Priority.URGENT, then=0), default=1, output_field=IntegerField())
 
 
 def _ticket_sort_order(sort_param):
-    """A `sort=` GET value like 'due' (ascending) or '-due' (descending) ->
-    the .order_by() args. Falls back to DEFAULT_TICKET_SORT when unset/
-    invalid, and always appends '-created_at' as a stable secondary key so
-    rows with equal values (e.g. every 'Assigned' status, or every blank
-    due_date) don't visibly shuffle between requests."""
-    sort_param = sort_param or DEFAULT_TICKET_SORT
-    key = sort_param.lstrip('-')
-    is_desc = sort_param.startswith('-')
+    """A `sort=` GET value like 'due' (ascending) or '-due' (descending) -> the .order_by() args. With no (or an unknown) value: Urgent first, then
+    soonest due. Always ends with '-created_at' so rows with equal values do not shuffle between requests."""
+    key = (sort_param or '').lstrip('-')
+    is_desc = (sort_param or '').startswith('-')
     fields = {field_key: field for field_key, field, _ in TICKET_SORT_FIELDS}
     if key not in fields:
-        key, is_desc = DEFAULT_TICKET_SORT, False
+        return [_URGENT_FIRST, F('due_date').asc(nulls_last=True), '-created_at']
     field = fields[key]
     if key == 'due':
-        # due_date is nullable — nulls last regardless of direction, so a
-        # ticket with no due date never jumps to the front of an ascending
-        # sort just because SQL treats NULL as the lowest value.
+        # due_date is nullable: nulls last whichever way it sorts
         primary = F(field).desc(nulls_last=True) if is_desc else F(field).asc(nulls_last=True)
+    elif key == 'priority':
+        primary = _PRIORITY_RANK.desc() if is_desc else _PRIORITY_RANK.asc()
+    elif key == 'assigned':
+        who = Coalesce('assigned_staff__user__first_name', 'assigned_contact__name')
+        primary = who.desc(nulls_last=True) if is_desc else who.asc(nulls_last=True)
     else:
         primary = f'-{field}' if is_desc else field
     return [primary, '-created_at']
 
 
 def _ticket_sort_columns(sort_param):
-    """One entry per sortable column for the template's header row: the
-    single GET value clicking that header's label should link to (toggles
-    asc/desc if it's already the active column, else defaults to
-    ascending), and whether it's the currently active sort (for the arrow
-    indicator)."""
-    active = sort_param or DEFAULT_TICKET_SORT
+    """One entry per sortable column for the template's header row: the single GET value clicking that header's label should link to (toggles
+    asc/desc if it's already the active column, else ascending), and whether it is the active sort (for the arrow)."""
+    active = sort_param or ''
     key = active.lstrip('-')
     is_desc = active.startswith('-')
     columns = []
     for field_key, _, label in TICKET_SORT_FIELDS:
         is_active = key == field_key
         next_sort = f'-{field_key}' if (is_active and not is_desc) else field_key
-        columns.append({
-            'key': field_key,
-            'label': label,
-            'next_sort': next_sort,
-            'is_active': is_active,
-            'is_desc': is_active and is_desc,
-        })
+        columns.append({'key': field_key, 'label': label, 'next_sort': next_sort, 'is_active': is_active, 'is_desc': is_active and is_desc})
     return columns
 
 
@@ -835,6 +826,25 @@ DUE_OPTIONS = [('overdue', 'Overdue'), ('today', 'Today'), ('tomorrow', 'Tomorro
 TICKETS_PER_PAGE = 50     # each row carries its own edit form (twice, for table and phone cards): fifty a page keeps the page light
 
 
+LIST_QS_KEY = 'ticket_list_qs'
+
+
+def _remember_list_filters(request):
+    """Remember the ticket list's filters (and sort, search and page) for this login, so the up arrow on a ticket brings back the same filtered list.
+    The plain list (no filters, or just the menu link's source=reactive) forgets them. TicketFilterMemoryMiddleware forgets them too as soon as the
+    person goes anywhere outside the tickets pages."""
+    params = request.GET.copy()
+    if not params or (list(params.keys()) == ['source'] and params.get('source') == 'reactive'):
+        request.session.pop(LIST_QS_KEY, None)
+    else:
+        request.session[LIST_QS_KEY] = params.urlencode()
+
+
+def _list_back_url(request):
+    saved = request.session.get(LIST_QS_KEY)
+    return reverse('ticket_list') + (f'?{saved}' if saved else '')
+
+
 @login_required
 def ticket_list(request):
     """Defaults to the active bucket (open/assigned/in_progress/blocked) —
@@ -842,7 +852,13 @@ def ticket_list(request):
     stay hidden unless staff explicitly ask for them via the status filter
     ('complete' for the whole historical bucket, or a specific status like
     'cancelled' to drill into just one)."""
-    qs = Ticket.objects.select_related('property', 'unit', 'assigned_staff__user', 'assigned_contact').all()
+    _remember_list_filters(request)
+    note_sq = TicketStatusNote.objects.filter(ticket=OuterRef('pk')).order_by('-created_at')
+    close_sq = TicketClosingNote.objects.filter(ticket=OuterRef('pk')).order_by('-created_at')
+    qs = Ticket.objects.select_related('property', 'unit', 'assigned_staff__user', 'assigned_contact').annotate(
+        latest_note_body=Subquery(note_sq.values('body')[:1]), latest_note_at=Subquery(note_sq.values('created_at')[:1]),
+        closing_body=Subquery(close_sq.values('body')[:1]), closing_at=Subquery(close_sq.values('created_at')[:1]),
+    )
     status = request.GET.get('status') or 'active'
     if status == 'active':
         qs = qs.filter(status__in=OPEN_STATUSES)
@@ -955,7 +971,8 @@ def ticket_list(request):
     context = {
         'tickets': page_obj.object_list, 'page_obj': page_obj,
         'now': timezone.now(),
-        'status_choices': Ticket.Status.choices,
+        'status_choices': Ticket.selectable_statuses(),
+        'complete_statuses': [s.value for s in COMPLETE_STATUSES],
         'role_choices': StaffProfile.Role.choices,
         'priority_choices': Priority.choices,
         'selected_status': status,
@@ -1393,7 +1410,7 @@ def ticket_detail(request, pk):
         if elapsed < timedelta(hours=24):
             vendor_link_cooldown_hours_left = max(1, round(24 - elapsed.total_seconds() / 3600))
 
-    back_url = reverse('ticket_list')       # up one level: the ticket list (not wherever the browser came from)
+    back_url = _list_back_url(request)       # up one level: the ticket list, with the filters it had when this ticket was opened
     all_attachments = list(ticket.attachments.all().order_by('-created_at'))
 
     return render(request, 'tickets/ticket_detail.html', {
@@ -1445,7 +1462,7 @@ def ticket_detail(request, pk):
         'occurrence_siblings': occurrence_siblings,
         'can_approve': can_approve,
         'priority_choices': Priority.choices,
-        'status_choices': Ticket.Status.choices,
+        'status_choices': Ticket.selectable_statuses(),
         # Completed is a hard status, deliberately excluded from the casual
         # bubble picker — the "Mark Complete" button below is the one path
         # to it. Still included when the ticket is *already* completed, so
@@ -1453,7 +1470,8 @@ def ticket_detail(request, pk):
         # instead of the picker misleadingly showing "Choose a status".
         'status_bubble_choices': [
             (v, l) for v, l in Ticket.Status.choices
-            if v != Ticket.Status.COMPLETED or ticket.status == Ticket.Status.COMPLETED
+            if (v != Ticket.Status.COMPLETED or ticket.status == Ticket.Status.COMPLETED)
+            and (v != Ticket.Status.BLOCKED or ticket.status == Ticket.Status.BLOCKED)
         ],
         'properties_by_type': properties_by_type(),
         'vendor_contacts_json': dumps_for_script([

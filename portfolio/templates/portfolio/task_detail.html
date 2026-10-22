@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}{{ task.title }} — {{ business.name }}{% endblock %}
+{% block content %}
+<style>
+    .pt-lab { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
+    .pt-upd { padding: 0.7rem 0; border-top: 1px solid var(--border-hairline); }
+    .pt-when { font-size: 0.78rem; color: var(--ink-muted); }
+</style>
+<a href="{% url 'portfolio_business_detail' business.slug %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ business.name }}</a>
+<h2 class="page-title mb-2">{{ task.title }}</h2>
+<div class="row"><div class="col-lg-8">
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+        {% if task.status == 'done' %}<span class="badge text-bg-success">Done {{ task.completed_at|date:"M j, Y" }}</span>{% elif task.status == 'cancelled' %}<span class="badge text-bg-secondary">Cancelled</span>{% endif %}
+        {% if task.category %}<span class="badge rounded-pill bg-light text-dark border">{{ task.category.name }}</span>{% endif %}
+        {% if task.due_date %}<span class="badge rounded-pill {% if task.due_date < today and task.status == 'open' %}text-bg-danger{% else %}bg-light text-dark border{% endif %}">Due {{ task.due_date|date:"M j, Y" }}</span>{% endif %}
+        <span class="badge rounded-pill bg-light text-dark border">Priority: {{ task.get_priority_display }}</span>
+        {% if task.amount %}<span class="badge rounded-pill bg-light text-dark border">${{ task.amount }}</span>{% endif %}
+        {% if business.custom_field_label and task.custom_field_value %}<span class="badge rounded-pill bg-light text-dark border">{{ business.custom_field_label }}: {{ task.custom_field_value }}</span>{% endif %}
+    </div>
+    {% if task.notes %}<div class="pt-lab">Notes</div><div style="white-space: pre-line;" class="mb-2">{{ task.notes }}</div>{% endif %}
+    {% if task.status == 'done' and task.closing_status %}
+    <div class="p-2 rounded mb-2" style="background: color-mix(in srgb, var(--status-good) 12%, white);"><div class="pt-lab">Closing status</div><div style="white-space: pre-line;">{{ task.closing_status }}</div></div>
+    {% endif %}
+    <div class="d-flex flex-wrap gap-2 mt-2">
+        {% if task.status == 'open' %}
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#closeModal"><i data-lucide="check" class="icon"></i> Mark done</button>
+        {% else %}
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn btn-outline-secondary btn-sm">Reopen</button></form>
+        {% endif %}
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#editTask">Edit</button>
+        <form method="post" onsubmit="return confirm('Delete this task and its updates?');" class="ms-auto">{% csrf_token %}<input type="hidden" name="action" value="delete_task"><button class="btn btn-link btn-sm text-danger p-0">Delete</button></form>
+    </div>
+    <div class="collapse mt-3" id="editTask">
+        <form method="post" class="row g-2">{% csrf_token %}<input type="hidden" name="action" value="save_task">
+            <div class="col-12"><label class="form-label small mb-1">Title</label><input type="text" name="title" class="form-control form-control-sm" value="{{ task.title }}" required></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Category</label><select name="category" class="form-select form-select-sm"><option value="">None</option>{% for c in categories %}<option value="{{ c.pk }}" {% if task.category_id == c.pk %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Priority</label><select name="priority" class="form-select form-select-sm">{% for value, label in priority_choices %}<option value="{{ value }}" {% if task.priority == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Due</label><input type="date" name="due_date" class="form-control form-control-sm" value="{{ task.due_date|date:'Y-m-d' }}"></div>
+            <div class="col-6 col-md-3"><label class="form-label small mb-1">Amount</label><input type="number" step="0.01" name="amount" class="form-control form-control-sm" value="{{ task.amount|default_if_none:'' }}"></div>
+            {% if business.custom_field_label %}<div class="col-12"><label class="form-label small mb-1">{{ business.custom_field_label }}</label><input type="text" name="custom_field_value" class="form-control form-control-sm" value="{{ task.custom_field_value }}"></div>{% endif %}
+            <div class="col-12"><label class="form-label small mb-1">Notes</label><textarea name="notes" rows="3" class="form-control form-control-sm">{{ task.notes }}</textarea></div>
+            <div class="col-12"><button class="btn btn-primary btn-sm">Save</button></div>
+        </form>
+    </div>
+</div></div>
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="pt-lab mb-2">Updates</div>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="add_update">
+        <textarea name="body" rows="2" class="form-control" placeholder="Add an update" required></textarea>
+        <button class="btn btn-primary btn-sm mt-2">Add update</button>
+    </form>
+    {% for u in updates %}
+    <div class="pt-upd mt-3">
+        <div class="pt-when">{{ u.created_at|date:"M j, Y" }}, {{ u.created_at|time:"g:i A" }}{% if u.created_by %} &middot; {{ u.created_by.get_full_name|default:u.created_by.username }}{% endif %}</div>
+        <div style="white-space: pre-line;" id="upd-body-{{ u.pk }}">{{ u.body }}</div>
+        {% if u.created_by_id == request.user.pk or is_owner %}
+        <div class="d-flex gap-3 mt-1 small">
+            <a href="#" class="text-decoration-none" onclick="document.getElementById('upd-edit-{{ u.pk }}').hidden = false; this.closest('div').hidden = true; return false;">Edit</a>
+            <form method="post" onsubmit="return confirm('Delete this update?');">{% csrf_token %}<input type="hidden" name="action" value="delete_update"><input type="hidden" name="update_id" value="{{ u.pk }}"><button class="btn btn-link btn-sm text-danger p-0">Delete</button></form>
+        </div>
+        <form method="post" id="upd-edit-{{ u.pk }}" hidden class="mt-1">{% csrf_token %}<input type="hidden" name="action" value="edit_update"><input type="hidden" name="update_id" value="{{ u.pk }}">
+            <textarea name="body" rows="2" class="form-control form-control-sm" required>{{ u.body }}</textarea><button class="btn btn-primary btn-sm mt-1">Save</button>
+        </form>
+        {% endif %}
+    </div>
+    {% empty %}<div class="text-muted small mt-3">No updates yet.</div>{% endfor %}
+</div></div>
+
+</div></div>
+
+<div class="modal fade" id="closeModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">{% csrf_token %}<input type="hidden" name="action" value="close">
+    <div class="modal-header"><h5 class="modal-title">Closing status</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body"><div class="fw-semibold mb-2">{{ task.title }}</div><textarea name="closing_status" rows="3" class="form-control" placeholder="How did it end? For example: Paid on Dec 12, confirmation 88213" required></textarea>
+        <div class="small text-muted mt-2">A task can't be marked done without one. It shows in the Done list.</div></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Mark done</button></div>
+</form></div></div>
+{% endblock %}

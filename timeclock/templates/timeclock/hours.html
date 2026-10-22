@@ -42,20 +42,20 @@
     {% if rep.blockers %}<div class="small mb-2">{% for d, why in rep.blockers %}<span class="badge text-bg-warning me-1">{{ d|short_date }} · {{ why }}</span>{% endfor %}</div>{% endif %}
     <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 tabular-nums tc-hours">
-        <thead><tr><th>Day</th><th>In</th><th>Out</th><th>Lunch</th><th>What</th><th class="text-end">Hours</th><th></th></tr></thead>
+        <thead><tr><th>Day</th><th>In</th><th>Out</th><th>Lunch</th><th>Flags</th><th class="text-end">Hours</th><th></th></tr></thead>
         <tbody>
         {% for wk in rep.weeks %}
-        {% for r in wk.rows %}{% if r.punch or r.kind != 'none' %}
+        {% for r in wk.rows %}{% if r.date <= today %}
         <tr>
             <td>{{ r.date|short_date }}</td>
             {% if r.punch %}
             <td>{{ r.punch.clock_in|time:"g:i A" }}</td>
             <td>{% if r.punch.clock_out %}{{ r.punch.clock_out|time:"g:i A" }}{% else %}<span class="tc-over">missing</span>{% endif %}</td>
             <td>{% if r.punch.lunch_minutes is not None %}{{ r.punch.lunch_minutes }} min{% endif %}</td>
-            <td class="tc-sub">{% if r.punch.in_remote or r.punch.out_remote %}<span class="badge text-bg-light" title="{{ r.punch.remote_reason }}">remote</span> {% endif %}{% if r.punch.changes.all %}<span class="badge text-bg-light" title="{% for c in r.punch.changes.all %}{{ c.at|date:'M j' }}: {{ c.reason }}. {% endfor %}">fixed</span>{% endif %}</td>
+            <td class="tc-sub">{% if r.late %}<span class="badge text-bg-warning">{{ r.late }} min late</span> {% endif %}{% if r.punch.in_remote or r.punch.out_remote %}<span class="badge text-bg-light" title="{{ r.punch.remote_reason }}">remote</span> {% endif %}{% if r.punch.changes.all %}<span class="badge text-bg-light" title="{% for c in r.punch.changes.all %}{{ c.at|date:'M j' }}: {{ c.reason }}. {% endfor %}">fixed</span>{% endif %}</td>
             <td class="text-end">{% if r.punch.clock_out %}{{ r.worked_min|mins }}{% endif %}</td>
             {% else %}
-            <td colspan="3" class="tc-sub">{% if r.kind == 'vacation' %}Vacation{% elif r.kind == 'sick' %}Sick{% elif r.kind == 'other' %}Off, nothing taken{% elif r.kind == 'holiday' %}{{ r.holiday }}{% elif r.kind == 'missed' %}<span class="tc-over">No punch</span>{% elif r.kind == 'pending_off' %}Time off waiting{% endif %}</td>
+            <td colspan="3" class="tc-sub">{% if r.kind == 'vacation' %}Vacation{% elif r.kind == 'sick' %}Sick{% elif r.kind == 'other' %}Off, nothing taken{% elif r.kind == 'holiday' %}{{ r.holiday }}{% elif r.kind == 'missed' %}<span class="tc-over">No punch</span>{% elif r.kind == 'pending_off' %}Time off waiting{% elif r.kind == 'none' %}{% if r.scheduled and r.date == today %}Not clocked in yet{% elif r.scheduled %}Scheduled{% else %}Not scheduled{% endif %}{% endif %}</td>
             <td class="tc-sub">{% if r.holiday_hours %}<span class="badge text-bg-success">holiday paid</span>{% elif rep.profile.is_hourly and r.holiday and r.hp %}<span class="badge text-bg-light">not paid</span>{% elif r.needs and r.holiday %}<span class="badge text-bg-warning">decide</span>{% endif %}</td>
             <td class="text-end">{% if r.off_hours %}{{ r.off_hours|hrs }} h{% elif r.holiday_hours %}{{ r.holiday_hours|hrs }} h{% endif %}</td>
             {% endif %}
@@ -67,6 +67,7 @@
         </tbody>
     </table>
     </div>
+    {% if rep.late_count %}<div class="tc-sub mt-2">{{ rep.late_count }} late arrival{{ rep.late_count|pluralize }} this period.</div>{% endif %}
     {% if rep.profile.is_hourly %}<div class="tc-sub mt-2">Worked {{ rep.worked_hours|hrs }} h · vacation and sick {{ rep.off_hours|hrs }} h · holiday {{ rep.holiday_hours|hrs }} h. Lunch is already taken out.</div>{% endif %}
 </div></div>
 {% empty %}

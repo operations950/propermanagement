@@ -35,7 +35,7 @@ COMPLETE_STATUSES = [
 # so a ticket matching more than one condition (e.g. blocked AND overdue
 # has its own bucket, but "urgent AND delayed" needs a tiebreak) sorts
 # where it matters most.
-_OFF_TRACK_RANK = {'blocked_overdue': 0, 'overdue': 1, 'blocked': 2, 'delayed': 3, 'urgent': 4}
+_OFF_TRACK_RANK = {'overdue': 1, 'delayed': 3, 'urgent': 4}
 
 
 def off_track_tickets(now=None):
@@ -58,13 +58,8 @@ def off_track_tickets(now=None):
     rows = []
     for t in qs:
         is_overdue = bool(t.due_date and timezone.localtime(t.due_date).date() < today)
-        is_blocked = t.status == Ticket.Status.BLOCKED
-        if is_blocked and is_overdue:
-            reason, since = 'blocked_overdue', t.due_date
-        elif is_overdue:
+        if is_overdue:
             reason, since = 'overdue', t.due_date
-        elif is_blocked:
-            reason, since = 'blocked', t.status_changed_at or t.created_at
         elif t.delayed:
             reason, since = 'delayed', t.status_changed_at or t.updated_at
         elif t.priority == Priority.URGENT:
@@ -412,11 +407,7 @@ def gone_quiet(now=None):
     rows = []
     for t in qs:
         reasons = []
-        if t.status == Ticket.Status.BLOCKED:
-            since = t.status_changed_at or t.created_at
-            if since <= blocked_cutoff:
-                reasons.append({'reason': 'blocked_long', 'since': since})
-        elif t.last_activity_at <= quiet_cutoff and t.due_date and t.due_date <= quiet_due_within_cutoff:
+        if t.status != Ticket.Status.BLOCKED and t.last_activity_at <= quiet_cutoff and t.due_date and t.due_date <= quiet_due_within_cutoff:
             reasons.append({'reason': 'no_activity', 'since': t.last_activity_at})
 
         if t.assignment_source == Ticket.AssignmentSource.AUTO and t.assigned_staff_id and not t.viewed_by_assignee:

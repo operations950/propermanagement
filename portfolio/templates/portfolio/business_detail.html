@@ -27,34 +27,21 @@
                 {% if tasks %}
                 <div class="list-group list-group-flush mb-3">
                 {% for t in tasks %}
-                    <div class="list-group-item d-flex justify-content-between align-items-start gap-2 px-0">
-                        <form method="post" class="d-flex align-items-start gap-2" style="min-width: 0;">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="toggle_task">
-                            <input type="hidden" name="task_id" value="{{ t.pk }}">
-                            <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent mt-1" title="{% if t.status == 'done' %}Reopen{% else %}Mark done{% endif %}">
-                                <i data-lucide="{% if t.status == 'done' %}check-circle-2{% else %}circle{% endif %}" class="icon" style="color: {% if t.status == 'done' %}var(--status-good, #2e7d32){% else %}var(--ink-muted){% endif %};"></i>
-                            </button>
-                        </form>
+                    <div class="list-group-item d-flex align-items-start gap-2 px-0">
+                        {% if t.status == 'done' %}
+                        <form method="post" class="mt-1">{% csrf_token %}<input type="hidden" name="action" value="toggle_task"><input type="hidden" name="task_id" value="{{ t.pk }}">
+                            <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent" title="Reopen"><i data-lucide="check-circle-2" class="icon" style="color: var(--status-good, #2e7d32);"></i></button></form>
+                        {% else %}
+                        <button type="button" class="btn btn-sm p-0 border-0 bg-transparent mt-1" title="Mark done" data-close-task="{{ t.pk }}" data-close-title="{{ t.title }}"><i data-lucide="circle" class="icon" style="color: var(--ink-muted);"></i></button>
+                        {% endif %}
                         <div style="min-width: 0; flex: 1;">
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <span class="fw-medium" style="{% if t.status == 'done' %}text-decoration: line-through; color: var(--ink-muted);{% endif %}">{{ t.title }}</span>
-                                {% if t.category %}<span class="badge rounded-pill bg-light text-dark border">{{ t.category.name }}</span>{% endif %}
-                                {% if t.priority == 'urgent' %}<span class="badge" style="background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
-                                {% if t.amount %}<span class="small" style="color: var(--ink-muted);">${{ t.amount }}</span>{% endif %}
-                                {% if business.custom_field_label and t.custom_field_value %}<span class="small" style="color: var(--ink-muted);">{{ business.custom_field_label }}: {{ t.custom_field_value }}</span>{% endif %}
+                            <div class="d-flex justify-content-between gap-3">
+                                <a href="{% url 'portfolio_task_detail' business.slug t.pk %}" class="fw-medium text-decoration-none text-truncate" style="color: var(--ink-primary);">{{ t.title }}{% if t.amount %} <span class="fw-normal" style="color: var(--ink-muted);">(${{ t.amount }})</span>{% endif %}</a>
+                                {% if t.status == 'open' and t.due_date %}<span class="text-nowrap small" style="color: {% if t.due_date < today %}var(--status-critical); font-weight: 600;{% else %}var(--ink-muted);{% endif %}">{{ t.due_date|date:"M j" }}</span>{% endif %}
                             </div>
-                            {% if t.notes %}<div class="small" style="color: var(--ink-muted);">{{ t.notes }}</div>{% endif %}
-                            {% if t.due_date %}
-                            <div class="small" style="color: {% if t.due_date < today and t.status == 'open' %}var(--status-critical);{% else %}var(--ink-muted);{% endif %}">Due {{ t.due_date|date:"M j, Y" }}</div>
-                            {% endif %}
+                            {% if t.status == 'done' and t.closing_status %}<div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">Closed {{ t.completed_at|date:"M j" }} &middot; {{ t.closing_status|truncatechars:150 }}</div>
+                            {% elif t.latest_update_body %}<div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ t.latest_update_at|date:"M j" }} &middot; {{ t.latest_update_body|truncatechars:150 }}</div>{% endif %}
                         </div>
-                        <form method="post" onsubmit="return confirm('Delete this task?');">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="delete_task">
-                            <input type="hidden" name="task_id" value="{{ t.pk }}">
-                            <button type="submit" class="btn btn-sm btn-link text-danger p-0"><i data-lucide="trash-2" class="icon"></i></button>
-                        </form>
                     </div>
                 {% endfor %}
                 </div>
@@ -223,5 +210,21 @@
     freq.addEventListener('change', sync);
     sync();
 })();
+</script>
+<div class="modal fade" id="closeModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">{% csrf_token %}
+    <input type="hidden" name="action" value="toggle_task"><input type="hidden" name="task_id" id="closeTaskId">
+    <div class="modal-header"><h5 class="modal-title">Closing status</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body"><div class="fw-semibold mb-2" id="closeTaskTitle"></div><textarea name="closing_status" rows="3" class="form-control" placeholder="How did it end? For example: Paid on Dec 12, confirmation 88213" required></textarea>
+        <div class="small text-muted mt-2">A task can't be marked done without one. It shows in the Done list.</div></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Mark done</button></div>
+</form></div></div>
+<script>
+document.querySelectorAll('[data-close-task]').forEach(function (b) {
+    b.addEventListener('click', function () {
+        document.getElementById('closeTaskId').value = b.dataset.closeTask;
+        document.getElementById('closeTaskTitle').textContent = b.dataset.closeTitle;
+        new bootstrap.Modal(document.getElementById('closeModal')).show();
+    });
+});
 </script>
 {% endblock %}

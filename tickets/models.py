@@ -348,7 +348,7 @@ class Ticket(models.Model):
         OPEN = 'open', 'Open'
         ASSIGNED = 'assigned', 'Assigned'
         IN_PROGRESS = 'in_progress', 'In progress'
-        BLOCKED = 'blocked', 'Blocked'
+        BLOCKED = 'blocked', 'Waiting on an earlier step'     # only ever set by a task package for a step whose earlier step is not done yet
         UPCOMING = 'upcoming', 'Upcoming'
         # Set only by the public vendor-completion link (vendorportal.views) —
         # an outside party can never set COMPLETED directly. Deliberately in
@@ -365,7 +365,7 @@ class Ticket(models.Model):
     # Statuses that require a stated reason at the form/view layer (not DB-enforced, matching the
     # existing cancelled_reason convention which also isn't DB-enforced). Deferred is deliberately
     # NOT here — it's a due-date change, not a reason, see ticket_set_status's new_due_date handling.
-    REASON_REQUIRED_STATUSES = ['blocked', 'skipped', 'not_applicable']
+    REASON_REQUIRED_STATUSES = ['skipped', 'not_applicable']
 
     # Statuses a package step must reach before dependents blocked on it are released — see
     # tickets.services.package_engine.unblock_dependents.
@@ -376,6 +376,12 @@ class Ticket(models.Model):
     # include cancelled/skipped/not_applicable: those are "stopped," not "finished," and
     # shouldn't count toward the owner dashboard's "closed today" panel. See save() below.
     TRUE_COMPLETION_STATUSES = ['completed', 'verified']
+
+    @classmethod
+    def selectable_statuses(cls):
+        """The statuses a person can pick or filter by. "Waiting on an earlier step" (BLOCKED) is set by a task package, never by hand, and is
+        not offered as a choice; the "Active" filter still includes those tickets."""
+        return [(v, l) for v, l in cls.Status.choices if v != cls.Status.BLOCKED]
 
     class AssignmentSource(models.TextChoices):
         MANUAL = 'manual', 'Manual'

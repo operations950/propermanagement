@@ -8,7 +8,7 @@ POLICY_START = date(2026, 10, 26)       # the policy begins with the pay period 
 PAY_ANCHOR = date(2026, 10, 12)         # a pay period starts on this Monday and every 14 days after it
 DAY_HOURS = 8                           # a vacation day is eight hours
 YEAR_HOURS = 2080                       # a full-time year: 40 hours x 52 weeks
-LATE_GRACE_MINUTES = 5
+LATE_GRACE_MINUTES = 10      # a clock-in more than this many minutes after the scheduled start is late
 
 WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 

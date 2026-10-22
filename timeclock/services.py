@@ -255,10 +255,12 @@ class PeriodReport:
         self.blockers = []
         for d in daterange(start, self.end):
             row = {'date': d, 'punch': punches.get(d), 'kind': 'none', 'worked_min': 0, 'off_hours': Decimal(0), 'holiday_hours': Decimal(0),
-                   'holiday': policy.holiday_name(d), 'hp': hp.get(d), 'off': None, 'needs': ''}
+                   'holiday': policy.holiday_name(d), 'hp': hp.get(d), 'off': None, 'needs': '', 'late': 0, 'scheduled': roster.scheduled(profile, d)}
             punch = row['punch']
             kind, obj = roster.status(profile, d)
             if punch:
+                minutes = late_minutes(punch, profile)
+                row['late'] = minutes if roster.scheduled(profile, d) and minutes > policy.LATE_GRACE_MINUTES else 0
                 row['worked_min'] = punch.minutes or 0
                 row['kind'] = 'worked' if punch.clock_out else ('in' if d >= self.today else 'open')
                 if row['kind'] == 'open':
@@ -298,6 +300,7 @@ class PeriodReport:
             paid = worked_h + off + hol
             self.weeks.append({'rows': rows, 'worked_min': worked, 'worked_h': worked_h, 'off_hours': off, 'holiday_hours': hol, 'paid': paid, 'over': paid > 40,
                                'start': rows[0]['date'], 'end': rows[-1]['date']})
+        self.late_count = sum(1 for r in self.rows if r['late'])
         self.worked_min = sum(w['worked_min'] for w in self.weeks)
         self.off_hours = sum((w['off_hours'] for w in self.weeks), Decimal(0))
         self.holiday_hours = sum((w['holiday_hours'] for w in self.weeks), Decimal(0))
@@ -418,9 +421,11 @@ def today_board(profiles, now=None):
     for p in profiles:
         kind, obj = roster.status(p, today)
         punch = punches.get(p.id)
-        row = {'profile': p, 'kind': kind, 'punch': punch, 'state': '', 'late': 0}
+        row = {'profile': p, 'kind': kind, 'punch': punch, 'state': '', 'late': 0, 'late_in': 0}
         if punch:
             row['state'] = 'in' if not punch.clock_out else 'done'
+            minutes = late_minutes(punch, p)
+            row['late_in'] = minutes if minutes > policy.LATE_GRACE_MINUTES else 0
         elif kind == 'working':
             start = local_dt(today, p.day_start)
             row['state'] = 'not_in'
@@ -438,6 +443,43 @@ def today_board(profiles, now=None):
     return board
 
 
+def late_minutes(punch, profile):
+    """Whole minutes between the scheduled start and the clock-in (negative when early)."""
+    start = local_dt(punch.day, profile.day_start)
+    return int((punch.clock_in - start).total_seconds() // 60)
+
+
+def is_late(punch, profile):
+    """Late means more than LATE_GRACE_MINUTES after the scheduled start: 9:10 is fine for a 9:00 start, 9:11 is late."""
+    return late_minutes(punch, profile) > policy.LATE_GRACE_MINUTES
+
+
+def late_report(profile, today=None):
+    """How often someone clocked in late on a day they were scheduled: this pay period, the last 30 days, and all time (since the clock counts for
+    them), plus the last 30 days' late days, newest first."""
+    today = today or timezone.localdate()
+    start = tracking_from(profile)
+    out = {'period': 0, 'd30': 0, 'all': 0, 'items': []}
+    if start > today:
+        return out
+    roster = Roster([profile], start, today)
+    period_start = policy.pay_period(today)[0]
+    since30 = today - timedelta(days=29)
+    for p in Punch.objects.filter(profile=profile, day__range=(start, today)).order_by('-day'):
+        if not roster.scheduled(profile, p.day):
+            continue
+        minutes = late_minutes(p, profile)
+        if minutes <= policy.LATE_GRACE_MINUTES:
+            continue
+        out['all'] += 1
+        if p.day >= period_start:
+            out['period'] += 1
+        if p.day >= since30:
+            out['d30'] += 1
+            out['items'].append({'day': p.day, 'started': p.clock_in, 'minutes': minutes})
+    return out
+
+
 def week_strip(profile, today):
     """Monday to Sunday for one person: what each day is."""
     start = policy.week_start(today)
@@ -447,7 +489,9 @@ def week_strip(profile, today):
     days = []
     for d in daterange(start, end):
         kind, obj = roster.status(profile, d)
-        days.append({'date': d, 'kind': kind, 'today': d == today, 'punch': punches.get(d), 'holiday': policy.holiday_name(d)})
+        punch = punches.get(d)
+        late = late_minutes(punch, profile) if punch and roster.scheduled(profile, d) else 0
+        days.append({'date': d, 'kind': kind, 'today': d == today, 'punch': punch, 'holiday': policy.holiday_name(d), 'late': late if late > policy.LATE_GRACE_MINUTES else 0})
     return days
 
 
@@ -502,7 +546,7 @@ def attendance(profile, today, days=30):
         if punch:
             worked += 1
             remote += punch.remote
-            if punch.clock_in > local_dt(d, profile.day_start) + timedelta(minutes=policy.LATE_GRACE_MINUTES):
+            if roster.scheduled(profile, d) and is_late(punch, profile):
                 late += 1
         if kind in ('working', 'pending_off', 'pending_drop'):
             scheduled += 1

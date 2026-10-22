@@ -26,8 +26,8 @@
     <div class="tc-row py-2">
         <span class="fw-semibold">{{ row.profile.name }}{% if row.kind == 'working' or row.punch %} <span class="tc-sub fw-normal">{{ row.profile.day_start|time:"g:i" }}–{{ row.profile.day_end|time:"g:i" }}</span>{% endif %}</span>
         <span>
-            {% if row.state == 'in' %}<span class="badge text-bg-success">In</span> <span class="tc-sub">since {{ row.punch.clock_in|time:"g:i A" }}{% if row.punch.in_remote %} · remote{% endif %}</span>
-            {% elif row.state == 'done' %}<span class="badge text-bg-secondary">Done</span> <span class="tc-sub">{{ row.punch.minutes|mins }}</span>
+            {% if row.state == 'in' %}<span class="badge text-bg-success">In</span> <span class="tc-sub">since {{ row.punch.clock_in|time:"g:i A" }}{% if row.punch.in_remote %} · remote{% endif %}</span>{% if row.late_in %} <span class="badge text-bg-warning">{{ row.late_in }} min late</span>{% endif %}
+            {% elif row.state == 'done' %}<span class="badge text-bg-secondary">Done</span> <span class="tc-sub">{{ row.punch.minutes|mins }}</span>{% if row.late_in %} <span class="badge text-bg-warning">{{ row.late_in }} min late</span>{% endif %}
             {% elif row.state == 'not_in' %}{% if row.late %}<span class="badge text-bg-danger">Not in · {{ row.late }} min late</span>{% else %}<span class="badge text-bg-light">Not in yet</span>{% endif %}
             {% elif row.state == 'vacation' %}<span class="badge" style="background: var(--accent-contrast);">Vacation</span>
             {% elif row.state == 'off' %}<span class="badge text-bg-secondary">Off</span>
@@ -90,6 +90,23 @@
     {% empty %}
     <div class="tc-sub py-3">Nothing waiting. You are caught up.</div>
     {% endfor %}
+</div></div>
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="tc-label mb-1">Late arrivals</div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0 tabular-nums">
+        <thead><tr><th></th><th class="text-end">This period</th><th class="text-end">30 days</th><th class="text-end">All time</th></tr></thead>
+        <tbody>{% for lr in late_rows %}
+        <tr><td class="fw-semibold">{{ lr.profile.first_name }}</td>
+            <td class="text-end">{% if lr.r.period %}<span class="badge text-bg-warning">{{ lr.r.period }}</span>{% else %}0{% endif %}</td>
+            <td class="text-end">{% if lr.r.d30 %}<span class="badge text-bg-warning">{{ lr.r.d30 }}</span>{% else %}0{% endif %}</td>
+            <td class="text-end">{{ lr.r.all }}</td></tr>{% endfor %}
+        </tbody>
+    </table></div>
+    {% for lr in late_rows %}{% if lr.r.items %}
+    <details class="mt-2"><summary class="tc-sub" style="cursor: pointer;">{{ lr.profile.first_name }}, last 30 days</summary>
+        <table class="table table-sm mb-0 mt-1 tabular-nums"><thead><tr><th>Day</th><th>Started</th><th class="text-end">Late by</th></tr></thead>
+        <tbody>{% for it in lr.r.items %}<tr><td>{{ it.day|short_date }}</td><td>{{ it.started|time:"g:i A" }}</td><td class="text-end">{{ it.minutes }} min</td></tr>{% endfor %}</tbody></table>
+    </details>{% endif %}{% endfor %}
 </div></div>
 {% if not office_set %}<div class="tc-sub mb-4"><i data-lucide="wifi" class="icon"></i> The office connection is not set, so nobody is marked remote yet. <a href="{% url 'timeclock_setup' %}">Set it from the office</a>.</div>{% endif %}
 {% endif %}

@@ -95,10 +95,8 @@
                 </div>
                 <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ row.ticket.property.name|default:'—' }} · {{ row.ticket.get_assigned_role_display|default:'Unrouted' }}</div>
             </div>
-            <span class="badge flex-shrink-0" style="{% if row.reason == 'blocked_overdue' or row.reason == 'overdue' %}background: var(--priority-urgent); color: #fff;{% elif row.reason == 'blocked' %}background: color-mix(in srgb, var(--status-warning) 20%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% elif row.reason == 'delayed' %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: var(--priority-urgent); color: #fff;{% endif %}">
-                {% if row.reason == 'blocked_overdue' %}Blocked & {{ row.days }}d late
-                {% elif row.reason == 'overdue' %}{{ row.days }}d late
-                {% elif row.reason == 'blocked' %}{{ row.days }}d blocked
+            <span class="badge flex-shrink-0" style="{% if row.reason == 'overdue' %}background: var(--priority-urgent); color: #fff;{% elif row.reason == 'delayed' %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: var(--priority-urgent); color: #fff;{% endif %}">
+                {% if row.reason == 'overdue' %}{{ row.days }}d late
                 {% elif row.reason == 'delayed' %}Delayed {{ row.days }}d
                 {% else %}Urgent{% endif %}
             </span>

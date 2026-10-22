@@ -179,6 +179,7 @@ MIDDLEWARE = [
     'core.middleware.OwnerWallMiddleware',
     'timeclock.middleware.PolicyWallMiddleware',
     'core.middleware.TimezoneMiddleware',
+    'tickets.middleware.TicketFilterMemoryMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.NoStoreHtmlMiddleware',

@@ -17,6 +17,7 @@ the shared site nav; this only exists at /portfolio/ for whoever holds
 that flag."""
 import zlib
 
+from django.conf import settings
 from django.db import models
 
 from core.models import StaffProfile
@@ -169,6 +170,7 @@ class BizTask(models.Model):
         max_length=200, blank=True, help_text='Shown/labeled only when business.custom_field_label is set.',
     )
     completed_at = models.DateTimeField(null=True, blank=True)
+    closing_status = models.TextField(blank=True, help_text='How it ended. Required when the task is marked done.')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -188,3 +190,17 @@ class BizTask(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class BizTaskUpdate(models.Model):
+    """A timestamped note typed on a task. Only what a person types: nothing is added automatically when a task changes."""
+    task = models.ForeignKey(BizTask, on_delete=models.CASCADE, related_name='updates')
+    body = models.TextField()
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.task} {self.created_at:%Y-%m-%d %H:%M}'

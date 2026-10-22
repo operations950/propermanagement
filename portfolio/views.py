@@ -8,16 +8,24 @@ later be opened to a helper without touching this file again."""
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models import OuterRef, Prefetch, Subquery
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from tickets.models import Priority, Ticket
+from tickets.models import Priority, Ticket, TicketStatusNote
 from tickets.views import OPEN_STATUSES
 
-from .models import BizRecurringRule, BizTask, Business, BusinessCategory, Frequency
+from .models import BizRecurringRule, BizTask, BizTaskUpdate, Business, BusinessCategory, Frequency
 from .services.generation import preview_next_occurrences
+
+
+def _tasks_with_latest_update():
+    """BizTask rows with the newest typed update (its text and time) on each, for the lists."""
+    sq = BizTaskUpdate.objects.filter(task=OuterRef('pk')).order_by('-created_at')
+    return BizTask.objects.select_related('category').annotate(
+        latest_update_body=Subquery(sq.values('body')[:1]), latest_update_at=Subquery(sq.values('created_at')[:1]))
 
 
 def _staff_profile(request):
@@ -46,9 +54,11 @@ def dashboard(request):
     now = timezone.now()
     today = timezone.localdate()
 
+    _note_sq = TicketStatusNote.objects.filter(ticket=OuterRef('pk')).order_by('-created_at')
     real_estate_tickets = list(
         Ticket.objects.filter(assigned_staff=profile, status__in=OPEN_STATUSES)
         .select_related('property').order_by('due_date')
+        .annotate(latest_note_body=Subquery(_note_sq.values('body')[:1]), latest_note_at=Subquery(_note_sq.values('created_at')[:1]))
     )
     real_estate_box = {
         'name': 'Real Estate',
@@ -65,13 +75,14 @@ def dashboard(request):
     }
 
     business_boxes = []
-    for business in Business.objects.filter(is_active=True).prefetch_related('tasks'):
+    for business in Business.objects.filter(is_active=True).prefetch_related(Prefetch('tasks', queryset=_tasks_with_latest_update())):
         if not _can_access_business(profile, business):
             continue
         open_tasks = [t for t in business.tasks.all() if t.status == BizTask.Status.OPEN]
         open_tasks.sort(key=lambda t: (t.due_date is None, t.due_date))
         business_boxes.append({
             'name': business.name,
+            'slug': business.slug,
             'icon': business.icon or 'briefcase',
             'color': business.color,
             'url': reverse('portfolio_business_detail', args=[business.slug]),
@@ -123,10 +134,16 @@ def business_detail(request, slug):
             if task.status == BizTask.Status.DONE:
                 task.status = BizTask.Status.OPEN
                 task.completed_at = None
+                task.save(update_fields=['status', 'completed_at'])
             else:
+                closing = request.POST.get('closing_status', '').strip()
+                if not closing:
+                    messages.error(request, 'Type a closing status to mark a task done.')
+                    return redirect('portfolio_business_detail', slug=slug)
                 task.status = BizTask.Status.DONE
                 task.completed_at = timezone.now()
-            task.save(update_fields=['status', 'completed_at'])
+                task.closing_status = closing
+                task.save(update_fields=['status', 'completed_at', 'closing_status'])
 
         elif action == 'delete_task':
             BizTask.objects.filter(pk=request.POST.get('task_id'), business=business).delete()
@@ -177,7 +194,7 @@ def business_detail(request, slug):
         return redirect('portfolio_business_detail', slug=slug)
 
     show = request.GET.get('show', 'open')
-    tasks = business.tasks.select_related('category').all()
+    tasks = _tasks_with_latest_update().filter(business=business)
     if show == 'open':
         tasks = tasks.filter(status=BizTask.Status.OPEN)
     elif show == 'done':
@@ -204,5 +221,73 @@ def business_detail(request, slug):
         'priority_choices': Priority.choices,
         'frequency_choices': Frequency.choices,
         'today': timezone.localdate(),
+        'is_owner': profile.is_portfolio_owner if profile else False,
+    })
+
+
+@login_required
+def task_detail(request, slug, pk):
+    """One task: its details, the updates typed on it (newest first), and marking it done with a required closing status."""
+    business = get_object_or_404(Business, slug=slug, is_active=True)
+    profile = _staff_profile(request)
+    if not _can_access_business(profile, business):
+        raise PermissionDenied("You don't have access to this business.")
+    task = get_object_or_404(BizTask.objects.select_related('category'), pk=pk, business=business)
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add_update':
+            body = request.POST.get('body', '').strip()
+            if body:
+                BizTaskUpdate.objects.create(task=task, body=body, created_by=request.user)
+            else:
+                messages.error(request, 'Type something to add an update.')
+        elif action in ('edit_update', 'delete_update'):
+            update = get_object_or_404(BizTaskUpdate, pk=request.POST.get('update_id'), task=task)
+            if update.created_by_id != request.user.pk and not profile.is_portfolio_owner:
+                raise PermissionDenied("You can only change your own updates.")
+            if action == 'delete_update':
+                update.delete()
+            else:
+                body = request.POST.get('body', '').strip()
+                if body:
+                    update.body = body
+                    update.save(update_fields=['body'])
+        elif action == 'save_task':
+            title = request.POST.get('title', '').strip()
+            if not title:
+                messages.error(request, 'A task needs a title.')
+            else:
+                task.title = title
+                task.category_id = request.POST.get('category') or None
+                task.priority = request.POST.get('priority') or task.priority
+                task.due_date = request.POST.get('due_date') or None
+                task.amount = request.POST.get('amount') or None
+                task.custom_field_value = request.POST.get('custom_field_value', task.custom_field_value).strip()
+                task.notes = request.POST.get('notes', '').strip()
+                task.save()
+                messages.success(request, 'Saved.')
+        elif action == 'close':
+            closing = request.POST.get('closing_status', '').strip()
+            if not closing:
+                messages.error(request, 'Type a closing status to mark a task done.')
+            else:
+                task.status = BizTask.Status.DONE
+                task.completed_at = timezone.now()
+                task.closing_status = closing
+                task.save(update_fields=['status', 'completed_at', 'closing_status'])
+        elif action == 'reopen':
+            task.status = BizTask.Status.OPEN
+            task.completed_at = None
+            task.save(update_fields=['status', 'completed_at'])
+        elif action == 'delete_task':
+            task.delete()
+            messages.success(request, 'Task deleted.')
+            return redirect('portfolio_business_detail', slug=slug)
+        return redirect('portfolio_task_detail', slug=slug, pk=pk)
+
+    return render(request, 'portfolio/task_detail.html', {
+        'business': business, 'task': task, 'updates': task.updates.select_related('created_by'),
+        'categories': business.categories.all(), 'priority_choices': Priority.choices, 'today': timezone.localdate(),
         'is_owner': profile.is_portfolio_owner if profile else False,
     })

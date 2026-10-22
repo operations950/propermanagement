@@ -25,9 +25,12 @@
             {% if real_estate_box.top %}
             <div class="list-group list-group-flush">
             {% for t in real_estate_box.top %}
-                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-start gap-2" style="text-decoration: none;">
-                    <span class="fw-medium text-truncate" style="color: var(--ink-primary); min-width: 0;">{{ t.title|truncatechars:48 }}</span>
-                    <span class="text-nowrap text-end" style="font-size: 0.8rem; color: var(--ink-muted);">{% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}—{% endif %}</span>
+                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3" style="text-decoration: none;">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <span class="fw-medium text-truncate" style="color: var(--ink-primary); min-width: 0;">{{ t.title|truncatechars:48 }}</span>
+                        <span class="text-nowrap text-end" style="font-size: 0.8rem; color: var(--ink-muted);">{% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}—{% endif %}</span>
+                    </div>
+                    {% if t.latest_note_body %}<div class="text-truncate" style="font-size: 0.78rem; color: var(--ink-muted);">{{ t.latest_note_at|date:"M j" }} &middot; {{ t.latest_note_body|truncatechars:90 }}</div>{% endif %}
                 </a>
             {% endfor %}
             </div>
@@ -61,10 +64,13 @@
             {% if box.top %}
             <div class="list-group list-group-flush">
             {% for t in box.top %}
-                <div class="list-group-item py-2 px-3 d-flex justify-content-between align-items-start gap-2">
-                    <span class="fw-medium text-truncate" style="color: var(--ink-primary); min-width: 0;">{{ t.title|truncatechars:48 }}{% if t.amount %} <span style="color: var(--ink-muted); font-weight: 400;">(${{ t.amount }})</span>{% endif %}</span>
-                    <span class="text-nowrap text-end" style="font-size: 0.8rem; color: var(--ink-muted);">{% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}—{% endif %}</span>
-                </div>
+                <a href="{% url 'portfolio_task_detail' box.slug t.pk %}" class="list-group-item list-group-item-action py-2 px-3" style="text-decoration: none;">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <span class="fw-medium text-truncate" style="color: var(--ink-primary); min-width: 0;">{{ t.title|truncatechars:48 }}{% if t.amount %} <span style="color: var(--ink-muted); font-weight: 400;">(${{ t.amount }})</span>{% endif %}</span>
+                        <span class="text-nowrap text-end" style="font-size: 0.8rem; color: var(--ink-muted);">{% if t.due_date %}{{ t.due_date|date:"M j" }}{% else %}—{% endif %}</span>
+                    </div>
+                    {% if t.latest_update_body %}<div class="text-truncate" style="font-size: 0.78rem; color: var(--ink-muted);">{{ t.latest_update_at|date:"M j" }} &middot; {{ t.latest_update_body|truncatechars:90 }}</div>{% endif %}
+                </a>
             {% endfor %}
             </div>
             {% else %}

@@ -46,7 +46,7 @@
                 {% if t.delayed %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: color-mix(in srgb, var(--status-warning) 18%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 40%, white);">Delayed</span>{% endif %}
                 {% if t|is_due_today:now %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: color-mix(in srgb, var(--status-good) 20%, white); color: color-mix(in srgb, var(--status-good) 65%, black); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">Due Today</span>{% endif %}
                 {% if t|is_escalated:now %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--status-critical); color: #fff;">Escalated</span>{% endif %}
-                {% if t.status == 'blocked' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: color-mix(in srgb, var(--status-warning) 70%, black); color: #fff;">Blocked</span>{% endif %}
+                {% if t.status == 'blocked' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: color-mix(in srgb, var(--status-warning) 70%, black); color: #fff;">Waiting on an earlier step</span>{% endif %}
                 {% if t.status == 'upcoming' %}<span class="badge bg-light text-dark border flex-shrink-0" style="font-size: 0.7rem;">Upcoming</span>{% endif %}
             </div>
             <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">

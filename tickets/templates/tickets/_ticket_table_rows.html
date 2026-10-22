@@ -9,16 +9,15 @@ names ticket_list's own context already uses, so no renaming needed at
 either call site).
 {% endcomment %}
 <colgroup>
-    <col style="width: 10%;"><col style="width: 14%;"><col style="width: 25%;">
-    <col style="width: 9%;"><col style="width: 10%;"><col style="width: 13%;">
-    <col style="width: 13%;"><col style="width: 6%;">
+    <col style="width: 9%;"><col style="width: 19%;"><col style="width: 38%;">
+    <col style="width: 13%;"><col style="width: 21%;">
 </colgroup>
 <thead><tr>
     {% for col in sort_columns %}
     <th class="p-0">
         <a href="{% querystring sort=col.next_sort %}"
            class="d-flex align-items-center gap-1 px-2 py-2 text-decoration-none w-100"
-           style="color: {% if col.is_active %}var(--ink-primary){% else %}var(--ink-secondary){% endif %}; font-weight: {% if col.is_active %}600{% else %}inherit{% endif %};"
+           style="color: {% if col.is_active %}var(--ink-primary){% else %}var(--ink-secondary){% endif %}; font-weight: {% if col.is_active %}600{% else %}inherit{% endif %}; font-size: 0.8rem;"
            title="Sort by {{ col.label }}">
             {{ col.label }}
             <i data-lucide="{% if col.is_active %}{% if col.is_desc %}chevron-down{% else %}chevron-up{% endif %}{% else %}chevrons-up-down{% endif %}"
@@ -26,33 +25,19 @@ either call site).
         </a>
     </th>
     {% endfor %}
-    <th></th>
 </tr></thead>
 {% for t in tickets %}
-    <tbody data-row-edit>
+    <tbody style="font-size: 0.875rem;">
         <tr>
-            <td><span class="badge" style="{{ t.assigned_role|department_badge_style }}">{{ t.get_assigned_role_display|default:'Unassigned' }}</span></td>
+            <td{% if t.priority == 'urgent' %} class="fw-bold"{% endif %}>{{ t.get_priority_display }}</td>
             <td class="text-truncate">{% if t.property %}{{ t.property.name }}{% if t.unit %} <span class="text-muted small">— {{ t.unit.label }}</span>{% endif %}{% else %}<span class="text-warning">⚠ none</span>{% endif %}</td>
             <td class="text-truncate fw-medium">
                 <a href="{% url 'ticket_detail' t.pk %}" class="text-decoration-none">{{ t.title }}</a>
-                {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
+                {% if t.status in complete_statuses and t.closing_body %}<div class="text-truncate fw-normal" style="font-size: 0.75rem; color: var(--ink-muted);">Closed {{ t.closing_at|date:"M j" }} · {{ t.closing_body|striptags|truncatechars:150 }}</div>
+                {% elif t.latest_note_body %}<div class="text-truncate fw-normal" style="font-size: 0.75rem; color: var(--ink-muted);">{{ t.latest_note_at|date:"M j" }} · {{ t.latest_note_body|striptags|truncatechars:150 }}</div>{% endif %}
             </td>
             <td class="text-nowrap {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}">{{ t.due_date|date:'M j, Y'|default:'—' }}</td>
-            <td><span class="badge rounded-pill" style="{{ t|status_badge_style }}">{{ t.get_status_display }}</span></td>
-            <td class="text-truncate">{{ t.assigned_staff|default:'—' }}</td>
-            <td class="text-truncate">{{ t.assigned_contact|default:'—' }}</td>
-            <td class="text-nowrap">
-                <button type="button" class="btn btn-link btn-sm p-0 me-2" data-row-edit-toggle title="Edit"><i data-lucide="pencil" class="icon"></i></button>
-                <form method="post" action="{% url 'ticket_delete' t.pk %}" class="d-inline"
-                      onsubmit="return confirm('This will permanently delete this ticket AND all of its attachments, notes, and history — none of it can be recovered. Delete &quot;{{ t.title|escapejs }}&quot;?');">
-                    {% csrf_token %}
-                    <input type="hidden" name="next_qs" value="{{ request.GET.urlencode }}">
-                    <button class="btn btn-link btn-sm text-danger p-0" type="submit" title="Delete"><i data-lucide="trash-2" class="icon"></i></button>
-                </form>
-            </td>
-        </tr>
-        <tr data-row-edit-panel hidden>
-            <td colspan="8">{% include 'tickets/_ticket_row_edit_fields.html' with t=t %}</td>
+            <td class="text-truncate">{% if t.assigned_staff %}{{ t.assigned_staff }}{% endif %}{% if t.assigned_staff and t.assigned_contact %}, {% endif %}{% if t.assigned_contact %}<span title="Outside contractor" style="display: inline-block; width: 0.55em; height: 0.55em; border: 1.5px solid currentColor; border-radius: 50%; margin-right: 0.35em; vertical-align: 0.05em;"></span>{{ t.assigned_contact }}{% endif %}{% if not t.assigned_staff and not t.assigned_contact %}<span class="text-muted">—</span>{% endif %}</td>
         </tr>
     </tbody>
-{% empty %}<tbody><tr><td colspan="8" class="text-muted text-center py-4"><i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>No tickets.</td></tr></tbody>{% endfor %}
+{% empty %}<tbody><tr><td colspan="5" class="text-muted text-center py-4"><i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>No tickets.</td></tr></tbody>{% endfor %}

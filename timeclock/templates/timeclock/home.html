@@ -109,7 +109,7 @@
             <div class="tc-label">This pay period</div>
             <div class="tc-big mt-1">{{ report.worked_min|mins }}</div>
             <div class="tc-sub">{% span period_start period_end %}{% if profile.is_hourly and report.paid != report.worked_hours %} · {{ report.paid|hrs }} h paid{% endif %}</div>
-            {% if attendance %}<div class="tc-sub mt-1">30 days: {{ attendance.worked }} of {{ attendance.scheduled }} days{% if attendance.late %} · {{ attendance.late }} late{% endif %}{% if attendance.remote %} · {{ attendance.remote }} remote{% endif %}{% if attendance.missed %} · {{ attendance.missed }} missed{% endif %}</div>{% endif %}
+            {% if attendance %}<div class="tc-sub mt-1">30 days: {{ attendance.worked }} of {{ attendance.scheduled }} days{% if attendance.remote %} · {{ attendance.remote }} remote{% endif %}{% if attendance.missed %} · {{ attendance.missed }} missed{% endif %}</div>{% endif %}
         </div></div>
     </div>
     <div class="col-12 col-md-4">
@@ -141,11 +141,23 @@
         <div class="tc-day {% if d.today %}today{% endif %} {% if d.kind == 'working' or d.kind == 'pending_add' %}on{% elif d.kind == 'vacation' %}vac{% elif d.kind == 'closed' %}closed{% endif %}">
             <div class="tc-sub">{{ d.date|date:"D" }}</div>
             <div class="d">{{ d.date|date:"j" }}</div>
+            {% if d.late %}<div class="fw-semibold" style="color: #8a5a00;">late</div>{% endif %}
             <div>{% if d.kind == 'working' %}{{ profile.day_start|time:"g" }}–{{ profile.day_end|time:"g" }}{% elif d.kind == 'vacation' %}Vacation{% elif d.kind == 'closed' %}Closed{% elif d.kind == 'pending_add' %}<span class="tc-sub">asked</span>{% elif d.kind == 'pending_drop' %}<span class="tc-sub">asked off</span>{% elif d.kind == 'pending_off' %}<span class="tc-sub">asked off</span>{% else %}<span class="tc-sub">—</span>{% endif %}</div>
             {% if d.punch.clock_out %}<div class="tc-sub">{{ d.punch.minutes|mins }}</div>{% endif %}
         </div>
         {% endfor %}
     </div>
+</div></div>
+
+{# ---------------- late arrivals ---------------- #}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="tc-label">Late arrivals</div>
+    <div class="row g-2 mt-1">
+        <div class="col-4"><div class="p-2 rounded" style="background: var(--surface-page);"><div class="tc-big" style="font-size: 1.6rem;">{{ late.period }}</div><div class="tc-sub">this pay period</div></div></div>
+        <div class="col-4"><div class="p-2 rounded" style="background: var(--surface-page);"><div class="tc-big" style="font-size: 1.6rem;">{{ late.d30 }}</div><div class="tc-sub">last 30 days</div></div></div>
+        <div class="col-4"><div class="p-2 rounded" style="background: var(--surface-page);"><div class="tc-big" style="font-size: 1.6rem;">{{ late.all }}</div><div class="tc-sub">all time</div></div></div>
+    </div>
+    <div class="tc-sub mt-2">Late means more than 10 minutes after your start time.</div>
 </div></div>
 
 {# ---------------- requests ---------------- #}
@@ -183,7 +195,7 @@
             <tr>
                 <td>{{ r.date|short_date }}</td>
                 {% if r.punch %}
-                <td>{{ r.punch.clock_in|time:"g:i A" }}{% if r.punch.in_remote %} <span class="badge text-bg-light">remote</span>{% endif %}</td>
+                <td>{{ r.punch.clock_in|time:"g:i A" }}{% if r.late %} <span class="badge text-bg-warning">{{ r.late }} min late</span>{% endif %}{% if r.punch.in_remote %} <span class="badge text-bg-light">remote</span>{% endif %}</td>
                 <td>{% if r.punch.clock_out %}{{ r.punch.clock_out|time:"g:i A" }}{% elif r.kind == 'open' %}<span class="text-danger">missing</span>{% else %}…{% endif %}</td>
                 <td>{% if r.punch.lunch_minutes is not None %}{% if r.punch.lunch_minutes %}{{ r.punch.lunch_minutes }} min{% else %}none{% endif %}{% endif %}</td>
                 <td class="text-end">{% if r.punch.clock_out %}{{ r.worked_min|mins }}{% endif %}</td>

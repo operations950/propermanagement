@@ -68,7 +68,7 @@ def home(request, profile):
         'remote': not services.at_office(office_ip), 'office_set': services.office_configured(),
         'open_before': services.open_punches(profile, today), 'pto': services.pto(profile, today),
         'week': services.week_strip(profile, today), 'report': report, 'period_start': start, 'period_end': end,
-        'mine': mine, 'decided': decided, 'attendance': services.attendance(profile, today),
+        'mine': mine, 'decided': decided, 'attendance': services.attendance(profile, today), 'late': services.late_report(profile, today),
         'holidays': policy.next_holidays(today, 3), 'team': team, 'lunch_choices': (0, 15, 30, 45, 60, 75, 90),
         'needs_signature': needs_signature(profile),
     })
@@ -78,8 +78,13 @@ def home(request, profile):
 @require_POST
 def clock_in(request, profile):
     try:
-        services.clock_in(profile, _client_ip(request), request.POST.get('reason', ''))
-        messages.success(request, 'Clocked in.')
+        punch = services.clock_in(profile, _client_ip(request), request.POST.get('reason', ''))
+        minutes = services.late_minutes(punch, profile)
+        if minutes > policy.LATE_GRACE_MINUTES:
+            at = timezone.localtime(punch.clock_in)
+            messages.success(request, f'Clocked in at {at:%I:%M %p}'.replace(' 0', ' ', 1) + f'. That is {minutes} minutes after your {policy.clock_label(profile.day_start)} start.')
+        else:
+            messages.success(request, 'Clocked in.')
     except ClockError as e:
         messages.error(request, str(e))
     return redirect(request.POST.get('next') or 'timeclock_home')
@@ -276,6 +281,7 @@ def manage_home(request):
     last_blockers = sum(len(services.PeriodReport(p, last_start, now.date()).blockers) for p in profiles)
     return render(request, 'timeclock/manage.html', {
         'board': services.today_board(profiles, now), 'items': items, 'now': now, 'profiles': profiles,
+        'late_rows': [{'profile': p, 'r': services.late_report(p, now.date())} for p in profiles],
         'last_start': last_start, 'last_end': last_start + timedelta(days=13), 'last_locked': PayPeriodLock.objects.filter(start=last_start).exists(),
         'last_blockers': last_blockers, 'office_set': services.office_configured(),
     })
@@ -316,7 +322,7 @@ def manage_hours(request):
         return response
     blockers = sum(len(r.blockers) for r in reports)
     return render(request, 'timeclock/hours.html', {
-        'reports': reports, 'start': start, 'end': start + timedelta(days=13), 'prev': start - timedelta(days=14), 'next': start + timedelta(days=14),
+        'reports': reports, 'today': today, 'start': start, 'end': start + timedelta(days=13), 'prev': start - timedelta(days=14), 'next': start + timedelta(days=14),
         'is_future': start > today, 'blockers': blockers, 'locked': any(r.locked for r in reports) or PayPeriodLock.objects.filter(start=start).exists(),
         'in_progress': start + timedelta(days=13) >= today,
     })
