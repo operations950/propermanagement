@@ -1,0 +1,13 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Check register - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-0">Check register</h2>
+<div class="text-muted mb-2">{{ assoc.name }} &middot; {{ start|mdate }} to {{ end|mdate }}</div>
+{% include 'accounting/_report_filter.html' with show_start=True %}
+<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+    <thead><tr><th>Date</th><th>Number</th><th>Paid to</th><th>From</th><th>Status</th><th class="ac-num">Amount</th></tr></thead>
+    <tbody>{% for p in payments %}<tr class="{% if p.status == 'void' %}text-muted{% endif %}"><td>{{ p.date|mdate }}</td><td>{{ p.number }}</td><td>{{ p.payee }}</td><td class="small text-muted">{{ p.bank_account.name }}</td><td>{{ p.get_status_display }}{% if p.cleared_on %} {{ p.cleared_on|mdate:'short' }}{% endif %}</td><td class="ac-num">{{ p.amount|plain }}</td></tr>
+    {% empty %}<tr><td colspan="6" class="text-muted p-3">No payments in this period.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr class="fw-bold"><td colspan="5">Total (not counting void)</td><td class="ac-num">{{ total|plain }}</td></tr></tfoot></table></div></div>
+{% endblock %}

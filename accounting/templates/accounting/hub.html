@@ -1,0 +1,19 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Accounting - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="chart-column" class="icon-lg"></i> Accounting</h2>
+<p class="text-muted mb-3">{{ assoc.name }}{% if profile.books_start %} &middot; books begin {{ profile.books_start|mdate }}{% endif %}</p>
+{% for bank in banks %}
+<a class="ac-step" href="{% url 'accounting:bank' assoc.pk bank.pk month|date:'Y-m' %}"><i data-lucide="landmark" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">{{ bank.name }} bank reconciliation</span><span class="small text-muted">{{ month|date:"F Y" }}</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+{% endfor %}
+<a class="ac-step" href="{% url 'accounting:close' assoc.pk month|date:'Y-m' %}"><i data-lucide="check-square" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Close sheet</span><span class="small text-muted">{{ month|date:"F Y" }}</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:charges' assoc.pk %}"><i data-lucide="repeat" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Charges to owners</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:units' assoc.pk %}"><i data-lucide="users" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Units &amp; owners</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:receipt_new' assoc.pk %}"><i data-lucide="hand-coins" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Record an owner's payment</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:bills' assoc.pk %}"><i data-lucide="file-text" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Bills, approvals and checks</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:recurring' assoc.pk %}"><i data-lucide="refresh-cw" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Recurring bills</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:journal' assoc.pk %}"><i data-lucide="book-open" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Journal entries and transfers</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:reports' assoc.pk %}"><i data-lucide="chart-column" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Reports</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+<a class="ac-step" href="{% url 'accounting:settings' assoc.pk %}"><i data-lucide="settings" class="icon ac-ico"></i><span class="fw-semibold flex-grow-1">Settings and documents</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+{% endblock %}

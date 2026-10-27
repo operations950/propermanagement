@@ -1,0 +1,31 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ assoc.name }} - close {{ month|date:"F Y" }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon-lg"></i> {{ assoc.name }}</h2>
+        <div class="small text-muted">{% if sheet.locked %}{{ month|date:"F Y" }} is closed{% else %}Closing {{ month|date:"F Y" }}{% endif %}</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="{% url 'accounting:close' assoc.pk previous|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="{% url 'accounting:close' assoc.pk next|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+{% for i in sheet.items %}
+<a class="ac-step" href="{{ i.url }}">
+    <i data-lucide="{{ i.icon }}" class="icon ac-ico"></i>
+    <span class="flex-grow-1"><span class="fw-semibold">{{ i.title }}</span><br><span class="small text-muted">{{ i.detail }}</span></span>
+    <span class="ac-chip {{ i.status }}">{% if i.status == 'done' %}Complete{% elif i.status == 'attention' %}Needs attention{% else %}Not started{% endif %}</span>
+    <i data-lucide="chevron-right" class="icon text-muted"></i>
+</a>
+{% endfor %}
+<form method="post" class="d-flex flex-wrap gap-2 mt-3 ac-noprint">{% csrf_token %}
+    <button class="btn btn-sm btn-outline-secondary" name="action" value="post_charges"><i data-lucide="receipt" class="icon"></i> Post charges that are due</button>
+    <button class="btn btn-sm btn-outline-secondary" name="action" value="recurring"><i data-lucide="repeat" class="icon"></i> Post recurring bills that are due</button>
+    {% if profile.late_fee_confirmed %}<button class="btn btn-sm btn-outline-secondary" name="action" value="late_fees"><i data-lucide="alarm-clock" class="icon"></i> Charge late fees</button>{% endif %}
+    {% if sheet.locked %}<button class="btn btn-sm btn-outline-secondary" name="action" value="unlock" onclick="return confirm('Open this month again so entries can be posted into it?')"><i data-lucide="lock-open" class="icon"></i> Open the month again</button>
+    {% else %}<button class="btn btn-sm btn-primary" name="action" value="lock" {% if not sheet.can_lock %}disabled{% endif %}><i data-lucide="lock" class="icon"></i> Close {{ month|date:"F" }}</button>{% endif %}
+</form>
+{% endblock %}

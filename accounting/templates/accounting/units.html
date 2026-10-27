@@ -1,0 +1,68 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Units &amp; owners - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="users" class="icon-lg"></i> Units &amp; owners</h2>
+        <div class="small text-muted">{{ rows|length }} unit{{ rows|length|pluralize }}{% if buildings %} &middot; {{ buildings|length }} building{{ buildings|length|pluralize }}{% endif %}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:units_import' assoc.pk %}"><i data-lucide="upload" class="icon"></i> Import owners</a>
+        {% if books_on %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:shares' assoc.pk %}"><i data-lucide="percent" class="icon"></i> Unit shares</a>
+        <a class="btn btn-sm btn-primary" href="{% url 'accounting:receipt_new' assoc.pk %}"><i data-lucide="hand-coins" class="icon"></i> Record a payment</a>{% endif %}
+    </div>
+</div>
+<div class="d-flex flex-wrap gap-2 align-items-center mb-2 ac-noprint">
+    <button class="btn btn-sm btn-dark acf" data-f="all">All {{ rows|length }}</button>
+    <button class="btn btn-sm btn-outline-secondary acf" data-f="owes">Owes {{ counts.owes }}</button>
+    <button class="btn btn-sm btn-outline-secondary acf" data-f="ahead">Paid ahead {{ counts.ahead }}</button>
+    <button class="btn btn-sm btn-outline-secondary acf" data-f="away">Not living there {{ counts.away }}</button>
+    {% if buildings|length > 1 %}<select id="acb" class="form-select form-select-sm" style="width: auto;"><option value="">All buildings</option>{% for b in buildings %}<option>{{ b }}</option>{% endfor %}</select>{% endif %}
+    <input id="acq" type="search" class="form-control form-control-sm ms-auto" style="max-width: 240px;" placeholder="Search a unit or a name">
+</div>
+<div class="card"><div class="card-body p-2">
+<table class="table table-sm ac-table mb-0" id="acrows">
+    <thead><tr><th>Unit</th><th>Owner(s)</th><th class="ac-num">Balance</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr data-state="{{ r.state }}" data-away="{% if r.away %}1{% else %}0{% endif %}" data-b="{{ r.building }}" data-s="{{ r.unit.label|lower }} {% for o in r.ownerships %}{{ o.person.name|lower }} {% endfor %}">
+        <td><a href="{% url 'accounting:unit' assoc.pk r.unit.pk %}" class="fw-semibold text-decoration-none">{{ r.unit.label }}</a></td>
+        <td>{% for o in r.ownerships %}<a href="{% url 'accounting:owner' assoc.pk o.person.pk %}" class="text-decoration-none text-reset">{{ o.person.name }}</a>{% if o.occupancy == 'absentee' %} <span class="ac-chip">Not living there</span>{% endif %}{% if not forloop.last %} &middot; {% endif %}{% empty %}<span class="text-muted">No owner yet</span>{% endfor %}</td>
+        <td class="ac-num">{% if r.balance > 0 %}<span class="ac-owe">{{ r.balance|money }}</span>{% elif r.balance < 0 %}<span class="ac-ahead">{{ r.balance|money }}</span>{% else %}$0.00{% endif %}</td>
+        <td>{% if r.balance > 0 %}<span class="ac-chip warn">Owes</span>{% elif r.balance < 0 %}<span class="ac-chip good">Paid ahead</span>{% endif %}</td>
+    </tr>
+    {% empty %}<tr><td colspan="4" class="text-muted p-3">No units yet. Import the owners from a spreadsheet to add them.</td></tr>{% endfor %}
+    </tbody>
+</table>
+{% if rows %}<div class="d-flex flex-wrap gap-4 px-2 pt-2 mt-1 border-top small"><span><strong>Owed</strong> {{ totals.owed|money }}</span><span><strong>Paid ahead</strong> {{ totals.ahead|money }}</span><span><strong>Net</strong> {{ totals.net|money }}</span></div>{% endif %}
+</div></div>
+{% if former %}
+<div class="card mt-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="history" class="icon"></i> Former owners with a balance</h6>
+    <table class="table table-sm ac-table mb-0"><tbody>
+    {% for r in former %}<tr><td>{{ r.owner.name }}</td><td class="text-muted">{{ r.unit.label }}</td><td class="ac-num">{{ r.balance|money }}</td></tr>{% endfor %}
+    </tbody></table>
+    <div class="small text-muted mt-1">A balance follows the person, not the unit. New charges go to the new owner.</div>
+</div></div>
+{% endif %}
+<script>
+(function () {
+    var state = 'all';
+    function apply() {
+        var q = document.getElementById('acq').value.toLowerCase(), b = document.getElementById('acb') ? document.getElementById('acb').value : '';
+        document.querySelectorAll('#acrows tbody tr[data-state]').forEach(function (r) {
+            var ok = (state === 'all' || (state === 'away' ? r.dataset.away === '1' : r.dataset.state === state)) && (!b || r.dataset.b === b) && (!q || r.dataset.s.indexOf(q) > -1);
+            r.style.display = ok ? '' : 'none';
+        });
+    }
+    document.querySelectorAll('.acf').forEach(function (btn) { btn.addEventListener('click', function () {
+        state = btn.dataset.f;
+        document.querySelectorAll('.acf').forEach(function (x) { x.className = 'btn btn-sm acf ' + (x === btn ? 'btn-dark' : 'btn-outline-secondary'); });
+        apply();
+    }); });
+    document.getElementById('acq').addEventListener('input', apply);
+    if (document.getElementById('acb')) document.getElementById('acb').addEventListener('change', apply);
+})();
+</script>
+{% endblock %}

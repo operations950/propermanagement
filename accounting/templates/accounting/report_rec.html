@@ -1,0 +1,22 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ bank.name }} reconciliation report - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2"><div><h2 class="page-title fs-4 mb-0">Bank reconciliation report</h2>
+    <div class="text-muted">{{ assoc.name }} &middot; {{ bank.name }}{% if bank.last4 %} (account ending {{ bank.last4 }}){% endif %} &middot; {{ month|date:"F Y" }}</div></div>
+    <div class="ac-noprint d-flex gap-2 align-items-center">{% if rec %}<span class="ac-chip good">Closed {{ rec.closed_at|date:"M j, Y" }}</span>{% else %}<span class="ac-chip warn">Not closed</span>{% endif %}<button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button></div></div>
+{% if not s.statement %}<div class="card"><div class="card-body text-muted">No statement has been uploaded for this month.</div></div>{% else %}
+<div class="card mb-3"><div class="card-body"><table class="table table-sm ac-table mb-0" style="max-width: 640px;">
+    <tr><td>Balance per bank statement as of {{ s.statement.period_end|mdate }}</td><td class="ac-num">{{ s.statement.end_balance|money }}</td></tr>
+    <tr><td colspan="2" class="pt-3 fw-bold">Outstanding checks</td></tr>
+    {% for r in s.outstanding %}<tr><td class="ps-3">{{ r.item.date|mdate }} &middot; {% if r.item.ref %}check {{ r.item.ref }} &middot; {% endif %}{{ r.item.text|truncatechars:50 }}</td><td class="ac-num">{{ r.item.amount|money }}</td></tr>{% empty %}<tr><td class="ps-3 text-muted">None</td><td></td></tr>{% endfor %}
+    <tr><td>Less outstanding checks</td><td class="ac-num">{{ s.os_total|money }}</td></tr>
+    {% if s.transit %}<tr><td colspan="2" class="pt-3 fw-bold">Deposits in transit</td></tr>{% for r in s.transit %}<tr><td class="ps-3">{{ r.item.date|mdate }} &middot; {{ r.item.text|truncatechars:50 }}</td><td class="ac-num">{{ r.item.amount|money }}</td></tr>{% endfor %}{% endif %}
+    <tr class="fw-bold border-top"><td>Reconciled bank balance</td><td class="ac-num">{{ s.adjusted_bank|money }}</td></tr>
+    <tr><td>Balance per the books as of {{ s.month_end|mdate }}</td><td class="ac-num">{{ s.book|money }}</td></tr>
+    <tr class="fw-bold"><td>Difference</td><td class="ac-num">{{ s.difference|money }}</td></tr></table></div></div>
+<div class="card"><div class="card-body"><h6 class="card-title">Cleared this month</h6>
+    <table class="table table-sm ac-table mb-0"><thead><tr><th>Date</th><th>Kind</th><th>Description</th><th class="ac-num">Amount</th></tr></thead>
+    <tbody>{% for b in cleared %}<tr><td>{{ b.date|mdate:'short' }}</td><td>{{ b.get_kind_display }}{% if b.check_number %} {{ b.check_number }}{% endif %}</td><td>{{ b.description|truncatechars:70 }}</td><td class="ac-num">{{ b.amount|plain }}</td></tr>{% endfor %}</tbody></table></div></div>
+{% endif %}
+{% endblock %}

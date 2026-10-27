@@ -1,0 +1,31 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Check stock - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> Check printing</h2>
+<p class="text-muted">{{ assoc.name }}. Upload a copy of your blank check stock and the program works out where the date, payee, amount and memo go. You never type a position.</p>
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-2"><strong>Layout</strong>
+        {% if layout.learned %}<span class="ac-chip good">Learned from your check stock</span>{% else %}<span class="ac-chip">Standard layout</span>{% endif %}
+        {% if profile.check_stock %}<a class="small" href="{{ profile.check_stock.url }}" target="_blank">open the check stock</a>{% endif %}</div>
+    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="upload">
+        <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.webp" class="form-control form-control-sm" style="max-width: 320px;" required><button class="btn btn-sm btn-primary">Read the check stock</button></form>
+    <div class="small text-muted mt-2">A flat scan or a clear photo of one blank sheet works best.</div>
+</div></div>
+<div class="card mb-3"><div class="card-body">
+    <strong>Try it</strong>
+    <p class="small text-muted mb-2">Print a made-up check on plain paper, hold it over a blank check against a light, and nudge it until the writing sits where it should.</p>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+        <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:check_print' assoc.pk %}?sample=1"><i data-lucide="printer" class="icon"></i> Print a test check</a>
+        <form method="post" class="d-flex gap-1 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="nudge"><span class="small text-muted">Move everything</span>
+            <button class="btn btn-sm btn-outline-secondary" name="dy" value="-0.05" title="Up">Up</button><button class="btn btn-sm btn-outline-secondary" name="dy" value="0.05" title="Down">Down</button>
+            <button class="btn btn-sm btn-outline-secondary" name="dx" value="-0.05" title="Left">Left</button><button class="btn btn-sm btn-outline-secondary" name="dx" value="0.05" title="Right">Right</button></form>
+        <span class="small text-muted">Now {{ layout.dx }} in across, {{ layout.dy }} in down (a twentieth of an inch per tap).</span>
+        <form method="post">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="reset" onclick="return confirm('Go back to the standard layout?')">Reset</button></form>
+    </div>
+</div></div>
+<div class="card"><div class="card-body">
+    <form method="post" class="d-flex gap-2 align-items-center flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="next_number"><strong>Next check number</strong>
+        <input class="form-control form-control-sm" style="width: 120px;" name="number" value="{{ profile.next_check_number }}"><button class="btn btn-sm btn-outline-secondary">Save</button></form>
+</div></div>
+{% endblock %}

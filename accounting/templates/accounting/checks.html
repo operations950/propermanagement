@@ -1,0 +1,17 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Checks - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> Checks and payments</h2><div class="small text-muted">{{ assoc.name }} &middot; next check number {{ profile.next_check_number }}</div></div>
+    <div class="d-flex gap-2"><a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:check_setup' assoc.pk %}"><i data-lucide="settings" class="icon"></i> Check stock</a><a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:check_print' assoc.pk %}?sample=1">Test print</a></div>
+</div>
+<div class="card"><div class="card-body p-2">
+<table class="table table-sm ac-table mb-0"><thead><tr><th>Date</th><th>Number</th><th>Paid to</th><th>From</th><th class="ac-num">Amount</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for p in payments %}<tr class="{% if p.status == 'void' %}text-muted{% endif %}"><td>{{ p.date|mdate }}</td><td>{{ p.number|default:"auto" }}{% if p.opening %} <span class="ac-chip">before the books</span>{% endif %}</td><td>{{ p.payee }}</td><td class="small text-muted">{{ p.bank_account.name }}</td><td class="ac-num">{{ p.amount|money }}</td>
+    <td><span class="ac-chip {% if p.status == 'cleared' %}good{% elif p.status == 'outstanding' %}warn{% endif %}">{{ p.get_status_display }}</span>{% if p.printed_at %} <span class="ac-chip">printed</span>{% endif %}</td>
+    <td class="ac-noprint text-end">{% if p.status == 'outstanding' and p.method == 'check' and not p.opening %}<a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:check_print' assoc.pk %}?ids={{ p.pk }}">Print</a>{% endif %}
+        {% if p.status == 'outstanding' and not p.opening %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="payment" value="{{ p.pk }}"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Void this payment? Its bills go back to ready to pay.')">Void</button></form>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="7" class="text-muted p-3">No payments yet.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+{% endblock %}

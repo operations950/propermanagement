@@ -1189,6 +1189,14 @@ def _own_card(prop):
     return card
 
 
+def _assoc_extra(request, prop):
+    """The extra cards an association's page shows an administrator: official record, units and owners, accounting settings and documents."""
+    if prop.property_type != Property.Type.ASSOCIATION or not _is_admin(request.user):
+        return {}
+    from accounting.views_setup import assoc_context
+    return assoc_context(prop)
+
+
 @login_required
 def property_detail(request, pk):
     """Everything-about-this-property dashboard: facts, access/system info,
@@ -1521,6 +1529,7 @@ def property_detail(request, pk):
     from legalforms.models import DocumentTemplate
     from legalforms.views import _allowed as _can_use_documents
     return render(request, 'core/property_detail.html', {
+        **_assoc_extra(request, prop),
         'property': prop,
         'sections': PROPERTY_SECTIONS.get(prop.property_type, PROPERTY_SECTIONS_COMMON),
         'can_use_documents': _can_use_documents(request.user),

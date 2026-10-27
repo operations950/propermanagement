@@ -1,0 +1,22 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Record a payment - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1">Record an owner's payment</h2>
+<p class="text-muted">{{ assoc.name }}. It pays the owner's oldest charges first; anything left over is kept as a credit.</p>
+<form method="post" class="card"><div class="card-body">{% csrf_token %}
+    <div class="row g-3">
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Unit</label>
+            <select class="form-select" name="unit" required onchange="if (this.value) location.href='?unit=' + this.value"><option value="">Choose</option>{% for u in units %}<option value="{{ u.pk }}" {% if unit and u.pk == unit.pk %}selected{% endif %}>{{ u.label }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Paid by</label>
+            <select class="form-select" name="owner">{% for a in accounts %}<option value="{{ a.owner.pk }}" {% if billed and a.owner.pk == billed.pk %}selected{% endif %}>{{ a.owner.name }}{% if a.balance > 0 %} (owes {{ a.balance|money }}){% endif %}</option>{% empty %}{% if billed %}<option value="{{ billed.pk }}">{{ billed.name }}</option>{% endif %}{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Date received</label><input class="form-control" type="date" name="date" value="{{ today|date:'Y-m-d' }}"></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Amount</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control text-end" name="amount" required></div></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">How</label><select class="form-select" name="method">{% for v, l in methods %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Check number or reference</label><input class="form-control" name="reference"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Deposited into</label><select class="form-select" name="bank">{% for b in banks %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Note</label><input class="form-control" name="memo"></div>
+    </div>
+    <div class="d-flex gap-2 mt-3"><button class="btn btn-primary">Record the payment</button><a class="btn btn-outline-secondary" href="{{ acc_back }}">Cancel</a></div>
+</div></form>
+{% endblock %}

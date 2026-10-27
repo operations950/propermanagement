@@ -1,0 +1,23 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Bill - {{ bill.payee }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div><h2 class="page-title fs-4 mb-0">{{ bill.payee }}</h2><div class="small text-muted">{{ assoc.name }} &middot; {% if bill.number %}invoice {{ bill.number }} &middot; {% endif %}{{ bill.date|mdate }}</div></div>
+    <div class="d-flex gap-2 align-items-center"><span class="ac-big">{{ bill.amount|money }}</span>
+        <span class="ac-chip {% if bill.status == 'paid' or bill.status == 'approved' %}good{% elif bill.status == 'void' %}{% else %}warn{% endif %}">{{ bill.get_status_display }}</span></div>
+</div>
+<div class="card mb-3"><div class="card-body">
+    <table class="table table-sm ac-table mb-0"><thead><tr><th>Account</th><th>For</th><th class="ac-num">Amount</th></tr></thead>
+        <tbody>{% for l in bill.lines.all %}<tr><td>{{ l.account }}</td><td>{{ l.memo }}</td><td class="ac-num">{{ l.amount|plain }}</td></tr>{% endfor %}</tbody></table>
+</div></div>
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Approval</h6>
+    <p class="mb-1">{% if need == 'none' %}A routine bill: approved when it was set up.{% elif need == 'staff' %}Under the spending limit: staff may approve it.{% else %}Needs the board{% if bill.reserve %} (all reserve spending does){% endif %}.{% endif %}</p>
+    {% if bill.approved_at %}<p class="small text-muted mb-1">Approved {{ bill.approved_at|date:"M j, Y" }}{% if bill.approved_by %} by {{ bill.approved_by.get_full_name|default:bill.approved_by.username }}{% endif %}.</p>{% endif %}
+    {% if bill.board_approved_by %}<p class="small text-muted mb-1">The board approved it: {{ bill.board_approved_by }}, {{ bill.board_approved_on|mdate }}.</p>{% endif %}
+    {% if bill.source == 'email' %}<p class="small text-muted mb-1">Read from the invoice inbox.</p>{% endif %}
+    {% if bill.file %}<a class="btn btn-sm btn-outline-secondary" href="{{ bill.file.url }}" target="_blank"><i data-lucide="file-text" class="icon"></i> Open the invoice</a>{% endif %}
+    {% if bill.payments.exists %}<div class="small mt-2">Paid: {% for link in bill.payments.all %}{{ link.payment.date|mdate }} {{ link.amount|money }}{% if link.payment.number %} (check {{ link.payment.number }}){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</div>{% endif %}
+</div></div>
+{% endblock %}

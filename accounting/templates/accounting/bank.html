@@ -1,0 +1,119 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ bank.name }} reconciliation - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> Bank reconciliation</h2>
+        <div class="small text-muted">{{ assoc.name }} &middot; {{ month|date:"F Y" }}</div>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <div class="btn-group btn-group-sm">
+            {% for b in other_banks %}<a class="btn {% if b.pk == bank.pk %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{% url 'accounting:bank' assoc.pk b.pk month|date:'Y-m' %}">{{ b.name }}</a>{% endfor %}
+        </div>
+        <div class="btn-group btn-group-sm">
+            <a href="{% url 'accounting:bank' assoc.pk bank.pk previous|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+            <a href="{% url 'accounting:bank' assoc.pk bank.pk next|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    {% if s.statement %}
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <i data-lucide="file-text" class="icon"></i><strong>Statement ending {{ s.statement.period_end|mdate }}</strong>
+        {% if s.statement.file %}<a class="small" href="{{ s.statement.file.url }}" target="_blank">open the file</a>{% endif %}
+        <span class="ac-chip good">Read</span><span class="small text-muted">{{ s.bank_total }} lines, {{ s.matched_bank }} matched</span>
+        <details class="ms-auto ac-noprint"><summary class="small" style="cursor: pointer;">Replace the statement</summary>
+            <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="action" value="upload"><input type="file" name="file" class="form-control form-control-sm" style="max-width: 260px;" accept=".pdf,.csv" required>
+                <input class="form-control form-control-sm" style="max-width: 150px;" name="end_balance" placeholder="Ending balance"><button class="btn btn-sm btn-outline-secondary">Replace</button></form></details>
+    </div>
+    {% else %}
+    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="upload">
+        <strong>Upload the bank statement for {{ month|date:"F Y" }}</strong>
+        <input type="file" name="file" class="form-control form-control-sm" style="max-width: 280px;" accept=".pdf,.csv" required>
+        <input class="form-control form-control-sm" style="max-width: 170px;" name="end_balance" placeholder="Ending balance (if asked)">
+        <button class="btn btn-sm btn-primary">Read and match</button>
+        <span class="small text-muted w-100">A PDF or the bank's CSV download. Every line is read, then lined up with the books.</span>
+    </form>
+    {% endif %}
+</div></div>
+
+{% if s.statement %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="scale" class="icon"></i> The proof <span class="small fw-normal text-muted">The statement, less what has not cleared, should equal the books</span></h6>
+    <table class="table table-sm ac-table mb-0" style="max-width: 560px;">
+        <tr><td>Statement balance, {{ s.statement.period_end|mdate:'short' }}</td><td class="ac-num">{{ s.statement.end_balance|money }}</td></tr>
+        <tr><td>Checks written, not cleared yet ({{ s.outstanding|length }})</td><td class="ac-num">{{ s.os_total|money }}</td></tr>
+        {% if s.transit %}<tr><td>Deposits on their way ({{ s.transit|length }})</td><td class="ac-num">+{{ s.dit_total|money }}</td></tr>{% endif %}
+        <tr class="fw-bold"><td>Should match the books</td><td class="ac-num">{{ s.adjusted_bank|money }}</td></tr>
+        <tr><td>Books (ledger), {{ s.month_end|mdate:'short' }}</td><td class="ac-num">{{ s.book|money }}</td></tr>
+        {% if s.bank_only %}<tr><td>On the statement, not in the books yet</td><td class="ac-num">{{ s.bank_only|money }}</td></tr>{% endif %}
+    </table>
+    <div class="d-flex align-items-center gap-2 flex-wrap mt-2 pt-2 border-top"><span class="ac-lab">Difference</span><span class="ac-big">{{ s.difference|money }}</span>
+        {% if s.status == 'done' %}<span class="ac-chip good">Closed</span>{% elif s.status == 'ready' %}<span class="ac-chip good">Ready to close</span>{% else %}<span class="ac-chip warn">{{ s.need_count }} item{{ s.need_count|pluralize }} still need a look</span>{% endif %}
+        <a class="btn btn-sm btn-outline-secondary ms-auto" href="{% url 'accounting:report_rec' assoc.pk bank.pk month|date:'Y-m' %}">Printable report</a></div>
+</div></div>
+
+{% if s.outstanding or s.transit %}
+<div class="card mb-3" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clock" class="icon"></i> Checks and deposits not on the statement <span class="small fw-normal text-muted">A check over 30 days old is flagged</span></h6>
+    {% for r in s.rows %}
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 {% if not forloop.first %}border-top{% endif %}">
+        <div><span class="fw-semibold">{% if r.item.ref %}Check {{ r.item.ref }}{% elif r.item.amount < 0 %}Payment{% else %}Deposit{% endif %}{% if r.item.text %} &middot; {{ r.item.text|truncatechars:48 }}{% endif %}</span>
+            <span class="ac-chip {% if r.stale %}warn{% endif %}">{{ r.item.date|mdate }}, {{ r.age }} day{{ r.age|pluralize }}</span>{% if r.stale %} <span class="ac-chip warn">Over 30 days: worth a call</span>{% endif %}</div>
+        <div class="d-flex align-items-center gap-2"><span class="fw-semibold ac-num">{{ r.item.amount|money }}</span>
+            <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="item" value="{{ r.item.key }}">
+                {% if r.accepted %}<span class="ac-chip good">Falls to next month</span> <button class="btn btn-sm btn-outline-secondary" name="action" value="unaccept">Undo</button>
+                {% else %}<button class="btn btn-sm btn-primary" name="action" value="accept">{% if r.item.amount < 0 %}Still outstanding{% else %}On its way{% endif %}</button>{% endif %}</form></div>
+    </div>
+    {% endfor %}
+</div></div>
+{% endif %}
+
+{% if s.unmatched_bank %}
+<div class="card mb-3" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-alert" class="icon"></i> On the statement, not matched to the books</h6>
+    {% for b in s.unmatched_bank %}
+    <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
+        <div class="d-flex justify-content-between flex-wrap gap-2"><span>{{ b.date|mdate }} &middot; {{ b.description }}</span><span class="fw-semibold ac-num">{{ b.amount|money }}</span></div>
+        <div class="d-flex gap-2 flex-wrap mt-1 ac-noprint">
+            <form method="post" class="d-flex gap-1 flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
+                <select class="form-select form-select-sm" name="account" style="max-width: 230px;" required><option value="">Add to the books as...</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' %}<option value="{{ a.pk }}">{{ a }}</option>{% endif %}{% endfor %}</select>
+                <input class="form-control form-control-sm" style="max-width: 160px;" name="vendor" placeholder="Paid to (optional)"><button class="btn btn-sm btn-outline-secondary">Add</button></form>
+            {% if b.amount > 0 %}<form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="action" value="owner_payment"><input type="hidden" name="bank_line" value="{{ b.pk }}">
+                <select class="form-select form-select-sm" name="unit" style="max-width: 160px;" required><option value="">An owner's payment: unit...</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select><button class="btn btn-sm btn-outline-secondary">Record</button></form>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% if s.unmatched_bank|length > 1 or s.rows %}
+    <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Match several by hand</summary>
+        <form method="post" class="mt-2">{% csrf_token %}<input type="hidden" name="action" value="match_manual">
+            <div class="row"><div class="col-md-6"><div class="ac-lab mb-1">Bank lines</div>{% for b in s.unmatched_bank %}<label class="d-block small"><input type="checkbox" name="bank_line" value="{{ b.pk }}"> {{ b.date|mdate:'short' }} {{ b.description|truncatechars:34 }} {{ b.amount|money }}</label>{% endfor %}</div>
+                <div class="col-md-6"><div class="ac-lab mb-1">Ledger items</div>{% for r in s.rows %}<label class="d-block small"><input type="checkbox" name="item" value="{{ r.item.key }}"> {{ r.item.date|mdate:'short' }} {{ r.item.text|truncatechars:30 }} {{ r.item.amount|money }}</label>{% endfor %}</div></div>
+            <button class="btn btn-sm btn-outline-secondary mt-2">Match the ones I ticked</button></form></details>
+    {% endif %}
+</div></div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2 mb-3 ac-noprint">
+    <form method="post" class="d-flex gap-2">{% csrf_token %}
+        <button class="btn btn-sm btn-outline-secondary" name="action" value="auto"><i data-lucide="wand-sparkles" class="icon"></i> Match what can be matched</button>
+        {% if s.status == 'done' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="reopen">Open the reconciliation again</button>
+        {% else %}<button class="btn btn-sm btn-primary" name="action" value="close" {% if s.status != 'ready' %}disabled{% endif %}><i data-lucide="lock" class="icon"></i> Close the reconciliation</button>{% endif %}
+    </form>
+</div>
+
+<div class="ac-lab mb-2">Matched <span class="text-muted text-lowercase fw-normal">{{ s.matched_bank }} of {{ s.bank_total }} statement lines</span></div>
+{% for m in s.matches %}
+<details class="card mb-1"><summary class="card-body py-2 d-flex align-items-center gap-2 flex-wrap" style="cursor: pointer; list-style: none;">
+    <span class="fw-semibold">{% for b in m.bank_lines.all|slice:":2" %}{{ b.description|truncatechars:40 }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if m.bank_lines.all|length > 2 %} and {{ m.bank_lines.all|length|add:"-2" }} more{% endif %}</span>
+    <span class="ac-chip {% if m.how == 'amount and date' %}{% else %}good{% endif %}">{{ m.how|capfirst }}</span>
+    <span class="ms-auto fw-semibold ac-num">{{ m.total|money }}</span>
+</summary><div class="card-body pt-0"><table class="table table-sm ac-table mb-1"><thead><tr><th>Bank</th><th class="ac-num"></th><th>Books</th></tr></thead><tbody>
+    <tr><td>{% for b in m.bank_lines.all %}<div>{{ b.date|mdate:'short' }} {{ b.description|truncatechars:50 }} <span class="ac-num">{{ b.amount|money }}</span></div>{% endfor %}</td><td></td>
+    <td>{% for ri in m.ledger_items.all %}<div>{% if ri.line %}{{ ri.line.entry.date|mdate:'short' }} {{ ri.line.memo|default:ri.line.entry.memo|truncatechars:50 }} <span class="ac-num">{{ ri.line.signed|money }}</span>{% else %}{{ ri.payment.date|mdate:'short' }} Check {{ ri.payment.number }}, {{ ri.payment.payee }} <span class="ac-num">{{ ri.payment.amount|money }}</span>{% endif %}</div>{% endfor %}</td></tr></tbody></table>
+    {% if s.status != 'done' %}<form method="post" class="ac-noprint">{% csrf_token %}<input type="hidden" name="match" value="{{ m.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="unmatch">Undo this match</button></form>{% endif %}</div></details>
+{% empty %}<p class="small text-muted">Nothing is matched yet.</p>{% endfor %}
+{% endif %}
+{% endblock %}

@@ -309,6 +309,19 @@ Questions worth answering before writing code, based on precedent above:
   the "Media storage" section above first — both have already caused a
   production crash-loop once.
 
+## Association books (`accounting` app, built 2026-10-27)
+
+We keep the books for associations ourselves: a real double-entry ledger, separate from the rental close (which is QuickBooks-backed). Mounted at `/accounting/`; administrators only.
+
+- **Everything posts through `accounting/ledger.py::post_entry`**: it refuses an entry that does not balance, one that touches another association's accounts, and one dated in a locked month. An entry is never edited; `reverse_entry` posts the mirror image. Do not create `JournalEntry`/`JournalLine` rows any other way.
+- **Two books from one set of entries.** `JournalEntry.basis` is `both`, `accrual` or `cash`. A charge or a bill is accrual-only; the matching payment posts an accrual entry (clears receivables or payables) AND a cash entry (the income or expense itself). `ledger.trial_balance(..., basis)` reads either. The reconciliation uses the accrual book's lines on the cash account.
+- **Owners are `core.Contact`, units are `core.Unit`.** `Ownership` rows (dates, billed-or-not) say who owns what; a balance follows the person, not the unit (a former owner's balance stays theirs). Each unit's percentage is a `UnitShare`; `owners.split_by_share` makes the cents add exactly.
+- **Money moves nowhere**: the system records payments, prints checks (browser print onto the user's blank stock, layout learned from a scan), and reads statements; ACH happens at the bank.
+- **Approval**: routine recurring bills post approved; a one-off bill needs the board unless it is at or under the contract's spending limit; reserve spending ALWAYS needs the board (`payables.requirement`). A bill posts to the books when approved, not when it arrives (`payables.approve_bill`).
+- **Claude reads documents, statements, invoices and check stock** (`documents.py`, `bankrec.py`, `invoice_inbox.py`, `checkprint.py`); every use follows the unconfigured-degrades-gracefully rule, and nothing it proposes takes effect until a person confirms (settings) or approves (bills).
+- **St Andrews GLEN ships as placeholder data**: `seed_st_andrews_glen` (Procfile, idempotent, never fails the deploy) loads the real owners, balances and September 2026 statement; `accounting/seed_glen.py` explains how the Aug 31 opening is derived so the books end at Yardi's Sep 30 trial balance to the cent. The Q4 charge is left unposted (profile `auto_post` off) for the user to post.
+- Tests live in the session scratchpad, not the repo: `verify_assoc_core`, `_payables`, `_recon`, `_seed_pages`.
+
 ## Message-assistant API and property FAQ
 
 The AI that answers guest/owner messages reads property information, and keeps a

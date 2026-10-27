@@ -1,0 +1,18 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Post a charge - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1">Charge one unit</h2>
+<p class="text-muted">A fine, a key fob, an application or estoppel fee. {{ assoc.name }}</p>
+<form method="post" class="card"><div class="card-body">{% csrf_token %}
+    <div class="row g-3">
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Unit</label><select class="form-select" name="unit" required><option value="">Choose</option>{% for u in units %}<option value="{{ u.pk }}" {% if unit and u.pk == unit.pk %}selected{% endif %}>{{ u.label }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Kind</label><select class="form-select" name="kind"><option value="other">A charge</option><option value="fine">A fine</option></select></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Due</label><input class="form-control" type="date" name="due" value="{{ today|date:'Y-m-d' }}"></div>
+        <div class="col-md-8"><label class="form-label small text-muted mb-1">What it is for</label><input class="form-control" name="description" required></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Amount</label><div class="input-group"><span class="input-group-text">$</span><input class="form-control text-end" name="amount" required></div></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Income account</label><select class="form-select" name="income_account"><option value="">Miscellaneous income</option>{% for a in income_accounts %}<option value="{{ a.pk }}">{{ a }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="d-flex gap-2 mt-3"><button class="btn btn-primary">Charge</button><a class="btn btn-outline-secondary" href="{{ acc_back }}">Cancel</a></div>
+</div></form>
+{% endblock %}

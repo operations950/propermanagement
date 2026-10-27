@@ -1,0 +1,51 @@
+{% load acc_extras %}
+<style>
+    .ac-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; white-space: nowrap; background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+    .ac-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
+    .ac-chip.warn { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
+    .ac-tag { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 7px; border-radius: 6px; border: 1px solid var(--brand-primary); color: var(--brand-primary); }
+    .ac-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+</style>
+
+<section id="official" class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2 flex-wrap"><i data-lucide="building" class="icon"></i> Official record
+        <span class="ms-auto small fw-normal text-muted">{% if ap.sunbiz_checked_on %}From the state, checked {{ ap.sunbiz_checked_on|mdate }}{% endif %}{% if ap.sunbiz_url %} &middot; <a href="{{ ap.sunbiz_url }}" target="_blank">Open on SunBiz</a>{% endif %} &middot; <a href="{% url 'accounting:settings' property.pk %}#official">Edit</a></span></h6>
+    {% if ap.legal_name or ap.state_doc_number %}
+    <dl class="row mb-0 small">
+        <dt class="col-sm-3 text-muted fw-normal">Legal name</dt><dd class="col-sm-9">{{ ap.legal_name }}</dd>
+        <dt class="col-sm-3 text-muted fw-normal">State record</dt><dd class="col-sm-9">{{ ap.state_doc_number }}{% if ap.ein %} &middot; EIN {{ ap.ein }}{% endif %}{% if ap.date_filed %} &middot; filed {{ ap.date_filed|mdate }}{% endif %} {% if ap.state_status %}<span class="ac-chip {% if ap.state_status|lower == 'active' %}good{% else %}warn{% endif %}">{{ ap.state_status }}</span>{% endif %}</dd>
+        <dt class="col-sm-3 text-muted fw-normal">Registered agent</dt><dd class="col-sm-9">{{ ap.registered_agent }}{% if 'proper realty' in ap.registered_agent|lower %} <span class="ac-chip good">That's us</span>{% endif %}</dd>
+        <dt class="col-sm-3 text-muted fw-normal">Annual report</dt><dd class="col-sm-9">{% if ap.annual_report_filed %}Filed {{ ap.annual_report_filed|mdate }} <span class="ac-chip good">Done</span> <span class="text-muted">The next one is due between Jan 1 and May 1 each year.</span>{% else %}<span class="ac-chip warn">Not recorded</span>{% endif %}</dd>
+        <dt class="col-sm-3 text-muted fw-normal">Board</dt><dd class="col-sm-9">{% for t in ap_board %}{{ t.person.name }} ({{ t.position }}){% if not forloop.last %} &middot; {% endif %}{% empty %}<span class="text-muted">No board recorded</span>{% endfor %}{% if ap_board_matches %} <span class="ac-chip good">Matches the state's list</span>{% endif %}</dd>
+        <dt class="col-sm-3 text-muted fw-normal">Management contract</dt><dd class="col-sm-9">{% if ap_has_contract %}<span class="ac-chip good">On file</span>{% else %}<span class="ac-chip warn">Not uploaded</span> <a class="btn btn-sm btn-primary py-0" href="{% url 'accounting:settings' property.pk %}#documents">Upload it</a> <span class="text-muted">Required: the spending limit and the fee are read from it.</span>{% endif %}</dd>
+    </dl>
+    {% else %}<p class="text-muted small mb-0">The official record is not filled in yet. <a href="{% url 'accounting:settings' property.pk %}#official">Add it</a>: legal name, state document number, EIN, registered agent and officers, from the state's corporation search.</p>{% endif %}
+</div></section>
+
+<span id="units"></span>
+<section id="owners" class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2 flex-wrap"><i data-lucide="users" class="icon"></i> Units &amp; owners <span class="ac-tag">New</span>
+        <span class="ms-auto small fw-normal text-muted">{{ ap_units|length }} unit{{ ap_units|length|pluralize }}</span></h6>
+    {% if ap_units %}
+    <table class="table table-sm mb-2"><thead><tr class="small text-muted"><th>Unit</th><th>Owner</th><th class="ac-num">Balance</th><th></th></tr></thead><tbody>
+    {% for r in ap_owing %}<tr><td><a href="{% url 'accounting:unit' property.pk r.unit.pk %}" class="fw-semibold text-decoration-none">{{ r.unit.label }}</a></td><td>{% for o in r.ownerships %}{{ o.person.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td class="ac-num fw-semibold">{{ r.balance|money }}</td><td><span class="ac-chip warn">Owes</span></td></tr>
+    {% empty %}<tr><td colspan="4" class="text-muted">Nobody owes anything.</td></tr>{% endfor %}</tbody></table>
+    <div class="small text-muted mb-2">Owed {{ ap_totals.owed|money }} &middot; paid ahead {{ ap_totals.ahead|money }}</div>
+    {% else %}<p class="text-muted small">No units yet. Import the owners from a spreadsheet to add them all at once.</p>{% endif %}
+    <div class="d-flex gap-2 flex-wrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:units' property.pk %}">All units</a><a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:units_import' property.pk %}"><i data-lucide="upload" class="icon"></i> Import owners</a></div>
+</div></section>
+
+<section id="settings" class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="settings" class="icon"></i> Accounting settings <span class="ac-tag">New</span><span class="ms-auto small fw-normal text-muted">The daily work is under the Accounting button above</span></h6>
+    <table class="table table-sm mb-0"><tbody>{% for r in ap_rows %}<tr><td>{{ r.label }}</td><td class="text-muted small">{{ r.value }}</td><td class="text-end"><span class="ac-chip {% if r.ok %}good{% else %}warn{% endif %}">{% if r.ok %}Set{% else %}Not set up{% endif %}</span></td>
+        <td class="text-end">{% if r.url %}<a class="btn btn-sm btn-outline-secondary py-0" href="{{ r.url }}">{% if r.ok %}Edit{% else %}Set up{% endif %}</a>{% endif %}</td></tr>{% endfor %}</tbody></table>
+</div></section>
+
+<section id="docs" class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Documents &amp; rules <span class="ac-tag">New</span><a class="btn btn-sm btn-primary ms-auto" href="{% url 'accounting:settings' property.pk %}#documents">Upload a document</a></h6>
+    <table class="table table-sm mb-2"><tbody>{% for d in ap_docs %}<tr><td>{{ d.label }}</td><td class="text-end">{% if d.doc %}<a class="small me-2" href="{{ d.doc.file.url }}" target="_blank">open</a><span class="ac-chip good">Uploaded</span>{% elif d.required %}<span class="ac-chip warn">Required</span>{% else %}<span class="ac-chip">Not uploaded</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+    {% if ap_proposals %}<div class="ac-strip small p-2 rounded mb-2" style="background: color-mix(in srgb, var(--status-warning) 14%, white);">{{ ap_proposals|length }} setting{{ ap_proposals|length|pluralize }} found in the documents. <a href="{% url 'accounting:settings' property.pk %}#documents">Review and confirm</a>.</div>{% endif %}
+    <form method="post" action="{% url 'accounting:settings' property.pk %}" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="action" value="ask"><input type="hidden" name="next" value="{% url 'property_detail' property.pk %}#docs">
+        <input class="form-control form-control-sm" name="question" placeholder="Ask the documents, for example: Can an owner rent a unit for a week at a time?" required><button class="btn btn-sm btn-primary">Ask</button></form>
+    {% for q in ap_questions %}<div class="mt-2 p-2 rounded small" style="background: var(--bs-light, #f1f3f5);"><div class="fw-semibold">{{ q.question }}</div><div style="white-space: pre-wrap;">{{ q.answer }}</div></div>{% endfor %}
+</div></section>

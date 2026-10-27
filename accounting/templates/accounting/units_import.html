@@ -1,0 +1,33 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Import owners - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="upload" class="icon-lg"></i> Import owners</h2>
+<p class="text-muted">Check what the program found before anything is saved. The file needs a first row naming the columns: <strong>Unit</strong> and <strong>Owner</strong> at least, and optionally <strong>Owner Type</strong> and <strong>From</strong>.</p>
+{% if not plan %}
+<form method="post" enctype="multipart/form-data" class="card"><div class="card-body d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}
+    <input type="hidden" name="action" value="read">
+    <input type="file" name="file" accept=".xlsx,.xlsm,.csv" class="form-control" style="max-width: 360px;" required>
+    <button class="btn btn-primary">Read the file</button>
+</div></form>
+{% else %}
+<form method="post" class="card"><div class="card-body">{% csrf_token %}
+    <input type="hidden" name="action" value="apply">
+    <div class="d-flex gap-2 align-items-center py-2"><span class="ac-chip good">Read</span><span>{{ plan.rows }} owner rows, {{ plan.units }} unit{{ plan.units|pluralize }}{% if plan.new_units != plan.units %} ({{ plan.new_units }} new){% endif %}.</span></div>
+    {% if plan.multi_owner_units %}
+    <div class="py-2 border-top"><div class="d-flex gap-2 align-items-center"><span class="ac-chip warn">Pick</span><strong>{{ plan.multi_owner_units|length }} unit{{ plan.multi_owner_units|length|pluralize }} {{ plan.multi_owner_units|length|pluralize:"has,have" }} more than one owner. Who gets the bill?</strong></div>
+        {% for unit, names in plan.multi_owner_units.items %}
+        <div class="mt-2 ms-3"><span class="fw-semibold">{{ unit }}</span>
+            <div class="ac-pills mt-1">{% for n in names %}<span><input type="radio" id="b{{ unit }}{{ forloop.counter }}" name="billed_{{ unit }}" value="{{ n }}" {% if forloop.first %}checked{% endif %}><label for="b{{ unit }}{{ forloop.counter }}">{{ n }}</label></span>{% endfor %}</div></div>
+        {% endfor %}
+        <div class="small text-muted ms-3 mt-1">The other owner stays on the unit as "also an owner".</div></div>
+    {% endif %}
+    {% if plan.multi_unit_people %}<div class="py-2 border-top d-flex gap-2"><span class="ac-chip warn">Check</span><span><strong>{{ plan.multi_unit_people|length }} {{ plan.multi_unit_people|length|pluralize:"person owns,people own" }} more than one unit.</strong>
+        {% for name, us in plan.multi_unit_people.items %}{{ name }} ({{ us|join:", " }}){% if not forloop.last %}; {% endif %}{% endfor %}. Each becomes one person with several units.</span></div>{% endif %}
+    {% if plan.common_date %}<div class="py-2 border-top d-flex gap-2"><span class="ac-chip warn">Check</span><span><strong>{{ plan.common_date_count }} of {{ plan.rows }} owners start on {{ plan.common_date|mdate }}.</strong> If that is the day you took over, not their purchase date, it is kept as their start date anyway and can be corrected owner by owner.</span></div>{% endif %}
+    {% if plan.companies %}<div class="py-2 border-top d-flex gap-2"><span class="ac-chip warn">Check</span><span><strong>{{ plan.companies|length }} owner{{ plan.companies|length|pluralize }} look{{ plan.companies|length|pluralize:"s," }} like a company:</strong> {{ plan.companies|join:", " }}. They are kept as a company.</span></div>{% endif %}
+    <div class="py-2 border-top d-flex gap-2"><span class="ac-chip">Later</span><span class="text-muted">Emails, phones and mailing addresses are not in this file. Add them on each owner's page.</span></div>
+    <div class="d-flex gap-2 mt-2"><button class="btn btn-primary">Import {{ plan.units }} unit{{ plan.units|pluralize }} and {{ plan.rows }} owner row{{ plan.rows|pluralize }}</button><a class="btn btn-outline-secondary" href="{% url 'accounting:units_import' assoc.pk %}">Cancel</a></div>
+</div></form>
+{% endif %}
+{% endblock %}

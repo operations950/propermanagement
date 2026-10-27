@@ -1,0 +1,18 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Balance sheet - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-0">Balance sheet</h2>
+<div class="text-muted mb-2">{{ assoc.name }} &middot; as of {{ end|mdate }} &middot; {{ basis|capfirst }} book</div>
+{% include 'accounting/_report_filter.html' %}
+<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+{% for name in order %}{% with rows=bs.sections|get:name %}{% if rows %}
+    <tr><th colspan="2" class="pt-3">{{ name }}</th></tr>
+    {% for r in rows %}<tr><td>{{ r.account.code }} {{ r.account.name }}</td><td class="ac-num">{{ r.amount|plain }}</td></tr>{% endfor %}
+    {% if name == 'Equity' %}{% if bs.prior_years %}<tr><td>Earlier years' results</td><td class="ac-num">{{ bs.prior_years|plain }}</td></tr>{% endif %}<tr><td>This year's net income</td><td class="ac-num">{{ bs.net_year|plain }}</td></tr>{% endif %}
+{% endif %}{% endwith %}{% endfor %}
+    <tr class="fw-bold border-top"><td>Total assets</td><td class="ac-num">{{ bs.assets|plain }}</td></tr>
+    <tr class="fw-bold"><td>Total liabilities and funds</td><td class="ac-num">{{ bs.liabilities|add:bs.equity|plain }}</td></tr>
+</table></div></div>
+<p class="small mt-2">{% if bs.balanced %}<span class="ac-chip good">In balance</span>{% else %}<span class="ac-chip warn">Out of balance</span>{% endif %}</p>
+{% endblock %}

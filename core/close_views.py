@@ -468,6 +468,12 @@ def _closed_step(month):
     return ('done' if closed == len(rentals) else ('not_started' if closed == 0 else None)), detail
 
 
+def _associations_step(month):
+    """(status, detail) for the "Close associations" step: how many of the associations we keep the books for are closed for the month."""
+    from accounting import closing
+    return closing.checklist_step(month)
+
+
 def _tourist_tax_step(month):
     """(status, detail) for the Palm Beach County tourist tax step: grey until a property is marked filed, a count while some are, green Complete
     once every property listed for the month is filed, amber if a filed one has changed since. The figures are only worked out once something
@@ -618,6 +624,7 @@ def close_home(request):
     pay_status, pay_detail = _payout_step(month, today)
     close_status, close_detail = _closed_step(month)
     tax_status, tax_detail = _tourist_tax_step(month)
+    assoc_status, assoc_detail = _associations_step(month)
     steps = [
         {'n': 1, 'title': 'Bank tie-out', 'icon': 'landmark', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q},
         {'n': 2, 'title': 'Misc trust account', 'icon': 'wallet', 'status': misc_status, 'detail': misc_detail, 'url': reverse('close_misc') + q},
@@ -625,6 +632,7 @@ def close_home(request):
         {'n': 4, 'title': 'Platform payouts', 'icon': 'banknote', 'status': pay_status, 'detail': pay_detail, 'url': reverse('close_payouts')},
         {'n': 5, 'title': 'Close each rental', 'icon': 'lock', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q},
         {'n': 6, 'title': 'Tourist tax', 'icon': 'receipt', 'status': tax_status, 'detail': tax_detail, 'url': reverse('tourist_tax') + q},
+        {'n': 7, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
     ]
     for step in steps:
         # A step under way (not started, needs attention and done each have their own chip) shows just its count, such as "12 of 38"; the full sentence is the link's hover text.

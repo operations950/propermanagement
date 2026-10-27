@@ -1,0 +1,18 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}General ledger - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-0">General ledger</h2>
+<div class="text-muted mb-2">{{ assoc.name }} &middot; {{ start|mdate }} to {{ end|mdate }} &middot; {{ basis|capfirst }} book</div>
+<form method="get" class="d-flex gap-2 flex-wrap align-items-end mb-3 ac-noprint">
+    <div><label class="form-label small text-muted mb-1">Account</label><select class="form-select form-select-sm" name="account">{% for a in accounts %}<option value="{{ a.pk }}" {% if acct and a.pk == acct.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+    <div><label class="form-label small text-muted mb-1">From</label><input class="form-control form-control-sm" type="date" name="start" value="{{ start|date:'Y-m-d' }}"></div>
+    <div><label class="form-label small text-muted mb-1">Through</label><input class="form-control form-control-sm" type="date" name="end" value="{{ end|date:'Y-m-d' }}"></div>
+    <div class="ac-pills"><span><input type="radio" id="ba" name="basis" value="accrual" {% if basis == 'accrual' %}checked{% endif %}><label for="ba">Accrual</label></span><span><input type="radio" id="bc" name="basis" value="cash" {% if basis == 'cash' %}checked{% endif %}><label for="bc">Cash</label></span></div>
+    <button class="btn btn-sm btn-outline-secondary">Show</button><button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button></form>
+{% if gl %}<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+    <thead><tr><th>Date</th><th>Entry</th><th>Description</th><th class="ac-num">Debit</th><th class="ac-num">Credit</th><th class="ac-num">Balance</th></tr></thead>
+    <tr class="text-muted"><td colspan="5">Beginning balance</td><td class="ac-num">{{ gl.start_balance|plain }}</td></tr>
+    {% for r in gl.rows %}<tr><td>{{ r.entry.date|mdate }}</td><td>J-{{ r.entry.number }}</td><td>{% if r.line.owner %}{{ r.line.owner.name }} {% elif r.line.vendor %}{{ r.line.vendor.name }} {% endif %}<span class="text-muted">{{ r.line.memo|default:r.entry.memo|truncatechars:60 }}</span></td><td class="ac-num">{{ r.line.debit|plain_blank }}</td><td class="ac-num">{{ r.line.credit|plain_blank }}</td><td class="ac-num">{{ r.running|plain }}</td></tr>{% endfor %}
+    <tr class="fw-bold border-top"><td colspan="5">Ending balance</td><td class="ac-num">{{ gl.end_balance|plain }}</td></tr></table></div></div>{% endif %}
+{% endblock %}

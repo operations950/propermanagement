@@ -104,6 +104,16 @@ def _run_generate_biz_tasks():
     _run_command('generate_biz_tasks')
 
 
+def _run_post_accounting_recurring():
+    """Association books: post recurring owner charges and bills that have come due."""
+    _run_command('post_accounting_recurring')
+
+
+def _run_read_invoice_inbox():
+    """Association books: read new invoice emails into draft bills (nothing is approved or paid)."""
+    _run_command('read_invoice_inbox')
+
+
 def start():
     global _scheduler
     if _scheduler is not None:
@@ -157,6 +167,8 @@ def start():
     _scheduler.add_job(
         _run_refresh_listing_ratings, 'interval', hours=12, next_run_time=datetime.now() + timedelta(minutes=10),
     )
+    _scheduler.add_job(_run_post_accounting_recurring, 'interval', hours=6, next_run_time=datetime.now() + timedelta(minutes=15))
+    _scheduler.add_job(_run_read_invoice_inbox, 'interval', minutes=30, next_run_time=datetime.now() + timedelta(minutes=20))
     _scheduler.add_job(
         _run_generate_sessions, 'interval',
         minutes=settings.SESSION_GENERATE_INTERVAL_MINUTES, next_run_time=datetime.now(),

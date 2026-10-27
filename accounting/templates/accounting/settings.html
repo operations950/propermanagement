@@ -1,0 +1,87 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Accounting settings - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="settings" class="icon-lg"></i> Accounting settings</h2>
+<p class="text-muted">{{ assoc.name }}</p>
+
+<div class="card mb-3"><div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div><strong>We do the financials</strong><div class="small text-muted">Switch this on for an association whose books we keep. It needs the management contract on file.</div></div>
+    <form method="post" class="d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="switch">
+        {% if profile.we_do_financials %}<span class="ac-chip good">On</span><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Stop keeping the books for this association? Nothing is deleted.')">Switch off</button>
+        {% else %}<span class="ac-chip">Off</span><input type="hidden" name="on" value="1"><button class="btn btn-sm btn-primary">Switch on</button>{% endif %}</form>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Where things stand</h6>
+    <table class="table table-sm mb-0"><tbody>{% for r in ap_rows %}<tr><td>{{ r.label }}</td><td class="text-muted">{{ r.value }}</td><td class="text-end"><span class="ac-chip {% if r.ok %}good{% else %}warn{% endif %}">{% if r.ok %}Set{% else %}Not set up{% endif %}</span></td><td class="text-end">{% if r.url %}<a class="btn btn-sm btn-outline-secondary" href="{{ r.url }}">Open</a>{% endif %}</td></tr>{% endfor %}</tbody></table>
+</div></div>
+
+<form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="terms">
+    <h6 class="card-title">Terms and defaults</h6>
+    <div class="row g-3">
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Late fee</label><select class="form-select form-select-sm" name="late_fee_kind">
+            <option value="none" {% if profile.late_fee_kind == 'none' %}selected{% endif %}>No late fee</option><option value="flat" {% if profile.late_fee_kind == 'flat' %}selected{% endif %}>A flat amount</option>
+            <option value="percent" {% if profile.late_fee_kind == 'percent' %}selected{% endif %}>A percent of the charge</option><option value="greater" {% if profile.late_fee_kind == 'greater' %}selected{% endif %}>The greater of an amount and a percent</option></select></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Flat amount</label><input class="form-control form-control-sm" name="late_fee_flat" value="{{ profile.late_fee_flat|default_if_none:'' }}"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Percent</label><input class="form-control form-control-sm" name="late_fee_percent" value="{{ profile.late_fee_percent|default_if_none:'' }}"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Grace days</label><input class="form-control form-control-sm" name="grace" value="{{ profile.late_fee_grace_days|default_if_none:'' }}"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Interest, % a year</label><input class="form-control form-control-sm" name="interest" value="{{ profile.interest_rate|default_if_none:'' }}"></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">We may spend without the board, up to</label><input class="form-control form-control-sm" name="spending_limit" value="{{ profile.spending_limit|default_if_none:'' }}"></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Management fee, a month</label><input class="form-control form-control-sm" name="management_fee" value="{{ profile.management_fee|default_if_none:'' }}"></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Fiscal year starts in</label><select class="form-select form-select-sm" name="fiscal_month">{% for n, m in months %}<option value="{{ n }}" {% if profile.fiscal_year_start_month == n %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+        <div class="col-12"><label class="small"><input type="checkbox" name="auto_post" {% if profile.auto_post %}checked{% endif %}> Post recurring charges and bills by themselves on their dates</label></div>
+    </div>
+    <div class="small text-muted mt-2">Best set from the documents below, where the program shows the page each one comes from. Reserve spending always needs the board.</div>
+    <button class="btn btn-sm btn-primary mt-2">Save</button>
+</div></form>
+
+<div class="card mb-3" id="documents"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Documents &amp; rules</h6>
+    <table class="table table-sm mb-2"><tbody>{% for d in ap_docs %}<tr><td>{{ d.label }}</td><td>{% if d.doc %}<a href="{{ d.doc.file.url }}" target="_blank">{{ d.doc.name|truncatechars:40 }}</a> <span class="small text-muted">{{ d.doc.uploaded_at|date:"M j, Y" }}</span>{% endif %}</td>
+        <td class="text-end">{% if d.doc %}<span class="ac-chip good">Uploaded</span>{% elif d.required %}<span class="ac-chip warn">Required</span>{% else %}<span class="ac-chip">Not uploaded</span>{% endif %}</td>
+        <td class="text-end">{% if d.doc %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="doc" value="{{ d.doc.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="read_doc" title="Find the late fee, spending limit and fees in this document">Read for settings</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="delete_doc" onclick="return confirm('Remove this document?')">Remove</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table>
+    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="upload">
+        <select class="form-select form-select-sm" name="kind" style="max-width: 250px;"><option value="declaration">Declaration of Condominium</option><option value="articles">Articles of Incorporation</option><option value="bylaws">Bylaws</option><option value="rules">Rules and regulations</option><option value="contract">Management contract</option><option value="budget">Budget</option><option value="other">Other</option></select>
+        <input type="file" name="file" class="form-control form-control-sm" style="max-width: 280px;" required><button class="btn btn-sm btn-primary">Upload</button></form>
+
+    {% if ap_proposals %}<div class="mt-3 pt-3 border-top"><div class="ac-lab mb-2">Found in the documents: confirm each one that is right</div>
+        {% for p in ap_proposals %}<form method="post" class="py-2 {% if not forloop.first %}border-top{% endif %}">{% csrf_token %}<input type="hidden" name="proposal" value="{{ p.pk }}">
+            <div class="d-flex justify-content-between flex-wrap gap-2"><div><strong>{{ p.label }}</strong>: {{ p.summary }} <span class="small text-muted">{{ p.document.get_kind_display }}{% if p.page %}, page {{ p.page }}{% endif %}</span><div class="small text-muted fst-italic">"{{ p.quote|truncatechars:240 }}"</div></div>
+                <div class="d-flex gap-1 align-items-start">{% for k, v in p.value.items %}{% if k != 'kind' %}<input class="form-control form-control-sm" style="width: 100px;" name="v_{{ k }}" value="{{ v|default_if_none:'' }}" title="{{ k }}">{% endif %}{% endfor %}<button class="btn btn-sm btn-primary" name="action" value="confirm">Confirm</button><button class="btn btn-sm btn-outline-secondary" name="action" value="dismiss">Dismiss</button></div></div></form>{% endfor %}</div>{% endif %}
+
+    <div class="mt-3 pt-3 border-top"><div class="ac-lab mb-1">Ask the documents</div>
+        <form method="post" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="action" value="ask"><input class="form-control form-control-sm" name="question" placeholder="For example: Can an owner rent a unit for a week at a time?" required><button class="btn btn-sm btn-primary">Ask</button></form>
+        {% for q in ap_questions %}<div class="mt-2 p-2 rounded" style="background: var(--bs-light, #f1f3f5);"><div class="small fw-semibold">{{ q.question }}</div><div class="small" style="white-space: pre-wrap;">{{ q.answer }}</div></div>{% endfor %}</div>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Bank accounts</h6>
+    <table class="table table-sm mb-2"><tbody>{% for b in banks %}<tr class="{% if not b.is_active %}text-muted{% endif %}"><td>{{ b.name }}</td><td>{{ b.bank_name }}{% if b.last4 %} ending {{ b.last4 }}{% endif %}</td><td>{{ b.get_kind_display }}</td><td>{{ b.account }}</td>
+        <td class="text-end">{% if b.is_active %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="bank" value="{{ b.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="bank_off">Stop using</button></form>{% else %}<span class="ac-chip">Not in use</span>{% endif %}</td></tr>{% empty %}<tr><td class="text-muted">No bank account yet.</td></tr>{% endfor %}</tbody></table>
+    <form method="post" class="row g-2">{% csrf_token %}<input type="hidden" name="action" value="bank">
+        <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Name, e.g. Operating" required></div><div class="col-md-3"><input class="form-control form-control-sm" name="bank_name" placeholder="Bank"></div>
+        <div class="col-md-2"><input class="form-control form-control-sm" name="last4" maxlength="4" placeholder="Last 4"></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="kind"><option value="operating">Operating</option><option value="reserve">Reserves</option></select></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="account" title="The cash account in the books">{% for a in cash_accounts %}<option value="{{ a.pk }}">{{ a }}</option>{% endfor %}</select></div>
+        <div class="col-12"><button class="btn btn-sm btn-outline-secondary">Add or update</button></div></form>
+</div></div>
+
+<form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="official">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building" class="icon"></i> Official record <span class="small fw-normal text-muted ms-auto">{% if profile.sunbiz_checked_on %}Checked {{ profile.sunbiz_checked_on|mdate }}{% endif %}{% if profile.sunbiz_url %} &middot; <a href="{{ profile.sunbiz_url }}" target="_blank">Open on SunBiz</a>{% endif %}</span></h6>
+    <div class="row g-2">
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Legal name</label><input class="form-control form-control-sm" name="legal_name" value="{{ profile.legal_name }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">State document number</label><input class="form-control form-control-sm" name="state_doc_number" value="{{ profile.state_doc_number }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">EIN</label><input class="form-control form-control-sm" name="ein" value="{{ profile.ein }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Date filed</label><input class="form-control form-control-sm" type="date" name="date_filed" value="{{ profile.date_filed|date:'Y-m-d' }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Status</label><input class="form-control form-control-sm" name="state_status" value="{{ profile.state_status }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Last annual report filed</label><input class="form-control form-control-sm" type="date" name="annual_report_filed" value="{{ profile.annual_report_filed|date:'Y-m-d' }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">SunBiz link</label><input class="form-control form-control-sm" name="sunbiz_url" value="{{ profile.sunbiz_url }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Principal address</label><input class="form-control form-control-sm" name="principal_address" value="{{ profile.principal_address }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Mailing address</label><input class="form-control form-control-sm" name="mailing_address" value="{{ profile.mailing_address }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Registered agent</label><input class="form-control form-control-sm" name="registered_agent" value="{{ profile.registered_agent }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Officers as the state lists them (name, title; one per line)</label><textarea class="form-control form-control-sm" rows="4" name="officers">{{ officers_text }}</textarea></div>
+    </div>
+    <button class="btn btn-sm btn-primary mt-2">Save the official record</button>
+</div></form>
+{% endblock %}

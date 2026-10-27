@@ -1,0 +1,55 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{% if rule %}{{ rule.name }}{% else %}New charge{% endif %} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1">{% if rule %}{{ rule.name }}{% else %}Add a charge{% endif %}</h2>
+<p class="text-muted">{{ assoc.name }}</p>
+<form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}
+    <div class="row g-3">
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Name</label><input class="form-control" name="name" value="{{ rule.name|default:'Regular assessment' }}" required></div>
+        <div class="col-md-6 pt-md-4"><label class="small"><input type="checkbox" name="is_special" {% if rule.is_special %}checked{% endif %}> A special assessment</label></div>
+        <div class="col-12"><label class="form-label small text-muted mb-1">How often</label>
+            <div class="ac-pills" id="freq">{% for value, label in frequencies %}<span><input type="radio" id="f{{ value }}" name="frequency" value="{{ value }}" {% if rule.frequency == value or not rule and value == 'quarterly' %}checked{% endif %}><label for="f{{ value }}">{{ label }}</label></span>{% endfor %}</div></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">First due</label><input class="form-control" type="date" name="first_due" id="first_due" value="{{ rule.first_due|date:'Y-m-d' }}" required>
+            <div class="small text-muted mt-1" id="pastnote" style="display: none;">That date has passed, so the charges post when you save, dated then.</div></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Stops after this many charges (optional)</label><input class="form-control" type="number" min="1" name="installments" value="{{ rule.installments|default_if_none:'' }}"></div>
+        <div class="col-12"><label class="form-label small text-muted mb-1">How much</label>
+            <div class="row g-2">
+                <div class="col-md-6"><input class="ac-optin" type="radio" id="m_flat" name="method" value="flat" {% if rule.method != 'share' %}checked{% endif %}><label class="ac-opt" for="m_flat"><strong>The same for every unit</strong><br><span class="small text-muted">One amount, charged to each unit</span></label></div>
+                <div class="col-md-6"><input class="ac-optin" type="radio" id="m_share" name="method" value="share" {% if rule.method == 'share' %}checked{% endif %}><label class="ac-opt" for="m_share"><strong>Split by each unit's share</strong><br><span class="small text-muted">A total, divided by every unit's percentage</span></label></div>
+            </div>
+            <div class="mt-2 d-flex align-items-center gap-2"><span class="small text-muted" id="amtlab">Amount per unit</span><div class="input-group" style="max-width: 190px;"><span class="input-group-text">$</span><input class="form-control text-end" name="amount" id="amount" value="{{ rule.amount|default:'1750.00' }}" required></div></div></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Income account</label><select class="form-select" name="income_account">{% for a in income_accounts %}<option value="{{ a.pk }}" {% if rule.income_account_id == a.pk or not rule and a.pk == default_income.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+    </div>
+</div></div>
+<div class="ac-live mb-3"><div class="ac-lab">What owners will be charged</div><div class="ac-big" id="liveamt"></div><div class="small text-muted" id="livesub"></div><div id="livetable" class="mt-2"></div></div>
+<div class="d-flex gap-2 flex-wrap"><button class="btn btn-primary">Save</button>{% if not rule %}<button class="btn btn-outline-primary" name="post_now" value="1">Save and post what is due</button>{% endif %}<a class="btn btn-outline-secondary" href="{% url 'accounting:charges' assoc.pk %}">Cancel</a></div>
+</form>
+<script>
+(function () {
+    var units = {{ units_n }}, today = '{{ today|date:"Y-m-d" }}';
+    var shares = [{% for label, p in share_rows %}['{{ label }}', {{ p|pct:6 }}]{% if not forloop.last %},{% endif %}{% endfor %}];
+    function money(n) { return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function method() { return document.getElementById('m_share').checked ? 'share' : 'flat'; }
+    function freq() { var f = document.querySelector('#freq input:checked'); return f ? f.parentNode.querySelector('label').textContent : ''; }
+    function render() {
+        var amt = parseFloat(document.getElementById('amount').value.replace(/[$,]/g, '')) || 0, m = method();
+        document.getElementById('amtlab').textContent = m === 'flat' ? 'Amount per unit' : 'Total to split each time';
+        var d = document.getElementById('first_due').value;
+        document.getElementById('pastnote').style.display = (d && d <= today) ? '' : 'none';
+        var amtEl = document.getElementById('liveamt'), sub = document.getElementById('livesub'), tb = document.getElementById('livetable');
+        if (m === 'flat') {
+            amtEl.textContent = money(amt) + ' a unit'; sub.textContent = units + ' units · ' + money(amt * units) + ' each time · ' + freq().toLowerCase(); tb.innerHTML = '';
+        } else {
+            amtEl.textContent = money(amt) + ' split by share'; sub.textContent = 'Each unit pays its share of ' + money(amt) + ' · ' + freq().toLowerCase();
+            var h = '<table class="table table-sm ac-table mb-0"><thead><tr><th>Unit</th><th class="ac-num">Share</th><th class="ac-num">Charge</th></tr></thead><tbody>';
+            shares.forEach(function (r) { h += '<tr><td>' + r[0] + '</td><td class="ac-num">' + r[1].toFixed(4) + '%</td><td class="ac-num">' + money(Math.round(amt * r[1]) / 100) + '</td></tr>'; });
+            tb.innerHTML = h + '</tbody></table><div class="small text-muted">The first ' + shares.length + ' of ' + units + ' units. The cents always add up to the total.</div>';
+        }
+    }
+    ['amount', 'first_due'].forEach(function (id) { document.getElementById(id).addEventListener('input', render); });
+    document.querySelectorAll('input[name=method], input[name=frequency]').forEach(function (e) { e.addEventListener('change', render); });
+    render();
+})();
+</script>
+{% endblock %}

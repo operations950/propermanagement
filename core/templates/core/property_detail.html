@@ -21,6 +21,7 @@
             <a href="{% url 'onsite_performance_calendar' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-days" class="icon"></i> Calendar</a>
             <a href="{% url 'onsite_performance_property' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-column" class="icon"></i> Performance</a>
             {% endif %}
+            {% if ap %}<a href="{% url 'accounting:hub' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-column" class="icon"></i> Accounting</a>{% endif %}
             <a href="{% url 'property_edit' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
         </div>
     </div>
@@ -33,8 +34,16 @@
 </div>
 {% endif %}
 
+{% if ap and ap_todo %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
+    <span class="small"><i data-lucide="triangle-alert" class="icon"></i> <strong>{{ ap_todo|length }} thing{{ ap_todo|length|pluralize }} to finish:</strong> {{ ap_todo|join:" &middot; " }}</span>
+    <a href="#settings" class="btn btn-outline-secondary btn-sm">Go to the settings</a>
+</div>
+{% endif %}
+
 <nav class="d-flex flex-wrap gap-2 mb-3 small" aria-label="Sections of this property">
-    <a href="#units" class="btn btn-sm btn-outline-secondary">{% if units %}Units{% else %}Details{% endif %}</a>
+    {% if ap %}<a href="#official" class="btn btn-sm btn-outline-secondary">Official record</a><a href="#owners" class="btn btn-sm btn-outline-secondary">Units &amp; owners</a><a href="#settings" class="btn btn-sm btn-outline-secondary">Accounting settings</a><a href="#docs" class="btn btn-sm btn-outline-secondary">Documents</a>
+    {% else %}<a href="#units" class="btn btn-sm btn-outline-secondary">{% if units %}Units{% else %}Details{% endif %}</a>{% endif %}
     <a href="#building" class="btn btn-sm btn-outline-secondary">{% if units %}Building{% else %}Property-wide{% endif %}</a>
     {% if 'trash' in sections %}<a href="#trash" class="btn btn-sm btn-outline-secondary">Trash</a>{% endif %}
     <a href="#contacts" class="btn btn-sm btn-outline-secondary">Contacts</a>
@@ -44,7 +53,7 @@
     {% if qb and 'quickbooks' in sections %}<a href="#quickbooks" class="btn btn-sm btn-outline-secondary">QuickBooks</a>{% endif %}
 </nav>
 
-<section id="units" class="mb-3">
+{% if ap %}{% include 'accounting/_assoc_cards.html' %}{% else %}<section id="units" class="mb-3">
     <div id="property-size"></div>
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
         <h5 class="mb-0 d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> {% if units %}Units{% else %}This property{% endif %}</h5>
@@ -59,11 +68,11 @@
         <input type="text" name="label" class="form-control form-control-sm" style="max-width: 260px;" placeholder="Add a unit — e.g. Bamboo, 3B, Unit 204">
         <button class="btn btn-outline-secondary btn-sm" type="submit"><i data-lucide="plus" class="icon"></i> Add unit</button>
     </form>
-</section>
+</section>{% endif %}
 {% if property.property_type == 'association' and can_use_documents %}
 <section id="documents" class="mb-3">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-        <h5 class="mb-0 d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Legal documents</h5>
+        <h5 class="mb-0 d-flex align-items-center gap-2"><i data-lucide="file-plus" class="icon"></i> Forms you can create</h5>
         <a href="{% url 'legalforms:list' %}?property={{ property.pk }}" class="small">All documents for this association</a>
     </div>
     <div class="d-flex gap-2 flex-wrap">

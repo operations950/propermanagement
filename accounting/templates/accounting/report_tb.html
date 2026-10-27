@@ -1,0 +1,13 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Trial balance - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-0">Trial balance</h2>
+<div class="text-muted mb-2">{{ assoc.name }} &middot; {{ start|mdate }} to {{ end|mdate }} &middot; {{ basis|capfirst }} book</div>
+{% include 'accounting/_report_filter.html' with show_start=True %}
+<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+    <thead><tr><th>Account</th><th class="ac-num">Forward</th><th class="ac-num">Debit</th><th class="ac-num">Credit</th><th class="ac-num">Ending</th></tr></thead>
+    <tbody>{% for r in tb.rows %}<tr><td>{{ r.account.code }} {{ r.account.name }}</td><td class="ac-num">{{ r.forward|plain }}</td><td class="ac-num">{{ r.debit|plain_blank }}</td><td class="ac-num">{{ r.credit|plain_blank }}</td><td class="ac-num">{{ r.ending|plain }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr class="fw-bold"><td>Total</td><td class="ac-num">{{ tb.totals.forward|plain }}</td><td class="ac-num">{{ tb.totals.debit|plain }}</td><td class="ac-num">{{ tb.totals.credit|plain }}</td><td class="ac-num">{{ tb.totals.ending|plain }}</td></tr></tfoot></table></div></div>
+<p class="small text-muted mt-2">Debit balances are positive, credit balances negative, as in Yardi.</p>
+{% endblock %}

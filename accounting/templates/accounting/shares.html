@@ -1,0 +1,22 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Unit shares - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="percent" class="icon-lg"></i> Unit shares</h2>
+        <div class="small text-muted">Each unit's percentage of the common expenses. Set once; used wherever a charge is split by share.</div>
+    </div>
+    <form method="post" class="ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="equal" onclick="return confirm('Give every unit an equal share, replacing what is there?')">Equal shares</button></form>
+</div>
+<form method="post" class="card"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="save">
+    <h6 class="card-title d-flex align-items-center gap-2">{{ kind.name }} {% if ok %}<span class="ac-chip good">Adds up to 100%</span>{% else %}<span class="ac-chip warn">{{ total|pct:4 }}% - should be 100%</span>{% endif %}</h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Unit</th><th class="ac-num">Share</th>{% if per %}<th class="ac-num">Regular assessment, split by share</th>{% endif %}</tr></thead>
+        <tbody>{% for u, p in rows %}<tr><td>{{ u.label }}</td><td class="ac-num"><input class="form-control form-control-sm d-inline-block text-end" style="width: 110px;" name="share_{{ u.pk }}" value="{{ p|pct:6 }}"> %</td>
+            {% if per %}<td class="ac-num">{{ per|get:u|default_if_none:"" }}</td>{% endif %}</tr>{% endfor %}</tbody>
+    </table>
+    <div class="d-flex gap-3 align-items-center pt-2 border-top mt-1"><span><strong>Total</strong> {{ total|pct:4 }}%</span><button class="btn btn-sm btn-primary ms-auto">Save shares</button></div>
+</div></form>
+<p class="small text-muted mt-2">Each unit's share is kept as a number, so a charge, a budget split or a special assessment can use it. Charges always add to the cent: spare cents go to the units with the largest remainders.</p>
+{% endblock %}

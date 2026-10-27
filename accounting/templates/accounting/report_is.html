@@ -1,0 +1,19 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Income vs budget - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-0">{% if has_budget %}Income vs budget{% else %}Income and expenses{% endif %}</h2>
+<div class="text-muted mb-2">{{ assoc.name }} &middot; {{ start|mdate }} to {{ end|mdate }} &middot; {{ basis|capfirst }} book</div>
+{% include 'accounting/_report_filter.html' with show_start=True %}
+<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+    <thead><tr><th></th><th class="ac-num">Actual</th>{% if has_budget %}<th class="ac-num">Budget</th><th class="ac-num">Over (+) / under (-)</th>{% endif %}</tr></thead>
+    <tr><th colspan="4" class="pt-2">Income</th></tr>
+    {% for r in inc.income %}<tr><td>{{ r.account.code }} {{ r.account.name }}</td><td class="ac-num">{{ r.amount|plain }}</td>{% if has_budget %}<td class="ac-num">{{ r.budget|default_if_none:""|plain }}</td><td class="ac-num">{{ r.variance|default_if_none:""|plain }}</td>{% endif %}</tr>{% endfor %}
+    <tr class="fw-bold"><td>Total income</td><td class="ac-num">{{ inc.total_income|plain }}</td>{% if has_budget %}<td></td><td></td>{% endif %}</tr>
+    <tr><th colspan="4" class="pt-3">Expenses</th></tr>
+    {% for r in inc.expense %}<tr><td>{{ r.account.code }} {{ r.account.name }}</td><td class="ac-num">{{ r.amount|plain }}</td>{% if has_budget %}<td class="ac-num">{{ r.budget|default_if_none:""|plain }}</td><td class="ac-num">{{ r.variance|default_if_none:""|plain }}</td>{% endif %}</tr>{% endfor %}
+    <tr class="fw-bold"><td>Total expenses</td><td class="ac-num">{{ inc.total_expense|plain }}</td>{% if has_budget %}<td></td><td></td>{% endif %}</tr>
+    <tr class="fw-bold border-top"><td>Net income</td><td class="ac-num">{{ inc.net|plain }}</td>{% if has_budget %}<td></td><td></td>{% endif %}</tr>
+</table></div></div>
+{% if not has_budget %}<p class="small text-muted mt-2">No budget is loaded for this year. <a href="{% url 'accounting:budget' assoc.pk %}">Enter the budget</a> to see it alongside.</p>{% endif %}
+{% endblock %}

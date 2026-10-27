@@ -1,0 +1,14 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Budget - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-0">Budget {{ year }}</h2>
+<div class="text-muted mb-3">{{ assoc.name }}. The year's amount for each account; the income report spreads it evenly across the months.</div>
+<form method="post" class="card"><div class="card-body">{% csrf_token %}
+    <table class="table table-sm ac-table"><thead><tr><th>Account</th><th class="ac-num">Annual budget</th></tr></thead>
+        <tbody>{% for r in rows %}<tr><td>{{ r.account }}</td><td class="ac-num"><input class="form-control form-control-sm text-end d-inline-block" style="width: 140px;" name="amt_{{ r.account.pk }}" value="{{ r.amount|default_if_none:'' }}"></td></tr>{% endfor %}</tbody></table>
+    {% if others %}<details class="mb-2"><summary class="small" style="cursor: pointer;">Budget an account with no activity yet</summary>
+        {% for a in others %}<div class="d-flex justify-content-between py-1 small"><span>{{ a }}</span><input class="form-control form-control-sm text-end" style="width: 140px;" name="amt_{{ a.pk }}"></div>{% endfor %}</details>{% endif %}
+    <button class="btn btn-sm btn-primary">Save the budget</button>
+</div></form>
+{% endblock %}

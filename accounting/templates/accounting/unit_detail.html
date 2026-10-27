@@ -1,0 +1,69 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Unit {{ unit.label }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon-lg"></i> Unit {{ unit.label }}</h2>
+        <div class="small text-muted">{{ assoc.name }}{% if building %} &middot; Building {{ building }}{% endif %}{% if share %} &middot; share {{ share.percent|pct:4 }}%{% endif %}</div>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        {% if balance > 0 %}<span class="ac-chip warn">Owes {{ balance|money }}</span>{% elif balance < 0 %}<span class="ac-chip good">Paid ahead {{ balance|money }}</span>{% else %}<span class="ac-chip good">Paid up</span>{% endif %}
+        {% if books_on %}<a class="btn btn-sm btn-primary" href="{% url 'accounting:receipt_new' assoc.pk %}?unit={{ unit.pk }}"><i data-lucide="hand-coins" class="icon"></i> Record a payment</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:charge_one' assoc.pk %}?unit={{ unit.pk }}"><i data-lucide="plus" class="icon"></i> Post a charge</a>{% endif %}
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="users" class="icon"></i> Owners</h6>
+    {% for o in current %}
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 py-2 {% if not forloop.first %}border-top{% endif %}">
+        <div>
+            <div class="fw-semibold"><a href="{% url 'accounting:owner' assoc.pk o.person.pk %}" class="text-decoration-none text-reset">{{ o.person.name }}</a>
+                {% if o.is_billed %}<span class="ac-chip good">Bills go to this owner</span>{% else %}<span class="ac-chip">Also an owner</span>{% endif %}
+                <span class="ac-chip">{% if o.occupancy == 'absentee' %}Not living there{% else %}Lives there{% endif %}</span></div>
+            <div class="small text-muted">{% if o.start_date %}Owner since {{ o.start_date|mdate }}{% else %}Start date not known{% endif %}
+                {% if o.person.email or o.person.phone %} &middot; {{ o.person.email }} {{ o.person.phone }}{% else %} &middot; <a href="{% url 'accounting:owner' assoc.pk o.person.pk %}">no email or phone yet</a>{% endif %}</div>
+        </div>
+        <form method="post" class="d-flex gap-1 flex-wrap ac-noprint">{% csrf_token %}
+            {% if not o.is_billed %}<button class="btn btn-sm btn-outline-secondary" name="action" value="set_billed"><input type="hidden" name="person" value="{{ o.person.pk }}">Bill this owner</button>{% endif %}
+            <input type="hidden" name="ownership" value="{{ o.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="end_ownership" onclick="return confirm('Mark {{ o.person.name|escapejs }} as no longer an owner of this unit?')">No longer an owner</button>
+        </form>
+    </div>
+    {% empty %}<p class="text-muted mb-1">No current owner.</p>{% endfor %}
+    <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Add an owner</summary>
+        <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="add_owner">
+            <div class="col-md-4"><input class="form-control form-control-sm" name="name" placeholder="Owner's name" required></div>
+            <div class="col-md-3"><input class="form-control form-control-sm" type="date" name="start" value="{{ today|date:'Y-m-d' }}"></div>
+            <div class="col-md-3"><select class="form-select form-select-sm" name="occupancy"><option value="occupant">Lives there</option><option value="absentee">Not living there</option></select></div>
+            <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Add</button></div>
+            <div class="col-12"><label class="small"><input type="checkbox" name="billed"> Bill this owner</label></div>
+        </form></details>
+    <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">When this unit is sold</summary>
+        <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="sale">
+            <div class="col-md-3"><label class="small text-muted">Sale date</label><input class="form-control form-control-sm" type="date" name="sale_date" required></div>
+            <div class="col-md-5"><label class="small text-muted">New owner(s), separated by semicolons</label><input class="form-control form-control-sm" name="names" placeholder="First owner; second owner" required></div>
+            <div class="col-md-2"><label class="small text-muted">&nbsp;</label><select class="form-select form-select-sm" name="occupancy"><option value="occupant">Lives there</option><option value="absentee">Not living there</option></select></div>
+            <div class="col-md-2"><label class="small text-muted">&nbsp;</label><button class="btn btn-sm btn-primary w-100">Record the sale</button></div>
+            <div class="col-12 small text-muted">Everything charged before the sale stays with the former owners, and what they owe stays on the books until paid. Charges from the sale date on go to the first new owner.</div>
+        </form></details>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="book-open" class="icon"></i> Ledger <span class="small fw-normal text-muted ms-auto">Newest first{% if open_tickets %} &middot; {{ open_tickets }} open ticket{{ open_tickets|pluralize }}{% endif %}</span></h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Date</th><th>What</th><th>Owner</th><th class="ac-num">Charge</th><th class="ac-num">Payment</th><th class="ac-num">Balance</th></tr></thead>
+        <tbody>{% for r in rows %}<tr><td>{{ r.date|mdate }}</td><td>{{ r.what }}</td><td class="small text-muted">{{ r.owner.name }}</td><td class="ac-num">{{ r.charge|plain_blank }}</td><td class="ac-num">{{ r.payment|plain_blank }}</td><td class="ac-num">{{ r.balance|plain }}</td></tr>
+        {% empty %}<tr><td colspan="6" class="text-muted">Nothing has been charged or paid yet.</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+
+{% if former %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="history" class="icon"></i> Former owners</h6>
+    {% for o in former %}<div class="d-flex justify-content-between py-1 {% if not forloop.first %}border-top{% endif %}"><span class="fw-semibold">{{ o.person.name }}</span>
+        <span class="small text-muted">{% if o.start_date %}{{ o.start_date|mdate }}{% endif %}{% if o.end_date %} to {{ o.end_date|mdate }}{% endif %}</span></div>{% endfor %}
+    {% for a in accounts %}{% if not a.current and a.balance != 0 %}<div class="small mt-1"><span class="ac-chip warn">{{ a.owner.name }} still owes {{ a.balance|money }}</span></div>{% endif %}{% endfor %}
+</div></div>
+{% endif %}
+{% endblock %}

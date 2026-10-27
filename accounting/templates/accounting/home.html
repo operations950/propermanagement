@@ -1,0 +1,31 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Close associations{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon-lg"></i> Close associations</h2>
+        <div class="small text-muted">{{ done }} of {{ rows|length }} closed for {{ month|date:"F Y" }}</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+{% for r in rows %}
+<a class="ac-step" href="{% url 'accounting:close' r.assoc.pk month|date:'Y-m' %}">
+    <i data-lucide="building-2" class="icon ac-ico"></i>
+    <span class="fw-semibold flex-grow-1">{{ r.assoc.name }}</span>
+    <span class="small text-muted d-none d-sm-inline">{{ r.detail }}</span>
+    <span class="ac-chip {{ r.status }}">{% if r.status == 'done' %}Closed{% elif r.status == 'attention' %}Needs attention{% else %}Not started{% endif %}</span>
+    <i data-lucide="chevron-right" class="icon text-muted"></i>
+</a>
+{% empty %}
+<div class="card"><div class="card-body text-muted">No association is set up for financials yet. Open an association's page and switch on <strong>We do the financials</strong> in its accounting settings.</div></div>
+{% endfor %}
+{% if others %}
+<div class="small text-muted mt-4 mb-2">Associations we do not keep the books for</div>
+<div class="d-flex flex-wrap gap-2">{% for p in others %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:settings' p.pk %}">{{ p.name }}</a>{% endfor %}</div>
+{% endif %}
+{% endblock %}

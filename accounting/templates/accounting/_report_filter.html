@@ -1,0 +1,7 @@
+<form method="get" class="d-flex gap-2 flex-wrap align-items-end mb-3 ac-noprint">
+    {% if show_start %}<div><label class="form-label small text-muted mb-1">From</label><input class="form-control form-control-sm" type="date" name="start" value="{{ start|date:'Y-m-d' }}"></div>{% endif %}
+    <div><label class="form-label small text-muted mb-1">{% if show_start %}Through{% else %}As of{% endif %}</label><input class="form-control form-control-sm" type="date" name="end" value="{{ end|date:'Y-m-d' }}"></div>
+    {% if basis %}<div class="ac-pills"><span><input type="radio" id="ba" name="basis" value="accrual" {% if basis == 'accrual' %}checked{% endif %}><label for="ba">Accrual</label></span><span><input type="radio" id="bc" name="basis" value="cash" {% if basis == 'cash' %}checked{% endif %}><label for="bc">Cash</label></span></div>{% endif %}
+    {% block extra %}{% endblock %}
+    <button class="btn btn-sm btn-outline-secondary">Show</button><button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button>
+</form>

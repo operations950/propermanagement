@@ -1,0 +1,39 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Charges to owners - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="repeat" class="icon-lg"></i> Charges to owners</h2>
+        <div class="small text-muted">What each owner is billed, and when. They post themselves on their dates{% if not profile.auto_post %} once automatic posting is switched on in the settings{% endif %}.</div>
+    </div>
+    <a class="btn btn-sm btn-primary" href="{% url 'accounting:charge_new' assoc.pk %}"><i data-lucide="plus" class="icon"></i> Add a charge</a>
+</div>
+{% for r in rows %}
+<div class="card mb-2"><div class="card-body">
+    <div class="d-flex align-items-center flex-wrap gap-2">
+        <span class="fw-semibold fs-6">{{ r.rule.name }}</span><span class="ac-chip">{{ r.rule.get_frequency_display }}</span>{% if r.rule.is_special %}<span class="ac-chip">Special</span>{% endif %}
+        {% if not r.rule.is_active %}<span class="ac-chip">Stopped</span>{% elif r.status.pending %}<span class="ac-chip warn">{{ r.status.last_due|mdate:'short' }} not posted yet</span>{% elif r.status.last_due %}<span class="ac-chip good">{{ r.status.last_due|mdate:'short' }} posted to {{ r.status.posted }} unit{{ r.status.posted|pluralize }}</span>{% endif %}
+        <div class="ms-auto text-end"><span class="ac-big">{% if r.per_unit %}{{ r.per_unit|money }}{% else %}{{ r.total|money }}{% endif %}</span><br><span class="small text-muted">{% if r.per_unit %}per unit &middot; {{ r.total|money }} a posting{% else %}split by each unit's share{% endif %}</span></div>
+    </div>
+    <dl class="row small mb-0 mt-2"><dt class="col-sm-3 text-muted fw-normal">First due</dt><dd class="col-sm-9 mb-0">{{ r.rule.first_due|mdate }}{% if r.rule.installments %}, {{ r.rule.installments }} payments{% endif %}</dd>
+        <dt class="col-sm-3 text-muted fw-normal">Goes to</dt><dd class="col-sm-9 mb-0">{{ r.rule.income_account }}</dd>
+        {% if r.status.next_due and r.rule.is_active %}<dt class="col-sm-3 text-muted fw-normal">Next due</dt><dd class="col-sm-9 mb-0">{{ r.status.next_due|mdate }}</dd>{% endif %}</dl>
+    <form method="post" class="d-flex gap-2 flex-wrap mt-2 ac-noprint">{% csrf_token %}<input type="hidden" name="rule" value="{{ r.rule.pk }}">
+        {% if r.status.pending and r.rule.is_active %}<button class="btn btn-sm btn-primary" name="action" value="post_now">Post {{ r.status.last_due|mdate:'short' }} charges now</button>{% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:charge_edit' assoc.pk r.rule.pk %}">Edit</a>
+        {% if r.rule.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="stop" onclick="return confirm('Stop posting this charge? What is already posted stays.')">Stop</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="resume">Resume</button>{% endif %}
+    </form>
+</div></div>
+{% empty %}<div class="card"><div class="card-body text-muted">No charges are set up. Add the regular assessment to begin.</div></div>{% endfor %}
+
+<div class="card mt-3"><div class="card-body">
+    <h6 class="card-title">Where each kind of charge is set up</h6>
+    <table class="table table-sm mb-0"><tbody>
+        <tr><td class="fw-semibold">Regular and special assessments</td><td class="text-muted">Here.</td></tr>
+        <tr><td class="fw-semibold">Each unit's share</td><td class="text-muted">Set once, used by every charge split by share. <a href="{% url 'accounting:shares' assoc.pk %}">Open unit shares</a>.</td></tr>
+        <tr><td class="fw-semibold">Late fees and interest</td><td class="text-muted">In the accounting settings, read from the declaration and confirmed by a person. {% if profile.late_fee_confirmed %}<form method="post" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="late_fees">Charge late fees now</button></form>{% else %}<a href="{% url 'accounting:settings' assoc.pk %}">Not set up</a>.{% endif %}</td></tr>
+        <tr><td class="fw-semibold">A charge to one unit</td><td class="text-muted">From that unit's page: fines, key fobs, application or estoppel fees.</td></tr>
+    </tbody></table>
+</div></div>
+{% endblock %}

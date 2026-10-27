@@ -1,0 +1,74 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Bills - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon-lg"></i> Bills</h2>
+        <div class="small text-muted">{{ assoc.name }}{% if profile.spending_limit is not None %} &middot; we may pay up to {{ profile.spending_limit|money }} without the board{% else %} &middot; the board approves one-off bills (no spending limit is set){% endif %}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:checks' assoc.pk %}"><i data-lucide="printer" class="icon"></i> Checks</a>
+        <a class="btn btn-sm btn-primary" href="{% url 'accounting:pay' assoc.pk %}"><i data-lucide="send" class="icon"></i> Pay bills{% if ready %} ({{ ready|length }}){% endif %}</a>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> To review <span class="ac-chip {% if review %}warn{% endif %}">{{ review|length }}</span></h6>
+    {% for b in review %}
+    <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
+        <div class="d-flex justify-content-between flex-wrap gap-2"><div><a class="fw-semibold text-decoration-none" href="{% url 'accounting:bill' assoc.pk b.pk %}">{{ b.payee }}</a> <span class="text-muted small">{{ b.number }} &middot; {{ b.date|mdate }}</span>
+                {% if b.source == 'email' %}<span class="ac-chip">From the invoice inbox</span>{% endif %}{% if b.reserve %}<span class="ac-chip warn">Reserve spending</span>{% endif %}
+                {% if b.status == 'awaiting_board' %}<span class="ac-chip warn">Waiting for the board</span>{% elif b.need == 'staff' %}<span class="ac-chip good">Under the limit: we can approve</span>{% else %}<span class="ac-chip warn">Needs the board</span>{% endif %}
+                <div class="small text-muted">{% for l in b.lines.all %}{{ l.account.name }}{% if l.memo %}: {{ l.memo }}{% endif %}{% endfor %}</div></div>
+            <div class="fw-semibold ac-num">{{ b.amount|money }}</div></div>
+        <div class="d-flex gap-2 flex-wrap mt-1 ac-noprint">
+            {% if b.status == 'draft' %}<form method="post">{% csrf_token %}<input type="hidden" name="bill" value="{{ b.pk }}"><button class="btn btn-sm btn-primary" name="action" value="approve">{% if b.need == 'staff' %}Approve{% else %}Send to the board{% endif %}</button></form>{% endif %}
+            {% if b.status == 'awaiting_board' or b.need == 'board' %}<form method="post" class="d-flex gap-1 flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="board"><input type="hidden" name="bill" value="{{ b.pk }}">
+                <input class="form-control form-control-sm" style="max-width: 190px;" name="by" placeholder="Board member who approved" required><input class="form-control form-control-sm" style="max-width: 150px;" type="date" name="on" value="{{ today|date:'Y-m-d' }}"><button class="btn btn-sm btn-outline-secondary">Record the board's approval</button></form>{% endif %}
+            <form method="post">{% csrf_token %}<input type="hidden" name="bill" value="{{ b.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="void" onclick="return confirm('Void this bill?')">Void</button></form>
+            {% if b.file %}<a class="btn btn-sm btn-outline-secondary" href="{{ b.file.url }}" target="_blank">Invoice</a>{% endif %}
+        </div>
+    </div>
+    {% empty %}<p class="text-muted small mb-0">Nothing waiting. Uploaded and emailed invoices land here for a person to approve.</p>{% endfor %}
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-dollar-sign" class="icon"></i> Ready to pay <span class="ac-chip">{{ ready|length }}</span></h6>
+    {% for b in ready %}<div class="d-flex justify-content-between py-1 {% if not forloop.first %}border-top{% endif %}"><span>{{ b.payee }} <span class="text-muted small">{{ b.number }} &middot; {{ b.date|mdate }}{% if b.due_date %} &middot; due {{ b.due_date|mdate }}{% endif %}</span></span><span class="ac-num fw-semibold">{{ b.balance|money }}</span></div>
+    {% empty %}<p class="text-muted small mb-0">No approved bill is waiting to be paid.</p>{% endfor %}
+</div></div>
+
+<details class="card mb-3"><summary class="card-body d-flex align-items-center gap-2" style="cursor: pointer; list-style: none;"><i data-lucide="plus" class="icon"></i><strong>Add a bill</strong></summary>
+<form method="post" enctype="multipart/form-data" class="card-body pt-0">{% csrf_token %}<input type="hidden" name="action" value="new">
+    <datalist id="vendors">{% for v in vendors %}<option value="{{ v }}">{% endfor %}</datalist>
+    <div class="row g-2">
+        <div class="col-md-5"><label class="form-label small text-muted mb-1">From</label><input class="form-control form-control-sm" name="vendor" list="vendors" required></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Invoice number</label><input class="form-control form-control-sm" name="number"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Invoice date</label><input class="form-control form-control-sm" type="date" name="date" value="{{ today|date:'Y-m-d' }}"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Due</label><input class="form-control form-control-sm" type="date" name="due"></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Expense account</label><select class="form-select form-select-sm" name="account" required>{% for a in expense_accounts %}<option value="{{ a.pk }}">{{ a }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Amount</label><div class="input-group input-group-sm"><span class="input-group-text">$</span><input class="form-control text-end" name="amount" required></div></div>
+        <div class="col-md-5"><label class="form-label small text-muted mb-1">What it is for</label><input class="form-control form-control-sm" name="memo"></div>
+        <div class="col-md-5"><div class="ac-pills pt-2"><span><input type="radio" id="k1" name="kind" value="exception" checked><label for="k1">One-off</label></span><span><input type="radio" id="k2" name="kind" value="routine"><label for="k2">Routine</label></span><span><input type="radio" id="k3" name="kind" value="reserve"><label for="k3">From the reserves</label></span></div></div>
+        <div class="col-md-5"><label class="form-label small text-muted mb-1">Invoice (PDF)</label><input class="form-control form-control-sm" type="file" name="file" accept=".pdf,.png,.jpg,.jpeg"></div>
+        <div class="col-md-2 d-flex align-items-end"><button class="btn btn-sm btn-primary w-100">Add</button></div>
+    </div>
+</form></details>
+
+<details class="card mb-3"><summary class="card-body d-flex align-items-center gap-2" style="cursor: pointer; list-style: none;"><i data-lucide="mail" class="icon"></i><strong>Invoice inbox</strong>
+    <span class="small text-muted ms-auto">{% if box.enabled and inbox_ready %}Reading the "{{ box.label }}" label{% elif not inbox_ready %}Mailbox not connected{% else %}Switched off{% endif %}</span></summary>
+<div class="card-body pt-0">
+    <p class="small text-muted">Emails with a PDF under a Gmail label are read: the vendor, invoice number, dates and total become a draft bill above for a person to approve. Nothing is approved or paid by this.</p>
+    <form method="post" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="inbox_save">
+        <label class="small"><input type="checkbox" name="enabled" {% if box.enabled %}checked{% endif %}> Read the inbox</label><input class="form-control form-control-sm" style="max-width: 180px;" name="label" value="{{ box.label }}"><button class="btn btn-sm btn-outline-secondary">Save</button>
+        <button class="btn btn-sm btn-outline-secondary" name="action" value="inbox_run" {% if not inbox_ready %}disabled{% endif %}>Check now</button></form>
+    {% if box.last_checked_at %}<div class="small text-muted mt-1">Last checked {{ box.last_checked_at|date:"M j, g:i a" }}: {{ box.last_result }}</div>{% endif %}
+    {% if not inbox_ready %}<div class="small mt-1">Connect the shared mailbox (Admin Tools) and the Claude connection to switch this on.</div>{% endif %}
+    {% for s in needs_home %}<form method="post" class="d-flex gap-2 flex-wrap align-items-center mt-2 pt-2 border-top">{% csrf_token %}<input type="hidden" name="action" value="inbox_assign"><input type="hidden" name="seen" value="{{ s.pk }}">
+        <span class="small"><strong>{{ s.subject|truncatechars:60 }}</strong> from {{ s.sender|truncatechars:40 }}: an invoice, but it is not clear which association.</span><button class="btn btn-sm btn-outline-secondary">It is for {{ assoc.name }}</button></form>{% endfor %}
+</div></details>
+
+{% if paid %}<div class="card"><div class="card-body"><h6 class="card-title">Recently paid</h6>
+    {% for b in paid %}<div class="d-flex justify-content-between py-1 small {% if not forloop.first %}border-top{% endif %}"><span>{{ b.payee }} <span class="text-muted">{{ b.number }} &middot; {{ b.date|mdate }}</span></span><span class="ac-num">{{ b.amount|money }}</span></div>{% endfor %}</div></div>{% endif %}
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ person.name }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{% if profile.is_company %}building{% else %}user{% endif %}" class="icon-lg"></i> {{ person.name }}</h2>
+        <div class="small text-muted">{% if profile.is_company %}Company &middot; {% endif %}Owner at {{ assoc.name }}</div>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        {% if balance > 0 %}<span class="ac-chip warn">Owes {{ balance|money }}</span>{% elif balance < 0 %}<span class="ac-chip good">Paid ahead {{ balance|money }}</span>{% else %}<span class="ac-chip good">Paid up</span>{% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'contact_edit' person.pk %}"><i data-lucide="contact" class="icon"></i> Contact record</a>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon"></i> Units</h6>
+    {% for o in ownerships %}
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 {% if not forloop.first %}border-top{% endif %}">
+        <div><a class="fw-semibold text-decoration-none" href="{% url 'accounting:unit' assoc.pk o.unit.pk %}">{{ o.unit.label }}</a>
+            <span class="ac-chip">{% if o.is_current %}Current{% else %}Prior{% endif %}</span> <span class="ac-chip">{% if o.occupancy == 'absentee' %}Not living there{% else %}Lives there{% endif %}</span>
+            {% if o.is_billed %}<span class="ac-chip good">Billed</span>{% endif %}
+            <div class="small text-muted">{% if o.start_date %}{{ o.start_date|mdate }}{% else %}Start not known{% endif %}{% if o.end_date %} to {{ o.end_date|mdate }}{% endif %}</div></div>
+        <div>{% if o.account %}{% if o.account.balance > 0 %}<span class="ac-owe">{{ o.account.balance|money }}</span> owed{% elif o.account.balance < 0 %}<span class="ac-ahead">{{ o.account.balance|money }}</span> paid ahead{% else %}$0.00{% endif %}{% endif %}</div>
+    </div>
+    {% empty %}<p class="text-muted mb-0">This person owns no unit here.</p>{% endfor %}
+</div></div>
+
+<form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="save">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="contact" class="icon"></i> Contact details</h6>
+    <div class="row g-2">
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Phone</label><input class="form-control form-control-sm" name="phone" value="{{ person.phone }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Email</label><input class="form-control form-control-sm" type="email" name="email" value="{{ person.email }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Other phone</label><input class="form-control form-control-sm" name="phone_alt" value="{{ profile.phone_alt }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Other email</label><input class="form-control form-control-sm" type="email" name="email_alt" value="{{ profile.email_alt }}"></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Mailing address</label><textarea class="form-control form-control-sm" rows="3" name="mailing_address">{{ profile.mailing_address }}</textarea></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Seasonal address</label><textarea class="form-control form-control-sm" rows="3" name="seasonal_address">{{ profile.seasonal_address }}</textarea>
+            <div class="d-flex gap-2 mt-1"><input class="form-control form-control-sm" type="date" name="seasonal_from" value="{{ profile.seasonal_from|date:'Y-m-d' }}" title="From"><input class="form-control form-control-sm" type="date" name="seasonal_to" value="{{ profile.seasonal_to|date:'Y-m-d' }}" title="To"></div></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Name exactly as on the deed</label><input class="form-control form-control-sm" name="legal_name" value="{{ profile.legal_name }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Statements go</label><select class="form-select form-select-sm" name="statements_by"><option value="mail" {% if profile.statements_by == 'mail' %}selected{% endif %}>By mail</option><option value="email" {% if profile.statements_by == 'email' %}selected{% endif %}>By email</option><option value="both" {% if profile.statements_by == 'both' %}selected{% endif %}>Both</option></select></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Language</label><input class="form-control form-control-sm" name="language" value="{{ profile.language }}"></div>
+        <div class="col-md-8"><label class="form-label small text-muted mb-1">Emergency contact</label><textarea class="form-control form-control-sm" rows="2" name="emergency_contact">{{ profile.emergency_contact }}</textarea></div>
+        <div class="col-md-4 d-flex flex-column gap-1 pt-3">
+            <label class="small"><input type="checkbox" name="ok_to_text" {% if profile.ok_to_text %}checked{% endif %}> OK to text</label>
+            <label class="small"><input type="checkbox" name="is_voter" {% if profile.is_voter %}checked{% endif %}> May vote</label>
+            <label class="small"><input type="checkbox" name="emergency_assist" {% if profile.emergency_assist %}checked{% endif %}> Needs help in an emergency</label>
+            <label class="small"><input type="checkbox" name="is_company" {% if profile.is_company %}checked{% endif %}> Is a company</label>
+        </div>
+    </div>
+    <button class="btn btn-sm btn-primary mt-2">Save</button>
+</div></form>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="gavel" class="icon"></i> Board terms</h6>
+    {% for t in terms %}
+    <div class="d-flex justify-content-between align-items-center py-1 {% if not forloop.first %}border-top{% endif %}"><span><strong>{{ t.position }}</strong> <span class="small text-muted">{% if t.start_date %}since {{ t.start_date|mdate }}{% endif %}{% if t.end_date %} until {{ t.end_date|mdate }}{% endif %}</span></span>
+        {% if t.is_current %}<form method="post" class="ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="end_term"><input type="hidden" name="term" value="{{ t.pk }}"><button class="btn btn-sm btn-outline-secondary">Ended</button></form>{% endif %}</div>
+    {% empty %}<p class="text-muted small mb-1">Not on the board.</p>{% endfor %}
+    <form method="post" class="d-flex gap-2 flex-wrap mt-2 ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="add_term">
+        <input class="form-control form-control-sm" style="max-width: 200px;" name="position" placeholder="Position, e.g. Treasurer"><input class="form-control form-control-sm" style="max-width: 160px;" type="date" name="start"><button class="btn btn-sm btn-outline-secondary">Add a term</button></form>
+</div></div>
+{% endblock %}

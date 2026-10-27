@@ -166,6 +166,7 @@ INSTALLED_APPS = [
     'portfolio',
     'legalforms',
     'timeclock',
+    'accounting',
 ]
 
 MIDDLEWARE = [

@@ -1,0 +1,40 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Journal - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="book-open" class="icon-lg"></i> Journal</h2><div class="small text-muted">{{ assoc.name }}. An entry is never edited: a mistake is reversed.</div></div>
+    <div class="btn-group btn-group-sm"><a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary"><i data-lucide="chevron-left" class="icon"></i></a><span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span><a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary"><i data-lucide="chevron-right" class="icon"></i></a></div>
+</div>
+<div class="row g-3 mb-3 ac-noprint">
+    <div class="col-lg-7"><details class="card h-100"><summary class="card-body d-flex align-items-center gap-2" style="cursor: pointer; list-style: none;"><i data-lucide="plus" class="icon"></i><strong>Post a journal entry</strong></summary>
+        <form method="post" class="card-body pt-0">{% csrf_token %}<input type="hidden" name="action" value="entry">
+            <div class="row g-2 mb-2"><div class="col-4"><input class="form-control form-control-sm" type="date" name="date" value="{{ today|date:'Y-m-d' }}"></div><div class="col-8"><input class="form-control form-control-sm" name="memo" placeholder="What it is"></div></div>
+            {% for i in range %}<div class="row g-1 mb-1"><div class="col-6"><select class="form-select form-select-sm" name="account_{{ i }}"><option value="">{% if i == 1 %}Account{% endif %}</option>{% for a in accounts %}<option value="{{ a.pk }}">{{ a }}</option>{% endfor %}</select></div>
+                <div class="col-3"><input class="form-control form-control-sm text-end jd" name="debit_{{ i }}" placeholder="{% if i == 1 %}Debit{% endif %}"></div><div class="col-3"><input class="form-control form-control-sm text-end jc" name="credit_{{ i }}" placeholder="{% if i == 1 %}Credit{% endif %}"></div></div>{% endfor %}
+            <div class="small text-muted mt-1" id="jtot">Debits equal credits?</div>
+            <div class="ac-pills mt-2"><span><input type="radio" id="bb" name="basis" value="both" checked><label for="bb">Both books</label></span><span><input type="radio" id="ba" name="basis" value="accrual"><label for="ba">Accrual only</label></span><span><input type="radio" id="bc" name="basis" value="cash"><label for="bc">Cash only</label></span></div>
+            <button class="btn btn-sm btn-primary mt-2">Post</button></form></details></div>
+    <div class="col-lg-5"><details class="card h-100"><summary class="card-body d-flex align-items-center gap-2" style="cursor: pointer; list-style: none;"><i data-lucide="arrow-left-right" class="icon"></i><strong>Move money between operating and reserves</strong></summary>
+        <form method="post" class="card-body pt-0">{% csrf_token %}<input type="hidden" name="action" value="transfer">
+            <div class="ac-pills mb-2"><span><input type="radio" id="d1" name="direction" value="to_reserves" checked><label for="d1">Operating to reserves</label></span><span><input type="radio" id="d2" name="direction" value="to_operating"><label for="d2">Reserves to operating</label></span></div>
+            <div class="row g-2"><div class="col-6"><input class="form-control form-control-sm" type="date" name="date" value="{{ today|date:'Y-m-d' }}"></div><div class="col-6"><div class="input-group input-group-sm"><span class="input-group-text">$</span><input class="form-control text-end" name="amount" required></div></div>
+                <div class="col-12"><label class="form-label small text-muted mb-1">Reserve fund</label><select class="form-select form-select-sm" name="fund">{% for f in reserve_funds %}<option value="{{ f.pk }}" {% if f.code == '3827' %}selected{% endif %}>{{ f }}</option>{% endfor %}</select></div></div>
+            <div class="small text-muted mt-1">One entry moves the cash and the fund balance together. Spending a reserve still needs the board.</div>
+            <button class="btn btn-sm btn-primary mt-2">Move it</button></form></details></div>
+</div>
+<div class="card"><div class="card-body p-2">
+{% for e in entries %}<div class="py-2 {% if not forloop.first %}border-top{% endif %} px-2">
+    <div class="d-flex justify-content-between flex-wrap gap-1"><div><strong>J-{{ e.number }}</strong> <span class="text-muted small">{{ e.date|mdate }} &middot; {{ e.get_source_display }}{% if e.basis != 'both' %} &middot; {{ e.get_basis_display }}{% endif %}</span> {{ e.memo }}{% if e.reverses_id %} <span class="ac-chip">reversal</span>{% endif %}</div>
+        {% if e.source != 'opening' and not e.reverses_id %}<form method="post" class="ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="reverse"><input type="hidden" name="entry" value="{{ e.pk }}"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reverse this entry?')">Reverse</button></form>{% endif %}</div>
+    <table class="table table-sm ac-table mb-0 small"><tbody>{% for l in e.lines.all %}<tr><td style="width: 55%;">{{ l.account }}{% if l.memo %} <span class="text-muted">{{ l.memo|truncatechars:50 }}</span>{% endif %}</td><td class="ac-num">{{ l.debit|plain_blank }}</td><td class="ac-num">{{ l.credit|plain_blank }}</td></tr>{% endfor %}</tbody></table></div>
+{% empty %}<p class="text-muted p-3 mb-0">No entries in {{ month|date:"F Y" }}.</p>{% endfor %}
+</div></div>
+<script>
+(function () {
+    function tot() { var d = 0, c = 0; document.querySelectorAll('.jd').forEach(function (e) { d += parseFloat(e.value.replace(/[$,]/g, '')) || 0; }); document.querySelectorAll('.jc').forEach(function (e) { c += parseFloat(e.value.replace(/[$,]/g, '')) || 0; });
+        var el = document.getElementById('jtot'); if (el) el.textContent = 'Debits ' + d.toFixed(2) + ' / credits ' + c.toFixed(2) + (Math.abs(d - c) < 0.005 && d > 0 ? ' - balanced' : ' - not balanced yet'); }
+    document.querySelectorAll('.jd, .jc').forEach(function (e) { e.addEventListener('input', tot); });
+})();
+</script>
+{% endblock %}
