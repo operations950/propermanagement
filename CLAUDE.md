@@ -320,7 +320,8 @@ We keep the books for associations ourselves: a real double-entry ledger, separa
 - **Approval**: routine recurring bills post approved; a one-off bill needs the board unless it is at or under the contract's spending limit; reserve spending ALWAYS needs the board (`payables.requirement`). A bill posts to the books when approved, not when it arrives (`payables.approve_bill`).
 - **Claude reads documents, statements, invoices and check stock** (`documents.py`, `bankrec.py`, `invoice_inbox.py`, `checkprint.py`); every use follows the unconfigured-degrades-gracefully rule, and nothing it proposes takes effect until a person confirms (settings) or approves (bills).
 - **St Andrews GLEN ships as placeholder data**: `seed_st_andrews_glen` (Procfile, idempotent, never fails the deploy) loads the real owners, balances and September 2026 statement; `accounting/seed_glen.py` explains how the Aug 31 opening is derived so the books end at Yardi's Sep 30 trial balance to the cent. The Q4 charge is left unposted (profile `auto_post` off) for the user to post.
-- Tests live in the session scratchpad, not the repo: `verify_assoc_core`, `_payables`, `_recon`, `_seed_pages`.
+- **Opening-day corrections never carry in a reconciliation.** `bankrec.ledger_items` skips any entry dated on or before `AssociationProfile.books_start`, because it corrects the opening balance and the bank never saw it. (Found when Sep 30 reserve interest was folded into the Aug 31 opening: the user's correcting entry showed as an uncleared payment.) The bank screen's "Add to the books as..." lists income, expense and equity accounts so reserve interest can go to 3813.
+- Tests live in the session scratchpad, not the repo: `verify_assoc_core`, `_payables`, `_recon`, `_seed_pages`, `_startup`.
 
 ## Message-assistant API and property FAQ
 

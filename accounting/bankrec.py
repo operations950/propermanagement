@@ -218,6 +218,10 @@ def ledger_items(bank_account, month_first):
     qs = (JournalLine.objects.filter(entry__association=assoc, account=bank_account.account, entry__date__lte=end, recon_item__isnull=True)
           .exclude(entry__basis=JournalEntry.Basis.CASH).exclude(entry__source=JournalEntry.Source.OPENING)
           .filter(entry__reversed_by__isnull=True, entry__reverses__isnull=True).select_related('entry', 'owner', 'vendor', 'unit').order_by('entry__date', 'id'))
+    opening_day = ledger.profile_for(assoc).books_start
+    if opening_day:
+        # an entry dated on or before the opening day corrects the opening balance; the bank never saw it, so it is never carried as outstanding
+        qs = qs.exclude(entry__date__lte=opening_day)
     entry_ids = [l.entry_id for l in qs]
     pays = {p.entry_id: p for p in Payment.objects.filter(entry_id__in=entry_ids)}
     receipts = {r.entry_id: r for r in Receipt.objects.filter(entry_id__in=entry_ids)}
