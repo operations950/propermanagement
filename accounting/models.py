@@ -45,6 +45,8 @@ class AssociationProfile(models.Model):
     sunbiz_checked_on = models.DateField(null=True, blank=True)
     sunbiz_url = models.URLField(blank=True)
     sunbiz_officers = models.JSONField(default=list, blank=True, help_text='[{"name", "title"}] as the state lists them.')
+    sunbiz_checked_by = models.CharField(max_length=10, blank=True, help_text='auto when the program looked it up, hand when a person typed it in.')
+    sunbiz_alerts = models.JSONField(default=list, blank=True, help_text='What the last lookup found that needs a person: not our registered agent, not active, report overdue, officers changed.')
 
     # how the books run
     fiscal_year_start_month = models.PositiveSmallIntegerField(default=1)
@@ -72,6 +74,13 @@ class AssociationProfile(models.Model):
 
     def late_fee_is_set(self):
         return self.late_fee_kind != self.LateFeeKind.NONE and self.late_fee_confirmed
+
+    def registered_agent_is_us(self):
+        return 'proper realty' in (self.registered_agent or '').lower()
+
+    def registered_agent_alert(self):
+        """True when the state lists someone else as the registered agent (nothing to say while the record is still blank)."""
+        return bool((self.registered_agent or '').strip()) and not self.registered_agent_is_us()
 
     def fiscal_year_start(self, day):
         """First day of the fiscal year that `day` falls in."""
@@ -636,6 +645,20 @@ class PaymentBill(models.Model):
     amount = models.DecimalField(**MONEY)
 
 
+class BankOpeningItem(models.Model):
+    """A deposit not yet in the bank, or some other reconciling item, that was already on the books when they moved here (an outstanding check is a Payment instead).
+    It has no journal entry: the opening balances cover it. Plus is money the books have and the bank does not yet, minus is the reverse."""
+    bank_account = models.ForeignKey(BankAccount, on_delete=models.CASCADE, related_name='opening_items')
+    date = models.DateField()
+    description = models.CharField(max_length=200, blank=True)
+    amount = models.DecimalField(**MONEY, help_text='Plus: in the books, not yet at the bank. Minus: in the books as money out, not yet taken by the bank.')
+    memo = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'id']
+
+
 # ---------------------------------------------------------------- bank statements and reconciliation
 
 class BankStatement(models.Model):
@@ -687,6 +710,7 @@ class ReconLedgerItem(models.Model):
     match = models.ForeignKey(ReconMatch, on_delete=models.CASCADE, related_name='ledger_items')
     line = models.OneToOneField(JournalLine, null=True, blank=True, on_delete=models.CASCADE, related_name='recon_item')
     payment = models.OneToOneField(Payment, null=True, blank=True, on_delete=models.CASCADE, related_name='recon_item')
+    opening_item = models.OneToOneField(BankOpeningItem, null=True, blank=True, on_delete=models.CASCADE, related_name='recon_item')
 
 
 class ReconAcceptance(models.Model):
@@ -695,6 +719,7 @@ class ReconAcceptance(models.Model):
     month = models.DateField()
     line = models.ForeignKey(JournalLine, null=True, blank=True, on_delete=models.CASCADE, related_name='+')
     payment = models.ForeignKey(Payment, null=True, blank=True, on_delete=models.CASCADE, related_name='+')
+    opening_item = models.ForeignKey(BankOpeningItem, null=True, blank=True, on_delete=models.CASCADE, related_name='+')
     note = models.CharField(max_length=200, blank=True)
     accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)

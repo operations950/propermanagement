@@ -70,6 +70,10 @@ def close_sheet(association, month_first, today=None):
     else:
         items.append(_item('late', 'Late fees', 'alarm-clock', 'attention', 'The rule is not set up yet.', reverse('accounting:settings', args=[pk]), blocks=False))
 
+    if profile.sunbiz_alerts:
+        more = len(profile.sunbiz_alerts) - 1
+        items.append(_item('state', 'Official record', 'building', 'attention', profile.sunbiz_alerts[0] + (f' (and {more} more)' if more else ''), reverse('accounting:settings', args=[pk]) + '#official', blocks=False))
+
     locked = MonthLock.objects.filter(association=association, month=month_first).exists()
     blocking = [i for i in items if i['blocks'] and i['status'] != 'done']
     items.append(_item('lock', 'Review and close the month', 'lock', 'done' if locked else ('attention' if not blocking else 'not_started'),

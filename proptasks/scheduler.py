@@ -109,6 +109,11 @@ def _run_post_accounting_recurring():
     _run_command('post_accounting_recurring')
 
 
+def _run_check_sunbiz():
+    """Association books: look each association up on SunBiz (registered agent, status, annual report, officers) and raise alerts."""
+    _run_command('check_sunbiz')
+
+
 def _run_read_invoice_inbox():
     """Association books: read new invoice emails into draft bills (nothing is approved or paid)."""
     _run_command('read_invoice_inbox')
@@ -169,6 +174,7 @@ def start():
     )
     _scheduler.add_job(_run_post_accounting_recurring, 'interval', hours=6, next_run_time=datetime.now() + timedelta(minutes=15))
     _scheduler.add_job(_run_read_invoice_inbox, 'interval', minutes=30, next_run_time=datetime.now() + timedelta(minutes=20))
+    _scheduler.add_job(_run_check_sunbiz, 'interval', days=7, next_run_time=datetime.now() + timedelta(minutes=40))
     _scheduler.add_job(
         _run_generate_sessions, 'interval',
         minutes=settings.SESSION_GENERATE_INTERVAL_MINUTES, next_run_time=datetime.now(),

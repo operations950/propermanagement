@@ -166,7 +166,7 @@ def bills(request, pk):
     box = invoice_inbox.InvoiceInbox.get()
     return render(request, 'accounting/bills.html', {'assoc': prop, 'profile': profile, 'review': review, 'ready': payables.bills_to_pay(prop), 'paid': list(qs.filter(status=Bill.Status.PAID).order_by('-date')[:15]),
                                                      'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'), 'vendors': _vendor_names(prop), 'today': timezone.localdate(),
-                                                     'box': box, 'inbox_ready': invoice_inbox.is_configured(), 'needs_home': invoice_inbox.SeenEmail.objects.filter(needs_home=True).order_by('-created_at')[:10],
+                                                     'owed': payables.aging(prop, timezone.localdate()), 'box': box, 'inbox_ready': invoice_inbox.is_configured(), 'needs_home': invoice_inbox.SeenEmail.objects.filter(needs_home=True).order_by('-created_at')[:10],
                                                      'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting'})
 
 
@@ -375,16 +375,31 @@ def journal(request, pk):
                 amount = parse_money(request.POST.get('amount'))
                 if amount <= 0:
                     raise ValueError('The amount must be above zero.')
-                to_reserves = request.POST.get('direction') != 'to_operating'
-                fund = get_object_or_404(Account, pk=request.POST.get('fund'), association=prop)
-                op = ledger.account(prop, sc.CASH_OPERATING)
-                res = ledger.account(prop, sc.CASH_RESERVE)
                 transfer = ledger.account(prop, sc.RESERVE_TRANSFER)
                 day = parse_date(request.POST.get('date')) or timezone.localdate()
-                cash_in, cash_out = (res, op) if to_reserves else (op, res)
-                lines = [{'account': cash_in, 'debit': amount}, {'account': cash_out, 'credit': amount},
-                         {'account': transfer if to_reserves else fund, 'debit': amount}, {'account': fund if to_reserves else transfer, 'credit': amount}]
-                e = ledger.post_entry(prop, day, lines, memo=('Transfer to reserves' if to_reserves else 'Transfer from reserves') + f', {fund.name}', source=JournalEntry.Source.TRANSFER, user=request.user)
+                if request.POST.get('from_bank') and request.POST.get('to_bank'):
+                    # any bank account to any other: only a move between an operating and a reserve account touches a reserve fund
+                    src = get_object_or_404(BankAccount, pk=request.POST.get('from_bank'), association=prop)
+                    dst = get_object_or_404(BankAccount, pk=request.POST.get('to_bank'), association=prop)
+                    if src.pk == dst.pk:
+                        raise ValueError('Choose two different bank accounts.')
+                    lines = [{'account': dst.account, 'debit': amount}, {'account': src.account, 'credit': amount}]
+                    memo = f'Transfer from {src.name} to {dst.name}'
+                    if src.kind != dst.kind:
+                        fund = get_object_or_404(Account, pk=request.POST.get('fund'), association=prop)
+                        to_reserves = dst.kind == 'reserve'
+                        lines += [{'account': transfer if to_reserves else fund, 'debit': amount}, {'account': fund if to_reserves else transfer, 'credit': amount}]
+                        memo += f', {fund.name}'
+                else:
+                    to_reserves = request.POST.get('direction') != 'to_operating'
+                    fund = get_object_or_404(Account, pk=request.POST.get('fund'), association=prop)
+                    op = ledger.account(prop, sc.CASH_OPERATING)
+                    res = ledger.account(prop, sc.CASH_RESERVE)
+                    cash_in, cash_out = (res, op) if to_reserves else (op, res)
+                    lines = [{'account': cash_in, 'debit': amount}, {'account': cash_out, 'credit': amount},
+                             {'account': transfer if to_reserves else fund, 'debit': amount}, {'account': fund if to_reserves else transfer, 'credit': amount}]
+                    memo = ('Transfer to reserves' if to_reserves else 'Transfer from reserves') + f', {fund.name}'
+                e = ledger.post_entry(prop, day, lines, memo=memo, source=JournalEntry.Source.TRANSFER, user=request.user)
                 messages.success(request, f'Transferred ${amount:,.2f} (J-{e.number}).')
         except (ValueError, ledger.LedgerError) as e:
             messages.error(request, str(e))
@@ -392,7 +407,7 @@ def journal(request, pk):
     month = parse_month(request.GET.get('month'), ledger.month_start(timezone.localdate()))
     entries = JournalEntry.objects.filter(association=prop, date__gte=month, date__lte=ledger.month_end(month)).prefetch_related('lines__account').order_by('-date', '-number')
     return render(request, 'accounting/journal.html', {'assoc': prop, 'entries': entries, 'accounts': prop.accounts.filter(is_active=True).order_by('code'), 'reserve_funds': prop.accounts.filter(kind='equity', code__gte='3811', code__lte='3899').order_by('code'),
-                                                       'today': timezone.localdate(), 'range': range(1, 7), 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting', **month_context(month)})
+                                                       'banks': prop.bank_accounts.filter(is_active=True), 'today': timezone.localdate(), 'range': range(1, 7), 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting', **month_context(month)})
 
 
 # ---------------------------------------------------------------- reports
@@ -475,7 +490,21 @@ def report_aging(request, pk):
     if redirect_to:
         return redirect_to
     end = parse_date(request.GET.get('end')) or timezone.localdate()
-    return render(request, 'accounting/report_aging.html', {'assoc': prop, 'ag': charges.aging(prop, end), 'end': end, 'totals': charges.totals(charges.accounts(prop)), 'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports'})
+    totals = charges.totals(charges.accounts(prop))
+    bal = ledger.balances_as_of(prop, end, JournalEntry.Basis.ACCRUAL)
+    gl_net = bal.get(ledger.account(prop, sc.AR).pk, ZERO) + bal.get(ledger.account(prop, sc.PREPAID_FEES).pk, ZERO)   # receivables less paid-ahead, as the books hold them
+    gap = gl_net - totals['net']
+    return render(request, 'accounting/report_aging.html', {'assoc': prop, 'ag': charges.aging(prop, end), 'end': end, 'totals': totals, 'gl_net': gl_net, 'gap': gap,
+                                                            'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports'})
+
+
+@admin_only
+def report_payables(request, pk):
+    prop, redirect_to = _books(request, pk)
+    if redirect_to:
+        return redirect_to
+    end = parse_date(request.GET.get('end')) or timezone.localdate()
+    return render(request, 'accounting/report_payables.html', {'assoc': prop, 'ag': payables.aging(prop, end), 'end': end, 'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports'})
 
 
 @admin_only

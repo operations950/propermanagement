@@ -1,0 +1,19 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Payables aging - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-0">Payables aging</h2>
+<div class="text-muted mb-2">{{ assoc.name }} &middot; what we owe vendors as of {{ end|mdate }}</div>
+{% include 'accounting/_report_filter.html' %}
+<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+    <thead><tr><th>Vendor</th><th>Invoice</th><th>Date</th>{% for b in ag.labels %}<th class="ac-num">{{ b }}</th>{% endfor %}<th class="ac-num">Owed</th></tr></thead>
+    <tbody>{% for v in ag.vendors %}
+        {% for r in v.rows %}<tr><td>{% if forloop.first %}<span class="fw-semibold">{{ v.name }}</span>{% endif %}</td><td><a class="text-decoration-none" href="{% url 'accounting:bill' assoc.pk r.bill.pk %}">{{ r.bill.number|default:'(no number)' }}</a></td><td>{{ r.bill.date|mdate:'short' }}</td>{% for x in r.buckets %}<td class="ac-num">{{ x|plain_blank }}</td>{% endfor %}<td class="ac-num">{{ r.owed|plain }}</td></tr>{% endfor %}
+        {% if v.rows|length > 1 %}<tr class="text-muted"><td colspan="3" class="text-end small">{{ v.name }} total</td>{% for x in v.buckets %}<td class="ac-num">{{ x|plain_blank }}</td>{% endfor %}<td class="ac-num fw-semibold">{{ v.owed|plain }}</td></tr>{% endif %}
+    {% empty %}<tr><td colspan="8" class="text-muted p-3">No unpaid bills.</td></tr>{% endfor %}
+    {% if ag.not_itemized %}<tr><td colspan="3"><span class="fw-semibold">Not itemized</span> <span class="small text-muted">in the books, with no invoice behind it</span></td><td colspan="4"></td><td class="ac-num">{{ ag.not_itemized|plain }}</td></tr>{% endif %}
+    </tbody>
+    <tfoot><tr class="fw-bold"><td colspan="3">{% if ag.not_itemized %}Itemized bills{% else %}Total{% endif %}</td>{% for v in ag.totals %}<td class="ac-num">{{ v|plain }}</td>{% endfor %}<td class="ac-num">{{ ag.total|plain }}</td></tr>
+    {% if ag.not_itemized %}<tr class="fw-bold"><td colspan="7">Accounts payable in the books</td><td class="ac-num">{{ ag.books|plain }}</td></tr>{% endif %}</tfoot></table></div></div>
+<p class="small text-muted mt-2">Aged from the invoice date. Accounts Payable in the books is {{ ag.books|money }}{% if ag.not_itemized %}; {{ ag.not_itemized|money }} of it has no bill behind it (it came over from the old system), so it is shown apart and cannot be paid from here{% else %} and every dollar of it is a bill above{% endif %}.</p>
+{% endblock %}

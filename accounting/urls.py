@@ -33,6 +33,7 @@ urlpatterns = [
     path('<int:pk>/reports/income/', views_money.report_is, name='report_is'),
     path('<int:pk>/reports/ledger/', views_money.report_gl, name='report_gl'),
     path('<int:pk>/reports/aging/', views_money.report_aging, name='report_aging'),
+    path('<int:pk>/reports/payables/', views_money.report_payables, name='report_payables'),
     path('<int:pk>/reports/checks/', views_money.report_checks, name='report_checks'),
     path('<int:pk>/reports/budget/', views_money.budget, name='budget'),
     path('<int:pk>/reports/bank/<int:bank_pk>/<str:month>/', views_money.report_rec, name='report_rec'),

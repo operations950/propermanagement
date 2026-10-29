@@ -52,6 +52,8 @@ def assoc_context(prop):
     owing = sorted([r for r in rows if r['balance'] > 0], key=lambda r: -r['balance'])
     totals = charges.totals(charges.accounts(prop))
     todo = []
+    if profile.registered_agent_alert():
+        todo.append('the registered agent is not us')
     if not documents.has_contract(prop):
         todo.append('upload the management contract')
     if profile.we_do_financials and not profile.late_fee_is_set():
@@ -107,7 +109,8 @@ def settings(request, pk):
                 for f in ('legal_name', 'state_doc_number', 'ein', 'state_status', 'principal_address', 'mailing_address', 'registered_agent', 'sunbiz_url'):
                     setattr(profile, f, (request.POST.get(f) or '').strip())
                 profile.date_filed, profile.annual_report_filed = parse_date(request.POST.get('date_filed')), parse_date(request.POST.get('annual_report_filed'))
-                profile.sunbiz_checked_on = timezone.localdate()
+                profile.sunbiz_checked_on, profile.sunbiz_checked_by = timezone.localdate(), 'hand'
+                profile.sunbiz_alerts = ['The registered agent is ' + (profile.registered_agent.split(',')[0] or 'not listed') + ', not Proper Realty Co.'] if profile.registered_agent_alert() else []
                 officers = []
                 for line in (request.POST.get('officers') or '').splitlines():
                     if ',' in line:
@@ -116,6 +119,10 @@ def settings(request, pk):
                 profile.sunbiz_officers = officers
                 profile.save()
                 messages.success(request, 'The official record is saved.')
+            elif action == 'sunbiz_check':
+                from . import sunbiz
+                ok, message = sunbiz.check(profile)
+                (messages.success if ok else messages.error)(request, message)
             elif action == 'bank':
                 name = (request.POST.get('name') or '').strip()
                 code = request.POST.get('account')

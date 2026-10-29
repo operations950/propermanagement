@@ -11,4 +11,5 @@
     {% empty %}<tr><td colspan="7" class="text-muted p-3">Nobody owes anything.</td></tr>{% endfor %}</tbody>
     <tfoot><tr class="fw-bold"><td colspan="2">Total</td>{% for v in ag.totals %}<td class="ac-num">{{ v|plain }}</td>{% endfor %}<td class="ac-num">{{ ag.total|plain }}</td></tr></tfoot></table></div></div>
 <p class="small text-muted mt-2">Paid-ahead credits are not netted here: {{ totals.ahead|money }} is held for owners who paid before it was owed.</p>
+{% if gap %}<p class="small mt-2"><span class="ac-chip warn">Not on any owner's ledger</span> Receivables less paid-ahead in the books come to {{ gl_net|money }}, and the owners' ledgers to {{ totals.net|money }}. The {{ gap|money }} between them came over from the old system with no owner behind it.</p>{% endif %}
 {% endblock %}

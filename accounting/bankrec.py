@@ -24,7 +24,7 @@ from django.conf import settings
 from django.db import transaction
 
 from . import charges, ledger
-from .models import (ZERO, BankAccount, BankLine, BankStatement, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt)
+from .models import (ZERO, BankAccount, BankOpeningItem, BankLine, BankStatement, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt)
 
 logger = logging.getLogger(__name__)
 STATEMENT_MODEL = 'claude-sonnet-5'
@@ -201,7 +201,7 @@ class Item:
     """One thing the books say happened on the bank account and the bank has not yet been matched to."""
     def __init__(self, kind, obj, day, amount, ref='', text='', channel=''):
         self.kind, self.obj, self.date, self.amount, self.ref, self.text, self.channel = kind, obj, day, amount, ref, text, channel
-        self.key = ('L' if kind == 'line' else 'P') + str(obj.pk)
+        self.key = {'line': 'L', 'payment': 'P', 'opening': 'O'}[kind] + str(obj.pk)
 
     @property
     def is_check(self):
@@ -235,6 +235,8 @@ def ledger_items(bank_account, month_first):
         items.append(Item('line', l, l.entry.date, amount, ref=(pay.number if pay and pay.method == 'check' else ''), text=text, channel=channel))
     for p in Payment.objects.filter(bank_account=bank_account, opening=True, status=Payment.Status.OUTSTANDING, recon_item__isnull=True, date__lte=end):
         items.append(Item('payment', p, p.date, -p.amount, ref=p.number if p.method == 'check' else '', text=p.payee, channel='check' if p.method == 'check' else ''))
+    for o in BankOpeningItem.objects.filter(bank_account=bank_account, recon_item__isnull=True, date__lte=end):
+        items.append(Item('opening', o, o.date, o.amount, text=o.description))
     return items
 
 
@@ -285,6 +287,9 @@ def _commit(bank_account, month_first, bank_lines, items, how, auto=True, note='
         if it.kind == 'line':
             ReconLedgerItem.objects.create(match=m, line=it.obj)
             pay = Payment.objects.filter(entry_id=it.obj.entry_id, status=Payment.Status.OUTSTANDING).first()
+        elif it.kind == 'opening':
+            ReconLedgerItem.objects.create(match=m, opening_item=it.obj)
+            pay = None
         else:
             ReconLedgerItem.objects.create(match=m, payment=it.obj)
             pay = it.obj
@@ -410,6 +415,8 @@ def match_manual(bank_account, month_first, bank_line_ids, item_keys, note=''):
 @transaction.atomic
 def unmatch(match):
     for ri in match.ledger_items.select_related('payment', 'line'):
+        if ri.opening_item_id:
+            continue
         pay = ri.payment or Payment.objects.filter(entry_id=ri.line.entry_id, status=Payment.Status.CLEARED, cleared_on__isnull=False).first()
         if pay is not None and pay.status == Payment.Status.CLEARED:
             pay.status, pay.cleared_on = Payment.Status.OUTSTANDING, None
@@ -420,13 +427,14 @@ def unmatch(match):
 
 def accept_timing(bank_account, month_first, item_key, user=None, note=''):
     it = _item_from_key(bank_account, month_first, item_key)
-    kwargs = {'line': it.obj} if it.kind == 'line' else {'payment': it.obj}
+    kwargs = {'line': it.obj} if it.kind == 'line' else ({'opening_item': it.obj} if it.kind == 'opening' else {'payment': it.obj})
     ReconAcceptance.objects.get_or_create(bank_account=bank_account, month=month_first, defaults={'note': note[:200], 'accepted_by': user}, **kwargs)
 
 
 def unaccept(bank_account, month_first, item_key):
     kind, pk = item_key[0], int(item_key[1:])
-    ReconAcceptance.objects.filter(bank_account=bank_account, month=month_first, **({'line_id': pk} if kind == 'L' else {'payment_id': pk})).delete()
+    field = {'L': 'line_id', 'P': 'payment_id', 'O': 'opening_item_id'}[kind]
+    ReconAcceptance.objects.filter(bank_account=bank_account, month=month_first, **{field: pk}).delete()
 
 
 @transaction.atomic
@@ -467,7 +475,7 @@ def summary(bank_account, month_first):
     items = ledger_items(bank_account, month_first)
     accepted = set()
     for a in ReconAcceptance.objects.filter(bank_account=bank_account, month=month_first):
-        accepted.add(('L' + str(a.line_id)) if a.line_id else ('P' + str(a.payment_id)))
+        accepted.add(('L' + str(a.line_id)) if a.line_id else (('O' + str(a.opening_item_id)) if a.opening_item_id else ('P' + str(a.payment_id))))
     rows = []
     for it in items:
         rows.append({'item': it, 'accepted': it.key in accepted, 'age': (end - it.date).days, 'stale': (end - it.date).days > STALE_DAYS and it.amount < 0})

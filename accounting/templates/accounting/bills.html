@@ -13,6 +13,8 @@
     </div>
 </div>
 
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3 small"><i data-lucide="file-text" class="icon"></i><span>We owe vendors <strong class="ac-num">{{ owed.books|money }}</strong>{% if owed.total != owed.books %} <span class="text-muted">({{ owed.total|money }} in bills, {{ owed.not_itemized|money }} with no bill behind it)</span>{% endif %}</span>
+    <a href="{% url 'accounting:report_payables' assoc.pk %}">Payables aging</a></div>
 <div class="card mb-3"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> To review <span class="ac-chip {% if review %}warn{% endif %}">{{ review|length }}</span></h6>
     {% for b in review %}

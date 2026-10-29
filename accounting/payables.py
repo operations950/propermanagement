@@ -52,8 +52,11 @@ def requirement(association, bill):
 
 @transaction.atomic
 def create_bill(association, day, lines, vendor=None, vendor_text='', number='', due=None, kind=Bill.Kind.EXCEPTION, reserve=False, source=Bill.Source.MANUAL,
-                file=None, user=None, recurring=None, memo='', email_message_id=''):
-    """Make a bill from its lines [(account, amount, memo)]. A routine bill is approved and posted straight away; any other waits as a draft."""
+                file=None, user=None, recurring=None, memo='', email_message_id='', opening=False):
+    """Make a bill from its lines [(account, amount, memo)]. A routine bill is approved and posted straight away; any other waits as a draft.
+    An opening bill is one already on the books when they moved here: it is ready to pay and posts nothing, because the opening balances hold it."""
+    if opening:
+        source = Bill.Source.OPENING
     clean = [(l[0], ledger.money(l[1]), l[2] if len(l) > 2 else '') for l in lines if ledger.money(l[1]) != 0]
     if not clean:
         raise PayableError('A bill needs at least one line with an amount.')
@@ -68,6 +71,10 @@ def create_bill(association, day, lines, vendor=None, vendor_text='', number='',
         bill.file.save(getattr(file, 'name', 'invoice.pdf'), file, save=True)
     for account_or_code, amt, m in clean:
         BillLine.objects.create(bill=bill, account=ledger._as_account(association, account_or_code), amount=amt, memo=m[:200])
+    if opening:
+        bill.status = Bill.Status.APPROVED
+        bill.save(update_fields=['status'])
+        return bill
     if kind == Bill.Kind.ROUTINE and not reserve:
         approve_bill(bill, user)
     return bill
@@ -105,6 +112,8 @@ def approve_bill(bill, user=None, board_by='', board_on=None):
 def void_bill(bill, user=None, day=None):
     if bill.payments.exists():
         raise PayableError('That bill has a payment on it. Void the payment first.')
+    if bill.source == Bill.Source.OPENING:
+        raise PayableError('That balance came over from the old system and is in the opening balances. Fix it with a journal entry.')
     if bill.entry_id and not bill.entry.reversed_by.exists():
         ledger.reverse_entry(bill.entry, day or timezone.localdate(), user=user, memo=f'Void bill {bill.payee} {bill.number}'.strip())
     bill.status = Bill.Status.VOID
@@ -113,6 +122,41 @@ def void_bill(bill, user=None, day=None):
 
 def bills_to_pay(association):
     return [b for b in Bill.objects.filter(association=association, status=Bill.Status.APPROVED).select_related('vendor').prefetch_related('payments') if b.balance > 0]
+
+
+AGE_BUCKETS = (('0 to 30 days', 0, 30), ('31 to 60 days', 31, 60), ('61 to 90 days', 61, 90), ('Over 90 days', 91, 10 ** 6))
+
+
+def aging(association, as_of):
+    """What we owe vendors on a day, bill by bill and grouped by vendor, by how long ago the invoice is (the old system's way of counting: the invoice date, the day itself counting as one).
+    `books` is what the payables account holds, and `not_itemized` the part of it no bill explains."""
+    rows = []
+    for b in Bill.objects.filter(association=association, status__in=[Bill.Status.APPROVED, Bill.Status.PAID], date__lte=as_of).select_related('vendor').prefetch_related('payments__payment'):
+        paid = sum((pb.amount for pb in b.payments.all() if pb.payment.date <= as_of and pb.payment.status != 'void'), ZERO)
+        owed = b.amount - paid
+        if owed <= 0:
+            continue
+        age = (as_of - b.date).days + 1
+        buckets = [ZERO] * len(AGE_BUCKETS)
+        for i, (_, lo, hi) in enumerate(AGE_BUCKETS):
+            if lo <= age <= hi:
+                buckets[i] = owed
+                break
+        rows.append({'bill': b, 'vendor': b.payee, 'buckets': buckets, 'owed': owed, 'age': age})
+    rows.sort(key=lambda r: (r['vendor'].lower(), r['bill'].date))
+    vendors = []
+    for r in rows:
+        if not vendors or vendors[-1]['name'] != r['vendor']:
+            vendors.append({'name': r['vendor'], 'rows': [], 'buckets': [ZERO] * len(AGE_BUCKETS), 'owed': ZERO})
+        v = vendors[-1]
+        v['rows'].append(r)
+        v['owed'] += r['owed']
+        v['buckets'] = [a + b for a, b in zip(v['buckets'], r['buckets'])]
+    total = sum((r['owed'] for r in rows), ZERO)
+    ap = ledger.account(association, sc.AP)
+    books = -ledger.balances_as_of(association, as_of, JournalEntry.Basis.ACCRUAL).get(ap.pk, ZERO)
+    return {'vendors': vendors, 'rows': rows, 'labels': [b[0] for b in AGE_BUCKETS], 'totals': [sum((r['buckets'][i] for r in rows), ZERO) for i in range(len(AGE_BUCKETS))],
+            'total': total, 'books': books, 'not_itemized': books - total, 'as_of': as_of}
 
 
 # ---------------------------------------------------------------- paying

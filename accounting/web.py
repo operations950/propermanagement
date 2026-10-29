@@ -30,8 +30,7 @@ def books_or_redirect(request, prop):
     if not ledger.profile_for(prop).we_do_financials:
         messages.error(request, f'We are not keeping the books for {prop.name} yet. Switch on "We do the financials" in the accounting settings.')
         return redirect(reverse('accounting:settings', args=[prop.pk]))
-    if not prop.accounts.exists():
-        ledger.ensure_chart(prop)
+    ledger.ensure_chart(prop)   # cheap, and it brings an older association up to the current standard chart
     return None
 
 
