@@ -65,8 +65,11 @@ def assoc_context(prop):
     matches = bool(officers) and all(o.get('name', '').lower() in board_names for o in officers)
     proposals = list(SettingProposal.objects.filter(property=prop, status='proposed').select_related('document'))
     for p in proposals:
-        p.label, p.summary = documents.LABELS.get(p.key, p.key), documents.describe(p)
-    return {'ap': profile, 'ap_rows': settings_rows(prop), 'ap_docs': documents.checklist(prop), 'ap_proposals': proposals,
+        p.label, p.summary, p.source = documents.LABELS.get(p.key, p.key), documents.describe(p), documents.source_label(p.document, p.page)
+    ap_files = documents.files(prop)
+    if any(f['state'] == 'needs_look' for f in ap_files):
+        todo.append('confirm what the uploaded documents are')
+    return {'ap_files': ap_files, 'doc_kinds': [(k, 'Amendment' if k == 'amendment' else l) for k, l in AssociationDocument.Kind.choices if k != 'other'] + [('other', 'Something else')], 'ap': profile, 'ap_rows': settings_rows(prop), 'ap_docs': documents.checklist(prop), 'ap_proposals': proposals,
             'ap_units': rows, 'ap_owing': owing[:5], 'ap_totals': totals, 'ap_todo': todo, 'ap_board': owners.board(prop), 'ap_board_matches': matches,
             'ap_questions': prop.document_questions.all()[:3], 'ap_has_contract': documents.has_contract(prop)}
 
@@ -143,12 +146,30 @@ def settings(request, pk):
                 kind = request.POST.get('kind') if request.POST.get('kind') in dict(AssociationDocument.Kind.choices) else 'other'
                 documents.upload(prop, kind, f, request.user)
                 messages.success(request, 'Uploaded.')
+            elif action == 'upload_many':
+                made, problems = documents.upload_many(prop, request.FILES.getlist('files'), request.user)
+                for p in problems:
+                    messages.error(request, p)
+                if made:
+                    messages.success(request, f'{len(made)} file{"s" if len(made) != 1 else ""} uploaded. Each is read once, which can take a few minutes for a long scan; then it is sorted for you to confirm.')
+                elif not problems:
+                    raise ValueError('Choose at least one file.')
+            elif action == 'sort_confirm':
+                doc = get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop)
+                documents.confirm_sections(doc, [(request.POST.get(f'kind_{i}'), request.POST.get(f'title_{i}')) for i in range(len(doc.sections or []))])
+                messages.success(request, 'Saved: the checklist is up to date.')
+            elif action == 'sort_again':
+                documents.sort_again(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop))
+                messages.success(request, 'Sorting it again: it will be ready to look at in a minute.')
+            elif action == 'read_again':
+                documents.read_again(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop))
+                messages.success(request, 'Reading it again.')
             elif action == 'delete_doc':
                 get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop).delete()
                 messages.success(request, 'Removed.')
             elif action == 'ask':
                 q = documents.ask(prop, request.POST.get('question'), request.user)
-                messages.success(request, 'Answered.')
+                messages.success(request, 'Answered from what was asked before: nothing was read again.' if getattr(q, 'from_memory', False) else 'Answered.')
             elif action == 'read_doc':
                 made = documents.propose_from_document(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop), request.user)
                 messages.success(request, f'{len(made)} setting{"s" if len(made) != 1 else ""} found. Confirm the ones that are right.' if made else 'No settings were found in that document.')

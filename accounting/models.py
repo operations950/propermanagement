@@ -96,6 +96,7 @@ class AssociationDocument(models.Model):
         ARTICLES = 'articles', 'Articles of Incorporation'
         BYLAWS = 'bylaws', 'Bylaws'
         RULES = 'rules', 'Rules and regulations'
+        AMENDMENT = 'amendment', 'Amendment'
         CONTRACT = 'contract', 'Management contract'
         BUDGET = 'budget', 'Budget'
         OTHER = 'other', 'Other'
@@ -106,12 +107,34 @@ class AssociationDocument(models.Model):
     file = models.FileField(upload_to='association_documents/%Y/%m/', storage=DocumentStorage())
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    # read once, remembered: the words of every page are kept (DocumentPage), so a question never re-reads the file
+    text_status = models.CharField(max_length=10, blank=True, default='', help_text="'' not read yet, waiting, reading, ready, partial (some scanned pages could not be read), failed.")
+    page_count = models.PositiveIntegerField(null=True, blank=True)
+    read_tries = models.PositiveSmallIntegerField(default=0)
+    read_started_at = models.DateTimeField(null=True, blank=True)
+    read_note = models.CharField(max_length=300, blank=True)
+    # sorting one upload into the documents it holds (a binder may hold a declaration, articles, bylaws, rules and amendments)
+    auto_sort = models.BooleanField(default=False, help_text='Uploaded without saying what it is: the program works it out and a person confirms.')
+    sort_status = models.CharField(max_length=10, blank=True, default='', help_text="'' nothing to sort, waiting, proposed (needs a look), manual (choose by hand), confirmed.")
+    sections = models.JSONField(default=list, blank=True, help_text='[{"kind","title","start","end","confidence"}] by page, once sorted.')
 
     class Meta:
         ordering = ['kind', '-uploaded_at']
 
     def __str__(self):
         return f'{self.get_kind_display()} - {self.property}'
+
+
+class DocumentPage(models.Model):
+    """The words on one page of an uploaded document, kept so the document is never read again to answer a question."""
+    document = models.ForeignKey(AssociationDocument, on_delete=models.CASCADE, related_name='pages')
+    number = models.PositiveIntegerField()
+    text = models.TextField(blank=True)
+    by_claude = models.BooleanField(default=False, help_text='A scanned page that had to be read by Claude, once.')
+
+    class Meta:
+        ordering = ['document_id', 'number']
+        constraints = [models.UniqueConstraint(fields=['document', 'number'], name='uniq_document_page')]
 
 
 class SettingProposal(models.Model):
@@ -140,6 +163,7 @@ class DocumentQuestion(models.Model):
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='document_questions')
     question = models.TextField()
     answer = models.TextField(blank=True)
+    docs_signature = models.CharField(max_length=40, blank=True, help_text='Which documents were on file when it was answered: the same question is answered from memory until they change.')
     asked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
 

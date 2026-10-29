@@ -38,20 +38,47 @@
 
 <div class="card mb-3" id="documents"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Documents &amp; rules</h6>
-    <table class="table table-sm mb-2"><tbody>{% for d in ap_docs %}<tr><td>{{ d.label }}</td><td>{% if d.doc %}<a href="{{ d.doc.file.url }}" target="_blank">{{ d.doc.name|truncatechars:40 }}</a> <span class="small text-muted">{{ d.doc.uploaded_at|date:"M j, Y" }}</span>{% endif %}</td>
-        <td class="text-end">{% if d.doc %}<span class="ac-chip good">Uploaded</span>{% elif d.required %}<span class="ac-chip warn">Required</span>{% else %}<span class="ac-chip">Not uploaded</span>{% endif %}</td>
-        <td class="text-end">{% if d.doc %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="doc" value="{{ d.doc.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="read_doc" title="Find the late fee, spending limit and fees in this document">Read for settings</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="delete_doc" onclick="return confirm('Remove this document?')">Remove</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table>
-    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="upload">
-        <select class="form-select form-select-sm" name="kind" style="max-width: 250px;"><option value="declaration">Declaration of Condominium</option><option value="articles">Articles of Incorporation</option><option value="bylaws">Bylaws</option><option value="rules">Rules and regulations</option><option value="contract">Management contract</option><option value="budget">Budget</option><option value="other">Other</option></select>
-        <input type="file" name="file" class="form-control form-control-sm" style="max-width: 280px;" required><button class="btn btn-sm btn-primary">Upload</button></form>
+    <table class="table table-sm mb-2"><tbody>{% for d in ap_docs %}<tr><td style="width: 34%;">{{ d.label }}</td>
+        <td class="small text-muted">{% for w in d.where %}<div>{{ w }}</div>{% endfor %}</td>
+        <td class="text-end">{% if d.doc %}{% if d.url %}<a class="small me-2" href="{{ d.url }}" target="_blank">open</a>{% endif %}<span class="ac-chip good">On file</span>{% elif d.required %}<span class="ac-chip warn">Required</span>{% else %}<span class="ac-chip">Not uploaded</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="upload_many">
+        <input type="file" name="files" multiple class="form-control form-control-sm" style="max-width: 360px;" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv" required><button class="btn btn-sm btn-primary">Upload</button>
+        <span class="small text-muted w-100">One file or several, a binder or single documents, up to 50 MB each. Each is read once, then sorted into the declaration, articles, bylaws, rules, amendments, contract or budget it holds, and you confirm.</span></form>
+    <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Or say what a file is yourself</summary>
+        <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="action" value="upload">
+            <select class="form-select form-select-sm" name="kind" style="max-width: 250px;"><option value="declaration">Declaration of Condominium</option><option value="articles">Articles of Incorporation</option><option value="bylaws">Bylaws</option><option value="rules">Rules and regulations</option><option value="amendment">Amendment</option><option value="contract">Management contract</option><option value="budget">Budget</option><option value="other">Other</option></select>
+            <input type="file" name="file" class="form-control form-control-sm" style="max-width: 280px;" required><button class="btn btn-sm btn-outline-secondary">Upload</button></form></details>
+
+    {% if ap_files %}<div class="mt-3 pt-3 border-top"><div class="ac-lab mb-1">Files</div>
+        {% for f in ap_files %}<div class="py-2 {% if not forloop.first %}border-top{% endif %}">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div><a href="{{ f.doc.file.url }}" target="_blank" class="fw-semibold text-decoration-none">{{ f.doc.name|truncatechars:60 }}</a>
+                <span class="small text-muted">{% if f.doc.page_count %}{{ f.doc.page_count }} page{{ f.doc.page_count|pluralize }} &middot; {% endif %}{{ f.doc.uploaded_at|date:"M j, Y" }}</span>
+                {% if f.state == 'reading' %}<span class="ac-chip">Reading</span> <span class="small text-muted">once, a few minutes for a long scan</span>{% elif f.state == 'sorting' %}<span class="ac-chip">Sorting</span>
+                {% elif f.state == 'needs_look' %}<span class="ac-chip warn">Needs a look</span>{% elif f.state == 'failed' %}<span class="ac-chip warn">Could not be read</span>{% else %}<span class="ac-chip good">Ready</span>{% endif %}
+                {% if f.doc.read_note %}<div class="small text-muted">{{ f.doc.read_note }}</div>{% endif %}</div>
+                <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="doc" value="{{ f.doc.pk }}">
+                    {% if f.state == 'ready' or f.state == 'needs_look' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="read_doc" title="Find the late fee, spending limit and fees in this document">Read for settings</button> {% endif %}
+                    {% if f.state == 'failed' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="read_again">Try again</button> {% endif %}
+                    <button class="btn btn-sm btn-outline-secondary" name="action" value="delete_doc" onclick="return confirm('Remove this file?')">Remove</button></form></div>
+            {% if f.state == 'needs_look' %}
+            <form method="post" class="mt-2 p-2 rounded" style="background: color-mix(in srgb, var(--status-warning) 12%, white);">{% csrf_token %}<input type="hidden" name="doc" value="{{ f.doc.pk }}">
+                <div class="small mb-1">{% if f.doc.sort_status == 'manual' %}This file could not be sorted automatically. Say what it holds.{% else %}This file holds {{ f.sections|length }} document{{ f.sections|length|pluralize }}. Is that right?{% endif %}</div>
+                {% for s in f.sections %}<div class="row g-1 align-items-center mb-1"><div class="col-auto small text-muted" style="width: 110px;">{% if s.start == s.end %}Page {{ s.start }}{% else %}Pages {{ s.start }}&ndash;{{ s.end }}{% endif %}</div>
+                    <div class="col-md-3"><select class="form-select form-select-sm" name="kind_{{ forloop.counter0 }}">{% for k, label in doc_kinds %}<option value="{{ k }}" {% if k == s.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+                    <div class="col"><input class="form-control form-control-sm" name="title_{{ forloop.counter0 }}" value="{{ s.title }}"></div>
+                    <div class="col-auto">{% if s.confidence < 0.6 and f.doc.sort_status != 'manual' %}<span class="ac-chip warn">Not sure</span>{% endif %}</div></div>{% endfor %}
+                <button class="btn btn-sm btn-primary" name="action" value="sort_confirm">Looks right</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="sort_again">Sort it again</button></form>
+            {% elif f.sections %}<div class="small text-muted mt-1">{% for s in f.sections %}<div>{{ s.title|default:'Untitled' }}: {% if s.start == s.end %}page {{ s.start }}{% else %}pages {{ s.start }} to {{ s.end }}{% endif %}</div>{% endfor %}</div>{% endif %}
+        </div>{% endfor %}</div>{% endif %}
 
     {% if ap_proposals %}<div class="mt-3 pt-3 border-top"><div class="ac-lab mb-2">Found in the documents: confirm each one that is right</div>
         {% for p in ap_proposals %}<form method="post" class="py-2 {% if not forloop.first %}border-top{% endif %}">{% csrf_token %}<input type="hidden" name="proposal" value="{{ p.pk }}">
-            <div class="d-flex justify-content-between flex-wrap gap-2"><div><strong>{{ p.label }}</strong>: {{ p.summary }} <span class="small text-muted">{{ p.document.get_kind_display }}{% if p.page %}, page {{ p.page }}{% endif %}</span><div class="small text-muted fst-italic">"{{ p.quote|truncatechars:240 }}"</div></div>
+            <div class="d-flex justify-content-between flex-wrap gap-2"><div><strong>{{ p.label }}</strong>: {{ p.summary }} <span class="small text-muted">{{ p.source }}</span><div class="small text-muted fst-italic">"{{ p.quote|truncatechars:240 }}"</div></div>
                 <div class="d-flex gap-1 align-items-start">{% for k, v in p.value.items %}{% if k != 'kind' %}<input class="form-control form-control-sm" style="width: 100px;" name="v_{{ k }}" value="{{ v|default_if_none:'' }}" title="{{ k }}">{% endif %}{% endfor %}<button class="btn btn-sm btn-primary" name="action" value="confirm">Confirm</button><button class="btn btn-sm btn-outline-secondary" name="action" value="dismiss">Dismiss</button></div></div></form>{% endfor %}</div>{% endif %}
 
     <div class="mt-3 pt-3 border-top"><div class="ac-lab mb-1">Ask the documents</div>
         <form method="post" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="action" value="ask"><input class="form-control form-control-sm" name="question" placeholder="For example: Can an owner rent a unit for a week at a time?" required><button class="btn btn-sm btn-primary">Ask</button></form>
+        <div class="small text-muted mt-1">Only the pages most likely to answer are read, and a question asked before is answered from memory.</div>
         {% for q in ap_questions %}<div class="mt-2 p-2 rounded" style="background: var(--bs-light, #f1f3f5);"><div class="small fw-semibold">{{ q.question }}</div><div class="small" style="white-space: pre-wrap;">{{ q.answer }}</div></div>{% endfor %}</div>
 </div></div>
 
