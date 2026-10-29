@@ -22,6 +22,7 @@ from django.db import transaction
 from core.models import Contact, Property, Unit
 
 from . import bankrec, charges, ledger, owners, payables
+from .contact_match import Matcher, emails_of
 from . import standard_chart as sc
 from .models import (ZERO, Application, AssociationProfile, BankAccount, BankOpeningItem, BankStatement, Bill, BoardTerm, Budget, Charge, ChargeRule, JournalEntry,
                      MonthLock, OwnerProfile, Ownership, Payment, PaymentBill, ReconAcceptance, ReconMatch, Reconciliation, Receipt, RecurringBill, ShareKind, UnitShare,
@@ -163,7 +164,39 @@ def _match_receivables(cfg):
 
 # ---------------------------------------------------------------- the load
 
-def _people_and_units(prop, cfg, placed, log):
+def _resolve_people(prop, cfg, matcher, report):
+    """For every owner Yardi lists, the Contact they are: one we already have (the same email, else the same phone, else the same or a close name) or a new one.
+    {(unit label, lower-case name): contact, ('', lower-case name): contact} for the rest of the load."""
+    people, created, links, undecided, reasons = {}, set(), [], [], defaultdict(int)
+    for u in cfg['units']:
+        taken = set()
+        for o in u['owners']:
+            if o['type'] == 'tenant':
+                continue
+            contact, reason, candidates = matcher.find(o, taken)
+            if contact is None:
+                mine = emails_of(o.get('email'))
+                contact = owners.create_owner_contact(prop, o['name'], source=Contact.Source.YARDI)
+                contact.email, contact.phone = (mine[0] if mine else '')[:254], (o.get('phone') or '')[:30]
+                contact.save(update_fields=['email', 'phone'])
+                created.add(contact.pk)
+                matcher.add(contact)          # the same person on another unit is then this contact, not a second one
+                if candidates:
+                    undecided.append({'yardi': o['name'], 'unit': u['label'], 'made': contact.pk,
+                                      'candidates': [{'name': c.name, 'id': c.pk, 'email': c.email, 'phone': c.phone, 'why': why} for c, why in candidates]})
+            else:
+                owners.attach_owner(prop, contact)
+                if contact.pk not in created:
+                    reasons[reason] += 1
+                    links.append({'yardi': o['name'], 'existing': contact.name, 'id': contact.pk, 'reason': reason, 'unit': u['label']})
+            taken.add(contact.pk)
+            people[(u['label'], o['name'].lower())] = contact
+            people.setdefault(('', o['name'].lower()), contact)
+    report.update({'linked': links, 'link_reasons': dict(reasons), 'new_contacts': len(created), 'undecided': undecided})
+    return people
+
+
+def _people_and_units(prop, cfg, placed, people, log):
     rows, billed = [], dict(cfg.get('billed') or {})
     for label, name, line in placed:
         billed.setdefault(label, name)
@@ -171,7 +204,8 @@ def _people_and_units(prop, cfg, placed, log):
         for o in u['owners']:
             if o['type'] == 'tenant':
                 continue
-            rows.append({'unit': u['label'], 'owner': o['name'], 'absentee': o['type'] == 'absentee', 'since': date.fromisoformat(o['since']) if o.get('since') else None})
+            rows.append({'unit': u['label'], 'owner': o['name'], 'person': people[(u['label'], o['name'].lower())], 'absentee': o['type'] == 'absentee',
+                         'since': date.fromisoformat(o['since']) if o.get('since') else None})
     made = owners.apply_import(prop, rows, billed=billed, equal_shares=not any(u.get('share') for u in cfg['units']))
     yardi_shares = {u['label']: u['share'] for u in cfg['units'] if u.get('share')}
     if yardi_shares:
@@ -181,9 +215,7 @@ def _people_and_units(prop, cfg, placed, log):
         for o in u['owners']:
             if o['type'] == 'tenant':
                 continue
-            person = Contact.objects.filter(name__iexact=o['name'], properties=prop).first()
-            if person is None:
-                continue
+            person = people[(u['label'], o['name'].lower())]
             changed = []
             if o['email'] and not person.email:
                 person.email = o['email'][:254]
@@ -202,14 +234,14 @@ def _people_and_units(prop, cfg, placed, log):
     return made
 
 
-def _board(prop, cfg):
+def _board(prop, cfg, people):
     if cfg is DATA['glen']:
         from .seed_glen import BOARD
         terms = BOARD
     else:
         terms = [(o['name'], o['board'], None) for u in cfg['units'] for o in u['owners'] if o['board']]
     for name, position, start in terms:
-        person = owners.person_for_name(prop, name)
+        person = people.get(('', name.lower())) or owners.person_for_name(prop, name)
         if not BoardTerm.objects.filter(association=prop, person=person, position=position, end_date__isnull=True).exists():
             owners.add_board_term(prop, person, position, start=start)
 
@@ -239,13 +271,13 @@ def _profile(prop, cfg):
     return p
 
 
-def _subledger(prop, placed, report):
+def _subledger(prop, placed, people, report):
     """One 'balance forward' charge per age bucket an owner owes in, and one paid-ahead receipt for each owner who paid ahead. No entries: the opening entry covers them."""
     income = ledger.account(prop, sc.INCOME_ASSESSMENT)
     owed = prepaid = ZERO
     for label, name, line in placed:
         unit = Unit.objects.get(property=prop, label=label)
-        person = owners.person_for_name(prop, name)
+        person = people.get((label, name.lower())) or owners.person_for_name(prop, name)
         for i, amount in enumerate(line['buckets']):
             amount = money(amount)
             if amount > 0:
@@ -353,8 +385,10 @@ def _verify(prop, cfg, report):
 
 
 @transaction.atomic
-def load(key, log=print):
-    """Load one association. Refuses if its books already have entries (wipe them first). Returns a report of what was loaded and what is left over."""
+def load(key, log=print, overrides=None, strict=False):
+    """Load one association. Refuses if its books already have entries (wipe them first). Returns a report of what was loaded and what is left over.
+    `overrides` is {Yardi name: contact id} for owners a person has said are an existing contact. With `strict`, an owner who could be more than one existing contact
+    stops the load (nothing is saved) until a person has decided."""
     cfg = DATA[key]
     prop, created = find_property(key)
     if cfg['financials'] and has_books(prop):
@@ -374,13 +408,18 @@ def load(key, log=print):
                     have.add(code)
     _profile(prop, cfg)
     placed, lost = ([], []) if not cfg['financials'] else _match_receivables(cfg)
-    made = _people_and_units(prop, cfg, placed, log)
-    _board(prop, cfg)
+    people = _resolve_people(prop, cfg, Matcher(prop, overrides), report)
+    if strict and report['undecided']:
+        names = '; '.join(f"{u['yardi']} (unit {u['unit']})" for u in report['undecided'][:8])
+        raise LoadError(f"{prop.name}: {len(report['undecided'])} owner(s) could be a contact you already have and need a decision: {names}. "
+                        'Say which are the same person with --link "Yardi name=contact id", or load them as new people with --new-for-undecided.')
+    made = _people_and_units(prop, cfg, placed, people, log)
+    _board(prop, cfg, people)
     report.update({'units': Unit.objects.filter(property=prop, is_active=True).count(), 'owners_made': made['owners'], 'ownerships_made': made['ownerships'],
                    'tenants_not_loaded': sum(1 for u in cfg['units'] for o in u['owners'] if o['type'] == 'tenant'), 'left_out': cfg['left_out']})
     if not cfg['financials']:
         return report
-    _subledger(prop, placed, report)
+    _subledger(prop, placed, people, report)
     bills = _bills(prop, cfg)
     _opening_entries(prop, cfg, bills, report)
     _banks(prop, cfg, report)
@@ -394,8 +433,20 @@ def load(key, log=print):
 
 def describe(report):
     """The report as lines of text for the person running the command."""
-    out = [f"{report['name']}: {report['units']} units, {report.get('owners_made', 0)} new owners, {report.get('tenants_not_loaded', 0)} tenant rows not loaded"
+    out = [f"{report['name']}: {report['units']} units, {report.get('tenants_not_loaded', 0)} tenant rows not loaded"
            + (f", left out as placeholders: {', '.join(report['left_out'])}" if report.get('left_out') else '')]
+    if 'linked' in report:
+        r = report['link_reasons']
+        parts = ', '.join(f'{n} {w}' for w, n in sorted(r.items(), key=lambda kv: -kv[1]))
+        out.append(f"  owners: {len(report['linked'])} matched to contacts you already have" + (f' ({parts})' if parts else '') + f", {report['new_contacts']} new, {len(report['undecided'])} to decide")
+        shown = [l for l in report['linked'] if l['reason'] != 'same name' or l['yardi'].lower() != l['existing'].lower()]
+        for l in shown[:60]:
+            out.append(f"    {l['reason']}: {l['yardi']} (unit {l['unit']}) = {l['existing']} [contact {l['id']}]")
+        if len(shown) > 60:
+            out.append(f'    ... and {len(shown) - 60} more')
+        for u in report['undecided']:
+            cands = '; '.join(f"{c['name']} [contact {c['id']}] {c['email'] or c['phone'] or 'no email or phone'} ({c['why']})" for c in u['candidates'])
+            out.append(f"    TO DECIDE: {u['yardi']} (unit {u['unit']}) could be: {cands}")
     if report.get('other_units_already_there'):
         out.append(f"  units already in the app that Yardi's list does not have (left alone): {', '.join(report['other_units_already_there'])}")
     if not report['financials']:

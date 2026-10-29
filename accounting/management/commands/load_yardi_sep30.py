@@ -5,6 +5,10 @@
   python manage.py load_yardi_sep30 glen                  look at one association (glen, grand, castlewood, la_pensee, lakeside_8, lakeside_2, linton)
   python manage.py load_yardi_sep30 glen --wipe-first --apply     take out St Andrews Glen's books first, then load them again
 
+Owners are matched to the contacts you already have: the same email first, else the same phone, else the same or a close name. An owner who could be more than one
+existing contact is listed under TO DECIDE; say which are the same person with  --link "Yardi name=contact id"  (repeat it), or let them be new people with --new-for-undecided.
+--apply will not run while anyone is still undecided.
+
 Without --apply every load is rolled back at the end, so what it prints is exactly what --apply would do.
 """
 from django.core.management.base import BaseCommand, CommandError
@@ -25,9 +29,17 @@ class Command(BaseCommand):
         parser.add_argument('keys', nargs='*', help='which associations (default: all)')
         parser.add_argument('--apply', action='store_true', help='really do it; without this nothing is changed')
         parser.add_argument('--wipe-first', action='store_true', help="take out the association's existing books first")
+        parser.add_argument('--link', action='append', default=[], metavar='"NAME=ID"', help='an owner as Yardi names them = the id of the contact they already are (repeat for several)')
+        parser.add_argument('--new-for-undecided', action='store_true', help='load owners who could be an existing contact as new people')
 
     def handle(self, *args, **opts):
         keys = opts['keys'] or Y.ORDER
+        overrides = {}
+        for item in opts['link']:
+            if '=' not in item or not item.rsplit('=', 1)[1].strip().isdigit():
+                raise CommandError(f'--link needs "Yardi name=contact id" (a number); got "{item}".')
+            name, cid = item.rsplit('=', 1)
+            overrides[name.strip()] = int(cid)
         for k in keys:
             if k not in DATA:
                 raise CommandError(f'Unknown association "{k}". Choose from: {", ".join(Y.ORDER)}.')
@@ -45,7 +57,7 @@ class Command(BaseCommand):
                         for label, n in Y.wipe(prop):
                             if n:
                                 self.stdout.write(f'  removed {n} {label}')
-                    report = Y.load(key)
+                    report = Y.load(key, overrides=overrides, strict=opts['apply'] and not opts['new_for_undecided'])
                     for line in Y.describe(report):
                         self.stdout.write(line)
                     if not opts['apply']:

@@ -103,18 +103,29 @@ def billed_owner(unit):
     return billed.person if billed else None
 
 
+def attach_owner(association, contact, is_company=False):
+    """Make an existing contact an owner at this association (their name, email and phone stay as they are)."""
+    if contact.contact_type != Contact.ContactType.OWNER and Contact.ContactType.OWNER not in (contact.secondary_types or []):
+        contact.secondary_types = list(contact.secondary_types or []) + [Contact.ContactType.OWNER]
+        contact.save(update_fields=['secondary_types'])
+    contact.properties.add(association)
+    OwnerProfile.objects.get_or_create(contact=contact, defaults={'is_company': is_company or bool(COMPANY_WORDS.search(contact.name))})
+    return contact
+
+
+def create_owner_contact(association, name, source=Contact.Source.MANUAL):
+    """A new owner Contact, whatever else is already in the system with the same name."""
+    name = ' '.join((name or '').split())
+    return attach_owner(association, Contact.objects.create(name=name, contact_type=Contact.ContactType.OWNER, source=source))
+
+
 def person_for_name(association, name, is_company=False):
     """The owner Contact with this name for this association, made if there is none."""
     name = ' '.join((name or '').split())
     existing = Contact.objects.filter(name__iexact=name, properties=association).first() or Contact.objects.filter(name__iexact=name, contact_type=Contact.ContactType.OWNER).first()
     if existing is None:
         existing = Contact.objects.create(name=name, contact_type=Contact.ContactType.OWNER, source=Contact.Source.MANUAL)
-    elif existing.contact_type != Contact.ContactType.OWNER and Contact.ContactType.OWNER not in (existing.secondary_types or []):
-        existing.secondary_types = list(existing.secondary_types or []) + [Contact.ContactType.OWNER]
-        existing.save(update_fields=['secondary_types'])
-    existing.properties.add(association)
-    OwnerProfile.objects.get_or_create(contact=existing, defaults={'is_company': is_company or bool(COMPANY_WORDS.search(name))})
-    return existing
+    return attach_owner(association, existing, is_company)
 
 
 @transaction.atomic
@@ -277,8 +288,8 @@ def apply_import(association, rows, billed=None, equal_shares=True):
         made['units'] += 0 if had_unit else 1
         choice = billed.get(label)
         for r in owner_rows:
-            had_person = Contact.objects.filter(name__iexact=r['owner'], properties=association).exists()
-            person = person_for_name(association, r['owner'])
+            had_person = r.get('person') is not None or Contact.objects.filter(name__iexact=r['owner'], properties=association).exists()
+            person = r.get('person') or person_for_name(association, r['owner'])   # a row may bring its person: one already worked out (the Yardi load matches by email, phone, then name)
             made['owners'] += 0 if had_person else 1
             if Ownership.objects.filter(unit=unit, person=person, end_date__isnull=True).exists():
                 continue
