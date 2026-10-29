@@ -40,9 +40,21 @@ def _letters(s):
     return re.sub(r'[^a-z]', '', (s or '').lower())
 
 
+TAGS = {'sag', 'lap', 'ls2', 'lsp2', 'ls8', 'lak', 'lapensee', 'grand', 'board', 'castlewood', 'linton', 'glen', 'president', 'treasurer', 'secretary', 'owner'}
+
+
+def clean_name(name):
+    """A contact's name as the person's name alone: what follows " - " and the building tags people add ("Martina LAP", "Walli SAG", "Pam- SAG Board") are dropped."""
+    for part in re.split(r'\s*[-\u2013\u2014]\s+', name or ''):
+        words = ' '.join(w for w in part.split() if re.sub(r'[^a-z0-9]', '', w.lower()) not in TAGS and not re.fullmatch(r'\d{3,}', w))
+        if words:
+            return words
+    return ' '.join((name or '').split())
+
+
 def name_parts(name):
     """(first, last, tokens) of a person's name in "Last, First M" or "First M Last" form, without Jr, TR and the like; first or last is '' when it cannot be told."""
-    s = re.sub(r'\([^)]*\)', ' ', (name or '').lower())
+    s = re.sub(r'\([^)]*\)', ' ', clean_name(name).lower())
     if ',' in s:
         last_part, rest = s.split(',', 1)
         last_tokens = [t for t in re.findall(r"[a-z']+", last_part) if t not in SUFFIXES]
@@ -65,6 +77,7 @@ def _first_ok(a, b):
 
 def same_name(a, b):
     """'exact' (the same words in any order), 'close' (nickname, initial, middle name) or ''."""
+    a, b = clean_name(a), clean_name(b)
     if _letters(a) == _letters(b) and _letters(a):
         return 'exact'
     ta, tb = sorted(name_parts(a)[2]), sorted(name_parts(b)[2])
@@ -82,9 +95,10 @@ def same_name(a, b):
 class Matcher:
     """Built once per load: an index of every contact we already have by email, phone and last name."""
 
-    def __init__(self, association, overrides=None):
+    def __init__(self, association, overrides=None, force_new=()):
         self.association = association
         self.overrides = {k.lower(): int(v) for k, v in (overrides or {}).items()}
+        self.force_new = {n.lower() for n in force_new}
         self.by_email, self.by_phone, self.by_last = defaultdict(list), defaultdict(list), defaultdict(list)
         self.contacts = {}
         self.here = set(Contact.objects.filter(properties=association).values_list('pk', flat=True))
@@ -101,12 +115,9 @@ class Matcher:
                 self.by_last[name_parts(c.name)[1] or _letters(c.name)].append(c)
 
     def add(self, c):
-        """A contact made during the load, so the same person on another unit finds it instead of being made twice."""
+        """A contact made during the load, so the same person on another unit finds it instead of being made twice. By name only: a phone or email that two different new
+        owners share would otherwise join them."""
         self.contacts[c.pk] = c
-        for e in emails_of(c.email):
-            self.by_email[e].append(c)
-        if phone10(c.phone):
-            self.by_phone[phone10(c.phone)].append(c)
         if c.contact_type not in NAME_ONLY_SKIP:
             self.by_last[name_parts(c.name)[1] or _letters(c.name)].append(c)
         self.here.add(c.pk)
@@ -131,6 +142,8 @@ class Matcher:
         """For one owner row {name, email, phone, phone_alt}: (contact or None, reason, candidates). `taken` is the contacts already used by the other owners of this unit.
         `candidates` is a list of (contact, why) to show a person when nobody could be chosen safely."""
         name = row['name']
+        if name.lower() in self.force_new:
+            return None, '', []
         if name.lower() in self.overrides and self.overrides[name.lower()] in self.contacts and self.overrides[name.lower()] not in taken:
             return self.contacts[self.overrides[name.lower()]], 'you said so', []
         # 1. the same email
