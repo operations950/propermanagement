@@ -66,6 +66,7 @@ def process_template_create(request):
             name=request.POST.get('name', '').strip() or 'Untitled process',
             description=request.POST.get('description', '').strip(),
             category=request.POST.get('category', '').strip(),
+            kind=request.POST.get('kind') if request.POST.get('kind') in ProcessTemplate.Kind.values else ProcessTemplate.Kind.PROJECT,
         )
         messages.success(request, f'Created "{template.name}".')
         return redirect('process_template_edit', pk=template.pk)
@@ -80,6 +81,8 @@ def process_template_edit(request, pk):
         template.description = request.POST.get('description', '').strip()
         template.category = request.POST.get('category', '').strip()
         template.is_active = bool(request.POST.get('is_active'))
+        if request.POST.get('kind') in ProcessTemplate.Kind.values:
+            template.kind = request.POST['kind']
         template.save()
         messages.success(request, 'Saved.')
         return redirect('process_template_edit', pk=template.pk)

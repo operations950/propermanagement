@@ -155,6 +155,11 @@
             .table-responsive .table td, .table-responsive .table th { overflow-wrap: anywhere; }
             .table-responsive .table .text-nowrap, .table-responsive .table td.text-nowrap { white-space: normal !important; }
         }
+        .ws-lines { background: var(--surface-card); border-bottom: 1px solid var(--border-hairline); margin-top: -1.5rem; margin-bottom: 1.25rem; position: relative; z-index: 2; }
+        .ws-lines .container-fluid { display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; padding-top: 0.25rem; padding-bottom: 0.35rem; }
+        .ws-lines a { font-size: 0.78rem; color: var(--ink-muted); text-decoration: none; }
+        .ws-lines a:hover, .ws-lines a.on { color: var(--ink-primary); }
+        .ws-lines a.on { font-weight: 600; }
         .brand-bar .nav-link {
             color: var(--ink-secondary) !important;
             display: flex;
@@ -337,6 +342,11 @@
             </button>
             <div class="collapse navbar-collapse" id="navMain">
                 <div class="navbar-nav ms-auto align-items-xl-center">
+                    {% if new_face %}
+                    {% for item in ws_nav %}
+                    <a class="nav-link {% if item.active %}active{% endif %}" href="{{ item.url }}"><i data-lucide="{{ item.icon }}" class="icon"></i> {{ item.label }}</a>
+                    {% endfor %}
+                    {% else %}
                     <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'ticket_list' and request.GET.source != 'recurring' %}active{% endif %}" href="{% url 'ticket_list' %}?source=reactive"><i data-lucide="ticket" class="icon"></i> Tickets</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties</a>
@@ -357,6 +367,7 @@
                     <a class="nav-link {% if request.resolver_match.url_name in 'close_home close_bank_tieout close_overview close_payouts close_statement close_property close_unit' or request.resolver_match.namespace == 'accounting' %}active{% endif %}" href="{% url 'close_home' %}"><i data-lucide="landmark" class="icon"></i> Financials</a>
                     {% endif %}
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
+                    {% endif %}
 
                     <div class="dropdown mx-xl-2 my-2 my-xl-0">
                         <button class="btn btn-primary btn-sm dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Quick add" aria-label="Quick add">
@@ -377,6 +388,9 @@
             </div>
         </div>
     </nav>
+    {% if new_face and ws_lines %}
+    <div class="ws-lines"><div class="container-fluid">{% for l in ws_lines %}<a href="{{ l.url }}" class="{% if l.active %}on{% endif %}">{{ l.label }}</a>{% endfor %}</div></div>
+    {% endif %}
     {% endif %}
     {% if messages %}
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false">

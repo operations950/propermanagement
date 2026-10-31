@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}{{ label }}{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<h2 class="page-title mb-1">{{ label }}</h2>
+<p class="small text-muted mb-3">The properties in this line of business, and the screens that matter most for them.</p>
+<div class="row g-2">
+{% if slug == 'associations' %}
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:home' %}"><i data-lucide="building" class="icon"></i><span>Association books<small>Ledgers, reconciliations, bills, owners</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_compliance' %}"><i data-lucide="calendar-check" class="icon"></i><span>Compliance<small>Filings, meetings, reconciliations</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'faq_review_queue' %}"><i data-lucide="message-circle-question" class="icon"></i><span>FAQ review<small>Answers waiting for a look</small></span></a></div>
+{% elif slug == 'short-term-rentals' %}
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i><span>On-Site visits<small>Cleanings and inspections</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_rentals_calendar' %}"><i data-lucide="calendar-range" class="icon"></i><span>Rentals calendar<small>Every rental, day by day</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_reservation_list' %}"><i data-lucide="book-marked" class="icon"></i><span>Reservations<small>Stays and edits</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_performance' %}"><i data-lucide="trending-up" class="icon"></i><span>Performance<small>Revenue and ratings</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_booking_import' %}"><i data-lucide="file-up" class="icon"></i><span>Booking imports<small>Upload payout and booking files</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_booking_feeds' %}"><i data-lucide="rss" class="icon"></i><span>Booking feeds<small>Calendar links from each platform</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_home' %}"><i data-lucide="lock-keyhole" class="icon"></i><span>Month-end close<small>Statements and tie-out</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'tourist_tax' %}"><i data-lucide="receipt" class="icon"></i><span>Tourist tax<small>Returns and payments</small></span></a></div>
+{% else %}
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ticket_list' %}"><i data-lucide="ticket" class="icon"></i><span>Tickets<small>Open requests</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_compliance' %}"><i data-lucide="calendar-check" class="icon"></i><span>Compliance<small>Scheduled work</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_projects' %}"><i data-lucide="layers" class="icon"></i><span>Projects<small>Longer jobs with steps</small></span></a></div>
+{% endif %}
+</div>
+<div class="ws-label">Properties</div>
+{% for city, props in by_city %}
+<div class="ws-kind" style="margin-left:0">{{ city }}</div>
+{% for p in props %}<a class="ws-row" href="{% url 'property_detail' p.pk %}" style="grid-template-columns: minmax(0,1fr) 0.9rem;"><span class="main"><b>{{ p.name }}</b><small>{{ p.address }}</small></span><span class="go">&rsaquo;</span></a>{% endfor %}
+{% empty %}
+<div class="ws-empty">No properties of this type yet.</div>
+{% endfor %}
+{% endblock %}

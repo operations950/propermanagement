@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Home{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<div class="ws-tabs">{% for key, label in horizons %}<a href="?h={{ key }}{% if everyone %}&scope=all{% endif %}" class="{% if horizon == key %}on{% endif %}">{{ label }}</a>{% endfor %}</div>
+<div class="ws-head">
+<h2 class="page-title mb-0">{{ heading }}</h2>
+<span class="meta">{% if can_everyone %}<a href="?h={{ horizon }}" class="{% if not everyone %}on{% endif %}">Mine</a><a href="?h={{ horizon }}&scope=all" class="{% if everyone %}on{% endif %}">Everyone</a>{% endif %}<span class="ms-3">{{ data.count }} to do</span></span>
+</div>
+{% for g in data.groups %}
+{% if g.person %}<div class="ws-person">{{ g.person }}</div>{% endif %}
+{% for k in g.kinds %}
+<div class="ws-kind">{{ k.label }}</div>
+{% for r in k.rows %}{% include 'workspace/_row.html' %}{% endfor %}
+{% endfor %}
+{% empty %}
+<div class="ws-empty">Nothing on your list {% if horizon == 'today' %}today{% elif horizon == 'week' %}this week{% else %}this month{% endif %}.</div>
+{% endfor %}
+{% if calendar_configured %}
+<div class="card mt-4" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+<h6 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Your calendar</h6>
+{% include 'tickets/_dashboard_calendar.html' %}
+</div></div>
+{% endif %}
+{% endblock %}

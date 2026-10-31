@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}People and menus{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<a href="{% url 'ws_admin' %}" class="small text-decoration-none" style="color: var(--ink-muted);">&lsaquo; Admin</a>
+<h2 class="page-title mt-1 mb-1">People and menus</h2>
+<p class="small text-muted mb-3">Turn the new layout on for a person, and choose which menu they get. A menu role only decides what is shown in their menu: it never stops anyone opening a screen, and it is separate from the team (ticket queue) each person is on. People who are not switched on keep seeing the original site, exactly as before.</p>
+<form method="post">
+{% csrf_token %}
+<div class="card"><div class="table-responsive"><table class="table table-sm align-middle mb-0">
+<thead><tr><th>Person</th><th>Email</th><th class="text-center">New layout</th><th>Menu</th></tr></thead>
+<tbody>
+{% for sp in staff_list %}
+<tr>
+<td><input type="hidden" name="row_{{ sp.pk }}" value="1">{{ sp }}{% if sp.is_company_admin %} <span class="badge text-bg-light">admin</span>{% endif %}</td>
+<td class="small text-muted">{{ sp.user.email }}</td>
+<td class="text-center"><input type="checkbox" class="form-check-input" name="face_{{ sp.pk }}" {% if sp.new_face %}checked{% endif %} {% if sp.pk == me.pk %}disabled checked{% endif %} aria-label="New layout for {{ sp }}"></td>
+<td><select name="role_{{ sp.pk }}" class="form-select form-select-sm" style="max-width: 14rem;" aria-label="Menu for {{ sp }}"><option value="">Default</option>{% for v, l in roles %}<option value="{{ v }}" {% if sp.menu_role == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+</tr>
+{% endfor %}
+</tbody></table></div></div>
+<button class="btn btn-dark btn-sm mt-3" type="submit">Save</button>
+</form>
+{% endblock %}

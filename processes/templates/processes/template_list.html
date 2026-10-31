@@ -6,6 +6,7 @@
     <form method="post" action="{% url 'process_template_create' %}" class="d-flex gap-2">
         {% csrf_token %}
         <input type="text" name="name" class="form-control form-control-sm" placeholder="New process name" required>
+        <select name="kind" class="form-select form-select-sm" style="width: auto;" aria-label="Type"><option value="project">Project</option><option value="checklist">Checklist</option></select>
         <button type="submit" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> Create</button>
     </form>
 </div>
@@ -16,7 +17,7 @@
 <div class="list-group mb-3">
     {% for template in group.list %}
     <a href="{% url 'process_template_edit' template.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-        <span>{{ template.name }}{% if not template.is_active %} <span class="badge bg-secondary">Inactive</span>{% endif %}</span>
+        <span>{{ template.name }}{% if template.kind == 'checklist' %} <span class="badge text-bg-light">Checklist</span>{% endif %}{% if not template.is_active %} <span class="badge bg-secondary">Inactive</span>{% endif %}</span>
         <span class="small text-muted">{{ template.steps.count }} step{{ template.steps.count|pluralize }}</span>
     </a>
     {% endfor %}

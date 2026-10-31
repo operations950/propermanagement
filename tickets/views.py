@@ -41,6 +41,8 @@ from .services import owner_dashboard as owner_dashboard_queries
 from .services.package_engine import unblock_dependents
 from .services.process_gate import incomplete_process_instances, process_gate_error_message
 
+WS_NOW_DAYS = 15      # new layout: a ticket due further out than this waits under "Later"
+
 OPEN_STATUSES = [
     Ticket.Status.OPEN, Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS, Ticket.Status.BLOCKED,
     Ticket.Status.UPCOMING, Ticket.Status.DEFERRED, Ticket.Status.VENDOR_COMPLETE,
@@ -180,6 +182,9 @@ logger = logging.getLogger(__name__)
 @login_required
 def dashboard(request):
     staff_profile = getattr(request.user, 'staff_profile', None)
+    if staff_profile and staff_profile.new_face and not request.GET.get('stats'):
+        # The new layout opens on Home; the statistics dashboard is one click away (the Dashboard menu item adds ?stats=1).
+        return redirect('ws_home')
     if staff_profile and staff_profile.is_company_admin:
         return _owner_dashboard(request)
 
@@ -961,6 +966,19 @@ def ticket_list(request):
         'custom': format_date(due_on, 'M j, Y') if due_on else 'Custom date',
     }
 
+    # The new layout keeps this list to what is actually coming up: tickets due within NOW_DAYS days (or with no date, which means now) are "Now",
+    # the rest wait under "Later", and a ticket carrying a running process is tracked under Projects instead. Original layout: untouched.
+    profile = getattr(request.user, 'staff_profile', None)
+    ws_horizon = ''
+    if profile and profile.new_face and status == 'active' and source != 'recurring':
+        qs = qs.exclude(process_runs__status='active')
+        ws_horizon = request.GET.get('horizon') or ('' if due else 'now')
+        cutoff = today + timedelta(days=WS_NOW_DAYS)
+        if ws_horizon == 'later':
+            qs = qs.filter(due_date__date__gt=cutoff)
+        elif ws_horizon == 'now':
+            qs = qs.filter(Q(due_date__isnull=True) | Q(due_date__date__lte=cutoff))
+
     q = request.GET.get('q', '').strip()
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(property__name__icontains=q))
@@ -992,6 +1010,8 @@ def ticket_list(request):
         'selected_due_label': due_labels.get(due),
         'due_options': DUE_OPTIONS,
         'q': q,
+        'ws_horizon': ws_horizon,
+        'ws_now_days': WS_NOW_DAYS,
         'staff_list': StaffProfile.objects.select_related('user'),
         'vendor_groups': group_vendors_by_trade(
             Contact.objects.filter(contact_type=Contact.ContactType.VENDOR).order_by('name')

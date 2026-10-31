@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Rentals — {% if board.is_today %}today{% else %}{{ day|date:"D, M j" }}{% endif %}{% endblock %}
 {% block content %}
+{% if new_face %}{% include 'workspace/_onsite_tabs.html' %}{% endif %}
 <style>
     .str-pill { display: inline-block; font-size: 0.78rem; padding: 2px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; text-decoration: none; }
     .str-pill.neutral { background: var(--bs-light, #f8f9fa); color: var(--ink-secondary); border-color: var(--bs-border-color, #dee2e6); }

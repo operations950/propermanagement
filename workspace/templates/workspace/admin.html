@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="shield" class="icon-lg"></i> Admin</h2>
+<p class="small text-muted mb-3">Everything that is set up once lives here.</p>
+<div class="ws-label" style="margin-top:0">People</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_people' %}"><i data-lucide="users" class="icon"></i><span>People and menus<small>Who sees the new layout, and which menu</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'timeclock_setup' %}"><i data-lucide="clock" class="icon"></i><span>Time clock and schedules<small>Hours, schedules, who is tracked</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'contact_review' %}"><i data-lucide="user-check" class="icon"></i><span>Contact review<small>Contacts waiting for a look</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'contact_duplicates' %}"><i data-lucide="copy" class="icon"></i><span>Duplicate contacts<small>Merge people entered twice</small></span></a></div>
+</div>
+<div class="ws-label">Statistics and records</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'dashboard' %}?stats=1"><i data-lucide="layout-dashboard" class="icon"></i><span>Dashboard<small>Statistics and metrics</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="/documents/"><i data-lucide="file-text" class="icon"></i><span>Documents and legal forms<small>Forms, notices, letters</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'faq_review_queue' %}"><i data-lucide="message-circle-question" class="icon"></i><span>FAQ review<small>Guest answers waiting for a look</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'quo_webhook_log' %}"><i data-lucide="phone-call" class="icon"></i><span>Call and message log<small>What came in from Quo</small></span></a></div>
+</div>
+<div class="ws-label">Templates and rules</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_projects' %}?tab=templates"><i data-lucide="layers" class="icon"></i><span>Project and checklist templates<small>Steps and procedures</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_compliance' %}?tab=rules"><i data-lucide="calendar-check" class="icon"></i><span>Compliance rules<small>What is scheduled, and how often</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_visit_rule_list' %}"><i data-lucide="spray-can" class="icon"></i><span>Visit rules<small>When visits are made</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_checklist_templates' %}"><i data-lucide="list-checks" class="icon"></i><span>Visit checklists<small>What a cleaner checks off</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_cleaning_payments' %}"><i data-lucide="wallet" class="icon"></i><span>Cleaning payments<small>What cleaners are owed</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ticket_template_list' %}"><i data-lucide="repeat" class="icon"></i><span>Older recurring ticket rules<small>The first recurring system</small></span></a></div>
+</div>
+<div class="ws-label">Connections and setup</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'admin_tools' %}"><i data-lucide="key-round" class="icon"></i><span>Admin tools<small>Keys, secrets and the original admin screen</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'quickbooks_accounts' %}"><i data-lucide="link" class="icon"></i><span>QuickBooks accounts<small>Link rentals to QuickBooks</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'bot_keys' %}"><i data-lucide="bot" class="icon"></i><span>AI assistant keys<small>Access for the message assistant</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'owner_portal_admin' %}"><i data-lucide="door-open" class="icon"></i><span>Owner portal<small>Owner logins and statements</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'property_data_import' %}"><i data-lucide="file-up" class="icon"></i><span>Import property details<small>Bulk loads</small></span></a></div>
+</div>
+{% endblock %}

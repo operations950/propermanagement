@@ -167,6 +167,7 @@ INSTALLED_APPS = [
     'legalforms',
     'timeclock',
     'accounting',
+    'workspace',
 ]
 
 MIDDLEWARE = [
@@ -200,6 +201,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'timeclock.context_processors.nav',
+                'workspace.context_processors.face',
             ],
         },
     },

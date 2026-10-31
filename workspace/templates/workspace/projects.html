@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<div class="ws-sub">
+<a href="?tab=active&kind={{ kind }}" class="{% if tab == 'active' %}on{% endif %}">Active</a>
+<a href="?tab=templates&kind={{ kind }}" class="{% if tab == 'templates' %}on{% endif %}">Templates</a>
+<span class="sp"></span>
+{% if tab == 'templates' %}<a href="{% url 'process_template_list' %}" class="btn btn-sm btn-dark mb-1" style="color:#fff;border-bottom:0;">New or edit templates</a>{% endif %}
+</div>
+<div class="ws-sub ws-sub2">
+<a href="?tab={{ tab }}&kind=project" class="{% if kind == 'project' %}on{% endif %}">Projects</a>
+<a href="?tab={{ tab }}&kind=checklist" class="{% if kind == 'checklist' %}on{% endif %}">Checklists</a>
+</div>
+<div class="ws-note">This is where templates are set up and where running {% if kind == 'checklist' %}checklists{% else %}projects{% endif %} are tracked. Nothing is scheduled here: scheduling is done in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket that gets a template attached moves here and leaves the Tickets list.</div>
+{% if tab == 'active' %}
+<form method="get" class="ws-filter">
+<input type="hidden" name="tab" value="active"><input type="hidden" name="kind" value="{{ kind }}">
+<input type="text" name="q" value="{{ params.q }}" placeholder="Search">
+<select name="property"><option value="">Any property</option>{% for p in properties %}<option value="{{ p.pk }}" {% if params.property == p.pk|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+<button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
+{% if params.q or params.property %}<a href="?tab=active&kind={{ kind }}" class="small">Clear</a>{% endif %}
+</form>
+{% for r in rows %}
+<a class="ws-row k-project" href="{{ r.url }}" style="grid-template-columns: 8.5rem minmax(0,1fr) 6rem 3.6rem 0.9rem;"><span class="where">{{ r.where }}</span><span class="main"><b>{{ r.title }}</b><small>Step {{ r.done|add:1 }} of {{ r.total }}: {{ r.next }} &middot; from {{ r.template }}</small></span><span class="ws-pb"><i style="width: {{ r.pct }}%"></i></span><span class="due{% if r.late %} late{% endif %}">{{ r.due }}</span><span class="go">&rsaquo;</span></a>
+{% empty %}
+<div class="ws-empty">No {% if kind == 'checklist' %}checklists{% else %}projects{% endif %} running right now.</div>
+{% endfor %}
+{% else %}
+{% for t in templates %}
+<a class="ws-row k-project" href="{% url 'process_template_edit' t.t.pk %}" style="grid-template-columns: 8.5rem minmax(0,1fr) 5rem 4rem 0.9rem;{% if not t.t.is_active %}opacity:.55;{% endif %}"><span class="where">{{ t.t.category|default:'No group' }}</span><span class="main"><b>{{ t.t.name }}</b><small>{{ t.steps }} steps{% if not t.t.is_active %} &middot; switched off{% endif %}</small></span><span class="due">Used {{ t.used }}&times;</span><span class="due">{{ t.active }} active</span><span class="go">&rsaquo;</span></a>
+{% empty %}
+<div class="ws-empty">No {% if kind == 'checklist' %}checklist{% else %}project{% endif %} templates yet. Use "New or edit templates", then set its type.</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

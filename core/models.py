@@ -746,6 +746,24 @@ class StaffProfile(models.Model):
                    'real-estate business and may be held by more than one person; this one is not '
                    'meant to be. Not linked from the shared site nav.',
     )
+    class MenuRole(models.TextChoices):
+        OWNER = 'owner', 'Owner'
+        MANAGER = 'manager', 'Manager'
+        PROPERTY_MANAGER = 'property_manager', 'Property manager'
+        ACCOUNTING = 'accounting', 'Accounting'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+        CLEANER = 'cleaner', 'Cleaner'
+
+    new_face = models.BooleanField(
+        default=False,
+        help_text='Shows this person the new Home / Tickets / Compliance / Projects / On-Site layout instead of the original menu. '
+                   'Only the data presentation changes; nothing is removed, and the original screens still work by their old addresses.',
+    )
+    menu_role = models.CharField(
+        max_length=20, choices=MenuRole.choices, blank=True,
+        help_text='Which menu this person gets in the new layout. Only used when "new face" is on. Never limits what a person can open by address, '
+                   'and has nothing to do with StaffProfile.role (the ticket queue).',
+    )
     phone = models.CharField(max_length=30, blank=True, validators=[phone_validator])
     timezone = models.CharField(
         max_length=40, choices=Timezone.choices, default=Timezone.EASTERN,

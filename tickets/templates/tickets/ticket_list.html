@@ -18,6 +18,15 @@
     {% endif %}
 </div>
 
+{% if new_face and selected_status == 'active' and selected_source != 'recurring' %}
+{% include 'workspace/_css.html' %}
+<div class="ws-sub">
+<a href="{% querystring horizon='now' due=None %}" class="{% if ws_horizon == 'now' %}on{% endif %}">Now</a>
+<a href="{% querystring horizon='later' due=None %}" class="{% if ws_horizon == 'later' %}on{% endif %}">Later</a>
+</div>
+<div class="ws-note">Tickets are one-off requests. Due within {{ ws_now_days }} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket with a template attached moves to <a href="{% url 'ws_projects' %}">Projects</a>.</div>
+{% endif %}
+
 {% if selected_template %}
 <div class="d-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
      style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">

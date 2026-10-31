@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Compliance{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<div class="ws-sub">
+<a href="?tab=items" class="{% if tab == 'items' %}on{% endif %}">Current items</a>
+<a href="?tab=rules" class="{% if tab == 'rules' %}on{% endif %}">Rules</a>
+<span class="sp"></span>
+{% if tab == 'rules' %}<a href="{% url 'session_template_create' %}" class="btn btn-sm btn-dark mb-1" style="color:#fff;border-bottom:0;">+ Add rule</a>{% endif %}
+</div>
+<div class="ws-note">Everything that happens on a schedule lives here. {% if tab == 'items' %}These are the items the rules have made, grouped by how often the work repeats.{% else %}A rule opens an item for its owner every period.{% endif %} Tickets are the one-off requests.</div>
+<form method="get" class="ws-filter">
+<input type="hidden" name="tab" value="{{ tab }}">
+<input type="text" name="q" value="{{ params.q }}" placeholder="Search">
+<select name="frequency"><option value="">Any frequency</option>{% for v, l in frequencies %}<option value="{{ v }}" {% if params.frequency == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+<select name="owner"><option value="">Anyone</option>{% for s in staff_list %}<option value="{{ s.pk }}" {% if params.owner == s.pk|stringformat:'s' %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+{% if tab == 'items' %}
+<select name="property"><option value="">Any property</option>{% for p in properties %}<option value="{{ p.pk }}" {% if params.property == p.pk|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+<select name="due"><option value="">Any due date</option><option value="overdue" {% if params.due == 'overdue' %}selected{% endif %}>Overdue</option><option value="week" {% if params.due == 'week' %}selected{% endif %}>Due this week</option></select>
+{% endif %}
+<button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
+{% if params.q or params.frequency or params.owner or params.property or params.due %}<a href="?tab={{ tab }}" class="small">Clear</a>{% endif %}
+</form>
+{% for g in groups %}
+<div class="ws-kind">{{ g.label }}</div>
+{% if tab == 'items' %}
+{% for i in g.items %}<a class="ws-row k-compliance" href="{{ i.url }}"><span class="where">{{ i.owner }}</span><span class="main"><b>{{ i.title }}</b><small>{{ i.period }}{% if i.period %} &middot; {% endif %}{{ i.done }} of {{ i.total }} done</small></span><span class="due{% if i.late %} late{% endif %}">{{ i.due }}</span><span class="go">&rsaquo;</span></a>{% endfor %}
+{% else %}
+{% for r in g.rules %}<a class="ws-rule{% if not r.active %} off{% endif %}" href="{{ r.url }}">{{ r.sentence }}<small>Next opens {{ r.next|date:'M j, Y' }}{% if not r.active %} &middot; switched off{% endif %}</small></a>{% endfor %}
+{% endif %}
+{% empty %}
+<div class="ws-empty">{% if tab == 'items' %}Nothing open right now.{% else %}No rules match.{% endif %}</div>
+{% endfor %}
+{% if tab == 'items' %}
+<div class="ws-label">Also scheduled elsewhere</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_visit_rule_list' %}"><i data-lucide="spray-can" class="icon"></i><span>Visit rules<small>When cleanings and inspections are made</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i><span>My open items<small>The original recurring-work screen</small></span></a></div>
+</div>
+{% endif %}
+{% endblock %}

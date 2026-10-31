@@ -1,0 +1,10 @@
+{% include 'workspace/_css.html' %}
+<div class="ws-sub">
+<a href="{% url 'onsite_dashboard' %}" class="{% if request.resolver_match.url_name == 'onsite_dashboard' %}on{% endif %}">Visits</a>
+<a href="{% url 'onsite_rentals_calendar' %}" class="{% if request.resolver_match.url_name == 'onsite_rentals_calendar' %}on{% endif %}">Properties</a>
+<a href="{% url 'onsite_str_today' %}" class="{% if request.resolver_match.url_name == 'onsite_str_today' %}on{% endif %}">Requests</a>
+<a href="{% url 'onsite_reservation_list' %}" class="{% if request.resolver_match.url_name == 'onsite_reservation_list' %}on{% endif %}">Reservations</a>
+<span class="sp"></span>
+<a href="{% url 'onsite_cleaner_activity' %}" style="font-size:0.82rem;">Cleaner activity</a>
+<a href="{% url 'onsite_performance' %}" style="font-size:0.82rem;">Performance</a>
+</div>

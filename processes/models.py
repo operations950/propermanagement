@@ -53,6 +53,14 @@ class ProcessTemplate(models.Model):
         max_length=100, blank=True,
         help_text='Freeform grouping for the template list, e.g. "Association", "Short-Term Rental".',
     )
+    class Kind(models.TextChoices):
+        PROJECT = 'project', 'Project (steps over days, with a timeline)'
+        CHECKLIST = 'checklist', 'Checklist (done in one sitting)'
+
+    kind = models.CharField(
+        max_length=12, choices=Kind.choices, default=Kind.PROJECT,
+        help_text='Only changes where it is listed in the new Projects screen: Projects or Checklists. The steps work the same either way.',
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

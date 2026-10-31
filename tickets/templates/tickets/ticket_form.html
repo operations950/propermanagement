@@ -175,6 +175,40 @@
         <button class="btn btn-primary" type="submit"><i data-lucide="plus" class="icon"></i> Create ticket</button>
     </div>
 </form>
+{% if new_face %}
+<div id="ws-far" class="card mt-3" style="max-width: 760px; border-radius: var(--bs-border-radius-lg); display: none;">
+    <div class="card-body">
+        <p class="fw-medium mb-2" id="ws-far-text"></p>
+        <div class="d-grid gap-2">
+            <a class="btn btn-outline-secondary text-start" href="{% url 'session_template_create' %}" target="_blank" rel="noopener"><strong>It repeats, or it is a standing obligation.</strong><br><span class="small text-muted">Set it up as a compliance rule instead (opens in a new tab).</span></a>
+            <button type="button" class="btn btn-outline-secondary text-start" data-ws-go="1"><strong>It takes steps over time.</strong><br><span class="small text-muted">Create the ticket, then attach a project template from its page. It moves to Projects.</span></button>
+            <button type="button" class="btn btn-outline-secondary text-start" data-ws-go="1"><strong>It is a one-time thing that is just not due yet.</strong><br><span class="small text-muted">Keep it as a ticket. It waits under Later and moves into Now 15 days before it is due.</span></button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var form = document.querySelector('form.card');
+    var box = document.getElementById('ws-far');
+    if (!form || !box) return;
+    var ok = false;
+    form.addEventListener('submit', function (ev) {
+        if (ok) return;
+        var input = form.querySelector('input[name="due_date"]');
+        if (!input || !input.value) return;
+        var days = Math.round((new Date(input.value + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+        if (days <= 15) return;
+        ev.preventDefault();
+        document.getElementById('ws-far-text').textContent = 'This is not due for ' + days + ' days. Does a ticket make sense?';
+        box.style.display = 'block';
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    box.querySelectorAll('[data-ws-go]').forEach(function (b) {
+        b.addEventListener('click', function () { ok = true; form.requestSubmit ? form.requestSubmit() : form.submit(); });
+    });
+})();
+</script>
+{% endif %}
 
 <script>
 (function () {

@@ -16,6 +16,10 @@
                     <label class="form-label small fw-medium">Category</label>
                     <input type="text" name="category" class="form-control" value="{{ template.category }}" placeholder="e.g. Short-Term Rental">
                 </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-medium">Type</label>
+                    <select name="kind" class="form-select">{% for value, label in template.Kind.choices %}<option value="{{ value }}" {% if template.kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                </div>
                 <div class="col-12">
                     <label class="form-label small fw-medium">Description</label>
                     <textarea name="description" class="form-control" rows="2">{{ template.description }}</textarea>
