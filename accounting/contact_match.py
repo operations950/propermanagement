@@ -5,8 +5,8 @@ Priority, strictly in this order; the first rule that finds someone decides, and
   2. the same phone number (the last ten digits, so formatting does not matter): definitely the same person;
   3. only when neither finds anyone, the name: the same name in any order and punctuation ("Smith, Robert" and "Robert Smith"), or a close one (a first name and its
      nickname or initial, a middle initial, Jr or TR left off).
-A name match is not trusted when the person we have already has a DIFFERENT email address (that is probably someone else with the same name), unless they are already
-tied to this association. When more than one contact could be the person, nobody is guessed: the owner is listed for a person to decide.
+An email or phone match is only taken when the contact's name fits the owner's (the same or a close name); an owner whose name does not fit is a different person who happens
+to share a line, and gets a contact of their own. When more than one contact could be the person, the one already tied to this association, else the oldest, is taken.
 Two owners on the same unit are never the same contact, and a vendor is never matched (a vendor stays a vendor). One exception to "the same email is the same person": a couple
 who share an email or a phone (the same last name, a different first name) are two people; each is matched by name.
 """
@@ -129,56 +129,65 @@ class Matcher:
         f2, l2, _ = name_parts(other)
         return bool(f1 and f2 and l1 and l1 == l2 and not _first_ok(f1, f2) and not COMPANY.search(name) and not COMPANY.search(other))
 
+    @staticmethod
+    def fits(name, c):
+        """Whether this contact can be this person: the same or a close name, or a name too thin to say it is someone else (one word, an email address, digits)."""
+        if same_name(name, c.name):
+            return True
+        if '@' in (c.name or '') or not re.search(r'[a-z]', (c.name or '').lower()):
+            return True
+        return len(name_parts(c.name)[2]) < 2
+
     def _pick(self, found, taken, name):
-        """Among the contacts that share this email or phone: not one already used on this unit, never a vendor, never a spouse of the same last name and another first name; if
-        several are left, the one whose name fits, else one already tied to this association, else the oldest."""
+        """Among the contacts that share this email or phone: not one already used on this unit, never a vendor, never a spouse of the same last name and another first name.
+        Of the rest, the ones whose name fits; if several, the one whose name fits best, else one already tied to this association, else the oldest.
+        (chosen contact or None, the contacts that have the email or phone but are not this person)"""
+        found = list({c.pk: c for c in found}.values())
         found = [c for c in found if c.pk not in taken and c.contact_type not in NO_MATCH_TYPES and not self._household(name, c.name)]
-        if not found:
-            return None
-        named = [c for c in found if same_name(name, c.name)]
-        return sorted(named or found, key=lambda c: (c.pk not in self.here, c.pk))[0]
+        fit = [c for c in found if self.fits(name, c)]
+        misfit = [c for c in found if c not in fit]
+        if not fit:
+            return None, misfit
+        rank = {'exact': 0, 'close': 1}
+        return sorted(fit, key=lambda c: (rank.get(same_name(name, c.name), 2), c.pk not in self.here, c.pk))[0], misfit
 
     def find(self, row, taken=()):
-        """For one owner row {name, email, phone, phone_alt}: (contact or None, reason, candidates). `taken` is the contacts already used by the other owners of this unit.
-        `candidates` is a list of (contact, why) to show a person when nobody could be chosen safely."""
+        """For one owner row {name, email, phone, phone_alt}: (contact or None, reason, others). `taken` is the contacts already used by the other owners of this unit.
+        `others` is a list of (contact, why): when a contact was found, the ones that could also have been; when none was, the ones that have this owner's email or phone
+        (or a same name) but are not this person, so the report can say why a new contact is made."""
         name = row['name']
         if name.lower() in self.force_new:
             return None, '', []
         if name.lower() in self.overrides and self.overrides[name.lower()] in self.contacts and self.overrides[name.lower()] not in taken:
             return self.contacts[self.overrides[name.lower()]], 'you said so', []
+        notes = []
         # 1. the same email
         mine = emails_of(row.get('email'))
         for e in mine:
-            c = self._pick(self.by_email.get(e, []), taken, name)
+            c, misfit = self._pick(self.by_email.get(e, []), taken, name)
             if c:
-                return c, 'same email', []
+                return c, 'same email', [(m, 'has the same email, but another name') for m in misfit]
+            notes += [(m, 'has the same email, but another name') for m in misfit]
         # 2. the same phone
         for p in [phone10(row.get('phone')), phone10(row.get('phone_alt'))]:
             if p:
-                c = self._pick(self.by_phone.get(p, []), taken, name)
+                c, misfit = self._pick(self.by_phone.get(p, []), taken, name)
                 if c:
-                    return c, 'same phone', []
+                    return c, 'same phone', [(m, 'has the same phone, but another name') for m in misfit]
+                notes += [(m, 'has the same phone, but another name') for m in misfit]
         # 3. only now, the name
         last = name_parts(name)[1] or _letters(name)
-        pool = [c for c in self.by_last.get(last, []) if c.pk not in taken]
+        pool = list({c.pk: c for c in self.by_last.get(last, []) if c.pk not in taken}.values())
         found = [(c, same_name(name, c.name)) for c in pool]
         found = [(c, how) for c, how in found if how]
         for how in ('exact', 'close'):
             level = [c for c, h in found if h == how]
             if not level:
                 continue
-            clash = lambda c: bool(mine) and bool(emails_of(c.email)) and not (set(mine) & set(emails_of(c.email)))
-            if len(level) > 1:
-                here = [c for c in level if c.pk in self.here]
-                if len(here) == 1 and not clash(here[0]):
-                    return here[0], 'same name' if how == 'exact' else 'close name', []
-                return None, '', [(c, f'{how} name' + (', a different email' if clash(c) else '')) for c in level]
-            c = level[0]
-            if clash(c) and c.pk not in self.here:
-                return None, '', [(c, f'{how} name, but a different email')]
-            return c, 'same name' if how == 'exact' else 'close name', []
+            level.sort(key=lambda c: (c.pk not in self.here, c.pk))      # several of the same name: the one already tied to this association, else the oldest
+            return level[0], 'same name' if how == 'exact' else 'close name', [(c, f'{how} name too') for c in level[1:]]
         # a vendor with this email or phone is not matched, but a person should know
         vend = [c for e in mine for c in self.by_email.get(e, []) if c.contact_type in NO_MATCH_TYPES]
         if vend:
-            return None, '', [(vend[0], 'a vendor has this email')]
-        return None, '', []
+            notes.append((vend[0], 'a vendor has this email'))
+        return None, '', notes

@@ -176,39 +176,44 @@ def _without_us(cfg):
 
 
 def _resolve_people(prop, cfg, matcher, report):
-    """For every owner Yardi lists, the Contact they are: one we already have (the same email, else the same phone, else the same or a close name) or a new one.
+    """For every owner Yardi lists, the Contact they are. Yardi is the system of record: a contact we already have (the same email, else the same phone, else the same or a
+    close name, and only when its name fits) is made to read as Yardi has the person (name, email, phone); an owner who fits no one is a new contact built from Yardi.
     {(unit label, lower-case name): contact, ('', lower-case name): contact} for the rest of the load."""
-    people, created, links, undecided, reasons = {}, set(), [], [], defaultdict(int)
+    people, created, links, notes, reasons, renamed = {}, set(), [], [], defaultdict(int), {}
     rows = [(u['label'], o) for u in cfg['units'] for o in u['owners'] if o['type'] != 'tenant']
     # 1. who each owner is among the contacts we already have (nobody is made yet)
     first, taken = {}, defaultdict(set)
     for label, o in rows:
-        c, reason, cands = matcher.find(o, taken[label])
-        first[(label, o['name'].lower())] = [c, reason, cands, o['name']]
+        c, reason, others = matcher.find(o, taken[label])
+        first[(label, o['name'].lower())] = [c, reason, others, o['name']]
         if c is not None:
             taken[label].add(c.pk)
-    # 2. a contact claimed by several different owners is a shared phone or email, not one person: only an owner whose own name fits it keeps it, the rest are listed
+    # 2. a contact claimed by several different owners (one phone or email on several people): the owner it fits best keeps it, the others are different people and get their own
     claims = defaultdict(list)
-    for key, (c, reason, cands, yname) in first.items():
+    for key, (c, reason, others, yname) in first.items():
         if c is not None and reason in ('same email', 'same phone'):
             claims[c.pk].append((key, reason, yname))
     for pk, items in claims.items():
         if len({re.sub(r'[^a-z]', '', yname.lower()) for _, _, yname in items}) < 2:
             continue
         contact = matcher.contacts[pk]
+        rank = {'exact': 0, 'close': 1}
+        keeper = sorted(items, key=lambda it: rank.get(same_name(it[2], contact.name), 2))[0]
         for key, reason, yname in items:
-            if not same_name(yname, contact.name):
-                first[key] = [None, '', [(contact, f'the same {reason.split()[1]} is on {len(items)} different owners')], yname]
+            if key != keeper[0] and not same_name(yname, keeper[2]):
+                first[key] = [None, '', [(contact, f'the same {reason.split()[1]} is on {len(items)} different owners; it stays with {keeper[2]}')], yname]
     # 3. make the contacts (or link them), one owner at a time
     taken, forced = defaultdict(set), {}
     for label, o in rows:
         key = (label, o['name'].lower())
-        contact, reason, candidates, _ = first[key]
-        if contact is None and not candidates:
+        contact, reason, others, _ = first[key]
+        if contact is None:
             if o['name'].lower() in matcher.force_new and o['name'].lower() in forced:
                 contact, reason = forced[o['name'].lower()], 'same name'      # the same person you said is new, on another unit
             else:
-                contact, reason, candidates = matcher.find(o, taken[label])   # someone made earlier in this load (the same person on another unit)
+                # someone made or renamed earlier in this load (the same person on another unit)
+                contact = next((matcher.contacts[pk] for pk in list(created) + list(renamed) if pk not in taken[label] and same_name(o['name'], matcher.contacts[pk].name)), None)
+                reason = 'same name'
         if contact is None:
             mine = emails_of(o.get('email'))
             contact = owners.create_owner_contact(prop, o['name'], source=Contact.Source.YARDI)
@@ -218,19 +223,28 @@ def _resolve_people(prop, cfg, matcher, report):
             matcher.add(contact)
             if o['name'].lower() in matcher.force_new:
                 forced[o['name'].lower()] = contact
-            if candidates:
-                undecided.append({'yardi': o['name'], 'unit': label, 'made': contact.pk,
-                                  'candidates': [{'name': c.name, 'id': c.pk, 'email': c.email, 'phone': c.phone, 'why': why} for c, why in candidates]})
+            if others:
+                notes.append({'yardi': o['name'], 'unit': label, 'made': contact.pk,
+                              'others': [{'name': c.name, 'id': c.pk, 'why': why} for c, why in others]})
         else:
             owners.attach_owner(prop, contact)
             if contact.pk not in created:
                 reasons[reason] += 1
-                links.append({'yardi': o['name'], 'existing': contact.name, 'id': contact.pk, 'reason': reason, 'unit': label,
-                              'differs': same_name(o['name'], contact.name) == '' and reason != 'you said so'})
+                official = ' '.join(o['name'].split())[:200]
+                was = renamed.get(contact.pk)
+                if was is None and contact.name != official:
+                    was = renamed[contact.pk] = contact.name
+                    contact.notes = (contact.notes + '\n' if contact.notes else '') + f'Name before the Yardi load: {contact.name}'
+                    contact.name = official
+                    contact.save(update_fields=['name', 'notes'])
+                    matcher.add(contact)
+                links.append({'yardi': o['name'], 'existing': contact.name, 'was': was or contact.name, 'id': contact.pk, 'reason': reason, 'unit': label,
+                              'differs': bool(was) and not same_name(was, official),
+                              'others': [{'name': c.name, 'id': c.pk, 'why': why} for c, why in others]})
         taken[label].add(contact.pk)
         people[key] = contact
         people.setdefault(('', o['name'].lower()), contact)
-    report.update({'linked': links, 'link_reasons': dict(reasons), 'new_contacts': len(created), 'undecided': undecided, '_created': created})
+    report.update({'linked': links, 'link_reasons': dict(reasons), 'new_contacts': len(created), 'new_notes': notes, 'renamed': len(renamed), '_created': created})
     return people
 
 
@@ -428,10 +442,9 @@ def _verify(prop, cfg, report):
 
 
 @transaction.atomic
-def load(key, log=print, overrides=None, strict=False, force_new=()):
+def load(key, log=print, overrides=None, force_new=()):
     """Load one association. Refuses if its books already have entries (wipe them first). Returns a report of what was loaded and what is left over.
-    `overrides` is {Yardi name: contact id} for owners a person has said are an existing contact. With `strict`, an owner who could be more than one existing contact
-    stops the load (nothing is saved) until a person has decided."""
+    `overrides` is {Yardi name: contact id} for owners a person has said are an existing contact; `force_new` is Yardi names a person has said are new people."""
     cfg = _without_us(DATA[key])
     prop, created = find_property(key)
     if cfg['financials'] and has_books(prop):
@@ -453,10 +466,6 @@ def load(key, log=print, overrides=None, strict=False, force_new=()):
     placed, lost = ([], []) if not cfg['financials'] else _match_receivables(cfg)
     report['details_changed'] = {'email': 0, 'phone': 0}
     people = _resolve_people(prop, cfg, Matcher(prop, overrides, force_new), report)
-    if strict and report['undecided']:
-        names = '; '.join(f"{u['yardi']} (unit {u['unit']})" for u in report['undecided'][:8])
-        raise LoadError(f"{prop.name}: {len(report['undecided'])} owner(s) could be a contact you already have and need a decision: {names}. "
-                        'Say which are the same person with --link "Yardi name=contact id", or load them as new people with --new-for-undecided.')
     made = _people_and_units(prop, cfg, placed, people, report, log)
     _board(prop, cfg, people, key)
     report.update({'units': Unit.objects.filter(property=prop, is_active=True).count(), 'owners_made': made['owners'], 'ownerships_made': made['ownerships'],
@@ -482,18 +491,21 @@ def describe(report):
     if 'linked' in report:
         r = report['link_reasons']
         parts = ', '.join(f'{n} {w}' for w, n in sorted(r.items(), key=lambda kv: -kv[1]))
-        out.append(f"  owners: {len(report['linked'])} matched to contacts you already have" + (f' ({parts})' if parts else '') + f", {report['new_contacts']} new, {len(report['undecided'])} to decide")
-        shown = [l for l in report['linked'] if l['reason'] != 'same name' or l['yardi'].lower() != l['existing'].lower()]
-        for l in shown[:60]:
-            out.append(f"    {l['reason']}: {l['yardi']} (unit {l['unit']}) = {l['existing']} [contact {l['id']}]" + ('   <-- different names: check' if l.get('differs') else ''))
+        out.append(f"  owners: {len(report['linked'])} matched to contacts you already have" + (f' ({parts})' if parts else '') + f", {report['new_contacts']} new from Yardi")
         dc = report.get('details_changed') or {}
-        if dc.get('email') or dc.get('phone'):
-            out.append(f"  Yardi's email and phone replace what those contacts had: {dc['email']} email(s) and {dc['phone']} phone(s) changed")
+        out.append(f"  Yardi is the record: {report.get('renamed', 0)} contact name(s), {dc.get('email', 0)} email(s) and {dc.get('phone', 0)} phone(s) changed to Yardi's")
+        shown = [l for l in report['linked'] if l['was'] != l['existing'] or l['others']]
+        for l in shown[:60]:
+            line = f"    {l['reason']}: {l['yardi']} (unit {l['unit']}) = contact {l['id']}" + (f", renamed from {l['was']}" if l['was'] != l['existing'] else '')
+            if l['differs']:
+                line += '   <-- names differ: check'
+            if l['others']:
+                line += '   (also could be: ' + '; '.join(f"{o['name']} [{o['id']}]" for o in l['others']) + ' - not used)'
+            out.append(line)
         if len(shown) > 60:
             out.append(f'    ... and {len(shown) - 60} more')
-        for u in report['undecided']:
-            cands = '; '.join(f"{c['name']} [contact {c['id']}] {c['email'] or c['phone'] or 'no email or phone'} ({c['why']})" for c in u['candidates'])
-            out.append(f"    TO DECIDE: {u['yardi']} (unit {u['unit']}) could be: {cands}")
+        for u in report['new_notes']:
+            out.append(f"    NEW from Yardi: {u['yardi']} (unit {u['unit']}); not " + '; '.join(f"{c['name']} [contact {c['id']}] ({c['why']})" for c in u['others']))
     if report.get('other_units_already_there'):
         out.append(f"  units already in the app that Yardi's list does not have (left alone): {', '.join(report['other_units_already_there'])}")
     if not report['financials']:

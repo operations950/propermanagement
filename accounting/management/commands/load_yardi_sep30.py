@@ -5,10 +5,10 @@
   python manage.py load_yardi_sep30 glen                  look at one association (glen, grand, castlewood, la_pensee, lakeside_8, lakeside_2, linton)
   python manage.py load_yardi_sep30 glen --wipe-first --apply     take out St Andrews Glen's books first, then load them again
 
-Owners are matched to the contacts you already have: the same email first, else the same phone, else the same or a close name. An owner who could be more than one
-existing contact is listed under TO DECIDE; say which are the same person with  --link "Yardi name=contact id"  (repeat it), say who is a new person with  --new "Yardi name",
-or let every undecided owner be a new person with --new-for-undecided. Yardi's email and phone replace what a matched contact had. Proper Realty itself is never loaded as an owner.
---apply will not run while anyone is still undecided.
+Yardi is the system of record for owners. Each is matched to the contact you already have: the same email first, else the same phone, else the same or a close name, and
+only when that contact's name fits. A matched contact is made to read as Yardi has the person: Yardi's name, email and phone replace its own (the old name is kept in its notes).
+An owner who fits no contact (a different person on a shared phone or email, or nobody like them) becomes a new contact built from Yardi. Nothing is left to decide; to override
+one, use  --link "Yardi name=contact id"  (they are that contact) or  --new "Yardi name"  (they are a new person). Proper Realty itself is never loaded as an owner.
 
 Without --apply every load is rolled back at the end, so what it prints is exactly what --apply would do.
 """
@@ -32,7 +32,6 @@ class Command(BaseCommand):
         parser.add_argument('--wipe-first', action='store_true', help="take out the association's existing books first")
         parser.add_argument('--link', action='append', default=[], metavar='"NAME=ID"', help='an owner as Yardi names them = the id of the contact they already are (repeat for several)')
         parser.add_argument('--new', action='append', default=[], metavar='"NAME"', help='an owner as Yardi names them who is a NEW person, whatever contact looks like them (repeat for several)')
-        parser.add_argument('--new-for-undecided', action='store_true', help='load owners who could be an existing contact as new people')
 
     def handle(self, *args, **opts):
         keys = opts['keys'] or Y.ORDER
@@ -59,7 +58,7 @@ class Command(BaseCommand):
                         for label, n in Y.wipe(prop):
                             if n:
                                 self.stdout.write(f'  removed {n} {label}')
-                    report = Y.load(key, overrides=overrides, strict=opts['apply'] and not opts['new_for_undecided'], force_new=opts['new'])
+                    report = Y.load(key, overrides=overrides, force_new=opts['new'])
                     for line in Y.describe(report):
                         self.stdout.write(line)
                     if not opts['apply']:
