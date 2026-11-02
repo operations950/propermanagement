@@ -35,7 +35,7 @@ from .models import (
     FollowUpLog, Priority, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket,
     TicketAssignmentLog, TicketAttachment, TicketChecklistItem, TicketClosingNote, TicketContact, TicketStatusNote,
     TicketTemplate,
-    TicketTemplateDocument, TicketView,
+    TicketPush, TicketTemplateDocument, TicketView,
 )
 from .services import owner_dashboard as owner_dashboard_queries
 from .services.package_engine import unblock_dependents
@@ -80,20 +80,32 @@ def _ticket_urgency_key(ticket, now):
     return (overdue_first, priority_rank, due)
 
 
-def _apply_due_date_change(ticket, new_due_date):
+def _apply_due_date_change(ticket, new_due_date, user=None, reason=''):
     """Sets ticket.due_date and updates the delayed/previous_due_date pair
     to match — shared by ticket_set_due_date and the Deferred status
     change (see ticket_set_status), since both are "the due date got
     pushed" from the user's point of view and should flag the same way.
-    Does NOT save() — caller decides which fields to persist."""
+    A push later is also written to the ticket's push log (TicketPush: how
+    far, and why). Does NOT save() the ticket — caller decides which fields
+    to persist."""
     old_due_date = ticket.due_date
     ticket.due_date = new_due_date
     if old_due_date and new_due_date and new_due_date > old_due_date:
         ticket.delayed = True
         ticket.previous_due_date = old_due_date
+        TicketPush.objects.create(
+            ticket=ticket, from_date=old_due_date, to_date=new_due_date, days=(new_due_date - old_due_date).days,
+            reason=(reason or '').strip()[:200], pushed_by=user if getattr(user, 'pk', None) else None,
+        )
     elif ticket.delayed and new_due_date and ticket.previous_due_date and new_due_date <= ticket.previous_due_date:
         ticket.delayed = False
         ticket.previous_due_date = None
+
+
+def _wants_push_reason(user):
+    """People on the new layout must say why when they push a due date later."""
+    profile = getattr(user, 'staff_profile', None)
+    return bool(profile and profile.new_face)
 
 
 def _daily_checklist_key(ticket, now):
@@ -983,6 +995,9 @@ def ticket_list(request):
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(property__name__icontains=q))
 
+    if profile and profile.new_face:
+        qs = qs.annotate(push_n=Coalesce(Subquery(
+            TicketPush.objects.filter(ticket=OuterRef('pk')).order_by().values('ticket').annotate(c=Count('pk')).values('c')[:1]), 0))
     qs = qs.order_by(*_ticket_sort_order(request.GET.get('sort', '')))
     page_obj = Paginator(qs, TICKETS_PER_PAGE).get_page(request.GET.get('page'))
 
@@ -1127,8 +1142,13 @@ def ticket_set_due_date(request, pk):
             parsed = parse_date(raw)
             if parsed:
                 new_due_date = timezone.make_aware(datetime.combine(parsed, datetime.min.time()))
-        _apply_due_date_change(ticket, new_due_date)
-        ticket.save(update_fields=['due_date', 'delayed', 'previous_due_date'])
+        reason = request.POST.get('push_reason', '').strip()
+        pushing = bool(ticket.due_date and new_due_date and new_due_date > ticket.due_date)
+        if pushing and _wants_push_reason(request.user) and not reason:
+            messages.error(request, 'Say why it is being pushed: pick or write a reason. The due date was not changed.')
+        else:
+            _apply_due_date_change(ticket, new_due_date, user=request.user, reason=reason)
+            ticket.save(update_fields=['due_date', 'delayed', 'previous_due_date'])
     if 'next_qs' in request.POST:
         return _list_redirect(request)
     if 'next_ticket_detail' in request.POST:
@@ -2251,7 +2271,7 @@ def ticket_set_status(request, pk):
 
             ticket.status = new_status
             if new_status == Ticket.Status.DEFERRED:
-                _apply_due_date_change(ticket, new_due_date)
+                _apply_due_date_change(ticket, new_due_date, user=request.user, reason=request.POST.get('push_reason', ''))
             if new_status == Ticket.Status.COMPLETED:
                 ticket.completed_at = timezone.now()
             if new_status == Ticket.Status.CANCELLED:

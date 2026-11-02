@@ -1,10 +1,31 @@
 {% include 'workspace/_css.html' %}
 <div class="ws-sub">
 <a href="{% url 'onsite_dashboard' %}" class="{% if request.resolver_match.url_name == 'onsite_dashboard' %}on{% endif %}">Visits</a>
-<a href="{% url 'onsite_rentals_calendar' %}" class="{% if request.resolver_match.url_name == 'onsite_rentals_calendar' %}on{% endif %}">Properties</a>
-<a href="{% url 'onsite_str_today' %}" class="{% if request.resolver_match.url_name == 'onsite_str_today' %}on{% endif %}">Requests</a>
+<a href="{% url 'ws_week' %}" class="{% if request.resolver_match.url_name == 'ws_week' or request.resolver_match.url_name == 'onsite_rentals_calendar' %}on{% endif %}">Properties</a>
+<a href="{% url 'onsite_str_today' %}" class="{% if request.resolver_match.url_name == 'onsite_str_today' %}on{% endif %}">Requests{% if ws_req_count %}<span class="ws-bub" title="{{ ws_req_count }} waiting for an answer">{{ ws_req_count }}</span>{% endif %}</a>
 <a href="{% url 'onsite_reservation_list' %}" class="{% if request.resolver_match.url_name == 'onsite_reservation_list' %}on{% endif %}">Reservations</a>
 <span class="sp"></span>
 <a href="{% url 'onsite_cleaner_activity' %}" style="font-size:0.82rem;">Cleaner activity</a>
 <a href="{% url 'onsite_performance' %}" style="font-size:0.82rem;">Performance</a>
 </div>
+{% if ws_req_prompt %}{% with q=ws_req_prompt %}
+<div class="modal fade" id="wsReqModal" tabindex="-1" aria-labelledby="wsReqTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form method="post" action="{% url 'ws_request_decide' %}">{% csrf_token %}
+      <input type="hidden" name="request_id" value="{{ q.id }}"><input type="hidden" name="next" value="{{ request.path }}">
+      <div class="modal-body">
+        <div class="small text-muted mb-1">{{ ws_req_count }} request{{ ws_req_count|pluralize }} waiting</div>
+        <h5 class="mb-1" id="wsReqTitle">{{ q.kind }}: {{ q.where }}</h5>
+        <p class="mb-2">{{ q.guest }} asked to {% if q.what == 'checkout' %}check out{% else %}check in{% endif %} at <b>{{ q.asked }}</b> on {{ q.day }} instead of {{ q.normal }}.</p>
+        {% if q.note %}<p class="small text-muted mb-2">&ldquo;{{ q.note }}&rdquo;</p>{% endif %}
+        {% if q.verdict %}<p class="small mb-0 ws-verdict v-{{ q.tone }}">{{ q.verdict }}</p>{% endif %}
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button type="submit" name="action" value="skip" class="btn btn-link text-muted">Skip for now</button>
+        <span class="d-flex gap-2"><button type="submit" name="action" value="deny" class="btn btn-outline-secondary">Deny</button><button type="submit" name="action" value="accept" class="btn btn-dark">Accept</button></span>
+      </div>
+    </form>
+  </div></div>
+</div>
+<script>(function(){var el=document.getElementById('wsReqModal');if(el&&window.bootstrap){new bootstrap.Modal(el).show();}})();</script>
+{% endwith %}{% endif %}

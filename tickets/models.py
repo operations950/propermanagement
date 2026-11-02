@@ -838,6 +838,28 @@ class TicketClosingNote(models.Model):
         return f'{self.ticket} — {self.get_status_display()} — {self.created_at:%Y-%m-%d %H:%M}'
 
 
+class TicketPush(models.Model):
+    """One time a ticket's due date was pushed later: from when, to when, how
+    far, and why. The delayed / previous_due_date pair on Ticket only keeps
+    the latest push; this keeps every one, so "how many times has this been
+    pushed, and why" has an answer. The reason is required for people on the
+    new layout (see ticket_set_due_date) and blank for anyone who pushes from
+    the original screens."""
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='pushes')
+    from_date = models.DateTimeField()
+    to_date = models.DateTimeField()
+    days = models.PositiveIntegerField(help_text='Whole days the due date moved.')
+    reason = models.CharField(max_length=200, blank=True)
+    pushed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.ticket} pushed {self.days}d — {self.reason or "no reason"}'
+
+
 class TicketView(models.Model):
     """When a given staff user last opened this ticket's detail page —
     per-user, not global, since a shared dashboard used by several staff

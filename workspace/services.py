@@ -1,7 +1,8 @@
 """What the new screens read. Everything here is a view over data the app already keeps (tickets, recurring sessions, process runs, on-site visits); nothing new is stored."""
 from datetime import timedelta
 
-from django.db.models import OuterRef, Q, Subquery
+from django.db.models import Count, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateformat import format as format_date
@@ -9,7 +10,7 @@ from django.utils.dateformat import format as format_date
 from core.models import Property, StaffProfile
 from onsite.models import Visit
 from processes.models import ProcessRun, ProcessTemplate
-from tickets.models import Ticket, TicketStatusNote
+from tickets.models import Ticket, TicketPush, TicketStatusNote
 from worksessions.models import Frequency, Session, SessionTemplate
 
 NOW_DAYS = 15                        # a ticket due further out than this is a "later" ticket
@@ -50,14 +51,15 @@ def ticket_rows(staff, end, today, everyone):
           .exclude(process_runs__status=ProcessRun.Status.ACTIVE)
           .filter(Q(due_date__isnull=True) | Q(due_date__date__lte=end))
           .select_related('property', 'assigned_staff__user')
-          .annotate(latest_note=Subquery(note.values('body')[:1])))
+          .annotate(latest_note=Subquery(note.values('body')[:1]),
+                    push_n=Coalesce(Subquery(TicketPush.objects.filter(ticket=OuterRef('pk')).order_by().values('ticket').annotate(c=Count('pk')).values('c')[:1]), 0)))
     if not everyone:
         qs = qs.filter(assigned_staff=staff)
     rows = []
     for t in qs.order_by('due_date')[:300]:
         d = _local_date(t.due_date)
         rows.append({'kind': 'ticket', 'title': t.title, 'where': t.property.name if t.property_id else '', 'note': (t.latest_note or t.description or '')[:140],
-                     'due': due_label(d, today) if d else 'now', 'late': bool(d and d < today), 'sort': d or today, 'who': _person(t.assigned_staff),
+                     'due': due_label(d, today) if d else 'now', 'late': bool(d and d < today), 'sort': d or today, 'who': _person(t.assigned_staff), 'pushes': t.push_n,
                      'url': reverse('ticket_detail', args=[t.pk])})
     return rows
 
@@ -252,3 +254,50 @@ def line_properties(slug):
     for p in props:
         by_city.setdefault(p.city or 'No city set', []).append(p)
     return label, sorted(by_city.items(), key=lambda kv: (kv[0] == 'No city set', kv[0].lower()))
+
+
+# --- guest time-change requests, for the On-Site arrival prompt -------------------------------
+
+def pending_requests():
+    """Guest check-in / checkout time changes still waiting for a yes or no, for stays that have not ended."""
+    from datetime import datetime, time
+
+    from onsite.models import Booking, GuestRequest
+    start = timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
+    return list(GuestRequest.objects.filter(status=GuestRequest.Status.PENDING, booking__status=Booking.Status.ACTIVE, booking__check_out__gte=start)
+                .select_related('booking__property', 'booking__unit').order_by('booking__check_out', 'created_at'))
+
+
+def request_card(r):
+    """Everything the prompt shows for one request: what was asked, for which stay, and the board's own read of whether it is safe to say yes."""
+    from onsite.models import GuestRequest
+    from onsite.services import str_board
+
+    b = r.booking
+    is_out = r.kind in GuestRequest.CHECKOUT_KINDS
+    normal = timezone.localtime(b.check_out if is_out else b.check_in)
+    verdict, tone = '', 'info'
+    try:
+        for item in str_board.build_board(normal.date(), include_tomorrow=False)['items']:
+            if item['request'] is not None and item['request'].pk == r.pk:
+                tone = item['tone']
+                verdict = next((e['text'] for e in item['row']['requests'] if e['request'].pk == r.pk), '')
+                break
+    except Exception:
+        pass            # the prompt still works without the board's read
+    return {
+        'id': r.pk, 'kind': r.get_kind_display(), 'where': str_board._label(b.property, b.unit), 'guest': b.guest_name or 'Guest',
+        'day': f'{normal:%a %b} {normal.day}', 'asked': str_board._fmt(str_board._at(normal.date(), r.requested_time)),
+        'normal': str_board._fmt(normal), 'what': 'checkout' if is_out else 'check-in', 'note': r.note, 'verdict': verdict, 'tone': tone,
+    }
+
+
+def request_state(session, want_prompt):
+    """(how many requests are waiting, the next one to ask about or None). A request the person skipped this session is not asked about again, but still counts."""
+    pending = pending_requests()
+    skipped = set(session.get('ws_skipped_requests', []))
+    card = None
+    if want_prompt:
+        nxt = next((r for r in pending if r.pk not in skipped), None)
+        card = request_card(nxt) if nxt else None
+    return len(pending), card

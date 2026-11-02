@@ -23,7 +23,7 @@ tickets, now.
                 <span class="badge rounded-pill" style="{{ t|status_badge_style }}">{{ t.get_status_display }}</span>
             </div>
             <div class="small text-muted mb-2">
-                Due {{ t.due_date|date:'M j, Y'|default:'—' }}{% if t|is_overdue:now %} <span class="text-danger fw-semibold">(overdue)</span>{% endif %}
+                Due {{ t.due_date|date:'M j, Y'|default:'—' }}{% if new_face and t.push_n %} <small class="text-muted">&#8635;{{ t.push_n }}</small>{% endif %}{% if t|is_overdue:now %} <span class="text-danger fw-semibold">(overdue)</span>{% endif %}
                 {% if t.assigned_staff %}&middot; Staff: {{ t.assigned_staff }}{% elif t.assigned_contact %}&middot; Contractor: {{ t.assigned_contact }}{% endif %}
             </div>
 

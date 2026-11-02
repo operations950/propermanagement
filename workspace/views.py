@@ -2,15 +2,19 @@ from functools import wraps
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.http import Http404
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_time
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
 from core.models import Property, StaffProfile
 from worksessions.models import Frequency
 
-from . import menu, services
+from . import menu, services, week as week_service
 
 
 def new_face_only(view=None, *, admins_too=False):
@@ -145,3 +149,103 @@ def people(request):
         return redirect('ws_people')
     return render(request, 'workspace/people.html', {'staff_list': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__username'),
                                                       'roles': StaffProfile.MenuRole.choices, 'me': _profile(request)})
+
+
+@require_POST
+@new_face_only
+def request_decide(request):
+    """Answer a guest time-change request from the On-Site prompt: accept, deny, or skip it for now (a skipped request is not asked about again this session)."""
+    from onsite.models import GuestRequest
+    from onsite.services import str_board
+
+    gr = get_object_or_404(GuestRequest, pk=request.POST.get('request_id'))
+    action = request.POST.get('action')
+    if action == 'skip':
+        request.session['ws_skipped_requests'] = sorted(set(request.session.get('ws_skipped_requests', [])) | {gr.pk})
+    elif action in ('accept', 'deny'):
+        if gr.status != GuestRequest.Status.PENDING:
+            messages.info(request, 'Someone already answered that one.')
+        else:
+            str_board.decide_request(gr, 'approve' if action == 'accept' else 'decline', request.user)
+            messages.success(request, f'{gr.get_kind_display()} {"accepted" if action == "accept" else "declined"}.')
+    target = request.POST.get('next', '')
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+        target = reverse('onsite_dashboard')
+    return redirect(target)
+
+
+@new_face_only
+def week(request):
+    """On-Site > Properties: every short-term rental by city, seven days across, with the check-out and check-in times you can change right there."""
+    return render(request, 'workspace/week.html', {'w': week_service.week(parse_date(request.GET.get('start', '') or ''))})
+
+
+@require_POST
+@new_face_only
+def week_time(request):
+    """Change one stay's check-out or check-in time (or put it back to normal). A change that helps the cleaning is simply agreed and the cleaner told; one that takes time away waits for a yes (see str_board.record_request)."""
+    from onsite.models import Booking, GuestRequest
+    from onsite.services import str_board
+
+    booking = get_object_or_404(Booking, pk=request.POST.get('booking_id'))
+    kind = request.POST.get('kind')
+    start = request.POST.get('start', '')
+    if kind in ('checkout', 'checkin'):
+        kinds = GuestRequest.CHECKOUT_KINDS if kind == 'checkout' else GuestRequest.CHECKIN_KINDS
+        word = 'Check-out' if kind == 'checkout' else 'Check-in'
+        try:
+            with transaction.atomic():
+                live = GuestRequest.objects.filter(booking=booking, kind__in=kinds).exclude(status=GuestRequest.Status.DECLINED)
+                if request.POST.get('action') == 'remove':
+                    live.delete()
+                    messages.success(request, f'{word} time is back to normal.')
+                else:
+                    requested = parse_time((request.POST.get('time') or '').strip())
+                    live.delete()           # changing a change: the old one is replaced, and put back if the new one is refused
+                    made = str_board.record_request(booking, kind, requested, request.POST.get('note', ''), request.user)
+                    messages.success(request, f'{word} time changed.' + (' It helps the cleaning, so it is agreed and the cleaner has been told.' if made.status == GuestRequest.Status.APPROVED
+                                                                      else ' It waits for a yes or no (the ! on the board).'))
+        except str_board.RequestError as e:
+            messages.error(request, str(e))
+    target = reverse('ws_week')
+    return redirect(f'{target}?start={start}' if parse_date(start) else target)
+
+
+@require_POST
+@new_face_only
+def week_clean(request):
+    """From the round mark on a checkout: schedule the cleaning if there is none, and put a cleaner on it if one was picked. Handled the way the visit screen does it (the cleaner is sent their link)."""
+    from core.models import Contact
+    from onsite.models import Booking, Visit
+    from onsite.services import notify as notify_service
+    from onsite.services import reservations as reservation_service
+
+    booking = get_object_or_404(Booking, pk=request.POST.get('booking_id'))
+    start = request.POST.get('start', '')
+    visit = booking.visits.exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED]).order_by('-pk').first()
+    if visit is None:
+        reservation_service._visit_for(booking)
+        visit = booking.visits.exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED]).order_by('-pk').first()
+        if visit is None:
+            messages.error(request, 'A cleaning could not be scheduled: there is no turnover visit type set up for it.')
+        else:
+            messages.success(request, 'Cleaning scheduled.')
+    kind, _, raw_id = request.POST.get('assignee', '').partition('-')
+    if visit is not None and kind in ('staff', 'contact') and raw_id.isdigit():
+        if kind == 'staff' and StaffProfile.objects.filter(pk=raw_id).exists():
+            visit.assigned_staff_id, visit.assigned_contact = int(raw_id), None
+        elif kind == 'contact' and Contact.objects.filter(pk=raw_id).exists():
+            visit.assigned_contact_id, visit.assigned_staff = int(raw_id), None
+        else:
+            visit = None
+        if visit is not None:
+            if visit.status == Visit.Status.UNASSIGNED:
+                visit.status = Visit.Status.SCHEDULED
+            visit.full_clean()
+            visit.save()
+            link_note = ''
+            if notify_service.dispatch_link(visit, request) == notify_service.SCHEDULED:
+                link_note = f' The cleaner will be sent the link {notify_service.link_send_description(visit)}.'
+            messages.success(request, f'Cleaning is with {visit.assignee_label()}.{link_note}')
+    target = reverse('ws_week')
+    return redirect(f'{target}?start={start}' if parse_date(start) else target)

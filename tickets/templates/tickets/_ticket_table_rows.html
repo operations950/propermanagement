@@ -36,7 +36,7 @@ either call site).
                 {% if t.status in complete_statuses and t.closing_body %}<div class="text-truncate fw-normal" style="font-size: 0.75rem; color: var(--ink-muted);">Closed {{ t.closing_at|date:"M j" }} · {{ t.closing_body|striptags|truncatechars:150 }}</div>
                 {% elif t.latest_note_body %}<div class="text-truncate fw-normal" style="font-size: 0.75rem; color: var(--ink-muted);">{{ t.latest_note_at|date:"M j" }} · {{ t.latest_note_body|striptags|truncatechars:150 }}</div>{% endif %}
             </td>
-            <td class="text-nowrap {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}">{{ t.due_date|date:'M j, Y'|default:'—' }}</td>
+            <td class="text-nowrap {% if t|is_overdue:now %}text-danger fw-semibold{% endif %}">{{ t.due_date|date:'M j, Y'|default:'—' }}{% if new_face and t.push_n %} <small class="text-muted fw-normal" title="Pushed {{ t.push_n }} time{{ t.push_n|pluralize }}">&#8635;{{ t.push_n }}</small>{% endif %}</td>
             <td class="text-truncate">{% if t.assigned_staff %}{{ t.assigned_staff }}{% endif %}{% if t.assigned_staff and t.assigned_contact %}, {% endif %}{% if t.assigned_contact %}<span title="Outside contractor" style="display: inline-block; width: 0.55em; height: 0.55em; border: 1.5px solid currentColor; border-radius: 50%; margin-right: 0.35em; vertical-align: 0.05em;"></span>{{ t.assigned_contact }}{% endif %}{% if not t.assigned_staff and not t.assigned_contact %}<span class="text-muted">—</span>{% endif %}</td>
         </tr>
     </tbody>

@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% block title %}Properties this week{% endblock %}
+{% block content %}
+{% include 'workspace/_onsite_tabs.html' %}
+<style>
+.pgw { --out-bg: #efe6d3; --out-ink: #6b4f10; --in-bg: #dfeaf3; --in-ink: #3d6178; --stay: #e4edf4; --cell: #faf9fc; --bad-bg: #f7dcdc; --bad-ink: #8a2a2a; --warn-bg: #f8ecd0; --warn-ink: #7a5200; --good-bg: #dcefe2; --good-ink: #25613a; --warn-bar: #d98e04; --good-bar: #4f8f66; --bad-bar: #c0392b; }
+.pgw .wn { border-radius: 7px; padding: 7px 11px; margin: 0 0 10px; font-size: 0.85rem; }
+.pgw .wn.bad { background: var(--bad-bg); color: var(--bad-ink); }
+.pgw .wn.ok { background: var(--good-bg); color: var(--good-ink); }
+.pgw .top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--ink-muted); }
+.pgw .top a.nv { text-decoration: none; padding: 0.1rem 0.6rem; border: 1px solid var(--border-hairline); border-radius: 0.5rem; color: var(--ink-secondary); }
+.pgw .city { font-family: var(--font-serif, Georgia, 'Times New Roman', serif); font-size: 1.15rem; margin: 1rem 0 0.2rem; }
+.pg { display: grid; grid-template-columns: 8.5rem repeat(7, minmax(0, 1fr)); gap: 3px; align-items: stretch; margin-bottom: 3px; }
+.pg .h { font-size: 0.72rem; color: var(--ink-muted); text-align: center; padding-bottom: 2px; }
+.pg .h.td { color: var(--ink-primary); font-weight: 600; }
+.pg .nm { font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; overflow: hidden; }
+.pg .nm a { color: var(--ink-primary); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg .cell { min-height: 2.9rem; border-radius: 5px; background: var(--cell); display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 2px 3px; position: relative; font-size: 0.75rem; }
+.pg .cell.stay { background: var(--stay); }
+.pg .t { display: flex; align-items: center; justify-content: space-between; gap: 0.2rem; width: 100%; border: 0; border-radius: 4px; padding: 1px 5px; font-size: 0.8rem; line-height: 1.35; cursor: pointer; text-align: left; }
+.pg .t.out { background: var(--out-bg); color: var(--out-ink); }
+.pg .t.in { background: var(--in-bg); color: var(--in-ink); }
+.pg .t.both { background: var(--bad-bg); color: var(--bad-ink); }
+.pg .t.pending { outline: 1px dashed var(--warn-bar); background: #fbf3de; color: var(--warn-ink); }
+.pg .t:hover { filter: brightness(0.96); }
+.pg .t .m { font-weight: 700; font-size: 0.8rem; }
+.pg .t.approved .m { color: var(--good-bar); }
+.pg .t.pending .m { color: var(--warn-bar); }
+.pg .cell.has-cl .t.out, .pg .cell.has-cl .t.both:first-child { padding-right: 1.5rem; }
+.pg .cl { position: absolute; right: 5px; width: 0.95rem; height: 0.95rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--good-bar); color: #fff; cursor: pointer; border: 0; padding: 0; }
+.pg .cl.open { background: var(--warn-bar); }
+.pg .cl.none { background: #fff; border: 1.5px solid var(--bad-bar); color: var(--bad-bar); }
+.pg .cl .icon { width: 0.6rem; height: 0.6rem; }
+.pg .cl-top { top: 4px; }
+.pgw .lg { font-size: 0.75rem; color: var(--ink-muted); margin-top: 0.6rem; display: flex; gap: 0.3rem 1rem; flex-wrap: wrap; align-items: center; }
+.pgw .lg i.sw { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 2px; margin-right: 0.3rem; }
+.pgw .chips { display: flex; gap: 5px; flex-wrap: wrap; margin: 0.4rem 0; }
+.pgw .chips button { border: 1.5px solid var(--border-hairline); border-radius: 14px; padding: 2px 10px; font-size: 0.8rem; cursor: pointer; background: #fff; }
+.pgw .chips .g { border-color: var(--good-bar); background: var(--good-bg); }
+.pgw .chips .a { border-color: var(--warn-bar); background: var(--warn-bg); }
+.pgw .chips .r { border-color: var(--bad-bar); background: var(--bad-bg); }
+.pgw .chips .cur { font-weight: 700; box-shadow: inset 0 0 0 1px var(--ink-primary); }
+.pgw .chips .pk { background: #2b2b2e; color: #fff; border-color: #2b2b2e; }
+.pgw .vd { border-radius: 6px; padding: 5px 9px; font-size: 0.82rem; margin: 0.4rem 0; }
+.pgw .vd.g { background: var(--good-bg); color: var(--good-ink); }
+.pgw .vd.a { background: var(--warn-bg); color: var(--warn-ink); }
+.pgw .vd.r { background: var(--bad-bg); color: var(--bad-ink); }
+.pgw .pgscroll { overflow-x: auto; }
+.pgw .pgin { min-width: 720px; }
+@media (max-width: 640px) { .pg { grid-template-columns: 4.8rem repeat(7, minmax(0, 1fr)); } .pg .t { font-size: 0.68rem; padding: 1px 2px; } }
+</style>
+<div class="pgw">
+{% if w.without_cleaning %}<div class="wn bad">{{ w.without_cleaning }} check-out{{ w.without_cleaning|pluralize }} {{ w.without_cleaning|pluralize:"has,have" }} no cleaning scheduled. Click the red mark to set one up.</div>
+{% elif w.outs %}<div class="wn ok">Every check-out has a cleaning.</div>{% endif %}
+<div class="top">
+  <a class="nv" href="?start={{ w.previous|date:'Y-m-d' }}" aria-label="Earlier week">&lsaquo;</a>
+  <a class="nv" href="{% url 'ws_week' %}"{% if w.is_current %} style="font-weight:600"{% endif %}>This week</a>
+  <a class="nv" href="?start={{ w.next|date:'Y-m-d' }}" aria-label="Next week">&rsaquo;</a>
+  <span>{{ w.start|date:"M j" }} &ndash; {{ w.end|date:"M j" }}{% if w.pending %} &middot; <b style="color:var(--warn-bar)">! {{ w.pending }} waiting for a yes</b>{% endif %}</span>
+  <a class="ms-auto text-decoration-none" href="{% url 'onsite_rentals_calendar' %}" style="color:var(--ink-muted)">30-day calendar</a>
+</div>
+<div class="pgscroll"><div class="pgin">
+{% for city, rows in w.by_city %}
+<div class="city">{{ city }}</div>
+<div class="pg"><span></span>{% for d in w.days %}<span class="h{% if d.today %} td{% endif %}">{{ d.date|date:"D j" }}</span>{% endfor %}</div>
+{% for r in rows %}
+<div class="pg"><span class="nm"><a href="{% url 'property_detail' r.property.pk %}" title="{{ r.label }}">{{ r.label }}</a></span>
+  {% for c in r.cells %}
+  <div class="cell{% if c.kind == 'stay' %} stay{% endif %}{% if c.outs %} has-cl{% endif %}"{% if c.stay %} title="{{ c.stay.guest_name|default:'Guest' }} is staying"{% endif %}>
+    {% for e in c.outs %}
+    <button type="button" class="t {% if c.kind == 'both' %}both{% else %}out{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkout" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }} &middot; {{ e.guest }}"
+            title="{{ e.guest }} checks out at {{ e.long }}{% if e.state == 'pending' %} (change waiting for a yes; normally {{ e.normal }}){% elif e.state == 'approved' %} (change agreed; normally {{ e.normal }}){% endif %}. Click to change the time."><span>OUT {{ e.time }}</span>{% if e.state == 'pending' %}<span class="m">!</span>{% elif e.state == 'approved' %}<span class="m">&#10003;</span>{% endif %}</button>
+    <button type="button" class="cl {{ e.cleaning.mark }} cl-top" data-wk-clean data-booking="{{ e.booking.pk }}" data-state="{{ e.cleaning.code }}" data-text="{{ e.cleaning.text }}" data-visit="{{ e.cleaning.visit }}" data-who="{{ e.cleaning.who }}" data-label="{{ r.label }} &middot; {{ e.guest }}" data-out="{{ e.normal }}" title="{{ e.cleaning.label }}{% if e.cleaning.who %}: {{ e.cleaning.who }}{% endif %}"><i data-lucide="{% if e.cleaning.mark == 'none' %}x{% else %}sparkles{% endif %}" class="icon"></i></button>
+    {% endfor %}
+    {% for e in c.ins %}
+    <button type="button" class="t {% if c.kind == 'both' %}both{% else %}in{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkin" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }} &middot; {{ e.guest }}"
+            title="{{ e.guest }} checks in at {{ e.long }}{% if e.state == 'pending' %} (change waiting for a yes; normally {{ e.normal }}){% elif e.state == 'approved' %} (change agreed; normally {{ e.normal }}){% endif %}. Click to change the time."><span>IN {{ e.time }}</span>{% if e.state == 'pending' %}<span class="m">!</span>{% elif e.state == 'approved' %}<span class="m">&#10003;</span>{% endif %}</button>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% empty %}
+<div class="text-muted p-3">No short-term rentals yet.</div>
+{% endfor %}
+</div></div>
+<div class="lg"><span><i class="sw" style="background:var(--out-bg)"></i>Check-out</span><span><i class="sw" style="background:var(--in-bg)"></i>Check-in</span><span><i class="sw" style="background:var(--bad-bg)"></i>Same day</span><span><i class="sw" style="background:var(--stay)"></i>Guest in house</span><span><b style="color:var(--warn-bar)">!</b> waiting for a yes</span><span><b style="color:var(--good-bar)">&#10003;</b> approved</span></div>
+<div class="lg"><span>Cleaning on each check-out:</span><span><i class="sw" style="background:var(--good-bar);border-radius:50%"></i>assigned</span><span><i class="sw" style="background:var(--warn-bar);border-radius:50%"></i>needs someone</span><span><i class="sw" style="background:#fff;border:1.5px solid var(--bad-bar);border-radius:50%"></i>none scheduled</span></div>
+
+<div class="modal fade" id="wkModal" tabindex="-1" aria-labelledby="wkTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content pgw">
+    <form method="post" action="{% url 'ws_week_time' %}" id="wkForm">{% csrf_token %}
+      <input type="hidden" name="booking_id" id="wkBooking"><input type="hidden" name="kind" id="wkKind"><input type="hidden" name="start" value="{{ w.start|date:'Y-m-d' }}"><input type="hidden" name="time" id="wkTime">
+      <div class="modal-body">
+        <h6 id="wkTitle" class="mb-0">Change time</h6>
+        <div class="small text-muted" id="wkWho"></div>
+        <div class="small text-muted mt-1">Pick a new time. The colour says whether it works.</div>
+        <div class="chips" id="wkChips"></div>
+        <div class="d-flex align-items-center gap-2 small text-muted"><label for="wkOther" class="mb-0">or another time</label><input type="time" id="wkOther" class="form-control form-control-sm" style="max-width: 9rem;"></div>
+        <div class="vd" id="wkVerdict" hidden></div>
+        <input type="text" class="form-control form-control-sm mt-2" name="note" maxlength="200" placeholder="Note (optional)" aria-label="Note" id="wkNote" hidden>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button type="submit" name="action" value="remove" class="btn btn-link btn-sm text-muted" id="wkReset" formnovalidate>Back to normal</button>
+        <span><button type="button" class="btn btn-link btn-sm text-muted" data-bs-dismiss="modal">Cancel</button> <button type="submit" name="action" value="set" class="btn btn-dark btn-sm" id="wkSave" disabled>Save</button></span>
+      </div>
+    </form>
+  </div></div>
+</div>
+
+<div class="modal fade" id="wkClean" tabindex="-1" aria-labelledby="wcTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content pgw">
+    <form method="post" action="{% url 'ws_week_clean' %}">{% csrf_token %}
+      <input type="hidden" name="booking_id" id="wcBooking"><input type="hidden" name="start" value="{{ w.start|date:'Y-m-d' }}"><input type="hidden" name="assignee" id="wcAssignee">
+      <div class="modal-body">
+        <h6 id="wcTitle" class="mb-0">Cleaning after check-out</h6>
+        <div class="small text-muted" id="wcWho"></div>
+        <p class="mt-2 mb-1" id="wcText"></p>
+        <div class="small text-muted" id="wcStarts"></div>
+        <div class="chips" id="wcChips">
+          {% for p in w.cleaners %}<button type="button" data-assign="{{ p.value }}">Assign {{ p.label }}</button>{% endfor %}
+        </div>
+        {% if not w.cleaners %}<div class="small text-muted">No cleaners are set up to pick from.</div>{% endif %}
+      </div>
+      <div class="modal-footer justify-content-between">
+        <a href="#" id="wcOpen" class="small" hidden>Open the visit</a>
+        <span><button type="button" class="btn btn-link btn-sm text-muted" data-bs-dismiss="modal">Cancel</button> <button type="submit" class="btn btn-dark btn-sm" id="wcSave">Schedule cleaning</button></span>
+      </div>
+    </form>
+  </div></div>
+</div>
+</div>
+<script>
+(function () {
+  if (!window.bootstrap) return;
+  var $ = function (id) { return document.getElementById(id); };
+  var visitUrl = '{% url "onsite_visit_detail" 0 %}'.replace(/0\/$/, '');
+  function clock(m) { var h = Math.floor(m / 60), mm = m % 60; return (h % 12 || 12) + ':' + (mm < 10 ? '0' : '') + mm + ' ' + (h < 12 ? 'AM' : 'PM'); }
+  function hm(v) { var p = v.split(':'); return (+p[0]) * 60 + (+p[1]); }
+  function dur(m) { m = Math.max(0, m); var h = Math.floor(m / 60), r = m % 60; return h && r ? h + ' hr ' + r + ' min' : h ? h + ' hr' : r + ' min'; }
+  var tm = new bootstrap.Modal($('wkModal')), cur = null, pick = '';
+  // Whether a new time works, read the way the Today board reads it: leaving later or arriving earlier eats the cleaning's time; the other two directions only help.
+  function verdict(t) {
+    var out = cur.kind === 'checkout', other = cur.other === '' ? null : +cur.other, est = +cur.est, buf = +cur.buffer, normal = +cur.normalmin;
+    if (t === normal) return ['g', 'That is the normal time.', false];
+    if (out && t < normal) return ['g', 'Leaving ' + dur(normal - t) + ' early: the cleaner can start sooner. Agreed at once.', true];
+    if (!out && t > normal) return ['g', 'Arriving ' + dur(t - normal) + ' later gives the cleaner more time. Agreed at once.', true];
+    if (other === null) return ['g', 'No other guest that day, so nothing clashes.', false];
+    var gap = out ? other - t : t - other;
+    if (gap >= est + buf) return ['g', dur(gap) + ' left for a cleaning of about ' + dur(est) + '. It works.', false];
+    if (gap >= est) return ['a', 'Only ' + dur(gap) + ' for a cleaning of about ' + dur(est) + '. Tight, but possible.', false];
+    return ['r', 'Not enough time to clean between guests (' + dur(Math.max(gap, 0)) + ' for about ' + dur(est) + ').', false];
+  }
+  function choose(t) {
+    pick = t; var v = verdict(t), val = ('0' + Math.floor(t / 60)).slice(-2) + ':' + ('0' + t % 60).slice(-2);
+    $('wkTime').value = val; $('wkOther').value = val;
+    document.querySelectorAll('#wkChips button').forEach(function (b) { b.classList.toggle('pk', +b.dataset.t === t); });
+    var box = $('wkVerdict'); box.hidden = false; box.className = 'vd ' + v[0]; box.textContent = clock(t) + ': ' + v[1];
+    $('wkNote').hidden = false; $('wkSave').disabled = t === +cur.min && !cur.has;
+    $('wkSave').textContent = v[2] ? 'Save' : 'Send for approval';
+    var back = t === normalOf() && cur.has;
+    $('wkSave').value = back ? 'remove' : 'set';
+    if (t === normalOf()) $('wkSave').textContent = back ? 'Back to normal' : 'Save';
+    if (back) $('wkSave').disabled = false;
+  }
+  function normalOf() { return +cur.normalmin; }
+  document.querySelectorAll('[data-wk-time]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      cur = b.dataset; pick = '';
+      var out = cur.kind === 'checkout', box = $('wkChips'); box.innerHTML = '';
+      var from = out ? 8 * 60 : 11 * 60, to = out ? 15 * 60 : 20 * 60;
+      for (var t = from; t <= to; t += 30) {
+        var v = verdict(t), c = document.createElement('button'); c.type = 'button'; c.dataset.t = t;
+        c.className = v[0] + (t === +cur.min ? ' cur' : ''); c.textContent = clock(t).replace(':00 ', ' ').replace(' AM', 'a').replace(' PM', 'p');
+        c.addEventListener('click', (function (tt) { return function () { choose(tt); }; })(t)); box.appendChild(c);
+      }
+      $('wkBooking').value = cur.booking; $('wkKind').value = cur.kind;
+      $('wkTitle').textContent = out ? 'Check-out time' : 'Check-in time';
+      $('wkWho').textContent = cur.label + ' · now ' + clock(+cur.min) + (+cur.min !== +cur.normalmin ? ' (normally ' + cur.normal + ')' : '');
+      $('wkVerdict').hidden = true; $('wkNote').hidden = true; $('wkNote').value = ''; $('wkSave').disabled = true; $('wkSave').textContent = 'Save';
+      $('wkOther').value = cur.value; $('wkTime').value = '';
+      $('wkReset').style.display = cur.has ? '' : 'none';
+      tm.show();
+    });
+  });
+  $('wkOther').addEventListener('input', function () { if ($('wkOther').value) choose(hm($('wkOther').value)); });
+
+  var cm = new bootstrap.Modal($('wkClean'));
+  document.querySelectorAll('[data-wk-clean]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var d = b.dataset, none = d.state === 'none';
+      $('wcBooking').value = d.booking; $('wcAssignee').value = ''; $('wcWho').textContent = d.label;
+      $('wcText').textContent = none ? 'No cleaning is scheduled for this check-out.' : d.who ? 'Cleaning: ' + d.text : 'A cleaning visit exists but nobody is on it.';
+      $('wcStarts').textContent = 'Starts after the ' + d.out + ' check-out.';
+      $('wcSave').textContent = none ? 'Schedule cleaning' : 'Done'; $('wcSave').hidden = !none;
+      var open = $('wcOpen'); open.hidden = !d.visit; if (d.visit) open.href = visitUrl + d.visit + '/';
+      document.querySelectorAll('#wcChips button').forEach(function (c) {
+        c.classList.remove('pk'); c.textContent = (none ? 'Schedule and assign ' : (d.who ? 'Give to ' : 'Assign ')) + c.textContent.replace(/^(Schedule and assign |Give to |Assign )/, '');
+        c.onclick = function () { $('wcAssignee').value = c.dataset.assign; c.form ? c.form.submit() : $('wcSave').form.submit(); };
+      });
+      cm.show();
+    });
+  });
+  if (window.lucide) lucide.createIcons();
+})();
+</script>
+{% endblock %}

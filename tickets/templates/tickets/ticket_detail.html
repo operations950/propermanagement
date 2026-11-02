@@ -99,10 +99,19 @@
                     <form method="post" action="{% url 'ticket_set_due_date' ticket.pk %}" class="d-none align-items-center gap-2" data-due-date-form>
                         {% csrf_token %}
                         <input type="hidden" name="next_ticket_detail" value="1">
-                        <input type="date" name="due_date" class="form-control form-control-sm" style="max-width: 160px;" value="{{ ticket.due_date|date:'Y-m-d' }}">
+                        <input type="date" name="due_date" class="form-control form-control-sm" style="max-width: 160px;" value="{{ ticket.due_date|date:'Y-m-d' }}" data-due-input>
+                        {% if new_face %}
+                        <input type="text" name="push_reason" list="push-reasons" maxlength="200" class="form-control form-control-sm d-none" style="max-width: 16rem;" placeholder="Why is it being pushed?" data-push-reason aria-label="Reason for pushing the due date">
+                        <datalist id="push-reasons"><option value="Waiting on the vendor"><option value="Waiting on the owner or board"><option value="Waiting on information"><option value="Higher priority came up"><option value="Needs more time"><option value="Weather"></datalist>
+                        {% endif %}
                         <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
                     </form>
                 </div>
+                {% if new_face %}{% with pushes=ticket.pushes.all %}{% if pushes %}
+                <details class="small mb-2" style="color: var(--ink-muted);"><summary>Pushed {{ pushes|length }} time{{ pushes|length|pluralize }}</summary>
+                    {% for p in pushes|slice:":6" %}<div>{{ p.from_date|date:"M j" }} &rarr; {{ p.to_date|date:"M j" }} (+{{ p.days }} day{{ p.days|pluralize }}){% if p.reason %}: {{ p.reason }}{% endif %}</div>{% endfor %}
+                </details>
+                {% endif %}{% endwith %}{% endif %}
                 <script>
                     (function () {
                         var field = document.querySelector('[data-due-date-field]');
@@ -112,6 +121,17 @@
                             form.classList.toggle('d-none');
                             form.classList.toggle('d-flex');
                         });
+                        {% if new_face %}
+                        var due = form.querySelector('[data-due-input]'), why = form.querySelector('[data-push-reason]');
+                        if (due && why && due.value) {
+                            var original = due.value;
+                            due.addEventListener('input', function () {
+                                var later = due.value > original;
+                                why.classList.toggle('d-none', !later);
+                                why.required = later;
+                            });
+                        }
+                        {% endif %}
                     })();
                 </script>
                 <p class="mb-1"><strong>Assigned Staff:</strong> {{ ticket.assigned_staff|default:'—' }}</p>
