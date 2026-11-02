@@ -42,7 +42,7 @@ LINES = [
 PREFIXES = {
     'home': ['/w/home'],
     'tickets': ['/tickets', '/templates', '/functions', '/task-'],
-    'compliance': ['/w/compliance', '/recurring'],
+    'compliance': ['/w/compliance', '/compliance', '/recurring'],
     'projects': ['/w/projects', '/processes'],
     'onsite': ['/onsite', '/w/onsite'],
     'properties': ['/properties', '/w/lines'],

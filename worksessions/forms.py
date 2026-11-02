@@ -1,6 +1,7 @@
 from django import forms
 
 from core.models import Property
+from processes.models import ProcessTemplate
 
 from .models import Frequency, SessionTemplate
 
@@ -30,13 +31,18 @@ class SessionTemplateForm(forms.ModelForm):
                    'e.g. one bank account name per row for a monthly bookkeeping session.',
     )
 
+    properties = forms.ModelMultipleChoiceField(
+        required=False, queryset=Property.objects.filter(is_active=True).order_by('name'), widget=forms.SelectMultiple(attrs={'size': 8, 'class': 'form-select'}),
+        help_text='Used when the scope is "These properties". Hold Ctrl (or Cmd) to pick several.',
+    )
+
     class Meta:
         model = SessionTemplate
         fields = [
             'name', 'description', 'link_url', 'login_username', 'password_hint', 'owner', 'department',
             'frequency', 'workday_of_month', 'next_open_date', 'due_offset_days',
             'active_from', 'active_until', 'is_active',
-            'line_source', 'property_types', 'required_attributes', 'query_by_unit',
+            'line_source', 'property_types', 'required_attributes', 'query_by_unit', 'work_type', 'process_template', 'properties',
         ]
         widgets = {
             'required_attributes': forms.CheckboxSelectMultiple,
@@ -44,11 +50,17 @@ class SessionTemplateForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['process_template'].queryset = ProcessTemplate.objects.filter(is_active=True).order_by('kind', 'name')
+        self.fields['process_template'].required = False
+        self.fields['work_type'].required = False      # a form that does not send it (the original screens) means a plain reminder, as every rule was before
         if self.instance.pk:
             self.fields['static_lines_text'].initial = '\n'.join(
                 self.instance.static_lines.values_list('label', flat=True)
             )
             self.fields['property_types'].initial = self.instance.property_types
+
+    def clean_work_type(self):
+        return self.cleaned_data.get('work_type') or SessionTemplate.WorkType.REMINDER
 
     def clean_link_url(self):
         url = (self.cleaned_data.get('link_url') or '').strip()
@@ -60,6 +72,18 @@ class SessionTemplateForm(forms.ModelForm):
         cleaned = super().clean()
         if cleaned.get('frequency') == Frequency.MONTHLY_WORKDAY and not cleaned.get('workday_of_month'):
             self.add_error('workday_of_month', 'Required for "Monthly (by working day)".')
+        work_type, tpl = cleaned.get('work_type'), cleaned.get('process_template')
+        if work_type == SessionTemplate.WorkType.REMINDER:
+            cleaned['process_template'] = None
+        elif work_type in (SessionTemplate.WorkType.PROCESS, SessionTemplate.WorkType.PROJECT):
+            want = ProcessTemplate.Kind.CHECKLIST if work_type == SessionTemplate.WorkType.PROCESS else ProcessTemplate.Kind.PROJECT
+            if tpl is None:
+                self.add_error('process_template', 'Choose the process template.' if want == ProcessTemplate.Kind.CHECKLIST else 'Choose the project template.')
+            elif tpl.kind != want:
+                self.add_error('process_template', 'That is a project template; a process rule needs a process template.' if want == ProcessTemplate.Kind.CHECKLIST
+                               else 'That is a process template; a project rule needs a project template.')
+        if cleaned.get('line_source') == SessionTemplate.LineSource.CHOSEN and not cleaned.get('properties'):
+            self.add_error('properties', 'Pick at least one property.')
         active_from = cleaned.get('active_from')
         active_until = cleaned.get('active_until')
         if active_from and active_until and active_from > active_until:

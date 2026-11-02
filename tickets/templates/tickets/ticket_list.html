@@ -24,7 +24,7 @@
 <a href="{% querystring horizon='now' due=None %}" class="{% if ws_horizon == 'now' %}on{% endif %}">Now</a>
 <a href="{% querystring horizon='later' due=None %}" class="{% if ws_horizon == 'later' %}on{% endif %}">Later</a>
 </div>
-<div class="ws-note">Tickets are one-off requests. Due within {{ ws_now_days }} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket with a template attached moves to <a href="{% url 'ws_projects' %}">Projects</a>.</div>
+<div class="ws-note">Tickets are one-off requests. Due within {{ ws_now_days }} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket you turn into a project moves to <a href="{% url 'ws_projects' %}">Projects</a>; one with just a process attached stays here.</div>
 {% endif %}
 
 {% if selected_template %}
@@ -114,20 +114,7 @@
 })();
 </script>
 
-<style>
-    .tf-box { background: #fff; border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); padding: 0.55rem 0.8rem 0.7rem; margin-bottom: 0.9rem; }
-    .tf-box [hidden] { display: none !important; }
-    .tf-box .bubble.bubble-locked::after { content: none; }
-    .tf-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.45rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; }
-    .tf-head a { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 0.8rem; margin-left: auto; color: var(--brand-primary); text-decoration: none; }
-    .tf-layer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-    .tf-layer .tf-title { font-size: 0.78rem; color: var(--ink-muted); width: 100%; margin: 0.15rem 0 0; }
-    .tf-pair { display: inline-flex; align-items: center; gap: 0.25rem; }
-    .tf-pair .tf-x { color: var(--ink-muted); text-decoration: none; font-size: 1.05rem; line-height: 1; padding: 0 0.3rem; border-radius: 50%; }
-    .tf-pair .tf-x:hover { color: var(--ink-primary); background: var(--surface-page); }
-    .tf-back { --bubble-color: var(--ink-muted); background: transparent; border-style: dashed; }
-    .tf-city { font-size: 0.75rem; color: var(--ink-muted); width: 100%; margin: 0.35rem 0 0; }
-</style>
+{% include 'tickets/_filter_box_style.html' %}
 <div class="tf-box" id="tf-box">
     <div class="tf-head">
         <i data-lucide="sliders-horizontal" class="icon"></i> Filters
@@ -140,7 +127,7 @@
     <div class="tf-layer" data-tf-layer="root">
         <button type="button" class="bubble{% if selected_status != 'active' %} bubble-locked{% endif %}" data-tf-open="status">Status{% if selected_status == 'active' %}: Active{% elif selected_status == 'complete' %}: Completed &amp; cancelled{% elif selected_status == 'all' %}: All{% else %}: {{ selected_status_label }}{% endif %}</button>
 
-        <span class="tf-pair"><button type="button" class="bubble{% if selected_source %} bubble-locked{% endif %}" data-tf-open="source">Type{% if selected_source == 'reactive' %}: Tickets{% elif selected_source == 'recurring' %}: Recurring{% endif %}</button>{% if selected_source %}<a class="tf-x" href="{% querystring source=None %}" title="Clear">&times;</a>{% endif %}</span>
+        {% if not new_face %}<span class="tf-pair"><button type="button" class="bubble{% if selected_source %} bubble-locked{% endif %}" data-tf-open="source">Type{% if selected_source == 'reactive' %}: Tickets{% elif selected_source == 'recurring' %}: Recurring{% endif %}</button>{% if selected_source %}<a class="tf-x" href="{% querystring source=None %}" title="Clear">&times;</a>{% endif %}</span>{% endif %}
 
         <span class="tf-pair"><button type="button" class="bubble{% if selected_role %} bubble-locked{% endif %}" data-tf-open="department">Department{% if selected_role == 'none' %}: None{% elif selected_role %}: {{ selected_role_label }}{% endif %}</button>{% if selected_role %}<a class="tf-x" href="{% querystring role=None %}" title="Clear">&times;</a>{% endif %}</span>
 
@@ -216,27 +203,7 @@
     </div>
     {% endfor %}
 </div>
-<script>
-(function () {
-    var box = document.getElementById('tf-box');
-    function show(name) {
-        box.querySelectorAll('[data-tf-layer]').forEach(function (layer) { layer.hidden = layer.dataset.tfLayer !== name; });
-    }
-    box.querySelectorAll('[data-tf-open]').forEach(function (btn) {
-        btn.addEventListener('click', function () { show(btn.dataset.tfOpen); });
-    });
-    var custom = box.querySelector('[data-due-custom-input]');
-    if (custom) {
-        custom.addEventListener('change', function () {
-            if (!custom.value) return;
-            var params = new URLSearchParams(window.location.search);
-            params.set('due', 'custom');
-            params.set('due_on', custom.value);
-            window.location.search = params.toString();
-        });
-    }
-})();
-</script>
+{% include 'tickets/_filter_box_script.html' %}
 
 {% comment %}
 Desktop/tablet: a real table, styled to match the compact, uniform-height

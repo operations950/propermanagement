@@ -1,0 +1,30 @@
+{% comment %}The Compliance items table: the same five columns, widths and row look as the Tickets list (tickets/_ticket_table_rows.html), re-rendered whole by the search box. Expects rows, sort_columns.{% endcomment %}
+<colgroup>
+    <col style="width: 9%;"><col style="width: 19%;"><col style="width: 38%;">
+    <col style="width: 13%;"><col style="width: 21%;">
+</colgroup>
+<thead><tr>
+    {% for col in sort_columns %}
+    <th class="p-0">
+        <a href="{% querystring sort=col.next_sort %}" class="d-flex align-items-center gap-1 px-2 py-2 text-decoration-none w-100"
+           style="color: {% if col.is_active %}var(--ink-primary){% else %}var(--ink-secondary){% endif %}; font-weight: {% if col.is_active %}600{% else %}inherit{% endif %}; font-size: 0.8rem;" title="Sort by {{ col.label }}">
+            {{ col.label }}
+            <i data-lucide="{% if col.is_active %}{% if col.is_desc %}chevron-down{% else %}chevron-up{% endif %}{% else %}chevrons-up-down{% endif %}" class="icon" style="width: 0.85rem; height: 0.85rem; {% if not col.is_active %}opacity: 0.35;{% endif %} flex-shrink: 0;"></i>
+        </a>
+    </th>
+    {% endfor %}
+</tr></thead>
+{% for r in rows %}
+    <tbody style="font-size: 0.875rem;">
+        <tr>
+            <td class="text-truncate">{{ r.how }}</td>
+            <td class="text-truncate">{% if r.where == 'General' %}<span class="text-muted">General</span>{% else %}{{ r.where }}{% endif %}</td>
+            <td class="text-truncate fw-medium">
+                <a href="{{ r.url }}" class="text-decoration-none">{{ r.title }}</a>
+                <div class="text-truncate fw-normal" style="font-size: 0.75rem; color: var(--ink-muted);">{{ r.period }}{% if r.progress %} &middot; {{ r.progress }}{% endif %}{% if r.done %} &middot; done{% endif %}</div>
+            </td>
+            <td class="text-nowrap {% if r.late %}text-danger fw-semibold{% endif %}">{{ r.due|date:'M j, Y'|default:'—' }}</td>
+            <td class="text-truncate">{{ r.who }}</td>
+        </tr>
+    </tbody>
+{% empty %}<tbody><tr><td colspan="5" class="text-muted text-center py-4"><i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i>Nothing here.</td></tr></tbody>{% endfor %}

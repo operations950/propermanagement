@@ -3,7 +3,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from .models import ProcessAttachment, ProcessRunExternalAccess
+from .models import ProcessAttachment, ProcessRunExternalAccess, ProcessTemplateAttachment
 
 
 class ProcessAttachmentUploadForm(forms.ModelForm):
@@ -47,3 +47,12 @@ class ProcessRunExternalAccessForm(forms.ModelForm):
         if commit:
             access.save()
         return access
+
+
+class ProcessTemplateAttachmentForm(forms.ModelForm):
+    """A reference document kept on a process template (shown on every run), same file rules as a proof-of-completion upload."""
+    class Meta:
+        model = ProcessTemplateAttachment
+        fields = ['file', 'caption']
+
+    clean_file = ProcessAttachmentUploadForm.clean_file

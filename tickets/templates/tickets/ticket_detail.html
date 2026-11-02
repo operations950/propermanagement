@@ -317,27 +317,6 @@
             </div>
         </div>
 
-        {% if checklist_items %}
-        <div class="card mb-3">
-            <div class="card-body">
-                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="list-checks" class="icon"></i> Checklist</h6>
-                <ul class="list-unstyled mb-0">
-                {% for item in checklist_items %}
-                    <li class="form-check mb-1">
-                        <form method="post" action="{% url 'ticket_checklist_toggle' item.pk %}" class="d-flex align-items-center gap-2">
-                            {% csrf_token %}
-                            <input class="form-check-input mt-0" type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="this.form.submit()" id="checklist-{{ item.pk }}">
-                            <label class="form-check-label {% if item.is_checked %}text-muted{% endif %}" style="{% if item.is_checked %}text-decoration: line-through;{% endif %}" for="checklist-{{ item.pk }}">
-                                {{ item.text }}{% if not item.is_required %} <span class="text-muted small">(optional)</span>{% endif %}
-                            </label>
-                        </form>
-                    </li>
-                {% endfor %}
-                </ul>
-            </div>
-        </div>
-        {% endif %}
-
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Processes</h6>
@@ -349,6 +328,29 @@
                 {% include "processes/_attach_form.html" with target_type="ticket" target_id=ticket.pk has_runs=process_runs %}
             </div>
         </div>
+
+        {% if new_face %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="layers" class="icon"></i> Project</h6>
+                {% for run in project_runs %}
+                <div class="small mb-2">This ticket is a project: <a href="{% url 'ws_run_detail' run.pk %}">{{ run.process_template.name }}</a>{% if run.assigned_to %} &middot; with {{ run.assigned_to }}{% endif %} &middot; {{ run.get_status_display|lower }}</div>
+                {% endfor %}
+                {% if not ticket.is_project %}
+                <p class="small text-muted mb-2">Turn this ticket into a project when it will take days or weeks. It leaves Tickets and is tracked under Projects, with a link back here.</p>
+                <form method="post" action="{% url 'ws_make_project' ticket.pk %}" class="row g-2 align-items-end">
+                    {% csrf_token %}
+                    <div class="col-12 col-md-5"><label class="form-label small mb-1" for="mp-template">Project template</label>
+                        <select name="template" id="mp-template" class="form-select form-select-sm" required><option value="">Choose…</option>{% for t in project_templates %}<option value="{{ t.pk }}">{{ t.name }}</option>{% endfor %}</select></div>
+                    <div class="col-12 col-md-4"><label class="form-label small mb-1" for="mp-who">Assign it to</label>
+                        <select name="assignee" id="mp-who" class="form-select form-select-sm">{% for sp in staff_choices %}<option value="{{ sp.pk }}" {% if ticket.assigned_staff_id == sp.pk %}selected{% endif %}>{{ sp }}</option>{% endfor %}</select></div>
+                    <div class="col-auto"><button class="btn btn-sm btn-dark" type="submit">Make this a project</button></div>
+                </form>
+                {% if not project_templates %}<div class="small text-muted mt-1">No project templates yet. Set one up under Projects, Templates.</div>{% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         {% if ticket.package_run %}
         <div class="card mb-3">

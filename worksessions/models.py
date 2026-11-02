@@ -49,6 +49,7 @@ class Frequency(models.TextChoices):
     MONTHLY_WORKDAY = 'monthly_workday', 'Monthly (by working day)'
     QUARTERLY = 'quarterly', 'Quarterly'
     YEARLY = 'yearly', 'Yearly'
+    ONCE = 'once', 'One time'
 
 
 class SessionTemplate(models.Model):
@@ -57,8 +58,15 @@ class SessionTemplate(models.Model):
     actual Session rows."""
 
     class LineSource(models.TextChoices):
-        STATIC = 'static', 'Static list'
-        QUERY = 'query', 'Property query'
+        STATIC = 'static', 'Fixed list of lines'
+        QUERY = 'query', 'All properties of a category'
+        GENERAL = 'general', 'General (no property)'
+        CHOSEN = 'chosen', 'These properties'
+
+    class WorkType(models.TextChoices):
+        REMINDER = 'reminder', 'Reminder: tick a box'
+        PROCESS = 'process', 'Process: steps done in one sitting'
+        PROJECT = 'project', 'Project: multi-day work'
 
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -114,6 +122,18 @@ class SessionTemplate(models.Model):
     # Targeting lives here and only here — no group-level override layered on
     # top, unlike the old TicketTemplate/TaskGroup.property_types chain.
     line_source = models.CharField(max_length=10, choices=LineSource.choices, default=LineSource.STATIC)
+    work_type = models.CharField(
+        max_length=10, choices=WorkType.choices, default=WorkType.REMINDER,
+        help_text='What each line turns into. A reminder is a box to tick; a process attaches a checklist template to each property; a project is started from a line when the work runs over days.',
+    )
+    process_template = models.ForeignKey(
+        'processes.ProcessTemplate', on_delete=models.PROTECT, null=True, blank=True, related_name='compliance_rules',
+        help_text='The process (for a process rule) or the project template (for a project rule).',
+    )
+    properties = models.ManyToManyField(
+        Property, blank=True, related_name='compliance_rules',
+        help_text='Used when the scope is "These properties".',
+    )
     property_types = models.JSONField(
         default=list, blank=True,
         help_text='Only used when Line source is "Property query" — Property.Type codes a property '
@@ -207,13 +227,15 @@ class Session(models.Model):
     def __str__(self):
         return f'{self.template.name} — {self.period_label}'
 
+    notes = models.TextField(blank=True, help_text='Notes for the whole item (every property).')
+
     def progress(self):
         """(done_or_resolved, total) — reads self.lines, no extra query if
-        already prefetched."""
+        already prefetched. A line handed to a project is not resolved until its project is done."""
         lines = list(self.lines.all())
         if not lines:
             return 0, 0
-        resolved = sum(1 for line in lines if line.state != SessionLine.State.PENDING)
+        resolved = sum(1 for line in lines if line.state in SessionLine.RESOLVED_STATES)
         return resolved, len(lines)
 
     def is_overdue(self, today=None):
@@ -233,6 +255,7 @@ class SessionLine(models.Model):
         DONE = 'done', 'Done'
         SKIPPED = 'skipped', 'Skipped'
         NOT_APPLICABLE = 'not_applicable', 'Not applicable'
+        IN_PROJECT = 'in_project', 'In a project'
 
     RESOLVED_STATES = [State.DONE, State.SKIPPED, State.NOT_APPLICABLE]
     REASON_REQUIRED_STATES = [State.SKIPPED, State.NOT_APPLICABLE]

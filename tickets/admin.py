@@ -12,12 +12,10 @@ from .models import (
     PropertyTemplateOverride,
     TaskPackage,
     TaskPackageTemplate,
-    TemplateChecklistItem,
     TemplateOccurrence,
     Ticket,
     TicketAssignmentLog,
     TicketAttachment,
-    TicketChecklistItem,
     TicketContact,
     TicketTemplate,
 )
@@ -32,12 +30,6 @@ class TicketAttachmentInline(admin.TabularInline):
     model = TicketAttachment
     extra = 0
     readonly_fields = ['created_at']
-
-
-class TicketChecklistItemInline(admin.TabularInline):
-    model = TicketChecklistItem
-    extra = 0
-    readonly_fields = ['checked_at', 'checked_by']
 
 
 @admin.register(Ticket)
@@ -59,7 +51,7 @@ class TicketAdmin(admin.ModelAdmin):
     # readonly_fields makes it visible at all, and it's now the masked
     # method instead of the raw field.
     readonly_fields = ['completion_token_masked', 'completion_token_expires_at', 'created_at', 'updated_at']
-    inlines = [TicketContactInline, TicketAttachmentInline, TicketChecklistItemInline]
+    inlines = [TicketContactInline, TicketAttachmentInline]
 
     @admin.display(description='Completion token')
     def completion_token_masked(self, obj):
@@ -90,11 +82,6 @@ class TicketTemplateAdminForm(forms.ModelForm):
         return list(self.cleaned_data['property_types'])
 
 
-class TemplateChecklistItemInline(admin.TabularInline):
-    model = TemplateChecklistItem
-    extra = 0
-
-
 @admin.register(TicketTemplate)
 class TicketTemplateAdmin(admin.ModelAdmin):
     form = TicketTemplateAdminForm
@@ -104,7 +91,6 @@ class TicketTemplateAdmin(admin.ModelAdmin):
     ]
     list_filter = ['target_type', 'frequency', 'is_active', 'default_assigned_role', 'requires_approval']
     filter_horizontal = ['required_attributes']
-    inlines = [TemplateChecklistItemInline]
 
 
 class TaskPackageTemplateInline(admin.TabularInline):

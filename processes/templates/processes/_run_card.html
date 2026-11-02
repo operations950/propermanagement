@@ -19,6 +19,8 @@
     {% endif %}
     {% endwith %}
 
+    {% if new_face %}{% for l in run.general_links %}<div class="small mb-1"><i data-lucide="link" class="icon"></i> <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label|default:l.url }}</a></div>{% endfor %}{% endif %}
+
     <ul class="list-unstyled mb-0">
         {% for step in run.steps.all %}
         {% if step.is_required or step.is_complete %}
@@ -30,6 +32,13 @@
                         {{ step.label }}{% if not step.is_required %} <span class="small text-muted">(optional)</span>{% endif %}
                     </div>
                     {% if step.help_text %}<div class="small text-muted">{{ step.help_text }}</div>{% endif %}
+                    {% if new_face %}
+                    {% for l in step.template_links %}<div class="small"><i data-lucide="link" class="icon"></i> <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label|default:l.url }}</a></div>{% endfor %}
+                    {% if step.note %}<div class="small" style="color: var(--ink-secondary);">Note: {{ step.note }}</div>{% endif %}
+                    <details class="small"><summary class="text-muted" style="cursor: pointer;">{% if step.note %}Edit note{% else %}Add a note{% endif %}</summary>
+                        <form method="post" action="{% url 'ws_step_note' step.pk %}" class="d-flex gap-2 mt-1">{% csrf_token %}<input type="text" name="note" class="form-control form-control-sm" value="{{ step.note }}" maxlength="500" aria-label="Note for this step"><button class="btn btn-sm btn-outline-secondary" type="submit">Save</button></form>
+                    </details>
+                    {% endif %}
 
                     {% if not step.is_complete %}
                     <div class="mt-1">

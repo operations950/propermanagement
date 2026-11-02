@@ -104,6 +104,37 @@
 <p class="text-muted small">No steps yet — add one below.</p>
 {% endfor %}
 
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title">Links and documents</h6>
+        <p class="small text-muted">Shown on every run of this {% if template.kind == 'checklist' %}process{% else %}project{% endif %}. Put the detailed instructions here if the step wording is not enough.</p>
+        {% for l in links %}
+        <form method="post" action="{% url 'process_template_link_delete' l.pk %}" class="d-flex align-items-center gap-2 small mb-1">{% csrf_token %}
+            <i data-lucide="link" class="icon"></i> <a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.label|default:l.url }}</a>{% if l.template_step %}<span class="text-muted">· step: {{ l.template_step.label }}</span>{% endif %}
+            <button class="btn btn-link btn-sm p-0 text-danger ms-auto" type="submit">Remove</button>
+        </form>
+        {% endfor %}
+        {% for d in documents %}
+        <form method="post" action="{% url 'process_template_attachment_delete' d.pk %}" class="d-flex align-items-center gap-2 small mb-1">{% csrf_token %}
+            <i data-lucide="paperclip" class="icon"></i> <a href="{{ d.file.url }}" target="_blank" rel="noopener">{{ d.caption|default:d.file.name }}</a>{% if d.template_step %}<span class="text-muted">· step: {{ d.template_step.label }}</span>{% endif %}
+            <button class="btn btn-link btn-sm p-0 text-danger ms-auto" type="submit">Remove</button>
+        </form>
+        {% endfor %}
+        <form method="post" action="{% url 'process_template_link_add' template.pk %}" class="d-flex flex-wrap gap-2 align-items-end mt-2">{% csrf_token %}
+            <input type="url" name="url" class="form-control form-control-sm" style="width: 240px;" placeholder="https://…" required aria-label="Link address">
+            <input type="text" name="label" class="form-control form-control-sm" style="width: 180px;" placeholder="Label (optional)" aria-label="Link label">
+            <select name="step" class="form-select form-select-sm" style="width: 200px;" aria-label="Applies to"><option value="">Whole {% if template.kind == 'checklist' %}process{% else %}project{% endif %}</option>{% for s in steps %}<option value="{{ s.pk }}">{{ s.label|truncatechars:40 }}</option>{% endfor %}</select>
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Add link</button>
+        </form>
+        <form method="post" action="{% url 'process_template_attachment_add' template.pk %}" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-end mt-2">{% csrf_token %}
+            <input type="file" name="file" class="form-control form-control-sm" style="width: 240px;" required aria-label="Document">
+            <input type="text" name="caption" class="form-control form-control-sm" style="width: 180px;" placeholder="Caption (optional)" aria-label="Caption">
+            <select name="step" class="form-select form-select-sm" style="width: 200px;" aria-label="Applies to"><option value="">Whole {% if template.kind == 'checklist' %}process{% else %}project{% endif %}</option>{% for s in steps %}<option value="{{ s.pk }}">{{ s.label|truncatechars:40 }}</option>{% endfor %}</select>
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Add document</button>
+        </form>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-body">
         <h6 class="card-title">Add a step</h6>

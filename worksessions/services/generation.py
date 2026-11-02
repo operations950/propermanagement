@@ -61,6 +61,8 @@ def next_workday_occurrence(after_date, workday_of_month):
 
 
 def advance(cursor, frequency, workday_of_month):
+    if frequency == Frequency.ONCE:
+        return cursor + relativedelta(years=100)    # a one-time rule never comes round again (generate_for_template switches it off once it has opened)
     if frequency == Frequency.MONTHLY_WORKDAY:
         return next_workday_occurrence(cursor, workday_of_month)
     return cursor + STEP[frequency]
@@ -75,6 +77,8 @@ def period_label_for(cursor, frequency):
     description (see Phase 3's live preview). Built without strftime's
     platform-dependent no-leading-zero flags (%-d is POSIX-only, absent on
     Windows) so this behaves identically in local dev and production."""
+    if frequency == Frequency.ONCE:
+        return f'{cursor.strftime("%b")} {cursor.day}, {cursor.year}'
     if frequency in _MONTH_GRANULAR:
         return cursor.strftime('%B %Y')
     return f'{cursor.strftime("%a")} {cursor.day} {cursor.strftime("%b")}'
@@ -128,12 +132,22 @@ def materialize_lines(session, template):
             SessionLine(session=session, label=tl.label, display_order=tl.display_order)
             for tl in template.static_lines.all()
         ]
+    elif template.line_source == SessionTemplate.LineSource.GENERAL:
+        rows = [SessionLine(session=session, label=template.name, display_order=0)]
+    elif template.line_source == SessionTemplate.LineSource.CHOSEN:
+        rows = [SessionLine(session=session, label=str(prop), property=prop, display_order=i)
+                for i, prop in enumerate(template.properties.filter(is_active=True).order_by('name'))]
     else:
         rows = [
             SessionLine(session=session, label=label, property=prop, unit=unit, display_order=i)
             for i, (label, prop, unit) in enumerate(matching_targets(template))
         ]
     SessionLine.objects.bulk_create(rows)
+    if template.work_type == SessionTemplate.WorkType.PROCESS and template.process_template_id:
+        # A process rule: each property (or the one general line) gets its own run of the process, ready to tick.
+        from processes.projects import start_run
+        for line in session.lines.all():
+            start_run(template.process_template, assigned_to=session.owner, session_line=line, property=line.property)
     return rows
 
 
@@ -165,6 +179,16 @@ def generate_for_template(template, today=None):
     today = today or timezone.localdate()
     cursor = template.next_open_date
     created_count = 0
+
+    if template.frequency == Frequency.ONCE:
+        # A one-time item: opens once, on its date, then the rule switches itself off (it stays listed, marked off).
+        if cursor <= today:
+            with transaction.atomic():
+                _session, created = _get_or_create_session(template, cursor)
+                created_count += int(created)
+                template.is_active = False
+                template.save(update_fields=['is_active'])
+        return created_count
 
     while cursor <= today:
         if template.active_until and cursor > template.active_until:
@@ -202,6 +226,8 @@ def preview_next_occurrences(template, count=3):
         return []
     cursor = template.next_open_date
     out = []
+    if template.frequency == Frequency.ONCE:
+        return [{'date': cursor, 'label': period_label_for(cursor, template.frequency)}]
     guard = 0
     while len(out) < count and guard < count + 50:
         guard += 1

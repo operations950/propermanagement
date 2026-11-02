@@ -55,11 +55,11 @@ class ProcessTemplate(models.Model):
     )
     class Kind(models.TextChoices):
         PROJECT = 'project', 'Project (steps over days, with a timeline)'
-        CHECKLIST = 'checklist', 'Checklist (done in one sitting)'
+        CHECKLIST = 'checklist', 'Process (done in one sitting)'
 
     kind = models.CharField(
         max_length=12, choices=Kind.choices, default=Kind.PROJECT,
-        help_text='Only changes where it is listed in the new Projects screen: Projects or Checklists. The steps work the same either way.',
+        help_text='A process is done in one sitting and stays on the ticket or compliance item it is attached to; a project runs over days and is tracked in Projects.',
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -192,6 +192,15 @@ class ProcessRun(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    session_line = models.ForeignKey(
+        'worksessions.SessionLine', on_delete=models.CASCADE, null=True, blank=True, related_name='process_runs',
+        help_text='Set when this run belongs to one property line of a compliance item (a process done for that property, or a project started from it).',
+    )
+    assigned_to = models.ForeignKey(
+        StaffProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+        help_text='Who a project was handed to when it was started.',
+    )
+    notes = models.TextField(blank=True, help_text='A general note on this run, for this time only.')
 
     class Meta:
         ordering = ['-created_at']
@@ -201,6 +210,7 @@ class ProcessRun(models.Model):
                     (models.Q(ticket__isnull=False) & models.Q(property__isnull=True) & models.Q(contact__isnull=True))
                     | (models.Q(ticket__isnull=True) & models.Q(property__isnull=False) & models.Q(contact__isnull=True))
                     | (models.Q(ticket__isnull=True) & models.Q(property__isnull=True) & models.Q(contact__isnull=False))
+                    | (models.Q(session_line__isnull=False) & models.Q(ticket__isnull=True) & models.Q(property__isnull=True) & models.Q(contact__isnull=True))
                 ),
                 name='processrun_exactly_one_of_ticket_property_contact',
             ),
@@ -210,7 +220,35 @@ class ProcessRun(models.Model):
         return f'{self.process_template} on {self.get_target()}'
 
     def get_target(self):
-        return self.ticket or self.property or self.contact
+        return self.ticket or self.property or self.contact or self.session_line
+
+    def general_links(self):
+        return self.process_template.links.filter(template_step__isnull=True)
+
+    def origin_text(self):
+        """Where this run came from, in words: "Ticket: Roof leak (Glen)" or "Compliance: Budget meeting, Glen"."""
+        if self.ticket_id:
+            return f'Ticket: {self.ticket.title}' + (f' ({self.ticket.property.name})' if self.ticket.property_id else '')
+        if self.session_line_id:
+            line = self.session_line
+            return f'Compliance: {line.session.template.name}' + (f', {line.property.name}' if line.property_id else '')
+        if self.property_id:
+            return f'Property: {self.property.name}'
+        return f'Contact: {self.contact}' if self.contact_id else ''
+
+    def refresh_status(self):
+        """Completed once every required step is done, back to active if one is reopened. A finished project also closes the ticket it was made from."""
+        done = self.is_complete()
+        if done and self.status == self.Status.ACTIVE:
+            self.status, self.completed_at = self.Status.COMPLETED, timezone.now()
+            self.save(update_fields=['status', 'completed_at'])
+            from .projects import run_finished
+            run_finished(self)
+        elif not done and self.status == self.Status.COMPLETED:
+            self.status, self.completed_at = self.Status.ACTIVE, None
+            self.save(update_fields=['status', 'completed_at'])
+            from .projects import run_reopened
+            run_reopened(self)
 
     def is_complete(self):
         return not self.steps.filter(is_required=True, is_complete=False).exists()
@@ -247,6 +285,7 @@ class ProcessRunStep(models.Model):
     completed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
+    note = models.TextField(blank=True, help_text='A note on this step for this run only (the template\'s own note is help_text).')
     response = models.JSONField(
         default=dict, blank=True,
         help_text='The recorded value/output for this step — shape depends on step_type, see StepType docstring.',
@@ -285,6 +324,22 @@ class ProcessRunStep(models.Model):
         self.completed_at = timezone.now()
         self.completed_by = user
         self.save(update_fields=['is_complete', 'completed_at', 'completed_by', 'response'])
+        self.run.refresh_status()
+
+    def template_links(self):
+        """The links authored beside this step on the template (matched by step_key, since a run keeps a copy of the steps)."""
+        return ProcessTemplateLink.objects.filter(process_template=self.run.process_template, template_step__step_key=self.step_key)
+
+    def mark_incomplete(self):
+        """Untick a step (the compliance grid does this)."""
+        self.is_complete, self.completed_at, self.completed_by, self.response = False, None, None, {}
+        self.save(update_fields=['is_complete', 'completed_at', 'completed_by', 'response'])
+        self.run.refresh_status()
+
+    def mark_not_applicable(self, user=None):
+        """A step that does not apply to this property: counts as done, and says why not."""
+        self.response = {'not_applicable': True}
+        self.mark_complete(user)
 
 
 class ProcessAttachment(models.Model):
@@ -358,3 +413,18 @@ class ProcessRunExternalAccess(models.Model):
         else:
             qs = qs.filter(assignee_role='external')
         return qs
+
+
+class ProcessTemplateLink(models.Model):
+    """A web link that travels with a process: shown on every run of it, for the whole process (template_step blank) or beside one step."""
+    process_template = models.ForeignKey(ProcessTemplate, on_delete=models.CASCADE, related_name='links')
+    template_step = models.ForeignKey(ProcessTemplateStep, on_delete=models.CASCADE, null=True, blank=True, related_name='links')
+    label = models.CharField(max_length=200, blank=True)
+    url = models.URLField(max_length=500)
+    sequence_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sequence_order', 'id']
+
+    def __str__(self):
+        return self.label or self.url

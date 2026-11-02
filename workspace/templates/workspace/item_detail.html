@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}{{ rule.name }} — {{ session.period_label }}{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<style>
+    .it-head { background: #eef4ee; border: 1px solid #d3e0d3; border-left: 4px solid #6f9a78; border-radius: 0.6rem; padding: 0.7rem 0.9rem; margin-bottom: 0.9rem; }
+    .it-row { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) 9rem auto; align-items: center; gap: 0.6rem; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border-hairline); background: #fff; }
+    .it-row.closed { opacity: .55; }
+    .it-row .nm { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .it-row small { color: var(--ink-muted); display: block; font-weight: 400; }
+    .it-box { width: 1.15rem; height: 1.15rem; border: 1.5px solid #8aa690; border-radius: 4px; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; line-height: 1; padding: 0; }
+    .it-box.done { background: #6f9a78; color: #fff; border-color: #6f9a78; }
+    .gridw { overflow-x: auto; border: 1px solid var(--border-hairline); border-radius: 0.6rem; background: #fff; }
+    .gridt { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+    .gridt th, .gridt td { border-bottom: 1px solid var(--border-hairline); border-left: 1px solid var(--border-hairline); padding: 0.3rem 0.5rem; text-align: center; }
+    .gridt th:first-child, .gridt td:first-child { border-left: 0; text-align: left; position: sticky; left: 0; background: #fff; min-width: 11rem; }
+    .gridt thead th { background: #f4f8f4; font-weight: 600; font-size: 0.78rem; vertical-align: bottom; }
+    .gcell { width: 1.5rem; height: 1.5rem; border: 1.5px solid #8aa690; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.7rem; line-height: 1; padding: 0; }
+    .gcell.done { background: #6f9a78; color: #fff; border-color: #6f9a78; }
+    .gcell.na { background: #ece9f4; color: var(--ink-secondary); border-color: #c9c6d0; }
+    .gcell.link { border-style: dashed; }
+</style>
+<a href="{% url 'ws_compliance' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Compliance</a>
+<div class="it-head">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+            <h2 class="page-title mb-0">{{ rule.name }}</h2>
+            <div class="small" style="color: var(--ink-secondary);">From rule: <a href="{% url 'session_template_detail' rule.pk %}">{{ rule.name }}</a> &middot; {{ rule.get_frequency_display }} &middot; {{ session.period_label }}{% if session.due_at %} &middot; due {{ session.due_at|date:'M j, Y' }}{% endif %}{% if session.owner %} &middot; {{ session.owner }}{% endif %}</div>
+            <div class="small" style="color: var(--ink-muted);">Each property: {{ rule.get_work_type_display }}{% if rule.process_template %} &middot; {{ rule.process_template.name }}{% endif %}</div>
+        </div>
+        <div class="text-end">
+            <span class="badge rounded-pill {% if session.status == 'submitted' %}text-bg-success{% else %}bg-light text-dark border{% endif %}" id="it-progress">{{ done }} of {{ total }} done</span>
+            <div class="mt-1">
+                <form method="post" class="d-inline">{% csrf_token %}
+                    {% if session.status == 'open' %}<input type="hidden" name="action" value="submit"><button class="btn btn-sm btn-outline-secondary" type="submit" {% if done != total %}onclick="return confirm('Some are still open. Close this item anyway?');"{% endif %}>Close item</button>
+                    {% else %}<input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" type="submit">Reopen</button>{% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="ws-pb mt-2" style="background:#d3e2d3"><i style="width: {{ pct }}%; background:#6f9a78"></i></div>
+</div>
+{% if rule.description %}<p class="small">{{ rule.description }}</p>{% endif %}
+{% include 'sessions/_where_it_is_done.html' with rule=rule %}
+
+{% if kind == 'process' and single and rows.0.run %}
+<div class="card mb-3"><div class="card-body">{% include 'processes/_run_card.html' with run=rows.0.run %}</div></div>
+{% elif not rows %}
+<div class="ws-empty">No properties on this item.</div>
+{% else %}
+{% if kind == 'process' and rows|length > 1 %}
+<div class="ws-sub"><a href="?view=list" class="{% if view == 'list' %}on{% endif %}">List</a><a href="?view=grid" class="{% if view == 'grid' %}on{% endif %}">Grid</a><span class="sp"></span>{% if view == 'grid' %}<span class="small text-muted mb-1">Click a box: tick, then N/A, then clear.</span>{% endif %}</div>
+{% endif %}
+
+{% if view == 'grid' and grid %}
+<div class="gridw"><table class="gridt">
+<thead><tr><th>Property</th>{% for key, label in grid.cols %}<th title="{{ label }}">{{ label|truncatechars:28 }}</th>{% endfor %}<th></th></tr></thead>
+<tbody>
+{% for r in grid.rows %}
+<tr data-line="{{ r.line.pk }}">
+  <td>{% if r.run %}<a href="{{ r.run_url }}" class="text-decoration-none">{{ r.line.label }}</a>{% else %}{{ r.line.label }}{% endif %}</td>
+  {% for c in r.cells %}
+  <td>{% if c.step and c.step.step_type == 'checkbox' %}<button type="button" class="gcell {{ c.state }}" data-cell data-step="{{ c.step.pk }}" data-state="{{ c.state }}" aria-label="{{ c.step.label }}: {{ c.state }}">{% if c.state == 'done' %}&#10003;{% elif c.state == 'na' %}n/a{% endif %}</button>{% elif c.step %}<a class="gcell link d-inline-block" href="{{ r.run_url }}" title="Open the property to do this step"></a>{% endif %}</td>
+  {% endfor %}
+  <td class="small text-muted" data-count>{{ r.done }}/{{ r.total }}</td>
+</tr>
+{% endfor %}
+</tbody></table></div>
+{% else %}
+<div class="card" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+{% for r in rows %}
+<div class="it-row{% if r.closed %} closed{% endif %}" data-line="{{ r.line.pk }}">
+  {% if kind == 'reminder' %}
+    <button type="button" class="it-box{% if r.is_done %} done{% endif %}" data-box data-line="{{ r.line.pk }}" aria-label="Done: {{ r.line.label }}" {% if r.closed %}disabled{% endif %}>{% if r.is_done %}&#10003;{% endif %}</button>
+  {% else %}<span></span>{% endif %}
+  <div class="nm">{% if r.run and r.run_url %}<a href="{{ r.run_url }}" class="text-decoration-none">{{ r.line.label }}</a>{% else %}{{ r.line.label }}{% endif %}
+    <small>{% if r.closed %}{{ r.line.get_state_display }}: {{ r.line.skip_reason }}{% elif r.in_project %}In a project{% if r.who %} with {{ r.who }}{% endif %}: step {{ r.done }} of {{ r.total }}{% elif kind == 'process' and r.run %}{{ r.done }} of {{ r.total }} steps{% elif kind == 'project' and r.is_done %}Project finished{% endif %}</small></div>
+  <div>{% if kind == 'process' and r.run %}<div class="ws-pb"><i style="width: {{ r.pct }}%; background:#6f9a78"></i></div>{% elif r.in_project %}<div class="ws-pb"><i style="width: {{ r.pct }}%"></i></div>{% endif %}</div>
+  <div class="d-flex gap-2 align-items-center justify-content-end">
+    {% if kind == 'project' and r.line.state == 'pending' %}
+      <details class="text-end"><summary class="btn btn-sm btn-dark" style="list-style:none;">Start project</summary>
+        <form method="post" class="d-flex gap-2 mt-2 p-2 border rounded bg-white position-absolute" style="z-index:5; right: 1rem;">{% csrf_token %}<input type="hidden" name="action" value="start_project"><input type="hidden" name="line_id" value="{{ r.line.pk }}">
+          <select name="assignee" class="form-select form-select-sm" style="width: 11rem;" aria-label="Assign it to">{% for sp in staff_choices %}<option value="{{ sp.pk }}" {% if session.owner_id == sp.pk %}selected{% endif %}>{{ sp }}</option>{% endfor %}</select>
+          <button class="btn btn-sm btn-dark" type="submit">Start</button></form></details>
+    {% elif r.in_project and r.run %}<a href="{{ r.run_url }}" class="btn btn-sm btn-outline-secondary">Open project</a>
+    {% elif kind == 'process' and r.run and not r.closed %}<a href="{{ r.run_url }}" class="btn btn-sm btn-outline-secondary">Open</a>{% endif %}
+    {% if r.line.state == 'pending' %}<button type="button" class="btn btn-link btn-sm text-muted p-0" data-notneeded data-line="{{ r.line.pk }}">Not needed</button>{% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+<div class="card my-3"><div class="card-body">
+    <h6 class="card-title">Notes for this item</h6>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="notes">
+        <textarea name="notes" rows="3" class="form-control form-control-sm mb-2" maxlength="4000" placeholder="Anything that applies to every property">{{ session.notes }}</textarea>
+        <button class="btn btn-sm btn-outline-secondary" type="submit">Save notes</button>
+    </form>
+</div></div>
+
+<form id="it-csrf" class="d-none">{% csrf_token %}</form>
+<script>
+(function () {
+    var token = document.querySelector('#it-csrf [name=csrfmiddlewaretoken]').value;
+    function post(data) {
+        var fd = new FormData(); Object.keys(data).forEach(function (k) { fd.append(k, data[k]); }); fd.append('csrfmiddlewaretoken', token);
+        return fetch(location.pathname, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } }).then(function (r) { return r.json(); });
+    }
+    function progress(d) { var el = document.getElementById('it-progress'); if (el && d.total !== undefined) el.textContent = d.done + ' of ' + d.total + ' done'; }
+    document.querySelectorAll('[data-cell]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var state = b.dataset.state, to = state === 'pending' ? 'done' : (state === 'done' ? 'na' : 'clear');
+            post({ action: 'cell', step_id: b.dataset.step, to: to }).then(function (d) {
+                if (!d.success) { alert(d.error || 'Could not save that.'); return; }
+                var now = to === 'clear' ? 'pending' : to;
+                b.dataset.state = now; b.className = 'gcell ' + (now === 'pending' ? '' : now); b.textContent = now === 'done' ? '✓' : (now === 'na' ? 'n/a' : '');
+                var count = b.closest('tr').querySelector('[data-count]'); if (count) count.textContent = d.line_done + '/' + d.line_total;
+                progress(d);
+                if (d.item_status === 'submitted' || d.line_state === 'done') location.reload();
+            });
+        });
+    });
+    document.querySelectorAll('[data-box]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var to = b.classList.contains('done') ? 'pending' : 'done';
+            post({ action: 'set_line_state', line_id: b.dataset.line, state: to }).then(function (d) {
+                if (!d.success) { alert(d.error || 'Could not save that.'); return; }
+                b.classList.toggle('done', to === 'done'); b.innerHTML = to === 'done' ? '&#10003;' : '';
+                progress(d);
+                if (d.done === d.total) location.reload();
+            });
+        });
+    });
+    document.querySelectorAll('[data-notneeded]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var why = prompt('Why is this not needed for this property?');
+            if (!why || !why.trim()) return;
+            post({ action: 'set_line_state', line_id: b.dataset.line, state: 'not_applicable', skip_reason: why.trim() }).then(function (d) {
+                if (!d.success) { alert(d.error || 'Could not save that.'); return; }
+                location.reload();
+            });
+        });
+    });
+    if (window.lucide) lucide.createIcons();
+})();
+</script>
+{% endblock %}

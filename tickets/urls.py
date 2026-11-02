@@ -42,7 +42,6 @@ urlpatterns = [
     path('tickets/<int:pk>/status/', views.ticket_set_status, name='ticket_set_status'),
     path('tickets/<int:pk>/status/note/', views.ticket_add_status_note, name='ticket_add_status_note'),
     path('tickets/<int:pk>/close-no-followup/', views.ticket_close_no_followup, name='ticket_close_no_followup'),
-    path('tickets/checklist/<int:pk>/toggle/', views.ticket_checklist_toggle, name='ticket_checklist_toggle'),
     path('tickets/<int:pk>/documents/upload/', views.ticket_document_upload, name='ticket_document_upload'),
     path('tickets/documents/<int:pk>/delete/', views.ticket_document_delete, name='ticket_document_delete'),
     path('tickets/<int:pk>/quick-edit/', views.ticket_quick_edit, name='ticket_quick_edit'),

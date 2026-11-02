@@ -1,0 +1,22 @@
+{# Opens a filter's own layer of bubbles and back again; the custom date field. Needs the box to have id="tf-box". #}
+<script>
+(function () {
+    var box = document.getElementById('tf-box');
+    function show(name) {
+        box.querySelectorAll('[data-tf-layer]').forEach(function (layer) { layer.hidden = layer.dataset.tfLayer !== name; });
+    }
+    box.querySelectorAll('[data-tf-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () { show(btn.dataset.tfOpen); });
+    });
+    var custom = box.querySelector('[data-due-custom-input]');
+    if (custom) {
+        custom.addEventListener('change', function () {
+            if (!custom.value) return;
+            var params = new URLSearchParams(window.location.search);
+            params.set('due', 'custom');
+            params.set('due_on', custom.value);
+            window.location.search = params.toString();
+        });
+    }
+})();
+</script>

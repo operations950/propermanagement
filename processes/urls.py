@@ -12,6 +12,11 @@ urlpatterns = [
     path('steps/<int:step_pk>/delete/', views.process_template_step_delete, name='process_template_step_delete'),
     path('steps/<int:step_pk>/move/', views.process_template_step_move, name='process_template_step_move'),
 
+    path('templates/<int:template_pk>/links/add/', views.process_template_link_add, name='process_template_link_add'),
+    path('links/<int:link_pk>/delete/', views.process_template_link_delete, name='process_template_link_delete'),
+    path('templates/<int:template_pk>/documents/add/', views.process_template_attachment_add, name='process_template_attachment_add'),
+    path('documents/<int:attachment_pk>/delete/', views.process_template_attachment_delete, name='process_template_attachment_delete'),
+
     path('runs/attach/', views.process_run_attach, name='process_run_attach'),
     path('runs/<int:run_pk>/external-link/', views.process_run_external_link_create, name='process_run_external_link_create'),
     path('run-steps/<int:step_pk>/update/', views.process_run_step_update, name='process_run_step_update'),

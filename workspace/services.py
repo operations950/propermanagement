@@ -17,7 +17,7 @@ NOW_DAYS = 15                        # a ticket due further out than this is a "
 HORIZONS = {'today': 0, 'week': 6, 'month': 30}
 HORIZON_LABELS = {'today': 'Today', 'week': 'This week', 'month': 'This month'}
 KIND_ORDER = [('ticket', 'Tickets'), ('compliance', 'Compliance'), ('project', 'Projects'), ('visit', 'On-site visits')]
-FREQ_ORDER = [Frequency.DAILY, Frequency.WEEKLY, Frequency.BIWEEKLY, Frequency.MONTHLY, Frequency.MONTHLY_WORKDAY, Frequency.QUARTERLY, Frequency.YEARLY]
+FREQ_ORDER = [Frequency.YEARLY, Frequency.QUARTERLY, Frequency.MONTHLY, Frequency.MONTHLY_WORKDAY, Frequency.BIWEEKLY, Frequency.WEEKLY, Frequency.DAILY, Frequency.ONCE]
 
 
 def open_ticket_statuses():
@@ -45,10 +45,15 @@ def _local_date(dt):
     return timezone.localtime(dt).date() if dt else None
 
 
+def promoted_ticket_ids():
+    """Tickets that have become a running project. They leave the ticket lists (they live under Projects now); a ticket that only has a process attached stays where it is."""
+    return ProcessRun.objects.filter(status=ProcessRun.Status.ACTIVE, process_template__kind=ProcessTemplate.Kind.PROJECT, ticket__isnull=False).values('ticket_id')
+
+
 def ticket_rows(staff, end, today, everyone):
     note = TicketStatusNote.objects.filter(ticket=OuterRef('pk')).order_by('-created_at')
     qs = (Ticket.objects.filter(status__in=open_ticket_statuses())
-          .exclude(process_runs__status=ProcessRun.Status.ACTIVE)
+          .exclude(pk__in=promoted_ticket_ids())
           .filter(Q(due_date__isnull=True) | Q(due_date__date__lte=end))
           .select_related('property', 'assigned_staff__user')
           .annotate(latest_note=Subquery(note.values('body')[:1]),
@@ -81,8 +86,8 @@ def session_rows(staff, end, today, everyone):
 
 def project_rows(staff, end, today, everyone):
     staff_by_id = {sp.pk: sp for sp in StaffProfile.objects.select_related('user')}
-    runs = (ProcessRun.objects.filter(status=ProcessRun.Status.ACTIVE)
-            .select_related('process_template', 'ticket__property', 'ticket__assigned_staff__user', 'property', 'contact')
+    runs = (ProcessRun.objects.filter(status=ProcessRun.Status.ACTIVE, process_template__kind=ProcessTemplate.Kind.PROJECT)
+            .select_related('process_template', 'ticket__property', 'ticket__assigned_staff__user', 'property', 'contact', 'session_line__session__template')
             .prefetch_related('steps'))
     rows = []
     for run in runs:
@@ -90,7 +95,7 @@ def project_rows(staff, end, today, everyone):
         cur = next((s for s in steps if not s.is_complete), None)
         if not cur:
             continue
-        who_id = cur.assignee_staff_id or (run.ticket.assigned_staff_id if run.ticket_id else None)
+        who_id = run.assigned_to_id or cur.assignee_staff_id or (run.ticket.assigned_staff_id if run.ticket_id else None)
         if not everyone and who_id != staff.pk:
             continue
         due = None
@@ -101,7 +106,7 @@ def project_rows(staff, end, today, everyone):
         if due and due > end:
             continue
         done = sum(1 for s in steps if s.is_complete)
-        rows.append({'kind': 'project', 'title': run.ticket.title if run.ticket_id else run.process_template.name,
+        rows.append({'kind': 'project', 'title': run.ticket.title if run.ticket_id else (f'{run.session_line.session.template.name}' if run.session_line_id else run.process_template.name),
                      'where': (run.ticket.property.name if run.ticket_id and run.ticket.property_id else run.property.name if run.property_id else run.contact.name if run.contact_id else ''),
                      'note': f'Step {done + 1} of {len(steps)}: {cur.label}', 'due': due_label(due, today) if due else '', 'late': bool(due and due < today),
                      'sort': due or today, 'who': _person(staff_by_id.get(who_id)), 'url': run_url(run)})
@@ -109,11 +114,8 @@ def project_rows(staff, end, today, everyone):
 
 
 def run_url(run):
-    if run.ticket_id:
-        return reverse('ticket_detail', args=[run.ticket_id])
-    if run.property_id:
-        return reverse('property_detail', args=[run.property_id])
-    return reverse('contact_edit', args=[run.contact_id])
+    """Every run (project or process) opens on its own screen, which links back to the ticket or compliance item it belongs to."""
+    return reverse('ws_run_detail', args=[run.pk])
 
 
 def visit_rows(staff, end, today, everyone):
@@ -160,57 +162,159 @@ def rule_sentence(t):
     return f'{t.name}: {freq}, {due}, {scope}, owned by {_person(t.owner)}'
 
 
+COMPLIANCE_PER_PAGE = 50
+# Column key -> label, in the order the table draws them: the same five columns as the Tickets list (how often takes the place of priority).
+COMPLIANCE_COLUMNS = [('how', 'How often'), ('property', 'Property'), ('item', 'Item'), ('due', 'Due'), ('assigned', 'Assigned to')]
+COMPLIANCE_STATUS = [('open', 'Open items'), ('done', 'Done'), ('all', 'All')]
+RULE_COLUMNS = [('how', 'How often'), ('where', 'Applies to'), ('item', 'Rule'), ('next', 'Next opens'), ('owner', 'Owner')]
+
+
+def sort_columns(columns, sort_param):
+    """The header row of a sortable table: each column's own click-to-sort value (toggles when it is already the sort), the same way the Tickets list builds it."""
+    key, is_desc = (sort_param or '').lstrip('-'), (sort_param or '').startswith('-')
+    out = []
+    for k, label in columns:
+        active = key == k
+        out.append({'key': k, 'label': label, 'next_sort': f'-{k}' if (active and not is_desc) else k, 'is_active': active, 'is_desc': active and is_desc})
+    return out
+
+
+def _property_text(session):
+    names = []
+    for line in session.lines.all():
+        if line.property_id and line.property.name not in names:
+            names.append(line.property.name)
+    if not names:
+        return 'General'
+    return names[0] if len(names) == 1 else f'{len(names)} properties'
+
+
+def _due_filter(qs, field, params, today):
+    """The Tickets list's due-date bubbles, applied to any date field."""
+    from tickets.views import DUE_WINDOWS
+    due = params.get('due')
+    if due == 'overdue':
+        return qs.filter(**{f'{field}__lt': today})
+    if due == 'today':
+        return qs.filter(**{field: today})
+    if due == 'tomorrow':
+        return qs.filter(**{field: today + timedelta(days=1)})
+    if due in DUE_WINDOWS:
+        return qs.filter(**{f'{field}__gte': today, f'{field}__lte': today + timedelta(days=DUE_WINDOWS[due])})
+    if due == 'none':
+        return qs.filter(**{f'{field}__isnull': True})
+    if due == 'custom':
+        from django.utils.dateparse import parse_date
+        d = parse_date(params.get('due_on') or '')
+        return qs.filter(**{field: d}) if d else qs
+    return qs
+
+
+def _freq_rank(prefix=''):
+    from django.db.models import Case, IntegerField, When
+    return Case(*[When(**{f'{prefix}frequency': f, 'then': i}) for i, f in enumerate(FREQ_ORDER)], default=len(FREQ_ORDER), output_field=IntegerField())
+
+
 def compliance_items(params):
+    """The open (or done) compliance items, filtered and sorted from the query string the same way the Tickets list is. Returns (queryset, the selected filters)."""
+    from django.db.models import F
+    from worksessions.models import SessionLine
     today = timezone.localdate()
-    qs = (Session.objects.filter(status=Session.Status.OPEN).select_related('template', 'owner__user').prefetch_related('lines__property'))
+    status = params.get('status') if params.get('status') in ('open', 'done', 'all') else 'open'
+    qs = Session.objects.select_related('template', 'owner__user').prefetch_related('lines__property')
+    if status != 'all':
+        qs = qs.filter(status=Session.Status.OPEN if status == 'open' else Session.Status.SUBMITTED)
+    freq = params.get('frequency') if params.get('frequency') in Frequency.values else ''
+    if freq:
+        qs = qs.filter(template__frequency=freq)
+    owner = params.get('owner') or ''
+    if owner == 'none':
+        qs = qs.filter(owner__isnull=True)
+    elif owner.isdigit():
+        qs = qs.filter(owner_id=owner)
+    prop = Property.objects.filter(pk=params['property']).first() if (params.get('property') or '').isdigit() else None
+    if prop:
+        qs = qs.filter(pk__in=SessionLine.objects.filter(property_id=prop.pk).values('session_id'))
     q = (params.get('q') or '').strip()
     if q:
-        qs = qs.filter(Q(template__name__icontains=q) | Q(period_label__icontains=q))
-    if params.get('owner'):
-        qs = qs.filter(owner_id=params['owner'])
-    if params.get('frequency'):
-        qs = qs.filter(template__frequency=params['frequency'])
-    if params.get('property'):
-        qs = qs.filter(lines__property_id=params['property']).distinct()
-    if params.get('due') == 'overdue':
-        qs = qs.filter(due_at__lt=today)
-    elif params.get('due') == 'week':
-        qs = qs.filter(due_at__lte=today + timedelta(days=6))
-    groups = []
+        qs = qs.filter(Q(template__name__icontains=q) | Q(period_label__icontains=q) | Q(pk__in=SessionLine.objects.filter(property__name__icontains=q).values('session_id')))
+    qs = _due_filter(qs, 'due_at', params, today)
+    first_property = Subquery(SessionLine.objects.filter(session=OuterRef('pk')).order_by('display_order', 'pk').values('property__name')[:1])
+    qs = qs.annotate(freq_rank=_freq_rank('template__'), first_property=first_property)
+    sort = params.get('sort') or ''
+    key, desc = sort.lstrip('-'), sort.startswith('-')
+    fields = {'how': 'freq_rank', 'property': 'first_property', 'item': 'template__name', 'due': 'due_at', 'assigned': 'owner__user__first_name'}
+    if key in fields:
+        f = F(fields[key])
+        qs = qs.order_by(f.desc(nulls_last=True) if desc else f.asc(nulls_last=True), 'template__name')
+    else:
+        qs = qs.order_by(F('due_at').asc(nulls_last=True), 'template__name')
+    return qs, {'status': status, 'frequency': freq, 'owner': owner, 'property': prop, 'q': q, 'due': params.get('due') or '', 'due_on': params.get('due_on') or ''}
+
+
+def compliance_row(s, today=None):
+    today = today or timezone.localdate()
+    done, total = s.progress()
+    return {'s': s, 'how': s.template.get_frequency_display(), 'where': _property_text(s), 'title': s.template.name, 'period': s.period_label,
+            'progress': f'{done} of {total} done' if total else '', 'due': s.due_at, 'late': bool(s.status == Session.Status.OPEN and s.due_at and s.due_at < today),
+            'who': _person(s.owner) if s.owner_id else '', 'done': s.status == Session.Status.SUBMITTED, 'url': reverse('session_detail', args=[s.pk])}
+
+
+def rule_blocks():
+    """One block per frequency for the Rules landing screen: how many rules are on, how many are off, and the soonest next opening."""
+    from django.db.models import Min
+    rules = SessionTemplate.objects.values('frequency').annotate(on=Count('pk', filter=Q(is_active=True)), off=Count('pk', filter=Q(is_active=False)), nxt=Min('next_open_date', filter=Q(is_active=True)))
+    by = {r['frequency']: r for r in rules}
+    out = []
     for f in FREQ_ORDER:
-        items = []
-        for s in qs.filter(template__frequency=f).order_by('due_at'):
-            done, total = s.progress()
-            items.append({'title': s.template.name, 'period': s.period_label, 'owner': _person(s.owner), 'done': done, 'total': total,
-                          'due': due_label(s.due_at, today) if s.due_at else '', 'late': bool(s.due_at and s.due_at < today), 'url': reverse('session_detail', args=[s.pk])})
-        if items:
-            groups.append({'label': Frequency(f).label, 'items': items})
-    return groups
+        r = by.get(f, {})
+        out.append({'value': f, 'label': Frequency(f).label, 'on': r.get('on', 0), 'off': r.get('off', 0), 'next': r.get('nxt')})
+    return out
+
+
+def rule_scope_text(t):
+    if t.line_source == SessionTemplate.LineSource.QUERY:
+        types = ', '.join(dict(Property.Type.choices).get(x, x) for x in (t.property_types or []))
+        return f'All {types.lower()}' if types else 'Every matching property'
+    n = len(t.static_lines.all())
+    return f'{n} fixed line{"s" if n != 1 else ""}'
 
 
 def compliance_rules(params):
-    qs = SessionTemplate.objects.select_related('owner__user')
-    if params.get('owner'):
-        qs = qs.filter(owner_id=params['owner'])
-    if params.get('frequency'):
-        qs = qs.filter(frequency=params['frequency'])
+    """The rules of one frequency, for the Rules list. Switched-off rules only show when asked for (state=off or all)."""
+    from django.db.models import F
+    freq = params.get('frequency') if params.get('frequency') in Frequency.values else ''
+    state = params.get('state') if params.get('state') in ('on', 'off', 'all') else 'on'
+    qs = SessionTemplate.objects.select_related('owner__user').prefetch_related('static_lines')
+    if freq:
+        qs = qs.filter(frequency=freq)
+    if state != 'all':
+        qs = qs.filter(is_active=(state == 'on'))
+    owner = params.get('owner') or ''
+    if owner == 'none':
+        qs = qs.filter(owner__isnull=True)
+    elif owner.isdigit():
+        qs = qs.filter(owner_id=owner)
     q = (params.get('q') or '').strip()
     if q:
         qs = qs.filter(name__icontains=q)
-    groups = []
-    for f in FREQ_ORDER:
-        rules = [{'sentence': rule_sentence(t), 'next': t.next_open_date, 'active': t.is_active, 'url': reverse('session_template_detail', args=[t.pk])} for t in qs.filter(frequency=f).order_by('name')]
-        if rules:
-            groups.append({'label': Frequency(f).label, 'rules': rules})
-    return groups
+    sort = params.get('sort') or ''
+    key, desc = sort.lstrip('-'), sort.startswith('-')
+    fields = {'how': 'frequency', 'where': 'property_types', 'item': 'name', 'next': 'next_open_date', 'owner': 'owner__user__first_name'}
+    order = F(fields.get(key, 'name'))
+    qs = qs.order_by(order.desc(nulls_last=True) if desc else order.asc(nulls_last=True), 'name')
+    rows = [{'t': t, 'how': t.get_frequency_display(), 'where': rule_scope_text(t), 'who': _person(t.owner) if t.owner_id else '', 'next': t.next_open_date, 'active': t.is_active,
+             'url': reverse('session_template_detail', args=[t.pk])} for t in qs]
+    return rows, {'frequency': freq, 'state': state, 'owner': owner, 'q': q}
 
 
 # ---- Projects: process runs and templates ----
 def project_runs(params):
-    kind = 'checklist' if params.get('kind') == 'checklist' else 'project'
+    """The running projects, and only projects: a ticket or compliance line that just has a process attached is not listed here."""
+    kind = 'project'
     today = timezone.localdate()
     qs = (ProcessRun.objects.filter(status=ProcessRun.Status.ACTIVE, process_template__kind=kind)
-          .select_related('process_template', 'ticket__property', 'ticket__assigned_staff__user', 'property', 'contact').prefetch_related('steps'))
+          .select_related('process_template', 'ticket__property', 'ticket__assigned_staff__user', 'property', 'contact', 'assigned_to__user', 'session_line__session__template').prefetch_related('steps'))
     q = (params.get('q') or '').strip()
     if q:
         qs = qs.filter(Q(process_template__name__icontains=q) | Q(ticket__title__icontains=q) | Q(property__name__icontains=q) | Q(ticket__property__name__icontains=q))
@@ -222,7 +326,8 @@ def project_runs(params):
         done = sum(1 for s in steps if s.is_complete)
         cur = next((s for s in steps if not s.is_complete), None)
         due = _local_date(run.ticket.due_date) if run.ticket_id and run.ticket.due_date else None
-        rows.append({'title': run.ticket.title if run.ticket_id else run.process_template.name, 'template': run.process_template.name,
+        rows.append({'origin': run.origin_text(), 'who': _person(run.assigned_to) if run.assigned_to_id else '',
+                     'title': run.ticket.title if run.ticket_id else (run.session_line.session.template.name if run.session_line_id else run.process_template.name), 'template': run.process_template.name,
                      'where': (run.ticket.property.name if run.ticket_id and run.ticket.property_id else run.property.name if run.property_id else run.contact.name if run.contact_id else ''),
                      'done': done, 'total': len(steps), 'pct': int(100 * done / len(steps)) if steps else 0, 'next': cur.label if cur else 'All steps done',
                      'due': due_label(due, today) if due else '', 'late': bool(due and due < today), 'from_ticket': run.ticket_id is not None, 'url': run_url(run)})
@@ -230,12 +335,12 @@ def project_runs(params):
 
 
 def project_templates(params):
-    kind = 'checklist' if params.get('kind') == 'checklist' else 'project'
-    out = []
-    for t in ProcessTemplate.objects.filter(kind=kind).prefetch_related('steps', 'runs'):
+    """Both kinds of template, in two groups: (projects, processes)."""
+    groups = {ProcessTemplate.Kind.PROJECT: [], ProcessTemplate.Kind.CHECKLIST: []}
+    for t in ProcessTemplate.objects.prefetch_related('steps', 'runs'):
         runs = list(t.runs.all())
-        out.append({'t': t, 'steps': t.steps.count(), 'used': len(runs), 'active': sum(1 for r in runs if r.status == ProcessRun.Status.ACTIVE)})
-    return kind, out
+        groups.setdefault(t.kind, []).append({'t': t, 'steps': len(t.steps.all()), 'used': len(runs), 'active': sum(1 for r in runs if r.status == ProcessRun.Status.ACTIVE)})
+    return groups[ProcessTemplate.Kind.PROJECT], groups[ProcessTemplate.Kind.CHECKLIST]
 
 
 # ---- Lines of business ----
@@ -301,3 +406,42 @@ def request_state(session, want_prompt):
         nxt = next((r for r in pending if r.pk not in skipped), None)
         card = request_card(nxt) if nxt else None
     return len(pending), card
+
+
+# ---- A compliance item, type by type ----
+def item_context(session, view=''):
+    """What the new-layout item screen draws for one compliance item: its rule, its lines (with the process or project each one carries), and the grid for a process spread over several properties."""
+    from worksessions.models import SessionLine
+    from processes.models import ProcessTemplate
+
+    rule = session.template
+    kind = rule.work_type
+    lines = list(session.lines.select_related('property').prefetch_related('process_runs__steps', 'process_runs__process_template'))
+    rows = []
+    for line in lines:
+        runs = [r for r in line.process_runs.all() if r.status != ProcessRun.Status.CANCELLED]
+        run = runs[0] if runs else None
+        prog = run.progress() if run else None
+        rows.append({'line': line, 'run': run, 'done': prog[0] if prog else 0, 'total': prog[1] if prog else 0, 'pct': int(100 * prog[0] / prog[1]) if prog and prog[1] else 0,
+                     'run_url': reverse('ws_run_detail', args=[run.pk]) if run else '', 'who': _person(run.assigned_to) if run and run.assigned_to_id else '',
+                     'is_done': line.state == SessionLine.State.DONE, 'in_project': line.state == SessionLine.State.IN_PROJECT,
+                     'closed': line.state in (SessionLine.State.SKIPPED, SessionLine.State.NOT_APPLICABLE)})
+    single = len(rows) == 1 and rows[0]['line'].property_id is None
+    grid = None
+    view = view if view in ('list', 'grid') else ('grid' if kind == 'process' and len(rows) > 1 else 'list')
+    if kind == 'process' and rows and view == 'grid':
+        first = next((r['run'] for r in rows if r['run']), None)
+        cols = [(s.step_key, s.label) for s in first.steps.all()] if first else []
+        grid = {'cols': cols, 'rows': []}
+        for r in rows:
+            by_key = {s.step_key: s for s in r['run'].steps.all()} if r['run'] else {}
+            cells = []
+            for key, _label in cols:
+                s = by_key.get(key)
+                state = 'none' if s is None else ('na' if s.is_complete and (s.response or {}).get('not_applicable') else ('done' if s.is_complete else 'pending'))
+                cells.append({'step': s, 'state': state})
+            grid['rows'].append({**r, 'cells': cells})
+    done, total = session.progress()
+    return {'rule': rule, 'kind': kind, 'rows': rows, 'single': single, 'view': view, 'grid': grid, 'done': done, 'total': total, 'pct': int(100 * done / total) if total else 0,
+            'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name'),
+            'project_template': rule.process_template if kind == 'project' else None}

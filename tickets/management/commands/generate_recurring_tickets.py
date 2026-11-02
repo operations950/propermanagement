@@ -12,7 +12,6 @@ from ...models import (
     TaskPackageTemplate,
     TemplateOccurrence,
     Ticket,
-    TicketChecklistItem,
     TicketTemplate,
 )
 from ...services import applicability
@@ -92,7 +91,7 @@ def _initial_status(scheduled_for, today, lead_time_days, assigned_staff_id, ste
     return Ticket.Status.ASSIGNED if assigned_staff_id else Ticket.Status.OPEN
 
 
-def _generate_occurrence(template, properties, scheduled_for, today, checklist_specs, created_count):
+def _generate_occurrence(template, properties, scheduled_for, today, created_count):
     occurrence, _ = TemplateOccurrence.objects.get_or_create(template=template, scheduled_for=scheduled_for)
     due = timezone.make_aware(datetime.combine(scheduled_for, datetime.min.time()))
 
@@ -121,14 +120,6 @@ def _generate_occurrence(template, properties, scheduled_for, today, checklist_s
         )
         if created:
             created_count[0] += 1
-            if checklist_specs:
-                TicketChecklistItem.objects.bulk_create([
-                    TicketChecklistItem(
-                        ticket=ticket, text=spec['text'], sequence_order=spec['sequence_order'],
-                        is_required=spec['is_required'],
-                    )
-                    for spec in checklist_specs
-                ])
 
 
 def _run_cursor_group(template, properties, frequency, workday_of_month, cursor_holder, today, created_count):
@@ -136,10 +127,6 @@ def _run_cursor_group(template, properties, frequency, workday_of_month, cursor_
     properties with no frequency override, or a single override's own
     next_run_date for a property with one) forward through every occurrence
     up to today, generating tickets for `properties` at each stop."""
-    checklist_specs = [
-        {'text': item.text, 'sequence_order': item.sequence_order, 'is_required': item.is_required}
-        for item in template.checklist_items.all()
-    ]
     cursor = cursor_holder.next_run_date
 
     if template.skip_missed:
@@ -148,7 +135,7 @@ def _run_cursor_group(template, properties, frequency, workday_of_month, cursor_
 
     lead = timedelta(days=template.lead_time_days)
     while cursor - lead <= today:
-        _generate_occurrence(template, properties, cursor, today, checklist_specs, created_count)
+        _generate_occurrence(template, properties, cursor, today, created_count)
         cursor = _advance(cursor, frequency, workday_of_month)
 
     cursor_holder.next_run_date = cursor
@@ -167,7 +154,7 @@ class Command(BaseCommand):
         today = timezone.localdate()
         created_count = [0]
 
-        for template in TicketTemplate.objects.filter(is_active=True).prefetch_related('checklist_items'):
+        for template in TicketTemplate.objects.filter(is_active=True):
             task_group = applicability.task_group_for_template(template)
             group_governs = bool(task_group and task_group.property_types)
             if template.target_type == TicketTemplate.TargetType.COMPANY and not group_governs:

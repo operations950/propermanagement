@@ -1,0 +1,8 @@
+{% comment %}Phone version of the Compliance items list: one stacked card per item, like the Tickets cards.{% endcomment %}
+{% for r in rows %}
+<a href="{{ r.url }}" class="card mb-2 text-decoration-none" style="color: inherit;"><div class="card-body py-2 px-3">
+    <div class="fw-medium">{{ r.title }}</div>
+    <div class="small text-muted">{{ r.how }} &middot; {{ r.where }}{% if r.period %} &middot; {{ r.period }}{% endif %}</div>
+    <div class="small {% if r.late %}text-danger fw-semibold{% endif %}">Due {{ r.due|date:'M j, Y'|default:'—' }}{% if r.progress %} &middot; {{ r.progress }}{% endif %}{% if r.who %} &middot; {{ r.who }}{% endif %}</div>
+</div></a>
+{% empty %}<div class="text-muted text-center py-4">Nothing here.</div>{% endfor %}

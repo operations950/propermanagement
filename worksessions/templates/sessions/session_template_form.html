@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
 {% load ticket_extras %}
-{% block title %}{% if template %}Edit recurring rule{% else %}New recurring rule{% endif %}{% endblock %}
+{% block title %}{% if template %}Edit {% if new_face %}compliance{% else %}recurring{% endif %} rule{% else %}New {% if new_face %}compliance{% else %}recurring{% endif %} rule{% endif %}{% endblock %}
 {% block content %}
 {% if template %}
 <a href="{% url 'session_template_detail' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ template.name }}</a>
 {% else %}
-<a href="{% url 'session_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Recurring Rules</a>
+<a href="{% if new_face %}{% url 'ws_compliance' %}?tab=rules{% else %}{% url 'session_template_list' %}{% endif %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {% if new_face %}Compliance rules{% else %}Recurring Rules{% endif %}</a>
 {% endif %}
-<h2 class="page-title mb-3">{% if template %}Edit recurring rule{% else %}New recurring rule{% endif %}</h2>
+<h2 class="page-title mb-3">{% if template %}Edit {% if new_face %}compliance{% else %}recurring{% endif %} rule{% else %}New {% if new_face %}compliance{% else %}recurring{% endif %} rule{% endif %}</h2>
 
 <div class="row g-3">
 <div class="col-lg-7">
@@ -116,18 +116,48 @@
             <label class="form-check-label" for="id_is_active">Active</label>
         </div>
 
-        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">Lines</h6>
+        <div {% if not new_face %}hidden{% endif %}>
+        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">What each property turns into</h6>
+        <div class="mb-3">
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="work_type" id="work-type-picker">
+                <input type="hidden" name="work_type" data-bubble-input value="{{ form.work_type.value|default:'reminder' }}" required>
+                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a type"></div>
+                <div class="bubble-pool" data-bubble-pool>
+                    {% for value, label in form.fields.work_type.choices %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>{% endfor %}
+                </div>
+            </div>
+            <div class="form-text">A reminder is a box to tick for each property. A process gives each property its own checklist, done in one sitting. A project is started from a property when the work will take days or weeks.</div>
+        </div>
+        <div id="process-template-wrap" class="mb-4" hidden>
+            <label class="form-label fw-medium" for="id_process_template" id="process-template-label">Template</label>
+            <select name="process_template" id="id_process_template" class="form-select {% if form.process_template.errors %}is-invalid{% endif %}">
+                <option value="">Choose…</option>
+                {% for t in process_templates %}<option value="{{ t.pk }}" data-kind="{{ t.kind }}" {% if form.process_template.value|stringformat:'s' == t.pk|stringformat:'s' %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+            </select>
+            {% if form.process_template.errors %}<div class="invalid-feedback d-block">{{ form.process_template.errors|join:', ' }}</div>{% endif %}
+        </div>
+
+        </div>
+        <h6 class="fw-bold small text-uppercase mb-3" style="color: var(--ink-muted); letter-spacing: 0.05em;">{% if new_face %}Which properties{% else %}Lines{% endif %}</h6>
         <div class="mb-4">
-            <label class="form-label fw-medium d-block">Line source</label>
+            <label class="form-label fw-medium d-block">{% if new_face %}Scope{% else %}Line source{% endif %}</label>
             <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="line_source" id="line-source-picker">
                 <input type="hidden" name="line_source" data-bubble-input value="{{ form.line_source.value|default:'static' }}" required>
                 <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a line source"></div>
                 <div class="bubble-pool" data-bubble-pool>
                     {% for value, label in form.fields.line_source.choices %}
-                        <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                        {% if new_face or value == 'static' or value == 'query' %}<button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>{% endif %}
                     {% endfor %}
                 </div>
             </div>
+        </div>
+        <div id="chosen-lines-wrap" class="mb-4" hidden>
+            <label class="form-label fw-medium" for="id_properties">Properties</label>
+            <select name="properties" id="id_properties" multiple size="8" class="form-select session-preview-input {% if form.properties.errors %}is-invalid{% endif %}">
+                {% for p in form.fields.properties.queryset %}<option value="{{ p.pk }}" {% if p.pk|stringformat:'s' in chosen_ids %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+            </select>
+            <div class="form-text">Hold Ctrl (or Cmd) to pick several.</div>
+            {% if form.properties.errors %}<div class="invalid-feedback d-block">{{ form.properties.errors|join:', ' }}</div>{% endif %}
         </div>
         <div id="static-lines-wrap" class="mb-4">
             <label class="form-label fw-medium" for="id_static_lines_text">Lines (one per line)</label>
@@ -159,7 +189,7 @@
             </div>
         </div>
 
-        <button class="btn btn-primary" type="submit">{% if template %}<i data-lucide="check" class="icon"></i> Save changes{% else %}<i data-lucide="plus" class="icon"></i> Create recurring rule{% endif %}</button>
+        <button class="btn btn-primary" type="submit">{% if template %}<i data-lucide="check" class="icon"></i> Save changes{% else %}<i data-lucide="plus" class="icon"></i> Create {% if new_face %}compliance{% else %}recurring{% endif %} rule{% endif %}</button>
     </div>
 </form>
 </div>
@@ -191,9 +221,24 @@
     function applyFrequency(value) {
         workdayWrap.hidden = (value !== 'monthly_workday');
     }
+    var chosenWrap = document.getElementById('chosen-lines-wrap');
+    var workTypePicker = document.getElementById('work-type-picker');
+    var templateWrap = document.getElementById('process-template-wrap');
     function applyLineSource(value) {
         staticWrap.hidden = (value !== 'static');
         queryWrap.hidden = (value !== 'query');
+        chosenWrap.hidden = (value !== 'chosen');
+    }
+    function applyWorkType(value) {
+        templateWrap.hidden = (value !== 'process' && value !== 'project');
+        var want = value === 'process' ? 'checklist' : 'project', sel = document.getElementById('id_process_template');
+        document.getElementById('process-template-label').textContent = value === 'process' ? 'Process template' : 'Project template';
+        Array.prototype.forEach.call(sel.options, function (o) { if (o.value) { var ok = o.dataset.kind === want; o.hidden = !ok; o.disabled = !ok; } });
+        if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) sel.value = '';
+    }
+    if (workTypePicker) {
+        workTypePicker.addEventListener('bubble:lock', function (e) { applyWorkType(e.detail.value); });
+        applyWorkType(workTypePicker.querySelector('[data-bubble-input]').value || 'reminder');
     }
     if (frequencyPicker) {
         frequencyPicker.addEventListener('bubble:lock', function (e) { applyFrequency(e.detail.value); runPreview(); });

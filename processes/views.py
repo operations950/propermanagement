@@ -12,12 +12,15 @@ from core.models import Contact, Property, StaffProfile
 from tickets.models import Ticket
 from vendorportal.models import AccessAttempt
 
-from .forms import ProcessAttachmentUploadForm, ProcessRunExternalAccessForm
+from .forms import ProcessAttachmentUploadForm, ProcessRunExternalAccessForm, ProcessTemplateAttachmentForm
+from .projects import copy_steps
 from .models import (
     ProcessRun,
     ProcessRunExternalAccess,
     ProcessRunStep,
     ProcessTemplate,
+    ProcessTemplateAttachment,
+    ProcessTemplateLink,
     ProcessTemplateStep,
     StepType,
 )
@@ -42,6 +45,8 @@ def _client_ip(request):
 
 
 def _run_redirect(run):
+    if run.session_line_id:
+        return redirect('ws_run_detail', pk=run.pk)
     if run.ticket_id:
         return redirect('ticket_detail', pk=run.ticket_id)
     if run.property_id:
@@ -89,7 +94,9 @@ def process_template_edit(request, pk):
     return render(request, 'processes/template_form.html', {
         'template': template,
         'steps': template.steps.all(),
-        'step_types': StepType.choices,
+        'step_types': [(StepType.CHECKBOX.value, StepType.CHECKBOX.label)] if template.kind == ProcessTemplate.Kind.CHECKLIST else StepType.choices,
+        'links': template.links.select_related('template_step'),
+        'documents': template.attachments.select_related('template_step'),
         'assignee_choices': ProcessTemplateStep._meta.get_field('assignee_role').choices,
     })
 
@@ -106,8 +113,8 @@ def process_template_step_add(request, template_pk):
     if request.method == 'POST':
         next_order = (template.steps.order_by('-sequence_order').values_list('sequence_order', flat=True).first() or 0) + 1
         step_type = request.POST.get('step_type', StepType.CHECKBOX)
-        if step_type not in StepType.values:
-            step_type = StepType.CHECKBOX
+        if step_type not in StepType.values or template.kind == ProcessTemplate.Kind.CHECKLIST:
+            step_type = StepType.CHECKBOX      # a process is plain checkbox steps; richer step types belong to projects
         ProcessTemplateStep.objects.create(
             process_template=template, sequence_order=next_order, step_type=step_type,
             label=request.POST.get('label', '').strip() or 'Untitled step',
@@ -142,6 +149,59 @@ def process_template_step_delete(request, step_pk):
     if request.method == 'POST':
         step.delete()
         messages.success(request, 'Step removed.')
+    return redirect('process_template_edit', pk=template_pk)
+
+
+def _step_of(template, raw):
+    return template.steps.filter(pk=raw).first() if str(raw or '').isdigit() else None
+
+
+@login_required
+def process_template_link_add(request, template_pk):
+    template = get_object_or_404(ProcessTemplate, pk=template_pk)
+    if request.method == 'POST':
+        url = (request.POST.get('url') or '').strip()
+        if not url.lower().startswith(('http://', 'https://')):
+            messages.error(request, 'Use a web address that starts with http:// or https://.')
+        else:
+            ProcessTemplateLink.objects.create(process_template=template, template_step=_step_of(template, request.POST.get('step')),
+                                               label=(request.POST.get('label') or '').strip()[:200], url=url[:500])
+            messages.success(request, 'Link added.')
+    return redirect('process_template_edit', pk=template.pk)
+
+
+@login_required
+def process_template_link_delete(request, link_pk):
+    link = get_object_or_404(ProcessTemplateLink, pk=link_pk)
+    template_pk = link.process_template_id
+    if request.method == 'POST':
+        link.delete()
+        messages.success(request, 'Link removed.')
+    return redirect('process_template_edit', pk=template_pk)
+
+
+@login_required
+def process_template_attachment_add(request, template_pk):
+    template = get_object_or_404(ProcessTemplate, pk=template_pk)
+    if request.method == 'POST':
+        form = ProcessTemplateAttachmentForm(request.POST, request.FILES)
+        if form.is_valid():
+            doc = form.save(commit=False)
+            doc.process_template, doc.template_step = template, _step_of(template, request.POST.get('step'))
+            doc.save()
+            messages.success(request, 'Document added.')
+        else:
+            messages.error(request, ' '.join(m for errs in form.errors.values() for m in errs))
+    return redirect('process_template_edit', pk=template.pk)
+
+
+@login_required
+def process_template_attachment_delete(request, attachment_pk):
+    doc = get_object_or_404(ProcessTemplateAttachment, pk=attachment_pk)
+    template_pk = doc.process_template_id
+    if request.method == 'POST':
+        doc.delete()
+        messages.success(request, 'Document removed.')
     return redirect('process_template_edit', pk=template_pk)
 
 
@@ -230,13 +290,7 @@ def process_run_attach(request):
     run = None
     for template in ProcessTemplate.objects.filter(pk__in=template_ids, is_active=True):
         run = ProcessRun.objects.create(process_template=template, created_by=request.user, **target_kwargs)
-        for step in template.steps.all():
-            ProcessRunStep.objects.create(
-                run=run, sequence_order=step.sequence_order, step_key=step.step_key, step_type=step.step_type,
-                label=step.label, help_text=step.help_text, config=step.config, is_required=step.is_required,
-                requires_upload=step.requires_upload, assignee_role=step.assignee_role,
-                assignee_staff=step.assignee_staff, deadline_days_after_start=step.deadline_days_after_start,
-            )
+        copy_steps(run, template)
         messages.success(request, f'Attached "{template.name}".')
     if run is None:
         # Same open-redirect guard as tickets/views.py::_safe_back_url —

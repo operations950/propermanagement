@@ -32,8 +32,8 @@ from processes.models import ProcessTemplate
 
 from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
 from .models import (
-    FollowUpLog, Priority, TaskGroup, TaskPackage, TaskPackageTemplate, TemplateChecklistItem, Ticket,
-    TicketAssignmentLog, TicketAttachment, TicketChecklistItem, TicketClosingNote, TicketContact, TicketStatusNote,
+    FollowUpLog, Priority, TaskGroup, TaskPackage, TaskPackageTemplate, Ticket,
+    TicketAssignmentLog, TicketAttachment, TicketClosingNote, TicketContact, TicketStatusNote,
     TicketTemplate,
     TicketPush, TicketTemplateDocument, TicketView,
 )
@@ -537,7 +537,6 @@ def department_dashboard(request, role):
         .select_related(
             'property', 'assigned_staff__user', 'assigned_contact', 'created_from_template', 'package_run__package',
         )
-        .prefetch_related('checklist_items')
     )
     updated_ticket_ids = _tickets_with_new_activity(qs, request.user)
 
@@ -900,6 +899,8 @@ def ticket_list(request):
     # param still shows everything, for anyone filtering by department/status
     # across both kinds at once.
     source = request.GET.get('source', '')
+    if source == 'recurring' and getattr(getattr(request.user, 'staff_profile', None), 'new_face', False):
+        return redirect('ws_compliance')      # scheduled work lives in Compliance on the new layout
     if source == 'reactive':
         qs = qs.exclude(source=Ticket.Source.RECURRING)
     elif source == 'recurring':
@@ -983,7 +984,8 @@ def ticket_list(request):
     profile = getattr(request.user, 'staff_profile', None)
     ws_horizon = ''
     if profile and profile.new_face and status == 'active' and source != 'recurring':
-        qs = qs.exclude(process_runs__status='active')
+        from workspace.services import promoted_ticket_ids
+        qs = qs.exclude(pk__in=promoted_ticket_ids())      # a ticket turned into a project lives under Projects; one with just a process attached stays here
         ws_horizon = request.GET.get('horizon') or ('' if due else 'now')
         cutoff = today + timedelta(days=WS_NOW_DAYS)
         if ws_horizon == 'later':
@@ -1493,9 +1495,11 @@ def ticket_detail(request, pk):
             for c in Contact.objects.all()
         ]),
         'followup_batches': _group_followups(ticket.followups.select_related('contact')[:30]),
-        'checklist_items': ticket.checklist_items.all(),
         'process_runs': ticket.process_runs.select_related('process_template').prefetch_related('steps__attachments'),
-        'attachable_process_templates': ProcessTemplate.objects.filter(is_active=True),
+        'attachable_process_templates': ProcessTemplate.objects.filter(is_active=True, **({'kind': ProcessTemplate.Kind.CHECKLIST} if getattr(getattr(request.user, 'staff_profile', None), 'new_face', False) else {})),
+        'project_templates': ProcessTemplate.objects.filter(is_active=True, kind=ProcessTemplate.Kind.PROJECT),
+        'project_runs': ticket.process_runs.filter(process_template__kind=ProcessTemplate.Kind.PROJECT).exclude(status='cancelled').select_related('process_template', 'assigned_to__user'),
+        'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name'),
         'process_upload_form': ProcessAttachmentUploadForm(),
         'package_siblings': package_siblings,
         'blocking_step_label': blocking_step_label,
@@ -1862,10 +1866,6 @@ def task_step_duplicate(request, step_pk):
     new_template.title = f'{original.title} (copy)'
     new_template.save()
     new_template.required_attributes.set(original.required_attributes.all())
-    for item in original.checklist_items.all():
-        TemplateChecklistItem.objects.create(
-            template=new_template, text=item.text, sequence_order=item.sequence_order, is_required=item.is_required,
-        )
     TaskPackageTemplate.objects.create(
         package=step.package, task_group=step.task_group, template=new_template,
         sequence_order=step.package.steps.count(),
@@ -2327,19 +2327,6 @@ def ticket_add_status_note(request, pk):
         elif is_ajax:
             return JsonResponse({'success': False, 'error': 'Write an update first.'})
     return redirect('ticket_detail', pk=ticket.pk)
-
-
-@login_required
-def ticket_checklist_toggle(request, pk):
-    """Toggles one TicketChecklistItem's checked state from the ticket
-    detail page's checklist card — self-submitting, onchange="this.form.submit()"."""
-    item = get_object_or_404(TicketChecklistItem, pk=pk)
-    if request.method == 'POST':
-        item.is_checked = not item.is_checked
-        item.checked_at = timezone.now() if item.is_checked else None
-        item.checked_by = request.user if item.is_checked else None
-        item.save(update_fields=['is_checked', 'checked_at', 'checked_by'])
-    return redirect('ticket_detail', pk=item.ticket_id)
 
 
 @login_required

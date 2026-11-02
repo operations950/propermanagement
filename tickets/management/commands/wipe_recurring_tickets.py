@@ -2,7 +2,7 @@
 recurring system, replaced by the sessions app (see the "Recurring work
 overhaul — sessions" build brief, Phase 6). Deletes every TicketTemplate,
 PropertyTemplateOverride, and TaskPackage row (which cascades TaskGroup,
-TaskPackageTemplate, PropertyPackage, TemplateOccurrence, TemplateChecklistItem,
+TaskPackageTemplate, PropertyPackage, TemplateOccurrence,
 TicketTemplateDocument along with them — all of it is rule configuration,
 none of it is a record of work done), plus every source='recurring' Ticket
 that never reached a real completion. Completed/verified recurring tickets

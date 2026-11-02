@@ -123,23 +123,6 @@ class TicketTemplate(models.Model):
         return f'{self.title} ({self.get_frequency_display()})'
 
 
-class TemplateChecklistItem(models.Model):
-    """A checklist item on a template's definition. Copied onto each
-    generated Ticket as a TicketChecklistItem — never referenced live — so
-    editing a template's checklist later never mutates an already-completed
-    historical instance."""
-    template = models.ForeignKey(TicketTemplate, on_delete=models.CASCADE, related_name='checklist_items')
-    text = models.CharField(max_length=300)
-    sequence_order = models.PositiveSmallIntegerField(default=0)
-    is_required = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ['sequence_order']
-
-    def __str__(self):
-        return self.text
-
-
 class TicketTemplateDocument(models.Model):
     """A staff-uploaded reference document for a recurring task rule (e.g.
     a vendor contract, a checklist PDF, instructions) — same shape as
@@ -397,7 +380,7 @@ class Ticket(models.Model):
         FAKE = 'fake', 'Simulated (dev)'
         RECURRING = 'recurring', 'Recurring template'
         ONSITE = 'onsite', 'On-site visit'
-        SESSION = 'session', 'Recurring session'
+        SESSION = 'session', 'Compliance item'
 
     title = models.CharField(max_length=200, help_text='A short, scannable headline — not a full sentence.')
     description = models.TextField(blank=True, help_text='One concise sentence. Full source context goes in raw_context.')
@@ -581,6 +564,10 @@ class Ticket(models.Model):
     def __str__(self):
         return self.title
 
+    def is_project(self):      # a plain method: `property` is a field name on this model, so @property cannot be used here
+        """True while this ticket has been turned into a running project (it then lives under Projects, not in the ticket lists)."""
+        return self.process_runs.filter(process_template__kind='project', status='active').exists()
+
     def assignee_label(self):
         if self.assigned_staff_id:
             label = str(self.assigned_staff)
@@ -596,15 +583,6 @@ class Ticket(models.Model):
     def clean(self):
         if self.assigned_staff_id and self.assigned_contact_id:
             raise ValidationError('A ticket can be assigned to staff OR a vendor contact, not both.')
-
-    def checklist_progress(self):
-        """(done, total), or None if this ticket has no checklist — reads
-        the (usually prefetched) checklist_items, no extra query when
-        called after a .prefetch_related('checklist_items')."""
-        items = list(self.checklist_items.all())
-        if not items:
-            return None
-        return sum(1 for i in items if i.is_checked), len(items)
 
     def recurrence_label(self):
         """How often this proactive task recurs, for display next to it on
@@ -682,27 +660,6 @@ class Ticket(models.Model):
 
         super().save(*args, **kwargs)
         self._loaded_status = self.status
-
-
-class TicketChecklistItem(models.Model):
-    """Copied from TemplateChecklistItem at generation time (see
-    generate_recurring_tickets) — a snapshot, not a live reference, so
-    editing the template later never touches an already-generated instance."""
-    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='checklist_items')
-    text = models.CharField(max_length=300)
-    sequence_order = models.PositiveSmallIntegerField(default=0)
-    is_required = models.BooleanField(default=True)
-    is_checked = models.BooleanField(default=False)
-    checked_at = models.DateTimeField(null=True, blank=True)
-    checked_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
-    )
-
-    class Meta:
-        ordering = ['sequence_order']
-
-    def __str__(self):
-        return self.text
 
 
 class TicketContact(models.Model):

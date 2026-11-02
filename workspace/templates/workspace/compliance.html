@@ -2,40 +2,94 @@
 {% block title %}Compliance{% endblock %}
 {% block content %}
 {% include 'workspace/_css.html' %}
+<style>
+    /* Compliance is the green screen: the Tickets look on a pale green ground. */
+    .ws-green { background: #eef4ee; border: 1px solid #d3e0d3; border-left: 4px solid #6f9a78; border-radius: 0.6rem; padding: 0.4rem 0.9rem 0.9rem; }
+    .ws-green .tf-box { background: #f8fbf8; border-color: #d3e0d3; }
+    .ws-green .card { background: #fbfdfb; border-color: #d3e0d3; }
+    .ws-green .table { --bs-table-bg: transparent; }
+    .ws-green .ws-sub { border-bottom-color: #cfdccf; }
+    .ws-blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); gap: 0.7rem; margin: 0.4rem 0 0.8rem; }
+    .ws-block { display: flex; flex-direction: column; justify-content: space-between; gap: 0.6rem; min-height: 6.5rem; padding: 0.85rem 1rem; border-radius: 0.7rem; background: #fbfdfb; border: 1px solid #d3e0d3; text-decoration: none; color: var(--ink-primary); }
+    .ws-block:hover { border-color: #6f9a78; color: var(--ink-primary); }
+    .ws-block b { font-family: var(--font-serif, Georgia, serif); font-weight: 400; font-size: 1.25rem; }
+    .ws-block small { color: var(--ink-muted); font-size: 0.78rem; display: block; }
+    .ws-block.new { background: #6f9a78; border-color: #6f9a78; color: #fff; grid-column: 1 / -1; min-height: 4.2rem; flex-direction: row; align-items: center; }
+    .ws-block.new small { color: rgba(255,255,255,.85); font-size: 0.85rem; }
+    .ws-block.new:hover { background: #5f8a68; color: #fff; }
+    .ws-block.empty { opacity: .6; }
+</style>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="calendar-check" class="icon-lg"></i> Compliance{% if tab == 'rules' and sel.frequency %} <span class="fs-6 text-muted">&middot; {{ sel.frequency_label }} rules</span>{% endif %}</h2>
+    <a href="{% url 'session_template_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New rule</a>
+</div>
+<div class="ws-green">
 <div class="ws-sub">
-<a href="?tab=items" class="{% if tab == 'items' %}on{% endif %}">Current items</a>
+<a href="?tab=items" class="{% if tab == 'items' %}on{% endif %}">Items</a>
 <a href="?tab=rules" class="{% if tab == 'rules' %}on{% endif %}">Rules</a>
-<span class="sp"></span>
-{% if tab == 'rules' %}<a href="{% url 'session_template_create' %}" class="btn btn-sm btn-dark mb-1" style="color:#fff;border-bottom:0;">+ Add rule</a>{% endif %}
 </div>
-<div class="ws-note">Everything that happens on a schedule lives here. {% if tab == 'items' %}These are the items the rules have made, grouped by how often the work repeats.{% else %}A rule opens an item for its owner every period.{% endif %} Tickets are the one-off requests.</div>
-<form method="get" class="ws-filter">
-<input type="hidden" name="tab" value="{{ tab }}">
-<input type="text" name="q" value="{{ params.q }}" placeholder="Search">
-<select name="frequency"><option value="">Any frequency</option>{% for v, l in frequencies %}<option value="{{ v }}" {% if params.frequency == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
-<select name="owner"><option value="">Anyone</option>{% for s in staff_list %}<option value="{{ s.pk }}" {% if params.owner == s.pk|stringformat:'s' %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+
 {% if tab == 'items' %}
-<select name="property"><option value="">Any property</option>{% for p in properties %}<option value="{{ p.pk }}" {% if params.property == p.pk|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
-<select name="due"><option value="">Any due date</option><option value="overdue" {% if params.due == 'overdue' %}selected{% endif %}>Overdue</option><option value="week" {% if params.due == 'week' %}selected{% endif %}>Due this week</option></select>
-{% endif %}
-<button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
-{% if params.q or params.frequency or params.owner or params.property or params.due %}<a href="?tab={{ tab }}" class="small">Clear</a>{% endif %}
-</form>
-{% for g in groups %}
-<div class="ws-kind">{{ g.label }}</div>
-{% if tab == 'items' %}
-{% for i in g.items %}<a class="ws-row k-compliance" href="{{ i.url }}"><span class="where">{{ i.owner }}</span><span class="main"><b>{{ i.title }}</b><small>{{ i.period }}{% if i.period %} &middot; {% endif %}{{ i.done }} of {{ i.total }} done</small></span><span class="due{% if i.late %} late{% endif %}">{{ i.due }}</span><span class="go">&rsaquo;</span></a>{% endfor %}
+<div class="ws-note">Everything that happens on a schedule. A rule opens an item every period; tickets are the one-off requests.</div>
+<div class="row g-2 mb-3 align-items-center">
+    <div class="col-auto position-relative">
+        <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
+        <input type="text" id="compliance-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);" placeholder="Search item or property…" value="{{ sel.q }}" autocomplete="off">
+    </div>
+</div>
+<script>
+(function () {
+    var input = document.getElementById('compliance-search-input'), timer = null;
+    function runSearch() {
+        var params = new URLSearchParams(window.location.search);
+        if (input.value) params.set('q', input.value); else params.delete('q');
+        params.delete('page');
+        fetch('{% url "ws_compliance" %}?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { if (!r.ok) throw new Error('bad response'); return r.json(); })
+            .then(function (data) {
+                document.getElementById('compliance-table').innerHTML = data.desktop;
+                document.getElementById('compliance-mobile-cards').innerHTML = data.mobile;
+                var pager = document.getElementById('compliance-pager'); if (pager) pager.innerHTML = data.pager;
+                if (window.lucide) lucide.createIcons();
+                history.replaceState(null, '', '?' + params.toString());
+            })
+            .catch(function () { console.error('Compliance search failed to load.'); });
+    }
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(runSearch, 250); });
+})();
+</script>
+{% include 'workspace/_compliance_filters.html' %}
+<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="table-responsive"><table class="table align-middle mb-0" style="table-layout: fixed;" id="compliance-table">{% include 'workspace/_compliance_rows.html' %}</table></div>
+</div>
+<div class="d-md-none" id="compliance-mobile-cards">{% include 'workspace/_compliance_cards.html' %}</div>
+<div id="compliance-pager">{% include 'core/_pager.html' %}</div>
+
+{% elif not sel.frequency %}
+<div class="ws-note">A rule opens an item for its owner every period. Pick how often, or start a new rule.</div>
+<div class="ws-blocks">
+    <a class="ws-block new" href="{% url 'session_template_create' %}"><span><b>New rule</b><small>Something we have to do on a schedule, or once</small></span><i data-lucide="plus" class="icon-lg ms-auto"></i></a>
+    {% for b in blocks %}
+    <a class="ws-block{% if not b.on and not b.off %} empty{% endif %}" href="?tab=rules&frequency={{ b.value }}"><b>{{ b.label }}</b><span>
+        <small>{% if b.on %}{{ b.on }} rule{{ b.on|pluralize }}{% else %}No rules{% endif %}{% if b.off %} &middot; {{ b.off }} off{% endif %}</small>
+        <small>{% if b.next %}Next opens {{ b.next|date:'M j' }}{% else %}&nbsp;{% endif %}</small></span></a>
+    {% endfor %}
+</div>
+
 {% else %}
-{% for r in g.rules %}<a class="ws-rule{% if not r.active %} off{% endif %}" href="{{ r.url }}">{{ r.sentence }}<small>Next opens {{ r.next|date:'M j, Y' }}{% if not r.active %} &middot; switched off{% endif %}</small></a>{% endfor %}
-{% endif %}
-{% empty %}
-<div class="ws-empty">{% if tab == 'items' %}Nothing open right now.{% else %}No rules match.{% endif %}</div>
-{% endfor %}
-{% if tab == 'items' %}
-<div class="ws-label">Also scheduled elsewhere</div>
-<div class="row g-2">
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_visit_rule_list' %}"><i data-lucide="spray-can" class="icon"></i><span>Visit rules<small>When cleanings and inspections are made</small></span></a></div>
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i><span>My open items<small>The original recurring-work screen</small></span></a></div>
+<div class="mb-2"><a href="?tab=rules" class="small text-decoration-none" style="color: var(--ink-muted);">&lsaquo; All rules</a></div>
+<div class="row g-2 mb-3 align-items-center">
+    <div class="col-auto"><form method="get" class="d-flex gap-2"><input type="hidden" name="tab" value="rules"><input type="hidden" name="frequency" value="{{ sel.frequency }}">
+        <input type="text" name="q" class="form-control" style="min-width: min(280px, 100%);" placeholder="Search rules…" value="{{ sel.q }}"></form></div>
+    <div class="col-auto d-flex gap-2 align-items-center small">
+        <a href="{% querystring state='on' %}" class="{% if sel.state == 'on' %}fw-semibold{% else %}text-muted{% endif %}">On</a>
+        <a href="{% querystring state='off' %}" class="{% if sel.state == 'off' %}fw-semibold{% else %}text-muted{% endif %}">Switched off</a>
+        <a href="{% querystring state='all' %}" class="{% if sel.state == 'all' %}fw-semibold{% else %}text-muted{% endif %}">All</a>
+    </div>
+</div>
+<div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="table-responsive"><table class="table align-middle mb-0" style="table-layout: fixed;">{% include 'workspace/_rules_rows.html' %}</table></div>
 </div>
 {% endif %}
+</div>
 {% endblock %}

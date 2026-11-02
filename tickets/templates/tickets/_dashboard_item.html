@@ -50,7 +50,7 @@
                 {% if t.status == 'upcoming' %}<span class="badge bg-light text-dark border flex-shrink-0" style="font-size: 0.7rem;">Upcoming</span>{% endif %}
             </div>
             <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">
-                {{ t.property.name|default:'—' }} &middot; {{ t.assignee_label }}{% if t.recurrence_label %} &middot; {{ t.recurrence_label }}{% endif %}{% with progress=t.checklist_progress %}{% if progress %} &middot; {{ progress.0 }}/{{ progress.1 }}{% endif %}{% endwith %}
+                {{ t.property.name|default:'—' }} &middot; {{ t.assignee_label }}{% if t.recurrence_label %} &middot; {{ t.recurrence_label }}{% endif %}
             </div>
         </div>
         <div class="text-nowrap text-end tabular-nums flex-shrink-0" style="font-size: 0.8rem;">

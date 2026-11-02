@@ -1,0 +1,15 @@
+{# The look of the filter bubbles box, shared by the Tickets list and the Compliance items list. #}
+<style>
+    .tf-box { background: #fff; border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); padding: 0.55rem 0.8rem 0.7rem; margin-bottom: 0.9rem; }
+    .tf-box [hidden] { display: none !important; }
+    .tf-box .bubble.bubble-locked::after { content: none; }
+    .tf-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.45rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); font-weight: 600; }
+    .tf-head a { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 0.8rem; margin-left: auto; color: var(--brand-primary); text-decoration: none; }
+    .tf-layer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+    .tf-layer .tf-title { font-size: 0.78rem; color: var(--ink-muted); width: 100%; margin: 0.15rem 0 0; }
+    .tf-pair { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .tf-pair .tf-x { color: var(--ink-muted); text-decoration: none; font-size: 1.05rem; line-height: 1; padding: 0 0.3rem; border-radius: 50%; }
+    .tf-pair .tf-x:hover { color: var(--ink-primary); background: var(--surface-page); }
+    .tf-back { --bubble-color: var(--ink-muted); background: transparent; border-style: dashed; }
+    .tf-city { font-size: 0.75rem; color: var(--ink-muted); width: 100%; margin: 0.35rem 0 0; }
+</style>

@@ -10,6 +10,8 @@ from django.utils import timezone
 
 from core.models import PropertyAttribute, StaffProfile
 
+from processes.models import ProcessTemplate
+
 from .forms import SessionTemplateForm
 from .models import Session, SessionLine, SessionTemplate
 from .services import generation as generation_service
@@ -23,6 +25,8 @@ def my_sessions(request):
     filters, no assignment picker, just "what do I still need to submit."
     """
     staff = getattr(request.user, 'staff_profile', None)
+    if staff and staff.new_face:
+        return redirect(f"{reverse('ws_compliance')}?owner={staff.pk}")
     sessions = (
         Session.objects.filter(owner=staff, status=Session.Status.OPEN)
         .select_related('template')
@@ -41,6 +45,11 @@ def my_sessions(request):
         'recently_submitted': recently_submitted,
         'today': today,
     })
+
+
+def _new_face(request):
+    profile = getattr(request.user, 'staff_profile', None)
+    return bool(profile and profile.new_face)
 
 
 @login_required
@@ -80,6 +89,8 @@ def session_detail(request, pk):
                     return JsonResponse({'success': False, 'error': error})
                 messages.error(request, error)
                 return redirect('session_detail', pk=session.pk)
+            if _new_face(request):
+                lifecycle_service.close_if_resolved(session)
             if is_ajax:
                 # Not session.progress() — `session` was fetched with
                 # prefetch_related('lines') up top, so session.lines.all()
@@ -87,7 +98,7 @@ def session_detail(request, pk):
                 # this request's own update) rather than reflecting the
                 # state just saved above. A fresh queryset sidesteps it.
                 total = SessionLine.objects.filter(session=session).count()
-                done = SessionLine.objects.filter(session=session).exclude(state=SessionLine.State.PENDING).count()
+                done = SessionLine.objects.filter(session=session, state__in=SessionLine.RESOLVED_STATES).count()
                 return JsonResponse({'success': True, 'state': line.state, 'done': done, 'total': total})
             return redirect('session_detail', pk=session.pk)
 
@@ -105,6 +116,50 @@ def session_detail(request, pk):
             messages.success(request, f'Promoted to ticket: {ticket.title}')
             return redirect('session_detail', pk=session.pk)
 
+        if action == 'cell':
+            # One box of the process grid: tick it, mark it not applicable, or clear it.
+            from processes.models import ProcessRunStep, StepType
+            step = get_object_or_404(ProcessRunStep, pk=request.POST.get('step_id'), run__session_line__session=session)
+            to = request.POST.get('to')
+            if step.step_type != StepType.CHECKBOX or to not in ('done', 'na', 'clear'):
+                return JsonResponse({'success': False, 'error': 'Open the property to do this step.'})
+            if to == 'done':
+                step.response = {'checked': True}
+                step.mark_complete(request.user)
+            elif to == 'na':
+                step.mark_not_applicable(request.user)
+            else:
+                step.mark_incomplete()
+            line = SessionLine.objects.get(pk=step.run.session_line_id)
+            session.refresh_from_db()
+            total = SessionLine.objects.filter(session=session).count()
+            done = SessionLine.objects.filter(session=session, state__in=SessionLine.RESOLVED_STATES).count()
+            run = step.run
+            run.refresh_from_db()
+            prog = run.progress()
+            return JsonResponse({'success': True, 'to': to, 'line_state': line.state, 'line_done': prog[0] if prog else 0, 'line_total': prog[1] if prog else 0,
+                                 'done': done, 'total': total, 'item_status': session.status})
+
+        if action == 'start_project':
+            from processes.projects import start_project
+            line = get_object_or_404(SessionLine, pk=request.POST.get('line_id'), session=session)
+            assignee = StaffProfile.objects.filter(pk=int(request.POST['assignee'])).first() if (request.POST.get('assignee') or '').isdigit() else None
+            try:
+                if session.template.work_type != SessionTemplate.WorkType.PROJECT or not session.template.process_template_id:
+                    raise ValueError('This rule has no project template.')
+                run = start_project(session.template.process_template, user=request.user, assigned_to=assignee, session_line=line)
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect('session_detail', pk=session.pk)
+            messages.success(request, f'Project started for {line.label}{f", with {assignee}" if assignee else ""}.')
+            return redirect('session_detail', pk=session.pk)
+
+        if action == 'notes':
+            session.notes = (request.POST.get('notes') or '').strip()[:4000]
+            session.save(update_fields=['notes'])
+            messages.success(request, 'Notes saved.')
+            return redirect('session_detail', pk=session.pk)
+
         if action == 'submit':
             # Deliberately no completeness gate — a session submitted with
             # pending lines is allowed, and explicit rather than silent (see
@@ -120,6 +175,13 @@ def session_detail(request, pk):
             messages.success(request, 'Session reopened.')
             return redirect('session_detail', pk=session.pk)
 
+    if _new_face(request):
+        from workspace import services as ws_services
+        session = Session.objects.select_related('template', 'owner__user').get(pk=session.pk)
+        ctx = {'session': session}
+        ctx.update(ws_services.item_context(session, request.GET.get('view', '')))
+        return render(request, 'workspace/item_detail.html', ctx)
+
     done, total = session.progress()
     return render(request, 'sessions/session_detail.html', {
         'session': session,
@@ -132,6 +194,9 @@ def session_detail(request, pk):
 
 @login_required
 def session_template_list(request):
+    profile = getattr(request.user, 'staff_profile', None)
+    if profile and profile.new_face:
+        return redirect(f"{reverse('ws_compliance')}?tab=rules")
     templates = list(SessionTemplate.objects.select_related('owner__user').order_by('name'))
 
     # One query for every template's recent sessions instead of one query
@@ -187,6 +252,8 @@ def session_template_form_view(request, pk=None):
         'template': template,
         'attributes': PropertyAttribute.objects.order_by('category', 'label'),
         'staff': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__username'),
+        'process_templates': ProcessTemplate.objects.filter(is_active=True).order_by('kind', 'name'),
+        'chosen_ids': set(form.data.getlist('properties')) if form.is_bound else ({str(p) for p in template.properties.values_list('pk', flat=True)} if template else set()),
     })
 
 
@@ -248,6 +315,14 @@ def session_template_preview(request):
             labels = [prop.name for prop in properties]
         payload['line_count'] = len(labels)
         payload['line_names'] = labels[:25]
+    elif line_source == SessionTemplate.LineSource.GENERAL:
+        payload['line_count'] = 1
+        payload['line_names'] = [request.POST.get('name', '').strip() or 'One general checklist, no property']
+    elif line_source == SessionTemplate.LineSource.CHOSEN:
+        from core.models import Property
+        names = list(Property.objects.filter(pk__in=[v for v in request.POST.getlist('properties') if v.isdigit()], is_active=True).order_by('name').values_list('name', flat=True))
+        payload['line_count'] = len(names)
+        payload['line_names'] = names[:25]
     else:
         static_labels = [l.strip() for l in request.POST.get('static_lines_text', '').split('\n') if l.strip()]
         payload['line_count'] = len(static_labels)

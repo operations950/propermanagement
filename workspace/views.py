@@ -83,24 +83,45 @@ def home(request):
 
 @new_face_only
 def compliance(request):
+    """Compliance: the items the rules have opened (the Tickets screen in green), and the rules themselves (big blocks by frequency, then one frequency's rules)."""
+    from django.core.paginator import Paginator
+    from django.http import JsonResponse
+    from django.template.loader import render_to_string
+    from core.models import properties_by_type
+    from tickets.views import DUE_OPTIONS
+
     tab = 'rules' if request.GET.get('tab') == 'rules' else 'items'
     params = request.GET
-    ctx = {'tab': tab, 'params': params, 'staff_list': StaffProfile.objects.select_related('user').order_by('user__first_name'),
-           'properties': Property.objects.filter(is_active=True).order_by('name'), 'frequencies': Frequency.choices}
-    ctx['groups'] = services.compliance_rules(params) if tab == 'rules' else services.compliance_items(params)
+    staff_list = StaffProfile.objects.select_related('user').order_by('user__first_name')
+    freq_labels = dict(Frequency.choices)
+    ctx = {'tab': tab, 'staff_list': staff_list, 'frequencies': Frequency.choices, 'status_options': services.COMPLIANCE_STATUS,
+           'due_options': DUE_OPTIONS, 'properties_by_type': properties_by_type()}
+    if tab == 'items':
+        qs, sel = services.compliance_items(params)
+        page = Paginator(qs, services.COMPLIANCE_PER_PAGE).get_page(params.get('page'))
+        today = timezone.localdate()
+        sel.update(frequency_label=freq_labels.get(sel['frequency'], ''), due_label=dict(DUE_OPTIONS).get(sel['due'], 'Custom date' if sel['due'] == 'custom' else ''),
+                   owner_name=next((str(s) for s in staff_list if str(s.pk) == sel['owner']), ''))
+        ctx.update(sel=sel, page_obj=page, rows=[services.compliance_row(s, today) for s in page], sort_columns=services.sort_columns(services.COMPLIANCE_COLUMNS, params.get('sort')))
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'desktop': render_to_string('workspace/_compliance_rows.html', ctx, request), 'mobile': render_to_string('workspace/_compliance_cards.html', ctx, request),
+                                 'pager': render_to_string('core/_pager.html', ctx, request)})
+    else:
+        rows, sel = services.compliance_rules(params)
+        sel['frequency_label'] = freq_labels.get(sel['frequency'], '')
+        ctx.update(sel=sel, rows=rows, blocks=services.rule_blocks(), sort_columns=services.sort_columns(services.RULE_COLUMNS, params.get('sort')))
     return render(request, 'workspace/compliance.html', ctx)
 
 
 @new_face_only
 def projects(request):
     tab = 'templates' if request.GET.get('tab') == 'templates' else 'active'
-    kind = 'checklist' if request.GET.get('kind') == 'checklist' else 'project'
     params = request.GET
-    ctx = {'tab': tab, 'kind': kind, 'params': params, 'properties': Property.objects.filter(is_active=True).order_by('name')}
+    ctx = {'tab': tab, 'params': params, 'properties': Property.objects.filter(is_active=True).order_by('name')}
     if tab == 'active':
         _, ctx['rows'] = services.project_runs(params)
     else:
-        _, ctx['templates'] = services.project_templates(params)
+        ctx['project_templates'], ctx['process_templates'] = services.project_templates(params)
     return render(request, 'workspace/projects.html', ctx)
 
 
@@ -249,3 +270,73 @@ def week_clean(request):
             messages.success(request, f'Cleaning is with {visit.assignee_label()}.{link_note}')
     target = reverse('ws_week')
     return redirect(f'{target}?start={start}' if parse_date(start) else target)
+
+
+def _int(raw):
+    return int(raw) if str(raw or '').isdigit() else 0
+
+
+@require_POST
+@new_face_only
+def make_project(request, pk):
+    """Turn a ticket into a project: pick the project template and who it goes to. It leaves Tickets, lives under Projects, and links back here."""
+    from processes.models import ProcessTemplate
+    from processes.projects import start_project
+    from tickets.models import Ticket
+
+    ticket = get_object_or_404(Ticket, pk=pk)
+    template = ProcessTemplate.objects.filter(pk=_int(request.POST.get('template'))).first()
+    assignee = StaffProfile.objects.filter(pk=_int(request.POST.get('assignee'))).first()
+    try:
+        if template is None:
+            raise ValueError('Choose a project template.')
+        run = start_project(template, user=request.user, assigned_to=assignee, ticket=ticket)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('ticket_detail', pk=ticket.pk)
+    messages.success(request, f'It is a project now{f", with {assignee}" if assignee else ""}. You will find it under Projects.')
+    return redirect('ws_run_detail', pk=run.pk)
+
+
+@new_face_only
+def run_detail(request, pk):
+    """One run (a project, or a process done for one property): its steps, its notes, and a way back to the ticket or compliance item it belongs to."""
+    from processes.models import ProcessRun, ProcessTemplate
+
+    run = get_object_or_404(ProcessRun.objects.select_related('process_template', 'ticket__property', 'assigned_to__user', 'session_line__session__template', 'session_line__property', 'property', 'contact')
+                            .prefetch_related('steps__attachments', 'process_template__attachments', 'process_template__links'), pk=pk)
+    is_project = run.process_template.kind == ProcessTemplate.Kind.PROJECT
+    if run.ticket_id:
+        origin_url, origin_label = reverse('ticket_detail', args=[run.ticket_id]), f'Ticket: {run.ticket.title}'
+    elif run.session_line_id:
+        origin_url, origin_label = reverse('session_detail', args=[run.session_line.session_id]), run.origin_text()
+    else:
+        origin_url, origin_label = '', run.origin_text()
+    back = (reverse('ws_projects'), 'Projects') if is_project else ((origin_url, 'Compliance item') if run.session_line_id else (origin_url, 'Ticket'))
+    return render(request, 'workspace/run_detail.html', {'run': run, 'is_project': is_project, 'origin_url': origin_url, 'origin_label': origin_label, 'back': back,
+                                                         'process_runs': [run]})
+
+
+@require_POST
+@new_face_only
+def run_note(request, pk):
+    from processes.models import ProcessRun
+    run = get_object_or_404(ProcessRun, pk=pk)
+    run.notes = (request.POST.get('notes') or '').strip()[:2000]
+    run.save(update_fields=['notes'])
+    messages.success(request, 'Note saved.')
+    return redirect('ws_run_detail', pk=run.pk)
+
+
+@require_POST
+@new_face_only
+def step_note(request, pk):
+    """A note on one step of one run. Goes back to wherever the person was (the run screen, a ticket, the compliance grid)."""
+    from processes.models import ProcessRunStep
+    step = get_object_or_404(ProcessRunStep, pk=pk)
+    step.note = (request.POST.get('note') or '').strip()[:500]
+    step.save(update_fields=['note'])
+    target = request.POST.get('next') or request.META.get('HTTP_REFERER', '')
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
+        target = reverse('ws_run_detail', args=[step.run_id])
+    return redirect(target)

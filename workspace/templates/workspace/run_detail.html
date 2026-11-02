@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}{{ run.process_template.name }}{% endblock %}
+{% block content %}
+{% include 'workspace/_css.html' %}
+<a href="{{ back.0 }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ back.1 }}</a>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title mb-0">{{ run.process_template.name }}</h2>
+        <div class="small text-muted">{% if is_project %}Project{% else %}Process{% endif %} &middot; {{ run.get_status_display }}{% if run.assigned_to %} &middot; with {{ run.assigned_to }}{% endif %}</div>
+    </div>
+    {% with progress=run.progress %}{% if progress %}<span class="badge rounded-pill bg-light text-dark border">{{ progress.0 }} of {{ progress.1 }} steps</span>{% endif %}{% endwith %}
+</div>
+{% if origin_label %}<div class="ws-note">Came from {% if origin_url %}<a href="{{ origin_url }}">{{ origin_label }}</a>{% else %}{{ origin_label }}{% endif %}.{% if is_project %} It lives here now and is counted under Projects.{% endif %}</div>{% endif %}
+<div class="card mb-3"><div class="card-body">
+    {% include 'processes/_run_card.html' with run=run %}
+</div></div>
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Notes for this one</h6>
+    <form method="post" action="{% url 'ws_run_note' run.pk %}">{% csrf_token %}
+        <textarea name="notes" rows="3" class="form-control form-control-sm mb-2" maxlength="2000" placeholder="Anything worth remembering about this time">{{ run.notes }}</textarea>
+        <button class="btn btn-sm btn-outline-secondary" type="submit">Save note</button>
+    </form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% comment %}The Compliance rules table (one frequency): the same look as the items table. Expects rows, sort_columns.{% endcomment %}
+<colgroup>
+    <col style="width: 10%;"><col style="width: 20%;"><col style="width: 34%;">
+    <col style="width: 14%;"><col style="width: 22%;">
+</colgroup>
+<thead><tr>
+    {% for col in sort_columns %}
+    <th class="p-0">
+        <a href="{% querystring sort=col.next_sort %}" class="d-flex align-items-center gap-1 px-2 py-2 text-decoration-none w-100"
+           style="color: {% if col.is_active %}var(--ink-primary){% else %}var(--ink-secondary){% endif %}; font-weight: {% if col.is_active %}600{% else %}inherit{% endif %}; font-size: 0.8rem;" title="Sort by {{ col.label }}">
+            {{ col.label }}
+            <i data-lucide="{% if col.is_active %}{% if col.is_desc %}chevron-down{% else %}chevron-up{% endif %}{% else %}chevrons-up-down{% endif %}" class="icon" style="width: 0.85rem; height: 0.85rem; {% if not col.is_active %}opacity: 0.35;{% endif %} flex-shrink: 0;"></i>
+        </a>
+    </th>
+    {% endfor %}
+</tr></thead>
+{% for r in rows %}
+    <tbody style="font-size: 0.875rem;{% if not r.active %} opacity: 0.6;{% endif %}">
+        <tr>
+            <td class="text-truncate">{{ r.how }}</td>
+            <td class="text-truncate">{{ r.where }}</td>
+            <td class="text-truncate fw-medium">
+                <a href="{{ r.url }}" class="text-decoration-none">{{ r.t.name }}</a>
+                {% if not r.active %}<div class="fw-normal" style="font-size: 0.75rem; color: var(--ink-muted);">Switched off</div>{% endif %}
+            </td>
+            <td class="text-nowrap">{{ r.next|date:'M j, Y'|default:'—' }}</td>
+            <td class="text-truncate">{{ r.who }}</td>
+        </tr>
+    </tbody>
+{% empty %}<tbody><tr><td colspan="5" class="text-muted text-center py-4">No rules here.</td></tr></tbody>{% endfor %}

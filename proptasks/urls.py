@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path, re_path
+from django.views.generic import RedirectView
 from django.views.static import serve as serve_static
 
 from core.views import StaffLoginView, google_login_callback, google_login_start
@@ -18,7 +19,8 @@ urlpatterns = [
     path('supplies/', include('supplies.urls')),
     path('processes/', include('processes.urls')),
     path('onsite/', include('onsite.urls')),
-    path('recurring/', include('worksessions.urls')),
+    path('compliance/', include('worksessions.urls')),
+    re_path(r'^recurring/(?P<rest>.*)$', RedirectView.as_view(url='/compliance/%(rest)s', query_string=True)),     # the old address of the same screens
     path('portfolio/', include('portfolio.urls')),
     path('documents/', include('legalforms.urls')),
     path('clock/', include('timeclock.urls')),

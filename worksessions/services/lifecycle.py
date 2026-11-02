@@ -34,6 +34,17 @@ def set_line_state(line, state, *, skip_reason='', notes=None):
     return line
 
 
+def close_if_resolved(session):
+    """An item closes by itself once every line is resolved (done, skipped or not applicable; a line still in a project is not). Never opens one, never closes one with work left."""
+    from django.utils import timezone as tz
+    lines = list(sessions_models.SessionLine.objects.filter(session=session))      # fresh: the session may carry a stale prefetch
+    if lines and session.status == sessions_models.Session.Status.OPEN and all(l.state in sessions_models.SessionLine.RESOLVED_STATES for l in lines):
+        session.status, session.submitted_at = sessions_models.Session.Status.SUBMITTED, tz.now()
+        session.save(update_fields=['status', 'submitted_at'])
+        return True
+    return False
+
+
 def submit_session(session):
     session.status = sessions_models.Session.Status.SUBMITTED
     session.submitted_at = timezone.now()
