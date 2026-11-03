@@ -1593,6 +1593,7 @@ class QBRecode(models.Model):
     deposit before, what it was split into, who sent it and when. Kept for audit - a payout can always show how it was
     coded, and the "before" lines are enough to put the deposit back by hand."""
     payout_id = models.PositiveIntegerField(help_text='The onsite PayoutBatch this deposit was matched to.')
+    also_payout_ids = models.JSONField(default=list, blank=True, help_text='When VRBO paid several payouts together as one deposit: the other PayoutBatch ids it was made of.')
     source = models.CharField(max_length=20)
     deposit_qb_id = models.CharField(max_length=40)
     deposit_date = models.DateField()

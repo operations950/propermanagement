@@ -6,6 +6,8 @@ When a deposit's date and amount match one payout, its single uncategorized line
 each described "Guest | Reservation code | Amount" and posted to the trust (balance-sheet) account saved for that
 reservation's property or unit. Anything the program is not sure of is left alone, with the reason, for a person.
 
+  A VRBO deposit that equals the sum of two or more payouts (VRBO's file has no transfer id, so payouts paid together arrive as one deposit) is split across all their lines.
+
   plan()   reads QuickBooks and works out, without changing anything, what would be done and what is blocked
   apply()  makes one planned change (re-reading the deposit first), and records what it did (QBRecode) so it can be audited
            and undone by hand
@@ -156,7 +158,9 @@ def plan(token, today=None, days=LOOKBACK_DAYS):
         return result
     source_of = {a.qb_id: s for s, a in accounts.items()}
     done_deposits = set(QBRecode.objects.values_list('deposit_qb_id', flat=True))
-    used_payouts = set(QBRecode.objects.values_list('payout_id', flat=True)) | payout_tracking.owner_collected_batch_ids()   # an owner-collected payout never reaches our bank, so it is never what a deposit is
+    used_payouts = set(QBRecode.objects.values_list('payout_id', flat=True)) | payout_tracking.owner_collected_batch_ids()
+    for also in QBRecode.objects.exclude(also_payout_ids=[]).values_list('also_payout_ids', flat=True):
+        used_payouts.update(also or [])   # an owner-collected payout never reaches our bank, so it is never what a deposit is
     for dep in deposits:
         uncat = _uncategorized_lines(dep, set(source_of))
         if not uncat or dep['Id'] in done_deposits:
@@ -165,10 +169,30 @@ def plan(token, today=None, days=LOOKBACK_DAYS):
         amount = sum((_d(ln['Amount']) for ln in uncat), ZERO)
         when = date.fromisoformat(dep['TxnDate'])
         memo = ' '.join(filter(None, [dep.get('PrivateNote', '')] + [ln.get('Description', '') for ln in uncat]))[:120]
-        item = {'qb_id': dep['Id'], 'date': when, 'amount': amount, 'source': source, 'raw': dep, 'payout': None, 'status': 'unsure', 'reason': '', 'lines': [], 'memo': memo}
+        item = {'qb_id': dep['Id'], 'date': when, 'amount': amount, 'source': source, 'raw': dep, 'payout': None, 'also': [], 'status': 'unsure', 'reason': '', 'lines': [], 'memo': memo}
         candidates = [b for b in PayoutBatch.objects.filter(source=source, amount=amount, date__gte=when - LATE, date__lte=when + EARLY).order_by('date', 'pk') if b.pk not in used_payouts]
+        if not candidates and source == 'vrbo':
+            # VRBO's file has no transfer id: payouts paid together can arrive as one deposit equal to their sum
+            near = [b for b in PayoutBatch.objects.filter(source=source, date__gte=when - LATE, date__lte=when + EARLY).order_by('date', 'pk') if b.pk not in used_payouts]
+            group = payout_tracking.combination_for(amount, when, near)
+            if group:
+                lines, problems = [], []
+                for batch in group:
+                    got, problem = _lines_for(batch)
+                    if problem:
+                        problems.append(f'{batch.date:%b} {batch.date.day} payout of {batch.amount}: {problem}')
+                    else:
+                        lines += got
+                used_payouts.update(b.pk for b in group)
+                item['payout'], item['also'] = group[0], group[1:]
+                if problems:
+                    item['status'], item['reason'] = 'blocked', 'combined deposit of ' + ' + '.join(f'{b.amount}' for b in group) + ': ' + '; '.join(problems)
+                else:
+                    item['status'], item['lines'] = 'ready', lines
+                result['items'].append(item)
+                continue
         if not candidates:
-            item['reason'] = 'no payout in the uploaded files has this amount and date - left for a person'
+            item['reason'] = 'no payout in the uploaded files has this amount and date, and no group of payouts adds up to it - left for a person'
         else:
             nearest = sorted(candidates, key=lambda b: (abs((when - b.date).days), b.pk))
             if len(nearest) > 1 and abs((when - nearest[0].date).days) == abs((when - nearest[1].date).days):
@@ -248,7 +272,7 @@ def _apply_locked(token, item, user=None, automatic=False):
     saved, error = quickbooks.update_object(token, 'Deposit', body, sparse=True)
     if error:
         return False, error
-    QBRecode.objects.create(payout_id=item['payout'].pk, source=item['source'], deposit_qb_id=deposit['Id'], deposit_date=item['date'], amount=item['amount'],
+    QBRecode.objects.create(payout_id=item['payout'].pk, also_payout_ids=[b.pk for b in item.get('also') or []], source=item['source'], deposit_qb_id=deposit['Id'], deposit_date=item['date'], amount=item['amount'],
                             old_lines=uncat, new_lines=new_lines, applied_by=user if getattr(user, 'pk', None) else None, automatic=automatic)
     return True, ''
 

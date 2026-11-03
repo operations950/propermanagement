@@ -38,7 +38,7 @@
         <tr>
             <td class="text-nowrap">{{ i.date|date:"M j" }} <span class="text-muted">{{ i.source|title }}</span></td>
             <td class="num">${{ i.amount|floatformat:2 }}</td>
-            <td>{% if i.payout %}{{ i.payout.date|date:"M j" }}{% else %}<span class="text-muted">none</span>{% endif %}</td>
+            <td>{% if i.payout %}{{ i.payout.date|date:"M j" }}{% if i.also %} <span class="text-muted">+ {{ i.also|length }} more together</span>{% endif %}{% else %}<span class="text-muted">none</span>{% endif %}</td>
             <td>
                 {% if i.status == 'ready' %}<details><summary><span class="po-chip po-received">Ready</span> split into {{ i.lines|length }} line{{ i.lines|length|pluralize }}</summary>
                     <table class="po-items">{% for l in i.lines %}<tr><td>{{ l.description }}</td><td class="text-muted">{{ l.where }}</td><td class="text-muted">{{ l.account_name }}</td></tr>{% endfor %}</table></details>
@@ -91,7 +91,7 @@
         </td>
         <td>{% for p in r.properties|slice:":2" %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if r.units %} <span class="text-muted">({{ r.units|join:", " }})</span>{% endif %}</td>
         <td>
-            {% if r.status == 'received' %}{% if r.deposit %}<span class="po-chip po-received" title="Deposit {{ r.deposit.txn_date|date:'M j' }}: {{ r.deposit.memo|truncatechars:60 }}">Received {{ r.deposit.txn_date|date:"M j" }}</span>{% else %}<span class="po-chip po-received" title="A deposit in QuickBooks, coded from this payout">Coded {{ r.coded.deposit_date|date:"M j" }}</span>{% endif %}
+            {% if r.status == 'received' %}{% if r.deposit %}<span class="po-chip po-received" title="Deposit {{ r.deposit.txn_date|date:'M j' }}: {{ r.deposit.memo|truncatechars:60 }}{% if r.combined %} (one deposit of ${{ r.deposit.flow|floatformat:2 }} for this payout and {{ r.combined|length }} other{{ r.combined|pluralize }}){% endif %}">Received {{ r.deposit.txn_date|date:"M j" }}{% if r.combined %} (together){% endif %}</span>{% else %}<span class="po-chip po-received" title="A deposit in QuickBooks, coded from this payout">Coded {{ r.coded.deposit_date|date:"M j" }}</span>{% endif %}
             {% elif r.status == 'lingering' %}<span class="po-chip po-lingering">Not received · {{ r.age_days }} days</span>
             {% elif r.status == 'scheduled' %}<span class="po-chip po-scheduled">Scheduled</span>
             {% else %}<span class="po-chip po-waiting">Waiting · {{ r.age_days }} day{{ r.age_days|pluralize }}</span>{% endif %}

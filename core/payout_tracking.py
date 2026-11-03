@@ -5,6 +5,7 @@ bank line reliably carries. The month-end income reconciliation does the fuller 
 the platforms have said they paid and whether it has reached the bank."""
 from datetime import date, timedelta
 from decimal import Decimal
+from itertools import combinations
 
 from django.utils import timezone
 
@@ -14,6 +15,25 @@ EARLY = timedelta(days=3)         # a deposit may be booked a little before the 
 LATE = timedelta(days=10)         # ... and normally lands within a few days after
 LINGERING_AFTER = timedelta(days=45)
 BOOKKEEPING_START = date(2026, 9, 1)   # nothing paid out before this date is worth looking at here
+
+
+COMBINE_MAX = 6          # most payouts one combined deposit may be made of
+COMBINE_POOL = 12        # most unmatched payouts looked through for one deposit
+
+
+def combination_for(amount, when, batches):
+    """VRBO's file gives one line per reservation and no transfer id, so two payouts paid together can arrive as ONE deposit. This is the one group of two or more
+    payouts whose amounts add up to a deposit's amount and that the deposit could be (its date inside each payout's window), or None when no group fits or more than
+    one does: it never guesses."""
+    fit = sorted((b for b in batches if b.amount < amount and b.date - EARLY <= when <= b.date + LATE), key=lambda b: (b.date, b.pk))[:COMBINE_POOL]
+    found = []
+    for size in range(2, min(COMBINE_MAX, len(fit)) + 1):
+        for group in combinations(fit, size):
+            if sum((b.amount for b in group), Decimal('0')) == amount:
+                found.append(list(group))
+                if len(found) > 1:
+                    return None
+    return found[0] if found else None
 
 
 def _deposits(properties, start, end):
@@ -67,9 +87,29 @@ def payout_rows(source=None, since=None, today=None):
             best = min(candidates, key=lambda d: (abs((d.txn_date - b.date).days), d.txn_date, d.pk))
             used.add(best.pk)
             r['received'], r['deposit'] = True, best
-    coded = {c.payout_id: c for c in QBRecode.objects.filter(payout_id__in=[r['batch'].pk for r in rows])}
+    # VRBO: payouts paid together arrive as one deposit that equals their sum
+    unmatched = [r for r in rows if not r['received'] and r['batch'].source == 'vrbo']
+    if len(unmatched) >= 2:
+        everywhere = _deposits(None, min(r['batch'].date for r in unmatched), max(r['batch'].date for r in unmatched))
+        for dep in everywhere:
+            if dep.pk in used or len(unmatched) < 2:
+                continue
+            group = combination_for(dep.flow, dep.txn_date, [r['batch'] for r in unmatched])
+            if group:
+                used.add(dep.pk)
+                ids = {b.pk for b in group}
+                for r in unmatched:
+                    if r['batch'].pk in ids:
+                        r['received'], r['deposit'], r['combined'] = True, dep, [b for b in group if b.pk != r['batch'].pk]
+                unmatched = [r for r in unmatched if r['batch'].pk not in ids]
+    recodes = list(QBRecode.objects.all())
+    coded = {}
+    for c in recodes:
+        for pk in [c.payout_id, *(c.also_payout_ids or [])]:
+            coded.setdefault(pk, c)
     for r in rows:
         r['coded'] = coded.get(r['batch'].pk)
+        r.setdefault('combined', [])
         if r['coded'] and not r['received']:
             r['received'] = True          # QuickBooks itself holds a deposit of this amount, now coded to it
         age = today - r['batch'].date
