@@ -3,9 +3,8 @@
 It looks first: with no flag it only reports, per association, what it would do (create a bill, leave one that is already there, a difference it will not touch, a name it could
 not match). `--apply` does it. Safe to run again: a bill that is already there is left alone and never changed.
 
-For an association whose books we do not keep yet, the bills are loaded switched off (they show on the recurring bills screen, ready to turn on when the books start); the standard chart
-of accounts is added first if the association has none. For one whose books we keep, a bill is on unless the review left a question open on it. The first date of each bill is the next
-time its day of the month comes round, so nothing is posted for a past month.
+Every association is treated as one whose books we keep (the owner turns the switch on in production): a bill is on unless the review left a question open on it. The standard chart
+of accounts is added first if the association has none. The first date of each bill is the next time its day of the month comes round, so nothing is posted for a past month.
 """
 import re
 from datetime import date
@@ -78,9 +77,9 @@ class Command(BaseCommand):
                 continue
             prop = props[0]
             profile = AssociationProfile.objects.filter(property=prop).first()
-            keeps_books = bool(profile and profile.we_do_financials)
+            keeps_books = True      # assumed: the owner turns the books on for every association in production
             have_chart = Account.objects.filter(association=prop).exists()
-            self.stdout.write(f'\n== {prop.name}: books {"KEPT by us" if keeps_books else "not kept yet (bills load switched off)"}; chart of accounts {"present" if have_chart else "will be added"}')
+            self.stdout.write(f'\n== {prop.name}: books assumed on{"" if profile and profile.we_do_financials else " (the switch is not on yet: bills will not post until it is)"}; chart of accounts {"present" if have_chart else "will be added"}')
             with transaction.atomic():
                 if apply and not have_chart:
                     self.stdout.write(f'   added {ledger.ensure_chart(prop)} accounts')
