@@ -3,8 +3,8 @@ from datetime import datetime
 from django import forms
 from django.utils import timezone
 
-from core.models import Contact, Property, PropertyAttribute, StaffProfile, property_dropdown_queryset
-from .models import Frequency, TaskGroup, TaskPackage, Ticket, TicketContact, TicketTemplate
+from core.models import Contact, StaffProfile, property_dropdown_queryset
+from .models import Ticket, TicketContact
 
 
 class TicketForm(forms.ModelForm):
@@ -80,88 +80,6 @@ class TicketForm(forms.ModelForm):
         return cleaned
 
 
-class TicketTemplateForm(forms.ModelForm):
-    target_type = forms.ChoiceField(
-        choices=TicketTemplate.TargetType.choices, label='Target type',
-        help_text='What this rule applies to — drives which of the fields below matter.',
-    )
-    property_types = forms.MultipleChoiceField(
-        choices=Property.Type.choices, required=False,
-        label='Restrict to property types (optional)',
-        help_text='Only used when Target type is "Property category".',
-    )
-    default_assigned_role = forms.ChoiceField(
-        choices=StaffProfile.Role.choices, label='Department',
-        help_text='Every recurring task belongs to a department first — a specific person can be assigned within it.',
-    )
-    next_run_date = forms.DateField(
-        widget=forms.DateInput(attrs={'type': 'date'}),
-        help_text='The next date this task should be generated for.',
-    )
-
-    class Meta:
-        model = TicketTemplate
-        fields = [
-            'title', 'description', 'target_type', 'property', 'property_types', 'contact',
-            'required_attributes', 'frequency', 'workday_of_month', 'next_run_date',
-            'default_assigned_role', 'default_assigned_staff', 'default_priority',
-            'lead_time_days', 'requires_approval', 'approval_role', 'escalation_threshold_days',
-            'is_active', 'skip_missed',
-        ]
-        labels = {
-            'title': 'Title',
-            'property': 'Specific property',
-            'contact': 'Contact',
-            'required_attributes': 'Requires these attributes (optional)',
-            'default_assigned_staff': 'Specific person (optional)',
-            'default_priority': 'Priority',
-            'workday_of_month': 'Workday of month',
-            'lead_time_days': 'Generate this many days early (optional)',
-            'escalation_threshold_days': 'Flag overdue after this many days (optional)',
-        }
-        widgets = {
-            'description': forms.Textarea(attrs={'rows': 3}),
-        }
-        help_texts = {
-            'property': 'Only used when Target type is "Specific property".',
-            'contact': 'Only used when Target type is "Contact" — applies to every property currently '
-                       'linked to this contact.',
-            'workday_of_month': 'Only used when frequency is "Monthly (by working day)".',
-            'requires_approval': 'Completed instances need sign-off from the department below before counting as done.',
-            'escalation_threshold_days': 'Flags (doesn\'t reassign) an overdue instance for visibility.',
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['property'].queryset = property_dropdown_queryset()
-        self.fields['required_attributes'].queryset = PropertyAttribute.objects.filter(is_active=True)
-        # Only contact types that plausibly anchor a recurring operational
-        # rule — vendors/guests/tenants/staff-adjacent don't.
-        self.fields['contact'].queryset = Contact.objects.filter(
-            contact_type__in=[
-                Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER, Contact.ContactType.ASSOCIATION_MEMBER,
-            ],
-        )
-        self.fields['contact'].required = False
-        if self.instance and self.instance.pk:
-            self.initial['property_types'] = self.instance.property_types
-
-    def clean_property_types(self):
-        return list(self.cleaned_data['property_types'])
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get('frequency') == Frequency.MONTHLY_WORKDAY and not cleaned.get('workday_of_month'):
-            self.add_error('workday_of_month', 'Required for "Monthly (by working day)" frequency.')
-        if cleaned.get('requires_approval') and not cleaned.get('approval_role'):
-            self.add_error('approval_role', 'Required when approval is needed.')
-        if cleaned.get('target_type') == TicketTemplate.TargetType.PROPERTY and not cleaned.get('property'):
-            self.add_error('property', 'Required when Target type is "Specific property".')
-        if cleaned.get('target_type') == TicketTemplate.TargetType.CONTACT and not cleaned.get('contact'):
-            self.add_error('contact', 'Required when Target type is "Contact".')
-        return cleaned
-
-
 class ReassignForm(forms.Form):
     """Internal Reassign — department/staff only. Assigning a contractor
     is a separate action (see AssignContractorForm/ticket_assign_contractor)
@@ -178,34 +96,3 @@ class AssignContractorForm(forms.Form):
         queryset=Contact.objects.filter(contact_type=Contact.ContactType.VENDOR), required=False,
         label='Vendor / contractor',
     )
-
-
-class FunctionForm(forms.ModelForm):
-    department = forms.ChoiceField(choices=StaffProfile.Role.choices, label='Department')
-
-    class Meta:
-        model = TaskPackage
-        fields = ['title', 'description', 'department']
-        widgets = {'description': forms.Textarea(attrs={'rows': 2})}
-
-
-class TaskGroupForm(forms.ModelForm):
-    property_types = forms.MultipleChoiceField(
-        choices=Property.Type.choices, required=False,
-        label='Applies to (optional)',
-        help_text='Set once here for the whole group — every task added under this group targets these '
-                   'property types instead of needing its own Target section. Leave empty to have each '
-                   'task in the group keep using its own Target settings.',
-    )
-
-    class Meta:
-        model = TaskGroup
-        fields = ['title', 'property_types']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance and self.instance.pk:
-            self.initial['property_types'] = self.instance.property_types
-
-    def clean_property_types(self):
-        return list(self.cleaned_data['property_types'])

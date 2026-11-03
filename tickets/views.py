@@ -1,12 +1,10 @@
 import logging
 import zlib
 from datetime import date, datetime, timedelta
-from itertools import groupby
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.management import call_command
 from django.core.paginator import Paginator
 from django.db.models import Case, Count, F, IntegerField, Max, OuterRef, Q, Subquery, When
 from django.db.models.functions import Coalesce
@@ -23,22 +21,20 @@ from core.google_calendar import get_upcoming_events, is_configured as calendar_
 from core import nudges
 from core.json_utils import dumps_for_script
 from core.models import (
-    Contact, Property, PropertyAttribute, StaffProfile, Unit, group_vendors_by_trade, is_valid_phone,
+    Contact, Property, StaffProfile, Unit, group_vendors_by_trade, is_valid_phone,
     properties_by_type, property_dropdown_queryset,
 )
 from messaging.services import _followup_result_message, _group_followups, fetch_quo_conversation, send_followup_bulk
 from processes.forms import ProcessAttachmentUploadForm
 from processes.models import ProcessTemplate
 
-from .forms import AssignContractorForm, FunctionForm, ReassignForm, TaskGroupForm, TicketForm, TicketTemplateForm
+from .forms import AssignContractorForm, ReassignForm, TicketForm
 from .models import (
-    FollowUpLog, Priority, TaskGroup, TaskPackage, TaskPackageTemplate, Ticket,
+    FollowUpLog, Priority, Ticket,
     TicketAssignmentLog, TicketAttachment, TicketClosingNote, TicketContact, TicketStatusNote,
-    TicketTemplate,
-    TicketPush, TicketTemplateDocument, TicketView,
+    TicketPush, TicketView,
 )
 from .services import owner_dashboard as owner_dashboard_queries
-from .services.package_engine import unblock_dependents
 from .services.process_gate import incomplete_process_instances, process_gate_error_message
 
 WS_NOW_DAYS = 15      # new layout: a ticket due further out than this waits under "Later"
@@ -118,52 +114,6 @@ def _daily_checklist_key(ticket, now):
     return _ticket_urgency_key(ticket, now)
 
 
-class _TaskGroupRow:
-    """A dashboard-only stand-in for one PackageRun's sibling step tickets —
-    a "Task Group" per the Function/Task Group/Task model (see TaskPackage's
-    docstring). Exposes just enough of a Ticket's interface (.due_date,
-    .priority, .status, .delayed) that the existing urgency-sort key
-    functions and is_overdue/is_due_today template filters work on it
-    unchanged, so it can sit in the same sorted bucket as ungrouped Tickets
-    and collapse to one row in _dashboard_item.html with its real steps
-    nested inside, instead of every step cluttering the dashboard as its
-    own line (see #11's "single line item as a container" ask)."""
-    is_task_group = True
-    source = Ticket.Source.RECURRING
-    status = ''  # never 'completed' — the header's own badges read the aggregates below, not this
-    delayed = False
-
-    def __init__(self, run, members):
-        members = sorted(members, key=lambda m: m.title)
-        self.pk = f'run-{run.pk}'
-        self.run = run
-        self.members = members
-        self.title = run.package.title
-        self.property = run.property
-        self.due_date = members[0].due_date
-        self.priority = min(members, key=lambda m: PRIORITY_RANK.get(m.priority, 2)).priority
-        self.delayed = any(m.delayed for m in members)
-        self.done_count = sum(1 for m in members if m.status in Ticket.DEPENDENCY_SATISFYING_STATUSES)
-        self.total_count = len(members)
-
-
-def _group_task_rows(tickets, sort_key):
-    """Collapses tickets sharing a package_run into one _TaskGroupRow, then
-    sorts the mixed (group + ungrouped-ticket) list with `sort_key` — the
-    same _daily_checklist_key/_ticket_urgency_key/needs-date key already
-    used for plain tickets, since _TaskGroupRow exposes the same
-    .due_date/.priority attributes those read."""
-    solo, by_run = [], {}
-    for t in tickets:
-        if t.package_run_id:
-            by_run.setdefault(t.package_run_id, []).append(t)
-        else:
-            solo.append(t)
-    rows = solo + [_TaskGroupRow(members[0].package_run, members) for members in by_run.values()]
-    rows.sort(key=sort_key)
-    return rows
-
-
 def _department_boxes(open_tickets, now):
     """The 6 role queues, each with its top preview rows and counts — the
     core of the standard dashboard, also reused as-is (without the ticket
@@ -230,9 +180,8 @@ def _owner_dashboard(request):
     into is signal. Three time orientations, one panel each: reactive
     tickets look backward (off_track_tickets), on-site work looks forward
     (onsite_next_48h), recurring looks at drift at the RULE level, not the
-    instance (session_templates_drifting — the sessions app fully replaced
-    the old TicketTemplate-based recurring system, see the "Recurring work
-    overhaul — sessions" build brief) — plus departments/calendar (kept
+    instance (session_templates_drifting — the sessions app replaced the
+    old recurring-ticket system, which has since been removed) — plus departments/calendar (kept
     close to what existed), today's movement, and a never-urgent "gone
     quiet" panel last. All five panel queries live in
     tickets/services/owner_dashboard.py, not inline here — see that
@@ -502,8 +451,7 @@ def department_dashboard(request, role):
     """A department's own front page, split into the things staff actually
     distinguish: reactive Tickets, this department's open recurring
     Sessions (see the worksessions app — replaced the old source=recurring
-    Ticket "Tasks" column entirely, see the "Recurring work overhaul —
-    sessions" build brief), and the logged-in viewer's own Google Calendar
+    Ticket "Tasks" column entirely), and the logged-in viewer's own Google Calendar
     (about their day, not the team's, so it's the same regardless of which
     department they're looking at).
 
@@ -528,15 +476,12 @@ def department_dashboard(request, role):
     today = timezone.localdate()
     soon_cutoff = today + timedelta(days=2)
 
-    # source=recurring is retired (see worksessions) — excluded defensively
-    # in case any pre-decommission row is still lingering, but nothing
-    # creates new ones anymore.
+    # source=recurring is retired (see worksessions) — only old history
+    # tickets carry it; they're kept out of the department queue.
     qs = list(
         Ticket.objects.filter(assigned_role=role, property__isnull=False, status__in=OPEN_STATUSES)
         .exclude(source=Ticket.Source.RECURRING)
-        .select_related(
-            'property', 'assigned_staff__user', 'assigned_contact', 'created_from_template', 'package_run__package',
-        )
+        .select_related('property', 'assigned_staff__user', 'assigned_contact')
     )
     updated_ticket_ids = _tickets_with_new_activity(qs, request.user)
 
@@ -906,16 +851,6 @@ def ticket_list(request):
     elif source == 'recurring':
         qs = qs.filter(source=Ticket.Source.RECURRING)
 
-    template_id = request.GET.get('template')
-    selected_template = None
-    if template_id:
-        qs = qs.filter(created_from_template_id=template_id)
-        selected_template = TicketTemplate.objects.filter(pk=template_id).first()
-
-    scheduled_for = parse_date(request.GET.get('scheduled_for', '') or '')
-    if scheduled_for:
-        qs = qs.filter(scheduled_for=scheduled_for)
-
     property_id = request.GET.get('property')
     selected_property = None
     if property_id:
@@ -1015,9 +950,6 @@ def ticket_list(request):
         'selected_role': role,
         'selected_role_label': dict(StaffProfile.Role.choices).get(role) if role else None,
         'selected_source': source,
-        'selected_template_id': template_id,
-        'selected_template': selected_template,
-        'selected_scheduled_for': scheduled_for,
         'selected_property': selected_property,
         'selected_assigned_staff': selected_assigned_staff,
         'selected_assigned_staff_id': assigned_staff_id,
@@ -1400,8 +1332,7 @@ def ticket_contractor_thread_refresh(request, pk):
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
         Ticket.objects.select_related(
-            'property', 'unit', 'assigned_staff__user', 'assigned_contact', 'created_from_template',
-            'template_occurrence', 'package_run__package',
+            'property', 'unit', 'assigned_staff__user', 'assigned_contact',
         ),
         pk=pk,
     )
@@ -1419,32 +1350,6 @@ def ticket_detail(request, pk):
     followup_parties = _followup_parties(ticket)
     linked_ticket_contacts = list(ticket.ticket_contacts.select_related('contact').all())
     contact_pools = _related_contact_pools(ticket, linked_ticket_contacts)
-
-    package_siblings = []
-    blocking_step_label = ''
-    if ticket.package_run_id:
-        package_siblings = list(
-            ticket.package_run.tickets.select_related('property', 'created_from_template')
-            .order_by('created_from_template__title')
-        )
-        if ticket.status == Ticket.Status.BLOCKED and ticket.created_from_template_id:
-            this_step = TaskPackageTemplate.objects.filter(
-                package=ticket.package_run.package_id, template=ticket.created_from_template_id,
-            ).select_related('depends_on__template').first()
-            if this_step and this_step.depends_on_id:
-                blocking_step_label = this_step.depends_on.template.title
-
-    occurrence_siblings = []
-    if ticket.template_occurrence_id:
-        occurrence_siblings = list(
-            ticket.template_occurrence.tickets.select_related('property').order_by('property__name')
-        )
-
-    can_approve = bool(
-        ticket.created_from_template_id and ticket.created_from_template.requires_approval
-        and getattr(getattr(request.user, 'staff_profile', None), 'role', None)
-        == ticket.created_from_template.approval_role
-    )
 
     vendor_link_cooldown_hours_left = 0
     if ticket.vendor_link_sent_at:
@@ -1501,10 +1406,6 @@ def ticket_detail(request, pk):
         'project_runs': ticket.process_runs.filter(process_template__kind=ProcessTemplate.Kind.PROJECT).exclude(status='cancelled').select_related('process_template', 'assigned_to__user'),
         'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name'),
         'process_upload_form': ProcessAttachmentUploadForm(),
-        'package_siblings': package_siblings,
-        'blocking_step_label': blocking_step_label,
-        'occurrence_siblings': occurrence_siblings,
-        'can_approve': can_approve,
         'priority_choices': Priority.choices,
         'status_choices': Ticket.selectable_statuses(),
         # Completed is a hard status, deliberately excluded from the casual
@@ -1657,313 +1558,6 @@ def _units_by_property_json():
     for unit in Unit.objects.filter(is_active=True).select_related('property').order_by('label'):
         grouped.setdefault(str(unit.property_id), []).append({'id': unit.pk, 'label': unit.label})
     return dumps_for_script(grouped)
-
-
-def _attributes_by_category():
-    """PropertyAttribute.objects, grouped for the New Recurring Task
-    screen's Required attributes bubble pool — mirrors the Staff/Vendors
-    labeled-section split on ticket_list's Assignee picker. Relies on
-    PropertyAttribute.Meta.ordering (category, then label) already
-    sorting the queryset the way groupby needs."""
-    attrs = PropertyAttribute.objects.filter(is_active=True)
-    category_labels = dict(PropertyAttribute.Category.choices)
-    return [
-        {'category_label': category_labels[category], 'attributes': list(group)}
-        for category, group in groupby(attrs, key=lambda a: a.category)
-    ]
-
-
-def _rule_target_contacts_json():
-    return dumps_for_script([
-        {'id': c.id, 'label': str(c)} for c in Contact.objects.filter(
-            contact_type__in=[
-                Contact.ContactType.OWNER, Contact.ContactType.BOARD_MEMBER, Contact.ContactType.ASSOCIATION_MEMBER,
-            ],
-        )
-    ])
-
-
-def _ticket_template_form_context(form, today):
-    return {
-        'form': form,
-        'today': today.isoformat(),
-        'due_date_presets': _due_date_presets(today),
-        'properties_by_type': properties_by_type(),
-        'attributes_by_category': _attributes_by_category(),
-        'target_type_choices': TicketTemplate.TargetType.choices,
-        'rule_target_contacts_json': _rule_target_contacts_json(),
-    }
-
-
-@login_required
-def function_list(request):
-    """Functions (TaskPackage) are the main-nav "Functions" landing page —
-    the primary way staff organize recurring work now: start a Function,
-    optionally add Task Group(s) under it, then add Recurring Tasks either
-    directly on the Function or inside one of its groups. A TicketTemplate
-    never attached to any Function stays reachable via the older flat
-    ticket_template_list ("All recurring task rules")."""
-    packages = TaskPackage.objects.prefetch_related('task_groups', 'steps').order_by('title')
-    q = request.GET.get('q', '').strip()
-    if q:
-        packages = packages.filter(title__icontains=q)
-    packages = list(packages)
-    for pkg in packages:
-        pkg.step_count = len(pkg.steps.all())
-        pkg.group_count = len(pkg.task_groups.all())
-    return render(request, 'tickets/function_list.html', {'packages': packages, 'q': q})
-
-
-@login_required
-def function_create(request):
-    """Retired — see the "Recurring work overhaul — sessions" build brief.
-    The old TicketTemplate/TaskPackage system's automatic generation is
-    already gone (removed from proptasks/scheduler.py); this closes the
-    other half of "don't run both systems in parallel" by refusing to let
-    anyone create a NEW Function, which would just sit inert forever (no
-    scheduler job left to ever generate anything from it). function_list/
-    function_detail/function_edit stay reachable, unchanged, for whatever
-    old rows still exist to be reviewed or cleaned up — only creation of
-    new ones is blocked."""
-    messages.info(request, 'Create your recurring rule here instead.')
-    return redirect('session_template_create')
-
-
-@login_required
-def function_edit(request, pk):
-    function = get_object_or_404(TaskPackage, pk=pk)
-    if request.method == 'POST':
-        form = FunctionForm(request.POST, instance=function)
-        if form.is_valid():
-            form.save()
-            messages.success(request, f'Function "{function.title}" saved.')
-            return redirect('function_detail', pk=function.pk)
-    else:
-        form = FunctionForm(instance=function)
-    return render(request, 'tickets/function_form.html', {'form': form, 'is_new': False, 'function': function})
-
-
-@login_required
-def function_delete(request, pk):
-    function = get_object_or_404(TaskPackage, pk=pk)
-    if request.method == 'POST':
-        title = function.title
-        function.delete()
-        messages.success(request, f'Deleted Function "{title}".')
-        return redirect('function_list')
-    return redirect('function_detail', pk=pk)
-
-
-@login_required
-def function_detail(request, pk):
-    function = get_object_or_404(TaskPackage, pk=pk)
-    task_groups = list(function.task_groups.prefetch_related('steps__template').order_by('sequence_order'))
-    ungrouped_steps = list(
-        function.steps.filter(task_group__isnull=True).select_related('template').order_by('sequence_order')
-    )
-    for group in task_groups:
-        group.target_summary = _group_target_summary(group)
-        group.edit_form = TaskGroupForm(instance=group)
-        for step in group.steps.all():
-            # A grouped step with the group's broad targeting set no longer
-            # consults its own Target section — see applicability.py — so
-            # its per-step summary is only shown when the group hasn't set
-            # one, keeping the table honest about what's actually in effect.
-            step.template.target_summary = None if group.target_summary else _target_summary(step.template)
-    for step in ungrouped_steps:
-        step.template.target_summary = _target_summary(step.template)
-    return render(request, 'tickets/function_detail.html', {
-        'function': function,
-        'task_groups': task_groups,
-        'ungrouped_steps': ungrouped_steps,
-        'assigned_property_count': function.property_assignments.count(),
-        'property_type_choices': Property.Type.choices,
-    })
-
-
-@login_required
-def task_group_create(request, package_pk):
-    function = get_object_or_404(TaskPackage, pk=package_pk)
-    if request.method == 'POST':
-        form = TaskGroupForm(request.POST)
-        if form.is_valid():
-            group = form.save(commit=False)
-            group.package = function
-            group.sequence_order = function.task_groups.count()
-            group.save()
-            messages.success(request, f'Task Group "{group.title}" added.')
-        else:
-            messages.error(request, 'Give the Task Group a title.')
-    return redirect('function_detail', pk=package_pk)
-
-
-@login_required
-def task_group_edit(request, pk):
-    group = get_object_or_404(TaskGroup, pk=pk)
-    if request.method == 'POST':
-        form = TaskGroupForm(request.POST, instance=group)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Saved.')
-        else:
-            messages.error(request, 'Give the Task Group a title.')
-    return redirect('function_detail', pk=group.package_id)
-
-
-@login_required
-def task_group_delete(request, pk):
-    group = get_object_or_404(TaskGroup, pk=pk)
-    package_pk = group.package_id
-    if request.method == 'POST':
-        title = group.title
-        group.delete()
-        messages.success(request, f'Deleted Task Group "{title}" — its tasks stay on the Function, ungrouped.')
-    return redirect('function_detail', pk=package_pk)
-
-
-@login_required
-def ticket_template_create(request):
-    """Retired — same reasoning as function_create above. A new
-    TicketTemplate created here would never fire (the scheduler no longer
-    runs generate_recurring_tickets on a timer); redirect straight to
-    where a new recurring rule actually belongs now."""
-    messages.info(request, 'Create your recurring rule here instead.')
-    return redirect('session_template_create')
-
-
-@login_required
-def ticket_template_edit(request, pk):
-    template = get_object_or_404(TicketTemplate, pk=pk)
-    today = timezone.localdate()
-    if request.method == 'POST':
-        form = TicketTemplateForm(request.POST, instance=template)
-        if form.is_valid():
-            template = form.save()
-            call_command('generate_recurring_tickets')
-            messages.success(request, f'Recurring task rule "{template.title}" saved.')
-            return redirect('ticket_template_detail', pk=template.pk)
-    else:
-        form = TicketTemplateForm(instance=template, initial={'next_run_date': template.next_run_date.isoformat()})
-
-    context = _ticket_template_form_context(form, today)
-    context['template'] = template
-    return render(request, 'tickets/ticket_template_form.html', context)
-
-
-@login_required
-def task_step_duplicate(request, step_pk):
-    """Copies a Task (TicketTemplate) and its membership in the Function/
-    Task Group it lives in, landing on the copy's edit form so the details
-    that should differ (title, date, target) can be adjusted right away
-    rather than duplicating in place and leaving two identical tasks."""
-    if request.method != 'POST':
-        return redirect('dashboard')
-    step = get_object_or_404(TaskPackageTemplate, pk=step_pk)
-    original = step.template
-
-    new_template = TicketTemplate.objects.get(pk=original.pk)
-    new_template.pk = None
-    new_template.title = f'{original.title} (copy)'
-    new_template.save()
-    new_template.required_attributes.set(original.required_attributes.all())
-    TaskPackageTemplate.objects.create(
-        package=step.package, task_group=step.task_group, template=new_template,
-        sequence_order=step.package.steps.count(),
-    )
-    messages.success(request, f'Duplicated "{original.title}" — now editing the copy.')
-    return redirect('ticket_template_edit', pk=new_template.pk)
-
-
-_TARGET_TYPE_ORDER = ['company', 'every_property', 'property_category', 'contact', 'property']
-
-
-def _target_summary(template):
-    """One-line "applies to" description for a Task Rule row — the display
-    counterpart to TicketTemplate.TargetType dispatch in applicability.py."""
-    if template.target_type == TicketTemplate.TargetType.COMPANY:
-        return 'Company-wide'
-    if template.target_type == TicketTemplate.TargetType.PROPERTY:
-        return template.property.name if template.property_id else 'No property set'
-    if template.target_type == TicketTemplate.TargetType.CONTACT:
-        return f'Properties linked to {template.contact}' if template.contact_id else 'No contact set'
-    if template.target_type == TicketTemplate.TargetType.PROPERTY_CATEGORY:
-        type_labels = dict(Property.Type.choices)
-        labels = [type_labels.get(t, t) for t in template.property_types]
-        return ', '.join(labels) if labels else 'Every property'
-    return 'Every property'
-
-
-def _group_target_summary(group):
-    """The broad property category a Task Group applies to, or None when
-    the group hasn't set one — in which case its steps fall back to their
-    own individual Target settings (see applicability.py::
-    template_applies_to_property)."""
-    if not group.property_types:
-        return None
-    type_labels = dict(Property.Type.choices)
-    return ', '.join(type_labels.get(t, t) for t in group.property_types)
-
-
-@login_required
-def ticket_template_list(request):
-    """The main-nav "Recurring Tasks" landing page — every active/inactive
-    Task Rule, grouped by target_type (broadest-impact rules first, since
-    those are the ones worth double-checking at a glance), each linking
-    through to the Tasks/Task Groups it has generated."""
-    templates = list(
-        TicketTemplate.objects.select_related('property', 'contact', 'default_assigned_staff')
-        .prefetch_related('required_attributes').order_by('title')
-    )
-    for t in templates:
-        t.target_summary = _target_summary(t)
-    target_labels = dict(TicketTemplate.TargetType.choices)
-    groups = []
-    for target_type in _TARGET_TYPE_ORDER:
-        group_templates = [t for t in templates if t.target_type == target_type]
-        if group_templates:
-            groups.append({
-                'target_type': target_type, 'label': target_labels[target_type], 'templates': group_templates,
-            })
-    return render(request, 'tickets/ticket_template_list.html', {'groups': groups})
-
-
-@login_required
-def ticket_template_detail(request, pk):
-    template = get_object_or_404(
-        TicketTemplate.objects.select_related('property', 'contact', 'default_assigned_staff'), pk=pk,
-    )
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        if action == 'add_document':
-            name = request.POST.get('name', '').strip()
-            file = request.FILES.get('file')
-            if not (name and file):
-                messages.error(request, 'A name and a file are both required.')
-            elif file.content_type not in settings.PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES:
-                messages.error(request, 'That file type isn\'t allowed — photos, PDFs, Word, or Excel files only.')
-            elif file.size > settings.PROCESS_ATTACHMENT_MAX_BYTES:
-                max_mb = settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
-                messages.error(request, f'File is too large (max {max_mb}MB).')
-            else:
-                TicketTemplateDocument.objects.create(template=template, name=name, file=file, uploaded_by=request.user)
-                messages.success(request, 'Document added.')
-        elif action == 'delete_document':
-            TicketTemplateDocument.objects.filter(pk=request.POST.get('document_id'), template=template).delete()
-            messages.success(request, 'Removed.')
-        return redirect('ticket_template_detail', pk=template.pk)
-    template.target_summary = _target_summary(template)
-    occurrences = (
-        template.occurrences.order_by('-scheduled_for')
-        .annotate(ticket_count=Count('tickets'), done_count=Count('tickets', filter=Q(
-            tickets__status__in=Ticket.DEPENDENCY_SATISFYING_STATUSES,
-        )))[:26]
-    )
-    return render(request, 'tickets/ticket_template_detail.html', {
-        'template': template,
-        'occurrences': occurrences,
-        'all_tasks_url': f"{reverse('ticket_list')}?source=recurring&template={template.pk}",
-        'documents': template.documents.all(),
-    })
 
 
 @login_required
@@ -2234,19 +1828,6 @@ def ticket_set_status(request, pk):
                     return redirect('ticket_detail', pk=ticket.pk)
                 new_due_date = timezone.make_aware(datetime.combine(parsed_due_date, datetime.min.time()))
 
-            template = ticket.created_from_template
-            if new_status == Ticket.Status.VERIFIED and template and template.requires_approval:
-                user_role = getattr(getattr(request.user, 'staff_profile', None), 'role', None)
-                if user_role != template.approval_role:
-                    messages.error(
-                        request,
-                        f'Only {dict(StaffProfile.Role.choices).get(template.approval_role, template.approval_role)} '
-                        'can approve this — nothing was changed.',
-                    )
-                    if 'next_qs' in request.POST:
-                        return _list_redirect(request)
-                    return redirect('ticket_detail', pk=ticket.pk)
-
             if new_status in (Ticket.Status.COMPLETED, Ticket.Status.VERIFIED):
                 gate_error = process_gate_error_message(ticket)
                 if gate_error:
@@ -2284,8 +1865,6 @@ def ticket_set_status(request, pk):
                 )
             if new_status == Ticket.Status.COMPLETED:
                 _link_vendor_to_property(ticket)
-            if new_status in Ticket.DEPENDENCY_SATISFYING_STATUSES:
-                unblock_dependents(ticket)
             messages.success(request, f'Status updated to {ticket.get_status_display()}.')
 
             # Cancelling a ticket is usually "I'm done looking at this" —

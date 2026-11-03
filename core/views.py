@@ -22,7 +22,7 @@ from django.views.decorators.cache import never_cache
 
 from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
 from processes.models import ProcessTemplate
-from tickets.models import Frequency, FollowUpLog, PropertyPackage, Ticket
+from tickets.models import FollowUpLog, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
 from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, listings as listings_service, nudges, places, property_actions, property_specs, qb_accounts, quickbooks, trash as trash_service, usps

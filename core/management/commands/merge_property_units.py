@@ -13,8 +13,8 @@ Dry-run by default: with no flags, only detects and lists candidate groups
 Mirrors two existing patterns in this codebase rather than inventing a new
 one: core/duplicates.py::merge_contacts's "bulk-reassign every referencing
 model inside one transaction.atomic()" shape, and
-tickets/management/commands/wipe_recurring_tickets.py's "back up to a
-timestamped JSON file first, dry-run by default" shape.
+the "back up to a timestamped JSON file first, dry-run by default" shape
+of the repo's one-time reset commands.
 
 For every model with a unique constraint that includes `property` (a
 sibling and the new primary could each already have a conflicting row —
@@ -26,7 +26,7 @@ already covers it, nothing is lost.
 
 Booking/Visit/PropertyListingName are the only models with a `unit` field
 as of this writing — they get both `property` and `unit` reassigned.
-Everything else only gets `property` reassigned; if Ticket/TicketTemplate/
+Everything else only gets `property` reassigned; if Ticket/
 SessionLine ever gain their own `unit` field, this command should be
 revisited to set it too rather than leaving those rows building-level."""
 import re
@@ -45,7 +45,7 @@ from onsite.models import (
 )
 from processes.models import ProcessRun
 from supplies.models import PropertySupplyOverride, SupplyOrder, SupplyOrderBatch, SupplyRequest
-from tickets.models import FollowUpLog, PropertyPackage, PropertyTemplateOverride, Ticket, TicketTemplate
+from tickets.models import FollowUpLog, Ticket
 from worksessions.models import SessionLine
 
 BACKUP_DIR = Path(settings.BASE_DIR) / 'backups'
@@ -61,8 +61,6 @@ CONFLICT_SAFE_MODELS = [
     (SupplyRequest, ['source_reference', 'item_guess']),
     (SupplyOrderBatch, ['date']),
     (PropertySupplyOverride, ['unit', 'supply_item']),
-    (PropertyPackage, ['package']),
-    (PropertyTemplateOverride, ['template']),
     (PropertyChecklistOverride, ['standard_item']),
     (PropertyChecklistReview, ['visit_type']),
 ]
@@ -74,7 +72,7 @@ CONFLICT_SAFE_MODELS = [
 # `unit` field to backfill, not just `property`.
 PLAIN_REASSIGN_MODELS = [
     PropertyChecklistItem, VisitRule, ImportBatch, SupplyOrder,
-    TicketTemplate, ProcessRun, FollowUpLog,
+    ProcessRun, FollowUpLog,
 ]
 
 

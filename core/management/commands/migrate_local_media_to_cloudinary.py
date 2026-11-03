@@ -4,7 +4,7 @@ see settings.py's STORAGES branch) over to Cloudinary, across every
 FileField/ImageField in the app.
 
 Deliberately skips this app's usual "back up to a gitignored JSON file
-first" convention (see wipe_recurring_tickets.py, reset_supply_catalog.py)
+first" convention (see reset_supply_catalog.py)
 for a concrete reason: the local volume that's being read from is the same
 one that's completely full (OSError: [Errno 28] No space left on device),
 so there's nowhere to write a backup file to even if we wanted one. Nothing
@@ -14,16 +14,15 @@ location. The optional --delete-local pass (a second, separate invocation)
 only removes a local file after that same file's Cloudinary copy has
 already been confirmed to exist.
 
-Covers every FileField/ImageField in the app as of this build:
-PropertyDocument.file, ContactDocument.file, TicketTemplateDocument.file,
-TicketAttachment.file, ImportBatch.raw_file, Visit.signature_image,
+Covers every FileField/ImageField in the app as of this build (TicketTemplateDocument was removed along with the old recurring system):
+PropertyDocument.file, ContactDocument.file, TicketAttachment.file, ImportBatch.raw_file, Visit.signature_image,
 VisitMedia.file, ProcessTemplateAttachment.file, ProcessAttachment.file.
 
 Each field is migrated to the SAME storage alias its model field actually
 uses today (see core/storage.py's DocumentStorage and settings.py's
 STORAGES) — 'default' (image-typed) for the one true ImageField,
 Visit.signature_image; 'documents' (raw-typed) for every plain FileField.
-Originally this used default_storage unconditionally for all nine, which
+Originally this used default_storage unconditionally for every field, which
 silently 'failed' (caught below, not a crash, but never actually copied)
 every non-image row, since Cloudinary rejects a non-image upload sent
 with the image resource type — the exact bug fixed model-side in the
@@ -36,7 +35,6 @@ from django.core.management.base import BaseCommand, CommandError
 FILE_FIELDS = [
     ('core', 'PropertyDocument', 'file', 'documents'),
     ('core', 'ContactDocument', 'file', 'documents'),
-    ('tickets', 'TicketTemplateDocument', 'file', 'documents'),
     ('tickets', 'TicketAttachment', 'file', 'documents'),
     ('onsite', 'ImportBatch', 'raw_file', 'documents'),
     ('onsite', 'Visit', 'signature_image', 'default'),

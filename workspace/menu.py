@@ -41,7 +41,7 @@ LINES = [
 # Which addresses light up which item.
 PREFIXES = {
     'home': ['/w/home'],
-    'tickets': ['/tickets', '/templates', '/functions', '/task-'],
+    'tickets': ['/tickets'],
     'compliance': ['/w/compliance', '/compliance', '/recurring'],
     'projects': ['/w/projects', '/processes'],
     'onsite': ['/onsite', '/w/onsite'],

@@ -217,8 +217,8 @@ that tells you where work comes from.
 
 Recurring generation for inspections and deep cleans: `property`, `visit_type`,
 `interval_months`, `default_assignee`, `last_generated_at`, `is_active`.
-Modeled on `TicketTemplate` per `CLAUDE.md`'s instruction to follow the
-recurring path, not the dead reactive one.
+Originally modeled on the old `TicketTemplate` recurring path (since
+removed); it has its own generator, `generate_scheduled_visits`.
 
 ## Booking import
 

@@ -41,23 +41,6 @@ def _run_link_quo_contact_threads():
     _run_command('link_quo_contact_threads')
 
 
-def _run_generate_recurring_tickets():
-    # Retired from the scheduler (see the "Recurring work overhaul —
-    # sessions" build brief, Phase 6) — sessions/services/generation.py's
-    # generate_sessions job replaces this for automatic, on-a-timer
-    # generation. The function/command itself is deliberately left in place
-    # (not deleted): tickets/views.py's ticket_template_create/edit still
-    # call it directly to materialize a just-saved template immediately,
-    # and tickets/management/commands/import_pm_workday_tasks.py imports
-    # nth_business_day from it. Once tickets/management/commands/
-    # wipe_recurring_tickets has been run against production (deletes every
-    # TicketTemplate row), this becomes a permanent no-op by construction —
-    # there's nothing left for it to iterate over. Do not re-add this to
-    # the scheduler's job list below: running both systems' generation on a
-    # timer in parallel is exactly what the brief prohibits.
-    _run_command('generate_recurring_tickets')
-
-
 def _run_resume_expired_wait_steps():
     _run_command('resume_expired_wait_steps')
 
@@ -137,9 +120,6 @@ def start():
 
     _scheduler = BackgroundScheduler(daemon=True)
 
-    # _run_generate_recurring_tickets is deliberately NOT scheduled here
-    # anymore — see its own docstring above. _run_generate_sessions (below)
-    # is its replacement.
     _scheduler.add_job(_run_sync_quo_contacts, 'interval', minutes=settings.QUO_CONTACT_SYNC_INTERVAL_MINUTES)
     _scheduler.add_job(
         _run_link_quo_contact_threads, 'interval', minutes=settings.QUO_CONTACT_LINK_INTERVAL_MINUTES,

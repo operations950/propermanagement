@@ -43,6 +43,7 @@ from core.models import Property, PropertyAttribute, StaffProfile, Unit
 
 class Frequency(models.TextChoices):
     DAILY = 'daily', 'Daily'
+    WEEKDAYS = 'weekdays', 'Every weekday (Mon-Fri)'
     WEEKLY = 'weekly', 'Weekly'
     BIWEEKLY = 'biweekly', 'Bi-weekly'
     MONTHLY = 'monthly', 'Monthly'

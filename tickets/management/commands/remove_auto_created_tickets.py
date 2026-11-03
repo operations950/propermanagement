@@ -2,8 +2,8 @@
 (see proptasks/scheduler.py) — deletes every Ticket the system created
 automatically from a monitored source (email, phone/Quo, shared calendar,
 Airbnb, VRBO, or the dev fake adapter) rather than a human. Tickets
-created manually by staff or by the Functions/recurring-template system
-are never touched.
+created manually by staff, by the on-site flow or by the (removed) recurring
+system (source='recurring' history) are never touched.
 
 Also clears any leftover possible_duplicate_of/duplicate_reasoning flags
 on the tickets that remain — those were only ever reviewable on the now-
@@ -24,7 +24,7 @@ AUTO_CREATED_SOURCES = [
 
 
 class Command(BaseCommand):
-    help = 'Deletes all auto-created (non-manual, non-recurring) tickets and clears stray duplicate flags.'
+    help = 'Deletes all auto-created (non-manual, non-recurring, non-onsite) tickets and clears stray duplicate flags.'
 
     def handle(self, *args, **options):
         auto_created = Ticket.objects.filter(source__in=AUTO_CREATED_SOURCES)

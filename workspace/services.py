@@ -17,7 +17,7 @@ NOW_DAYS = 15                        # a ticket due further out than this is a "
 HORIZONS = {'today': 0, 'week': 6, 'month': 30}
 HORIZON_LABELS = {'today': 'Today', 'week': 'This week', 'month': 'This month'}
 KIND_ORDER = [('ticket', 'Tickets'), ('compliance', 'Compliance'), ('project', 'Projects'), ('visit', 'On-site visits')]
-FREQ_ORDER = [Frequency.YEARLY, Frequency.QUARTERLY, Frequency.MONTHLY, Frequency.MONTHLY_WORKDAY, Frequency.BIWEEKLY, Frequency.WEEKLY, Frequency.DAILY, Frequency.ONCE]
+FREQ_ORDER = [Frequency.YEARLY, Frequency.QUARTERLY, Frequency.MONTHLY, Frequency.MONTHLY_WORKDAY, Frequency.BIWEEKLY, Frequency.WEEKLY, Frequency.WEEKDAYS, Frequency.DAILY, Frequency.ONCE]
 
 
 def open_ticket_statuses():

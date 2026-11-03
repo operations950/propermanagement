@@ -59,7 +59,7 @@ def merge_contacts(primary, loser):
     from intake.models import Reservation
     from processes.models import ProcessRun
     from tickets.models import (
-        FollowUpLog, Ticket, TicketAssignmentLog, TicketAttachment, TicketContact, TicketTemplate,
+        FollowUpLog, Ticket, TicketAssignmentLog, TicketAttachment, TicketContact,
     )
 
     with transaction.atomic():
@@ -76,7 +76,6 @@ def merge_contacts(primary, loser):
         ContactImportCandidate.objects.filter(resolved_contact=loser).update(resolved_contact=primary)
         ContactUpdateCandidate.objects.filter(contact=loser).update(contact=primary)
         Reservation.objects.filter(guest=loser).update(guest=primary)
-        TicketTemplate.objects.filter(contact=loser).update(contact=primary)
         Ticket.objects.filter(assigned_contact=loser).update(assigned_contact=primary)
         TicketAttachment.objects.filter(uploaded_by_contact=loser).update(uploaded_by_contact=primary)
         TicketAssignmentLog.objects.filter(from_contact=loser).update(from_contact=primary)

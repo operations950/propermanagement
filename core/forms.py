@@ -2,8 +2,6 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
 
-from tickets.models import PropertyTemplateOverride
-
 from .models import Contact, Property, StaffProfile, creatable_contact_types
 
 
@@ -16,28 +14,6 @@ class EmailOrUsernameAuthenticationForm(AuthenticationForm):
         super().__init__(*args, **kwargs)
         self.fields['username'].label = 'Email'
         self.fields['username'].widget.attrs.update({'autofocus': True, 'autocomplete': 'email'})
-
-
-class PropertyTemplateOverrideForm(forms.ModelForm):
-    """Validates the property recurring-task review screen's per-row
-    "adjust" action — every field is optional, since a blank field just
-    means "use the template's default" (see tickets.services.applicability
-    .effective_settings)."""
-    class Meta:
-        model = PropertyTemplateOverride
-        fields = ['frequency', 'workday_of_month', 'assigned_role', 'assigned_staff']
-        labels = {
-            'frequency': 'Frequency override',
-            'workday_of_month': 'Workday of month override',
-            'assigned_role': 'Department override',
-            'assigned_staff': 'Assignee override',
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for name in self.fields:
-            self.fields[name].required = False
-        self.fields['assigned_staff'].queryset = StaffProfile.objects.select_related('user')
 
 
 class PropertyForm(forms.ModelForm):

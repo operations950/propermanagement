@@ -1,19 +1,14 @@
 {% extends 'base.html' %}
 {% load ticket_extras %}
-{% block title %}{% if selected_source == 'recurring' %}Recurring Tasks{% else %}Tickets{% endif %}{% endblock %}
+{% block title %}{% if selected_source == 'recurring' %}Earlier recurring tasks{% else %}Tickets{% endif %}{% endblock %}
 {% block content %}
-{% if selected_source == 'recurring' %}
-<a href="{% url 'ticket_template_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> All recurring task rules</a>
-{% endif %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2">
         <i data-lucide="clipboard-list" class="icon-lg"></i>
-        {% if selected_source == 'recurring' %}Recurring Tasks{% elif selected_status == 'complete' %}Completed & cancelled{% else %}Tickets{% endif %}
+        {% if selected_source == 'recurring' %}Earlier recurring tasks{% elif selected_status == 'complete' %}Completed & cancelled{% else %}Tickets{% endif %}
         {% if selected_role == 'none' %} — no department assigned{% elif selected_role %} — {{ selected_role_label }}{% endif %}
     </h2>
-    {% if selected_source == 'recurring' %}
-    <a href="{% url 'ticket_template_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New recurring task rule</a>
-    {% else %}
+    {% if selected_source != 'recurring' %}
     <a href="{% url 'ticket_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New ticket</a>
     {% endif %}
 </div>
@@ -25,17 +20,6 @@
 <a href="{% querystring horizon='later' due=None %}" class="{% if ws_horizon == 'later' %}on{% endif %}">Later</a>
 </div>
 <div class="ws-note">Tickets are one-off requests. Due within {{ ws_now_days }} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket you turn into a project moves to <a href="{% url 'ws_projects' %}">Projects</a>; one with just a process attached stays here.</div>
-{% endif %}
-
-{% if selected_template %}
-<div class="d-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
-     style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">
-    <span>Showing tasks from: <strong>{{ selected_template.title }}</strong>{% if selected_scheduled_for %} &middot; {{ selected_scheduled_for }}{% endif %}</span>
-    <span class="d-flex align-items-center gap-3">
-        <a href="{% url 'ticket_template_detail' selected_template.pk %}" class="small" style="color: var(--brand-primary);">View rule</a>
-        <a href="{% querystring template=None scheduled_for=None %}" class="small" style="color: var(--brand-primary);" title="Clear this filter — every other filter bubble preserves it otherwise">&times; Clear</a>
-    </span>
-</div>
 {% endif %}
 
 {% if selected_property %}
@@ -127,7 +111,7 @@
     <div class="tf-layer" data-tf-layer="root">
         <button type="button" class="bubble{% if selected_status != 'active' %} bubble-locked{% endif %}" data-tf-open="status">Status{% if selected_status == 'active' %}: Active{% elif selected_status == 'complete' %}: Completed &amp; cancelled{% elif selected_status == 'all' %}: All{% else %}: {{ selected_status_label }}{% endif %}</button>
 
-        {% if not new_face %}<span class="tf-pair"><button type="button" class="bubble{% if selected_source %} bubble-locked{% endif %}" data-tf-open="source">Type{% if selected_source == 'reactive' %}: Tickets{% elif selected_source == 'recurring' %}: Recurring{% endif %}</button>{% if selected_source %}<a class="tf-x" href="{% querystring source=None %}" title="Clear">&times;</a>{% endif %}</span>{% endif %}
+        {% if not new_face %}<span class="tf-pair"><button type="button" class="bubble{% if selected_source %} bubble-locked{% endif %}" data-tf-open="source">Type{% if selected_source == 'reactive' %}: Tickets{% elif selected_source == 'recurring' %}: Earlier recurring{% endif %}</button>{% if selected_source %}<a class="tf-x" href="{% querystring source=None %}" title="Clear">&times;</a>{% endif %}</span>{% endif %}
 
         <span class="tf-pair"><button type="button" class="bubble{% if selected_role %} bubble-locked{% endif %}" data-tf-open="department">Department{% if selected_role == 'none' %}: None{% elif selected_role %}: {{ selected_role_label }}{% endif %}</button>{% if selected_role %}<a class="tf-x" href="{% querystring role=None %}" title="Clear">&times;</a>{% endif %}</span>
 
@@ -150,9 +134,9 @@
 
     <div class="tf-layer" data-tf-layer="source" hidden>
         <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
-        <a href="{% querystring source=None %}" class="bubble{% if not selected_source %} bubble-locked{% endif %}">Tickets &amp; recurring tasks</a>
+        <a href="{% querystring source=None %}" class="bubble{% if not selected_source %} bubble-locked{% endif %}">All tickets (including earlier recurring tasks)</a>
         <a href="{% querystring source='reactive' %}" class="bubble{% if selected_source == 'reactive' %} bubble-locked{% endif %}">Tickets only</a>
-        <a href="{% querystring source='recurring' %}" class="bubble{% if selected_source == 'recurring' %} bubble-locked{% endif %}">Recurring tasks only</a>
+        <a href="{% querystring source='recurring' %}" class="bubble{% if selected_source == 'recurring' %} bubble-locked{% endif %}">Earlier recurring tasks only</a>
     </div>
 
     <div class="tf-layer" data-tf-layer="department" hidden>

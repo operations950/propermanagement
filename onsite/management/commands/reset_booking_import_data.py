@@ -20,9 +20,9 @@ by re-importing) — --include-import-batches additionally clears the ImportBatc
 history of past uploads, not read by anything else) if a clean "Recent Imports" list is also wanted.
 
 Backs up everything it changes to a timestamped JSON file first (same restorable-via-loaddata
-pattern as tickets.wipe_recurring_tickets), and defaults to a dry run — pass --apply to actually
+pattern as the repo's other one-time reset commands), and defaults to a dry run — pass --apply to actually
 change anything. Re-run safely: nothing here is auto-run from Procfile, this is a one-time reset a
-human reviews the counts for and chooses to run, exactly like wipe_recurring_tickets.
+human reviews the counts for and chooses to run, like the repo's other one-time reset commands.
 
 After running with --apply, re-upload every historical Airbnb/VRBO file again (in date order) at
 /onsite/import/ — the corrected import logic rebuilds every reservation's payout/pass-through/

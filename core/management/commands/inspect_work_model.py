@@ -1,4 +1,4 @@
-"""READ-ONLY inventory of the work-model pieces in the live system: process templates and runs, the old recurring system (ticket templates, task packages, functions, tickets they made, and which of those are still open), compliance rules, visit rules, portfolio rules, and the accounting schedules.
+"""READ-ONLY inventory of the work-model pieces in the live system: process templates and runs, the tickets the removed recurring system left behind (history, and which of those are still open), compliance rules, visit rules, portfolio rules, and the accounting schedules.
 
 It changes nothing. Run it and read the output:  manage.py inspect_work_model
 No owner names, emails or phone numbers are printed."""
@@ -19,12 +19,12 @@ def t(s, n=70):
 
 
 class Command(BaseCommand):
-    help = 'Read-only inventory of processes, the old recurring system, compliance rules, visit rules and accounting schedules.'
+    help = 'Read-only inventory of processes, old recurring-source tickets, compliance rules, visit rules and accounting schedules.'
 
     def handle(self, *args, **options):
         out = self.stdout
         out.write('INVENTORY OF THE WORK MODEL (read only)')
-        for label, fn in (('processes', self.processes), ('old recurring', self.old_recurring), ('open old tickets', self.open_old_tickets), ('packages', self.packages),
+        for label, fn in (('processes', self.processes), ('tickets by source', self.tickets_by_source), ('open old tickets', self.open_old_tickets),
                           ('compliance', self.compliance), ('on-site', self.onsite), ('portfolio', self.portfolio), ('accounting', self.accounting)):
             try:
                 fn(out)
@@ -48,26 +48,18 @@ class Command(BaseCommand):
             ProcessRun.objects.filter(ticket__isnull=False).count(), ProcessRun.objects.filter(property__isnull=False, ticket__isnull=True, session_line__isnull=True).count(),
             ProcessRun.objects.filter(contact__isnull=False).count(), ProcessRun.objects.filter(session_line__isnull=False).count()))
 
-    def old_recurring(self, out):
-        from tickets.models import Ticket, TicketTemplate
-        sect(out, 'OLD RECURRING TICKET RULES (TicketTemplate)')
-        qs = TicketTemplate.objects.order_by('-is_active', 'title')
-        out.write(f'  total: {qs.count()} | active: {qs.filter(is_active=True).count()}')
-        for tpl in qs:
-            made = Ticket.objects.filter(created_from_template=tpl)
-            open_n = made.exclude(status__in=DONE).count()
-            out.write(f'  #{tpl.pk} {t(tpl.title, 60)} | {tpl.frequency} | active={tpl.is_active} | dept={tpl.default_assigned_role} | target={tpl.target_type} | docs={tpl.documents.count()} | tickets made={made.count()} open={open_n}')
+    def tickets_by_source(self, out):
+        from tickets.models import Ticket
         sect(out, 'TICKETS BY SOURCE AND STATUS')
         out.write('  by source: %s' % dict(Counter(Ticket.objects.values_list('source', flat=True))))
         for src in ('recurring', 'session'):
             rows = Ticket.objects.filter(source=src)
             out.write(f'  source={src}: total {rows.count()}, by status {dict(Counter(rows.values_list("status", flat=True)))}')
-        out.write('  tickets with created_from_template set: %d' % Ticket.objects.filter(created_from_template__isnull=False).count())
 
     def open_old_tickets(self, out):
         from tickets.models import Ticket
-        sect(out, 'OPEN TICKETS THAT CAME FROM THE OLD RECURRING RULES')
-        qs = (Ticket.objects.filter(source='recurring').exclude(status__in=DONE).select_related('property', 'created_from_template', 'assigned_staff__user').order_by('due_date'))
+        sect(out, 'OPEN TICKETS THAT CAME FROM THE OLD RECURRING SYSTEM (history)')
+        qs = (Ticket.objects.filter(source='recurring').exclude(status__in=DONE).select_related('property', 'assigned_staff__user').order_by('due_date'))
         out.write(f'  open recurring-source tickets: {qs.count()}')
         for tk in qs[:120]:
             who = tk.assigned_staff.user.first_name if tk.assigned_staff_id else '-'
@@ -75,14 +67,6 @@ class Command(BaseCommand):
                       f'    #{tk.pk} [{tk.status}] {t(tk.title, 56)} | {t(tk.property, 30)} | no due date | {who}')
         started = Ticket.objects.filter(source='recurring').exclude(status__in=['open', 'upcoming']).exclude(status__in=DONE).count()
         out.write(f'  of those, already worked on (not just open or upcoming): {started}')
-
-    def packages(self, out):
-        from tickets import models as tm
-        sect(out, 'TASK PACKAGES, TASK GROUPS, FUNCTIONS')
-        for name in ('TaskPackageTemplate', 'TaskPackage', 'PackageRun', 'TaskGroup', 'Function', 'TemplateOccurrence', 'PropertyTemplateOverride'):
-            model = getattr(tm, name, None)
-            if model is not None:
-                out.write(f'  {name}: {model.objects.count()}')
 
     def compliance(self, out):
         from worksessions.models import Session, SessionTemplate

@@ -1220,8 +1220,8 @@ class PropertyChecklistReview(models.Model):
 
 class VisitRule(models.Model):
     """Recurring visit generation for inspections/deep cleans — modeled on
-    tickets.TicketTemplate per CLAUDE.md's instruction to follow the
-    recurring path. See generate_scheduled_visits management command.
+    the (since removed) ticket-template recurring path. See
+    generate_scheduled_visits management command.
 
     Note the name collision this shares with the site-wide "Recurring"
     nav item (worksessions app, mounted at /recurring/) — unrelated

@@ -11,52 +11,6 @@ from processes.models import ProcessTemplate, ProcessTemplateStep, StepType
 
 TEMPLATES = [
     {
-        'name': 'Short-Term Rental Cleaning',
-        'category': 'Short-Term Rental',
-        'description': 'Cleaner turnover checklist between reservations, with a secure link for '
-                        'contracted (non-staff) cleaners and manager review before turnover.',
-        'steps': [
-            ('Select property', StepType.RECORD_SELECTOR, {'config': {'target': 'property'}}),
-            (
-                'Assign the cleaner and deadline', StepType.TASK_ASSIGNMENT,
-                {'config': {'default_role': StaffProfile.Role.CLEANER, 'default_days_until_due': 1}},
-            ),
-            ('Send a secure mobile process link', StepType.CHECKBOX, {}),
-            (
-                'Complete the room-by-room cleaning checklist', StepType.CHECKLIST,
-                {'assignee_role': 'external', 'config': {'items': ['Living room', 'Kitchen', 'Bathroom(s)', 'Bedroom(s)']}},
-            ),
-            (
-                'Confirm linens, toiletries, kitchen items, and supplies', StepType.CHECKLIST,
-                {'assignee_role': 'external', 'config': {'items': ['Linens', 'Toiletries', 'Kitchen items', 'Supplies restocked']}},
-            ),
-            ('Upload required completion photos', StepType.PHOTO_VIDEO_UPLOAD, {'assignee_role': 'external'}),
-            (
-                'Identify damage or excessive cleaning', StepType.DROPDOWN_MULTISELECT,
-                {
-                    'assignee_role': 'external', 'is_required': False,
-                    'config': {'multi': True, 'options': ['Furniture damage', 'Wall damage', 'Excessive cleaning needed', 'Missing items']},
-                },
-            ),
-            ('Document any damage or issues', StepType.LONG_TEXT, {'assignee_role': 'external', 'is_required': False}),
-            ('Enter additional charges (if applicable)', StepType.NUMBER_CURRENCY, {'assignee_role': 'external', 'is_required': False, 'config': {'is_currency': True}}),
-            ('Create maintenance or replacement tasks', StepType.TASK_ASSIGNMENT, {'is_required': False, 'config': {'default_role': StaffProfile.Role.MAINTENANCE}}),
-            (
-                'Confirm locks, doors, windows, lights, and thermostat', StepType.CHECKLIST,
-                {'assignee_role': 'external', 'config': {'items': ['Locks', 'Doors', 'Windows', 'Lights', 'Thermostat']}},
-            ),
-            ('Confirm the property is guest-ready', StepType.CHECKBOX, {'assignee_role': 'external'}),
-            (
-                'Manager review — approve turnover', StepType.APPROVAL_DECISION,
-                {
-                    'assignee_role': StaffProfile.Role.PROPERTY_MANAGER,
-                    'config': {'routes': [{'label': 'Approved — ready', 'action': 'continue', 'target_step_key': ''},
-                                           {'label': 'Needs rework', 'action': 'continue', 'target_step_key': ''}]},
-                },
-            ),
-        ],
-    },
-    {
         'name': 'Association Delinquency and Collection',
         'category': 'Association',
         'description': 'Tracks a delinquent owner account from balance confirmation through notice, cure '

@@ -139,10 +139,9 @@ def onsite_next_48h(now=None):
 def session_templates_drifting(lookback=5):
     """Panel 3 — the unit of attention is the rule (SessionTemplate), not
     the instance; a healthy rule (every recent session submitted on time,
-    no repeated skip pattern) doesn't appear at all. Replaces the old
-    TicketTemplate-based recurring_rules_drifting(), which was removed once
-    the sessions app fully took over and the old system was wiped from
-    production — see the "Recurring work overhaul — sessions" build brief.
+    no repeated skip pattern) doesn't appear at all. Replaced the old
+    ticket-template-based recurring panel, which was removed along with the
+    old recurring-ticket system.
 
     Adds one dimension the old panel had no equivalent for: the same line
     skipped repeatedly across sessions, grouped by skip reason — which is

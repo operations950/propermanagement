@@ -1,23 +1,14 @@
-from django import forms
 from django.contrib import admin
 
 from core.admin_utils import mask_secret
-from core.models import Property
 
 from .models import (
     DepartmentDefaultAssignee,
     FollowUpLog,
-    PackageRun,
-    PropertyPackage,
-    PropertyTemplateOverride,
-    TaskPackage,
-    TaskPackageTemplate,
-    TemplateOccurrence,
     Ticket,
     TicketAssignmentLog,
     TicketAttachment,
     TicketContact,
-    TicketTemplate,
 )
 
 
@@ -61,78 +52,6 @@ class TicketAdmin(admin.ModelAdmin):
 @admin.register(DepartmentDefaultAssignee)
 class DepartmentDefaultAssigneeAdmin(admin.ModelAdmin):
     list_display = ['role', 'staff']
-
-
-class TicketTemplateAdminForm(forms.ModelForm):
-    property_types = forms.MultipleChoiceField(
-        choices=Property.Type.choices, required=False, widget=forms.CheckboxSelectMultiple,
-        help_text='Leave every box unchecked for "every type" (no constraint from this layer).',
-    )
-
-    class Meta:
-        model = TicketTemplate
-        fields = '__all__'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance and self.instance.pk:
-            self.initial['property_types'] = self.instance.property_types
-
-    def clean_property_types(self):
-        return list(self.cleaned_data['property_types'])
-
-
-@admin.register(TicketTemplate)
-class TicketTemplateAdmin(admin.ModelAdmin):
-    form = TicketTemplateAdminForm
-    list_display = [
-        'title', 'target_type', 'property', 'default_assigned_role', 'frequency', 'workday_of_month',
-        'next_run_date', 'requires_approval', 'is_active',
-    ]
-    list_filter = ['target_type', 'frequency', 'is_active', 'default_assigned_role', 'requires_approval']
-    filter_horizontal = ['required_attributes']
-
-
-class TaskPackageTemplateInline(admin.TabularInline):
-    model = TaskPackageTemplate
-    fk_name = 'package'
-    extra = 1
-
-
-@admin.register(TaskPackage)
-class TaskPackageAdmin(admin.ModelAdmin):
-    list_display = ['title', 'department', 'is_active']
-    list_filter = ['department', 'is_active']
-    search_fields = ['title']
-    inlines = [TaskPackageTemplateInline]
-
-
-@admin.register(PropertyPackage)
-class PropertyPackageAdmin(admin.ModelAdmin):
-    list_display = ['property', 'package', 'assigned_at']
-    list_filter = ['package']
-    search_fields = ['property__name']
-
-
-@admin.register(PropertyTemplateOverride)
-class PropertyTemplateOverrideAdmin(admin.ModelAdmin):
-    list_display = ['property', 'template', 'action', 'frequency', 'assigned_role', 'assigned_staff']
-    list_filter = ['action']
-    search_fields = ['property__name', 'template__title']
-
-
-@admin.register(TemplateOccurrence)
-class TemplateOccurrenceAdmin(admin.ModelAdmin):
-    list_display = ['template', 'scheduled_for']
-    list_filter = ['scheduled_for']
-    search_fields = ['template__title']
-
-
-@admin.register(PackageRun)
-class PackageRunAdmin(admin.ModelAdmin):
-    list_display = ['package', 'property', 'scheduled_for']
-    list_filter = ['package', 'scheduled_for']
-    search_fields = ['package__title', 'property__name']
 
 
 @admin.register(TicketAssignmentLog)

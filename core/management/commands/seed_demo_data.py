@@ -1,5 +1,5 @@
 """Populates a small, coherent demo dataset: a few properties, contacts
-(tenant/vendor/guest), a staff login, a few recurring TicketTemplates, and a
+(tenant/vendor/guest), a staff login, and a
 couple of example tickets (one staff-assigned, one vendor-assigned) so the
 whole staff UI has something to look at immediately.
 
@@ -8,20 +8,18 @@ duplicate rows on a second run, unlike a destructive reset.
 """
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from core.models import Contact, Property, StaffProfile
-from tickets.models import Frequency, Priority, Ticket, TicketContact, TicketTemplate
+from tickets.models import Priority, Ticket, TicketContact
 
 
 class Command(BaseCommand):
-    help = 'Seed a small demo dataset (properties, contacts, staff logins, recurring templates, example tickets).'
+    help = 'Seed a small demo dataset (properties, contacts, staff logins, example tickets).'
 
     def handle(self, *args, **options):
         properties = self._seed_properties()
         contacts = self._seed_contacts(properties)
         staff = self._seed_staff()
-        self._seed_templates(properties, staff)
         self._seed_example_tickets(properties, contacts, staff)
         self.stdout.write(self.style.SUCCESS('Demo data seeded.'))
 
@@ -83,44 +81,6 @@ class Command(BaseCommand):
 
         self.stdout.write('  staff logins: staff/staff12345, admin/admin12345')
         return staff_profile
-
-    def _seed_templates(self, properties, staff):
-        today = timezone.localdate()
-        templates = [
-            dict(
-                title='Walk property grounds check', frequency=Frequency.DAILY, property=properties['Sunset Villa'],
-                role=StaffProfile.Role.MAINTENANCE, target_type=TicketTemplate.TargetType.PROPERTY,
-            ),
-            dict(
-                title='Pool chemical check', frequency=Frequency.WEEKLY, property=properties['Lakeside Cabin'],
-                role=StaffProfile.Role.MAINTENANCE, target_type=TicketTemplate.TargetType.PROPERTY,
-            ),
-            dict(
-                title='Deep clean common areas', frequency=Frequency.QUARTERLY, property=properties['Downtown Loft'],
-                role=StaffProfile.Role.CLEANER, target_type=TicketTemplate.TargetType.PROPERTY,
-            ),
-            dict(
-                title='Fire extinguisher inspection', frequency=Frequency.YEARLY, property=None,
-                role=StaffProfile.Role.MAINTENANCE, target_type=TicketTemplate.TargetType.EVERY_PROPERTY,
-            ),
-        ]
-        count = 0
-        for spec in templates:
-            _, created = TicketTemplate.objects.get_or_create(
-                title=spec['title'],
-                defaults={
-                    'frequency': spec['frequency'],
-                    'property': spec['property'],
-                    'target_type': spec['target_type'],
-                    'next_run_date': today,
-                    'default_assigned_role': spec['role'],
-                    'default_assigned_staff': staff,
-                    'default_priority': Priority.MEDIUM,
-                },
-            )
-            if created:
-                count += 1
-        self.stdout.write(f'  {count} new recurring templates (run `generate_recurring_tickets` to materialize them)')
 
     def _seed_example_tickets(self, properties, contacts, staff):
         ticket1, created1 = Ticket.objects.get_or_create(

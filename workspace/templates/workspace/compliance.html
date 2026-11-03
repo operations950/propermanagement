@@ -3,12 +3,8 @@
 {% block content %}
 {% include 'workspace/_css.html' %}
 <style>
-    /* Compliance is the green screen: the Tickets look on a pale green ground. */
-    .ws-green { background: #eef4ee; border: 1px solid #d3e0d3; border-left: 4px solid #6f9a78; border-radius: 0.6rem; padding: 0.4rem 0.9rem 0.9rem; }
-    .ws-green .tf-box { background: #f8fbf8; border-color: #d3e0d3; }
-    .ws-green .card { background: #fbfdfb; border-color: #d3e0d3; }
-    .ws-green .table { --bs-table-bg: transparent; }
-    .ws-green .ws-sub { border-bottom-color: #cfdccf; }
+    /* Compliance is the Tickets screen with only the table rows shaded pale green: no box around the screen. */
+    .ws-green-rows { --bs-table-bg: #eef4ee; --bs-table-hover-bg: #e4eee4; --bs-table-border-color: #d3e0d3; }
     .ws-blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); gap: 0.7rem; margin: 0.4rem 0 0.8rem; }
     .ws-block { display: flex; flex-direction: column; justify-content: space-between; gap: 0.6rem; min-height: 6.5rem; padding: 0.85rem 1rem; border-radius: 0.7rem; background: #fbfdfb; border: 1px solid #d3e0d3; text-decoration: none; color: var(--ink-primary); }
     .ws-block:hover { border-color: #6f9a78; color: var(--ink-primary); }
@@ -23,7 +19,6 @@
     <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="calendar-check" class="icon-lg"></i> Compliance{% if tab == 'rules' and sel.frequency %} <span class="fs-6 text-muted">&middot; {{ sel.frequency_label }} rules</span>{% endif %}</h2>
     <a href="{% url 'session_template_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New rule</a>
 </div>
-<div class="ws-green">
 <div class="ws-sub">
 <a href="?tab=items" class="{% if tab == 'items' %}on{% endif %}">Items</a>
 <a href="?tab=rules" class="{% if tab == 'rules' %}on{% endif %}">Rules</a>
@@ -60,7 +55,7 @@
 </script>
 {% include 'workspace/_compliance_filters.html' %}
 <div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
-<div class="table-responsive"><table class="table align-middle mb-0" style="table-layout: fixed;" id="compliance-table">{% include 'workspace/_compliance_rows.html' %}</table></div>
+<div class="table-responsive"><table class="table ws-green-rows align-middle mb-0" style="table-layout: fixed;" id="compliance-table">{% include 'workspace/_compliance_rows.html' %}</table></div>
 </div>
 <div class="d-md-none" id="compliance-mobile-cards">{% include 'workspace/_compliance_cards.html' %}</div>
 <div id="compliance-pager">{% include 'core/_pager.html' %}</div>
@@ -88,8 +83,7 @@
     </div>
 </div>
 <div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
-<div class="table-responsive"><table class="table align-middle mb-0" style="table-layout: fixed;">{% include 'workspace/_rules_rows.html' %}</table></div>
+<div class="table-responsive"><table class="table ws-green-rows align-middle mb-0" style="table-layout: fixed;">{% include 'workspace/_rules_rows.html' %}</table></div>
 </div>
 {% endif %}
-</div>
 {% endblock %}

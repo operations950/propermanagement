@@ -60,7 +60,17 @@ def next_workday_occurrence(after_date, workday_of_month):
     return after_date + relativedelta(months=1)  # pathological fallback, shouldn't happen
 
 
+def next_weekday(cursor):
+    """The next Monday-to-Friday day after `cursor` (weekends skipped; holidays are not)."""
+    nxt = cursor + timedelta(days=1)
+    while nxt.weekday() >= 5:
+        nxt += timedelta(days=1)
+    return nxt
+
+
 def advance(cursor, frequency, workday_of_month):
+    if frequency == Frequency.WEEKDAYS:
+        return next_weekday(cursor)
     if frequency == Frequency.ONCE:
         return cursor + relativedelta(years=100)    # a one-time rule never comes round again (generate_for_template switches it off once it has opened)
     if frequency == Frequency.MONTHLY_WORKDAY:

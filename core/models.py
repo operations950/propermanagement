@@ -780,8 +780,8 @@ class PropertyAttribute(models.Model):
     else operationally relevant. Deliberately one flexible model instead of
     fixed booleans: staff can add a new attribute in admin (e.g. a new
     jurisdiction, a new inspection requirement) without a code change, and
-    recurring task templates can require one to auto-apply — see
-    tickets.services.applicability."""
+    session (compliance) templates can require one to auto-apply — see
+    worksessions.services.generation."""
     class Category(models.TextChoices):
         SERVICE = 'service', 'Service provided'
         PHYSICAL = 'physical', 'Physical characteristic'

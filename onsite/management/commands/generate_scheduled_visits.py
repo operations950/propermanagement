@@ -1,8 +1,6 @@
 """Generates Visit rows from active VisitRules whose next visit is coming up
-— the recurring path for deep cleans/inspections, mirroring
-tickets.generate_recurring_tickets' shape per CLAUDE.md's guidance to model
-new automation on the recurring pattern rather than the reversed reactive
-one. The dating rules live in onsite/services/recurring.py: each visit is
+— the recurring path for deep cleans/inspections, a rule-driven
+generator (explicit rule -> rows), not the reversed reactive pattern. The dating rules live in onsite/services/recurring.py: each visit is
 scheduled on the rule's next_due date and created a few days ahead."""
 from django.core.management.base import BaseCommand
 from django.utils import timezone

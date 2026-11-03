@@ -3,8 +3,6 @@ from django.utils import timezone
 
 register = template.Library()
 
-NON_ESCALATABLE_STATUSES = ('completed', 'verified', 'cancelled', 'skipped', 'not_applicable')
-
 # Mirrors the --role-<code> CSS custom properties defined in
 # templates/base.html — a single tonal ramp in the brand's own steel-blue/
 # slate family (not a rainbow categorical palette), reused everywhere a
@@ -133,17 +131,3 @@ def due_urgency_style(ticket, now):
         return ''
     opacity = max(0.4, 1 - min(days_out, 10) * 0.06)
     return f'opacity: {opacity:.2f};'
-
-
-@register.filter
-def is_escalated(ticket, now):
-    """Flag-only escalation (see the build plan): true once a ticket is
-    overdue by at least its template's escalation_threshold_days. No
-    reassignment happens — this only drives a visible badge/banner."""
-    template = ticket.created_from_template
-    if not template or not template.escalation_threshold_days or not ticket.due_date:
-        return False
-    if ticket.status in NON_ESCALATABLE_STATUSES:
-        return False
-    overdue_days = (timezone.localtime(now).date() - timezone.localtime(ticket.due_date).date()).days
-    return overdue_days >= template.escalation_threshold_days
