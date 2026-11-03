@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}Import bookings{% endblock %}
+{% block title %}Import payouts{% endblock %}
 {% block content %}
-<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
-<h2 class="page-title mb-1">Import bookings</h2>
-<p class="text-muted small mb-1">Drop today's Airbnb or VRBO export on its box, or click to browse. Nothing is saved until you confirm. {% include '_tip.html' with text="Drag today's Airbnb or VRBO export onto its box below, or click to browse. One file covers your whole portfolio — new reservations, date/detail changes, and cancellations are all handled from the same drop, and each row is matched to the right property automatically (a listing name it hasn't seen before will ask you to confirm it once, then remembers it from then on). Nothing is saved until you review and confirm the changes on the next screen." %}</p>
-<p class="text-muted small mb-3">Airbnb's cancellations come as a separate export; drop it on the same box.</p>
+<a href="{% url 'close_payouts' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Platform payouts</a>
+<h2 class="page-title mb-1">Import payouts</h2>
+<p class="text-muted small mb-1">Drop the Airbnb transactions file or the VRBO payout summary on its box, or click to browse. Nothing is saved until you confirm. {% include '_tip.html' with text="Drag today's Airbnb or VRBO export onto its box below, or click to browse. One file covers your whole portfolio — new reservations, date/detail changes, and cancellations are all handled from the same drop, and each row is matched to the right property automatically (a listing name it hasn't seen before will ask you to confirm it once, then remembers it from then on). Nothing is saved until you review and confirm the changes on the next screen." %}</p>
+<p class="text-muted small mb-3">The payouts you import here are what deposits in QuickBooks are matched to, so the month-end close can clear the uncategorized accounts.</p>
 
 {% if slots %}
 <div class="upload-slot-grid mb-2">

@@ -140,7 +140,7 @@ def _lines_for(batch):
     return lines, ''
 
 
-def plan(token, today=None, days=LOOKBACK_DAYS):
+def plan(token, today=None, days=LOOKBACK_DAYS, since=None, until=None):
     """What would be done. {'items': [...], 'errors': [...]}: each item is a deposit sitting in an uncategorized account with
     a status of 'ready' (safe to send), 'blocked' (a payout was found but a line can't be posted - the reason says why), or
     'unsure' (no single payout matches - left for a person)."""
@@ -151,8 +151,9 @@ def plan(token, today=None, days=LOOKBACK_DAYS):
     if not accounts:
         return result
     from . import payout_tracking
-    since = max(today - timedelta(days=days), payout_tracking.BOOKKEEPING_START).isoformat()
-    deposits, error = quickbooks.query(token, f"select * from Deposit where TxnDate >= '{since}' order by TxnDate")
+    since = max(since or (today - timedelta(days=days)), payout_tracking.BOOKKEEPING_START).isoformat()
+    until_sql = f" and TxnDate <= '{until.isoformat()}'" if until else ''
+    deposits, error = quickbooks.query(token, f"select * from Deposit where TxnDate >= '{since}'{until_sql} order by TxnDate")
     if error:
         result['errors'].append(error)
         return result
@@ -275,6 +276,42 @@ def _apply_locked(token, item, user=None, automatic=False):
     QBRecode.objects.create(payout_id=item['payout'].pk, also_payout_ids=[b.pk for b in item.get('also') or []], source=item['source'], deposit_qb_id=deposit['Id'], deposit_date=item['date'], amount=item['amount'],
                             old_lines=uncat, new_lines=new_lines, applied_by=user if getattr(user, 'pk', None) else None, automatic=automatic)
     return True, ''
+
+
+UNCATEGORIZED_CACHE_SECONDS = 600
+
+
+def _cache_key(month):
+    return f'qb_uncategorized_{month:%Y-%m}'
+
+
+def uncategorized_for_month(token, month, refresh=False):
+    """What is still sitting in QuickBooks' "Uncategorized Airbnb / VRBO Income" for one month: {'items': [planned deposits dated in that month], 'error': text or ''}. Read from QuickBooks live and kept for ten minutes,
+    so the month-end checklist does not call QuickBooks on every page view; `refresh` forces a fresh read. Month-end close needs it empty: every payment that landed there has to be matched to an uploaded
+    payout and reassigned to a property."""
+    from django.core.cache import cache
+    from django.utils import timezone as tz
+    if not refresh:
+        hit = cache.get(_cache_key(month))
+        if hit is not None:
+            return hit
+    first = month.replace(day=1)
+    last = (first.replace(year=first.year + (first.month == 12), month=first.month % 12 + 1, day=1)) - timedelta(days=1)
+    result = plan(token, today=tz.localdate(), since=first, until=last)
+    out = {'items': result['items'], 'error': '; '.join(result['errors']), 'checked_at': tz.now()}
+    if not out['error']:
+        cache.set(_cache_key(month), out, UNCATEGORIZED_CACHE_SECONDS)
+    return out
+
+
+def clear_uncategorized_cache(months=14):
+    from django.core.cache import cache
+    today = timezone.localdate()
+    keys = []
+    for i in range(months):
+        y, m = divmod(today.year * 12 + today.month - 1 - i, 12)
+        keys.append(f'qb_uncategorized_{y}-{m + 1:02d}')
+    cache.delete_many(keys)
 
 
 MAX_PER_CLICK = 15   # two real QuickBooks calls each, one at a time - a big backlog sent in one click ran the

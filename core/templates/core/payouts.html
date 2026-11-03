@@ -18,7 +18,10 @@
     .po-stat.on { outline: 2px solid var(--brand, #6c8ebf); }
 </style>
 <a href="{% url 'close_home' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
 <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="banknote" class="icon-lg"></i> Platform payouts</h2>
+<a href="{% url 'onsite_booking_import' %}" class="btn btn-primary btn-sm"><i data-lucide="upload" class="icon"></i> Import payouts</a>
+</div>
 <div class="small text-muted mb-2">Each payout, its lines, and whether its bank deposit has arrived. Flagged after {{ lingering_after }}+ days waiting.</div>
 
 <div class="card mb-2"><div class="card-body py-2">

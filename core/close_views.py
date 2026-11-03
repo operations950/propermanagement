@@ -369,6 +369,7 @@ def payouts(request):
         if token is None:
             messages.error(request, 'QuickBooks is not connected — connect it in Admin Tools first.')
         else:
+            qb_recode.clear_uncategorized_cache()
             plan = qb_recode.plan(token)
             if request.POST.get('action') == 'qb_apply':
                 applied, failed, remaining = qb_recode.apply_ready(token, plan, user=request.user, limit=qb_recode.MAX_PER_CLICK)
@@ -434,6 +435,44 @@ def _payout_step(month, today):
     way to the bank) has a matching deposit."""
     if month < ledger.month_of(payout_tracking.BOOKKEEPING_START):
         return None, ''
+    status, detail = _payout_matching(month, today)
+    held = _uncategorized_note(month)
+    if held is None:
+        return status, detail
+    held_status, held_detail = held
+    return held_status, held_detail + (' ' + detail if detail else '')
+
+
+def _uncategorized_note(month):
+    """None when QuickBooks is not connected (nothing to check) or nothing from the month is left in the uncategorized accounts. Otherwise (status, sentence): a month cannot be checked off while payments from it still sit in
+    QuickBooks' "Uncategorized Airbnb / VRBO Income", because that is people's money we have not yet matched to a payout and handed to a property."""
+    from . import qb_recode
+    token = QuickBooksToken.objects.first()
+    if token is None:
+        return None
+    found = qb_recode.uncategorized_for_month(token, month)
+    if found['error']:
+        return 'attention', f'Could not check the uncategorized accounts in QuickBooks ({found["error"][:120]}).'
+    items = found['items']
+    if not items:
+        return None
+    total = sum((i['amount'] for i in items), Decimal('0'))
+    need = [i for i in items if i['status'] == 'unsure']
+    ready = [i for i in items if i['status'] == 'ready']
+    blocked = [i for i in items if i['status'] == 'blocked']
+    bits = []
+    if need:
+        bits.append(f'{len(need)} with no matching payout uploaded (upload the payout files)')
+    if ready:
+        bits.append(f'{len(ready)} matched and ready to send to QuickBooks')
+    if blocked:
+        bits.append(f'{len(blocked)} that cannot be coded yet')
+    return 'attention', (f'{len(items)} payment{"" if len(items) == 1 else "s"} (${total:,.2f}) from {month:%B} {"is" if len(items) == 1 else "are"} still in the QuickBooks uncategorized Airbnb/VRBO accounts: '
+                         + '; '.join(bits) + '.')
+
+
+def _payout_matching(month, today):
+    """(status, detail): payouts dated in the month that have, or have not yet, reached a matching deposit."""
     end = bank_tieout.month_end(month)
     rows = [r for r in payout_tracking.payout_rows(today=today) if month <= r['batch'].date <= end]
     unmatched = [r for r in rows if not r['received']]
