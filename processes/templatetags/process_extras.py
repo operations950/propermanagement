@@ -109,6 +109,14 @@ def step_response_summary(step):
         return r.get('note', '') or 'Sent'
     if step.step_type == 'wait_timer':
         return 'Resumed'
+    if step.step_type == 'meeting_details':
+        bits = [r.get('date', ''), r.get('time', ''), r.get('place', '')]
+        return ' · '.join(b for b in bits if b) or 'Done'
+    if step.step_type == 'create_contact':
+        bits = [r.get('name', ''), r.get('email', ''), r.get('phone', '')]
+        return ' · '.join(b for b in bits if b) or 'Done'
+    if step.step_type == 'generate_document':
+        return 'Made and final' if r.get('document_id') else 'Done'
     return 'Done'
 
 
@@ -135,3 +143,49 @@ def lines_join(items):
     don't interpret \\n as an escape, so |join:"\n" would literally print
     backslash-n instead of breaking lines."""
     return '\n'.join(items or [])
+
+
+@register.simple_tag
+def document_forms():
+    """(slug, name) of every active document form, for the builder's "which form" list."""
+    from legalforms.models import DocumentTemplate
+    return [(t.slug, t.name) for t in DocumentTemplate.objects.filter(is_active=True).order_by('order', 'name')]
+
+
+@register.filter
+def step_document(step):
+    """The generated document made for a generate-document step, if one has been started."""
+    from legalforms.models import GeneratedDocument
+    doc_id = (step.response or {}).get('document_id')
+    return GeneratedDocument.objects.select_related('template').filter(pk=doc_id).first() if doc_id else None
+
+
+@register.filter
+def step_form_url(step):
+    """Where "Prepare it" goes: the form, filled in for this run's association and unit, linked back to this step, and (for an affidavit) to the notice made earlier in the run. Empty until the association is chosen."""
+    from django.urls import reverse
+    from legalforms.models import GeneratedDocument
+
+    from processes.projects import run_property, run_unit
+    slug = (step.config or {}).get('form', '')
+    prop = run_property(step.run)
+    if not slug or prop is None:
+        return ''
+    query = f'?property={prop.pk}&run_step={step.pk}'
+    unit = run_unit(step.run, prop)
+    if unit:
+        query += f'&unit={unit.pk}'
+    parents = (step.config or {}).get('parent_forms') or []
+    if parents:
+        parent = GeneratedDocument.objects.filter(process_step__run=step.run, template__slug__in=parents).order_by('-created_at').first()
+        if parent:
+            query += f'&parent={parent.pk}'
+    return reverse('legalforms:new', args=[slug]) + query
+
+
+@register.simple_tag
+def run_meeting_prefill(step):
+    """Starting values for a meeting-details step: the association's usual meeting address."""
+    from processes.projects import run_property
+    prop = run_property(step.run)
+    return {'place': (prop.board_meeting_address if prop else '') or ''}

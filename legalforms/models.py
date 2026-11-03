@@ -65,6 +65,12 @@ class GeneratedDocument(models.Model):
     mail_method = models.CharField(max_length=60, blank=True, help_text='e.g. First class mail, Certified mail, Email.')
     tracking = models.CharField(max_length=80, blank=True)
 
+    # Emailed straight from the system (as a PDF), e.g. an approval or welcome letter to a new tenant.
+    emailed_to = models.CharField(max_length=200, blank=True)
+    emailed_at = models.DateTimeField(null=True, blank=True)
+    # The project step that asked for this document (see processes: generate_document); finalizing it completes the step.
+    process_step = models.ForeignKey('processes.ProcessRunStep', null=True, blank=True, on_delete=models.SET_NULL, related_name='generated_documents')
+
     class Meta:
         ordering = ['-created_at']
         indexes = [models.Index(fields=['property', '-created_at'])]

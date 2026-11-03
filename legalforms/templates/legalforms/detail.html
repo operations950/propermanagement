@@ -10,6 +10,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-primary btn-sm" target="_blank" href="{% url 'legalforms:print' doc.pk %}"><i data-lucide="printer" class="icon"></i> Print / save as PDF</a>
+        <a class="btn btn-outline-primary btn-sm" target="_blank" href="{% url 'legalforms:pdf' doc.pk %}"><i data-lucide="file-down" class="icon"></i> PDF</a>
         {% if doc.status == 'draft' %}
         <a class="btn btn-outline-secondary btn-sm" href="{% url 'legalforms:edit' doc.pk %}"><i data-lucide="pencil" class="icon"></i> Edit</a>
         <form method="post" action="{% url 'legalforms:act' doc.pk %}" onsubmit="return confirm('Make this final? It can no longer be changed — only copied.');">{% csrf_token %}<input type="hidden" name="action" value="finalize"><button class="btn btn-success btn-sm"><i data-lucide="lock" class="icon"></i> Make final</button></form>
@@ -34,6 +35,18 @@
                 <button class="btn btn-outline-secondary btn-sm">Record</button>
             </form>
         </div></div>
+        {% if doc.status == 'final' %}
+        <div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+            <div class="small fw-semibold mb-1">Email it (as a PDF)</div>
+            {% if doc.emailed_at %}<div class="small text-success mb-1">Emailed to {{ doc.emailed_to }} on {{ doc.emailed_at|date:"M j, Y" }}.</div>{% endif %}
+            <form method="post" action="{% url 'legalforms:act' doc.pk %}" class="small">{% csrf_token %}<input type="hidden" name="action" value="email">
+                <label class="form-label mb-0">To</label><input type="email" name="email_to" class="form-control form-control-sm mb-1" required value="{{ email_to }}" placeholder="name@example.com">
+                <label class="form-label mb-0">Subject</label><input type="text" name="email_subject" class="form-control form-control-sm mb-1" maxlength="200" value="{{ email_subject }}">
+                <label class="form-label mb-0">Message</label><textarea name="email_message" class="form-control form-control-sm mb-2" rows="5">{{ email_message }}</textarea>
+                <button class="btn btn-outline-primary btn-sm" onclick="return confirm('Send this PDF now?');"><i data-lucide="send" class="icon"></i> Send email</button>
+            </form>
+        </div></div>
+        {% endif %}
         {% if companions or children %}
         <div class="card" style="border-radius: 12px;"><div class="card-body py-2 px-3">
             <div class="small fw-semibold mb-1">Goes with this</div>

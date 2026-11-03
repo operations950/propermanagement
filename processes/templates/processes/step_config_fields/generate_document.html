@@ -1,0 +1,16 @@
+{% load process_extras %}
+<div class="mt-2">
+    <label class="form-label small fw-medium mb-1">Document form</label>
+    <select name="config_form" class="form-select form-select-sm" style="max-width: 360px;">
+        {% document_forms as forms %}
+        {% for slug, name in forms %}<option value="{{ slug }}" {% if step.config.form == slug %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+</div>
+<div class="mt-2">
+    <label class="form-label small fw-medium mb-1">Goes with a notice made earlier (form slugs, comma separated; optional)</label>
+    <input type="text" name="config_parent_forms" class="form-control form-control-sm" style="max-width: 360px;" value="{{ step.config.parent_forms|join:', ' }}">
+</div>
+<div class="form-check mt-2">
+    <input class="form-check-input" type="checkbox" name="config_email" id="cfg_email_{{ step.pk }}" {% if step.config.email %}checked{% endif %}>
+    <label class="form-check-label small" for="cfg_email_{{ step.pk }}">A letter to a person (shows the email button)</label>
+</div>

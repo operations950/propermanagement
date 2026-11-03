@@ -3,6 +3,7 @@ from datetime import datetime
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.templatetags.static import static
 from django.urls import reverse
@@ -11,7 +12,7 @@ from django.utils.safestring import mark_safe
 from core.models import Property, StaffProfile, Unit
 from core.views import _is_admin
 
-from . import services
+from . import pdf, services
 from .models import DocumentTemplate, GeneratedDocument
 
 
@@ -66,10 +67,17 @@ def _target_from_query(request):
     return prop, unit, parent
 
 
-def _form_page(request, template, prop, unit, parent, values, errors, editing=None):
+def _step_from(source):
+    """The project step this document is being made for (see processes: generate_document), if the request names one."""
+    from processes.models import ProcessRunStep
+    raw = source.get('run_step', '')
+    return ProcessRunStep.objects.select_related('run').filter(pk=int(raw)).first() if str(raw).isdigit() else None
+
+
+def _form_page(request, template, prop, unit, parent, values, errors, editing=None, step=None):
     return render(request, 'legalforms/form.html', {
         'template': template, 'property': prop, 'unit': unit, 'parent': parent, 'values': values, 'errors': errors,
-        'fields': template.fields, 'editing': editing,
+        'fields': template.fields, 'editing': editing, 'run_step': step,
     })
 
 
@@ -83,15 +91,17 @@ def document_new(request, slug):
         unit = Unit.objects.filter(pk=request.POST.get('unit'), property=prop).first() if request.POST.get('unit') else None
         parent = GeneratedDocument.objects.filter(pk=request.POST.get('parent')).first() if request.POST.get('parent') else None
         raw = {f['key']: request.POST.get('f_' + f['key'], '') for f in template.fields}
-        doc, errors = services.save_document(template, prop, unit, request.user, raw, parent=parent)
+        step = _step_from(request.POST)
+        doc, errors = services.save_document(template, prop, unit, request.user, raw, parent=parent, process_step=step)
         if doc:
             messages.success(request, f'{template.name} created as a draft. Read it through, then make it final.')
             return redirect('legalforms:detail', pk=doc.pk)
-        return _form_page(request, template, prop, unit, parent, raw, errors)
+        return _form_page(request, template, prop, unit, parent, raw, errors, step=step)
+    step = _step_from(request.GET)
     if prop is None:
         return render(request, 'legalforms/choose.html', {'template': template, 'properties': _properties(), 'units_json': _units_json()})
-    values = services.initial_values(template, prop, unit, request.user, parent=parent)
-    return _form_page(request, template, prop, unit, parent, values, {})
+    values = services.initial_values(template, prop, unit, request.user, parent=parent, run=step.run if step else None)
+    return _form_page(request, template, prop, unit, parent, values, {}, step=step)
 
 
 @login_required
@@ -118,8 +128,18 @@ def document_detail(request, pk):
     doc = get_object_or_404(GeneratedDocument.objects.select_related('template', 'property', 'unit', 'parent', 'created_by'), pk=pk)
     return render(request, 'legalforms/detail.html', {
         'doc': doc, 'html': show_html(doc), 'companions': doc.template.companions.filter(is_active=True),
-        'children': doc.companions.select_related('template'),
+        'children': doc.companions.select_related('template'), 'email_to': services.suggested_email(doc),
+        'email_subject': services.default_email_subject(doc), 'email_message': services.default_email_message(doc),
     })
+
+
+@login_required
+def document_pdf(request, pk):
+    _guard(request)
+    doc = get_object_or_404(GeneratedDocument.objects.select_related('template'), pk=pk)
+    response = HttpResponse(pdf.document_pdf(doc), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{pdf.pdf_filename(doc)}"'
+    return response
 
 
 @login_required
@@ -138,7 +158,18 @@ def document_act(request, pk):
     action = request.POST.get('action')
     if action == 'finalize' and doc.status == GeneratedDocument.Status.DRAFT:
         doc.finalize()
+        step = doc.process_step
+        if step is not None and not step.is_complete:
+            step.response = {**(step.response or {}), 'document_id': doc.pk}
+            step.mark_complete(request.user)
         messages.success(request, 'Final. It can no longer be changed; make a revised copy if something is wrong.')
+    elif action == 'email':
+        to = request.POST.get('email_to', '').strip()
+        try:
+            services.email_document(doc, to, request.POST.get('email_subject', ''), request.POST.get('email_message', ''))
+            messages.success(request, f'Emailed to {to} as a PDF.')
+        except services.FormError as exc:
+            messages.error(request, str(exc))
     elif action == 'mailing':
         raw = (request.POST.get('mailed_on') or '').strip()
         try:

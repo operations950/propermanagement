@@ -1,7 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -254,6 +256,11 @@ def _parse_step_config(step_type, post):
         return {'routes': routes}
     if step_type == StepType.NUMBER_CURRENCY:
         return {'is_currency': bool(post.get('config_is_currency'))}
+    if step_type == StepType.GENERATE_DOCUMENT:
+        parents = [p.strip() for p in post.get('config_parent_forms', '').split(',') if p.strip()]
+        return {'form': post.get('config_form', '').strip(), 'parent_forms': parents, 'email': bool(post.get('config_email'))}
+    if step_type == StepType.CREATE_CONTACT:
+        return {'role': post.get('config_role', 'owner')}
     return {}
 
 
@@ -514,6 +521,67 @@ def process_run_step_mark_sent(request, step_pk):
         step.response = {'note': request.POST.get('note', '').strip()}
         step.mark_complete(request.user)
         messages.success(request, 'Marked sent.')
+    return _run_redirect(step.run)
+
+
+@login_required
+def process_run_step_meeting(request, step_pk):
+    """MEETING_DETAILS: the date, time, place and video link of a meeting, written once and used to fill every notice, agenda and affidavit made later in the run."""
+    step = get_object_or_404(ProcessRunStep, pk=step_pk)
+    if request.method == 'POST':
+        raw_date = request.POST.get('date', '').strip()
+        try:
+            date_value = datetime.strptime(raw_date, '%Y-%m-%d').date()
+        except ValueError:
+            messages.error(request, 'Enter the date of the meeting.')
+            return _run_redirect(step.run)
+        time_text, place = request.POST.get('time', '').strip(), request.POST.get('place', '').strip()
+        if not time_text or not place:
+            messages.error(request, 'Enter the time and the place of the meeting.')
+            return _run_redirect(step.run)
+        step.response = {'date': date_value.isoformat(), 'time': time_text[:40], 'place': place[:300], 'video_link': request.POST.get('video_link', '').strip()[:300]}
+        step.mark_complete(request.user)
+        messages.success(request, 'Meeting details saved. They fill in the notices and the affidavit.')
+    return _run_redirect(step.run)
+
+
+@login_required
+def process_run_step_person(request, step_pk):
+    """CREATE_CONTACT: a person's name, phone and email, made into a contact (an owner or a tenant) linked to the association and unit of this run, so the letters can be emailed to them."""
+    from .projects import run_property, run_unit
+    step = get_object_or_404(ProcessRunStep, pk=step_pk)
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        email = request.POST.get('email', '').strip()
+        phone = request.POST.get('phone', '').strip()
+        if not name:
+            messages.error(request, 'Enter the name.')
+            return _run_redirect(step.run)
+        if email:
+            try:
+                validate_email(email)
+            except ValidationError:
+                messages.error(request, 'Enter a valid email address, or leave it blank for now.')
+                return _run_redirect(step.run)
+        if phone:
+            try:
+                Contact._meta.get_field('phone').run_validators(phone)
+            except ValidationError:
+                messages.error(request, 'Enter the phone as XXX-XXX-XXXX, for example 561-599-6300.')
+                return _run_redirect(step.run)
+        kind = Contact.ContactType.TENANT if step.config.get('role') == 'tenant' else Contact.ContactType.OWNER
+        contact = Contact.objects.filter(email__iexact=email, contact_type=kind).first() if email else None
+        if contact is None:
+            contact = Contact.objects.create(name=name, email=email, phone=phone, contact_type=kind)
+        prop = run_property(step.run)
+        if prop:
+            contact.properties.add(prop)
+            unit = run_unit(step.run, prop)
+            if unit:
+                contact.units.add(unit)
+        step.response = {'contact_id': contact.pk, 'name': contact.name, 'email': contact.email, 'phone': contact.phone}
+        step.mark_complete(request.user)
+        messages.success(request, f'{contact.name} saved as a contact.' + ('' if contact.email else ' No email yet: add it before sending a letter by email.'))
     return _run_redirect(step.run)
 
 

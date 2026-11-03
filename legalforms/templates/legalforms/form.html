@@ -13,6 +13,7 @@
     <input type="hidden" name="property" value="{{ property.pk }}">
     {% if unit %}<input type="hidden" name="unit" value="{{ unit.pk }}">{% endif %}
     {% if parent %}<input type="hidden" name="parent" value="{{ parent.pk }}">{% endif %}
+    {% if run_step %}<input type="hidden" name="run_step" value="{{ run_step.pk }}">{% endif %}
     <p class="small text-muted">What the program already knows is filled in — check it. Everything else is typed here; nothing on this form comes from a record the system doesn't have.</p>
     <div class="row g-3">
     {% for f in fields %}
@@ -25,7 +26,7 @@
             {% elif f.type == 'percent' %}<div class="input-group input-group-sm"><input type="text" inputmode="decimal" class="form-control" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}"><span class="input-group-text">%</span></div>
             {% elif f.type == 'integer' %}<input type="number" class="form-control form-control-sm" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}">
             {% elif f.type == 'yesno' %}<select class="form-select form-select-sm" id="f_{{ f.key }}" name="f_{{ f.key }}"><option value="Yes" {% if v == 'Yes' %}selected{% endif %}>Yes</option><option value="No" {% if v != 'Yes' %}selected{% endif %}>No</option></select>
-            {% elif f.type == 'choice' %}<select class="form-select form-select-sm" id="f_{{ f.key }}" name="f_{{ f.key }}">{% for c in f.choices %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+            {% elif f.type == 'choice' %}<select class="form-select form-select-sm" id="f_{{ f.key }}" name="f_{{ f.key }}">{% if not v %}<option value="" selected>— choose —</option>{% endif %}{% for c in f.choices %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
             {% else %}<input type="text" class="form-control form-control-sm" id="f_{{ f.key }}" name="f_{{ f.key }}" value="{{ v }}">{% endif %}
             {% endwith %}
             {% if errors|item:f.key %}<div class="text-danger small">{{ errors|item:f.key }}</div>{% endif %}

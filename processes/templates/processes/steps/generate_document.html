@@ -1,0 +1,20 @@
+{% load process_extras %}
+{% with doc=step|step_document %}
+{% if doc %}
+<div class="small">
+    <a href="{% url 'legalforms:detail' doc.pk %}">{{ doc.template.name }}</a> &mdash; {{ doc.get_status_display }}.
+    {% if doc.status == 'draft' %}Read it through, then make it final to finish this step.
+    <a class="btn btn-sm btn-outline-secondary py-0 ms-1" href="{% url 'legalforms:edit' doc.pk %}">Edit</a>
+    {% endif %}
+</div>
+{% else %}
+{% with url=step|step_form_url %}
+{% if url %}
+<a class="btn btn-sm btn-outline-primary" href="{{ url }}"><i data-lucide="file-text" class="icon"></i> Prepare the document</a>
+<span class="small text-muted ms-1">Opens the form, filled in from the records and from what was entered earlier in this project.</span>
+{% else %}
+<span class="small text-muted">Choose the association (and enter the unit number) in the steps above first.</span>
+{% endif %}
+{% endwith %}
+{% endif %}
+{% endwith %}

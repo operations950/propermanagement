@@ -28,6 +28,8 @@ urlpatterns = [
     path('run-steps/<int:step_pk>/decide/', views.process_run_step_decide, name='process_run_step_decide'),
     path('run-steps/<int:step_pk>/mark-sent/', views.process_run_step_mark_sent, name='process_run_step_mark_sent'),
     path('run-steps/<int:step_pk>/resume-wait/', views.process_run_step_resume_wait, name='process_run_step_resume_wait'),
+    path('run-steps/<int:step_pk>/meeting/', views.process_run_step_meeting, name='process_run_step_meeting'),
+    path('run-steps/<int:step_pk>/person/', views.process_run_step_person, name='process_run_step_person'),
 
     path('access/<uuid:token>/', views.process_external_access, name='process_external_access'),
 ]

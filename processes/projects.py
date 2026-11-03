@@ -111,3 +111,49 @@ def _close_ticket(run):
     ticket.completed_at = timezone.now()
     ticket.save()
     TicketClosingNote.objects.create(ticket=ticket, status=Ticket.Status.COMPLETED, body=f'Finished as a project: {run.process_template.name}.', created_by=run.created_by)
+
+
+# ------------------------------------------------------------------------------ what a run knows (feeds the generated documents)
+def _done_step(run, step_type):
+    return run.steps.filter(step_type=step_type, is_complete=True).order_by('sequence_order').first()
+
+
+def run_property(run):
+    """The association a run is about: the one picked in its "Select the association" step, else the run's own property, else its ticket's."""
+    from core.models import Property
+    for step in run.steps.filter(step_type='record_selector', is_complete=True).order_by('sequence_order'):
+        r = step.response or {}
+        if r.get('model') == 'property' and str(r.get('id', '')).isdigit():
+            prop = Property.objects.filter(pk=int(r['id'])).first()
+            if prop:
+                return prop
+    if run.property_id:
+        return run.property
+    if run.ticket_id and run.ticket.property_id:
+        return run.ticket.property
+    return None
+
+
+def run_unit(run, prop=None):
+    """The unit named in the run's "Enter the unit number" step, if the association has one by that label."""
+    prop = prop or run_property(run)
+    if prop is None:
+        return None
+    step = run.steps.filter(step_type='short_text', is_complete=True, label__icontains='unit').order_by('sequence_order').first()
+    text = ((step.response or {}).get('text') or '').strip() if step else ''
+    return prop.units.filter(label__iexact=text).first() if text else None
+
+
+def run_person(run):
+    """The person entered in the run's "name, phone and email" step (a Contact), or None."""
+    from core.models import Contact
+    step = _done_step(run, 'create_contact')
+    cid = (step.response or {}).get('contact_id') if step else None
+    return Contact.objects.filter(pk=cid).first() if cid else None
+
+
+def run_meeting(run):
+    """What was typed into the run's meeting-details step: date, time, place, video_link (empty strings when not done yet)."""
+    step = _done_step(run, 'meeting_details')
+    r = (step.response or {}) if step else {}
+    return {k: r.get(k, '') for k in ('date', 'time', 'place', 'video_link')}

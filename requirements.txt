@@ -24,3 +24,6 @@ cryptography==49.0.0
 
 # Reads the ending balance off an uploaded bank statement PDF (core/bank_tieout.py) - best effort, always confirmed by a person.
 pypdf==6.19.0
+
+# Makes a generated document (legalforms) into a PDF so it can be emailed as an attachment (legalforms/pdf.py).
+reportlab==5.1.0

@@ -1,0 +1,7 @@
+<form method="post" action="{% url 'process_run_step_person' step.pk %}" class="row g-2 align-items-end">
+    {% csrf_token %}
+    <div class="col-md-4"><label class="form-label small mb-0">Name</label><input type="text" name="name" class="form-control form-control-sm" maxlength="200" required></div>
+    <div class="col-md-3"><label class="form-label small mb-0">Phone</label><input type="text" name="phone" class="form-control form-control-sm" maxlength="30" inputmode="tel" placeholder="561-555-0100"></div>
+    <div class="col-md-3"><label class="form-label small mb-0">Email</label><input type="email" name="email" class="form-control form-control-sm" maxlength="254"></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-sm btn-outline-primary w-100">Save</button></div>
+</form>

@@ -36,6 +36,10 @@ class StepType(models.TextChoices):
     CALENDAR_EVENT = 'calendar_event', 'Calendar event'
     CALCULATION_FORMULA = 'calculation_formula', 'Calculation / formula'
     WAIT_TIMER = 'wait_timer', 'Wait / timer'
+    # Added with the template library: the system makes the document itself instead of asking for an upload.
+    GENERATE_DOCUMENT = 'generate_document', 'Generate a document'
+    CREATE_CONTACT = 'create_contact', "Person's name, phone and email"
+    MEETING_DETAILS = 'meeting_details', 'Meeting details'
 
 
 ASSIGNEE_CHOICES = list(StaffProfile.Role.choices) + [('external', 'External party')]
@@ -62,6 +66,9 @@ class ProcessTemplate(models.Model):
         help_text='A process is done in one sitting and stays on the ticket or compliance item it is attached to; a project runs over days and is tracked in Projects.',
     )
     is_active = models.BooleanField(default=True)
+    library_version = models.PositiveSmallIntegerField(
+        default=0, help_text='Which version of the built-in template library last wrote the steps of this template (0 = never). Set by load_template_library, so a deploy never overwrites steps someone edited afterwards.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

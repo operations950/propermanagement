@@ -283,3 +283,10 @@ TEMPLATES = [
         'reviewed_note': 'New wording written for this system (no sample was provided). Have the association\'s attorney or Board confirm it says what their governing documents require, and replace it with the association\'s own form if it has one.',
     },
 ]
+
+
+# The meeting, approval and welcome forms live in their own module (same shape); merged in here so seeding and generating see one list.
+from .catalog_meetings import COMPUTE_MEETINGS, TEMPLATES_MEETINGS  # noqa: E402
+
+COMPUTE.update(COMPUTE_MEETINGS)
+TEMPLATES.extend(TEMPLATES_MEETINGS)

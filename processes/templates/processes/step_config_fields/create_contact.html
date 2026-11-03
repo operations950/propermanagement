@@ -1,0 +1,7 @@
+<div class="mt-2">
+    <label class="form-label small fw-medium mb-1">The person is</label>
+    <select name="config_role" class="form-select form-select-sm" style="max-width: 200px;">
+        <option value="owner" {% if step.config.role == 'owner' %}selected{% endif %}>An owner</option>
+        <option value="tenant" {% if step.config.role == 'tenant' %}selected{% endif %}>A tenant</option>
+    </select>
+</div>

@@ -27,7 +27,33 @@ def _address_parts(prop, unit):
     return street, ''
 
 
-def prefill_tokens(prop, unit, user):
+def _owner_roster(prop):
+    """"Unit | Owner(s)" lines for every unit of the association, from the owner records (a sign-in sheet's starting point)."""
+    rows = []
+    for unit in prop.units.filter(is_active=True).order_by('label'):
+        names = ' and '.join(dict.fromkeys(c.name for c in Contact.objects.filter(contact_type=Contact.ContactType.OWNER, units=unit).order_by('name')))
+        rows.append(f'{unit.label} | {names}')
+    if not rows:
+        rows = [f'| {c.name}' for c in Contact.objects.filter(contact_type=Contact.ContactType.OWNER, properties=prop).order_by('name')]
+    return chr(10).join(rows)
+
+
+def run_tokens(run):
+    """What a project run already knows (its meeting details, the person entered in it), as prefill tokens."""
+    if run is None:
+        return {}
+    from processes.projects import run_meeting, run_person
+    meeting = run_meeting(run)
+    person = run_person(run)
+    out = {
+        'meeting_date': meeting['date'], 'meeting_time': meeting['time'], 'meeting_place': meeting['place'], 'video_link': meeting['video_link'],
+    }
+    if person:
+        out.update({'person_name': person.name, 'run_person_name': person.name, 'person_email': person.email})
+    return {k: v for k, v in out.items() if v}
+
+
+def prefill_tokens(prop, unit, user, run=None):
     street, rest = _address_parts(prop, unit)
     owners = Contact.objects.filter(contact_type=Contact.ContactType.OWNER)
     owners = owners.filter(units=unit) if unit else owners.filter(properties=prop)
@@ -39,11 +65,15 @@ def prefill_tokens(prop, unit, user):
         'unit_address': f'{street}, {rest}' if rest else street,
         'owner_address': f'{street}\n{rest}' if rest else street,
         'owner_names': names if unit else '',
+        'person_name': names if unit else '',
+        'meeting_place': prop.board_meeting_address or '',
+        'owner_roster': _owner_roster(prop),
         'manager_name': (user.get_full_name() or user.username) if user else '',
         'manager_title': co['default_manager_title'],
         'county': co['default_county'],
         'company_phone_display': co['company_phone_display'],
         'company_email': co['company_email'],
+        **run_tokens(run),
     }
 
 
@@ -58,10 +88,16 @@ def _remembered(template, prop, unit, key):
     return ''
 
 
-def initial_values(template, prop, unit, user, parent=None):
+NOTICE_KIND_BY_SLUG = {
+    'board-meeting-notice': 'Meeting of the Board of Directors', 'members-meeting-notice': 'Meeting of the Members',
+    'annual-meeting-notice': 'Annual Meeting of the Members', 'first-election-notice': 'Annual Meeting of the Members',
+}
+
+
+def initial_values(template, prop, unit, user, parent=None, run=None):
     """What each field starts as: its default, then what the program knows, then what was typed last time for this
     unit, then (for a companion form) the document it goes with."""
-    tokens = prefill_tokens(prop, unit, user)
+    tokens = prefill_tokens(prop, unit, user, run=run)
     out = {}
     for f in template.fields:
         value = f.get('default', '')
@@ -78,6 +114,8 @@ def initial_values(template, prop, unit, user, parent=None):
             if f['parent'] == 'mailed_on' and not src:
                 src = (parent.values or {}).get('letter_date', '')
             value = src or value
+        if parent is not None and f['key'] == 'notice_kind':
+            value = NOTICE_KIND_BY_SLUG.get(parent.template.slug, value)
         out[f['key']] = value
     return out
 
@@ -171,7 +209,7 @@ def render(template, typed, extra=None):
 
 
 # ------------------------------------------------------------------------------------------------------ saving it
-def save_document(template, prop, unit, user, raw_values, parent=None, doc=None):
+def save_document(template, prop, unit, user, raw_values, parent=None, doc=None, process_step=None):
     """Make (or, for a draft, remake) the document. Returns (document, errors); document is None when there are errors."""
     if doc is not None and doc.status != GeneratedDocument.Status.DRAFT:
         raise FormError('A final document cannot be changed — make a revised copy.')
@@ -184,17 +222,63 @@ def save_document(template, prop, unit, user, raw_values, parent=None, doc=None)
         return None, {'general': str(exc)}
     stored = {f['key']: (typed[f['key']].isoformat() if hasattr(typed[f['key']], 'isoformat') else str(typed[f['key']])) if typed[f['key']] != '' else '' for f in template.fields}
     if doc is None:
-        doc = GeneratedDocument(template=template, property=prop, unit=unit, parent=parent, created_by=user)
+        doc = GeneratedDocument(template=template, property=prop, unit=unit, parent=parent, created_by=user, process_step=process_step)
     doc.template_version = template.version
     doc.values = stored
     doc.body_html = html
     doc.subject = (ctx.get('subject') or '')[:200]
     doc.save()
+    if doc.process_step_id:
+        step = doc.process_step
+        step.response = {**(step.response or {}), 'document_id': doc.pk}
+        step.save(update_fields=['response'])
     return doc, {}
 
 
 def revised_copy(doc, user):
     return GeneratedDocument.objects.create(
         template=doc.template, template_version=doc.template.version, property=doc.property, unit=doc.unit, parent=doc.parent,
-        subject=doc.subject, values=doc.values, body_html=doc.body_html, created_by=user, mailed_on=None,
+        subject=doc.subject, values=doc.values, body_html=doc.body_html, created_by=user, mailed_on=None, process_step=doc.process_step,
     )
+
+
+# ------------------------------------------------------------------------------------------------ emailing it as a PDF
+def suggested_email(doc):
+    """Who the document would go to: the person entered in the project it was made for, else nobody."""
+    if doc.process_step_id:
+        from processes.projects import run_person
+        person = run_person(doc.process_step.run)
+        if person and person.email:
+            return person.email
+    return ''
+
+
+def default_email_subject(doc):
+    return f'{doc.template.name} - {doc.property.name}'
+
+
+def default_email_message(doc):
+    co = config.company()
+    return (f'Hello,\n\nPlease find your {doc.template.name.lower()} attached.\n\n'
+            f'If you have any questions, please contact us at {co["company_phone_display"]} or {co["company_email"]}.\n\nSincerely,\n{co["company_name"]}')
+
+
+def email_document(doc, to, subject, message):
+    """Send the document to one address as a PDF attachment, and record that it went. Only a final document is sent."""
+    from django.core.exceptions import ValidationError
+    from django.core.mail import EmailMessage
+    from django.core.validators import validate_email
+
+    from . import pdf
+    if doc.status != GeneratedDocument.Status.FINAL:
+        raise FormError('Make the document final before emailing it.')
+    try:
+        validate_email(to)
+    except ValidationError:
+        raise FormError('Enter a valid email address.')
+    mail = EmailMessage((subject or default_email_subject(doc))[:200], message or default_email_message(doc), to=[to], reply_to=[config.company()['company_email']])
+    mail.attach(pdf.pdf_filename(doc), pdf.document_pdf(doc), 'application/pdf')
+    if mail.send(fail_silently=False) != 1:
+        raise FormError('The email could not be sent. Nothing was recorded; try again.')
+    doc.emailed_to, doc.emailed_at = to, timezone.now()
+    doc.save(update_fields=['emailed_to', 'emailed_at'])

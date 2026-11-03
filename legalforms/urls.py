@@ -10,5 +10,6 @@ urlpatterns = [
     path('<int:pk>/', views.document_detail, name='detail'),
     path('<int:pk>/edit/', views.document_edit, name='edit'),
     path('<int:pk>/print/', views.document_print, name='print'),
+    path('<int:pk>/pdf/', views.document_pdf, name='pdf'),
     path('<int:pk>/act/', views.document_act, name='act'),
 ]
