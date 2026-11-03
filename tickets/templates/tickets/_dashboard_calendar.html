@@ -20,6 +20,8 @@
     </div>
 </div>
 
+{% for c in available_calendars %}{% if c.enabled and c.error %}<div class="small mb-1" style="color: var(--status-critical, #b42318);"><i data-lucide="alert-triangle" class="icon"></i> Can't show <strong>{{ c.summary }}</strong>: {{ c.error }}.</div>{% endif %}{% endfor %}
+
 <div class="collapse mb-2" id="timezonePicker">
     <div class="card card-body p-2">
         <form method="post" action="{% url 'timezone_select' %}">
@@ -51,7 +53,7 @@
                 <div class="bubble-slot" data-bubble-slot data-empty-text="No calendars selected"></div>
                 <div class="bubble-pool" data-bubble-pool>
                     {% for c in available_calendars %}
-                    <button type="button" class="bubble" data-value="{{ c.id }}" data-label="{{ c.summary }}" style="border-color: {{ c.color }}; color: {{ c.color }};">{{ c.summary }}{% if c.is_primary %} (primary){% endif %}</button>
+                    <button type="button" class="bubble" data-value="{{ c.id }}" data-label="{{ c.summary }}" style="border-color: {{ c.color }}; color: {{ c.color }};">{{ c.summary }}{% if c.is_primary %} (primary){% endif %}{% if c.access_role == 'freeBusyReader' %} (free/busy only){% endif %}{% if c.error %} (can't read){% endif %}</button>
                     {% endfor %}
                 </div>
             </div>

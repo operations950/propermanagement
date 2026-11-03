@@ -92,10 +92,15 @@ def get_upcoming_events(token, days_ahead=2):
     `_calendar_id` key so the caller can tell which calendar it came from
     (see tickets/views.py's _format_calendar_events / _calendar_color).
     Returns ([], []) (logged) on any failure — a broken calendar connection
-    shouldn't break the dashboard."""
+    shouldn't break the dashboard.
+
+    Every calendar in `available_calendars` also carries `enabled` (it is one of the ones being pulled in), `access_role` and `hidden`, and `error` (a plain-words reason) when
+    that calendar could not be read. Each calendar is read on its own, so one that Google refuses (shared as free/busy only, or no longer shared) never hides the others.
+    Hidden calendars and every page of the calendar list are included: Google leaves hidden ones out unless asked, and a long list of shared calendars comes in pages."""
     from datetime import timedelta
 
     from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
 
     try:
         creds = credentials_for(token)
@@ -105,28 +110,57 @@ def get_upcoming_events(token, days_ahead=2):
             timezone.datetime.combine(timezone.localdate() + timedelta(days=days_ahead), timezone.datetime.max.time())
         )
 
-        calendar_list = service.calendarList().list().execute().get('items', [])
+        calendar_list, page = [], None
+        while True:
+            result = service.calendarList().list(showHidden=True, maxResults=250, pageToken=page).execute()
+            calendar_list.extend(result.get('items', []))
+            page = result.get('nextPageToken')
+            if not page:
+                break
         available_calendars = [
             {
                 'id': c['id'],
                 'summary': c.get('summaryOverride') or c.get('summary') or c['id'],
                 'is_primary': bool(c.get('primary')),
+                'access_role': c.get('accessRole', ''),
+                'hidden': bool(c.get('hidden')),
+                'enabled': False,
+                'error': '',
             }
             for c in calendar_list
         ]
+        by_id = {c['id']: c for c in available_calendars}
 
         primary_id = next((c['id'] for c in available_calendars if c['is_primary']), 'primary')
-        valid_ids = {c['id'] for c in available_calendars}
-        enabled_ids = [cid for cid in (token.enabled_calendar_ids or [primary_id]) if cid in valid_ids]
-        if not enabled_ids:
-            enabled_ids = [primary_id]
+        wanted = list(token.enabled_calendar_ids or [primary_id])
 
         events = []
-        for calendar_id in enabled_ids:
-            result = service.events().list(
-                calendarId=calendar_id, timeMin=now.isoformat(), timeMax=time_max.isoformat(),
-                singleEvents=True, orderBy='startTime', maxResults=50,
-            ).execute()
+        for calendar_id in wanted:
+            entry = by_id.get(calendar_id)
+            if entry is None and calendar_id == 'primary':
+                entry = {'id': 'primary', 'summary': 'Primary calendar', 'is_primary': True, 'access_role': 'owner', 'hidden': False, 'enabled': False, 'error': ''}
+                available_calendars.append(entry)
+                by_id['primary'] = entry
+            if entry is None:
+                # chosen once, but Google no longer lists it for this account (unshared, unsubscribed or deleted)
+                entry = {'id': calendar_id, 'summary': calendar_id, 'is_primary': False, 'access_role': '', 'hidden': False, 'enabled': True, 'error': 'it is no longer shared with you'}
+                available_calendars.append(entry)
+                by_id[calendar_id] = entry
+                continue
+            entry['enabled'] = True
+            try:
+                result = service.events().list(
+                    calendarId=calendar_id, timeMin=now.isoformat(), timeMax=time_max.isoformat(),
+                    singleEvents=True, orderBy='startTime', maxResults=50,
+                ).execute()
+            except HttpError as exc:
+                entry['error'] = _why_unreadable(exc)
+                logger.warning('Google Calendar: could not read %s (%s) for %s', entry['summary'], entry['error'], token.staff)
+                continue
+            except Exception:
+                entry['error'] = 'Google would not return its events'
+                logger.exception('Google Calendar: failed reading %s for %s', entry['summary'], token.staff)
+                continue
             for item in result.get('items', []):
                 item['_calendar_id'] = calendar_id
             events.extend(result.get('items', []))
@@ -134,6 +168,18 @@ def get_upcoming_events(token, days_ahead=2):
     except Exception:
         logger.exception('Google Calendar: failed to fetch events for %s', token.staff)
         return [], []
+
+
+def _why_unreadable(exc):
+    """A plain-words reason a calendar's events could not be read, from Google's HTTP error."""
+    status = getattr(getattr(exc, 'resp', None), 'status', None)
+    if status == 403:
+        return 'you only have free/busy access to it, or it is no longer shared with you'
+    if status == 404:
+        return 'it is no longer shared with you'
+    if status == 401:
+        return 'Google needs you to disconnect and reconnect the calendar'
+    return f'Google answered with an error ({status})' if status else 'Google would not return its events'
 
 
 class GoogleCalendarWriteError(Exception):
