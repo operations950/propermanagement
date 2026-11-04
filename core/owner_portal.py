@@ -363,7 +363,7 @@ def release_status(month):
     pending = [(p, ms) for p, ms in plan if ms]
     first = MonthRelease.objects.filter(month=month, property__in=props).order_by('released_at').first()
     return {
-        'open': len(props), 'properties': props, 'released': len(released), 'all_released': len(released) == len(props), 'blockers': blockers, 'pending': pending,
+        'open': len(props), 'properties': props, 'released': len(released), 'all_released': len(released) == len(props), 'blockers': blockers, 'blocker_text': ' '.join(blockers), 'ready': len(props) - len(blockers), 'pending': pending,
         'pending_months': sorted({m for _, ms in pending for m in ms}), 'released_at': first.released_at if first else None,
         'released_by': first.released_by if first else None,
         'recipients': sorted({c.email.lower() for p, _ in pending for c in owner_contacts(p)}),

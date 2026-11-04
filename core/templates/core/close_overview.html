@@ -39,11 +39,11 @@
 {% if o.open %}
 <div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3 small d-flex gap-2 flex-wrap align-items-center">
     <i data-lucide="send" class="icon"></i>
-    <span><strong>Owner portal</strong> · open for {{ o.open }} rental{{ o.open|pluralize }} ({% for p in o.properties %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}).</span>
+    <span><strong>Owner portal</strong> · open for {{ o.open }} rental{{ o.open|pluralize }}.</span>
     {% if o.all_released %}
     <span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> {{ month|date:"F Y" }} is released to owners{% if o.released_at %} ({{ o.released_at|date:"M j" }}{% if o.released_by %} by {{ o.released_by.get_full_name|default:o.released_by.username }}{% endif %}){% endif %}.</span>
     {% elif o.blockers %}
-    <span style="color: #9a6a00;">Can't release {{ month|date:"F Y" }} yet: {% for b in o.blockers %}{{ b }} {% endfor %}</span>
+    <span style="color: #9a6a00;">{{ o.ready }} of {{ o.open }} ready to release for {{ month|date:"F Y" }} {% include '_tip.html' with text=o.blocker_text %}</span>
     {% elif o.pending %}
     <form method="post" class="ms-auto d-flex gap-2 align-items-center" onsubmit="return confirm('Release {% if o.pending_months|length > 1 %}{{ o.pending_months.0|date:"F" }} through {{ o.pending_months|last|date:"F Y" }}{% else %}{{ month|date:"F Y" }}{% endif %} to owners now?\n\nThis emails {{ o.recipients|length }} owner address{{ o.recipients|length|pluralize:"es" }} right away:\n{% for e in o.recipients %}{{ e }}\n{% endfor %}\nAfter this, any change to a released month emails the owners it affects.');">
         {% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="release_owners">
