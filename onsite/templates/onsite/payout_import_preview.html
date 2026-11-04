@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Review payouts{% endblock %}
+{% block content %}
+<a href="{% url 'onsite_booking_import' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Import payouts</a>
+
+{% if debug_last_import_error %}
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg); border-color: var(--status-critical);">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2" style="color: var(--status-critical);"><i data-lucide="bug" class="icon"></i> Diagnostic: the last Apply attempt crashed</h6>
+        <p class="text-muted small mb-2">Copy everything in the box below and send it over.</p>
+        <pre class="small p-2" style="background: var(--surface-page); border-radius: var(--bs-border-radius-sm); overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;">{{ debug_last_import_error }}</pre>
+    </div>
+</div>
+{% endif %}
+
+<h2 class="page-title mb-1">Review payouts &mdash; {{ batch.get_source_display }}</h2>
+<p class="text-muted small mb-3">Saving this stores the payouts and the money on the reservations already on record. It does not create, move or cancel any reservation: those come from the booking calendars. Nothing has been saved yet.</p>
+
+<div class="row row-cols-1 row-cols-md-3 g-2 mb-3">
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Payouts in the file</div><div class="fs-4 fw-semibold">{{ payout_count }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Reservations the money goes onto</div><div class="fs-4 fw-semibold">{{ known_count }}</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: {% if unknown %}color-mix(in srgb, var(--status-warning) 15%, white){% else %}var(--bs-light, #f8f9fa){% endif %}; border-radius: 10px;"><div class="small text-muted">Not on record yet</div><div class="fs-4 fw-semibold">{{ unknown|length }}</div></div></div>
+</div>
+
+{% if unknown %}
+<div class="alert alert-warning small">
+    <strong>{{ unknown|length }} reservation{{ unknown|length|pluralize }} in this file {{ unknown|length|pluralize:"is,are" }} not on record yet</strong> (the booking calendars have not brought {{ unknown|length|pluralize:"it,them" }} in). Their payouts are still saved. Coding them in QuickBooks waits until the reservation arrives.
+    <div class="mt-1">{{ unknown|slice:":12"|join:", " }}{% if unknown|length > 12 %} &hellip;and {{ unknown|length|add:"-12" }} more{% endif %}</div>
+</div>
+{% endif %}
+
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="table-responsive">
+<table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Paid out</th><th class="text-end">Amount</th><th>Made up of</th><th>Where</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td class="text-nowrap">{{ r.row.date|date:"M j, Y" }}</td>
+        <td class="text-end text-nowrap">${{ r.row.amount|floatformat:2 }}</td>
+        <td class="small">{{ r.row.items|length }} line{{ r.row.items|length|pluralize }}{% for i in r.row.items|slice:":3" %}{% if forloop.first %}: {% else %}, {% endif %}{{ i.guest_name|default:i.external_uid }}{% endfor %}{% if r.row.items|length > 3 %}&hellip;{% endif %}{% if r.row.breakdown_ok is False %} <span class="badge text-bg-warning">lines don't add up</span>{% endif %}</td>
+        <td class="small">{% if r.where %}{{ r.where|join:", " }}{% else %}<span class="text-muted">reservation not on record</span>{% endif %}{% if r.missing and r.where %} <span class="text-muted">(+{{ r.missing|length }} not on record)</span>{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4" class="text-muted p-3">No payouts found in this file.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div></div>
+
+<form method="post" action="{% url 'onsite_booking_import_apply' batch.pk %}" class="d-flex gap-2">
+    {% csrf_token %}
+    <button class="btn btn-primary" type="submit" data-once-submit>Save payouts</button>
+    <a href="{% url 'onsite_booking_import' %}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+<script>
+(function () {
+    var form = document.querySelector('form [data-once-submit]');
+    if (!form) return;
+    var btn = form;
+    form = btn.form;
+    form.addEventListener('submit', function () {
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+    });
+})();
+</script>
+{% endblock %}

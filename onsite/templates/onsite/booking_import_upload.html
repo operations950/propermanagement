@@ -13,7 +13,7 @@
     <div class="upload-slot" data-upload-slot>
         <form method="post" action="{% url 'onsite_upload_slot' slot.pk %}" enctype="multipart/form-data">
             {% csrf_token %}
-            <input type="file" name="file" accept=".csv,.ics" hidden>
+            <input type="file" name="file" accept=".csv" hidden>
         </form>
         <div class="upload-slot-icon"><i data-lucide="upload-cloud" class="icon-lg"></i></div>
         <div class="upload-slot-label fw-medium small">{{ slot.label }}</div>
@@ -25,46 +25,6 @@
 </div>
 <p class="text-muted small mb-4" style="font-size: 0.8rem;">Each box takes any report for that platform covering multiple properties — there's nothing else to pick.</p>
 {% endif %}
-
-<details class="mb-3">
-    <summary class="text-muted small" style="cursor: pointer;">Uploading for just one property instead?</summary>
-    <div class="card mt-2" style="max-width: 560px; border-radius: var(--bs-border-radius-lg);">
-        <div class="card-body p-4">
-            <p class="text-muted small">For a single-property file only. {% include '_tip.html' with text="Only needed for a single-listing file — a property's own calendar export (.ics), or a reservation report scoped to just one property with no listing/property column. The boxes above already handle a portfolio-wide report on their own; this is for the one-property case, where the system needs to be told which property since the file itself won't say." %}</p>
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                <div class="mb-4">
-                    <label class="form-label fw-medium d-block">Property</label>
-                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="property">
-                        <input type="hidden" name="property" data-bubble-input value="">
-                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose the property this file is for"></div>
-                        <div class="bubble-pool" data-bubble-pool>
-                            {% for prop in properties %}
-                            <button type="button" class="bubble" data-value="{{ prop.pk }}" data-label="{{ prop.name }}">{{ prop.name }}</button>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-medium d-block">Source</label>
-                    <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="source">
-                        <input type="hidden" name="source" data-bubble-input value="">
-                        <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a source"></div>
-                        <div class="bubble-pool" data-bubble-pool>
-                            <button type="button" class="bubble" data-value="airbnb" data-label="Airbnb">Airbnb</button>
-                            <button type="button" class="bubble" data-value="vrbo" data-label="VRBO">VRBO</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-medium" for="id_file">File (.ics or .csv)</label>
-                    <input type="file" name="file" id="id_file" class="form-control" accept=".ics,.csv" required>
-                </div>
-                <button class="btn btn-primary" type="submit">Preview import</button>
-            </form>
-        </div>
-    </div>
-</details>
 
 <style>
 .upload-slot-grid {

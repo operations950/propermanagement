@@ -525,6 +525,22 @@ def parse_csv(file_bytes):
             first.gross_amount = _add_money(first.gross_amount, _money(row.get(columns['gross_amount']) if columns['gross_amount'] else ''))
             first.payout_amount = _add_money(first.payout_amount, _money(row.get(columns['payout_amount']) if columns['payout_amount'] else ''))
             first.cleaning_fee = _add_money(first.cleaning_fee, _money(row.get(columns['cleaning_fee']) if columns['cleaning_fee'] else ''))
+            if columns['payout_date'] and not columns['transaction_type'] and columns['payout_amount']:
+                # VRBO's Payout Summary lists a reservation once per payout (a stay paid in two installments, or an adjustment, repeats its
+                # code with another payout date). Each row is its own payout: dropping the repeat lost a real payout (seen: $876.35 on Oct 10).
+                raw_paid = (row.get(columns['payout_date']) or '').strip()
+                repeat_amount = _money(row.get(columns['payout_amount']))
+                paid_on = None
+                if raw_paid:
+                    try:
+                        paid_on = _parse_csv_date(raw_paid)
+                    except BookingFileError:
+                        paid_on = None
+                if paid_on and repeat_amount is not None:
+                    status_text = ((row.get(columns['status']) or '') if columns['status'] else '').lower()
+                    vrbo_rows.append((paid_on, (row.get(columns['listing_property_id']) or '').strip() if columns['listing_property_id'] else '', PayoutItemRow(
+                        external_uid=uid, type_label='Cancellation' if 'cancel' in status_text else 'Reservation', date=paid_on, amount=repeat_amount,
+                        listing_name=first.listing_name, guest_name=first.guest_name)))
             continue
         seen_uids.add(uid)
         phone = (row.get(columns['guest_phone']) or '').strip() if columns['guest_phone'] else ''

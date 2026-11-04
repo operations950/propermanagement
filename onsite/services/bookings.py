@@ -280,6 +280,18 @@ def _save_amounts(source, raw_bookings):
             PayoutLine.objects.bulk_update(to_update, ['amount'])
 
 
+def apply_payouts_only(source, raw_bookings):
+    """A platform payout file (Airbnb transactions, VRBO payout summary) saved as what it is: the money. Reservations come from the booking calendars, so this never creates a
+    reservation, never moves its dates and never cancels one. It stores the amounts and dated lines on reservations that are already on record (by confirmation code), and notes
+    which payout dates the file covered. Returns {'attached': codes of reservations that got money, 'unknown': codes in the file with no reservation on record yet}."""
+    rows = list(raw_bookings)
+    codes = {row.external_uid for row in rows if row.has_amounts()}
+    known = set(Booking.objects.filter(source=source, external_uid__in=codes).values_list('external_uid', flat=True))
+    _save_amounts(source, rows)
+    payouts_service.note_coverage(source, [getattr(r, 'payout_date', None) for r in rows])
+    return {'attached': sorted(known), 'unknown': sorted(codes - known)}
+
+
 def save_money_only(source, money_rows):
     """Dated money lines for reservations whose own row was not in the file (see importers.ParsedBookings): added
     to the booking on record, if there is one. Nothing is created for a code we don't know."""

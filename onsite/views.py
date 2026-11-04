@@ -50,6 +50,7 @@ from .services import times as times_service
 from .services import notify as notify_service
 from .services.bookings import (
     apply_bookings_for_property, check_listing_name_conflict, diff_bookings, resolve_listing_names, save_listing_name, save_money_only, save_payout_batches,
+    apply_payouts_only,
 )
 from .services.bookings import update_feed_health as _update_feed_health
 
@@ -411,43 +412,40 @@ def _payout_preview_context(batch, rows):
     return {'batch': batch, 'payout_rows': rows, 'attach': attach, 'kept': kept, 'held': held, 'portfolio': False, 'payouts': True}
 
 
-def _create_import_batch(user, source, uploaded_file, property=None, force_portfolio=False):
-    """Shared by the generic upload form and each daily-upload-slot drop —
-    parses the file, decides single-property vs. portfolio-wide the same
-    way either time, and saves the not-yet-applied ImportBatch. Returns
-    (batch, error_message); batch is None on error.
+def _payouts_only_preview_context(batch, raw_bookings):
+    """What saving a payout file will do: the payouts it holds (each with its lines), and which reservations the money will go onto. Nothing here creates a reservation."""
+    payout_batches = sorted(getattr(raw_bookings, 'payout_batches', ()) or (), key=lambda b: (b.date, str(b.reference)))
+    codes = {i.external_uid for b in payout_batches for i in b.items if i.external_uid} | {r.external_uid for r in raw_bookings if r.has_amounts()} | {m.external_uid for m in (getattr(raw_bookings, 'money_only', ()) or ())}
+    known = {b.external_uid: b for b in Booking.objects.filter(source=batch.source, external_uid__in=codes).select_related('property', 'unit')}
+    rows = []
+    for b in payout_batches:
+        where = sorted({f'{known[i.external_uid].property.name}' + (f' ({known[i.external_uid].unit.label})' if known[i.external_uid].unit_id else '') for i in b.items if i.external_uid in known})
+        missing = sorted({i.external_uid for i in b.items if i.external_uid and i.external_uid not in known})
+        rows.append({'row': b, 'where': where, 'missing': missing})
+    return {'batch': batch, 'rows': rows, 'known_count': len(known), 'unknown': sorted(codes - set(known)), 'payout_count': len(payout_batches)}
 
-    `force_portfolio` is for a daily-upload-slot drop, which is portfolio-wide by construction (the slot
-    collects no property at all — see upload_slot) — without it, a file that happens to carry no reservation
-    rows at all (every row a 'Payout' batch line, or a continuation line for a reservation whose own Reservation
-    row is in a different file) has nothing to detect a Listing column from, and would otherwise be wrongly
-    asked to pick a property it was never going to get."""
+
+def _create_import_batch(user, source, uploaded_file, property=None, force_portfolio=False):
+    """Shared by the upload form and each daily-upload-slot drop. This page takes PAYOUT files only (the Airbnb transactions file, the VRBO payout summary, or the VRBO upcoming
+    payouts report): reservations come from the booking calendars, so a file here never creates or changes one. Parses the file, makes sure it really carries payouts, and saves
+    the not-yet-applied ImportBatch. Returns (batch, error_message); batch is None on error. `property` and `force_portfolio` are accepted for the old callers and ignored."""
     try:
         fmt = detect_format(uploaded_file.name)
-        if fmt == 'csv' and is_payout_file(read_csv_header(uploaded_file)):
+        if fmt != 'csv':
+            return None, 'This page takes payout files (.csv) only. Reservations come from the booking calendars.'
+        if is_payout_file(read_csv_header(uploaded_file)):
             return _create_payout_batch(user, source, uploaded_file)
         raw_bookings = parse_booking_file(uploaded_file)
     except BookingFileError as e:
         return None, str(e)
 
-    portfolio_mode = fmt == 'csv' and not property and (force_portfolio or any(r.listing_name for r in raw_bookings))
-    if not portfolio_mode and not property:
-        return None, (
-            'Choose a property — only a portfolio-wide .csv with a listing/property column can skip this.'
-        )
-
-    # A file can validly have no reservation rows at all (all 'Payout' batch rows, or every code's money is a
-    # continuation line for a reservation whose own Reservation row is in an earlier file, not this one) — fall
-    # back to whatever dated thing the file DOES have, rather than crashing staff's upload with a bare 500.
-    checkout_dates = [r.check_out for r in raw_bookings]
-    if not checkout_dates:
-        batch_dates = getattr(raw_bookings, 'payout_batches', ())
-        checkout_dates = [b.date for b in batch_dates] or [timezone.localdate()]
-    covers_start = min(checkout_dates)
-    covers_end = max(checkout_dates)
+    payout_batches = list(getattr(raw_bookings, 'payout_batches', ()) or ())
+    money_only = list(getattr(raw_bookings, 'money_only', ()) or ())
+    if not (payout_batches or money_only or any(r.has_amounts() for r in raw_bookings)):
+        return None, 'This file has no payouts in it. This page takes the Airbnb transactions file and the VRBO payout summary; reservations come from the booking calendars.'
+    dates = [b.date for b in payout_batches] or [r.payout_date for r in raw_bookings if getattr(r, 'payout_date', None)] or [timezone.localdate()]
     batch = ImportBatch.objects.create(
-        property=property if not portfolio_mode else None, source=source, raw_file=uploaded_file,
-        covers_start=covers_start, covers_end=covers_end, imported_by=user,
+        property=None, source=source, raw_file=uploaded_file, covers_start=min(dates), covers_end=max(dates), imported_by=user,
     )
     return batch, None
 
@@ -564,20 +562,9 @@ def booking_import_preview(request, batch_id):
     except BookingFileError as e:
         messages.error(request, f'Could not re-read the saved file: {e}')
         return redirect('onsite_booking_import')
-
-    if batch.property_id:
-        diff = diff_bookings(batch.property, batch.source, raw_bookings)
-        return render(request, 'onsite/booking_import_preview.html', {
-            'batch': batch, 'property': batch.property, 'diff': diff, 'portfolio': False,
-            'debug_last_import_error': debug_last_import_error,
-        })
-
-    context = _portfolio_preview_context(batch, raw_bookings, batch.source)
+    context = _payouts_only_preview_context(batch, raw_bookings)
     context['debug_last_import_error'] = debug_last_import_error
-    return render(
-        request, 'onsite/booking_import_preview.html',
-        context,
-    )
+    return render(request, 'onsite/payout_import_preview.html', context)
 
 
 @login_required
@@ -646,89 +633,28 @@ def booking_import_apply(request, batch_id):
         messages.error(request, f'Could not re-read the saved file: {e}')
         return redirect('onsite_booking_import')
 
-    # TEMPORARY diagnostic wrap (see the matching block in booking_import_preview
-    # that reads DEBUG_LAST_IMPORT_ERROR_SESSION_KEY) — added while tracking down
-    # a production-only 500 on Apply that hasn't reproduced locally. Remove once
-    # that's found and fixed; this is not meant to be permanent app behavior.
+    # TEMPORARY diagnostic wrap (see the matching block in booking_import_preview that reads DEBUG_LAST_IMPORT_ERROR_SESSION_KEY): a crash on Apply is shown on the review page.
     try:
-        if batch.property_id:
-            new_count, changed_count, reactivated_count, cancelled_count, visit_note = apply_bookings_for_property(
-                batch.property, batch.source, raw_bookings,
-            )
-            batch.new_count, batch.changed_count = new_count, changed_count
-            batch.reactivated_count, batch.cancelled_count = reactivated_count, cancelled_count
-            batch.applied_at = timezone.now()
-            batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
-            _update_feed_health(batch.source, raw_bookings)
+        with transaction.atomic():
+            result = apply_payouts_only(batch.source, raw_bookings)
             save_money_only(batch.source, getattr(raw_bookings, 'money_only', ()))
             save_payout_batches(batch.source, getattr(raw_bookings, 'payout_batches', ()))
-            messages.success(
-                request,
-                f'Imported: {new_count} new, {changed_count} changed, {reactivated_count} reactivated, '
-                f'{cancelled_count} cancelled.',
-            )
-            if visit_note:
-                messages.warning(request, visit_note)
-            return redirect('onsite_booking_import')
-
-        matched, unmatched = resolve_listing_names(raw_bookings, batch.source)
-        pending_mappings = []
-        blocked = False
-        for i, (listing_name, rows) in enumerate(sorted(unmatched.items())):
-            property_id = request.POST.get(f'map_{i}')
-            if not property_id:
-                blocked = True
-                continue
-            property = get_object_or_404(Property, pk=property_id)
-            unit_id = request.POST.get(f'unit_{i}') or None
-            unit = property.units.filter(pk=unit_id).first() if unit_id else None
-            conflict = check_listing_name_conflict(property, batch.source, listing_name)
-            if conflict and conflict['type'] == 'additional' and request.POST.get(f'confirm_{i}'):
-                conflict = None
-            if conflict:
-                blocked = True
-            else:
-                pending_mappings.append((listing_name, property, unit, rows))
-
-        if blocked:
-            messages.error(
-                request,
-                'Every listing name needs to be mapped to a property (and any conflicts resolved) before this import can be applied.',
-            )
-            context = _portfolio_preview_context(batch, raw_bookings, batch.source, posted=request.POST)
-            return render(request, 'onsite/booking_import_preview.html', context)
-
-        for listing_name, property, unit, rows in pending_mappings:
-            save_listing_name(property, batch.source, listing_name, unit=unit)
-            matched[property] = matched.get(property, []) + rows
-
-        total_new = total_changed = total_reactivated = total_cancelled = 0
-        visit_notes = set()
-        for property, rows in matched.items():
-            n, c, r, x, note = apply_bookings_for_property(property, batch.source, rows)
-            total_new += n
-            total_changed += c
-            total_reactivated += r
-            total_cancelled += x
-            if note:
-                visit_notes.add(note)
-
-        batch.new_count, batch.changed_count = total_new, total_changed
-        batch.reactivated_count, batch.cancelled_count = total_reactivated, total_cancelled
-        batch.applied_at = timezone.now()
-        batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
-        _update_feed_health(batch.source, raw_bookings)
-        save_money_only(batch.source, getattr(raw_bookings, 'money_only', ()))
-        save_payout_batches(batch.source, getattr(raw_bookings, 'payout_batches', ()))
-
-        property_word = 'property' if len(matched) == 1 else 'properties'
+            payouts_saved = len(getattr(raw_bookings, 'payout_batches', ()) or ())
+            batch.new_count, batch.changed_count = 0, len(result['attached'])
+            batch.reactivated_count = batch.cancelled_count = 0
+            batch.applied_at = timezone.now()
+            batch.save(update_fields=['new_count', 'changed_count', 'reactivated_count', 'cancelled_count', 'applied_at'])
         messages.success(
             request,
-            f'Imported: {total_new} new, {total_changed} changed, {total_reactivated} reactivated, '
-            f'{total_cancelled} cancelled, across {len(matched)} {property_word}.',
+            f'Saved {payouts_saved} payout{"" if payouts_saved == 1 else "s"}; money added to {len(result["attached"])} reservation{"" if len(result["attached"]) == 1 else "s"}.',
         )
-        for note in visit_notes:
-            messages.warning(request, note)
+        if result['unknown']:
+            messages.warning(
+                request,
+                f'{len(result["unknown"])} reservation{"" if len(result["unknown"]) == 1 else "s"} in this file {"is" if len(result["unknown"]) == 1 else "are"} not on record yet '
+                f'(the booking calendars have not brought {"it" if len(result["unknown"]) == 1 else "them"} in): ' + ', '.join(result['unknown'][:6]) + (' ...' if len(result['unknown']) > 6 else '')
+                + '. Their payouts are saved; coding them in QuickBooks waits until the reservation arrives.',
+            )
         return redirect('onsite_booking_import')
     except Exception:
         tb = traceback.format_exc()
