@@ -14,8 +14,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import bank_tieout, escrow, ledger, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
-from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
+from . import bank_tieout, escrow, ledger, month_end_booking, month_end_payments, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
+from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, MonthEndPayment, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
 from .views import _is_admin
 
 CATEGORY_LABELS = dict(LedgerLine.Category.choices)
@@ -664,14 +664,18 @@ def close_home(request):
     close_status, close_detail = _closed_step(month)
     tax_status, tax_detail = _tourist_tax_step(month)
     assoc_status, assoc_detail = _associations_step(month)
+    owners_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['owners'])
+    proper_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['proper'])
     steps = [
         {'n': 1, 'title': 'Bank tie-out', 'icon': 'landmark', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q},
         {'n': 2, 'title': 'Misc trust account', 'icon': 'wallet', 'status': misc_status, 'detail': misc_detail, 'url': reverse('close_misc') + q},
         {'n': 3, 'title': 'Escrow account', 'icon': 'shield-check', 'status': esc_status, 'detail': esc_detail, 'url': reverse('close_escrow') + q},
         {'n': 4, 'title': 'Platform payouts', 'icon': 'banknote', 'status': pay_status, 'detail': pay_detail, 'url': reverse('close_payouts')},
         {'n': 5, 'title': 'Close each rental', 'icon': 'lock', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q},
-        {'n': 6, 'title': 'Tourist tax', 'icon': 'receipt', 'status': tax_status, 'detail': tax_detail, 'url': reverse('tourist_tax') + q},
-        {'n': 7, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
+        {'n': 6, 'title': 'Pay owners', 'icon': 'users', 'status': owners_pay['status'], 'detail': owners_pay['detail'], 'url': reverse('close_pay_owners') + q},
+        {'n': 7, 'title': 'Pay Proper', 'icon': 'arrow-right-left', 'status': proper_pay['status'], 'detail': proper_pay['detail'], 'url': reverse('close_pay_proper') + q},
+        {'n': 8, 'title': 'Tourist tax', 'icon': 'receipt', 'status': tax_status, 'detail': tax_detail, 'url': reverse('tourist_tax') + q},
+        {'n': 9, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
     ]
     for step in steps:
         # A step under way (not started, needs attention and done each have their own chip) shows just its count, such as "12 of 38"; the full sentence is the link's hover text.
@@ -857,3 +861,103 @@ def _owner_admin_page(request, temp):
     for a in accounts:
         a.properties = owner_portal.visible_properties(a.email)
     return render(request, 'core/owner_portal_admin.html', {'rentals': rentals, 'accounts': accounts, 'portal_url': owner_portal.portal_url(), 'now': timezone.now(), 'temp': temp})
+
+
+def _money(raw):
+    try:
+        return Decimal((raw or '').replace(',', '').replace('$', '').strip()).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _pay_page(request, section, page_title):
+    """The owner payments, or the payments to Proper Realty: every rental with what is due, tick the ones being paid, and the ticked amounts add up to the one transfer in the bank."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month') or request.POST.get('month'), ledger.previous_month(today))
+    kinds = month_end_payments.SECTIONS[section]
+    here = reverse('close_pay_owners' if section == 'owners' else 'close_pay_proper') + f'?month={month:%Y-%m}'
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        kind = request.POST.get('kind')
+        try:
+            if kind not in kinds and action in ('record', 'hold', 'unhold'):
+                raise month_end_payments.PaymentError('Unknown payment type.')
+            if action == 'record':
+                picks = {}
+                for raw in request.POST.getlist('pick'):
+                    pid = int(raw)
+                    typed = request.POST.get(f'amount_{pid}', '').strip()
+                    picks[pid] = _money(typed) if typed else None
+                try:
+                    paid_on = datetime.strptime(request.POST.get('paid_on') or '', '%Y-%m-%d').date()
+                except ValueError:
+                    raise month_end_payments.PaymentError('Enter the date the money was sent.')
+                payment = month_end_payments.record(month, kind, picks, paid_on, request.POST.get('reference'), request.user)
+                count = payment.lines.count()
+                messages.success(request, f'Recorded {payment.get_kind_display().lower()}: ${payment.total:,.2f} across {count} line{"" if count == 1 else "s"}. That is the amount to look for in the bank.')
+            elif action in ('hold', 'unhold'):
+                month_end_payments.hold(month, kind, get_object_or_404(Property, pk=request.POST.get('property')), request.user, on=action == 'hold')
+            elif action == 'undo':
+                month_end_payments.undo(get_object_or_404(MonthEndPayment, pk=request.POST.get('payment'), kind__in=kinds))
+                messages.success(request, 'Payment removed. Its rentals can be paid again.')
+            elif action == 'booked':
+                month_end_payments.mark_booked(get_object_or_404(MonthEndPayment, pk=request.POST.get('payment'), kind__in=kinds), request.user)
+                messages.success(request, 'Marked as booked in QuickBooks.')
+        except (month_end_payments.PaymentError, ValueError) as exc:
+            messages.error(request, str(exc) or 'Check the form and try again.')
+        return redirect(here)
+    blocks = []
+    for kind in kinds:
+        rws = month_end_payments.rows(month, kind)
+        payments = list(MonthEndPayment.objects.filter(month=month, kind=kind).prefetch_related('lines__property', 'bookings'))
+        blocks.append({
+            'kind': kind, 'title': month_end_payments.TITLES[kind], 'rows': rws, 'payments': payments,
+            'payable_total': sum((r['amount'] for r in rws if r['state'] == 'payable'), Decimal('0.00')),
+            'open': sum(1 for r in rws if r['state'] in ('payable', 'not_closed', 'no_figures')),
+            'owner': kind == month_end_payments.Kind.OWNER,
+        })
+    return render(request, 'core/month_end_payments.html', {
+        'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'blocks': blocks, 'title': page_title, 'section': section,
+        'today': today, 'summary': month_end_payments.summary(month, kinds),
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def pay_owners(request):
+    return _pay_page(request, 'owners', 'Pay owners')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def pay_proper(request):
+    return _pay_page(request, 'proper', 'Pay Proper')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def pay_booking(request, pk):
+    """Books one recorded payment in QuickBooks: shows the QuickBooks transaction(s) it matched and how each would be split, and splits them when asked."""
+    payment = get_object_or_404(MonthEndPayment, pk=pk)
+    token = QuickBooksToken.objects.first()
+    back = reverse('close_pay_owners' if payment.kind == MonthEndPayment.Kind.OWNER else 'close_pay_proper') + f'?month={payment.month:%Y-%m}'
+    if token is None:
+        messages.error(request, 'QuickBooks is not connected.')
+        return redirect(back)
+    result = month_end_booking.plan(token, payment)
+    if request.method == 'POST':
+        sent, failed = 0, []
+        for target in result['targets']:
+            if target['status'] != 'ready':
+                continue
+            ok, why = month_end_booking.apply(token, payment, target, user=request.user)
+            if ok:
+                sent += 1
+            else:
+                failed.append(f'{target["label"]}: {why}')
+        if sent:
+            messages.success(request, f'Split {sent} QuickBooks transaction{"" if sent == 1 else "s"} across the rentals.')
+        for why in failed:
+            messages.error(request, why)
+        return redirect(reverse('close_pay_booking', args=[payment.pk]))
+    return render(request, 'core/month_end_booking.html', {'payment': payment, 'result': result, 'back': back, 'ready': any(t['status'] == 'ready' for t in result['targets'])})

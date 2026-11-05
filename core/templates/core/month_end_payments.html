@@ -1,0 +1,138 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<style>
+    .mp-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
+    .mp-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
+    .mp-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
+    .mp-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+    .mp-total { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+    .mp-table td, .mp-table th { vertical-align: middle; }
+    .mp-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+</style>
+<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{% if section == 'owners' %}users{% else %}arrow-right-left{% endif %}" class="icon-lg"></i> {{ title }}
+        {% include '_tip.html' with text='Tick the rentals you are paying. The ticked amounts add up to the one transfer in the bank, so type nothing different there: that total is what will be found in QuickBooks later and split across the rentals.' %}</h2>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+
+{% for b in blocks %}
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);" data-block="{{ b.kind }}"><div class="card-body">
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+        <h3 class="fs-5 mb-0">{{ b.title }}</h3>
+        {% if b.owner %}{% include '_tip.html' with text='What each owner is owed from the closed month, including anything unpaid from before. An owner whose amount is negative is not paid: the balance carries to next month.' %}
+        {% elif b.kind == 'reimbursement' %}{% include '_tip.html' with text='Reimbursable expenses Proper paid for the rentals, moved from the trust account to Proper Realty. A negative amount means Proper owes the rental (something was fixed from last month): tick it and it reduces the one transfer.' %}
+        {% else %}{% include '_tip.html' with text='Proper Realty commission on each rental, moved from the trust account to Proper Realty.' %}{% endif %}
+    </div>
+
+    <form method="post" data-pay-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="record"><input type="hidden" name="kind" value="{{ b.kind }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
+        <div class="table-responsive"><table class="table table-sm mp-table align-middle mb-2">
+            <thead><tr><th style="width: 2rem;"></th><th>Rental</th><th class="num">{% if b.owner %}Owed{% else %}Due{% endif %}</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for r in b.rows %}
+            <tr>
+                <td>{% if r.state == 'payable' %}<input type="checkbox" class="form-check-input" name="pick" value="{{ r.property.pk }}" data-pick aria-label="Pay {{ r.property.name }}">{% endif %}</td>
+                <td class="fw-semibold">{{ r.property.name }}</td>
+                <td class="num">
+                    {% if r.state == 'payable' and r.editable %}<input type="text" inputmode="decimal" class="form-control form-control-sm text-end d-inline-block" style="width: 8rem;" name="amount_{{ r.property.pk }}" value="{{ r.amount }}" data-amount data-due="{{ r.amount }}">
+                    {% elif r.state == 'payable' %}<span data-amount-fixed data-due="{{ r.amount }}">{{ r.amount|money }}</span>
+                    {% elif r.state == 'paid' %}{{ r.paid_amount|money }}
+                    {% elif r.state == 'not_closed' or r.state == 'no_figures' %}<span class="text-muted">&mdash;</span>
+                    {% else %}{{ r.amount|money }}{% endif %}
+                </td>
+                <td class="small">
+                    {% if r.state == 'payable' %}<button type="submit" form="hold-{{ b.kind }}-{{ r.property.pk }}" class="btn btn-link btn-sm text-muted p-0">Skip this month</button>
+                    {% elif r.state == 'paid' %}<span class="mp-chip good"><i data-lucide="check" class="icon"></i> Paid {{ r.payment.paid_on|date:"M j" }}</span>{% if r.payment.reference %} <span class="text-muted">{{ r.payment.reference }}</span>{% endif %}
+                    {% elif r.state == 'held' %}<span class="mp-chip progress">Skipped</span> <button type="submit" form="hold-{{ b.kind }}-{{ r.property.pk }}-undo" class="btn btn-link btn-sm text-muted p-0">Undo</button>
+                    {% elif r.state == 'rides' %}<span class="text-muted">Negative: carries to next month, no payment</span>
+                    {% elif r.state == 'not_closed' %}<span class="mp-chip attention">Month not closed yet</span> <a href="{% url 'close_overview' %}?month={{ month|date:'Y-m' }}" class="small">Close it</a>
+                    {% elif r.state == 'no_figures' %}<span class="text-muted">Closed before payables were worked out</span>
+                    {% else %}<span class="text-muted">Nothing due</span>{% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-muted p-3">No short-term rentals are set up for this.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        {% if b.payable_total or b.open %}
+        <div class="d-flex align-items-end flex-wrap gap-3 border-top pt-3">
+            <div><div class="small text-muted">Ticked: this is the amount for the bank</div><div class="mp-total" data-total>$0.00</div><div class="small text-muted"><span data-count>0</span> rental<span data-plural>s</span></div></div>
+            <div class="ms-auto d-flex align-items-end flex-wrap gap-2">
+                <label class="small text-muted">Date sent<input type="date" name="paid_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" required></label>
+                <label class="small text-muted">Reference (optional)<input type="text" name="reference" class="form-control form-control-sm" maxlength="60" placeholder="Check no., ACH batch&hellip;" style="width: 12rem;"></label>
+                <button class="btn btn-primary btn-sm" type="submit" data-record disabled><i data-lucide="check" class="icon"></i> Record payment</button>
+            </div>
+        </div>
+        {% endif %}
+    </form>
+    {% for r in b.rows %}
+        {% if r.state == 'payable' %}<form method="post" id="hold-{{ b.kind }}-{{ r.property.pk }}" class="d-none">{% csrf_token %}<input type="hidden" name="action" value="hold"><input type="hidden" name="kind" value="{{ b.kind }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="property" value="{{ r.property.pk }}"></form>
+        {% elif r.state == 'held' %}<form method="post" id="hold-{{ b.kind }}-{{ r.property.pk }}-undo" class="d-none">{% csrf_token %}<input type="hidden" name="action" value="unhold"><input type="hidden" name="kind" value="{{ b.kind }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="property" value="{{ r.property.pk }}"></form>{% endif %}
+    {% endfor %}
+
+    {% if b.payments %}
+    <h4 class="fs-6 mt-4 mb-2">Recorded payments</h4>
+    {% for p in b.payments %}
+    <details class="border rounded mb-2" style="background: var(--surface-card, #fff);">
+        <summary class="d-flex align-items-center flex-wrap gap-2 p-2" style="cursor: pointer;">
+            <strong class="tabular-nums">{{ p.total|money }}</strong>
+            <span class="text-muted small">sent {{ p.paid_on|date:"M j, Y" }}{% if p.reference %} &middot; {{ p.reference }}{% endif %} &middot; {{ p.lines.all|length }} line{{ p.lines.all|length|pluralize }}</span>
+            {% if p.booked_at %}<span class="mp-chip good"><i data-lucide="check" class="icon"></i> Booked in QuickBooks</span>{% else %}<span class="mp-chip progress">Not booked in QuickBooks yet</span>{% endif %}
+        </summary>
+        <div class="p-2 border-top">
+            <table class="table table-sm mp-table mb-2"><tbody>
+                {% for l in p.lines.all %}<tr><td>{{ l.property.name }}{% if l.unit_id %} &ndash; {{ l.unit.label }}{% endif %}</td><td class="num">{{ l.amount|money }}</td>{% if l.amount != l.due %}<td class="small text-muted">due {{ l.due|money }}</td>{% else %}<td></td>{% endif %}</tr>{% endfor %}
+            </tbody></table>
+            {% if not p.booked_at %}
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <a href="{% url 'close_pay_booking' p.pk %}" class="btn btn-outline-primary btn-sm"><i data-lucide="book-open-check" class="icon"></i> Book in QuickBooks</a>
+                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="booked"><input type="hidden" name="payment" value="{{ p.pk }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><button class="btn btn-link btn-sm text-muted" onclick="return confirm('Mark this as already booked in QuickBooks, by hand?');">I booked it by hand</button></form>
+                {% if not p.bookings.all %}<form method="post" class="d-inline ms-auto">{% csrf_token %}<input type="hidden" name="action" value="undo"><input type="hidden" name="payment" value="{{ p.pk }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><button class="btn btn-link btn-sm text-danger" onclick="return confirm('Remove this recorded payment so its rentals can be paid again?');">Undo</button></form>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </details>
+    {% endfor %}
+    {% endif %}
+</div></div>
+{% endfor %}
+
+<script>
+(function () {
+    function money(n) { return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+    document.querySelectorAll('[data-pay-form]').forEach(function (form) {
+        var total = form.querySelector('[data-total]');
+        if (!total) return;
+        function recalc() {
+            var sum = 0, n = 0;
+            form.querySelectorAll('[data-pick]').forEach(function (box) {
+                if (!box.checked) return;
+                var row = box.closest('tr');
+                var input = row.querySelector('[data-amount]');
+                var fixed = row.querySelector('[data-amount-fixed]');
+                var raw = input ? input.value : (fixed ? fixed.getAttribute('data-due') : '0');
+                var v = parseFloat(String(raw).replace(/[$,]/g, ''));
+                if (!isNaN(v)) { sum += v; n += 1; }
+            });
+            total.textContent = money(Math.round(sum * 100) / 100);
+            form.querySelector('[data-count]').textContent = n;
+            form.querySelector('[data-plural]').textContent = n === 1 ? '' : 's';
+            form.querySelector('[data-record]').disabled = n === 0;
+        }
+        form.addEventListener('change', recalc);
+        form.addEventListener('input', recalc);
+        form.addEventListener('submit', function () { var b = form.querySelector('[data-record]'); if (b && document.activeElement === b) { b.disabled = true; } });
+        recalc();
+    });
+})();
+</script>
+{% endblock %}

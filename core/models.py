@@ -1629,3 +1629,75 @@ class TouristTaxFiling(models.Model):
 
     def __str__(self):
         return f'Tourist tax {self.month:%Y-%m} {self.property_id}: {self.amount}'
+
+
+class MonthEndPayment(models.Model):
+    """One lump payment made at month end, recorded so it can be booked in QuickBooks later: the owner payments (one bank batch to the owners), or the reimbursable
+    expenses, or the commissions, moved from the trust account to Proper Realty. Each is ONE amount in the bank - exactly what the person ticked - made up of one line per
+    rental (or per unit, for a property kept unit by unit). Booking splits the single QuickBooks transaction for it across those lines."""
+
+    class Kind(models.TextChoices):
+        OWNER = 'owner', 'Owner payments'
+        REIMBURSEMENT = 'reimbursement', 'Reimbursable expenses to Proper'
+        COMMISSION = 'commission', 'Commissions to Proper'
+
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    month = models.DateField(help_text='The first day of the month whose dues this pays.')
+    paid_on = models.DateField(help_text='The day the money was sent.')
+    reference = models.CharField(max_length=60, blank=True, help_text='A check number, an ACH batch id, or any note that finds it in the bank.')
+    total = models.DecimalField(max_digits=12, decimal_places=2, help_text='The amount that left (or, for a negative net, came into) the trust account: the lines added up.')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    booked_at = models.DateTimeField(null=True, blank=True, help_text='When every QuickBooks transaction for it was split across the rentals (or marked as done by hand).')
+    booked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ['-month', 'kind', '-paid_on', '-pk']
+
+    def __str__(self):
+        return f'{self.get_kind_display()} {self.month:%Y-%m}: {self.total}'
+
+
+class MonthEndPaymentLine(models.Model):
+    """One rental's (or unit's) part of a month-end payment."""
+    payment = models.ForeignKey(MonthEndPayment, on_delete=models.CASCADE, related_name='lines')
+    kind = models.CharField(max_length=20, choices=MonthEndPayment.Kind.choices)       # copied from the payment so a rental can only be in one payment per kind and month
+    month = models.DateField()
+    property = models.ForeignKey('Property', on_delete=models.CASCADE, related_name='month_end_payment_lines')
+    unit = models.ForeignKey('Unit', null=True, blank=True, on_delete=models.PROTECT, related_name='month_end_payment_lines')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text='What was paid for this rental.')
+    due = models.DecimalField(max_digits=12, decimal_places=2, help_text='What was due when it was recorded.')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['month', 'kind', 'property'], condition=models.Q(unit__isnull=True), name='uniq_month_end_line'),
+            models.UniqueConstraint(fields=['month', 'kind', 'unit'], condition=models.Q(unit__isnull=False), name='uniq_month_end_line_unit'),
+        ]
+
+
+class MonthEndHold(models.Model):
+    """A rental deliberately left out of a month-end payment this month (the step is complete once everything is paid or held)."""
+    kind = models.CharField(max_length=20, choices=MonthEndPayment.Kind.choices)
+    month = models.DateField()
+    property = models.ForeignKey('Property', on_delete=models.CASCADE, related_name='month_end_holds')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['month', 'kind', 'property'], name='uniq_month_end_hold')]
+
+
+class MonthEndBooking(models.Model):
+    """What was changed in QuickBooks to book a month-end payment: the one transaction, as it was and as it is now, so it can be audited and undone by hand."""
+    payment = models.ForeignKey(MonthEndPayment, on_delete=models.CASCADE, related_name='bookings')
+    entity = models.CharField(max_length=20, help_text='The QuickBooks type: Purchase (the withdrawal from the trust account) or Deposit (the money arriving at Proper Realty).')
+    qb_id = models.CharField(max_length=40)
+    qb_date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    old_lines = models.JSONField(default=list)
+    new_lines = models.JSONField(default=list)
+    applied_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    applied_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['entity', 'qb_id'], name='uniq_month_end_booking')]
