@@ -55,7 +55,7 @@ def _book_figures(prop, month, kind):
 
 
 def rows(month, kind):
-    """One row per rental for this kind and month: {'property', 'amount', 'books', 'state', 'line', 'hold', 'editable'}. States: payable, paid, held, not_closed (the rental's month is
+    """One row per rental for this kind and month: {'property', 'amount', 'books', 'state', 'lines', 'hold', 'multi'}. States: payable, paid, held, not_closed (the rental's month is
     not closed yet), no_figures (closed before payables were worked out), rides (an owner whose amount is negative: it carries to next month), nothing (zero)."""
     month = ledger.month_of(month)
     paid = {}
@@ -66,7 +66,7 @@ def rows(month, kind):
     for prop in _rentals():
         figures, why = _book_figures(prop, month, kind)
         amount = sum((a for _, a in figures), ZERO)
-        row = {'property': prop, 'amount': amount, 'books': figures, 'state': '', 'lines': paid.get(prop.pk, []), 'hold': held.get(prop.pk), 'editable': len(figures) == 1}
+        row = {'property': prop, 'amount': amount, 'books': figures, 'state': '', 'lines': paid.get(prop.pk, []), 'hold': held.get(prop.pk), 'multi': len(figures) > 1}
         if row['lines']:
             row['state'] = 'paid'
             row['payment'] = row['lines'][0].payment
@@ -105,10 +105,38 @@ def summary(month, kinds):
     return {'status': '', 'detail': f'{done} of {needed} paid or held.', 'done': done, 'needed': needed}
 
 
+def _split_total(books, total):
+    """A property kept unit by unit is paid as one amount, but its units are books of their own, so the amount is shared out over them. In proportion to what each is due when every unit
+    is owed something; otherwise the whole difference goes to the unit that is owed the most. The shares add up to exactly the amount."""
+    dues = [due for _, due in books]
+    shares = [due for due in dues]
+    if sum(dues, ZERO) == total:
+        return shares
+    if all(due > 0 for due in dues):
+        shares = [(total * due / sum(dues, ZERO)).quantize(CENT) for due in dues]
+        biggest = dues.index(max(dues))
+    else:
+        shares = list(dues)
+        biggest = dues.index(max(dues))
+    shares[biggest] += total - sum(shares, ZERO)
+    return shares
+
+
+def _amounts_for(row, wanted):
+    """[(book, amount to pay, amount due)] for one rental's pick."""
+    books = row['books']
+    if wanted is None or _d(wanted) == row['amount']:
+        return [(book, due, due) for book, due in books]
+    wanted = _d(wanted)
+    if len(books) == 1:
+        return [(books[0][0], wanted, books[0][1])]
+    return [(book, share, due) for (book, due), share in zip(books, _split_total(books, wanted))]
+
+
 @transaction.atomic
 def record(month, kind, picks, paid_on, reference, user):
-    """Saves one lump payment. `picks` is {property id: amount or None}: None pays what is due. Returns the MonthEndPayment. The amount of a rental kept as one set of books can be
-    changed (the difference is simply still owed next month); a property kept unit by unit is paid what its units are owed."""
+    """Saves one lump payment. `picks` is {property id: amount or None}: None pays what is due, an amount pays that instead (the difference is simply still owed next month). The amount is
+    the property's: for a property kept unit by unit it is shared out over its units for the books (see _split_total). Returns the MonthEndPayment."""
     month = ledger.month_of(month)
     if kind not in FIELD:
         raise PaymentError('Unknown payment type.')
@@ -121,17 +149,13 @@ def record(month, kind, picks, paid_on, reference, user):
         if row is None or row['state'] != 'payable':
             name = row['property'].name if row else f'Property {pid}'
             raise PaymentError(f'{name} is not payable right now.')
-        if row['editable'] and wanted is not None:
-            wanted = _d(wanted)
-            if kind == Kind.OWNER and wanted <= 0:
-                raise PaymentError(f'{row["property"].name}: an owner payment has to be more than $0.00.')
-            if wanted == 0:
-                raise PaymentError(f'{row["property"].name}: the amount can not be $0.00 (leave it unticked instead).')
-            lines.append((row, row['books'][0][0], wanted, row['amount']))
-        else:
-            for book, amount in row['books']:
-                if amount != 0:
-                    lines.append((row, book, amount, amount))
+        parts = _amounts_for(row, wanted)
+        paid = sum((p for _, p, _ in parts), ZERO)
+        if kind == Kind.OWNER and paid <= 0:
+            raise PaymentError(f'{row["property"].name}: an owner payment has to be more than $0.00.')
+        if paid == 0:
+            raise PaymentError(f'{row["property"].name}: the amount can not be $0.00 (leave it unticked instead).')
+        lines += [(row, book, amount, due) for book, amount, due in parts if amount != 0]
     total = sum((l[2] for l in lines), ZERO)
     if total == 0:
         raise PaymentError('The ticked rentals add up to $0.00.')

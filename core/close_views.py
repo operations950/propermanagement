@@ -884,10 +884,19 @@ def _pay_page(request, section, page_title):
                 raise month_end_payments.PaymentError('Unknown payment type.')
             if action == 'record':
                 picks = {}
+
+                def typed_amount(raw):
+                    raw = (raw or '').strip()
+                    if not raw:
+                        return None
+                    amount = _money(raw)
+                    if amount is None:
+                        raise month_end_payments.PaymentError(f'"{raw}" is not an amount.')
+                    return amount
+
                 for raw in request.POST.getlist('pick'):
                     pid = int(raw)
-                    typed = request.POST.get(f'amount_{pid}', '').strip()
-                    picks[pid] = _money(typed) if typed else None
+                    picks[pid] = typed_amount(request.POST.get(f'amount_{pid}'))
                 try:
                     paid_on = datetime.strptime(request.POST.get('paid_on') or '', '%Y-%m-%d').date()
                 except ValueError:
@@ -910,8 +919,11 @@ def _pay_page(request, section, page_title):
     for kind in kinds:
         rws = month_end_payments.rows(month, kind)
         payments = list(MonthEndPayment.objects.filter(month=month, kind=kind).prefetch_related('lines__property', 'bookings'))
+        paid_rows = [r for r in rws if r['state'] == 'paid']
         blocks.append({
-            'kind': kind, 'title': month_end_payments.TITLES[kind], 'rows': rws, 'payments': payments,
+            'kind': kind, 'title': month_end_payments.TITLES[kind], 'rows': [r for r in rws if r['state'] != 'paid'], 'paid_rows': paid_rows,
+            'paid_total': sum((r['paid_amount'] for r in paid_rows), Decimal('0.00')), 'still_to_pay': sum(1 for r in rws if r['state'] == 'payable'), 'rental_count': len([r for r in rws if r['state'] in ('payable', 'paid', 'held')]),
+            'payments': payments,
             'payable_total': sum((r['amount'] for r in rws if r['state'] == 'payable'), Decimal('0.00')),
             'open': sum(1 for r in rws if r['state'] in ('payable', 'not_closed', 'no_figures')),
             'owner': kind == month_end_payments.Kind.OWNER,

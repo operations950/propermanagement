@@ -6,6 +6,7 @@
     .mp-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
     .mp-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
     .mp-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
+    .mp-ok { color: #0b6a0b; font-weight: 600; }
     .mp-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
     .mp-total { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
     .mp-table td, .mp-table th { vertical-align: middle; }
@@ -29,6 +30,7 @@
         {% if b.owner %}{% include '_tip.html' with text='What each owner is owed from the closed month, including anything unpaid from before. An owner whose amount is negative is not paid: the balance carries to next month.' %}
         {% elif b.kind == 'reimbursement' %}{% include '_tip.html' with text='Reimbursable expenses Proper paid for the rentals, moved from the trust account to Proper Realty. A negative amount means Proper owes the rental (something was fixed from last month): tick it and it reduces the one transfer.' %}
         {% else %}{% include '_tip.html' with text='Proper Realty commission on each rental, moved from the trust account to Proper Realty.' %}{% endif %}
+        {% if b.rental_count %}<span class="small {% if b.still_to_pay %}text-muted{% else %}mp-ok{% endif %} ms-auto">{% if b.still_to_pay %}{{ b.still_to_pay }} of {{ b.rental_count }} still to pay{% else %}All {{ b.rental_count }} paid or skipped{% endif %}</span>{% endif %}
     </div>
 
     <form method="post" data-pay-form>
@@ -42,15 +44,12 @@
                 <td>{% if r.state == 'payable' %}<input type="checkbox" class="form-check-input" name="pick" value="{{ r.property.pk }}" data-pick aria-label="Pay {{ r.property.name }}">{% endif %}</td>
                 <td class="fw-semibold">{{ r.property.name }}</td>
                 <td class="num">
-                    {% if r.state == 'payable' and r.editable %}<input type="text" inputmode="decimal" class="form-control form-control-sm text-end d-inline-block" style="width: 8rem;" name="amount_{{ r.property.pk }}" value="{{ r.amount }}" data-amount data-due="{{ r.amount }}">
-                    {% elif r.state == 'payable' %}<span data-amount-fixed data-due="{{ r.amount }}">{{ r.amount|money }}</span>
-                    {% elif r.state == 'paid' %}{{ r.paid_amount|money }}
+                    {% if r.state == 'payable' %}<input type="text" inputmode="decimal" class="form-control form-control-sm text-end d-inline-block" style="width: 8rem;" name="amount_{{ r.property.pk }}" value="{{ r.amount }}" data-amount data-pid="{{ r.property.pk }}" aria-label="Amount for {{ r.property.name }}">
                     {% elif r.state == 'not_closed' or r.state == 'no_figures' %}<span class="text-muted">&mdash;</span>
                     {% else %}{{ r.amount|money }}{% endif %}
                 </td>
                 <td class="small">
                     {% if r.state == 'payable' %}<button type="submit" form="hold-{{ b.kind }}-{{ r.property.pk }}" class="btn btn-link btn-sm text-muted p-0">Skip this month</button>
-                    {% elif r.state == 'paid' %}<span class="mp-chip good"><i data-lucide="check" class="icon"></i> Paid {{ r.payment.paid_on|date:"M j" }}</span>{% if r.payment.reference %} <span class="text-muted">{{ r.payment.reference }}</span>{% endif %}
                     {% elif r.state == 'held' %}<span class="mp-chip progress">Skipped</span> <button type="submit" form="hold-{{ b.kind }}-{{ r.property.pk }}-undo" class="btn btn-link btn-sm text-muted p-0">Undo</button>
                     {% elif r.state == 'rides' %}<span class="text-muted">Negative: carries to next month, no payment</span>
                     {% elif r.state == 'not_closed' %}<span class="mp-chip attention">Month not closed yet</span> <a href="{% url 'close_overview' %}?month={{ month|date:'Y-m' }}" class="small">Close it</a>
@@ -59,12 +58,13 @@
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="4" class="text-muted p-3">No short-term rentals are set up for this.</td></tr>
+            <tr><td colspan="4" class="text-muted p-3">{% if b.paid_rows %}Everything is paid.{% else %}No short-term rentals are set up for this.{% endif %}</td></tr>
             {% endfor %}
             </tbody>
         </table></div>
         {% if b.payable_total or b.open %}
         <div class="d-flex align-items-end flex-wrap gap-3 border-top pt-3">
+            <div class="btn-group btn-group-sm"><button type="button" class="btn btn-outline-secondary" data-select-all>Select all</button><button type="button" class="btn btn-outline-secondary" data-clear>Clear</button></div>
             <div><div class="small text-muted">Ticked: this is the amount for the bank</div><div class="mp-total" data-total>$0.00</div><div class="small text-muted"><span data-count>0</span> rental<span data-plural>s</span></div></div>
             <div class="ms-auto d-flex align-items-end flex-wrap gap-2">
                 <label class="small text-muted">Date sent<input type="date" name="paid_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" required></label>
@@ -78,6 +78,15 @@
         {% if r.state == 'payable' %}<form method="post" id="hold-{{ b.kind }}-{{ r.property.pk }}" class="d-none">{% csrf_token %}<input type="hidden" name="action" value="hold"><input type="hidden" name="kind" value="{{ b.kind }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="property" value="{{ r.property.pk }}"></form>
         {% elif r.state == 'held' %}<form method="post" id="hold-{{ b.kind }}-{{ r.property.pk }}-undo" class="d-none">{% csrf_token %}<input type="hidden" name="action" value="unhold"><input type="hidden" name="kind" value="{{ b.kind }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="property" value="{{ r.property.pk }}"></form>{% endif %}
     {% endfor %}
+
+    {% if b.paid_rows %}
+    <details class="mt-3 border rounded" style="background: var(--surface-card, #fff);">
+        <summary class="d-flex align-items-center flex-wrap gap-2 p-2" style="cursor: pointer;"><span class="mp-chip good"><i data-lucide="check" class="icon"></i> Paid</span><strong>{{ b.paid_rows|length }} rental{{ b.paid_rows|length|pluralize }}</strong><span class="text-muted small tabular-nums">{{ b.paid_total|money }}</span></summary>
+        <table class="table table-sm mp-table mb-0 border-top"><tbody>
+            {% for r in b.paid_rows %}<tr><td class="ps-3 fw-semibold">{{ r.property.name }}</td><td class="num">{{ r.paid_amount|money }}</td><td class="small text-muted">Paid {{ r.payment.paid_on|date:"M j" }}{% if r.payment.reference %} &middot; {{ r.payment.reference }}{% endif %}</td></tr>{% endfor %}
+        </tbody></table>
+    </details>
+    {% endif %}
 
     {% if b.payments %}
     <h4 class="fs-6 mt-4 mb-2">Recorded payments</h4>
@@ -116,12 +125,11 @@
             var sum = 0, n = 0;
             form.querySelectorAll('[data-pick]').forEach(function (box) {
                 if (!box.checked) return;
-                var row = box.closest('tr');
-                var input = row.querySelector('[data-amount]');
-                var fixed = row.querySelector('[data-amount-fixed]');
-                var raw = input ? input.value : (fixed ? fixed.getAttribute('data-due') : '0');
-                var v = parseFloat(String(raw).replace(/[$,]/g, ''));
-                if (!isNaN(v)) { sum += v; n += 1; }
+                n += 1;
+                form.querySelectorAll('[data-amount][data-pid="' + box.value + '"]').forEach(function (input) {
+                    var v = parseFloat(String(input.value).replace(/[$,]/g, ''));
+                    if (!isNaN(v)) sum += v;
+                });
             });
             total.textContent = money(Math.round(sum * 100) / 100);
             form.querySelector('[data-count]').textContent = n;
@@ -130,7 +138,10 @@
         }
         form.addEventListener('change', recalc);
         form.addEventListener('input', recalc);
-        form.addEventListener('submit', function () { var b = form.querySelector('[data-record]'); if (b && document.activeElement === b) { b.disabled = true; } });
+        var all = form.querySelector('[data-select-all]'), none = form.querySelector('[data-clear]');
+        if (all) all.addEventListener('click', function () { form.querySelectorAll('[data-pick]').forEach(function (x) { x.checked = true; }); recalc(); });
+        if (none) none.addEventListener('click', function () { form.querySelectorAll('[data-pick]').forEach(function (x) { x.checked = false; }); recalc(); });
+        form.addEventListener('submit', function () { var x = form.querySelector('[data-record]'); if (x && document.activeElement === x) { x.disabled = true; } });
         recalc();
     });
 })();
