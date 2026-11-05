@@ -22,11 +22,12 @@ FULL_NAMES = {
 }
 
 # (association, vendor, description, account, amount, how paid, statement text, day, active)
+# The management fee to Proper Realty is billed on the 1st (for the month before) and counts in the month it is paid, so its day is 1 everywhere.
 ROWS = [
     # ---------------------------------------------------------------- Castlewood Town Villas
     ('castlewood', 'Johnny All Around', 'Lawn maintenance', '6893', '1000.00', 'check', '', 15, True),
     ('castlewood', 'True Blue Pools', 'Pool service', '6889', '390.00', 'check', '', 15, False),
-    ('castlewood', 'Proper Realty Co', 'Management fee', '6820', '1000.00', 'check', '', 15, True),
+    ('castlewood', 'Proper Realty Co', 'Management fee', '6820', '1000.00', 'check', '', 1, True),
     ('castlewood', 'Orkin', 'Pest control', '6906', None, 'check', '', 15, True),
     ('castlewood', 'FPL', 'Electricity', '6410', None, 'ach', 'FPL', 28, True),
     ('castlewood', 'Seacoast Utility Authority', 'Water and sewer', '6430', None, 'ach', 'SEACOAST', 28, True),
@@ -35,7 +36,7 @@ ROWS = [
     ('pensee', 'Goldring Protection', 'Video intercom access control', '6897', '159.60', 'check', '', 9, True),
     ('pensee', 'Palm Beach Pest Man...', 'Pest control (monthly)', '6906', '225.00', 'check', '', 11, True),
     ('pensee', 'Palm Beach Pest Man...', 'Landscape pest control (every other month)', '6906', '200.00', 'check', '', 9, False),
-    ('pensee', 'Proper Realty Co', 'Management fee', '6820', '3750.00', 'check', '', 14, True),
+    ('pensee', 'Proper Realty Co', 'Management fee', '6820', '3750.00', 'check', '', 1, True),
     ('pensee', 'AT&T', 'Phone and internet', '6425', '99.35', 'ach', 'ATT', 25, True),
     ('pensee', 'AT&T', 'Phone and internet (second account)', '6425', None, 'ach', 'ATT', 4, True),
     ('pensee', 'Comcast', 'Office internet', '6440', '128.67', 'ach', 'COMCAST', 6, True),
@@ -53,13 +54,13 @@ ROWS = [
     ('pensee', 'FPU EZ-Bill Gas Utility', 'Gas', '6420', None, 'ach', 'FPUC', 22, True),
     ('pensee', 'Zenith', "Workers' compensation", '6883', None, 'ach', 'ZENITH', 17, False),
     # ---------------------------------------------------------------- Lakeside Point #8
-    ('lakeside8', 'Proper Realty Co', 'Management fee', '6820', '450.00', 'check', '', 15, True),
+    ('lakeside8', 'Proper Realty Co', 'Management fee', '6820', '450.00', 'check', '', 1, True),
     ('lakeside8', 'Carleton Lakeside LLC', 'Long-term lease', '6205', '211.50', 'ach', 'TO DREW', 2, True),
     ('lakeside8', 'Nancy Bowyer', 'Long-term lease', '6205', '211.50', 'ach', 'TO NANCY', 2, True),
     ('lakeside8', 'IPFS Corporation', 'Insurance premium financing', '6882', '3135.92', 'ach', '866-223-4478', 17, True),
     ('lakeside8', 'City of Lake Worth Beach', 'Water and sewer', '6430', None, 'ach', 'CITYOFLAKEWORTH', 8, True),
     # ---------------------------------------------------------------- Lakeside Point Gardens #2
-    ('lakeside2', 'Proper Realty Co', 'Management fee', '6820', '500.00', 'check', '', 14, True),
+    ('lakeside2', 'Proper Realty Co', 'Management fee', '6820', '500.00', 'check', '', 1, True),
     ('lakeside2', 'Carleton Lakeside LLC', 'Long-term lease', '6205', '187.50', 'ach', '', 15, True),
     ('lakeside2', 'Nancy Bowyer', 'Long-term lease', '6205', '187.50', 'ach', '', 15, True),
     ('lakeside2', 'IPFS Corporation', 'Insurance premium financing', '6882', '2969.47', 'ach', '', 20, True),
@@ -71,11 +72,11 @@ ROWS = [
     ('glen', 'FIRST Insurance Funding', 'Insurance premium financing', '6882', '9497.92', 'ach', 'INSURANCE FIRST', 18, True),
     ('glen', 'Forever Green Landsca...', 'Landscaping', '6893', '2435.00', 'ach', '', 12, True),
     ('glen', 'Hotwire Communications', 'Internet and cable', '6440', '4016.69', 'ach', 'HOTWIRE', 11, True),
-    ('glen', 'Proper Realty Co', 'Management fee', '6820', '1100.00', 'check', '', 14, True),
+    ('glen', 'Proper Realty Co', 'Management fee', '6820', '1100.00', 'check', '', 1, True),
     ('glen', 'FPL', 'Electricity', '6410', None, 'ach', 'FPL', 28, True),
     ('glen', 'Palm Beach County', 'Water and sewer', '6430', None, 'ach', 'WATER BILL', 3, True),
     # ---------------------------------------------------------------- St. Andrews Grand
-    ('grand', 'Proper Realty Co', 'Management fee', '6820', '1400.00', 'check', '', 9, True),
+    ('grand', 'Proper Realty Co', 'Management fee', '6820', '1400.00', 'check', '', 1, True),
     ('grand', 'Rust Tech Services', 'Water treatment (iron control)', '6898', '303.19', 'check', '', 24, True),
     ('grand', 'AFCO', 'Insurance premium financing', '6882', '8386.39', 'ach', 'AFCO', 20, True),
     ('grand', 'FPL', 'Electricity', '6410', None, 'ach', 'FPL DIRECT DEBIT', 24, True),

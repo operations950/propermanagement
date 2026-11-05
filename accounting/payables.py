@@ -260,7 +260,7 @@ def post_recurring(association, today, user=None):
         while rec.next_date <= today and guard < 36:
             guard += 1
             day = rec.next_date
-            if not Bill.objects.filter(recurring=rec, date=day).exists():
+            if not _has_bill_in_month(rec, day):
                 try:
                     made.append(create_bill(association, day, [(rec.account, rec.amount, rec.description)], vendor=rec.vendor, number=f'{day:%Y-%m}', due=day,
                                             kind=Bill.Kind.ROUTINE, source=Bill.Source.RECURRING, user=user, recurring=rec, memo=rec.description))
@@ -268,6 +268,43 @@ def post_recurring(association, today, user=None):
                     pass   # that month is closed
             rec.next_date = add_months(day, FREQ_MONTHS[rec.frequency])
             rec.save(update_fields=['next_date'])
+    return made
+
+
+def _has_bill_in_month(rec, day):
+    """Whether this recurring bill already has a bill (not a void one) in the month of `day`: one made by hand, by the schedule, or read from the bank statement."""
+    return Bill.objects.filter(recurring=rec, date__gte=ledger.month_start(day), date__lte=ledger.month_end(day)).exclude(status=Bill.Status.VOID).exists()
+
+
+def skip_past(rec, day):
+    """A bill made from the bank statement counts as that month's, so the recurring date moves on past the month and the schedule does not post it a second time."""
+    end, moved = ledger.month_end(day), False
+    while rec.next_date <= end:
+        rec.next_date, moved = add_months(rec.next_date, FREQ_MONTHS[rec.frequency]), True
+    if moved:
+        rec.save(update_fields=['next_date'])
+
+
+def post_month(association, month_first, user=None, apply=True):
+    """A one-time catch-up for a month that has gone by: each fixed recurring bill with no bill in that month is posted on its day of the month. Returns
+    [{'rec', 'day', 'bill'}] (`bill` is None when `apply` is off, or when the month is closed). The usual posting does this by itself from the day the bill is set up."""
+    month_first, made = ledger.month_start(month_first), []
+    end = ledger.month_end(month_first)
+    for rec in RecurringBill.objects.filter(association=association, is_active=True).select_related('vendor', 'account').order_by('description'):
+        if not rec.is_fixed or _has_bill_in_month(rec, month_first):
+            continue
+        gap = (rec.next_date.year - month_first.year) * 12 + rec.next_date.month - month_first.month
+        if gap < 0 or gap % FREQ_MONTHS[rec.frequency]:
+            continue
+        day = month_first.replace(day=min(rec.next_date.day, end.day))
+        bill = None
+        if apply:
+            try:
+                bill = create_bill(association, day, [(rec.account, rec.amount, rec.description)], vendor=rec.vendor, number=f'{day:%Y-%m}', due=day, kind=Bill.Kind.ROUTINE,
+                                   source=Bill.Source.RECURRING, user=user, recurring=rec, memo=rec.description)
+            except ledger.LedgerError:
+                pass     # that month is closed
+        made.append({'rec': rec, 'day': day, 'bill': bill})
     return made
 
 

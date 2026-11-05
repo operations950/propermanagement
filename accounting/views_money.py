@@ -50,11 +50,15 @@ def bank(request, pk, bank_pk, month):
                 f.seek(0)
                 st = bankrec.import_statement(acct, parsed, file=f, read_by=how, end_balance=parse_money(typed) if typed else None)
                 first = ledger.month_start(st.period_end)
-                made = bankrec.auto_match(acct, first)
-                messages.success(request, f'Read {st.lines.count()} lines from the statement and matched {made} group{"s" if made != 1 else ""}.')
+                report = {}
+                made = bankrec.auto_match(acct, first, report)
+                read = report.get('recurring', 0)
+                messages.success(request, f'Read {st.lines.count()} lines from the statement and matched {made} group{"s" if made != 1 else ""}'
+                                 + (f', {read} of them recurring bills the statement paid.' if read else '.'))
                 here = _go('bank', prop.pk, acct.pk, f'{first:%Y-%m}')
             elif action == 'auto':
-                messages.success(request, f'Matched {bankrec.auto_match(acct, first)} more.')
+                report = {}
+                messages.success(request, f'Matched {bankrec.auto_match(acct, first, report)} more.' + (f' {report["recurring"]} were recurring bills the statement paid.' if report.get('recurring') else ''))
             elif action == 'accept':
                 bankrec.accept_timing(acct, first, request.POST['item'], request.user, request.POST.get('note') or '')
             elif action == 'unaccept':

@@ -4,7 +4,7 @@
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="refresh-cw" class="icon-lg"></i> Recurring bills</h2>
-        <div class="small text-muted">{{ assoc.name }}. A fixed bill posts itself on its date and waits to be paid. A bill whose amount changes (a utility) is read from the bank statement.</div></div>
+        <div class="small text-muted">{{ assoc.name }}. A fixed bill posts itself on its date and waits to be paid. A bill whose amount changes (a utility) is made from the bank statement line, for the amount the bank paid. Both are paid and matched by themselves when the statement is read, if the statement shows the text below (or the exact amount).</div></div>
     <form method="post" class="ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="post_due">Post what is due now</button></form>
 </div>
 <div class="card mb-3"><div class="card-body p-2">

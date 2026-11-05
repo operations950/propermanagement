@@ -3,9 +3,10 @@
 The statement's lines are lined up with the ledger's lines on the same bank account, surest matches first, and whatever is left is for a person:
   1. a check, by its number;
   2. one to one, by amount, then by who was paid and how and when;
-  3. several bank lines that add up to one ledger line (six power-company debits for one bill);
-  4. several ledger lines that add up to one bank line (two owners' checks in one deposit);
-  5. any few bank lines that add up to one ledger line (a journal entry that lumped checks and interest together).
+  3. a withdrawal that is one of our recurring bills (the power company's debit, the insurance installment): the bill is made from the line if it is not there, paid, and matched;
+  4. several bank lines that add up to one ledger line (six power-company debits for one bill);
+  5. several ledger lines that add up to one bank line (two owners' checks in one deposit);
+  6. any few bank lines that add up to one ledger line (a journal entry that lumped checks and interest together).
 What cannot be lined up is either a check or deposit that simply has not reached the bank yet (a person marks it as timing, and it carries to next month),
 or a bank line the books do not have yet (a person adds it to the books, one click).
 
@@ -23,8 +24,9 @@ from itertools import combinations
 from django.conf import settings
 from django.db import transaction
 
-from . import charges, ledger
-from .models import (ZERO, BankAccount, BankOpeningItem, BankLine, BankStatement, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt)
+from . import charges, ledger, payables
+from .models import (ZERO, BankAccount, BankOpeningItem, BankLine, BankStatement, Bill, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt,
+                     RecurringBill)
 
 logger = logging.getLogger(__name__)
 STATEMENT_MODEL = 'claude-sonnet-5'
@@ -299,9 +301,75 @@ def _commit(bank_account, month_first, bank_lines, items, how, auto=True, note='
     return m
 
 
+def _squash(text):
+    return re.sub(r'[^A-Z0-9]', '', (text or '').upper())
+
+
+def _recurring_for(line, recs):
+    """The one recurring bill a withdrawal on the statement is, or None when it is not clear (the line then stays for a person).
+    A bill of a fixed amount is the line that has its text and its exact amount; a bill whose amount changes is the line that has its text. A check has no payee on the statement,
+    so it is the one fixed check bill of that exact amount."""
+    amount = -line.amount
+    if line.kind == BankLine.Kind.CHECK or line.check_number:
+        same = [r for r in recs if r.is_fixed and r.pay_method == 'check' and r.amount == amount]
+        return same[0] if len(same) == 1 else None
+    text = _squash(line.description)
+    named = [r for r in recs if _squash(r.statement_match) and _squash(r.statement_match) in text]
+    by_vendor = [r for r in recs if not _squash(r.statement_match) and r.is_fixed and r.pay_method == 'ach' and _tokens(r.vendor.name) & _tokens(line.description)]
+    fixed = [r for r in named + by_vendor if r.is_fixed and r.amount == amount]
+    if fixed:
+        return fixed[0] if len(fixed) == 1 else None
+    varies = [r for r in named if not r.is_fixed]
+    return varies[0] if len(varies) == 1 else None
+
+
+def _bill_paid_by_line(bank_account, rec, line):
+    """Make (or find) the bill the statement line pays, pay it as the bank shows, and return the ledger item of that payment. None when this line is not that bill's payment."""
+    assoc, amount = bank_account.association, -line.amount
+    check = line.kind == BankLine.Kind.CHECK or bool(line.check_number)
+    bill = None
+    if rec.is_fixed:
+        # an open bill of that amount from this month or before: the bank may take the money a few days before the day the bill is set for
+        bill = next((b for b in rec.bills.filter(status=Bill.Status.APPROVED, date__lte=ledger.month_end(line.date)).prefetch_related('payments') if b.balance == amount), None)
+        if bill is None and payables._has_bill_in_month(rec, line.date):
+            return None       # that month's bill is already paid: this line is something else
+    if bill is None:
+        bill = payables.create_bill(assoc, line.date, [(rec.account, amount, rec.description)], vendor=rec.vendor, number=f'{line.date:%Y-%m}', due=line.date, kind=Bill.Kind.ROUTINE,
+                                    source=Bill.Source.STATEMENT, recurring=rec, memo=rec.description)
+        payables.skip_past(rec, line.date)
+    pay = payables.pay_bills(assoc, bank_account, [(bill, amount)], line.date, method=Payment.Method.CHECK if check else Payment.Method.ACH, number=line.check_number if check else '',
+                             memo='From the bank statement')
+    ledger_line = pay.entry.lines.get(account=bank_account.account)
+    return Item('line', ledger_line, pay.entry.date, ledger_line.debit - ledger_line.credit)
+
+
+def _read_recurring(bank_account, month_first, bank):
+    """Every withdrawal on the statement that is one of the association's recurring bills becomes that bill, paid, and matched. Returns the bank lines it took."""
+    recs = list(RecurringBill.objects.filter(association=bank_account.association, is_active=True).select_related('vendor', 'account'))
+    took = []
+    if not recs:
+        return took
+    for line in bank:
+        if line.amount >= 0:
+            continue
+        rec = _recurring_for(line, recs)
+        if rec is None:
+            continue
+        try:
+            with transaction.atomic():
+                item = _bill_paid_by_line(bank_account, rec, line)
+                if item is not None:
+                    _commit(bank_account, month_first, [line], [item], f'recurring bill: {rec.description}'[:40])
+        except (ledger.LedgerError, payables.PayableError):
+            continue      # a month that is closed, or an entry the books refuse: leave the line for a person
+        if item is not None:
+            took.append(line)
+    return took
+
+
 @transaction.atomic
-def auto_match(bank_account, month_first):
-    """Line up everything that can be lined up. Returns how many matches were made."""
+def auto_match(bank_account, month_first, report=None):
+    """Line up everything that can be lined up. Returns how many matches were made; `report`, if given, is filled with how many of them were recurring bills read off the statement."""
     stmt = statement_for(bank_account, month_first)
     if stmt is None:
         return 0
@@ -341,7 +409,13 @@ def auto_match(bank_account, month_first):
     bank = [b for b in bank if b.pk not in used_b]
     items = [it for it in items if it.key not in used_i]
 
-    # 3. several bank lines that add up to one ledger line (same payee on the statement)
+    # 3. a withdrawal that is one of our recurring bills: the bill is read off the line
+    read = _read_recurring(bank_account, month_first, bank)
+    bank, made = take(bank, read), made + len(read)
+    if report is not None:
+        report['recurring'] = len(read)
+
+    # 4. several bank lines that add up to one ledger line (same payee on the statement)
     groups = {}
     for b in bank:
         groups.setdefault(_key_of(b), []).append(b)
@@ -355,7 +429,7 @@ def auto_match(bank_account, month_first):
                 bank, items, made = take(bank, lines), take(items, [it]), made + 1
                 break
 
-    # 4. several ledger items that add up to one bank line (a deposit of several checks)
+    # 5. several ledger items that add up to one bank line (a deposit of several checks)
     for b in sorted(bank, key=lambda x: -abs(x.amount)):
         cands = [it for it in items if _same_sign(it.amount, b.amount) and b.date - timedelta(days=45) <= it.date <= b.date + timedelta(days=5)]
         if len(cands) < 2 or len(cands) > 14:
@@ -372,7 +446,7 @@ def auto_match(bank_account, month_first):
             _commit(bank_account, month_first, [b], list(found), 'several payments in one deposit')
             bank, items, made = take(bank, [b]), take(items, found), made + 1
 
-    # 5. any few bank lines that add up to one ledger item (one journal entry covering checks and interest)
+    # 6. any few bank lines that add up to one ledger item (one journal entry covering checks and interest)
     if 2 <= len(bank) <= 16:
         for it in sorted(items, key=lambda x: -abs(x.amount)):
             found = None
