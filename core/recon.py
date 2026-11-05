@@ -69,16 +69,23 @@ MAX_SIDE = 4                   # most payouts (or bank lines) in one automatic m
 TIE_DAYS = 7                   # how far either side of the month the manual tie lists reservations
 
 
+def _payout_expected(b):
+    """A reservation's payout is expected at the bank unless the reservation was cancelled and the payout was only ever a forecast (never reported paid, in no payout batch): a payout a
+    cancelled guest never produced is not owed to anyone. A cancelled reservation whose payout really was paid (a cancellation fee, say) still has to match its deposit."""
+    return b.status != 'cancelled' or b.payout_status == 'paid' or bool(b.payout_items.all())
+
+
 def _bookings(book):
-    """The platform payouts this set of books answers for: reservations with a payout amount, or with dated payout lines."""
+    """The platform payouts this set of books answers for: reservations with a payout amount, or with dated payout lines (a cancelled reservation's forecast excepted, see _payout_expected)."""
     from django.db.models import Q
 
     from onsite.models import Booking
     qs = (Booking.objects.filter(property=book.property, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO))
-          .filter((Q(payout_amount__isnull=False) & ~Q(payout_amount=0)) | Q(payout_lines__isnull=False)).distinct())
+          .filter((Q(payout_amount__isnull=False) & ~Q(payout_amount=0)) | Q(payout_lines__isnull=False))
+          .exclude(Q(status='cancelled') & ~Q(payout_status='paid') & Q(payout_items__isnull=True)).distinct())
     if book.unit is not None:
         qs = qs.filter(unit=book.unit)
-    return qs.prefetch_related('payout_lines')
+    return qs.prefetch_related('payout_lines', 'payout_items')
 
 
 def _platform_bookings(prop):
@@ -89,7 +96,7 @@ def _platform_bookings(prop):
 def _load_bookings(prop_ids):
     from onsite.models import Booking
     out = {pid: [] for pid in prop_ids}
-    for b in Booking.objects.filter(property_id__in=prop_ids, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).prefetch_related('payout_lines'):
+    for b in Booking.objects.filter(property_id__in=prop_ids, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO)).prefetch_related('payout_lines', 'payout_items'):
         out[b.property_id].append(b)
     return out
 
@@ -122,7 +129,7 @@ def _bookings_list(book):
     the property's one read (each unit's by its unit)."""
     if not request_memo.active():
         return list(_bookings(book))
-    mine = [b for b in _platform_bookings(book.property) if (b.payout_amount is not None and b.payout_amount != 0) or b.payout_lines.all()]
+    mine = [b for b in _platform_bookings(book.property) if ((b.payout_amount is not None and b.payout_amount != 0) or b.payout_lines.all()) and _payout_expected(b)]
     return mine if book.unit is None else [b for b in mine if b.unit_id == book.unit.pk]
 
 
@@ -656,12 +663,13 @@ def reconcile(book, month):
         if request_memo.active():
             start = ledger.month_of(ledger.books_start())
             unassigned_rows = sorted((b for b in _platform_bookings(book.property) if b.unit_id is None and b.payout_date is not None and start <= b.payout_date <= month_end
-                                      and b.payout_amount is not None and b.payout_amount != 0), key=lambda b: (b.payout_date, b.pk))
+                                      and b.payout_amount is not None and b.payout_amount != 0 and _payout_expected(b)), key=lambda b: (b.payout_date, b.pk))
         else:
             unassigned_rows = list(Booking.objects.filter(
                 property=book.property, unit__isnull=True, source__in=(Booking.Source.AIRBNB, Booking.Source.VRBO),
                 payout_date__gte=ledger.month_of(ledger.books_start()), payout_date__lte=month_end, payout_amount__isnull=False,
-            ).exclude(payout_amount=0).order_by('payout_date', 'pk'))
+            ).exclude(payout_amount=0).prefetch_related('payout_items').order_by('payout_date', 'pk'))
+            unassigned_rows = [b for b in unassigned_rows if _payout_expected(b)]
     unassigned = len(unassigned_rows)
     acc = {(i['kind'], i['key']): i['accepted'] for i in items}
     mismatch_keys = {i['key'] for i in items if i.get('matched')}
