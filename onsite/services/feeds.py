@@ -45,6 +45,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from django.conf import settings
+from django.db.models import F
 from django.utils import timezone
 
 from ..feed_ics import parse_feed_ics
@@ -60,6 +61,8 @@ logger = logging.getLogger(__name__)
 MAX_FEED_BYTES = 5 * 1024 * 1024
 MAX_REDIRECTS = 3
 MASS_CANCEL_MIN = 5
+PAST_SWEEP_DAYS = 60                           # how far back a finished stay is still checked for having left the calendar before it ended
+FEED_FRESH_FOR = timedelta(hours=12)           # that look-back only runs when the previous poll of this calendar succeeded this recently
 STALE_MISSING_FOR = timedelta(hours=24)       # a stay the calendar has not shown for a full day (successful checks only) is gone, however far out it is
 STALE_AFTER = timedelta(hours=3)
 
@@ -164,6 +167,41 @@ def _sync_blocks(feed, events, today):
             block.delete()
 
 
+def _sweep_finished_stays(feed, seen, now):
+    """A stay that left the calendar part-way (the calendar stopped showing it) but whose end came before the missing-for-a-day rule could act was never looked at again:
+    once it ends it is no longer 'upcoming', and the calendar never shows a finished stay, so it stayed flagged as on the calendar for good, with its forecast payout
+    still expected. This looks back at recently finished stays on this calendar whose last sighting was more than a day before they ended. One that was last seen on or
+    before its check-in day never had a night: the calendar cancelled it, so it is cancelled. One seen later was cut short: it goes to the review screen for the real
+    departure, like a stay that left mid-stay. A stay an earlier version already cut to no nights at all is cancelled the same way. A stay with a payout the platform reported as paid, or one a person confirmed real, is left alone. Only runs when the previous
+    poll of this calendar succeeded recently, so an outage cannot make stays look as if they had left. Returns (cancelled, cut short)."""
+    if feed.last_error or not feed.last_success_at or now - feed.last_success_at > FEED_FRESH_FOR:
+        return 0, 0
+    finished = Booking.objects.filter(
+        property=feed.property, unit=feed.unit, source=feed.source, status=Booking.Status.ACTIVE, on_calendar=True, ended_early_from__isnull=True,
+        check_out__lte=now, check_out__gte=now - timedelta(days=PAST_SWEEP_DAYS), calendar_seen_at__isnull=False,
+    ).exclude(external_uid__in=seen)
+    cancelled = cut_short = 0
+    gone = [
+        b for b in finished
+        if b.calendar_seen_at < b.check_out - STALE_MISSING_FOR and b.payout_status != 'paid' and not b.confirmed_real
+    ]
+    # Stays an earlier version cut short to no nights at all (last shown on their check-in day) and kept as active reservations, their forecast payouts still expected.
+    gone += list(Booking.objects.filter(
+        property=feed.property, unit=feed.unit, source=feed.source, status=Booking.Status.ACTIVE, ended_early_from__isnull=False, check_out__lte=F('check_in'),
+        check_in__gte=now - timedelta(days=PAST_SWEEP_DAYS),
+    ).exclude(payout_status='paid').exclude(confirmed_real=True))
+    if len(gone) > MASS_CANCEL_MIN:
+        return 0, 0           # that many at once is a calendar that stopped showing everything, not guests: leave them for a person to look at
+    for booking in gone:
+        if booking.ended_early_from or _local_date(booking.calendar_seen_at) <= _local_date(booking.check_in):
+            recalibrate.cancel_vanished_stay(booking)
+            cancelled += 1
+        else:
+            recalibrate.end_started_stay(booking)
+            cut_short += 1
+    return cancelled, cut_short
+
+
 def _poll(feed, allow_mass_cancel):
     now = timezone.now()
     today = timezone.localdate()
@@ -254,6 +292,10 @@ def _poll(feed, allow_mass_cancel):
                 external_uid=booking.external_uid, check_in=_local_date(booking.check_in),
                 check_out=_local_date(booking.check_out), is_cancelled=True,
             ))
+
+    swept_cancelled, swept_ended = _sweep_finished_stays(feed, seen, now)
+    retired += swept_cancelled
+    ended += swept_ended
 
     new = changed = reactivated = cancelled = 0
     note = ''

@@ -91,14 +91,28 @@ def demote_booking(booking):
     _refresh_next_bookings_for_property(booking.property)
 
 
+def cancel_vanished_stay(booking):
+    """A stay the calendar stopped showing on or before its check-in day: the guest never had a night, so the reservation is cancelled, as the calendar cancels an upcoming
+    one. Its unfinished cleanings are cancelled quietly; any money on it is left alone and no longer expected, since a cancelled reservation is not."""
+    quiet_cancel_visits(booking)
+    booking.status = Booking.Status.CANCELLED
+    booking.on_calendar = False
+    booking.save(update_fields=['status', 'on_calendar'])
+    _refresh_next_bookings_for_property(booking.property)
+
+
 def end_started_stay(booking):
     """A stay that had already started, was on the calendar, and has now gone from it: the guest left or cancelled after checking in. It is kept (the
     nights really slept there still count toward occupancy and income) but shortened to the last day the calendar still showed it, taken off the
-    calendar, and its unfinished cleanings are cancelled the normal way. A person then confirms the real departure date on the review screen."""
+    calendar, and its unfinished cleanings are cancelled the normal way. A person then confirms the real departure date on the review screen.
+    One that never had a night (last shown on its check-in day) and has no paid payout is a cancellation instead: see cancel_vanished_stay."""
     start_day = timezone.localtime(booking.check_in).date()
     original = timezone.localtime(booking.check_out).date()
     seen = timezone.localtime(booking.calendar_seen_at).date() if booking.calendar_seen_at else timezone.localdate()
     end_day = min(max(seen, start_day), original)
+    if end_day <= start_day and booking.payout_status != 'paid' and not booking.confirmed_real:
+        cancel_vanished_stay(booking)        # no night was ever slept there and no payout has been paid: it is a cancellation, not a stay cut short
+        return
     out_time = timezone.localtime(booking.check_out).time()
     new_out = timezone.make_aware(datetime.combine(end_day, out_time))
     booking.ended_early_from = original
