@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}Close long-term rentals{% endblock %}
+{% block content %}
+<style>
+    .cl-ov { font-size: 0.86rem; }
+    .cl-ov thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); background: var(--surface-card, #fff); vertical-align: bottom; }
+    .cl-ov td { padding: 7px 8px; vertical-align: middle; }
+    .cl-ov td.num, .cl-ov th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cl-ov tfoot td { font-weight: 700; border-top: 2px solid var(--border-hairline); background: var(--bs-light, #f4f6f8); }
+    .cl-ov td.end { font-weight: 700; background: color-mix(in srgb, var(--bs-light, #f4f6f8) 60%, white); }
+</style>
+<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end checklist</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Close long-term rentals</h2>
+        <div class="small text-muted">Each owner's running balance. Open a rental to code its QuickBooks transactions and close the month.</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+{% if not connected %}<div class="alert alert-warning small py-2 mb-2">QuickBooks isn't connected. Connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a> first.</div>{% endif %}
+{% if not month_over %}<div class="alert alert-info small py-2 mb-2">{{ month|date:"F Y" }} isn't over yet. You can look at what has come in so far, but it can't be closed until the month ends.</div>{% endif %}
+
+<div class="d-flex gap-2 flex-wrap align-items-center mb-2">
+    <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="sync">
+        <button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Pull from QuickBooks</button></form>
+    <span class="small text-muted">{% if synced_at %}Last pulled {{ synced_at|date:"M j, g:i A" }}.{% else %}Not pulled yet.{% endif %}</span>
+    {% if ready %}<form method="post" class="d-inline ms-auto">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="close_ready">
+        <button class="btn btn-primary btn-sm"{% if not month_over %} disabled{% endif %}><i data-lucide="lock" class="icon"></i> Close the {{ ready }} that {{ ready|pluralize:"is,are" }} ready</button></form>{% endif %}
+</div>
+
+<div class="card" style="border-radius: 12px;"><div class="card-body p-2">
+<div class="table-responsive">
+<table class="table table-sm mb-0 cl-ov">
+    <thead><tr>
+        <th>Rental</th><th>Owner paid</th><th>Status</th>
+        <th class="num">Owed at start</th><th class="num">Rent collected</th><th class="num">Commission</th><th class="num">Expenses</th><th class="num">Paid to owner</th>
+        <th class="num">Owed at end {% include '_tip.html' with text='Owed at start + rent collected − commission − expenses − paid to the owner = owed at the end. What is still owed carries to next month either way.' %}</th>
+        <th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+        <td><a href="{{ r.link }}" class="fw-semibold text-decoration-none">{{ r.property.name }}</a></td>
+        <td>{{ r.timing }} {% if r.timing == 'Same month' %}{% include '_tip.html' with text='Rent is collected about the 5th and the owner is paid about the 15th, so each payment is checked against what was owed at the start plus what this month earned.' %}{% else %}{% include '_tip.html' with text='The owner is paid early the month after, for the month that just ended.' %}{% endif %}</td>
+        <td>
+            {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>
+            {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready</span>
+            {% elif r.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">No accounts</span>
+            {% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
+            {% if r.warnings %}<span class="small" style="color: #9a6a00;" title="Open it to see what needs a look">· {{ r.warnings }} to check</span>{% endif %}
+            {% if r.unreviewed and r.state != 'closed' %}<span class="small" style="color: #9a6a00;">· {{ r.unreviewed }} to review</span>{% endif %}
+        </td>
+        {% if r.state == 'needs_accounts' %}
+        <td colspan="6" class="small text-muted"><a href="{% url 'property_detail' r.property.pk %}#quickbooks" class="text-muted">{{ r.note }}</a></td>
+        {% else %}
+        <td class="num">{% if r.fig.start is not None %}{{ r.fig.start|money }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.fig.collected is not None %}{{ r.fig.collected|money }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.fig.commission is not None %}{{ r.fig.commission|money }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.fig.expenses is not None %}{{ r.fig.expenses|money }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.fig.paid is not None %}{{ r.fig.paid|money }}{% else %}&mdash;{% endif %}</td>
+        <td class="num end">{% if r.fig.end is not None %}{{ r.fig.end|money }}{% else %}&mdash;{% endif %}</td>
+        {% endif %}
+        <td class="small text-muted">{% if r.state != 'needs_accounts' %}{{ r.note }}{% endif %}{% if r.closed_at %} Closed {{ r.closed_at|date:"M j" }}.{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="10" class="text-muted p-3">No long-term rentals are set up for financials. Turn on "We do this property's financials" on a long-term rental's page.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if rows %}<tfoot><tr><td colspan="3">All long-term rentals</td><td></td><td class="num">{{ foot.collected|money }}</td><td class="num">{{ foot.commission|money }}</td><td class="num">{{ foot.expenses|money }}</td><td class="num">{{ foot.paid|money }}</td><td class="num">{{ foot.end|money }}</td><td></td></tr></tfoot>{% endif %}
+</table>
+</div>
+</div></div>
+{% endblock %}

@@ -88,7 +88,7 @@ def close_overview(request):
                 months, props = ledger.reopen_everything(request.user)
                 messages.success(request, f'Reopened {months} closed month{"" if months == 1 else "s"} across {props} propert{"y" if props == 1 else "ies"}, and cleared every accepted reconciling item and hand match. The old closed figures are kept in the reopened-closes archive. Redo the months from the oldest.')
         elif action == 'close_ready':
-            rows = [r for g in ledger.overview(month) for r in g['rows']]
+            rows = [r for g in ledger.overview(month) if not g['property'].is_long_term for r in g['rows']]
             closed, skipped = _close_ready_rows(rows, month, request.user)
             messages.success(request, _closed_message(closed, skipped, month))
         elif action == 'release_owners':
@@ -109,10 +109,12 @@ def close_overview(request):
                     messages.warning(request, 'These owner contacts have no email address, so nobody told them: ' + ', '.join(result['no_email']))
         return redirect(f'{reverse("close_overview")}?month={month:%Y-%m}')
 
-    groups = ledger.overview(month)
+    all_groups = ledger.overview(month)
+    groups = [g for g in all_groups if not g['property'].is_long_term]
     rows = [r for g in groups for r in g['rows']]
     token = QuickBooksToken.objects.first()
     return render(request, 'core/close_overview.html', {
+        'ltr_count': len(all_groups) - len(groups),
         'foot': _overview_foot(groups), 'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'groups': groups,
         'connected': token is not None, 'synced_at': token.ledger_synced_at if token else None, 'sync_error': token.ledger_sync_error if token else '',
         'books_start': ledger.books_start(), 'books_start_saved': FinancialsSettings.get().books_start is not None,
@@ -120,6 +122,67 @@ def close_overview(request):
         'ready_clean': sum(1 for r in rows if r['state'] == 'ready' and not _has_warning(r)),
         'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
         'lingering_payouts': payout_tracking.lingering_count(), 'owner_release': owner_portal.release_status(month),
+    })
+
+
+@login_required
+@user_passes_test(_is_admin)
+def close_long_term(request):
+    """The long-term rentals' close: one row per rental with the owner's running balance (what was owed at the start, plus the rent collected, less commission and
+    expenses, less what was paid the owner, is what is owed at the end), and the way into each one's own close."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month') or request.POST.get('month'), ledger.previous_month(today))
+    here = reverse('close_long_term') + f'?month={month:%Y-%m}'
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'sync':
+                _sync_note(request)
+            elif action == 'close_ready':
+                rows = [r for g in ledger.overview(month) if g['property'].is_long_term for r in g['rows']]
+                closed, skipped = _close_ready_rows(rows, month, request.user)
+                messages.success(request, _closed_message(closed, skipped, month))
+        except (ledger.CloseError, ledger.LedgerSyncError) as exc:
+            messages.error(request, str(exc))
+        return redirect(here)
+    rows = []
+    for g in ledger.overview(month):
+        prop = g['property']
+        if not prop.is_long_term:
+            continue
+        parts = g['rows']
+        unit_level = g['level'] == Property.FinancialsLevel.UNIT and g['consolidated']
+        t = g['consolidated']['totals'] if unit_level else (parts[0]['totals'] if parts else None)
+        state = g.get('state') or 'needs_accounts'
+        same_month = prop.owner_paid_in == Property.OwnerPaidIn.SAME_MONTH
+        fig = {k: (t or {}).get(src) for k, src in (('start', 'prior_owner'), ('collected', 'deposits'), ('commission', 'commission_due'), ('expenses', 'expenses_total'), ('paid', 'owner_payment'), ('end', 'owner_payable'))}
+        if same_month and t and t.get('calc') and fig['paid'] is not None:
+            # paid the month it is collected, so what was paid comes off this month's balance whether or not last month has anything to compare with
+            fig['end'] = (fig['start'] or Decimal('0')) + t['owner_due'] - fig['paid']
+        end = fig['end']
+        if state == 'needs_accounts':
+            note = 'Tie it to its QuickBooks accounts first.'
+        elif t is None:
+            note = 'Nothing pulled in from QuickBooks for this month yet.'
+        elif end is None:
+            note = ''
+        elif end > 0:
+            note = f'${end:,.2f} still owed to the owner: pay it {"about the 15th" if same_month else "early next month"}.'
+        elif end < 0:
+            note = f'The owner was paid ${-end:,.2f} ahead of what was owed.'
+        else:
+            note = 'Nothing owed to the owner.'
+        rows.append({
+            'property': prop, 'state': state, 'fig': fig, 'note': note, 'timing': 'Same month' if same_month else 'Month after', 'link': reverse('close_property', args=[month.strftime('%Y-%m'), prop.pk]),
+            'warnings': sum(1 for r in parts for i in r['checks'] if i['level'] == 'warn'), 'unreviewed': sum(r['unreviewed'] for r in parts), 'lines': sum(r['lines'] for r in parts),
+            'closed_at': parts[0]['close'].closed_at if len(parts) == 1 and parts[0]['close'] else None,
+        })
+    foot = {k: sum((r['fig'][k] or Decimal('0')) for r in rows) for k in ('collected', 'commission', 'expenses', 'paid', 'end')}
+    token = QuickBooksToken.objects.first()
+    return render(request, 'core/close_long_term.html', {
+        'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'rows': rows, 'foot': foot, 'ready': sum(1 for r in rows if r['state'] == 'ready' and not r['warnings']),
+        'closed': sum(1 for r in rows if r['state'] == 'closed'), 'connected': token is not None, 'synced_at': token.ledger_synced_at if token else None,
+        'month_over': today >= ledger.next_month(month),
     })
 
 
@@ -343,8 +406,8 @@ def close_property(request, month, pk, unit_pk=None):
         'property': prop, 'book': book, 'unit': unit, 'title': book.name, 'month': month, 'close': close,
         'previous': ledger.previous_month(month), 'next': ledger.next_month(month),
         'prev_url': _page_url(ledger.previous_month(month), prop, unit), 'next_url': _page_url(ledger.next_month(month), prop, unit),
-        'back_url': (_page_url(month, prop) if unit is not None else reverse('close_overview') + f'?month={month:%Y-%m}'),
-        'back_label': (f'{prop.name} — all units' if unit is not None else 'Month-end close'),
+        'back_url': (_page_url(month, prop) if unit is not None else reverse('close_long_term' if prop.is_long_term else 'close_overview') + f'?month={month:%Y-%m}'),
+        'back_label': (f'{prop.name} — all units' if unit is not None else ('Long-term rentals' if prop.is_long_term else 'Month-end close')),
         'lines': lines, 'all_categories': list(CATEGORY_LABELS.items()), 'removed': removed, 'checks': items, 'can_close': ledger.can_close(items),
         'warn_keys': [i['key'] for i in items if i['level'] == 'warn'],
         'totals': ledger.closed_summary(close) if close else ledger.totals(book, month, lines),
@@ -491,11 +554,11 @@ def _payout_matching(month, today):
                     f'{len(rows) - len(transit)} of {len(rows)} matched; {len(transit)} from the last days of the month {"is" if len(transit) == 1 else "are"} still on the way to the bank') + '.'
 
 
-def _closed_step(month):
-    """(status, detail) for closing each rental in one month: done when every active rental is closed."""
+def _closed_step(month, long_term=False):
+    """(status, detail) for closing each rental in one month: done when every active short-term rental is closed (or, with long_term, every long-term one)."""
     if month < ledger.month_of(ledger.books_start()):
         return None, ''
-    rentals = ledger.rentals()
+    rentals = [p for p in ledger.rentals() if p.is_long_term == long_term]
     if not rentals:
         return None, ''
     closed = 0
@@ -662,6 +725,7 @@ def close_home(request):
     misc_status, misc_detail = _ledger_step(month, escrow.MISC)
     pay_status, pay_detail = _payout_step(month, today)
     close_status, close_detail = _closed_step(month)
+    ltr_status, ltr_detail = _closed_step(month, long_term=True)
     tax_status, tax_detail = _tourist_tax_step(month)
     assoc_status, assoc_detail = _associations_step(month)
     owners_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['owners'])
@@ -671,11 +735,12 @@ def close_home(request):
         {'n': 2, 'title': 'Misc trust account', 'icon': 'wallet', 'status': misc_status, 'detail': misc_detail, 'url': reverse('close_misc') + q},
         {'n': 3, 'title': 'Escrow account', 'icon': 'shield-check', 'status': esc_status, 'detail': esc_detail, 'url': reverse('close_escrow') + q},
         {'n': 4, 'title': 'Platform payouts', 'icon': 'banknote', 'status': pay_status, 'detail': pay_detail, 'url': reverse('close_payouts')},
-        {'n': 5, 'title': 'Close each rental', 'icon': 'lock', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q},
-        {'n': 6, 'title': 'Pay owners', 'icon': 'users', 'status': owners_pay['status'], 'detail': owners_pay['detail'], 'url': reverse('close_pay_owners') + q},
-        {'n': 7, 'title': 'Pay Proper', 'icon': 'arrow-right-left', 'status': proper_pay['status'], 'detail': proper_pay['detail'], 'url': reverse('close_pay_proper') + q},
-        {'n': 8, 'title': 'Tourist tax', 'icon': 'receipt', 'status': tax_status, 'detail': tax_detail, 'url': reverse('tourist_tax') + q},
-        {'n': 9, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
+        {'n': 5, 'title': 'Close short-term rentals', 'icon': 'lock', 'status': close_status, 'detail': close_detail, 'url': reverse('close_overview') + q},
+        {'n': 6, 'title': 'Close long-term rentals', 'icon': 'key-round', 'status': ltr_status, 'detail': ltr_detail, 'url': reverse('close_long_term') + q},
+        {'n': 7, 'title': 'Pay owners', 'icon': 'users', 'status': owners_pay['status'], 'detail': owners_pay['detail'], 'url': reverse('close_pay_owners') + q},
+        {'n': 8, 'title': 'Pay Proper', 'icon': 'arrow-right-left', 'status': proper_pay['status'], 'detail': proper_pay['detail'], 'url': reverse('close_pay_proper') + q},
+        {'n': 9, 'title': 'Tourist tax', 'icon': 'receipt', 'status': tax_status, 'detail': tax_detail, 'url': reverse('tourist_tax') + q},
+        {'n': 10, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
     ]
     for step in steps:
         # A step under way (not started, needs attention and done each have their own chip) shows just its count, such as "12 of 38"; the full sentence is the link's hover text.

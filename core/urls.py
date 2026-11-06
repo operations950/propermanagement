@@ -43,6 +43,7 @@ urlpatterns = [
     path('close/misc-trust/', close_views.close_misc, name='close_misc'),
     path('close/payouts/', RedirectView.as_view(url=reverse_lazy('close_payouts'), permanent=True)),  # old URL — keep working for old bookmarks/links
     path('close/statement/<int:pk>/', close_views.close_statement, name='close_statement'),
+    path('close/long-term/', close_views.close_long_term, name='close_long_term'),
     path('close/statement/<int:pk>/<str:month>/', close_views.close_month_statement, name='close_month_statement'),
     path('close/<str:month>/<int:pk>/', close_views.close_property, name='close_property'),
     path('close/<str:month>/<int:pk>/unit/<int:unit_pk>/', close_views.close_property, name='close_unit'),

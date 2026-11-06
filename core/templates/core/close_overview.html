@@ -28,6 +28,7 @@
     </div>
 </div>
 
+{% if ltr_count %}<div class="small text-muted mb-2">The {{ ltr_count }} long-term rental{{ ltr_count|pluralize }} {{ ltr_count|pluralize:"has,have" }} {{ ltr_count|pluralize:"its,their" }} own close: <a href="{% url 'close_long_term' %}?month={{ month|date:'Y-m' }}">Close long-term rentals</a>.</div>{% endif %}
 {% if not connected %}
 <div class="alert alert-warning small py-2 mb-2">QuickBooks isn't connected — connect it in <a href="{% url 'admin_tools' %}">Admin Tools</a> first.</div>
 {% endif %}
