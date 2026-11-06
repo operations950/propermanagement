@@ -74,6 +74,8 @@
 {% if s.unmatched_bank %}
 <div class="card mb-3" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-alert" class="icon"></i> On the statement, not matched to the books</h6>
+    {% if dep_n %}<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pb-2 mb-1 border-bottom ac-noprint"><div><strong>{{ dep_n }} deposit{{ dep_n|pluralize }}</strong> <span class="small text-muted">{{ dep_total|money }} &middot; owner payments or something else</span></div>
+        <a class="btn btn-sm btn-primary" href="{{ deposits_url }}">Sort the deposits &rarr;</a></div>{% endif %}
     {% for b in s.unmatched_bank %}
     <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
         <div class="d-flex justify-content-between flex-wrap gap-2"><span>{{ b.date|mdate }} &middot; {{ b.description }}</span><span class="fw-semibold ac-num">{{ b.amount|money }}</span></div>
@@ -82,7 +84,7 @@
                 <select class="form-select form-select-sm" name="account" style="max-width: 230px;" required><option value="">Add to the books as...</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}">{{ a }}</option>{% endif %}{% endfor %}</select>
                 <input class="form-control form-control-sm" style="max-width: 160px;" name="vendor" placeholder="Paid to (optional)"><button class="btn btn-sm btn-outline-secondary">Add</button></form>
             {% if b.amount > 0 %}<form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="action" value="owner_payment"><input type="hidden" name="bank_line" value="{{ b.pk }}">
-                <select class="form-select form-select-sm" name="unit" style="max-width: 160px;" required><option value="">An owner's payment: unit...</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select><button class="btn btn-sm btn-outline-secondary">Record</button></form>{% endif %}
+                <select class="form-select form-select-sm" name="unit" style="max-width: 160px;" required><option value="">An owner's payment: unit...</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select><button class="btn btn-sm btn-outline-secondary">Record</button></form><a class="btn btn-sm btn-outline-secondary" href="{{ deposits_url }}?open={{ b.pk }}">Break it out</a>{% endif %}
         </div>
     </div>
     {% endfor %}

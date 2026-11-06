@@ -541,6 +541,83 @@ def owner_payment_from_line(bank_line, unit, owner, user=None, method=None):
     return _commit(bank, month_first, [bank_line], [Item('line', line, receipt.date, line.debit - line.credit)], 'recorded from the statement', auto=False)
 
 
+# ---------------------------------------------------------------- sorting a deposit
+
+def _receipt_method(bank_line):
+    return {'check': Receipt.Method.CHECK, 'online': Receipt.Method.ONLINE, 'ach': Receipt.Method.ACH, 'card': Receipt.Method.CARD}.get(bank_channel(bank_line), Receipt.Method.CHECK)
+
+
+def deposit_candidates(bank_account, month_first):
+    """Money the books already show coming in on this account that no bank deposit is tied to yet: owner payments recorded ahead of the deposit."""
+    return [it for it in ledger_items(bank_account, month_first) if it.amount > 0]
+
+
+def _positive(amount, what):
+    if amount is None or amount <= 0:
+        raise StatementError(f'{what} needs an amount above zero.')
+    return ledger.money(amount)
+
+
+@transaction.atomic
+def sort_deposit(bank_line, owner_rows, other_rows, item_keys=(), user=None):
+    """One bank deposit, broken out. It is made of any of: owner payments already recorded (`item_keys`), new owner payments (`owner_rows`: unit, owner, amount, ref), and money that is
+    not an owner's (`other_rows`: account, amount, memo), which is posted to the account chosen. The pieces must add up to the deposit exactly. Everything is posted and the deposit
+    matched in one step, or nothing happens."""
+    bank_line = BankLine.objects.select_for_update().select_related('statement__bank_account__association').get(pk=bank_line.pk)
+    bank = bank_line.statement.bank_account
+    assoc = bank.association
+    if bank_line.match_id:
+        raise StatementError('That deposit is already matched.')
+    if bank_line.amount <= 0:
+        raise StatementError('Only a deposit can be sorted here.')
+    month_first = ledger.month_start(bank_line.statement.period_end)
+    items = [_item_from_key(bank, month_first, k) for k in dict.fromkeys(item_keys)]
+    if any(it.amount <= 0 for it in items):
+        raise StatementError('Only money coming in can be part of a deposit.')
+    if not (items or owner_rows or other_rows):
+        raise StatementError('Say where the deposit came from.')
+    owner_rows = [dict(r, amount=_positive(r.get('amount'), 'Each owner payment')) for r in owner_rows]
+    other_rows = [dict(r, amount=_positive(r.get('amount'), 'Each other item')) for r in other_rows]
+    total = sum((it.amount for it in items), ZERO) + sum((r['amount'] for r in owner_rows), ZERO) + sum((r['amount'] for r in other_rows), ZERO)
+    if total != bank_line.amount:
+        raise StatementError(f'The pieces come to ${total:,.2f} but the deposit is ${bank_line.amount:,.2f}.')
+    for r in other_rows:
+        acct = r['account']
+        if acct.association_id != assoc.pk or not acct.is_active:
+            raise StatementError('Choose an account from this association\'s chart.')
+        if acct.pk == bank.account_id:
+            raise StatementError('Choose an account other than the bank account itself.')
+    method = _receipt_method(bank_line)
+    tied = list(items)
+    for r in owner_rows:
+        if r.get('owner') is None:
+            raise StatementError(f'Unit {r["unit"].label} has no owner on record.')
+        receipt = charges.receive_payment(assoc, r['unit'], r['owner'], bank_line.date, r['amount'], method, reference=((r.get('ref') or '').strip() or bank_line.description)[:80], bank_account=bank, user=user)
+        line = receipt.entry.lines.get(account=bank.account)
+        tied.append(Item('line', line, receipt.date, line.debit - line.credit))
+    for r in other_rows:
+        desc = (r.get('memo') or '').strip() or bank_line.description
+        entry = ledger.post_entry(assoc, bank_line.date, [{'account': bank.account, 'debit': r['amount'], 'memo': desc}, {'account': r['account'], 'credit': r['amount'], 'memo': desc}], memo=desc,
+                                  source=JournalEntry.Source.BANK, source_ref=f'bankline:{bank_line.pk}', user=user)
+        line = entry.lines.get(account=bank.account)
+        tied.append(Item('line', line, entry.date, line.debit - line.credit))
+    return _commit(bank, month_first, [bank_line], tied, 'sorted deposit', auto=False)
+
+
+@transaction.atomic
+def record_owner_payments(bank_account, day, rows, method=Receipt.Method.CHECK, user=None):
+    """Owner payments in hand that have not reached the bank: each is recorded now (`rows`: unit, owner, amount, ref) and waits as a deposit on its way until a bank deposit is tied to it."""
+    if not rows:
+        raise StatementError('Add at least one owner.')
+    made = []
+    for r in rows:
+        if r.get('owner') is None:
+            raise StatementError(f'Unit {r["unit"].label} has no owner on record.')
+        made.append(charges.receive_payment(bank_account.association, r['unit'], r['owner'], day, _positive(r.get('amount'), 'Each owner payment'), method, reference=(r.get('ref') or '').strip()[:80],
+                                            bank_account=bank_account, user=user))
+    return made
+
+
 # ---------------------------------------------------------------- the proof and closing
 
 def summary(bank_account, month_first):

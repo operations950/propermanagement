@@ -1,4 +1,6 @@
 """Money screens: the bank reconciliation, bills and checks, recurring bills, journal entries and reports."""
+import json
+from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -13,7 +15,7 @@ from core.models import Contact, Unit
 
 from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, payables
 from . import standard_chart as sc
-from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, JournalEntry, Payment, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
+from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, JournalEntry, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
 from .web import admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month
 
 
@@ -92,9 +94,131 @@ def bank(request, pk, bank_pk, month):
         return redirect(here)
     s = bankrec.summary(acct, first)
     s['rows'] = sorted(s['rows'], key=lambda r: r['item'].date)
+    deposits_open = [b for b in s['unmatched_bank'] if b.amount > 0]
     other_banks = prop.bank_accounts.filter(is_active=True)
-    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'other_banks': other_banks, 'accounts': prop.accounts.filter(is_active=True).order_by('code'), 'units': owners.active_units(prop),
+    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': prop.accounts.filter(is_active=True).order_by('code'), 'units': owners.active_units(prop),
                                                     'acc_back': _go('close', prop.pk, f'{first:%Y-%m}'), 'acc_back_label': f'{prop.name} close', **month_context(first)})
+
+
+# ---------------------------------------------------------------- sorting the deposits
+
+def _payload(request):
+    try:
+        data = json.loads(request.POST.get('payload') or '')
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        raise bankrec.StatementError('Something went wrong with the form. Refresh the page and try again.')
+    return data
+
+
+def _owner_rows(prop, rows):
+    units = {u.pk: u for u in Unit.objects.filter(property=prop)}
+    out = []
+    for r in rows or []:
+        try:
+            unit = units.get(int(r.get('unit')))
+        except (TypeError, ValueError, AttributeError):
+            unit = None
+        if unit is None:
+            raise bankrec.StatementError('One of those units is not part of this association.')
+        out.append({'unit': unit, 'owner': owners.billed_owner(unit), 'amount': parse_money(str(r.get('amount') or '')), 'ref': str(r.get('ref') or '')})
+    return out
+
+
+def _other_rows(prop, rows):
+    accounts = {a.pk: a for a in Account.objects.filter(association=prop)}
+    out = []
+    for r in rows or []:
+        try:
+            account = accounts.get(int(r.get('account')))
+        except (TypeError, ValueError, AttributeError):
+            account = None
+        if account is None:
+            raise bankrec.StatementError('Choose an account for each item that is not an owner payment.')
+        out.append({'account': account, 'amount': parse_money(str(r.get('amount') or '')), 'memo': str(r.get('memo') or '')})
+    return out
+
+
+def _deposit_people(prop):
+    """Every unit with its billed owner, what is owed now, its usual monthly charge and what the owner has paid before: what the sorting screen suggests from."""
+    owed, monthly = defaultdict(lambda: ZERO), {}
+    for c in Charge.objects.filter(association=prop, is_void=False).prefetch_related('applications'):
+        owed[(c.unit_id, c.owner_id)] += c.balance
+        if c.kind == Charge.Kind.ASSESSMENT and (c.unit_id not in monthly or c.due_date >= monthly[c.unit_id][0]):
+            monthly[c.unit_id] = (c.due_date, c.amount)
+    earlier = defaultdict(list)
+    for r in Receipt.objects.filter(association=prop, is_void=False).order_by('-date', '-id'):
+        if len(earlier[r.unit_id]) < 3 and r.amount not in earlier[r.unit_id]:
+            earlier[r.unit_id].append(r.amount)
+    people = []
+    for u in owners.active_units(prop):
+        o = owners.billed_owner(u)
+        people.append({'id': u.pk, 'label': u.label, 'owner': o.name if o else '', 'owes': str(owed.get((u.pk, o.pk), ZERO)) if o else '0', 'monthly': str(monthly[u.pk][1]) if u.pk in monthly else '0',
+                       'earlier': [str(a) for a in earlier.get(u.pk, [])]})
+    return people
+
+
+def _deposit_accounts(prop):
+    """The whole chart, for the account search, and the few that are most often right (the reserve cash, interest, miscellaneous income, suspense) to show first."""
+    rows = list(Account.objects.filter(association=prop, is_active=True).order_by('code'))
+    def common(a):
+        n = a.name.lower()
+        return a.code in (sc.INTEREST_INCOME, sc.INCOME_MISC) or 'suspense' in n or 'uncategorized' in n or ('reserve' in n and 'cash' in n)
+    order = {'reserve': 0, 'interest': 1, 'miscellaneous': 2}
+    suggest = sorted((a for a in rows if common(a)), key=lambda a: next((v for k, v in order.items() if k in a.name.lower()), 3))
+    return [[a.pk, a.code, a.name, a.kind] for a in rows], [a.pk for a in suggest]
+
+
+@admin_only
+def deposits(request, pk, bank_pk, month):
+    prop, redirect_to = _books(request, pk)
+    if redirect_to:
+        return redirect_to
+    acct = get_object_or_404(BankAccount, pk=bank_pk, association=prop)
+    first = parse_month(month, default_month())
+    here = _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}')
+    stmt = bankrec.statement_for(acct, first)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        target = here
+        try:
+            if action == 'sort':
+                data = _payload(request)
+                line = get_object_or_404(BankLine, pk=data.get('bank_line'), statement=stmt) if stmt else None
+                if line is None:
+                    raise bankrec.StatementError('Upload the statement first.')
+                bankrec.sort_deposit(line, _owner_rows(prop, data.get('owners')), _other_rows(prop, data.get('others')), [str(k) for k in (data.get('items') or [])], request.user)
+                messages.success(request, f'Sorted the ${line.amount:,.2f} deposit of {line.date:%b} {line.date.day}.')
+                nxt = stmt.lines.filter(amount__gt=0, match__isnull=True).order_by('date', 'id').filter(date__gte=line.date).first() or stmt.lines.filter(amount__gt=0, match__isnull=True).order_by('date', 'id').first()
+                target = here + (f'?open={nxt.pk}' if nxt else '')
+            elif action == 'ahead':
+                data = _payload(request)
+                day = parse_date(request.POST.get('date'))
+                if day is None:
+                    raise bankrec.StatementError('Choose the date the payments were received.')
+                method = request.POST.get('method') if request.POST.get('method') in dict(Receipt.Method.choices) else Receipt.Method.CHECK
+                made = bankrec.record_owner_payments(acct, day, _owner_rows(prop, data.get('owners')), method, request.user)
+                later = f' They are dated after {ledger.month_end(first):%B} {ledger.month_end(first).day}, so they wait for the next statement.' if day > ledger.month_end(first) else ' They wait on the deposit screen until the bank deposit arrives.'
+                messages.success(request, f'Recorded {len(made)} payment{"s" if len(made) != 1 else ""}.' + later)
+        except (bankrec.StatementError, ValueError, ledger.LedgerError, charges.ChargeError) as e:
+            messages.error(request, str(e))
+        return redirect(target)
+    lines = list(stmt.lines.filter(amount__gt=0).select_related('match').order_by('date', 'id')) if stmt else []
+    refs = {r.entry_id: r for r in Receipt.objects.filter(association=prop, entry__isnull=False, bank_account=acct)}
+    candidates = []
+    for it in bankrec.deposit_candidates(acct, first) if stmt else []:
+        rec = refs.get(it.obj.entry_id) if it.kind == 'line' else None
+        candidates.append({'key': it.key, 'date': f'{it.date:%b} {it.date.day}', 'text': (it.text or '').strip(), 'amount': str(it.amount), 'ref': rec.reference if rec else ''})
+    deposits_ = [{'id': b.pk, 'date': f'{b.date:%b} {b.date.day}', 'text': b.description, 'amount': str(b.amount), 'done': b.match_id is not None, 'how': b.match.how if b.match_id else ''} for b in lines]
+    accounts, suggest = _deposit_accounts(prop)
+    open_id = request.GET.get('open')
+    if not (open_id and open_id.isdigit() and any(d['id'] == int(open_id) for d in deposits_)):
+        open_id = next((d['id'] for d in deposits_ if not d['done']), None)
+    return render(request, 'accounting/deposits.html', {
+        'assoc': prop, 'bank': acct, 'stmt': stmt, 'month': first, 'deposits': deposits_, 'open_id': int(open_id) if open_id else 0, 'units': _deposit_people(prop) if lines else [], 'accounts': accounts, 'suggest': suggest,
+        'candidates': candidates, 'open_n': sum(1 for d in deposits_ if not d['done']), 'acc_back': _go('bank', prop.pk, acct.pk, f'{first:%Y-%m}'), 'acc_back_label': 'Bank reconciliation',
+        'today': min(timezone.localdate(), ledger.month_end(first)), 'methods': [(v, l) for v, l in Receipt.Method.choices if v in ('check', 'online', 'ach', 'card', 'cash', 'other')]})
 
 
 # ---------------------------------------------------------------- bills

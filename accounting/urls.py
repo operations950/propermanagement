@@ -18,6 +18,7 @@ urlpatterns = [
     path('<int:pk>/charges/<int:rule_pk>/', views.charge_form, name='charge_edit'),
     path('<int:pk>/charge/', views.charge_one, name='charge_one'),
     path('<int:pk>/payments/new/', views.receipt_new, name='receipt_new'),
+    path('<int:pk>/bank/<int:bank_pk>/<str:month>/deposits/', views_money.deposits, name='deposits'),
     path('<int:pk>/bank/<int:bank_pk>/<str:month>/', views_money.bank, name='bank'),
     path('<int:pk>/bills/', views_money.bills, name='bills'),
     path('<int:pk>/bills/pay/', views_money.pay, name='pay'),
