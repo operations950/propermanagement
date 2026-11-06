@@ -299,7 +299,7 @@ class PeriodReport:
             worked_h = round(Decimal(worked) / 60, 2)
             paid = worked_h + off + hol
             self.weeks.append({'rows': rows, 'worked_min': worked, 'worked_h': worked_h, 'off_hours': off, 'holiday_hours': hol, 'paid': paid, 'over': paid > 40,
-                               'start': rows[0]['date'], 'end': rows[-1]['date']})
+                               'start': rows[0]['date'], 'end': rows[-1]['date'], 'current': rows[0]['date'] <= self.today <= rows[-1]['date']})
         self.late_count = sum(1 for r in self.rows if r['late'])
         self.worked_min = sum(w['worked_min'] for w in self.weeks)
         self.off_hours = sum((w['off_hours'] for w in self.weeks), Decimal(0))
@@ -307,6 +307,11 @@ class PeriodReport:
         self.paid = sum((w['paid'] for w in self.weeks), Decimal(0))
         self.blockers.sort()
         self.locked = PayPeriodLock.objects.filter(start=start).exists()
+
+    @property
+    def weeks_to_show(self):
+        """The weeks in the order the hours page lists them: the week in progress first, otherwise in date order."""
+        return self.weeks[::-1] if self.weeks[1]['current'] else self.weeks
 
     @property
     def worked_hours(self):

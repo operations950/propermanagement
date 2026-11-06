@@ -312,8 +312,8 @@ def manage_decide(request):
 @admin_only
 def manage_hours(request):
     today = timezone.localdate()
-    start = _date(request.GET.get('start')) or policy.pay_period(today)[0] - timedelta(days=14)
-    start = policy.pay_period(start)[0]
+    current = policy.pay_period(today)[0]
+    start = policy.pay_period(_date(request.GET.get('start')) or current)[0]
     profiles = services.tracked_profiles()
     reports = [services.PeriodReport(p, start, today) for p in profiles]
     if request.GET.get('csv'):
@@ -323,7 +323,7 @@ def manage_hours(request):
     blockers = sum(len(r.blockers) for r in reports)
     return render(request, 'timeclock/hours.html', {
         'reports': reports, 'today': today, 'start': start, 'end': start + timedelta(days=13), 'prev': start - timedelta(days=14), 'next': start + timedelta(days=14),
-        'is_future': start > today, 'blockers': blockers, 'locked': any(r.locked for r in reports) or PayPeriodLock.objects.filter(start=start).exists(),
+        'is_current': start == current, 'last_start': current - timedelta(days=14), 'current_start': current, 'is_future': start > today, 'blockers': blockers, 'locked': any(r.locked for r in reports) or PayPeriodLock.objects.filter(start=start).exists(),
         'in_progress': start + timedelta(days=13) >= today,
     })
 

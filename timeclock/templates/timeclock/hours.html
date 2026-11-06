@@ -20,6 +20,7 @@
         <span class="fw-semibold">{% span start end %}</span>
         <a href="?start={{ next|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm" aria-label="Next pay period"><i data-lucide="chevron-right" class="icon"></i></a>
         {% if locked %}<span class="badge text-bg-success">Entered</span>{% elif in_progress %}<span class="badge text-bg-light">In progress</span>{% endif %}
+        {% if is_current %}<a href="?start={{ last_start|date:'Y-m-d' }}" class="small text-decoration-none ms-2">Last pay period</a>{% else %}<a href="{% url 'timeclock_hours' %}" class="small text-decoration-none ms-2">This pay period</a>{% endif %}
     </div>
     <div class="d-flex gap-2 align-items-center flex-wrap">
         {% if blockers %}<span class="tc-over small"><i data-lucide="alert-circle" class="icon"></i> {{ blockers }} to settle</span>{% endif %}
@@ -44,15 +45,15 @@
     <table class="table table-sm align-middle mb-0 tabular-nums tc-hours">
         <thead><tr><th>Day</th><th>In</th><th>Out</th><th>Lunch</th><th>Flags</th><th class="text-end">Hours</th><th></th></tr></thead>
         <tbody>
-        {% for wk in rep.weeks %}
+        {% for wk in rep.weeks_to_show %}
         {% for r in wk.rows %}{% if r.date <= today %}
         <tr>
             <td>{{ r.date|short_date }}</td>
             {% if r.punch %}
-            <td>{{ r.punch.clock_in|time:"g:i A" }}</td>
-            <td>{% if r.punch.clock_out %}{{ r.punch.clock_out|time:"g:i A" }}{% else %}<span class="tc-over">missing</span>{% endif %}</td>
+            <td>{{ r.punch.clock_in|time:"g:i A" }}{% if r.punch.in_remote %} <span class="badge text-bg-light" title="Clocked in remotely{% if r.punch.remote_reason %}: {{ r.punch.remote_reason }}{% endif %}">remote</span>{% endif %}</td>
+            <td>{% if r.punch.clock_out %}{{ r.punch.clock_out|time:"g:i A" }}{% if r.punch.out_remote %} <span class="badge text-bg-light" title="Clocked out remotely{% if r.punch.remote_reason %}: {{ r.punch.remote_reason }}{% endif %}">remote</span>{% endif %}{% else %}<span class="tc-over">missing</span>{% endif %}</td>
             <td>{% if r.punch.lunch_minutes is not None %}{{ r.punch.lunch_minutes }} min{% endif %}</td>
-            <td class="tc-sub">{% if r.late %}<span class="badge text-bg-warning">{{ r.late }} min late</span> {% endif %}{% if r.punch.in_remote or r.punch.out_remote %}<span class="badge text-bg-light" title="{{ r.punch.remote_reason }}">remote</span> {% endif %}{% if r.punch.changes.all %}<span class="badge text-bg-light" title="{% for c in r.punch.changes.all %}{{ c.at|date:'M j' }}: {{ c.reason }}. {% endfor %}">fixed</span>{% endif %}</td>
+            <td class="tc-sub">{% if r.late %}<span class="badge text-bg-warning">{{ r.late }} min late</span> {% endif %}{% if r.punch.changes.all %}<span class="badge text-bg-light" title="{% for c in r.punch.changes.all %}{{ c.at|date:'M j' }}: {{ c.reason }}. {% endfor %}">fixed</span>{% endif %}</td>
             <td class="text-end">{% if r.punch.clock_out %}{{ r.worked_min|mins }}{% endif %}</td>
             {% else %}
             <td colspan="3" class="tc-sub">{% if r.kind == 'vacation' %}Vacation{% elif r.kind == 'sick' %}Sick{% elif r.kind == 'other' %}Off, nothing taken{% elif r.kind == 'holiday' %}{{ r.holiday }}{% elif r.kind == 'missed' %}<span class="tc-over">No punch</span>{% elif r.kind == 'pending_off' %}Time off waiting{% elif r.kind == 'none' %}{% if r.scheduled and r.date == today %}Not clocked in yet{% elif r.scheduled %}Scheduled{% else %}Not scheduled{% endif %}{% endif %}</td>
@@ -62,7 +63,7 @@
             <td class="text-end"><a href="{% url 'timeclock_punch' %}?pid={{ rep.profile.pk }}&day={{ r.date|date:'Y-m-d' }}" class="small" title="Fix this day">Edit</a></td>
         </tr>
         {% endif %}{% endfor %}
-        <tr class="wk"><td colspan="5">Week of {{ wk.start|date:"M j" }}{% if wk.over %} <span class="tc-over">· over 40</span>{% endif %}</td><td class="text-end">{% if rep.profile.is_hourly %}{{ wk.paid|hrs }} h{% else %}{{ wk.worked_min|mins }}{% endif %}</td><td></td></tr>
+        <tr class="wk"><td colspan="5">Week of {{ wk.start|date:"M j" }}{% if wk.current %} <span class="badge text-bg-primary">This week</span>{% endif %}{% if wk.over %} <span class="tc-over">· over 40</span>{% endif %}</td><td class="text-end">{% if rep.profile.is_hourly %}{{ wk.paid|hrs }} h{% else %}{{ wk.worked_min|mins }}{% endif %}</td><td></td></tr>
         {% endfor %}
         </tbody>
     </table>
