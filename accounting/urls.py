@@ -1,11 +1,14 @@
 from django.urls import path
 
-from . import views, views_money, views_setup
+from . import views, views_budget, views_money, views_setup
 
 app_name = 'accounting'
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('budgets/', views_budget.budgets, name='budgets'),
+    path('<int:pk>/budget/<int:year>/', views_budget.budget_year, name='budget_year'),
+    path('<int:pk>/budget/<int:year>/edit/', views_budget.budget_edit, name='budget_edit'),
     path('<int:pk>/', views.hub, name='hub'),
     path('<int:pk>/close/<str:month>/', views.close_sheet, name='close'),
     path('<int:pk>/units/', views.units, name='units'),

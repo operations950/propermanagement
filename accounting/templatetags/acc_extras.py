@@ -66,3 +66,41 @@ def get(mapping, key):
         return mapping.get(key)
     except AttributeError:
         return None
+
+
+@register.filter
+def dollars(value):
+    """$1,750 (whole dollars) and -$1,750."""
+    try:
+        d = int(round(float(value)))
+    except (TypeError, ValueError):
+        return ''
+    return f'-${abs(d):,}' if d < 0 else f'${d:,}'
+
+
+@register.filter
+def dchange(value):
+    """+$1,750 / -$1,750 / a dash for no change."""
+    try:
+        d = int(round(float(value)))
+    except (TypeError, ValueError):
+        return ''
+    return '—' if d == 0 else (f'+${d:,}' if d > 0 else f'-${abs(d):,}')
+
+
+@register.filter
+def pchange(value):
+    """+5.0% / -3.3% / new when there was nothing before / a dash for no change."""
+    if value is None:
+        return 'new'
+    v = float(value)
+    return '—' if abs(v) < 0.05 else f'{v:+.1f}%'
+
+
+@register.filter
+def cents_change(value):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return ''
+    return '—' if abs(v) < 0.005 else (f'+${v:,.2f}' if v > 0 else f'-${abs(v):,.2f}')

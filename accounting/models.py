@@ -286,6 +286,41 @@ class BudgetLine(models.Model):
         constraints = [models.UniqueConstraint(fields=['budget', 'account'], name='uniq_budget_account')]
 
 
+class BudgetVersion(models.Model):
+    """One stage of a year's budget, kept exactly as it was at that stage: the draft I propose, the draft after the board's comments, the version edited at the meeting, and the approved (locked) one."""
+    class Stage(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        BOARD = 'board', 'Board draft'
+        MEETING = 'meeting', 'Meeting final'
+        APPROVED = 'approved', 'Approved'
+
+    budget = models.ForeignKey(Budget, on_delete=models.CASCADE, related_name='versions')
+    stage = models.CharField(max_length=10, choices=Stage.choices)
+    through_month = models.DateField(null=True, blank=True, help_text='First day of the last closed month the actuals run through.')
+    months_actual = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['budget', 'stage'], name='uniq_budget_stage')]
+
+
+class BudgetVersionLine(models.Model):
+    version = models.ForeignKey(BudgetVersion, on_delete=models.CASCADE, related_name='lines')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='+')
+    prior_budget = models.DecimalField(default=ZERO, **MONEY)
+    actual = models.DecimalField(default=ZERO, **MONEY)
+    recent = models.DecimalField(default=ZERO, help_text='The last (up to) three closed months.', **MONEY)
+    method = models.CharField(max_length=10, default='avg')
+    custom = models.DecimalField(default=ZERO, **MONEY)
+    adjust = models.CharField(max_length=20, blank=True, help_text='A dollar amount or a percent, added on top of the projected year.')
+    note = models.CharField(max_length=200, blank=True)
+    proposed = models.DecimalField(default=ZERO, **MONEY)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['version', 'account'], name='uniq_budget_version_account')]
+
+
 # ---------------------------------------------------------------- units, owners, board
 
 class ShareKind(models.Model):

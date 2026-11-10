@@ -1,0 +1,231 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ year }} budget - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<style>
+    .bd-tabs { display: flex; background: #e9edf3; border-radius: 9px; padding: 3px; flex-wrap: wrap; }
+    .bd-tab { padding: 6px 13px; border-radius: 7px; color: var(--ink-muted); font-weight: 600; white-space: nowrap; text-decoration: none; }
+    .bd-tab.on { background: #fff; color: var(--ink-primary); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+    .bd-tab.cmp { margin-left: 6px; border: 1px dashed #b8c2d3; }
+    .bd-tab .lk { font-size: 11px; margin-left: 4px; }
+    .bd-kpi { border: 1px solid var(--border-hairline); border-radius: 12px; padding: 10px 14px; background: var(--surface-card, #fff); height: 100%; }
+    .bd-kpi.big { background: #e8f0fe; border-color: #c5d8fb; }
+    .bd-kpi .l { color: var(--ink-muted); font-size: 12px; } .bd-kpi .v { font-size: 22px; font-weight: 700; } .bd-kpi .d { font-size: 12px; color: var(--ink-muted); }
+    .bd-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+    .bd-table th { font-size: 12px; color: var(--ink-muted); font-weight: 600; text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--border-hairline); background: #fafbfc; white-space: nowrap; }
+    .bd-table td { padding: 6px 10px; border-bottom: 1px solid #eef1f5; text-align: right; white-space: nowrap; }
+    .bd-table th:first-child, .bd-table td:first-child { text-align: left; }
+    .bd-table tr.sec td { background: #f1f4f8; font-weight: 700; text-align: left; color: #394456; }
+    .bd-table tr.tot td { font-weight: 700; background: #fafbfc; }
+    .bd-table tr.grand td { font-weight: 800; background: #e8f0fe; border-top: 2px solid #c5d8fb; }
+    .bd-table tr.chg td { background: #fff8e1; }
+    .bd-pos { color: #b42318; } .bd-neg { color: #17803d; } .bd-mut { color: var(--ink-muted); }
+    .bd-since { display: block; font-size: 11px; color: #b45309; font-weight: 600; }
+    .bd-m { border: 1px solid var(--border-hairline); border-radius: 8px; padding: 3px 9px; background: #fff; cursor: pointer; font-weight: 600; font-size: 12.5px; color: #2a3a55; }
+    .bd-m:hover:not(:disabled) { border-color: var(--brand-primary); background: #e8f0fe; }
+    .bd-m.custom { border-style: dashed; } .bd-m:disabled { cursor: default; opacity: .7; }
+    input.bd-i { width: 92px; text-align: right; border: 1px solid var(--border-hairline); border-radius: 7px; padding: 4px 7px; font: inherit; background: #fff; }
+    input.bd-i.note { width: 190px; text-align: left; } input.bd-i:disabled { background: #f4f6f9; }
+    .bd-x { border: none; background: none; color: #98a2b3; cursor: pointer; font-size: 16px; padding: 0 4px; } .bd-x:hover { color: #b42318; }
+    .bd-pop { position: absolute; z-index: 20; background: #fff; border: 1px solid #cfd6e2; border-radius: 12px; box-shadow: 0 10px 30px rgba(20,30,50,.18); padding: 6px; width: 300px; }
+    .bd-pop .o { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+    .bd-pop .o:hover { background: #e8f0fe; } .bd-pop .o.on { background: #e8f0fe; font-weight: 700; }
+    .bd-pop .cu { display: flex; gap: 6px; padding: 6px 8px 4px; align-items: center; }
+    .bd-chip-un { display: inline-block; font-size: 11px; border-radius: 999px; padding: 1px 7px; margin-left: 6px; background: #fef3c7; color: #b45309; }
+    .bd-chip-new { display: inline-block; font-size: 11px; border-radius: 999px; padding: 1px 7px; margin-left: 6px; background: #dcfce7; color: #17803d; }
+    .bd-addrow td { text-align: left !important; }
+    /* the approved sheet */
+    .bd-sheet { background: #fff; border: 1px solid var(--border-hairline); border-radius: 6px; max-width: 860px; margin: 0 auto; padding: 34px 40px 30px; box-shadow: 0 2px 10px rgba(20,30,50,.06); }
+    .bd-sheet .hd { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1c2430; padding-bottom: 10px; margin-bottom: 6px; }
+    .bd-sheet h2 { margin: 0; font-size: 22px; }
+    .bd-sheet .bd-table th { background: none; border-bottom: 1px solid #1c2430; color: #1c2430; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+    .bd-sheet .bd-table td { padding: 4px 10px; border-bottom: 1px solid #f0f2f6; }
+    .bd-sheet .bd-table tr.sec td { background: none; border-bottom: 1px solid var(--border-hairline); color: #1c2430; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; padding-top: 16px; }
+    .bd-sheet .bd-table tr.tot td { background: none; border-top: 1px solid #aab3c2; border-bottom: none; }
+    .bd-sheet .bd-table tr.grand td { background: #f1f4f8; border-top: 2px solid #1c2430; border-bottom: 2px solid #1c2430; font-size: 15px; }
+    .bd-unitbox { margin-top: 22px; border: 1px solid #1c2430; border-radius: 6px; overflow: hidden; }
+    .bd-unitbox .t { background: #1c2430; color: #fff; padding: 7px 12px; font-weight: 700; }
+    .bd-unitbox .bd-table td, .bd-unitbox .bd-table th { padding: 7px 12px; }
+    @media (max-width: 760px) { .bd-sheet { padding: 18px 12px; } }
+    @media print { .bd-sheet { border: none; box-shadow: none; padding: 0; } }
+</style>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2 ac-noprint">
+    <div>
+        <h2 class="page-title fs-4 mb-0">{{ assoc.name }} &mdash; {{ year }} budget</h2>
+        <div class="small text-muted">{{ units }} unit{{ units|pluralize }} &middot; {{ closed }}{% if info.n and info.remaining %} &middot; {{ info.rest_label }} projected{% endif %}</div>
+    </div>
+    {% if stages %}
+    <div class="bd-tabs">
+        {% for s in stages %}<a class="bd-tab {% if s.key == stage %}on{% endif %}" href="?stage={{ s.key }}">{{ s.label }}{% if s.key == 'approved' %}<span class="lk">🔒</span>{% endif %}</a>{% endfor %}
+        {% if stages|length > 1 %}<a class="bd-tab cmp {% if stage == 'compare' %}on{% endif %}" href="?stage=compare">Compare stages</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+
+{% if view == 'none' %}
+<div class="card"><div class="card-body">
+    <h5 class="mb-1">No budget in the system for {{ year }}</h5>
+    {% if can_start %}
+    <p class="text-muted mb-3">A budget is built from the closed months of {{ year|add:"-1" }}. {{ closed }}, so {{ info.rest_label|default:"nothing" }} {% if info.remaining %}will be projected{% else %}is left to project{% endif %}.</p>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="start"><button class="btn btn-primary">Start the {{ year }} budget</button></form>
+    {% else %}
+    <p class="text-muted mb-0">{{ closed }}. Close at least one month of {{ year|add:"-1" }} first: a budget is built from closed months, never from a month still open.</p>
+    {% endif %}
+</div></div>
+{% else %}
+
+<div class="d-flex align-items-center gap-3 flex-wrap mb-3 ac-noprint">
+    <span class="text-muted">{{ hint }}</span>
+    {% if next_label %}<form method="post" class="ms-auto" {% if latest == 'meeting' %}onsubmit="return confirm('Lock this as the approved {{ year }} budget? It becomes the budget in the system.');"{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="advance"><button class="btn btn-primary btn-sm">{{ next_label }}</button></form>{% endif %}
+    {% if stage == 'approved' and can_reopen %}<form method="post" class="ms-auto" onsubmit="return confirm('Open the approved budget again? It goes back to the Meeting final and stops being the budget in the system until it is approved again.');">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn btn-outline-secondary btn-sm">Open it again</button></form>{% endif %}
+</div>
+
+{% if view == 'editor' %}
+<div class="row g-2 mb-3">
+    <div class="col-6 col-lg-3"><div class="bd-kpi"><div class="l">Operating expenses, {{ year }}</div><div class="v" id="kOp"></div><div class="d" id="kOpD"></div></div></div>
+    <div class="col-6 col-lg-3"><div class="bd-kpi"><div class="l">Reserves, {{ year }}</div><div class="v" id="kRes"></div><div class="d" id="kResD"></div></div></div>
+    <div class="col-6 col-lg-3"><div class="bd-kpi big"><div class="l">Total assessments needed</div><div class="v" id="kTot"></div><div class="d" id="kTotD"></div></div></div>
+    <div class="col-6 col-lg-3"><div class="bd-kpi big"><div class="l">Per unit per month</div><div class="v" id="kUnit"></div><div class="d" id="kUnitD"></div></div></div>
+</div>
+<div class="card"><div style="overflow-x: auto;">
+<table class="bd-table" id="tbl" style="min-width: 1040px;"><thead><tr>
+    <th>Line</th><th>{{ year|add:"-1" }} budget</th>
+    <th>Actual, {{ info_rest.n }} mo {% include '_tip.html' with text="Accrual actuals from the closed months only. An open month is never counted." %}</th>
+    {% if info_rest.remaining %}<th>{{ info_rest.rest_label }}: how? {% include '_tip.html' with text="Click a method to see what each one gives for that line, then pick one. The projection and the proposed amount update right away." %}</th><th>{{ info_rest.rest_label }}</th>{% endif %}
+    <th>{{ year|add:"-1" }} projected</th><th>Adjust ($ or %)</th><th style="text-align: left;">Reason (optional)</th>
+    <th>{{ year }} proposed {% include '_tip.html' with text="Starts at the projected year and adds your adjustment. Orange text shows how much it moved since the previous stage." %}</th><th>vs {{ year|add:"-1" }} budget</th>
+</tr></thead><tbody id="body"></tbody></table>
+</div></div>
+<div class="small text-muted mt-2">Assessments are not typed: they come out of expenses plus reserves, divided by {{ units }} units (an equal share each). {% if not state_json.editable %}This version is frozen because the next stage was started from it.{% endif %}</div>
+{{ state_json|json_script:"bd-state" }}
+<script>
+(function () {
+    var S = JSON.parse(document.getElementById('bd-state').textContent);
+    var URL_ = '{{ edit_url|escapejs }}';
+    var CSRF = '{{ csrf_token }}';
+    var YEAR = {{ year }}, N = {{ info_rest.n }};
+    var REM = S.remaining;
+    var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+    var $ = function (n) { return (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US'); };
+    var $2 = function (n) { return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); };
+    var sgn = function (n) { return (n > 0 ? '+' : n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US'); };
+    var pct = function (n, d) { return (n > 0 ? '+' : '') + n.toFixed(d); };
+    var cols = REM ? 10 : 8;
+    var popEl = null;
+
+    function send(body) {
+        return fetch(URL_, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify(body)})
+            .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+            .then(function (x) { if (!x.ok) { alert(x.j.error || 'That did not save.'); } else { S = x.j; } render(); })
+            .catch(function () { alert('That did not save. Check the connection and try again.'); render(); });
+    }
+    window.bdSet = function (id, field, value) { send({op: 'set', line: id, field: field, value: value}); };
+    window.bdAdd = function (section) { var sel = document.getElementById('add-' + section); if (sel && sel.value) send({op: 'add', account: sel.value}); };
+    window.bdRemove = function (id) { send({op: 'remove', line: id}); };
+    function closePop() { if (popEl) { popEl.remove(); popEl = null; } }
+    window.bdPop = function (ev, id) {
+        ev.stopPropagation(); closePop();
+        var l = S.rows.find(function (r) { return r.id === id; });
+        var rect = ev.currentTarget.getBoundingClientRect();
+        popEl = document.createElement('div'); popEl.className = 'bd-pop';
+        popEl.style.left = Math.max(8, Math.min(window.innerWidth - 316, rect.left + window.scrollX)) + 'px';
+        popEl.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+        popEl.innerHTML = S.methods.filter(function (m) { return m[0] !== 'custom'; }).map(function (m) {
+            return '<div class="o ' + (l.method === m[0] ? 'on' : '') + '" onclick="bdSet(' + id + ',\'method\',\'' + m[0] + '\')"><span>' + esc(m[1]) + '</span><span class="bd-mut">' + $(l.options[m[0]]) + '</span></div>';
+        }).join('') + '<div class="cu"><span class="bd-mut">Custom</span><input class="bd-i" id="cuIn" placeholder="amount" value="' + (l.method === 'custom' ? l.custom : '') + '" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\')bdCustom(' + id + ')"><button class="btn btn-sm btn-primary" onclick="event.stopPropagation();bdCustom(' + id + ')">Use</button></div>';
+        document.body.appendChild(popEl);
+    };
+    window.bdCustom = function (id) { var v = document.getElementById('cuIn').value; if (v === '') return; closePop(); bdSet(id, 'custom', v); };
+    document.addEventListener('click', function (e) { if (popEl && !popEl.contains(e.target)) closePop(); });
+
+    function sum(rows, k) { return rows.reduce(function (a, r) { return a + r[k]; }, 0); }
+    function render() {
+        closePop();
+        var ed = S.editable, html = '';
+        S.sections.forEach(function (sec) {
+            var rows = S.rows.filter(function (r) { return r.section === sec; });
+            var label = sec === 'Reserves' ? 'Reserve contributions' : sec;
+            if (!rows.length && !(ed && (S.addable[sec] || []).length)) return;
+            html += '<tr class="sec"><td colspan="' + cols + '">' + label + '</td></tr>';
+            rows.forEach(function (l) {
+                var chg = l.prior ? (l.proposed / l.prior - 1) * 100 : null;
+                var chgTxt = chg === null ? (l.proposed ? '<span class="bd-mut">new</span>' : '<span class="bd-mut">—</span>') : '<span class="' + (chg > 0.5 ? 'bd-pos' : chg < -0.5 ? 'bd-neg' : 'bd-mut') + '">' + pct(chg, 0) + '%</span>';
+                var since = (S.prev_label && Math.abs(l.since) >= 0.5) ? '<span class="bd-since">' + sgn(l.since) + ' since ' + esc(S.prev_label) + '</span>' : '';
+                html += '<tr><td>' + esc(l.name) + ' <span class="bd-mut small">' + l.code + '</span>' + (l.unbudgeted ? '<span class="bd-chip-un">not in last year\'s budget</span>' : '') + (l.removable ? '<span class="bd-chip-new">added</span>' : '') + '</td>' +
+                    '<td>' + $(l.prior) + '</td><td>' + $(l.actual) + '</td>' +
+                    (REM ? '<td style="text-align:left"><button class="bd-m ' + (l.method === 'custom' ? 'custom' : '') + '" ' + (ed ? '' : 'disabled') + ' onclick="bdPop(event,' + l.id + ')">' + esc(l.method_label) + '</button></td><td>' + $(l.nd) + '</td>' : '') +
+                    '<td><b>' + $(l.projected) + '</b></td>' +
+                    '<td><input class="bd-i" ' + (ed ? '' : 'disabled') + ' value="' + esc(l.adjust) + '" placeholder="$ or %" onchange="bdSet(' + l.id + ',\'adjust\',this.value)"></td>' +
+                    '<td style="text-align:left"><input class="bd-i note" ' + (ed ? '' : 'disabled') + ' value="' + esc(l.note) + '" placeholder="why" onchange="bdSet(' + l.id + ',\'note\',this.value)"></td>' +
+                    '<td><b>' + $(l.proposed) + '</b>' + since + '</td><td>' + chgTxt + (ed && l.removable ? '<button class="bd-x" title="Remove this line" onclick="bdRemove(' + l.id + ')">×</button>' : '') + '</td></tr>';
+            });
+            if (ed && (S.addable[sec] || []).length) {
+                html += '<tr class="bd-addrow"><td colspan="' + cols + '"><select id="add-' + sec + '" class="form-select form-select-sm d-inline-block" style="width: auto; max-width: 320px;"><option value="">Add a line…</option>' +
+                    S.addable[sec].map(function (a) { return '<option value="' + a.id + '">' + esc(a.label) + '</option>'; }).join('') + '</select> <button class="btn btn-sm btn-outline-secondary" onclick="bdAdd(\'' + sec + '\')">Add</button></td></tr>';
+            }
+            var t = S.totals.sections[sec];
+            html += '<tr class="tot"><td>Total ' + label.toLowerCase() + '</td><td>' + $(t.prior) + '</td><td>' + $(t.actual) + '</td>' + (REM ? '<td></td><td>' + $(t.nd) + '</td>' : '') + '<td>' + $(t.projected) + '</td><td>' + (t.adj ? $(t.adj) : '') + '</td><td></td><td>' + $(t.proposed) + '</td><td>' + (t.prior ? '<span class="bd-mut">' + pct((t.proposed / t.prior - 1) * 100, 0) + '%</span>' : '') + '</td></tr>';
+        });
+        var T = S.totals;
+        html += '<tr class="grand"><td>Total assessments needed</td><td>' + $(T.total_prior) + '</td><td></td>' + (REM ? '<td></td><td></td>' : '') + '<td>' + $(T.total_projected) + '</td><td></td><td></td><td>' + $(T.total) + '</td><td>' + (T.total_prior ? pct((T.total / T.total_prior - 1) * 100, 1) + '%' : '') + '</td></tr>';
+        document.getElementById('body').innerHTML = html;
+        document.getElementById('kOp').textContent = $(T.op.proposed);
+        document.getElementById('kOpD').textContent = (YEAR - 1) + ' budget ' + $(T.op.prior) + ' · projected ' + $(T.op.projected);
+        document.getElementById('kRes').textContent = $(T.rs.proposed);
+        document.getElementById('kResD').textContent = (YEAR - 1) + ' budget ' + $(T.rs.prior);
+        document.getElementById('kTot').textContent = $(T.total);
+        document.getElementById('kTotD').textContent = (YEAR - 1) + ' budget ' + $(T.total_prior) + (T.total_prior ? ' · ' + pct((T.total / T.total_prior - 1) * 100, 1) + '%' : '');
+        document.getElementById('kUnit').textContent = $2(T.unit_month);
+        document.getElementById('kUnitD').textContent = (YEAR - 1) + ': ' + $2(T.unit_month_prior) + ' · ' + $2(T.unit_year) + ' a year';
+    }
+    render();
+})();
+</script>
+
+{% elif view == 'compare' %}
+<div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="onlyChg" checked onchange="document.querySelectorAll('#cmp tr.quiet').forEach(function (r) { r.style.display = this.checked ? 'none' : ''; }.bind(this))"><label class="form-check-label small text-muted" for="onlyChg">Show only lines that changed along the way</label></div>
+<div class="card"><div style="overflow-x: auto;">
+<table class="bd-table" id="cmp" style="min-width: 900px;"><thead><tr><th>Line</th><th>{{ year|add:"-1" }} budget</th>
+    {% for l in cmp.labels %}<th>{{ l }}{% if forloop.first %}<br><span style="font-weight: 400;">what we proposed</span>{% endif %}</th>{% if not forloop.first %}<th>Changed</th>{% endif %}{% endfor %}
+    <th style="text-align: left;">Why</th></tr></thead><tbody>
+{% for sec in cmp.sections %}
+<tr class="sec"><td colspan="{{ cmp.cols }}">{{ sec.name }}</td></tr>
+{% for r in sec.lines %}
+<tr class="{% if r.changed %}chg{% else %}quiet{% endif %}"{% if not r.changed %} style="display: none;"{% endif %}><td>{{ r.name }}</td><td>{{ r.prior|dollars }}</td>
+    {% for c in r.cells %}<td>{% if forloop.last %}<b>{{ c.v|dollars }}</b>{% else %}{{ c.v|dollars }}{% endif %}</td>{% if c.d is not None %}<td class="{% if c.d > 0.5 %}bd-pos{% elif c.d < -0.5 %}bd-neg{% else %}bd-mut{% endif %}">{{ c.d|dchange }}</td>{% endif %}{% endfor %}
+    <td style="text-align: left;" class="bd-mut">{{ r.why }}</td></tr>
+{% endfor %}
+{% endfor %}
+<tr class="sec"><td colspan="{{ cmp.cols }}">Totals</td></tr>
+{% for t in cmp.totals %}
+<tr class="{% if forloop.counter == 3 %}grand{% else %}tot{% endif %}"><td>{{ t.label }}</td><td>{% if t.money2 %}{{ t.prior|money }}{% else %}{{ t.prior|dollars }}{% endif %}</td>
+    {% for c in t.cells %}<td>{% if t.money2 %}{{ c.v|money }}{% else %}{{ c.v|dollars }}{% endif %}</td>{% if c.d is not None %}<td class="{% if c.d > 0.005 %}bd-pos{% elif c.d < -0.005 %}bd-neg{% else %}bd-mut{% endif %}">{% if t.money2 %}{{ c.d|cents_change }}{% else %}{{ c.d|dchange }}{% endif %}</td>{% endif %}{% endfor %}<td></td></tr>
+{% endfor %}
+</tbody></table></div></div>
+<div class="small text-muted mt-2">Each stage is kept exactly as it was. Highlighted rows are lines someone touched after the draft. "Why" is the reason typed on that line where it changed.</div>
+
+{% elif view == 'approved' %}
+<div class="d-flex justify-content-end mb-2 ac-noprint"><button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print / save as PDF</button></div>
+<div class="bd-sheet">
+    <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; approved</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>Approved {{ approved_at|date:"M j, Y" }}</div></div>
+    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }} budget</th><th>{{ year }} budget</th><th>$ change</th><th>% change</th></tr></thead><tbody>
+    {% for sec in sheet.sections %}
+    {% if sec.lines %}
+    <tr class="sec"><td colspan="5">{{ sec.name }}</td></tr>
+    {% for l in sec.lines %}<tr><td>{{ l.name }}</td><td>{{ l.prior|dollars }}</td><td>{{ l.proposed|dollars }}</td><td>{{ l.d|dchange }}</td><td>{{ l.p|pchange }}</td></tr>{% endfor %}
+    <tr class="tot"><td>Total {{ sec.name|lower }}</td><td>{{ sec.prior|dollars }}</td><td>{{ sec.proposed|dollars }}</td><td>{{ sec.d|dchange }}</td><td>{{ sec.p|pchange }}</td></tr>
+    {% endif %}
+    {% if sec.key == 'Operating' %}<tr class="tot"><td>Total operating expenses</td><td>{{ sheet.op.prior|dollars }}</td><td>{{ sheet.op.proposed|dollars }}</td><td>{{ sheet.op.d|dchange }}</td><td>{{ sheet.op.p|pchange }}</td></tr>{% endif %}
+    {% endfor %}
+    <tr class="grand"><td>Total budget (assessments)</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.proposed|dollars }}</td><td>{{ sheet.total.d|dchange }}</td><td>{{ sheet.total.p|pchange }}</td></tr>
+    </tbody></table>
+    <div class="bd-unitbox"><div class="t">What it means per unit ({{ units }} unit{{ units|pluralize }}, equal share)</div>
+    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th>{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
+    {% for p in sheet.per %}<tr><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td>{% if p.bold %}<b>{{ p.new|money }}</b>{% else %}{{ p.new|money }}{% endif %}</td><td>{{ p.d|cents_change }}</td><td>{{ p.p|pchange }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    <div class="small text-muted mt-3">Lines with no budget in either year are left off. The working numbers behind this sheet (actuals, projections, reasons) stay in the Draft, Board draft and Meeting final tabs.</div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

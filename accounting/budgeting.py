@@ -1,0 +1,362 @@
+"""The annual budget builder. Late in the year we take the actuals of the books that are CLOSED, project the rest of the year, and propose next year's budget.
+
+A budget for year Y is built from the fiscal year before it (Y-1): its actuals through the last closed month, plus a projection for the months not closed yet. An open
+(half-finished) month is never counted. The budget passes through four stages, each kept as it was: Draft (what we propose), Board draft (after the board's comments),
+Meeting final (edited at the meeting) and Approved (locked). Approving writes the amounts into the association's Budget, which the income report already reads.
+"""
+from datetime import date
+from decimal import Decimal, InvalidOperation
+
+from django.db import transaction
+
+from . import ledger
+from .models import ZERO, Account, Budget, BudgetLine, BudgetVersion, BudgetVersionLine, MonthLock
+
+STAGES = [BudgetVersion.Stage.DRAFT, BudgetVersion.Stage.BOARD, BudgetVersion.Stage.MEETING, BudgetVersion.Stage.APPROVED]
+STAGE_KEYS = [s.value for s in STAGES]
+STAGE_LABEL = {s.value: s.label for s in STAGES}
+STAGE_HINT = {
+    'draft': 'What we propose. Working copy, not sent to the board yet.',
+    'board': 'Draft 2.0: the draft after the board\'s comments.',
+    'meeting': 'Edited live at the meeting. Change numbers while we talk.',
+    'approved': 'Locked after the meeting. This is the budget in the system.',
+}
+NEXT_LABEL = {'draft': 'Send to the board: start the Board draft', 'board': 'Prepare the meeting version', 'meeting': 'Approve and lock (after the meeting)'}
+
+SECTIONS = ['Administrative', 'Utilities', 'Operating', 'Reserves']
+UTILITIES = {'6410', '6420', '6425', '6429', '6430', '6431', '6435', '6440', '6450'}
+ADMIN = {'6320', '6350', '6460', '6510', '6610', '6611', '6800', '6820', '6830', '6880', '6881', '6882', '6883', '6884', '6885', '6886', '6891', '6894', '6895', '6899', '6902', '6904', '6916', '6917', '6920'}
+RESERVE_INTEREST = {'3813', '3831'}
+LEFT_OUT = {'6900'}   # the transfer to reserves: the reserve lines carry it
+
+
+def is_reserve(acct):
+    return acct.kind == Account.Kind.EQUITY and '3811' <= acct.code <= '3835' and acct.code not in RESERVE_INTEREST
+
+
+def is_budgetable(acct):
+    return is_reserve(acct) or (acct.kind == Account.Kind.EXPENSE and acct.code not in LEFT_OUT)
+
+
+def section_of(acct):
+    if is_reserve(acct):
+        return 'Reserves'
+    if acct.code in UTILITIES:
+        return 'Utilities'
+    if acct.code in ADMIN:
+        return 'Administrative'
+    return 'Operating'
+
+
+def _add_months(day, n):
+    y, m = divmod(day.year * 12 + day.month - 1 + n, 12)
+    return date(y, m + 1, 1)
+
+
+def base_info(prop, year):
+    """What the budget for `year` stands on: the fiscal year before it, and how far its books are closed (months closed one after another from the start; a gap stops the count)."""
+    profile = ledger.profile_for(prop)
+    start_month = profile.fiscal_year_start_month or 1
+    fy_start = date(year - 1, start_month, 1)
+    first = fy_start
+    if profile.books_start:
+        first = max(fy_start, ledger.next_month(profile.books_start))
+    locked = set(MonthLock.objects.filter(association=prop, month__gte=first, month__lt=_add_months(fy_start, 12)).values_list('month', flat=True))
+    n, cur = 0, first
+    while cur in locked and cur < _add_months(fy_start, 12):
+        n += 1
+        cur = _add_months(cur, 1)
+    through = _add_months(first, n - 1) if n else None
+    used = ((through.year - fy_start.year) * 12 + through.month - fy_start.month + 1) if through else 0
+    remaining = 12 - used
+    rest = [_add_months(fy_start, i) for i in range(used, 12)]
+    names = [m.strftime('%b') for m in rest]
+    if not rest:
+        rest_label = ''
+    elif len(rest) == 1:
+        rest_label = names[0]
+    elif len(rest) == 2:
+        rest_label = f'{names[0]} + {names[1]}'
+    else:
+        rest_label = f'{names[0]}–{names[-1]}'
+    return {'fy_start': fy_start, 'first': first, 'n': n, 'through': through, 'remaining': remaining, 'rest_label': rest_label,
+            'window_start': first, 'window_end': ledger.month_end(through) if through else None, 'year': year}
+
+
+def closed_note(info):
+    if not info['n']:
+        return f'No month of {info["fy_start"].year} is closed yet'
+    return f'Books closed through {info["through"]:%B %Y}'
+
+
+def can_start(info):
+    return info['n'] >= 1
+
+
+def _actuals(prop, start, end, accounts):
+    sums = ledger._sums(ledger.lines(prop).filter(entry__date__gte=start, entry__date__lte=end, account__in=accounts))
+    out = {}
+    for a in accounts:
+        if a.pk in sums:
+            d, c = sums[a.pk]
+            out[a.pk] = c if is_reserve(a) else d - c
+    return out
+
+
+def prior_budget(prop, year):
+    bud = Budget.objects.filter(association=prop, year=year - 1).first()
+    return {l.account_id: l.annual_amount for l in bud.lines.all()} if bud else {}
+
+
+def default_method(acct):
+    return 'b12' if is_reserve(acct) else 'avg'
+
+
+def snapshot(prop, info):
+    """Rows for a new draft: every expense and reserve account that has a budget last year or activity in the closed months."""
+    accounts = [a for a in Account.objects.filter(association=prop, is_active=True).order_by('code') if is_budgetable(a)]
+    prior = prior_budget(prop, info['year'])
+    act = _actuals(prop, info['window_start'], info['window_end'], accounts) if info['n'] else {}
+    rec_start = max(info['window_start'], _add_months(info['through'], -2)) if info['n'] else None
+    rec = _actuals(prop, rec_start, info['window_end'], accounts) if info['n'] else {}
+    rows = []
+    for a in accounts:
+        p, x, r = prior.get(a.pk, ZERO), act.get(a.pk, ZERO), rec.get(a.pk, ZERO)
+        if p or x:
+            rows.append(dict(account=a, prior_budget=p, actual=x, recent=r, method=default_method(a)))
+    return rows
+
+
+# ---------------------------------------------------------------- the arithmetic
+
+METHODS = ['avg', 'recent', 'b12', 'rest', 'none', 'custom']
+
+
+def method_label(code, info):
+    n, k, r = info['n'], min(3, info['n']), info['remaining']
+    return {'avg': f'{n}-month average × {r}', 'recent': f'Last {k} month{"s" if k != 1 else ""} average × {r}', 'b12': f'Budget ÷ 12 × {r}',
+            'rest': f'Rest of the budget lands in {info["rest_label"]}', 'none': 'Nothing more this year', 'custom': 'Custom amount'}[code]
+
+
+def estimate(line, method, info):
+    n, r = info['n'], info['remaining']
+    if not r:
+        return ZERO
+    if method == 'avg':
+        v = line.actual / n * r if n else ZERO
+    elif method == 'recent':
+        k = min(3, n)
+        v = line.recent / k * r if k else ZERO
+    elif method == 'b12':
+        v = line.prior_budget / 12 * r
+    elif method == 'rest':
+        v = max(line.prior_budget - line.actual, ZERO)
+    elif method == 'none':
+        v = ZERO
+    else:
+        v = line.custom
+    return Decimal(v).quantize(Decimal('0.01'))
+
+
+def parse_adjust(text):
+    """('', 0) / a dollar amount or a percent. Raises ValueError with a message for the person."""
+    s = (text or '').strip().replace('$', '').replace(',', '').replace(' ', '')
+    if not s:
+        return None
+    try:
+        if s.endswith('%'):
+            return ('pct', Decimal(s[:-1]))
+        return ('amt', Decimal(s))
+    except InvalidOperation:
+        raise ValueError(f'"{text}" is not a dollar amount or a percent. Type 500 or -3%.')
+
+
+def adjustment(line, projected):
+    try:
+        p = parse_adjust(line.adjust)
+    except ValueError:
+        p = None
+    if p is None:
+        return ZERO
+    kind, v = p
+    return (projected * v / 100).quantize(Decimal('0.01')) if kind == 'pct' else v.quantize(Decimal('0.01'))
+
+
+def compute(line, info):
+    nd = estimate(line, line.method, info)
+    projected = line.actual + nd
+    adj = adjustment(line, projected)
+    return {'nd': nd, 'projected': projected, 'adj': adj, 'proposed': projected + adj}
+
+
+def recompute(line, info):
+    line.proposed = compute(line, info)['proposed']
+
+
+def info_for(version):
+    """The base info a version was built with (through month is stored with it, so later closings do not change a version already made)."""
+    prop, year = version.budget.association, version.budget.year
+    info = base_info(prop, year)
+    if version.through_month and info['through'] != version.through_month:
+        # closed months moved after this version was made: the version keeps its own window
+        n = version.months_actual
+        fy = info['fy_start']
+        used = (version.through_month.year - fy.year) * 12 + version.through_month.month - fy.month + 1
+        rest = [_add_months(fy, i) for i in range(used, 12)]
+        names = [m.strftime('%b') for m in rest]
+        label = '' if not rest else names[0] if len(rest) == 1 else f'{names[0]} + {names[1]}' if len(rest) == 2 else f'{names[0]}–{names[-1]}'
+        info = dict(info, n=n, through=version.through_month, remaining=12 - used, rest_label=label, window_end=ledger.month_end(version.through_month))
+    return info
+
+
+# ---------------------------------------------------------------- stages
+
+def get_budget(prop, year):
+    return Budget.objects.filter(association=prop, year=year).first()
+
+
+def versions(budget):
+    return {v.stage: v for v in budget.versions.all()} if budget else {}
+
+
+def stage_summary(prop, year):
+    """('none'|stage key, version dict) for the list."""
+    bud = get_budget(prop, year)
+    have = versions(bud)
+    latest = next((k for k in reversed(STAGE_KEYS) if k in have), None)
+    return latest
+
+
+def is_editable(version, have):
+    if version.stage == 'approved':
+        return False
+    nxt = STAGE_KEYS[STAGE_KEYS.index(version.stage) + 1]
+    return nxt not in have
+
+
+@transaction.atomic
+def start_draft(prop, year, user):
+    info = base_info(prop, year)
+    if not can_start(info):
+        raise ledger.LedgerError(f'Close at least one month of {year - 1} first: a budget is built from closed months.')
+    bud, _ = Budget.objects.get_or_create(association=prop, year=year)
+    if bud.versions.exists():
+        raise ledger.LedgerError('This budget already has a draft.')
+    ver = BudgetVersion.objects.create(budget=bud, stage='draft', through_month=info['through'], months_actual=info['n'], created_by=user)
+    for r in snapshot(prop, info):
+        line = BudgetVersionLine(version=ver, **r)
+        recompute(line, info)
+        line.save()
+    return ver
+
+
+@transaction.atomic
+def advance(budget, user):
+    """Copy the latest stage into the next one (the earlier one is then frozen); the last step approves and locks."""
+    have = versions(budget)
+    cur = next((k for k in reversed(STAGE_KEYS) if k in have), None)
+    if cur is None or cur == 'approved':
+        raise ledger.LedgerError('There is nothing to move forward.')
+    nxt = STAGE_KEYS[STAGE_KEYS.index(cur) + 1]
+    src = have[cur]
+    ver = BudgetVersion.objects.create(budget=budget, stage=nxt, through_month=src.through_month, months_actual=src.months_actual, created_by=user)
+    BudgetVersionLine.objects.bulk_create([BudgetVersionLine(version=ver, account_id=l.account_id, prior_budget=l.prior_budget, actual=l.actual, recent=l.recent, method=l.method, custom=l.custom,
+                                                              adjust=l.adjust, note=l.note, proposed=l.proposed) for l in src.lines.all()])
+    if nxt == 'approved':
+        write_budget_lines(budget, ver)
+    return ver
+
+
+def write_budget_lines(budget, version):
+    """The approved amounts become the year's budget lines, which the income report compares the books against. Income lines are left alone."""
+    budgetable = [a.pk for a in Account.objects.filter(association=budget.association) if is_budgetable(a)]
+    BudgetLine.objects.filter(budget=budget, account_id__in=budgetable).delete()
+    BudgetLine.objects.bulk_create([BudgetLine(budget=budget, account_id=l.account_id, annual_amount=l.proposed) for l in version.lines.all() if l.proposed])
+
+
+@transaction.atomic
+def reopen(budget):
+    have = versions(budget)
+    if 'approved' not in have:
+        raise ledger.LedgerError('This budget is not approved.')
+    budgetable = [a.pk for a in Account.objects.filter(association=budget.association) if is_budgetable(a)]
+    BudgetLine.objects.filter(budget=budget, account_id__in=budgetable).delete()
+    have['approved'].delete()
+
+
+# ---------------------------------------------------------------- what the screens show
+
+def unit_count(prop):
+    from . import owners
+    return owners.active_units(prop).count()
+
+
+def line_rows(version, info, prev_version=None):
+    prev = {l.account_id: l.proposed for l in prev_version.lines.all()} if prev_version else None
+    rows = []
+    for l in version.lines.select_related('account'):
+        c = compute(l, info)
+        options = {m: float(estimate(l, m, info)) for m in METHODS if m != 'custom'}
+        rows.append({
+            'id': l.pk, 'code': l.account.code, 'name': l.account.name, 'section': section_of(l.account),
+            'prior': float(l.prior_budget), 'actual': float(l.actual), 'method': l.method, 'method_label': method_label(l.method, info) if l.method != 'custom' else f'Custom ${l.custom:,.0f}',
+            'custom': float(l.custom), 'nd': float(c['nd']), 'projected': float(c['projected']), 'adjust': l.adjust, 'adj': float(c['adj']), 'note': l.note, 'proposed': float(c['proposed']),
+            'since': (float(c['proposed'] - prev.get(l.account_id, ZERO)) if prev is not None else 0.0), 'options': options,
+            'removable': not l.prior_budget and not l.actual, 'unbudgeted': not l.prior_budget and bool(l.actual),
+        })
+    rows.sort(key=lambda r: (SECTIONS.index(r['section']), r['code']))
+    return rows
+
+
+def totals(rows, units):
+    out = {}
+    for s in SECTIONS:
+        rs = [r for r in rows if r['section'] == s]
+        out[s] = {k: sum(r[k] for r in rs) for k in ('prior', 'actual', 'nd', 'projected', 'adj', 'proposed')}
+    op = {k: sum(out[s][k] for s in SECTIONS[:3]) for k in ('prior', 'projected', 'proposed')}
+    rs = out['Reserves']
+    tot, tot_b, tot_p = op['proposed'] + rs['proposed'], op['prior'] + rs['prior'], op['projected'] + rs['projected']
+    u = units or 1
+    return {'sections': out, 'op': op, 'rs': rs, 'total': tot, 'total_prior': tot_b, 'total_projected': tot_p,
+            'unit_month': tot / u / 12, 'unit_month_prior': tot_b / u / 12, 'unit_year': tot / u, 'units': units}
+
+
+def editor_state(version, have):
+    info = info_for(version)
+    idx = STAGE_KEYS.index(version.stage)
+    prev = have.get(STAGE_KEYS[idx - 1]) if idx else None
+    rows = line_rows(version, info, prev)
+    units = unit_count(version.budget.association)
+    t = totals(rows, units)
+    used = {l.account_id for l in version.lines.all()}
+    addable = {}
+    for a in Account.objects.filter(association=version.budget.association, is_active=True).order_by('code'):
+        if is_budgetable(a) and a.pk not in used:
+            addable.setdefault(section_of(a), []).append({'id': a.pk, 'label': f'{a.code} {a.name}'})
+    return {'sections': SECTIONS, 'rows': rows, 'totals': t, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'],
+            'prev_label': STAGE_LABEL[STAGE_KEYS[idx - 1]] if idx else '', 'methods': [(m, method_label(m, info) if m != 'custom' else 'Custom amount') for m in METHODS]}
+
+
+def compare_rows(have, units):
+    """Every line across the stages up to the meeting: what we proposed, what the board changed, what changed at the meeting."""
+    keys = [k for k in ('draft', 'board', 'meeting') if k in have]
+    by = {}
+    for k in keys:
+        info = info_for(have[k])
+        for l in have[k].lines.select_related('account'):
+            by.setdefault(l.account_id, {'account': l.account, 'prior': l.prior_budget, 'v': {}, 'note': {}})
+            by[l.account_id]['v'][k] = compute(l, info)['proposed']
+            by[l.account_id]['note'][k] = l.note
+    rows = []
+    for a in by.values():
+        v = {k: a['v'].get(k, ZERO) for k in keys}
+        changed = any(abs(v[keys[i]] - v[keys[i - 1]]) >= Decimal('0.5') for i in range(1, len(keys)))
+        why = ''
+        for k in reversed(keys[1:]):
+            i = keys.index(k)
+            if abs(v[k] - v[keys[i - 1]]) >= Decimal('0.5') and a['note'].get(k):
+                why = a['note'][k]
+                break
+        rows.append({'account': a['account'], 'section': section_of(a['account']), 'prior': a['prior'], 'v': v, 'changed': changed, 'why': why})
+    rows.sort(key=lambda r: (SECTIONS.index(r['section']), r['account'].code))
+    return keys, rows
