@@ -211,3 +211,253 @@ class BudgetScreenTests(TestCase):
         self.client.force_login(User.objects.create_user('staffer', password='pw12345678'))
         r = self.client.get(reverse('accounting:budgets'))
         self.assertNotEqual(r.status_code, 200)
+
+
+from . import bankrec
+from .models import Account, BankAccount, BankLine, BankStatement, JournalEntry, ReconMatch
+
+
+def bank_for(prop):
+    return BankAccount.objects.create(association=prop, name='Operating', bank_name='Truist', last4='4465', account=ledger.account(prop, '1110'))
+
+
+def cash_entry(prop, day, amount, other_code='4700'):
+    """A deposit (positive) or a payment (negative) on the bank account."""
+    a = D(abs(amount))
+    other = ledger.account(prop, other_code)
+    cash = {'account': ledger.account(prop, '1110'), 'debit': a if amount > 0 else D(0), 'credit': D(0) if amount > 0 else a}
+    oth = {'account': other, 'debit': D(0) if amount > 0 else a, 'credit': a if amount > 0 else D(0)}
+    return ledger.post_entry(prop, day, [cash, oth], memo='test')
+
+
+MARCH = date(2026, 3, 1)
+
+
+class ClearSelectedTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.bank = bank_for(self.prop)
+        self.deposit = cash_entry(self.prop, date(2026, 3, 5), 1845)
+        self.returned = cash_entry(self.prop, date(2026, 3, 20), -1845)
+
+    def keys(self):
+        return [it.key for it in bankrec.ledger_items(self.bank, MARCH)]
+
+    def test_nothing_clears_by_itself(self):
+        self.assertEqual(len(self.keys()), 2)
+        self.assertEqual(bankrec.auto_match(self.bank, MARCH), 0)
+        self.assertEqual(len(self.keys()), 2)
+
+    def test_a_deposit_and_its_returned_item_clear_against_each_other(self):
+        m = bankrec.clear_selected(self.bank, MARCH, [], self.keys(), note='returned ACH')
+        self.assertEqual((m.how, m.note, m.bank_lines.count(), m.ledger_items.count()), ('cleared by hand', 'returned ACH', 0, 2))
+        self.assertEqual(self.keys(), [])
+        bankrec.unmatch(m)
+        self.assertEqual(len(self.keys()), 2)
+
+    def test_one_alone_needs_an_account_for_the_difference(self):
+        key = next(k for k in self.keys() if bankrec._item_from_key(self.bank, MARCH, k).amount > 0)
+        with self.assertRaises(bankrec.StatementError):
+            bankrec.clear_selected(self.bank, MARCH, [], [key])
+        self.assertEqual(len(self.keys()), 2)
+
+    def test_old_difference_is_posted_and_cleared(self):
+        old = cash_entry(self.prop, date(2026, 2, 10), -5.81, '6880')       # an old item the bank never had
+        key = f'L{old.lines.get(account__code="1110").pk}'
+        misc = ledger.account(self.prop, '6880')
+        entries_before = JournalEntry.objects.count()
+        m = bankrec.clear_selected(self.bank, MARCH, [], [key], account=misc, day=date(2026, 3, 31), memo='Reconciling difference')
+        self.assertEqual(m.how, 'difference posted')
+        self.assertEqual(JournalEntry.objects.count(), entries_before + 1)
+        made = JournalEntry.objects.order_by('-number').first()
+        self.assertEqual(made.date, date(2026, 3, 31))
+        self.assertEqual(made.memo, 'Reconciling difference')
+        self.assertEqual(sum(l.debit - l.credit for l in made.lines.filter(account__code='1110')), D('5.81'))     # cash up by the 5.81 the old item took out
+        self.assertNotIn(key, self.keys())
+
+    def test_date_after_the_month_is_refused(self):
+        old = cash_entry(self.prop, date(2026, 2, 10), -5.81, '6880')
+        key = f'L{old.lines.get(account__code="1110").pk}'
+        with self.assertRaises(bankrec.StatementError):
+            bankrec.clear_selected(self.bank, MARCH, [], [key], account=ledger.account(self.prop, '6880'), day=date(2026, 4, 2))
+
+    def test_bank_line_and_item_that_agree_are_cleared(self):
+        st = BankStatement.objects.create(bank_account=self.bank, period_end=date(2026, 3, 31), end_balance=D('0'))
+        bl = BankLine.objects.create(statement=st, date=date(2026, 3, 6), description='DEPOSIT', amount=D('1845'), kind='deposit')
+        dep_key = next(k for k in self.keys() if bankrec._item_from_key(self.bank, MARCH, k).amount > 0)
+        m = bankrec.clear_selected(self.bank, MARCH, [bl.pk], [dep_key])
+        self.assertEqual(m.bank_lines.count(), 1)
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class ClearSelectedScreenTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.bank = bank_for(self.prop)
+        cash_entry(self.prop, date(2026, 3, 5), 1845)
+        cash_entry(self.prop, date(2026, 3, 20), -1845)
+        BankStatement.objects.create(bank_account=self.bank, period_end=date(2026, 3, 31), end_balance=D('0'))
+        User = get_user_model()
+        self.client.force_login(User.objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:bank', args=[self.prop.pk, self.bank.pk, '2026-03'])
+
+    def test_page_has_tick_boxes_the_clear_bar_and_the_account_picker(self):
+        r = self.client.get(self.url)
+        self.assertContains(r, 'name="item"')
+        self.assertContains(r, 'id="clear-form"')
+        self.assertContains(r, 'ac-pick')
+        self.assertContains(r, 'drag the file')
+
+    def test_clearing_from_the_page_then_it_shows_as_matched(self):
+        keys = [it.key for it in bankrec.ledger_items(self.bank, MARCH)]
+        self.client.post(self.url, {'action': 'clear_selected', 'item': keys, 'note': 'returned ACH'})
+        self.assertEqual(ReconMatch.objects.count(), 1)
+        r = self.client.get(self.url)
+        self.assertContains(r, 'Cleared against each other')
+        self.assertContains(r, 'returned ACH')
+
+    def test_difference_without_an_account_is_refused(self):
+        keys = [it.key for it in bankrec.ledger_items(self.bank, MARCH)][:1]
+        r = self.client.post(self.url, {'action': 'clear_selected', 'item': keys}, follow=True)
+        self.assertContains(r, 'apart')
+        self.assertEqual(ReconMatch.objects.count(), 0)
+
+
+from . import reporting
+
+
+def cash_in(prop, day, amount, income_code='4500'):
+    a = D(str(amount))
+    return ledger.post_entry(prop, day, [{'account': ledger.account(prop, '1110'), 'debit': a, 'credit': D(0)}, {'account': ledger.account(prop, income_code), 'debit': D(0), 'credit': a}], memo='in')
+
+
+def cash_out(prop, day, amount, expense_code):
+    a = D(str(amount))
+    return ledger.post_entry(prop, day, [{'account': ledger.account(prop, expense_code), 'debit': a, 'credit': D(0)}, {'account': ledger.account(prop, '1110'), 'debit': D(0), 'credit': a}], memo='out')
+
+
+def flat(st):
+    """Every printed row label and its values, in order."""
+    rows = []
+    for b in st['blocks']:
+        rows.append(('block', b['title']))
+        for g in b['groups']:
+            if b['show_group_titles']:
+                rows.append(('group', g['title']))
+            for l in g['lines']:
+                rows.append(('line', l['label'], [v['t'] for v in l['values']]))
+            if g['show_total']:
+                rows.append(('subtotal', g['total_label'], [v['t'] for v in g['values']]))
+        if b['show_total']:
+            rows.append(('total', b['total_label'], [v['t'] for v in b['values']]))
+    for f in st['finals']:
+        rows.append(('final', f['label'], [v['t'] for v in f['values']]))
+    return rows
+
+
+class StatementTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        cash_in(self.prop, date(2026, 9, 5), '1000.62')
+        cash_in(self.prop, date(2026, 10, 5), '2000.82')
+        cash_out(self.prop, date(2026, 10, 9), '300.10', '6820')
+        cash_out(self.prop, date(2026, 10, 12), '50.00', '6510')
+
+    def test_balance_sheet_balances_to_the_cent_and_has_totals(self):
+        st = reporting.balance_sheet(self.prop, date(2026, 10, 31))
+        self.assertTrue(st['balanced'])
+        rows = flat(st)
+        labels = [r[1] for r in rows]
+        self.assertIn('Total liabilities and funds', labels)
+        self.assertNotIn('Out of balance', labels)
+        final = next(r for r in rows if r[0] == 'final')
+        self.assertEqual(final[2][0], '2,651.34')       # cents kept: 1,000.62 + 2,000.82 - 300.10 - 50.00
+        self.assertEqual(final[2][1], '1,000.62')       # a month earlier
+        self.assertEqual(final[2][2], '1,650.72')       # the change
+
+    def test_a_section_with_one_line_gets_no_total(self):
+        st = reporting.balance_sheet(self.prop, date(2026, 10, 31))
+        labels = [r[1] for r in flat(st)]
+        self.assertIn('Operating Cash', labels)
+        self.assertNotIn('Total assets', labels)         # cash is the only asset: the line already says it
+        self.assertNotIn('Total cash', labels)
+
+    def test_more_than_one_line_gets_a_total(self):
+        ledger.post_entry(self.prop, date(2026, 10, 20), [{'account': ledger.account(self.prop, '1891'), 'debit': D('10'), 'credit': D(0)}, {'account': ledger.account(self.prop, '1110'), 'debit': D(0), 'credit': D('10')}])
+        st = reporting.balance_sheet(self.prop, date(2026, 10, 31))
+        rows = flat(st)
+        self.assertIn('Total assets', [r[1] for r in rows])
+        self.assertEqual(next(r for r in rows if r[1] == 'Total assets')[2][0], '2,651.34')
+
+    def test_balance_sheet_months_view(self):
+        st = reporting.balance_sheet(self.prop, date(2026, 10, 31), view='months')
+        self.assertEqual(len(st['columns']), 10)         # January through October, no change column
+        self.assertEqual(st['columns'][-1]['label'], 'Oct 2026')
+
+    def test_profit_and_loss(self):
+        st = reporting.profit_and_loss(self.prop, date(2026, 10, 31))
+        rows = flat(st)
+        by = {r[1]: r for r in rows if len(r) > 2}
+        self.assertEqual(by['Fees - Residential'][2], ['2,000.82', '1,000.62', '3,001.44'])        # this month, last month, year to date
+        self.assertEqual(by['Total expenses'][2], ['350.10', '–', '350.10'])
+        self.assertEqual(by['Net income'][2], ['1,650.72', '1,000.62', '2,651.34'])
+        self.assertNotIn('Total income', [r[1] for r in rows])        # one income line: no total of the same number
+        self.assertEqual(len(reporting.profit_and_loss(self.prop, date(2026, 10, 31), view='months')['columns']), 11)
+
+    def test_budget_vs_actual(self):
+        bud = Budget.objects.create(association=self.prop, year=2026)
+        BudgetLine.objects.create(budget=bud, account=ledger.account(self.prop, '6820'), annual_amount=D('3600'))
+        BudgetLine.objects.create(budget=bud, account=ledger.account(self.prop, '4500'), annual_amount=D('24000'))
+        st = reporting.budget_vs_actual(self.prop, date(2026, 10, 31))
+        self.assertTrue(st['has_budget'])
+        by = {r[1]: r for r in flat(st) if len(r) > 2}
+        mgmt = by['Management Fees'][2]
+        self.assertEqual(mgmt[0], '300')               # month actual (whole dollars)
+        self.assertEqual(mgmt[1], '300')               # 3,600 / 12
+        self.assertEqual(mgmt[4], '3,000')             # year to date budget: 10 months
+        self.assertEqual(mgmt[7], '3,600')             # annual
+        self.assertEqual(mgmt[8], '3,300')             # remaining
+
+    def test_budget_vs_actual_without_a_budget_says_so(self):
+        self.assertFalse(reporting.budget_vs_actual(self.prop, date(2026, 10, 31))['has_budget'])
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class ReportScreenTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        cash_in(self.prop, date(2026, 10, 5), '2000.82')
+        cash_out(self.prop, date(2026, 10, 9), '300.10', '6820')
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+
+    def test_every_report_opens(self):
+        for name in ('report_bs', 'report_pl', 'report_bva', 'report_tb', 'report_is', 'report_aging', 'report_payables', 'report_checks', 'report_gl', 'reports'):
+            r = self.client.get(reverse(f'accounting:{name}', args=[self.prop.pk]) + '?end=2026-10-31')
+            self.assertEqual(r.status_code, 200, name)
+
+    def test_views_and_totals_show(self):
+        url = reverse('accounting:report_bs', args=[self.prop.pk])
+        self.assertContains(self.client.get(url + '?end=2026-10-31&view=year'), 'Total liabilities and funds')
+        self.assertContains(self.client.get(url + '?end=2026-10-31&view=months'), 'Oct 2026')
+        self.assertContains(self.client.get(reverse('accounting:report_pl', args=[self.prop.pk]) + '?end=2026-10-31'), 'Net income')
+        self.assertContains(self.client.get(reverse('accounting:report_bva', args=[self.prop.pk]) + '?end=2026-10-31'), 'No budget is loaded for 2026')
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class SettingsCardTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+
+    def test_where_things_stand_has_no_financials_row_and_open_goes_to_a_card(self):
+        r = self.client.get(reverse('accounting:settings', args=[self.prop.pk]))
+        html = r.content.decode()
+        card = html[html.index('Where things stand'):html.index('Terms and defaults')]
+        self.assertNotIn('We do the financials', card)
+        self.assertIn('#terms', card)
+        self.assertIn('#banks', card)
+        self.assertIn('id="terms"', html)
+        self.assertIn('id="banks"', html)

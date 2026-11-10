@@ -19,7 +19,7 @@
                 <div class="col-md-6"><input class="ac-optin" type="radio" id="m_share" name="method" value="share" {% if rule.method == 'share' %}checked{% endif %}><label class="ac-opt" for="m_share"><strong>Split by each unit's share</strong><br><span class="small text-muted">A total, divided by every unit's percentage</span></label></div>
             </div>
             <div class="mt-2 d-flex align-items-center gap-2"><span class="small text-muted" id="amtlab">Amount per unit</span><div class="input-group" style="max-width: 190px;"><span class="input-group-text">$</span><input class="form-control text-end" name="amount" id="amount" value="{{ rule.amount|default:'1750.00' }}" required></div></div></div>
-        <div class="col-md-6"><label class="form-label small text-muted mb-1">Income account</label><select class="form-select" name="income_account">{% for a in income_accounts %}<option value="{{ a.pk }}" {% if rule.income_account_id == a.pk or not rule and a.pk == default_income.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Income account</label><select class="form-select ac-pick" name="income_account">{% for a in income_accounts %}<option value="{{ a.pk }}" {% if rule.income_account_id == a.pk or not rule and a.pk == default_income.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
     </div>
 </div></div>
 <div class="ac-live mb-3"><div class="ac-lab">What owners will be charged</div><div class="ac-big" id="liveamt"></div><div class="small text-muted" id="livesub"></div><div id="livetable" class="mt-2"></div></div>

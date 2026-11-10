@@ -18,20 +18,21 @@
     </div>
 </div>
 
-<div class="card mb-3"><div class="card-body">
+<div class="card mb-3" id="stmt-drop"><div class="card-body">
     {% if s.statement %}
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <i data-lucide="file-text" class="icon"></i><strong>Statement ending {{ s.statement.period_end|mdate }}</strong>
         {% if s.statement.file %}<a class="small" href="{{ s.statement.file.url }}" target="_blank">open the file</a>{% endif %}
         <span class="ac-chip good">Read</span><span class="small text-muted">{{ s.bank_total }} lines, {{ s.matched_bank }} matched</span>
-        <details class="ms-auto ac-noprint"><summary class="small" style="cursor: pointer;">Replace the statement</summary>
-            <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="action" value="upload"><input type="file" name="file" class="form-control form-control-sm" style="max-width: 260px;" accept=".pdf,.csv" required>
+        <details class="ms-auto ac-noprint"><summary class="small" style="cursor: pointer;">Replace the statement <span class="text-muted">(or drag the file onto this box)</span></summary>
+            <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="action" value="upload"><input type="file" name="file" class="form-control form-control-sm" style="max-width: 260px;" accept=".pdf,.csv" required><span class="small text-muted align-self-center" id="stmt-name"></span>
                 <input class="form-control form-control-sm" style="max-width: 150px;" name="end_balance" placeholder="Ending balance"><button class="btn btn-sm btn-outline-secondary">Replace</button></form></details>
     </div>
     {% else %}
     <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="upload">
         <strong>Upload the bank statement for {{ month|date:"F Y" }}</strong>
         <input type="file" name="file" class="form-control form-control-sm" style="max-width: 280px;" accept=".pdf,.csv" required>
+        <span class="small text-muted" id="stmt-name">or drag the file onto this box</span>
         <input class="form-control form-control-sm" style="max-width: 170px;" name="end_balance" placeholder="Ending balance (if asked)">
         <button class="btn btn-sm btn-primary">Read and match</button>
         <span class="small text-muted w-100">A PDF or the bank's CSV download. Every line is read, then lined up with the books.</span>
@@ -60,7 +61,7 @@
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clock" class="icon"></i> Checks and deposits not on the statement <span class="small fw-normal text-muted">A check over 30 days old is flagged</span></h6>
     {% for r in s.rows %}
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 {% if not forloop.first %}border-top{% endif %}">
-        <div><span class="fw-semibold">{% if r.item.ref %}Check {{ r.item.ref }}{% elif r.item.amount < 0 %}Payment{% else %}Deposit{% endif %}{% if r.item.text %} &middot; {{ r.item.text|truncatechars:48 }}{% endif %}</span>
+        <div><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="item" value="{{ r.item.key }}" data-amt="{{ r.item.amount }}" data-side="item" aria-label="Select this item"><span class="fw-semibold">{% if r.item.ref %}Check {{ r.item.ref }}{% elif r.item.amount < 0 %}Payment{% else %}Deposit{% endif %}{% if r.item.text %} &middot; {{ r.item.text|truncatechars:48 }}{% endif %}</span>
             <span class="ac-chip {% if r.stale %}warn{% endif %}">{{ r.item.date|mdate }}, {{ r.age }} day{{ r.age|pluralize }}</span>{% if r.stale %} <span class="ac-chip warn">Over 30 days: worth a call</span>{% endif %}</div>
         <div class="d-flex align-items-center gap-2"><span class="fw-semibold ac-num">{{ r.item.amount|money }}</span>
             <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="item" value="{{ r.item.key }}">
@@ -78,25 +79,90 @@
         <a class="btn btn-sm btn-primary" href="{{ deposits_url }}">Sort the deposits &rarr;</a></div>{% endif %}
     {% for b in s.unmatched_bank %}
     <div class="py-2 {% if not forloop.first %}border-top{% endif %}">
-        <div class="d-flex justify-content-between flex-wrap gap-2"><span>{{ b.date|mdate }} &middot; {{ b.description }}</span><span class="fw-semibold ac-num">{{ b.amount|money }}</span></div>
+        <div class="d-flex justify-content-between flex-wrap gap-2"><span><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="bank_line" value="{{ b.pk }}" data-amt="{{ b.amount }}" data-side="bank" aria-label="Select this bank line">{{ b.date|mdate }} &middot; {{ b.description }}</span><span class="fw-semibold ac-num">{{ b.amount|money }}</span></div>
         <div class="d-flex gap-2 flex-wrap mt-1 ac-noprint">
             <form method="post" class="d-flex gap-1 flex-wrap">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
-                <select class="form-select form-select-sm" name="account" style="max-width: 230px;" required><option value="">Add to the books as...</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}">{{ a }}</option>{% endif %}{% endfor %}</select>
+                <select class="form-select form-select-sm ac-pick" name="account" style="max-width: 230px;" required><option value="">Add to the books as...</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}">{{ a }}</option>{% endif %}{% endfor %}</select>
                 <input class="form-control form-control-sm" style="max-width: 160px;" name="vendor" placeholder="Paid to (optional)"><button class="btn btn-sm btn-outline-secondary">Add</button></form>
             {% if b.amount > 0 %}<form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="action" value="owner_payment"><input type="hidden" name="bank_line" value="{{ b.pk }}">
                 <select class="form-select form-select-sm" name="unit" style="max-width: 160px;" required><option value="">An owner's payment: unit...</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select><button class="btn btn-sm btn-outline-secondary">Record</button></form><a class="btn btn-sm btn-outline-secondary" href="{{ deposits_url }}?open={{ b.pk }}">Break it out</a>{% endif %}
         </div>
     </div>
     {% endfor %}
-    {% if s.unmatched_bank|length > 1 or s.rows %}
-    <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Match several by hand</summary>
-        <form method="post" class="mt-2">{% csrf_token %}<input type="hidden" name="action" value="match_manual">
-            <div class="row"><div class="col-md-6"><div class="ac-lab mb-1">Bank lines</div>{% for b in s.unmatched_bank %}<label class="d-block small"><input type="checkbox" name="bank_line" value="{{ b.pk }}"> {{ b.date|mdate:'short' }} {{ b.description|truncatechars:34 }} {{ b.amount|money }}</label>{% endfor %}</div>
-                <div class="col-md-6"><div class="ac-lab mb-1">Ledger items</div>{% for r in s.rows %}<label class="d-block small"><input type="checkbox" name="item" value="{{ r.item.key }}"> {{ r.item.date|mdate:'short' }} {{ r.item.text|truncatechars:30 }} {{ r.item.amount|money }}</label>{% endfor %}</div></div>
-            <button class="btn btn-sm btn-outline-secondary mt-2">Match the ones I ticked</button></form></details>
-    {% endif %}
 </div></div>
 {% endif %}
+
+<form method="post" id="clear-form" class="ac-clearbar ac-noprint" hidden>{% csrf_token %}<input type="hidden" name="action" value="clear_selected">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="fw-semibold" id="clr-sum"></span>
+        <span class="small" id="clr-msg"></span>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+        <div id="clr-post" class="d-flex flex-wrap gap-2 align-items-center" hidden>
+            <div style="width: 250px;"><select class="form-select form-select-sm ac-pick" name="account" disabled><option value="">Post the difference to...</option>{% for a in accounts %}{% if a.pk != bank.account_id %}<option value="{{ a.pk }}">{{ a }}</option>{% endif %}{% endfor %}</select></div>
+            <label class="small text-muted mb-0">Date</label><input type="date" class="form-control form-control-sm" style="width: 150px;" name="date" value="{{ month_end|date:'Y-m-d' }}" max="{{ month_end|date:'Y-m-d' }}" disabled>
+            <input class="form-control form-control-sm" style="width: 190px;" name="memo" placeholder="Reconciling difference" disabled>
+        </div>
+        <input class="form-control form-control-sm" style="width: 200px;" name="note" placeholder="Note (optional)">
+        <button class="btn btn-sm btn-primary" id="clr-btn">Clear selected</button>
+        <button type="button" class="btn btn-sm btn-link text-muted" id="clr-none">Untick all</button>
+    </div>
+</form>
+<script>
+(function () {
+    var form = document.getElementById('clear-form');
+    if (!form) return;
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('input.clr'));
+    var post = document.getElementById('clr-post'), btn = document.getElementById('clr-btn');
+    function cents(el) { return Math.round(parseFloat(el.dataset.amt) * 100); }
+    function usd(c) { return (c < 0 ? '-' : '') + '$' + (Math.abs(c) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+    function refresh() {
+        var on = boxes.filter(function (b) { return b.checked; });
+        form.hidden = on.length === 0;
+        if (!on.length) return;
+        var bank = 0, books = 0;
+        on.forEach(function (b) { if (b.dataset.side === 'bank') bank += cents(b); else books += cents(b); });
+        var diff = bank - books;
+        document.getElementById('clr-sum').textContent = on.length + ' ticked' + (on.some(function (b) { return b.dataset.side === 'bank'; }) ? ' · statement ' + usd(bank) : '') + (on.some(function (b) { return b.dataset.side === 'item'; }) ? ' · books ' + usd(books) : '');
+        var msg = document.getElementById('clr-msg');
+        if (diff === 0) { msg.textContent = 'These add up. Nothing to post: they will be marked cleared.'; msg.style.color = '#0b6a0b'; }
+        else { msg.textContent = 'Difference ' + usd(diff) + '. Choose the account to post it to, and the date.'; msg.style.color = '#8a5a00'; }
+        post.hidden = diff === 0;
+        Array.prototype.forEach.call(post.querySelectorAll('select, input'), function (el) { el.disabled = diff === 0; });
+        var sel = post.querySelector('select');
+        sel.required = false;
+        btn.textContent = diff === 0 ? 'Clear selected' : 'Post the difference and clear';
+    }
+    boxes.forEach(function (b) { b.addEventListener('change', refresh); });
+    document.getElementById('clr-none').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = false; }); refresh(); });
+    form.addEventListener('submit', function (e) {
+        var sel = post.querySelector('select');
+        if (!post.hidden && sel && sel.value === '') { e.preventDefault(); var inp = post.querySelector('input[type=text]'); if (inp) inp.focus(); alert('Choose the account to post the difference to.'); }
+    });
+    refresh();
+})();
+(function () {
+    var card = document.getElementById('stmt-drop');
+    if (!card) return;
+    var input = card.querySelector('input[type=file]');
+    if (!input) return;
+    function over(e) { if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1) { e.preventDefault(); card.classList.add('ac-drop'); } }
+    ['dragenter', 'dragover'].forEach(function (n) { document.addEventListener(n, over); });
+    document.addEventListener('dragleave', function (e) { if (e.target === document.documentElement || !e.relatedTarget) card.classList.remove('ac-drop'); });
+    document.addEventListener('drop', function (e) {
+        card.classList.remove('ac-drop');
+        if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+        e.preventDefault();
+        var d = card.querySelector('details');
+        if (d) d.open = true;
+        input.files = e.dataTransfer.files;
+        var nm = document.getElementById('stmt-name');
+        if (nm) nm.textContent = input.files[0].name;
+        input.dispatchEvent(new Event('change', {bubbles: true}));
+        input.scrollIntoView({block: 'center'});
+    });
+})();
+</script>
 
 <div class="d-flex flex-wrap gap-2 mb-3 ac-noprint">
     <form method="post" class="d-flex gap-2">{% csrf_token %}
@@ -109,7 +175,7 @@
 <div class="ac-lab mb-2">Matched <span class="text-muted text-lowercase fw-normal">{{ s.matched_bank }} of {{ s.bank_total }} statement lines</span></div>
 {% for m in s.matches %}
 <details class="card mb-1"><summary class="card-body py-2 d-flex align-items-center gap-2 flex-wrap" style="cursor: pointer; list-style: none;">
-    <span class="fw-semibold">{% for b in m.bank_lines.all|slice:":2" %}{{ b.description|truncatechars:40 }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if m.bank_lines.all|length > 2 %} and {{ m.bank_lines.all|length|add:"-2" }} more{% endif %}</span>
+    <span class="fw-semibold">{% for b in m.bank_lines.all|slice:":2" %}{{ b.description|truncatechars:40 }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if m.bank_lines.all|length > 2 %} and {{ m.bank_lines.all|length|add:"-2" }} more{% endif %}{% if not m.bank_lines.all %}Cleared against each other: {{ m.ledger_items.all|length }} items{% endif %}</span>{% if m.note %}<span class="small text-muted">{{ m.note }}</span>{% endif %}
     <span class="ac-chip {% if m.how == 'amount and date' %}{% else %}good{% endif %}">{{ m.how|capfirst }}</span>
     <span class="ms-auto fw-semibold ac-num">{{ m.total|money }}</span>
 </summary><div class="card-body pt-0"><table class="table table-sm ac-table mb-1"><thead><tr><th>Bank</th><th class="ac-num"></th><th>Books</th></tr></thead><tbody>

@@ -2003,6 +2003,9 @@ def checklist_custom_items(request):
     return render(request, 'onsite/checklist_custom_items.html', {'rows': rows})
 
 
+UNSUBMITTED_LOOKBACK_DAYS = 30
+
+
 @login_required
 def cleaning_payments(request):
     """Admin-only: what we still owe for completed internal-cleaner
@@ -2108,6 +2111,28 @@ def cleaning_payments(request):
         else:
             bucket['total'] += amount
 
+    # Cleanings we scheduled a cleaner for that are past their date but were
+    # never submitted. Shown (bold, unpayable, no amount) so a missed
+    # submission is noticed instead of silently going unpaid.
+    today = timezone.localdate()
+    unsubmitted_visits = (
+        Visit.objects.filter(
+            assigned_staff__role=StaffProfile.Role.CLEANER,
+            status__in=[Visit.Status.SCHEDULED, Visit.Status.IN_PROGRESS],
+            scheduled_date__lt=today,
+            scheduled_date__gte=today - timedelta(days=UNSUBMITTED_LOOKBACK_DAYS),
+        )
+        .select_related('property', 'unit', 'assigned_staff__user', 'visit_type')
+        .order_by('scheduled_date')
+    )
+    unsubmitted_count = 0
+    for visit in unsubmitted_visits:
+        bucket = by_staff.setdefault(
+            visit.assigned_staff_id, {'staff': visit.assigned_staff, 'rows': [], 'total': Decimal('0')},
+        )
+        bucket.setdefault('unsubmitted', []).append(visit)
+        unsubmitted_count += 1
+
     cleaner_rows = sorted(by_staff.values(), key=lambda b: str(b['staff']))
     recent_batches = CleaningPaymentBatch.objects.select_related('paid_by').prefetch_related(
         Prefetch(
@@ -2119,6 +2144,7 @@ def cleaning_payments(request):
 
     return render(request, 'onsite/cleaning_payments.html', {
         'cleaner_rows': cleaner_rows, 'unpriced_count': unpriced_count,
+        'unsubmitted_count': unsubmitted_count, 'lookback_days': UNSUBMITTED_LOOKBACK_DAYS,
         'visit_count': len(unpaid_visits), 'recent_batches': recent_batches,
         'hourly_rate': CleaningPricingSettings.get().hourly_rate,
     })

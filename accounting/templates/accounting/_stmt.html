@@ -1,0 +1,16 @@
+{# One statement table: st.columns, st.blocks, st.finals. See reporting.py #}
+<div class="rp-wrap"><table class="rp">
+<thead><tr><th></th>{% for c in st.columns %}<th>{{ c.label }}{% if c.sub %}<small>{{ c.sub }}</small>{% endif %}</th>{% endfor %}</tr></thead>
+<tbody>
+{% for b in st.blocks %}
+<tr class="rp-h1"><td colspan="{{ st.columns|length|add:1 }}">{{ b.title }}</td></tr>
+{% for g in b.groups %}
+{% if b.show_group_titles %}<tr class="rp-h2"><td colspan="{{ st.columns|length|add:1 }}">{{ g.title }}</td></tr>{% endif %}
+{% for l in g.lines %}<tr class="ln{% if not b.show_group_titles %} flat{% endif %}"><td>{% if l.code %}<span class="code">{{ l.code }}</span>{% endif %}{{ l.label }}</td>{% for v in l.values %}<td class="num{% if v.neg %} neg{% endif %}">{{ v.t }}</td>{% endfor %}</tr>{% endfor %}
+{% if g.show_total %}<tr class="sub"><td>{{ g.total_label }}</td>{% for v in g.values %}<td class="num{% if v.neg %} neg{% endif %}">{{ v.t }}</td>{% endfor %}</tr>{% endif %}
+{% endfor %}
+{% if b.show_total %}<tr class="tot"><td>{{ b.total_label }}</td>{% for v in b.values %}<td class="num{% if v.neg %} neg{% endif %}">{{ v.t }}</td>{% endfor %}</tr>{% endif %}
+{% endfor %}
+{% for f in st.finals %}<tr class="{{ f.style }}"><td>{{ f.label }}</td>{% for v in f.values %}<td class="num{% if v.neg and f.style != 'warn' %} neg{% endif %}">{{ v.t }}</td>{% endfor %}</tr>{% endfor %}
+</tbody></table></div>
+{% for n in st.notes %}<p class="small text-muted mt-2 mb-0">{{ n }}</p>{% endfor %}

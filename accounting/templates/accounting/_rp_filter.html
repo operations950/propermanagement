@@ -1,0 +1,6 @@
+<form method="get" class="rp-bar ac-noprint">
+    <div><label>{% if range_start %}From{% else %}As of{% endif %}</label><input class="form-control form-control-sm" type="date" name="end" value="{{ end|date:'Y-m-d' }}" style="width: 150px;"></div>
+    {% if views %}<div><label>Show</label><select class="form-select form-select-sm" name="view">{% for v, l in views %}<option value="{{ v }}" {% if v == view %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>{% endif %}
+    <div class="ac-pills"><span><input type="radio" id="ba" name="basis" value="accrual" {% if basis == 'accrual' %}checked{% endif %}><label for="ba" style="font-size: 0.85rem; color: inherit;">Accrual</label></span><span><input type="radio" id="bc" name="basis" value="cash" {% if basis == 'cash' %}checked{% endif %}><label for="bc" style="font-size: 0.85rem; color: inherit;">Cash</label></span></div>
+    <button class="btn btn-sm btn-outline-secondary">Show</button><button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button>
+</form>

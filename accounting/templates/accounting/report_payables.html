@@ -5,7 +5,7 @@
 <h2 class="page-title fs-4 mb-0">Payables aging</h2>
 <div class="text-muted mb-2">{{ assoc.name }} &middot; what we owe vendors as of {{ end|mdate }}</div>
 {% include 'accounting/_report_filter.html' %}
-<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+<div class="rp-wrap"><div class="p-0"><table class="table table-sm ac-table rp mb-0">
     <thead><tr><th>Vendor</th><th>Invoice</th><th>Date</th>{% for b in ag.labels %}<th class="ac-num">{{ b }}</th>{% endfor %}<th class="ac-num">Owed</th></tr></thead>
     <tbody>{% for v in ag.vendors %}
         {% for r in v.rows %}<tr><td>{% if forloop.first %}<span class="fw-semibold">{{ v.name }}</span>{% endif %}</td><td><a class="text-decoration-none" href="{% url 'accounting:bill' assoc.pk r.bill.pk %}">{{ r.bill.number|default:'(no number)' }}</a></td><td>{{ r.bill.date|mdate:'short' }}</td>{% for x in r.buckets %}<td class="ac-num">{{ x|plain_blank }}</td>{% endfor %}<td class="ac-num">{{ r.owed|plain }}</td></tr>{% endfor %}

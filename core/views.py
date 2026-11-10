@@ -1044,6 +1044,10 @@ def _property_qb_action(request, prop, action):
             messages.success(request, f"{prop.name} is now a property we only manage: it is out of the month-end close and the financial warnings.")
         else:
             messages.success(request, f"We do {prop.name}'s financials" + ('.' if prop.has_expense_account else ', with no income statement account: whatever it spends comes out of the trust account.'))
+    elif action == 'qb_set_owner_legal_name':
+        prop.owner_legal_name = ' '.join((request.POST.get('owner_legal_name') or '').split())[:200]
+        prop.save(update_fields=['owner_legal_name'])
+        messages.success(request, f'{prop.name}: we pay the owner as {prop.owner_legal_name}.' if prop.owner_legal_name else f"{prop.name}: the owner's legal name is cleared.")
     elif action == 'qb_set_owner_portal':
         opened = request.POST.get('owner_portal_open') == 'on'
         prop.owner_portal_open = opened

@@ -150,6 +150,11 @@ class Property(models.Model):
                    'keeps the figure it was closed with.',
     )
 
+    owner_legal_name = models.CharField(
+        max_length=200, blank=True,
+        help_text="The legal name we pay this rental's owner to (the person or company on the owner's W-9 and ACH form), as it must appear on the payment. "
+                  "Pay owners shows it beside the rental, and warns when it is missing.",
+    )
     owner_portal_open = models.BooleanField(
         default=False,
         help_text="The owner portal is open for this rental: its owner contacts (with an email address) can sign up and see the months you release to owners, "

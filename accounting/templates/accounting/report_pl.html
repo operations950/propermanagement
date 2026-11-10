@@ -1,0 +1,8 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Profit and loss - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="rp-title"><h2>Profit and loss</h2><span class="small text-muted">{{ assoc.name }} &middot; through {{ end|mdate }} &middot; {{ basis|capfirst }} book</span></div>
+{% include 'accounting/_rp_filter.html' %}
+{% include 'accounting/_stmt.html' %}
+{% endblock %}

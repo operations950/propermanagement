@@ -23,6 +23,7 @@ from itertools import combinations
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 
 from . import charges, ledger, payables
 from .models import (ZERO, BankAccount, BankOpeningItem, BankLine, BankStatement, Bill, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt,
@@ -284,7 +285,7 @@ def _commit(bank_account, month_first, bank_lines, items, how, auto=True, note='
     BankLine.objects.filter(pk__in=[b.pk for b in bank_lines]).update(match=m)
     for b in bank_lines:
         b.match_id = m.pk
-    first_day = min(b.date for b in bank_lines)
+    first_day = min((b.date for b in bank_lines), default=month_first)
     for it in items:
         if it.kind == 'line':
             ReconLedgerItem.objects.create(match=m, line=it.obj)
@@ -487,6 +488,40 @@ def match_manual(bank_account, month_first, bank_line_ids, item_keys, note=''):
 
 
 @transaction.atomic
+def clear_selected(bank_account, month_first, bank_line_ids, item_keys, note='', user=None, account=None, day=None, memo=''):
+    """Clear what a person ticked: bank lines and ledger items that are the same money, or that cancel each other out (a deposit and its returned item). Nothing is cleared on its own.
+    When the ticked things are not equal, the difference is posted as one journal entry to `account`, dated `day` (the end of the month by default), and cleared with them."""
+    lines = list(BankLine.objects.filter(pk__in=bank_line_ids, statement__bank_account=bank_account, match__isnull=True))
+    if len(lines) != len(set(bank_line_ids)):
+        raise StatementError('One of those bank lines is already matched. Refresh the page.')
+    items = [_item_from_key(bank_account, month_first, k) for k in item_keys]
+    if not lines and not items:
+        raise StatementError('Tick at least one thing to clear.')
+    diff = sum((l.amount for l in lines), ZERO) - sum((i.amount for i in items), ZERO)
+    how = 'cleared by hand'
+    if diff != 0:
+        if account is None:
+            raise StatementError(f'What you ticked is ${abs(diff):,.2f} apart. Choose the account to post that difference to, or tick the rest of what belongs with it.')
+        end = ledger.month_end(month_first)
+        day = day or end
+        if day > end:
+            raise StatementError(f'Date the entry on or before {end:%B} {end.day}, {end.year}, so it belongs to the month you are reconciling.')
+        amount = abs(diff)
+        text = memo or 'Reconciling difference'
+        cash = {'account': bank_account.account, 'memo': text}
+        other = {'account': account, 'memo': text}
+        if diff > 0:
+            cash['debit'], other['credit'] = amount, amount
+        else:
+            cash['credit'], other['debit'] = amount, amount
+        entry = ledger.post_entry(bank_account.association, day, [cash, other], memo=text, source=JournalEntry.Source.BANK, source_ref=f'reconciling:{month_first:%Y-%m}', user=user)
+        line = entry.lines.get(account=bank_account.account)
+        items.append(Item('line', line, entry.date, line.debit - line.credit, text=text))
+        how = 'difference posted'
+    return _commit(bank_account, month_first, lines, items, how, auto=False, note=note)
+
+
+@transaction.atomic
 def unmatch(match):
     for ri in match.ledger_items.select_related('payment', 'line'):
         if ri.opening_item_id:
@@ -633,7 +668,8 @@ def summary(bank_account, month_first):
     outstanding = [r for r in rows if r['item'].amount < 0]
     transit = [r for r in rows if r['item'].amount > 0]
     unmatched_bank = list(stmt.lines.filter(match__isnull=True)) if stmt else []
-    matches = list(ReconMatch.objects.filter(bank_account=bank_account, bank_lines__statement=stmt).distinct().prefetch_related('bank_lines', 'ledger_items__line__entry', 'ledger_items__payment')) if stmt else []
+    matches = list(ReconMatch.objects.filter(Q(bank_lines__statement=stmt) | Q(month=month_first, bank_lines__isnull=True), bank_account=bank_account).distinct()
+                   .prefetch_related('bank_lines', 'ledger_items__line__entry', 'ledger_items__payment', 'ledger_items__opening_item')) if stmt else []
     for m in matches:
         m.total = sum((b.amount for b in m.bank_lines.all()), ZERO)
     book = ledger.cash_balance(bank_account, end)

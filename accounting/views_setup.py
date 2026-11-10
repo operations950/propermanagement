@@ -24,23 +24,23 @@ def settings_rows(prop):
     shares_ok = bool(share_rows) and sum((p for u, p in share_rows), Decimal('0')) == Decimal('100')
     shares_text = ('Equal shares, %d units' % len(share_rows) if len({round(p, 5) for u, p in share_rows}) == 1 else 'Set unit by unit') if shares_ok else 'Not set'
     rows = [
-        ('We do the financials', 'On' if profile.we_do_financials else 'Off', profile.we_do_financials, 'settings'),
-        ('Fiscal year', f'{["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][profile.fiscal_year_start_month]} start', True, 'settings'),
-        ('Billing', (f'${rule.amount:,.2f} {"a unit" if rule.method == "flat" else "split by share"}, {rule.get_frequency_display().lower()}') if rule else 'No regular charge yet', bool(rule), 'charges'),
-        ('Unit shares', shares_text, shares_ok, 'shares'),
-        ('Bank accounts', ', '.join(f'{b.name} ({b.bank_name})' if b.bank_name else b.name for b in prop.bank_accounts.filter(is_active=True)) or 'None yet', prop.bank_accounts.filter(is_active=True).exists(), 'settings'),
-        ('Reserve spending', 'Always needs board approval', True, None),
-        ('Late fee and interest', 'Read from the declaration', profile.late_fee_is_set(), 'settings'),
-        ('Spending limit without the board', f'${profile.spending_limit:,.2f}' if profile.spending_limit is not None else 'Read from the management contract', profile.spending_limit is not None, 'settings'),
-        ('Management fee', f'${profile.management_fee:,.2f} a month' if profile.management_fee is not None else 'Read from the management contract', profile.management_fee is not None, 'settings'),
-        ('Check printing', 'Layout learned from your check stock' if profile.check_layout.get('learned') else ('Standard layout' if profile.check_stock else 'Upload a copy of the blank check stock'), bool(profile.check_layout.get('learned')), 'check_setup'),
+        ('We do the financials', 'On' if profile.we_do_financials else 'Off', profile.we_do_financials, None, ''),
+        ('Fiscal year', f'{["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][profile.fiscal_year_start_month]} start', True, 'settings', 'terms'),
+        ('Billing', (f'${rule.amount:,.2f} {"a unit" if rule.method == "flat" else "split by share"}, {rule.get_frequency_display().lower()}') if rule else 'No regular charge yet', bool(rule), 'charges', ''),
+        ('Unit shares', shares_text, shares_ok, 'shares', ''),
+        ('Bank accounts', ', '.join(f'{b.name} ({b.bank_name})' if b.bank_name else b.name for b in prop.bank_accounts.filter(is_active=True)) or 'None yet', prop.bank_accounts.filter(is_active=True).exists(), 'settings', 'banks'),
+        ('Reserve spending', 'Always needs board approval', True, None, ''),
+        ('Late fee and interest', 'Read from the declaration', profile.late_fee_is_set(), 'settings', 'terms'),
+        ('Spending limit without the board', f'${profile.spending_limit:,.2f}' if profile.spending_limit is not None else 'Read from the management contract', profile.spending_limit is not None, 'settings', 'terms'),
+        ('Management fee', f'${profile.management_fee:,.2f} a month' if profile.management_fee is not None else 'Read from the management contract', profile.management_fee is not None, 'settings', 'terms'),
+        ('Check printing', 'Layout learned from your check stock' if profile.check_layout.get('learned') else ('Standard layout' if profile.check_stock else 'Upload a copy of the blank check stock'), bool(profile.check_layout.get('learned')), 'check_setup', ''),
     ]
     out = []
-    for label, value, ok, url in rows:
+    for label, value, ok, url, anchor in rows:
         if label in ('Late fee and interest',) and profile.late_fee_is_set():
             fee = {'flat': f'${profile.late_fee_flat:,.2f}', 'percent': f'{profile.late_fee_percent}%', 'greater': f'${profile.late_fee_flat or 0:,.2f} or {profile.late_fee_percent}%, whichever is greater'}.get(profile.late_fee_kind, '')
             value = f'{fee}, after {profile.late_fee_grace_days or 0} days'
-        out.append({'label': label, 'value': value, 'ok': ok, 'url': _go(url, prop.pk) if url else ''})
+        out.append({'label': label, 'value': value, 'ok': ok, 'url': _go(url, prop.pk) if url else '', 'anchor': anchor, 'key': 'financials' if label == 'We do the financials' else ''})
     return out
 
 

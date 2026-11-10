@@ -2,6 +2,7 @@
 {% load acc_extras %}
 {% block acc_title %}Accounting settings - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
+<style>.card:target { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 45%, white); transition: box-shadow .3s; }</style>
 <h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="settings" class="icon-lg"></i> Accounting settings</h2>
 <p class="text-muted">{{ assoc.name }}</p>
 
@@ -14,10 +15,10 @@
 
 <div class="card mb-3"><div class="card-body">
     <h6 class="card-title">Where things stand</h6>
-    <table class="table table-sm mb-0"><tbody>{% for r in ap_rows %}<tr><td>{{ r.label }}</td><td class="text-muted">{{ r.value }}</td><td class="text-end"><span class="ac-chip {% if r.ok %}good{% else %}warn{% endif %}">{% if r.ok %}Set{% else %}Not set up{% endif %}</span></td><td class="text-end">{% if r.url %}<a class="btn btn-sm btn-outline-secondary" href="{{ r.url }}">Open</a>{% endif %}</td></tr>{% endfor %}</tbody></table>
+    <table class="table table-sm mb-0"><tbody>{% for r in ap_rows %}{% if r.key != 'financials' %}<tr><td>{{ r.label }}</td><td class="text-muted">{{ r.value }}</td><td class="text-end"><span class="ac-chip {% if r.ok %}good{% else %}warn{% endif %}">{% if r.ok %}Set{% else %}Not set up{% endif %}</span></td><td class="text-end">{% if r.url %}<a class="btn btn-sm btn-outline-secondary" href="{{ r.url }}{% if r.anchor %}#{{ r.anchor }}{% endif %}">Open</a>{% endif %}</td></tr>{% endif %}{% endfor %}</tbody></table>
 </div></div>
 
-<form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="terms">
+<form method="post" class="card mb-3" id="terms"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="terms">
     <h6 class="card-title">Terms and defaults</h6>
     <div class="row g-3">
         <div class="col-md-4"><label class="form-label small text-muted mb-1">Late fee</label><select class="form-select form-select-sm" name="late_fee_kind">
@@ -82,7 +83,7 @@
         {% for q in ap_questions %}<div class="mt-2 p-2 rounded" style="background: var(--bs-light, #f1f3f5);"><div class="small fw-semibold">{{ q.question }}</div><div class="small" style="white-space: pre-wrap;">{{ q.answer }}</div></div>{% endfor %}</div>
 </div></div>
 
-<div class="card mb-3"><div class="card-body">
+<div class="card mb-3" id="banks"><div class="card-body">
     <h6 class="card-title">Bank accounts</h6>
     <table class="table table-sm mb-2"><tbody>{% for b in banks %}<tr class="{% if not b.is_active %}text-muted{% endif %}"><td>{{ b.name }}</td><td>{{ b.bank_name }}{% if b.last4 %} ending {{ b.last4 }}{% endif %}</td><td>{{ b.get_kind_display }}</td><td>{{ b.account }}</td>
         <td class="text-end">{% if b.is_active %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="bank" value="{{ b.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="bank_off">Stop using</button></form>{% else %}<span class="ac-chip">Not in use</span>{% endif %}</td></tr>{% empty %}<tr><td class="text-muted">No bank account yet.</td></tr>{% endfor %}</tbody></table>

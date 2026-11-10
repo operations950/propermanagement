@@ -680,6 +680,16 @@
             <p class="small text-muted mb-0 mt-1">Applies to months still open; closed months keep the rate they were closed with. {% include '_tip.html' with text='A percent of each month’s income deposits (or, on net income, deposits less that month’s expenses and Owner Baseline Expenses). The owner payment is what is left after commission, reimbursable expenses and what is paid from trust.' %}</p>
         </form>
 
+        <form method="post" class="border rounded p-2 mb-3" id="owner-legal-name">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_owner_legal_name">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <label class="small fw-semibold mb-0" for="owner-legal-name-in">Pay owner to {% include '_tip.html' with text='The legal name of the person or company we pay this rental’s owner, exactly as it is on their W-9 and ACH form. Pay owners shows it beside the rental and warns when it is missing; it never blocks a payment.' %}</label>
+                <input type="text" name="owner_legal_name" id="owner-legal-name-in" class="form-control form-control-sm" style="max-width: 340px;" maxlength="200" value="{{ property.owner_legal_name }}" placeholder="Legal name on the W-9">
+                <button class="btn btn-outline-secondary btn-sm">Save</button>
+                {% if not property.owner_legal_name %}<span class="small" style="color: #8a5a00;">Not set</span>{% endif %}
+            </div>
+        </form>
+
         <form method="post" class="border rounded p-2 mb-3" id="owner-portal">
             {% csrf_token %}<input type="hidden" name="action" value="qb_set_owner_portal">
             <div class="form-check mb-1">

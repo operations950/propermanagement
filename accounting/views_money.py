@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from core.models import Contact, Unit
 
-from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, payables
+from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, payables, reporting
 from . import standard_chart as sc
 from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, JournalEntry, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
 from .web import admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month
@@ -71,6 +71,14 @@ def bank(request, pk, bank_pk, month):
             elif action == 'match_manual':
                 bankrec.match_manual(acct, first, [int(i) for i in request.POST.getlist('bank_line')], request.POST.getlist('item'))
                 messages.success(request, 'Matched.')
+            elif action == 'clear_selected':
+                account = get_object_or_404(Account, pk=request.POST.get('account'), association=prop) if request.POST.get('account') else None
+                day = parse_date(request.POST.get('date')) if (request.POST.get('date') or '').strip() else None
+                if (request.POST.get('date') or '').strip() and day is None:
+                    raise bankrec.StatementError('Type the date as month/day/year.')
+                made = bankrec.clear_selected(acct, first, [int(i) for i in request.POST.getlist('bank_line')], request.POST.getlist('item'), (request.POST.get('note') or '').strip()[:200], request.user,
+                                              account=account, day=day, memo=(request.POST.get('memo') or '').strip())
+                messages.success(request, 'Cleared.' if made.how == 'cleared by hand' else 'The difference is posted and everything you ticked is cleared.')
             elif action == 'add_to_books':
                 line = get_object_or_404(BankLine, pk=request.POST.get('bank_line'), statement__bank_account=acct)
                 account = get_object_or_404(Account, pk=request.POST.get('account'), association=prop)
@@ -570,16 +578,42 @@ def report_tb(request, pk):
     return render(request, 'accounting/report_tb.html', {'assoc': prop, 'tb': tb, 'basis': basis, 'start': start, 'end': end, 'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports'})
 
 
+def _end(request, prop):
+    return parse_date(request.GET.get('end')) or ledger.month_end(default_month())
+
+
 @admin_only
 def report_bs(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
         return redirect_to
-    start, end = _range(request, prop)
-    basis = _basis(request)
-    bs = ledger.balance_sheet(prop, end, basis)
-    order = ['Cash', 'Receivables', 'Other assets', 'Liabilities', 'Equity', 'Reserve funds']
-    return render(request, 'accounting/report_bs.html', {'assoc': prop, 'bs': bs, 'basis': basis, 'end': end, 'start': start, 'order': order, 'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports'})
+    end, basis = _end(request, prop), _basis(request)
+    view = request.GET.get('view') if request.GET.get('view') in ('compare', 'year', 'months') else 'compare'
+    st = reporting.balance_sheet(prop, end, basis, view)
+    return render(request, 'accounting/report_bs.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, 'view': view, 'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports',
+                                                         'views': [('compare', 'vs last month'), ('year', 'vs last year'), ('months', 'Month by month')]})
+
+
+@admin_only
+def report_pl(request, pk):
+    prop, redirect_to = _books(request, pk)
+    if redirect_to:
+        return redirect_to
+    end, basis = _end(request, prop), _basis(request)
+    view = request.GET.get('view') if request.GET.get('view') in ('compare', 'months') else 'compare'
+    st = reporting.profit_and_loss(prop, end, basis, view)
+    return render(request, 'accounting/report_pl.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, 'view': view, 'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports',
+                                                         'views': [('compare', 'This month, last month, year to date'), ('months', 'Month by month')]})
+
+
+@admin_only
+def report_bva(request, pk):
+    prop, redirect_to = _books(request, pk)
+    if redirect_to:
+        return redirect_to
+    end, basis = _end(request, prop), _basis(request)
+    st = reporting.budget_vs_actual(prop, end, basis)
+    return render(request, 'accounting/report_bva.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, 'acc_back': _go('reports', prop.pk), 'acc_back_label': 'Reports'})
 
 
 @admin_only

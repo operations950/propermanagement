@@ -42,7 +42,7 @@
             {% for r in b.rows %}
             <tr>
                 <td>{% if r.state == 'payable' %}<input type="checkbox" class="form-check-input" name="pick" value="{{ r.property.pk }}" data-pick aria-label="Pay {{ r.property.name }}">{% endif %}</td>
-                <td class="fw-semibold">{{ r.property.name }}</td>
+                <td class="fw-semibold">{{ r.property.name }}{% if b.owner %}<div class="small fw-normal {% if not r.property.owner_legal_name %}text-warning-emphasis{% else %}text-muted{% endif %}">{% if r.property.owner_legal_name %}Pay to {{ r.property.owner_legal_name }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#owner-legal-name" class="text-decoration-none" style="color: #8a5a00;">No legal name set</a>{% endif %}</div>{% endif %}</td>
                 <td class="num">
                     {% if r.state == 'payable' %}<input type="text" inputmode="decimal" class="form-control form-control-sm text-end d-inline-block" style="width: 8rem;" name="amount_{{ r.property.pk }}" value="{{ r.amount }}" data-amount data-pid="{{ r.property.pk }}" aria-label="Amount for {{ r.property.name }}">
                     {% elif r.state == 'not_closed' or r.state == 'no_figures' %}<span class="text-muted">&mdash;</span>

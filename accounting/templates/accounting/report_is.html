@@ -5,7 +5,7 @@
 <h2 class="page-title fs-4 mb-0">{% if has_budget %}Income vs budget{% else %}Income and expenses{% endif %}</h2>
 <div class="text-muted mb-2">{{ assoc.name }} &middot; {{ start|mdate }} to {{ end|mdate }} &middot; {{ basis|capfirst }} book</div>
 {% include 'accounting/_report_filter.html' with show_start=True %}
-<div class="card"><div class="card-body p-2"><table class="table table-sm ac-table mb-0">
+<div class="rp-wrap"><div class="p-0"><table class="table table-sm ac-table rp mb-0">
     <thead><tr><th></th><th class="ac-num">Actual</th>{% if has_budget %}<th class="ac-num">Budget</th><th class="ac-num">Over (+) / under (-)</th>{% endif %}</tr></thead>
     <tr><th colspan="4" class="pt-2">Income</th></tr>
     {% for r in inc.income %}<tr><td>{{ r.account.code }} {{ r.account.name }}</td><td class="ac-num">{{ r.amount|plain }}</td>{% if has_budget %}<td class="ac-num">{{ r.budget|default_if_none:""|plain }}</td><td class="ac-num">{{ r.variance|default_if_none:""|plain }}</td>{% endif %}</tr>{% endfor %}

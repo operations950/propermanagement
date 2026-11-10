@@ -27,6 +27,13 @@
 </div>
 {% endif %}
 
+{% if unsubmitted_count %}
+<div class="alert alert-danger small d-flex align-items-center gap-2">
+    <i data-lucide="alert-octagon" class="icon flex-shrink-0"></i>
+    <strong>{{ unsubmitted_count }} scheduled cleaning{{ unsubmitted_count|pluralize }} never submitted</strong> in the last {{ lookback_days }} days — shown in red below. We can't pay for {{ unsubmitted_count|pluralize:"it,them" }} until {{ unsubmitted_count|pluralize:"it is,they are" }} submitted or cancelled.
+</div>
+{% endif %}
+
 <form method="post" id="mark-paid-form">
     {% csrf_token %}
     <input type="hidden" name="action" value="mark_paid">
@@ -39,12 +46,27 @@
                     <input type="checkbox" class="form-check-input select-all" data-staff="{{ row.staff.pk }}" title="Select all of {{ row.staff }}'s unpaid cleanings">
                     {{ row.staff }}
                 </h6>
-                <span class="small" style="color: var(--ink-muted);">{{ row.rows|length }} unpaid — ${{ row.total|floatformat:2 }} owed</span>
+                <span class="small" style="color: var(--ink-muted);">
+                    {% if row.unsubmitted %}<span class="badge bg-danger me-1">{{ row.unsubmitted|length }} unsubmitted</span>{% endif %}
+                    {{ row.rows|length }} unpaid — ${{ row.total|floatformat:2 }} owed
+                </span>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0">
                     <thead><tr><th></th><th>Date</th><th>Property</th><th>Type</th><th class="text-end">Est.</th><th class="text-end">Amount</th></tr></thead>
                     <tbody>
+                    {% for v in row.unsubmitted %}
+                    <tr class="table-danger fw-bold">
+                        <td><input type="checkbox" class="form-check-input" disabled title="Not submitted — can't be paid until it is"></td>
+                        <td class="small">{{ v.scheduled_date|date:"M j" }}</td>
+                        <td class="small">
+                            <a href="{% url 'onsite_visit_detail' v.pk %}" class="text-decoration-none text-danger">{{ v.property.name }}{% if v.unit %} — {{ v.unit.label }}{% endif %}</a>
+                        </td>
+                        <td class="small">{{ v.visit_type.name }}</td>
+                        <td></td>
+                        <td class="text-end small"><span class="badge bg-danger">Unsubmitted</span></td>
+                    </tr>
+                    {% endfor %}
                     {% for r in row.rows %}
                     <tr>
                         <td>

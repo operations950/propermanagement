@@ -1,0 +1,9 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Budget vs actual - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="rp-title"><h2>Budget vs actual</h2><span class="small text-muted">{{ assoc.name }} &middot; {{ st.year }} budget &middot; through {{ end|mdate }} &middot; {{ basis|capfirst }} book</span></div>
+{% include 'accounting/_rp_filter.html' %}
+{% if not st.has_budget %}<div class="ac-strip small mb-2">No budget is loaded for {{ st.year }}, so the budget columns are empty. <a href="{% url 'accounting:budgets' %}?year={{ st.year }}">Open the budgets</a> to load or build it.</div>{% endif %}
+{% include 'accounting/_stmt.html' %}
+{% endblock %}

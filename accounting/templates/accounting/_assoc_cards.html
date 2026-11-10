@@ -39,7 +39,7 @@
 <section id="settings" class="card mb-3"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="settings" class="icon"></i> Accounting settings <span class="ac-tag">New</span><span class="ms-auto small fw-normal text-muted">The daily work is under the Accounting button above</span></h6>
     <table class="table table-sm mb-0"><tbody>{% for r in ap_rows %}<tr><td>{{ r.label }}</td><td class="text-muted small">{{ r.value }}</td><td class="text-end"><span class="ac-chip {% if r.ok %}good{% else %}warn{% endif %}">{% if r.ok %}Set{% else %}Not set up{% endif %}</span></td>
-        <td class="text-end">{% if r.url %}<a class="btn btn-sm btn-outline-secondary py-0" href="{{ r.url }}">{% if r.ok %}Edit{% else %}Set up{% endif %}</a>{% endif %}</td></tr>{% endfor %}</tbody></table>
+        <td class="text-end">{% if r.url %}<a class="btn btn-sm btn-outline-secondary py-0" href="{{ r.url }}{% if r.anchor %}#{{ r.anchor }}{% endif %}">{% if r.ok %}Edit{% else %}Set up{% endif %}</a>{% endif %}</td></tr>{% endfor %}</tbody></table>
 </div></section>
 
 <section id="docs" class="card mb-3"><div class="card-body">
