@@ -67,9 +67,9 @@
                 {% for s in f.sections %}<div class="row g-1 align-items-center mb-1"><div class="col-auto small text-muted" style="width: 110px;">{% if s.start == s.end %}Page {{ s.start }}{% else %}Pages {{ s.start }}&ndash;{{ s.end }}{% endif %}</div>
                     <div class="col-md-3"><select class="form-select form-select-sm" name="kind_{{ forloop.counter0 }}">{% for k, label in doc_kinds %}<option value="{{ k }}" {% if k == s.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
                     <div class="col"><input class="form-control form-control-sm" name="title_{{ forloop.counter0 }}" value="{{ s.title }}"></div>
-                    <div class="col-auto">{% if s.confidence < 0.6 and f.doc.sort_status != 'manual' %}<span class="ac-chip warn">Not sure</span>{% endif %}</div></div>{% endfor %}
+                    <div class="col-auto">{% if s.repeat_of %}<span class="ac-chip">Second copy of the one at page {{ s.repeat_of }}</span> {% endif %}{% if s.confidence < 0.6 and f.doc.sort_status != 'manual' %}<span class="ac-chip warn">Not sure</span>{% endif %}</div></div>{% endfor %}
                 <button class="btn btn-sm btn-primary" name="action" value="sort_confirm">Looks right</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="sort_again">Sort it again</button></form>
-            {% elif f.sections %}<div class="small text-muted mt-1">{% for s in f.sections %}<div>{{ s.title|default:'Untitled' }}: {% if s.start == s.end %}page {{ s.start }}{% else %}pages {{ s.start }} to {{ s.end }}{% endif %}</div>{% endfor %}</div>{% endif %}
+            {% elif f.sections %}<div class="small text-muted mt-1">{% for s in f.sections %}<div>{{ s.title|default:'Untitled' }}: {% if s.start == s.end %}page {{ s.start }}{% else %}pages {{ s.start }} to {{ s.end }}{% endif %}{% if s.repeat_of %} (second copy){% endif %}</div>{% endfor %}</div>{% endif %}
         </div>{% endfor %}</div>{% endif %}
 
     {% if ap_proposals %}<div class="mt-3 pt-3 border-top"><div class="ac-lab mb-2">Found in the documents: confirm each one that is right</div>

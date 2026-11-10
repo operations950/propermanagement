@@ -45,6 +45,8 @@ def _sources(association):
             if d.sort_status != 'confirmed':
                 continue
             for s in d.sections or []:
+                if s.get('repeat_of'):
+                    continue          # a second copy of a document already counted
                 out.setdefault(s['kind'], []).append({'doc': d, 'start': s['start'], 'end': s['end'], 'title': s.get('title') or d.name})
         else:
             out.setdefault(d.kind, []).append({'doc': d, 'start': None, 'end': None, 'title': d.name})
@@ -62,10 +64,10 @@ def checklist(association):
     """The documents we want on file, each with its status and where it is."""
     have = _sources(association)
     rows = []
-    for kind in WANTED + ([Kind.AMENDMENT] if have.get(Kind.AMENDMENT) else []):
+    for kind in WANTED + ([Kind.AMENDMENT] if have.get(Kind.AMENDMENT) else []) + ([Kind.EXHIBIT] if have.get(Kind.EXHIBIT) else []):
         srcs = have.get(kind) or []
         first = srcs[0] if srcs else None
-        rows.append({'kind': kind, 'label': Kind(kind).label if kind != Kind.AMENDMENT else 'Amendments', 'doc': first['doc'] if first else None, 'required': kind in REQUIRED,
+        rows.append({'kind': kind, 'label': 'Amendments' if kind == Kind.AMENDMENT else ('Exhibits and surveys' if kind == Kind.EXHIBIT else Kind(kind).label), 'doc': first['doc'] if first else None, 'required': kind in REQUIRED,
                      'where': [_where(s) for s in srcs], 'url': (first['doc'].file.url + (f'#page={first["start"]}' if first['start'] else '')) if first and first['doc'].file else '', 'count': len(srcs)})
     return rows
 
@@ -260,6 +262,8 @@ def ask(association, question, user=None):
             return old
     client = _client()
     pages = list(DocumentPage.objects.filter(document__in=usable).select_related('document').order_by('document_id', 'number'))
+    skip = {d.pk: {n for s in (d.sections or []) if d.sort_status == 'confirmed' and (s.get('repeat_of') or s.get('kind') == 'exhibit') for n in range(s['start'], s['end'] + 1)} for d in usable if d.auto_sort}
+    pages = [p for p in pages if p.number not in skip.get(p.document_id, ())]      # not a second copy, and not the drawings
     answer = ''
     for k in (PAGES_FIRST_TRY, PAGES_SECOND_TRY):
         chosen = rank_pages(pages, question, k)

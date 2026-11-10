@@ -97,6 +97,7 @@ class AssociationDocument(models.Model):
         BYLAWS = 'bylaws', 'Bylaws'
         RULES = 'rules', 'Rules and regulations'
         AMENDMENT = 'amendment', 'Amendment'
+        EXHIBIT = 'exhibit', 'Exhibit or survey'
         CONTRACT = 'contract', 'Management contract'
         BUDGET = 'budget', 'Budget'
         OTHER = 'other', 'Other'

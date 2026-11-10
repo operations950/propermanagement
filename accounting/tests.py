@@ -461,3 +461,78 @@ class SettingsCardTests(TestCase):
         self.assertIn('#banks', card)
         self.assertIn('id="terms"', html)
         self.assertIn('id="banks"', html)
+
+
+import json as _json
+from types import SimpleNamespace
+from unittest import mock
+
+from . import docreader, documents
+from .models import AssociationDocument, DocumentPage
+
+GOOD = [{'kind': 'declaration', 'title': 'Declaration', 'start_page': 1, 'end_page': 3, 'confidence': 0.9},
+        {'kind': 'exhibit', 'title': 'Survey', 'start_page': 4, 'end_page': 5, 'confidence': 0.8},
+        {'kind': 'articles', 'title': 'Articles', 'start_page': 6, 'end_page': 7, 'confidence': 0.9},
+        {'kind': 'articles', 'title': 'Articles (again)', 'start_page': 8, 'end_page': 9, 'confidence': 0.9, 'repeat_of_page': 6}]
+
+
+def fake_client(*answers):
+    """A stand-in for the Claude client: each call returns the next answer as the `documents` input of the tool call."""
+    calls = []
+
+    def create(**kw):
+        calls.append(kw)
+        block = SimpleNamespace(type='tool_use', name='report_documents', input={'documents': answers[min(len(calls), len(answers)) - 1]})
+        return SimpleNamespace(content=[block])
+    return SimpleNamespace(messages=SimpleNamespace(create=create)), calls
+
+
+class SortingTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.doc = AssociationDocument.objects.create(property=self.prop, name='Governing Docs', file='gov.pdf', auto_sort=True, sort_status='waiting', text_status='ready', page_count=9)
+        DocumentPage.objects.bulk_create([DocumentPage(document=self.doc, number=i, text=f'page {i} text') for i in range(1, 10)])
+
+    def sort_with(self, *answers):
+        client, calls = fake_client(*answers)
+        with mock.patch.object(documents, '_client', return_value=client):
+            docreader.sort_document(self.doc)
+        self.doc.refresh_from_db()
+        return calls
+
+    def test_as_dicts_accepts_every_shape_claude_sends(self):
+        one = {'kind': 'bylaws', 'start_page': 1, 'end_page': 2}
+        for value in ([one], _json.dumps([one]), '```json\n' + _json.dumps([one]) + '\n```', {'documents': [one]}, {'documents': _json.dumps([one])}, [_json.dumps(one)]):
+            self.assertEqual(docreader.as_dicts(value, 'documents'), [one], value)
+        for junk in ('', 'no documents here', None, 5, ['x', 3]):
+            self.assertEqual(docreader.as_dicts(junk, 'documents'), [])
+
+    def test_an_answer_sent_as_text_is_understood(self):
+        calls = self.sort_with(_json.dumps(GOOD))                # this is what crashed in production
+        self.assertEqual(self.doc.sort_status, 'proposed')
+        self.assertEqual(len(calls), 1)
+        kinds = [s['kind'] for s in self.doc.sections]
+        self.assertEqual(kinds, ['declaration', 'exhibit', 'articles', 'articles'])
+        self.assertEqual(self.doc.sections[3].get('repeat_of'), 6)
+
+    def test_an_empty_answer_is_asked_for_again_once(self):
+        calls = self.sort_with('', GOOD)
+        self.assertEqual((len(calls), self.doc.sort_status), (2, 'proposed'))
+
+    def test_two_unusable_answers_leave_it_for_a_person(self):
+        calls = self.sort_with('nothing', 'still nothing')
+        self.assertEqual((len(calls), self.doc.sort_status), (2, 'manual'))
+
+    def test_pages_left_out_become_other(self):
+        self.sort_with([{'kind': 'bylaws', 'title': 'Bylaws', 'start_page': 3, 'end_page': 5, 'confidence': 0.9}])
+        self.assertEqual([(s['kind'], s['start'], s['end']) for s in self.doc.sections], [('other', 1, 2), ('bylaws', 3, 5), ('other', 6, 9)])
+
+    def test_a_second_copy_and_the_exhibits_are_not_counted_as_the_document(self):
+        self.sort_with(GOOD)
+        documents.confirm_sections(self.doc, [(s['kind'], s['title']) for s in self.doc.sections])
+        src = documents._sources(self.prop)
+        self.assertEqual(len(src['articles']), 1)                 # the repeat is left out
+        self.assertEqual(len(src['exhibit']), 1)
+        rows = {r['kind']: r for r in documents.checklist(self.prop)}
+        self.assertEqual(rows['exhibit']['label'], 'Exhibits and surveys')
+        self.assertEqual(rows['articles']['count'], 1)

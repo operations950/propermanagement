@@ -6,6 +6,7 @@ A document is read ONCE: the words of every page are kept (DocumentPage), and qu
 Sorting looks at the first words of each page (a few thousand words in all, not the document) and says where each document in the file starts and ends.
 """
 import io
+import json
 import logging
 import re
 
@@ -29,7 +30,8 @@ SORT_TOOL = {
     'description': 'Where each document in the file starts and ends.',
     'input_schema': {'type': 'object', 'properties': {'documents': {'type': 'array', 'items': {'type': 'object', 'properties': {
         'kind': {'type': 'string', 'enum': KINDS}, 'title': {'type': 'string', 'description': 'What it is called, with its date or recording details when the page says them.'},
-        'start_page': {'type': 'integer'}, 'end_page': {'type': 'integer'}, 'confidence': {'type': 'number', 'description': '0 to 1: how sure you are of the kind and of where it starts and ends.'}},
+        'start_page': {'type': 'integer'}, 'end_page': {'type': 'integer'}, 'confidence': {'type': 'number', 'description': '0 to 1: how sure you are of the kind and of where it starts and ends.'},
+        'repeat_of_page': {'type': 'integer', 'description': 'When this is a second copy of a document that appears earlier in the file, the page where the earlier copy starts; otherwise 0.'}},
         'required': ['kind', 'title', 'start_page', 'end_page', 'confidence']}}}, 'required': ['documents']},
 }
 
@@ -37,6 +39,47 @@ SORT_TOOL = {
 def _tool_input(message, name):
     block = next((b for b in message.content if getattr(b, 'type', '') == 'tool_use' and getattr(b, 'name', name) == name), None)
     return (block.input if block else None) or {}
+
+
+def _json_value(value):
+    """Claude sometimes sends a list as JSON text (even inside a code fence). Turn it back into what it was meant to be."""
+    for _ in range(3):
+        if not isinstance(value, str):
+            break
+        text = value.strip()
+        if text.startswith('```'):
+            text = re.sub(r'^```[a-zA-Z]*\s*|\s*```$', '', text).strip()
+        try:
+            value = json.loads(text)
+        except ValueError:
+            return value
+    return value
+
+
+def as_dicts(value, key=None):
+    """A list of objects from whatever Claude sent: a list, the list as text, an object that holds the list under `key`, or a list whose items are text. Anything else gives []."""
+    value = _json_value(value)
+    if isinstance(value, dict) and key and key in value:
+        value = _json_value(value[key])
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        item = _json_value(item)
+        if isinstance(item, dict):
+            out.append(item)
+    return out
+
+
+def as_strings(value, key=None):
+    value = _json_value(value)
+    if isinstance(value, dict) and key and key in value:
+        value = _json_value(value[key])
+    if isinstance(value, str):
+        return [value]
+    return [str(x) for x in value] if isinstance(value, list) else []
 
 
 # ---------------------------------------------------------------- reading
@@ -58,7 +101,7 @@ def _transcribe(client, blocks, n_pages, model):
         messages=[{'role': 'user', 'content': blocks + [{'type': 'text', 'text':
             f'This has {n_pages} page{"s" if n_pages != 1 else ""}. Transcribe the words on every page faithfully and in order: one entry per page, keeping headings, numbering and paragraph breaks. '
             'Do not summarise or correct anything. A blank page is an empty string.'}]}])
-    pages = [str(p) for p in (_tool_input(message, 'transcribe').get('pages') or [])]
+    pages = as_strings(_tool_input(message, 'transcribe').get('pages'))
     return (pages + [''] * n_pages)[:n_pages]
 
 
@@ -138,7 +181,7 @@ def read_document(doc):
 def clean_sections(found, n):
     """The sections Claude reported, made safe: inside the file, in order, not overlapping, and with no page left out (what is left over is 'something else')."""
     rows = []
-    for s in found or []:
+    for s in as_dicts(found, 'documents'):
         try:
             start, end = int(s.get('start_page')), int(s.get('end_page'))
         except (TypeError, ValueError):
@@ -151,7 +194,14 @@ def clean_sections(found, n):
         start, end = max(1, min(start, n)), max(1, min(end, n))
         if end < start:
             start, end = end, start
-        rows.append({'kind': kind, 'title': (s.get('title') or '').strip()[:160], 'start': start, 'end': end, 'confidence': round(conf, 2)})
+        row = {'kind': kind, 'title': (s.get('title') or '').strip()[:160], 'start': start, 'end': end, 'confidence': round(conf, 2)}
+        try:
+            repeat = int(s.get('repeat_of_page') or 0)
+        except (TypeError, ValueError):
+            repeat = 0
+        if 0 < repeat < start:
+            row['repeat_of'] = repeat
+        rows.append(row)
     rows.sort(key=lambda r: (r['start'], r['end']))
     out, cursor = [], 1
     for r in rows:
@@ -180,16 +230,26 @@ def sort_document(doc):
         return
     chars = OUTLINE_CHARS if n <= 200 else 200
     outline = '\n'.join(f'[page {p.number}] ' + ' '.join(p.text.split())[:chars] for p in pages)
+    prompt = (f'Below are the first words of each of the {n} pages of ONE file uploaded for a Florida condominium or homeowners association. The file may hold a single document or several joined together: '
+              'a Declaration of Condominium, Articles of Incorporation, Bylaws, Rules and Regulations, amendments to any of them, a management contract, or a budget. '
+              'Say where each document in the file starts and ends. Every page belongs to exactly one document. Use "amendment" for an amendment to the declaration, bylaws or articles and say which one in the title. '
+              'Use "exhibit" for the surveys, plats, floor plans, drawings and legal descriptions attached to a declaration or an amendment (pages that are mostly drawings or surveyors\' certificates). '
+              'Use "other" for anything else (a cover sheet, a certificate, minutes). Give each a short title with its date or recording details when the pages state them. '
+              'The same document is sometimes in the file twice: report the second copy as its own entry and set repeat_of_page to the page where the first copy starts.\n\n' + outline)
     try:
         client = documents._client()
-        message = client.messages.create(
-            model=documents.MODEL, max_tokens=4000, tools=[SORT_TOOL], tool_choice={'type': 'tool', 'name': 'report_documents'},
-            messages=[{'role': 'user', 'content': [{'type': 'text', 'text':
-                f'Below are the first words of each of the {n} pages of ONE file uploaded for a Florida condominium or homeowners association. The file may hold a single document or several joined together: '
-                'a Declaration of Condominium, Articles of Incorporation, Bylaws, Rules and Regulations, amendments to any of them, a management contract, or a budget. '
-                'Say where each document in the file starts and ends. Every page belongs to exactly one document. Use "amendment" for an amendment to the declaration, bylaws or articles and say which one in the title. '
-                'Use "other" for anything else (a cover sheet, a certificate, minutes). Give each a short title with its date or recording details when the pages state them.\n\n' + outline}]}])
-        sections = clean_sections(_tool_input(message, 'report_documents').get('documents'), n)
+        sections = []
+        for attempt in range(2):         # an answer that holds nothing usable is asked for once more
+            message = client.messages.create(
+                model=documents.MODEL, max_tokens=8000, tools=[SORT_TOOL], tool_choice={'type': 'tool', 'name': 'report_documents'},
+                messages=[{'role': 'user', 'content': [{'type': 'text', 'text': prompt}]}])
+            found = _tool_input(message, 'report_documents').get('documents')
+            if as_dicts(found, 'documents'):
+                sections = clean_sections(found, n)
+                break
+            logger.warning('Claude\'s answer about "%s" held no documents (attempt %s): %r', doc.name, attempt + 1, str(found)[:200])
+        if not sections:
+            raise ValueError('no usable answer')
         status = 'proposed'
     except documents.DocumentError:
         sections, status = whole, 'manual'
