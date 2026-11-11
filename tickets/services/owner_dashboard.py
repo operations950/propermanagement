@@ -419,3 +419,13 @@ def gone_quiet(now=None):
             rows.append({'ticket': t, 'reasons': reasons})
 
     return rows
+
+
+def flow_windows(now=None):
+    """The ticket flow for the owner dashboard: the 30-day line (a point per day, with what opened and closed that day) and who opened and closed how many today, in the last 7 days and in the
+    last 30. Same counting rules as `ticket_flow`."""
+    now = now or timezone.now()
+    month = ticket_flow(30, now)
+    windows = [{'key': 'today', 'label': 'Today', 'flow': ticket_flow(1, now)}, {'key': 'week', 'label': 'Last 7 days', 'flow': ticket_flow(7, now)}, {'key': 'month', 'label': 'Last 30 days', 'flow': month}]
+    return {'month': month, 'windows': [{'key': w['key'], 'label': w['label'], 'opened': w['flow']['opened'], 'closed': w['flow']['closed'], 'people': w['flow']['people']} for w in windows],
+            'series': [{'date': p['date'].isoformat(), 'label': p['date'].strftime('%A, %b ') + str(p['date'].day), 'open': p['open'], 'opened': p['opened'], 'closed': p['closed']} for p in month['series']]}

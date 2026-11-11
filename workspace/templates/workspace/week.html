@@ -10,11 +10,12 @@
 .pgw .top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; margin-bottom: 0.4rem; font-size: 0.85rem; color: var(--ink-muted); }
 .pgw .top a.nv { text-decoration: none; padding: 0.1rem 0.6rem; border: 1px solid var(--border-hairline); border-radius: 0.5rem; color: var(--ink-secondary); }
 .pgw .city { font-family: var(--font-serif, Georgia, 'Times New Roman', serif); font-size: 1.15rem; margin: 1rem 0 0.2rem; }
-.pg { display: grid; grid-template-columns: 8.5rem repeat(7, minmax(0, 1fr)); gap: 3px; align-items: stretch; margin-bottom: 3px; }
+.pg { display: grid; grid-template-columns: 17rem repeat(7, minmax(0, 1fr)); gap: 3px; align-items: stretch; margin-bottom: 3px; }
 .pg .h { font-size: 0.72rem; color: var(--ink-muted); text-align: center; padding-bottom: 2px; }
 .pg .h.td { color: var(--ink-primary); font-weight: 600; }
-.pg .nm { font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; overflow: hidden; }
-.pg .nm a { color: var(--ink-primary); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg .nm { font-size: 0.85rem; font-weight: 600; display: flex; flex-direction: column; justify-content: center; line-height: 1.25; padding-right: 0.4rem; min-width: 0; }
+.pg .nm a { color: var(--ink-primary); text-decoration: none; overflow-wrap: anywhere; }
+.pg .nm .un { font-size: 0.78rem; font-weight: 500; color: var(--ink-muted); overflow-wrap: anywhere; }
 .pg .cell { min-height: 2.9rem; border-radius: 5px; background: var(--cell); display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 2px 3px; position: relative; font-size: 0.75rem; }
 .pg .cell.stay { background: var(--stay); }
 .pg .t { display: flex; align-items: center; justify-content: space-between; gap: 0.2rem; width: 100%; border: 0; border-radius: 4px; padding: 1px 5px; font-size: 0.8rem; line-height: 1.35; cursor: pointer; text-align: left; }
@@ -46,8 +47,8 @@
 .pgw .vd.a { background: var(--warn-bg); color: var(--warn-ink); }
 .pgw .vd.r { background: var(--bad-bg); color: var(--bad-ink); }
 .pgw .pgscroll { overflow-x: auto; }
-.pgw .pgin { min-width: 720px; }
-@media (max-width: 640px) { .pg { grid-template-columns: 4.8rem repeat(7, minmax(0, 1fr)); } .pg .t { font-size: 0.68rem; padding: 1px 2px; } }
+.pgw .pgin { min-width: 980px; }
+@media (max-width: 640px) { .pg { grid-template-columns: 9rem repeat(7, minmax(0, 1fr)); } .pg .t { font-size: 0.68rem; padding: 1px 2px; } }
 </style>
 <div class="pgw">
 {% if w.without_cleaning %}<div class="wn bad">{{ w.without_cleaning }} check-out{{ w.without_cleaning|pluralize }} {{ w.without_cleaning|pluralize:"has,have" }} no cleaning scheduled. Click the red mark to set one up.</div>
@@ -64,7 +65,7 @@
 <div class="city">{{ city }}</div>
 <div class="pg"><span></span>{% for d in w.days %}<span class="h{% if d.today %} td{% endif %}">{{ d.date|date:"D j" }}</span>{% endfor %}</div>
 {% for r in rows %}
-<div class="pg"><span class="nm"><a href="{% url 'property_detail' r.property.pk %}" title="{{ r.label }}">{{ r.label }}</a></span>
+<div class="pg"><span class="nm"><a href="{% url 'property_detail' r.property.pk %}" title="{{ r.label }}">{{ r.property.name }}</a>{% if r.unit %}<span class="un">{{ r.unit }}</span>{% endif %}</span>
   {% for c in r.cells %}
   <div class="cell{% if c.kind == 'stay' %} stay{% endif %}{% if c.outs %} has-cl{% endif %}"{% if c.stay %} title="{{ c.stay.guest_name|default:'Guest' }} is staying"{% endif %}>
     {% for e in c.outs %}

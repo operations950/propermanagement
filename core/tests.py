@@ -264,3 +264,117 @@ class MonthCloseProjectTests(TestCase):
         ret = SalesTaxReturn.objects.get()
         self.client.post(tax, {'action': 'file', 'ret': ret.pk, 'filed_on': '2026-11-18', 'confirmation': 'C-123'})
         self.assertEqual(SalesTaxFiling.objects.get().confirmation, 'C-123')
+
+
+# ---------------------------------------------------------------- the owner dashboard and where the reminders went
+
+from django.core.cache import cache
+
+from . import listings, nudges
+from .models import ContactImportCandidate, StaffProfile as _Staff, Unit
+
+
+@override_settings(STORAGES=NO_MANIFEST)
+class OwnerDashboardAndRemindersTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        user = get_user_model().objects.create_user('owner', password='pw12345678')
+        self.profile = _Staff.objects.create(user=user, role=_Staff.Role.ADMIN, is_company_admin=True) if hasattr(_Staff.Role, 'ADMIN') else _Staff.objects.create(user=user, is_company_admin=True)
+        self.client.force_login(user)
+        self.user = user
+
+    def test_the_dashboard_has_what_was_asked_for_and_nothing_that_was_dropped(self):
+        r = self.client.get(reverse('dashboard'))
+        self.assertEqual(r.status_code, 200)
+        for kept in ('Who opened and who closed', 'Today', 'Last 7 days', 'Last 30 days', 'Updated today', 'Closed today', 'Hover any dot'):
+            self.assertContains(r, kept)
+        for gone in ('Needs attention', 'Off track', 'Company Financials', 'Local weather', "Today's Calendar", 'On-Site next 48', 'Open-Meteo'):
+            self.assertNotContains(r, gone, msg_prefix=gone)
+        html = r.content.decode()
+        self.assertIn('<details class="card mb-2 od-coll"', html)         # the two lists start closed
+        self.assertNotIn('<details class="card mb-2 od-coll" open', html)
+
+    def test_flow_windows_count_today_the_week_and_the_month(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from tickets.models import Ticket
+        p = Property.objects.create(name='9 Test St', property_type=Property.Type.SHORT_TERM_RENTAL)
+        now = timezone.now()
+        for ago in (0, 3, 20):
+            t = Ticket.objects.create(title=f'T{ago}', property=p, created_by=self.user)
+            Ticket.objects.filter(pk=t.pk).update(created_at=now - timedelta(days=ago, minutes=1))
+        from tickets.services import owner_dashboard as od
+        f = od.flow_windows(now)
+        self.assertEqual([(w['key'], w['opened']) for w in f['windows']], [('today', 1), ('week', 2), ('month', 3)])
+        self.assertEqual(len(f['series']), 30)
+        self.assertEqual(f['series'][-1]['opened'], 1)
+        self.assertIn('label', f['series'][-1])
+
+    def test_a_pending_contact_is_a_number_on_contacts_and_a_strip_on_that_page_not_on_the_dashboard(self):
+        ContactImportCandidate.objects.create(source='quo', name='Someone New', phone='5615550100')
+        self.assertEqual(nudges.nav_counts(self.user), {'contacts': 1})
+        page = self.client.get(reverse('contact_list'))
+        self.assertContains(page, 'waiting for a yes or no')
+        self.assertContains(page, '1 thing needs attention in Contacts')
+        self.assertContains(page, 'class="nav-pip"')
+        self.assertNotContains(self.client.get(reverse('dashboard')), 'waiting for a yes or no')
+        self.assertNotContains(self.client.get(reverse('property_list')), 'waiting for a yes or no')
+
+    def test_short_term_rental_reminders_gather_on_the_onsite_number(self):
+        prop = Property.objects.create(name='12 Palm Way', property_type=Property.Type.SHORT_TERM_RENTAL)
+        Unit.objects.create(property=prop, label='A')
+        keys = [i['key'] for i in nudges.section_items(self.user, 'onsite')]
+        self.assertIn('listing_links', keys)
+        self.assertIn('specs', keys)
+        self.assertIn('trash', keys)
+        self.assertEqual(nudges.nav_counts(self.user)['onsite'], len(keys))        # the number counts reminders, not units
+        page = self.client.get(reverse('onsite_dashboard'))
+        self.assertContains(page, 'need attention in On-Site')
+        self.assertContains(page, '1 unit with no Airbnb or VRBO listing link')
+        self.assertContains(page, '12 Palm Way')
+
+    def test_marking_a_unit_not_on_airbnb_or_vrbo_stops_the_reminder_counting_it(self):
+        prop = Property.objects.create(name='12 Palm Way', property_type=Property.Type.SHORT_TERM_RENTAL)
+        a, b = Unit.objects.create(property=prop, label='A'), Unit.objects.create(property=prop, label='B')
+        self.assertEqual(listings.attention()['places_without_links'], 2)
+        url = reverse('property_detail', args=[prop.pk])
+        self.client.post(url, {'action': 'save_listing_links', 'unit_id': a.pk, 'no_listing_field': '1', 'no_listing_link': 'on', 'airbnb_url': '', 'vrbo_url': ''})
+        a.refresh_from_db()
+        self.assertTrue(a.no_listing_link)
+        self.assertEqual(listings.attention()['places_without_links'], 1)
+        self.client.post(url, {'action': 'save_listing_links', 'unit_id': b.pk, 'no_listing_field': '1', 'no_listing_link': 'on', 'airbnb_url': '', 'vrbo_url': ''})
+        self.assertEqual(listings.attention()['places_without_links'], 0)
+        # unticking brings it back; a link on a platform means it is on one after all
+        self.client.post(url, {'action': 'save_listing_links', 'unit_id': a.pk, 'no_listing_field': '1', 'airbnb_url': '', 'vrbo_url': ''})
+        self.assertEqual(listings.attention()['places_without_links'], 1)
+        self.assertContains(self.client.get(url), "Not on Airbnb or VRBO (or we won")
+
+    def test_a_property_with_no_units_can_be_marked_too(self):
+        prop = Property.objects.create(name='4 Solo Ct', property_type=Property.Type.SHORT_TERM_RENTAL)
+        self.assertEqual(listings.attention()['places_without_links'], 1)
+        self.client.post(reverse('property_detail', args=[prop.pk]), {'action': 'save_listing_links', 'no_listing_field': '1', 'no_listing_link': 'on'})
+        prop.refresh_from_db()
+        self.assertTrue(prop.no_listing_link)
+        self.assertEqual(listings.attention()['places_without_links'], 0)
+
+    def test_only_the_owner_sees_the_numbers_and_strips(self):
+        ContactImportCandidate.objects.create(source='quo', name='Someone New')
+        other = get_user_model().objects.create_user('staffer', password='pw12345678')
+        _Staff.objects.create(user=other)
+        self.assertEqual(nudges.nav_counts(other), {})
+        self.client.force_login(other)
+        self.assertNotContains(self.client.get(reverse('contact_list')), 'waiting for a yes or no')
+
+
+@override_settings(STORAGES=NO_MANIFEST)
+class WeekBoardNameColumnTests(TestCase):
+    """On-Site > Properties: the first column is twice as wide and shows the property name with its unit under it, not a squeezed one-line label."""
+    def test_the_name_and_the_unit_are_both_there(self):
+        user = get_user_model().objects.create_user('owner2', password='pw12345678')
+        _Staff.objects.create(user=user, is_company_admin=True, new_face=True)
+        self.client.force_login(user)
+        prop = Property.objects.create(name="Joe's", property_type=Property.Type.SHORT_TERM_RENTAL, city='Delray Beach')
+        Unit.objects.create(property=prop, label='Blue Ocean (710 NE 7th Ct)')
+        r = self.client.get(reverse('ws_week'))
+        self.assertContains(r, 'grid-template-columns: 17rem')
+        self.assertContains(r, '>Joe&#x27;s</a><span class="un">Blue Ocean (710 NE 7th Ct)</span>')

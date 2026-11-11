@@ -79,7 +79,11 @@
             {% csrf_token %}<input type="hidden" name="action" value="save_listing_links">{% if u %}<input type="hidden" name="unit_id" value="{{ u.pk }}">{% endif %}
             <div class="col-12 col-md-6"><input type="url" name="airbnb_url" class="form-control form-control-sm" placeholder="Airbnb link (https://www.airbnb.com/rooms/…)" value="{{ c.airbnb.link.url }}"></div>
             <div class="col-12 col-md-6"><input type="url" name="vrbo_url" class="form-control form-control-sm" placeholder="VRBO link (https://www.vrbo.com/…)" value="{{ c.vrbo.link.url }}"></div>
-            <div class="col-12"><button class="btn btn-outline-secondary btn-sm" type="submit">Save links</button> <span class="small text-muted">Leave one blank to remove it.</span></div>
+            <div class="col-12">
+                <input type="hidden" name="no_listing_field" value="1">
+                <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="no_listing_link" id="nolink-{{ tid }}" {% if target.no_listing_link %}checked{% endif %}>
+                    <label class="form-check-label small" for="nolink-{{ tid }}">Not on Airbnb or VRBO (or we won't link it) <span class="text-muted">&mdash; the reminder stops counting it</span></label></div>
+                <button class="btn btn-outline-secondary btn-sm" type="submit">Save links</button> <span class="small text-muted">Leave one blank to remove it.</span></div>
         </form>
         {% for s in c.ratings %}
         <div class="border rounded p-2 mb-2 small">

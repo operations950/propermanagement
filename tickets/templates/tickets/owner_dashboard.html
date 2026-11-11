@@ -2,6 +2,26 @@
 {% load ticket_extras %}
 {% block title %}Owner Dashboard — Proper Management{% endblock %}
 {% block content %}
+<style>
+    .od-label { font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary); }
+    .od-chart { position: relative; }
+    .od-chart svg text { font-size: 11px; fill: currentColor; fill-opacity: 0.6; }
+    .od-tip { position: absolute; pointer-events: none; background: #1c2430; color: #fff; border-radius: 9px; padding: 8px 11px; font-size: 12.5px; line-height: 1.45; box-shadow: 0 6px 18px rgba(0,0,0,.25); opacity: 0; transition: opacity .08s; white-space: nowrap; z-index: 5; transform: translate(-50%, -100%); }
+    .od-tip b { display: block; font-size: 13px; margin-bottom: 2px; }
+    .od-tip .r { display: flex; justify-content: space-between; gap: 18px; } .od-tip .r span:last-child { font-weight: 700; }
+    .od-win { padding: 14px 16px; }
+    .od-win + .od-win { border-top: 1px solid var(--border-hairline); }
+    @media (min-width: 768px) { .od-win + .od-win { border-top: 0; border-left: 1px solid var(--border-hairline); } }
+    .od-big { display: flex; gap: 20px; margin-bottom: 8px; }
+    .od-big div { font-size: 0.78rem; color: var(--ink-muted); } .od-big b { display: block; font-size: 1.6rem; line-height: 1.1; color: var(--ink-primary); }
+    .od-coll > summary { cursor: pointer; list-style: none; }
+    .od-coll > summary::-webkit-details-marker { display: none; }
+    .od-coll .od-chev { transition: transform 0.15s ease; } .od-coll[open] .od-chev { transform: rotate(90deg); }
+    .od-kpi { border: 1px solid var(--border-hairline); border-radius: 10px; padding: 9px 12px; background: var(--surface-page, #fafbfc); height: 100%; }
+    .od-kpi .l { font-size: 0.78rem; color: var(--ink-muted); } .od-kpi .v { font-size: 1.5rem; font-weight: 600; line-height: 1.2; } .od-kpi .d { font-size: 0.75rem; color: var(--ink-muted); }
+    .od-bar { height: 6px; border-radius: 4px; background: #e6ebf3; margin-top: 5px; overflow: hidden; } .od-bar i { display: block; height: 100%; background: var(--brand-primary); }
+</style>
+
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
     <div>
         <h2 class="page-title mb-0">Owner Dashboard</h2>
@@ -9,358 +29,161 @@
     <a href="{% url 'ticket_create' %}" class="btn btn-primary flex-shrink-0"><i data-lucide="plus" class="icon"></i> New ticket</a>
 </div>
 
-{% include 'core/_nudges.html' %}
-
 {% include 'timeclock/_dash_card.html' %}
 
-{# ============================== 1. OFF TRACK — reactive tickets looking backward ============================== #}
-{# Collapsed by default — this section can list every blocked/overdue/delayed #}
-{# ticket across the whole company, which routinely dwarfed every other card #}
-{# on the page. Uses a plain Bootstrap collapse (matching the payment-batch- #}
-{# detail toggle in cleaning_payments.html) rather than anything stateful — #}
-{# it re-collapses on every fresh page load, which is fine here since the #}
-{# count badge in the header (never hidden) is what actually needs to be #}
-{# glanceable, not the expanded list. #}
-<style>
-    [data-bs-toggle="collapse"] .collapse-chevron { transition: transform 0.15s ease; }
-    [data-bs-toggle="collapse"].collapsed .collapse-chevron { transform: rotate(-90deg); }
-</style>
-{# ============================== TICKET FLOW — who opens and closes, and how the pile moves ============================== #}
+{# ============================== TICKETS — the line, a dot per day, hover for the numbers ============================== #}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-            <i data-lucide="trending-up" class="icon"></i> Tickets — last {{ flow.days }} days
-        </span>
-        <span class="small" style="color: var(--ink-muted);"><strong>{{ flow.opened }}</strong> opened · <strong>{{ flow.closed }}</strong> closed · <strong>{{ flow.open_now }}</strong> open now, up from <strong>{{ flow.open_then }}</strong> at the end of {{ flow.series.0.date|date:"M j" }}</span>
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2 od-label"><i data-lucide="trending-up" class="icon"></i> Tickets — last {{ flow.month.days }} days</span>
+        <span class="small" style="color: var(--ink-muted);"><strong>{{ flow.month.opened }}</strong> opened · <strong>{{ flow.month.closed }}</strong> closed · <strong>{{ flow.month.open_now }}</strong> open now, {% if flow.month.open_now >= flow.month.open_then %}up{% else %}down{% endif %} from <strong>{{ flow.month.open_then }}</strong> at the end of {{ flow.month.series.0.date|date:"M j" }}</span>
     </div>
     <div class="card-body">
-        <div class="small mb-1" style="color: var(--ink-muted);">Tickets still open at the end of each day</div>
-        <svg viewBox="0 0 {{ flow.chart.width }} {{ flow.chart.height }}" width="100%" role="img" aria-label="Open tickets at the end of each of the last {{ flow.days }} days, from {{ flow.open_then }} to {{ flow.open_now }}" style="max-width: 100%; height: auto; overflow: visible;">
-            {% for t in flow.chart.yticks %}
-            <line x1="{{ flow.chart.left }}" x2="{{ flow.chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}" stroke="currentColor" stroke-opacity="0.12"/>
-            <text x="{{ flow.chart.left|add:'-6' }}" y="{{ t.y }}" text-anchor="end" dominant-baseline="middle" font-size="11" fill="currentColor" fill-opacity="0.6">{{ t.label }}</text>
-            {% endfor %}
-            {% for t in flow.chart.xticks %}
-            <text x="{{ t.x }}" y="{{ flow.chart.bottom|add:'18' }}" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity="0.6">{{ t.label }}</text>
-            {% endfor %}
-            <polyline points="{{ flow.chart.line }}" fill="none" stroke="var(--brand-primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-            {% for d in flow.chart.dots %}
-            <circle cx="{{ d.x }}" cy="{{ d.y }}" r="{% if forloop.last %}4.5{% else %}3{% endif %}" fill="var(--brand-primary)" stroke="white" stroke-width="1.5"><title>{{ d.date|date:"D M j" }}: {{ d.open }} open ({{ d.opened }} opened, {{ d.closed }} closed that day)</title></circle>
-            {% endfor %}
-        </svg>
-        <details class="small mt-2">
-            <summary style="cursor: pointer; color: var(--ink-muted);">Show the numbers day by day</summary>
-            <div class="table-responsive mt-2"><table class="table table-sm mb-0" style="max-width: 460px; font-variant-numeric: tabular-nums;">
-                <thead><tr><th>Day</th><th class="text-end">Open at end of day</th><th class="text-end">Opened</th><th class="text-end">Closed</th></tr></thead>
-                <tbody>{% for p in flow.series reversed %}<tr><td>{{ p.date|date:"D M j" }}</td><td class="text-end">{{ p.open }}</td><td class="text-end">{{ p.opened }}</td><td class="text-end">{{ p.closed }}</td></tr>{% endfor %}</tbody>
-            </table></div>
-        </details>
+        <div class="small mb-1" style="color: var(--ink-muted);">Tickets still open at the end of each day. Hover any dot for that day's numbers.</div>
+        <div class="od-chart" id="odChart"><svg id="odSvg" viewBox="0 0 720 230" width="100%" role="img" aria-label="Open tickets at the end of each of the last {{ flow.month.days }} days, from {{ flow.month.open_then }} to {{ flow.month.open_now }}" style="display: block; max-width: 100%; height: auto; overflow: visible;"></svg><div class="od-tip" id="odTip"></div></div>
     </div>
 </div>
+{{ flow.series|json_script:"od-series" }}
+
+{# ============================== WHO OPENED AND CLOSED — today, the last 7 days, the last 30 ============================== #}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
     <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-            <i data-lucide="users" class="icon"></i> Who opened and who closed — last {{ flow.days }} days
-        </span>
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2 od-label"><i data-lucide="users" class="icon"></i> Who opened and who closed</span>
     </div>
-    <div class="table-responsive"><table class="table table-sm align-middle mb-0" style="font-variant-numeric: tabular-nums;">
-        <thead><tr><th class="ps-3">Person</th><th class="text-end">Opened</th><th class="text-end pe-3">Closed</th></tr></thead>
-        <tbody>
-        {% for p in flow.people %}
-        <tr><td class="ps-3">{{ p.name }}</td><td class="text-end">{{ p.opened }}</td><td class="text-end pe-3">{{ p.closed }}</td></tr>
-        {% empty %}<tr><td colspan="3" class="text-center py-3" style="color: var(--ink-muted);">No tickets opened or closed in the last {{ flow.days }} days.</td></tr>{% endfor %}
-        </tbody>
-        {% if flow.people %}<tfoot><tr class="fw-semibold"><td class="ps-3">Total</td><td class="text-end">{{ flow.opened }}</td><td class="text-end pe-3">{{ flow.closed }}</td></tr></tfoot>{% endif %}
-    </table></div>
+    <div class="row g-0">
+        {% for w in flow.windows %}
+        <div class="col-12 col-md-4"><div class="od-win">
+            <div class="fw-semibold mb-2">{{ w.label }}</div>
+            <div class="od-big"><div><b>{{ w.opened }}</b>opened</div><div><b>{{ w.closed }}</b>closed</div></div>
+            <table class="table table-sm align-middle mb-0" style="font-variant-numeric: tabular-nums;">
+                <thead><tr><th>Person</th><th class="text-end">Opened</th><th class="text-end">Closed</th></tr></thead>
+                <tbody>
+                {% for p in w.people %}<tr><td>{{ p.name }}</td><td class="text-end">{{ p.opened }}</td><td class="text-end">{{ p.closed }}</td></tr>
+                {% empty %}<tr><td colspan="3" class="text-center py-2" style="color: var(--ink-muted);">None {% if w.key == 'today' %}yet today{% else %}in this time{% endif %}.</td></tr>{% endfor %}
+                </tbody>
+                {% if w.people %}<tfoot><tr class="fw-semibold"><td>Total</td><td class="text-end">{{ w.opened }}</td><td class="text-end">{{ w.closed }}</td></tr></tfoot>{% endif %}
+            </table>
+        </div></div>
+        {% endfor %}
+    </div>
     <div class="card-footer bg-white small" style="color: var(--ink-muted);">Closed = completed, verified, cancelled, skipped or not applicable. Recurring tickets are left out.</div>
 </div>
 
-<div class="card mb-3" style="border-top: 4px solid var(--status-critical); border-radius: var(--bs-border-radius-lg);">
-    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--status-critical);">
-            <i data-lucide="circle-alert" class="icon"></i> Off track ({{ off_track|length }})
-        </span>
-        <button class="btn btn-link btn-sm p-0 text-decoration-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#offTrackBody" aria-expanded="false" aria-controls="offTrackBody" title="Show/hide off-track tickets">
-            <i data-lucide="chevron-down" class="icon collapse-chevron"></i>
-        </button>
-    </div>
-    <div class="collapse" id="offTrackBody">
-    {% if off_track %}
+{# ============================== TODAY — both lists start closed ============================== #}
+<details class="card mb-2 od-coll" style="border-radius: var(--bs-border-radius-lg);">
+    <summary class="card-header bg-white py-3 d-flex align-items-center gap-2">
+        <i data-lucide="chevron-right" class="icon od-chev"></i>
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2 od-label"><i data-lucide="pencil-line" class="icon"></i> Updated today</span>
+        <span class="badge rounded-pill" style="background: var(--brand-soft, #e8f0fe); color: var(--brand-primary);">{{ movement.updated_notes|length }}</span>
+    </summary>
+    {% if movement.updated_notes %}
     <div class="list-group list-group-flush">
-    {% for row in off_track %}
-        <a href="{% url 'ticket_detail' row.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center gap-2 text-decoration-none" style="border-left: 3px solid var(--role-{{ row.ticket.assigned_role|default:'admin' }});">
-            <div style="min-width: 0; overflow: hidden;">
-                <div class="d-flex align-items-center gap-1" style="min-width: 0;">
-                    <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ row.ticket.title|truncatechars:48 }}</span>
-                </div>
-                <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ row.ticket.property.name|default:'—' }} · {{ row.ticket.get_assigned_role_display|default:'Unrouted' }}</div>
+    {% for note in movement.updated_notes %}
+        <a href="{% url 'ticket_detail' note.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ note.ticket.title|truncatechars:60 }}</span>
+                <span class="text-nowrap small" style="color: var(--ink-muted);">{{ note.created_at|time:"g:i A" }}</span>
             </div>
-            <span class="badge flex-shrink-0" style="{% if row.reason == 'overdue' %}background: var(--priority-urgent); color: #fff;{% elif row.reason == 'delayed' %}background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 55%, black);{% else %}background: var(--priority-urgent); color: #fff;{% endif %}">
-                {% if row.reason == 'overdue' %}{{ row.days }}d late
-                {% elif row.reason == 'delayed' %}Delayed {{ row.days }}d
-                {% else %}Urgent{% endif %}
-            </span>
+            <div class="small" style="color: var(--ink-secondary);">{{ note.body|truncatechars:160 }}</div>
+            <div class="small" style="color: var(--ink-muted);">— {{ note.created_by.get_full_name|default:note.created_by.username|default:'System' }}</div>
         </a>
     {% endfor %}
     </div>
     {% else %}
-    <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">
-        <i data-lucide="check-circle-2" class="icon-lg d-block mx-auto mb-1"></i> Nothing off track
-    </div>
+    <div class="card-body text-center py-3" style="color: var(--ink-muted); font-size: 0.9rem;">No status updates posted yet today.</div>
     {% endif %}
-    </div>
-</div>
+</details>
 
-{# ============================== 2. ON-SITE — next 48 hours, looking forward ============================== #}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);">
-    <div class="card-header bg-white border-bottom py-3">
-        <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-            <i data-lucide="sparkles" class="icon"></i> On-site — next 48 hours
-        </span>
+<details class="card mb-3 od-coll" style="border-radius: var(--bs-border-radius-lg);">
+    <summary class="card-header bg-white py-3 d-flex align-items-center gap-2">
+        <i data-lucide="chevron-right" class="icon od-chev"></i>
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2 od-label"><i data-lucide="check-circle-2" class="icon"></i> Closed today</span>
+        <span class="badge rounded-pill" style="background: var(--brand-soft, #e8f0fe); color: var(--brand-primary);">{{ closed_total }}</span>
+        <span class="small ms-auto" style="color: var(--ink-muted);">{{ movement.closed_reactive|length }} reactive · {{ movement.closed_recurring|length }} recurring</span>
+    </summary>
+    {% if movement.closed_reactive or movement.closed_recurring %}
+    <div class="list-group list-group-flush">
+    {% for t in movement.closed_reactive %}
+        <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:60 }}</span>
+                <span class="badge rounded-pill flex-shrink-0" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good);">Reactive</span>
+            </div>
+            {% if t.closing_note %}
+            <div class="small" style="color: var(--ink-secondary);">{{ t.closing_note.get_status_display }} — {{ t.closing_note.body|truncatechars:160 }}</div>
+            <div class="small" style="color: var(--ink-muted);">— {{ t.closing_note.created_by.get_full_name|default:t.closing_note.created_by.username|default:'System' }}</div>
+            {% endif %}
+        </a>
+    {% endfor %}
+    {% for t in movement.closed_recurring %}
+        <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:60 }}</span>
+                <span class="badge rounded-pill flex-shrink-0" style="background: var(--surface-page); color: var(--ink-secondary);">Recurring</span>
+            </div>
+            {% if t.closing_note %}
+            <div class="small" style="color: var(--ink-secondary);">{{ t.closing_note.get_status_display }} — {{ t.closing_note.body|truncatechars:160 }}</div>
+            <div class="small" style="color: var(--ink-muted);">— {{ t.closing_note.created_by.get_full_name|default:t.closing_note.created_by.username|default:'System' }}</div>
+            {% endif %}
+        </a>
+    {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-center py-3" style="color: var(--ink-muted); font-size: 0.9rem;">Nothing closed yet today.</div>
+    {% endif %}
+</details>
+
+{# ============================== RENTAL PERFORMANCE ============================== #}
+{% if performance %}
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg);">
+    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-bold text-uppercase d-flex align-items-center gap-2 od-label"><i data-lucide="home" class="icon"></i> Rental performance</span>
+        <a href="{% url 'onsite_performance' %}" class="small text-decoration-none fw-semibold">See the full rental performance <i data-lucide="arrow-right" class="icon"></i></a>
     </div>
     <div class="card-body">
-        {# Feed health strip — always rendered, even with zero visits/checkouts below, so a broken import pipeline never looks identical to a quiet day. #}
-        {% if onsite.calendar_gaps %}
-        <div class="small p-2 mb-3 d-flex align-items-start gap-2" style="border-radius: 10px; border: 1px solid color-mix(in srgb, var(--status-warning) 50%, white); background: color-mix(in srgb, var(--status-warning) 8%, white);">
-            <i data-lucide="triangle-alert" class="icon mt-1" style="color: var(--status-warning);"></i>
-            <div>
-                <strong>{{ onsite.calendar_gaps|length }} of {{ onsite.calendar_lines_total }} Airbnb/VRBO calendar lines aren't connected or need attention</strong> — those reservations are not flowing in automatically.
-                <a href="{% url 'onsite_booking_feeds' %}">Booking calendars</a>
-            </div>
-        </div>
-        {% endif %}
-        <div class="d-flex flex-wrap gap-2 mb-3">
-            {% for health in onsite.feed_health %}
-            <div class="flex-fill p-2" style="min-width: 220px; border-radius: 10px; border: 1px solid {% if health.is_stale %}color-mix(in srgb, var(--status-critical) 40%, white){% else %}var(--bs-border-color, #e5e7eb){% endif %}; background: {% if health.is_stale %}color-mix(in srgb, var(--status-critical) 6%, white){% endif %};">
-                <div class="d-flex align-items-center gap-1 fw-semibold small mb-1" style="color: {% if health.is_stale %}var(--status-critical){% else %}var(--ink-primary){% endif %};">
-                    {% if health.is_stale %}<i data-lucide="alert-triangle" class="icon"></i>{% else %}<i data-lucide="check-circle-2" class="icon"></i>{% endif %}
-                    {{ health.get_source_display }}
-                </div>
-                <div class="small" style="color: var(--ink-muted);">
-                    Last upload: {% if health.last_upload_at %}{{ health.last_upload_at|timesince }} ago{% else %}never{% endif %}<br>
-                    Newest booked: {% if health.newest_booked_date %}{{ health.newest_booked_date }}{% else %}unknown{% endif %}<br>
-                    Coverage through: {% if health.coverage_through %}{{ health.coverage_through }}{% else %}—{% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-
-        <div class="row g-3">
-            <div class="col-md-6">
-                <div class="small fw-bold text-uppercase mb-2" style="letter-spacing: 0.05em; color: var(--ink-muted);">Unassigned checkouts tomorrow ({{ onsite.unassigned_tomorrow_checkouts|length }})</div>
-                {% for booking in onsite.unassigned_tomorrow_checkouts %}
-                <div class="d-flex justify-content-between align-items-center py-1 border-top small">
-                    <span>{{ booking.property.name }}</span>
-                    <a href="{% url 'onsite_dashboard' %}" class="btn btn-outline-secondary btn-sm">Assign</a>
-                </div>
-                {% empty %}
-                <p class="text-muted small mb-0">All tomorrow's checkouts have a visit scheduled.</p>
-                {% endfor %}
-            </div>
-            <div class="col-md-6">
-                <div class="small fw-bold text-uppercase mb-2" style="letter-spacing: 0.05em; color: var(--ink-muted);">Today's cleanings ({{ onsite.todays_visits|length }})</div>
-                {% for visit in onsite.todays_visits %}
-                <div class="d-flex justify-content-between align-items-center py-1 border-top small">
-                    <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none" style="color: var(--ink-primary);">{{ visit.property.name }}</a>
-                    {% if visit.derived_status == 'at_risk' %}
-                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-critical) 15%, white); color: var(--status-critical); border: 1px solid color-mix(in srgb, var(--status-critical) 35%, white);">At risk</span>
-                    {% elif visit.derived_status == 'in_progress' %}
-                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">In progress</span>
-                    {% elif visit.derived_status == 'submitted' or visit.derived_status == 'verified' %}
-                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">{{ visit.get_status_display }}</span>
-                    {% else %}
-                    <span class="badge rounded-pill bg-light text-muted border">{{ visit.get_status_display }}</span>
-                    {% endif %}
-                </div>
-                {% empty %}
-                <p class="text-muted small mb-0">No cleanings scheduled today.</p>
-                {% endfor %}
-            </div>
-        </div>
-
-        {% if onsite.flagged_supply_orders %}
-        <div class="mt-3 pt-3 border-top">
-            <div class="small fw-bold text-uppercase mb-2" style="letter-spacing: 0.05em; color: var(--status-critical);">
-                <i data-lucide="package-x" class="icon"></i> Supply deliveries not confirmed ({{ onsite.flagged_supply_orders|length }})
-            </div>
-            {% for row in onsite.flagged_supply_orders %}
-            <div class="d-flex justify-content-between align-items-center py-1 border-top small">
-                <span>{{ row.property.name }}{% if row.unit %} ({{ row.unit.label }}){% endif %} — {{ row.supply_item.name }}</span>
-                <a href="{% url 'supplies:order_detail' row.order_line.order_id %}" class="text-decoration-none" style="color: var(--status-critical);">
-                    Ordered {{ row.order_line.order.sent_at|timesince }} ago, still {{ row.reading.get_level_display }}
-                </a>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-{# ============================== 4. DEPARTMENTS + CALENDAR ============================== #}
-<div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
-    <div class="col">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
-            <div class="card-header bg-white border-bottom py-3">
-                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-                    <i data-lucide="layout-grid" class="icon"></i> Departments
-                </span>
-            </div>
-            <div class="list-group list-group-flush">
-            {% for box in department_boxes %}
-                <a href="{% url 'department_dashboard' box.role %}" class="list-group-item list-group-item-action py-2 px-3 d-flex justify-content-between align-items-center text-decoration-none" style="border-left: 3px solid var(--role-{{ box.role }});">
-                    <span class="d-flex align-items-center gap-2">
-                        <i data-lucide="{{ box.role|department_icon }}" class="icon" style="color: var(--role-{{ box.role }});"></i>
-                        <span class="fw-medium" style="color: var(--ink-primary);">{{ box.label }}</span>
-                    </span>
-                    <span class="d-flex align-items-center gap-2">
-                        {% if box.overdue_count %}<span class="fw-semibold" style="font-size: 0.75rem; color: var(--status-critical);">{{ box.overdue_count }} overdue</span>{% endif %}
-                        <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ box.total }}</span>
-                    </span>
-                </a>
-            {% endfor %}
-            </div>
-        </div>
-    </div>
-    <div class="col">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
-            <div class="card-body">
-                <h6 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Today's Calendar</h6>
-                {% include 'tickets/_dashboard_calendar.html' %}
-            </div>
+        <div class="small mb-2" style="color: var(--ink-muted);">{{ performance.units }} unit{{ performance.units|pluralize }} across {{ performance.properties }} propert{{ performance.properties|pluralize:"y,ies" }} · as of {{ performance.as_of|date:"M j, Y" }}</div>
+        <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-2">
+            <div class="col"><div class="od-kpi"><div class="l">Booked, next 30 days</div><div class="v">{% if performance.ahead30.occupancy is not None %}{{ performance.ahead30.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="od-bar"><i style="width: {{ performance.ahead30.occupancy|default:0|floatformat:0 }}%;"></i></div><div class="d">{{ performance.ahead30.booked }} of {{ performance.ahead30.available }} nights</div></div></div>
+            <div class="col"><div class="od-kpi"><div class="l">Booked, next 90 days</div><div class="v">{% if performance.ahead90.occupancy is not None %}{{ performance.ahead90.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="od-bar"><i style="width: {{ performance.ahead90.occupancy|default:0|floatformat:0 }}%;"></i></div><div class="d">{{ performance.ahead90.booked }} of {{ performance.ahead90.available }} nights</div></div></div>
+            <div class="col"><div class="od-kpi"><div class="l">Occupancy, last 30 days</div><div class="v">{% if performance.back30.occupancy is not None %}{{ performance.back30.occupancy|floatformat:0 }}%{% else %}—{% endif %}</div><div class="od-bar"><i style="width: {{ performance.back30.occupancy|default:0|floatformat:0 }}%;"></i></div><div class="d">{{ performance.back30.booked }} of {{ performance.back30.available }} nights</div></div></div>
+            <div class="col"><div class="od-kpi"><div class="l">Avg nightly rate, last 30</div><div class="v">{% if performance.back30.adr is not None %}${{ performance.back30.adr|floatformat:0 }}{% else %}—{% endif %}</div><div class="d">{{ performance.back30.stays }} stay{{ performance.back30.stays|pluralize }}{% if performance.back30.alos %} · {{ performance.back30.alos|floatformat:1 }} nights avg{% endif %}</div></div></div>
+            <div class="col"><div class="od-kpi"><div class="l">Vacancy gaps, next 30</div><div class="v">{{ performance.ahead30.gaps }}</div><div class="d">{% if performance.ahead30.short_gaps %}{{ performance.ahead30.short_gaps }} short, hard to fill{% else %}none short{% endif %}</div></div></div>
         </div>
     </div>
 </div>
+{% endif %}
 
-{# ============================== 5. MOVEMENT TODAY ============================== #}
-<div class="row row-cols-1 row-cols-lg-2 g-3 mb-3">
-    <div class="col">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
-            <div class="card-header bg-white border-bottom py-3">
-                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-                    <i data-lucide="pencil-line" class="icon"></i> Updated today ({{ movement.updated_notes|length }})
-                </span>
-            </div>
-            {% if movement.updated_notes %}
-            <div class="list-group list-group-flush">
-            {% for note in movement.updated_notes %}
-                <a href="{% url 'ticket_detail' note.ticket.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
-                    <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
-                        <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ note.ticket.title|truncatechars:40 }}</span>
-                        <span class="text-nowrap small" style="color: var(--ink-muted);">{{ note.created_at|time:"g:i A" }}</span>
-                    </div>
-                    <div class="small" style="color: var(--ink-secondary);">{{ note.body|truncatechars:140 }}</div>
-                    <div class="small" style="color: var(--ink-muted);">— {{ note.created_by.get_full_name|default:note.created_by.username|default:'System' }}</div>
-                </a>
-            {% endfor %}
-            </div>
-            {% else %}
-            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">No status updates posted yet today.</div>
-            {% endif %}
-        </div>
-    </div>
-    <div class="col">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
-            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-                    <i data-lucide="check-circle-2" class="icon"></i> Closed today
-                </span>
-                <span class="small" style="color: var(--ink-muted);">{{ movement.closed_reactive|length }} reactive · {{ movement.closed_recurring|length }} recurring</span>
-            </div>
-            {% if movement.closed_reactive or movement.closed_recurring %}
-            <div class="list-group list-group-flush">
-            {% for t in movement.closed_reactive %}
-                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
-                    <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
-                        <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
-                        <span class="badge rounded-pill flex-shrink-0" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good);">Reactive</span>
-                    </div>
-                    {% if t.closing_note %}
-                    <div class="small" style="color: var(--ink-secondary);">{{ t.closing_note.get_status_display }} — {{ t.closing_note.body|truncatechars:140 }}</div>
-                    <div class="small" style="color: var(--ink-muted);">— {{ t.closing_note.created_by.get_full_name|default:t.closing_note.created_by.username|default:'System' }}</div>
-                    {% endif %}
-                </a>
-            {% endfor %}
-            {% for t in movement.closed_recurring %}
-                <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
-                    <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
-                        <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:48 }}</span>
-                        <span class="badge rounded-pill flex-shrink-0" style="background: var(--surface-page); color: var(--ink-secondary);">Recurring</span>
-                    </div>
-                    {% if t.closing_note %}
-                    <div class="small" style="color: var(--ink-secondary);">{{ t.closing_note.get_status_display }} — {{ t.closing_note.body|truncatechars:140 }}</div>
-                    <div class="small" style="color: var(--ink-muted);">— {{ t.closing_note.created_by.get_full_name|default:t.closing_note.created_by.username|default:'System' }}</div>
-                    {% endif %}
-                </a>
-            {% endfor %}
-            </div>
-            {% else %}
-            <div class="card-body text-center py-4" style="color: var(--ink-muted); font-size: 0.9rem;">Nothing closed yet today.</div>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-{# ============================== Financials + Weather — unchanged, kept below the redesign's core panels ============================== #}
-<div class="row row-cols-1 row-cols-lg-2 g-3 mb-4">
-    <div class="col">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
-            <div class="card-header bg-white border-bottom py-3">
-                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-                    <i data-lucide="landmark" class="icon"></i> Company Financials
-                </span>
-            </div>
-            <div class="card-body">
-                {% if quickbooks_token and quickbooks_token.last_synced_at %}
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span style="color: var(--ink-secondary);">YTD Revenue</span>
-                    <span class="fw-bold tabular-nums" style="color: var(--status-good);">${{ quickbooks_token.ytd_revenue|floatformat:0 }}</span>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span style="color: var(--ink-secondary);">YTD Expenses</span>
-                    <span class="fw-bold tabular-nums" style="color: var(--status-critical);">${{ quickbooks_token.ytd_expenses|floatformat:0 }}</span>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <span style="color: var(--ink-secondary);">YTD Net Income</span>
-                    <span class="fw-bold tabular-nums" style="color: var(--ink-primary);">${{ quickbooks_token.ytd_net_income|floatformat:0 }}</span>
-                </div>
-                <p class="small mb-0" style="color: var(--ink-muted);">Last synced {{ quickbooks_token.last_synced_at|date:"M j, Y g:i A" }}</p>
-                {% if quickbooks_token.last_sync_error %}
-                <p class="small mt-2 mb-0 d-flex align-items-start gap-2" style="color: var(--status-warning);">
-                    <i data-lucide="circle-alert" class="icon"></i>
-                    <span>Latest sync failed, so these numbers may be out of date. {{ quickbooks_token.last_sync_error }}</span>
-                </p>
-                {% endif %}
-                {% elif quickbooks_token %}
-                {% if quickbooks_token.last_sync_error %}
-                <p class="small mb-0 d-flex align-items-start gap-2" style="color: var(--status-warning);">
-                    <i data-lucide="circle-alert" class="icon"></i>
-                    <span>Connected, but the first sync failed. {{ quickbooks_token.last_sync_error }}</span>
-                </p>
-                {% else %}
-                <p class="text-muted small mb-0">Connected — first sync hasn't run yet.</p>
-                {% endif %}
-                {% elif quickbooks_configured %}
-                <p class="text-muted small mb-3">Not connected yet.</p>
-                <a href="{% url 'quickbooks_connect' %}" class="btn btn-outline-primary btn-sm">
-                    <i data-lucide="plus" class="icon"></i> Connect QuickBooks
-                </a>
-                {% else %}
-                <p class="text-muted small mb-0">QuickBooks isn't configured yet — ask an admin.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col">
-        <div class="card h-100" style="border-radius: var(--bs-border-radius-lg);">
-            <div class="card-header bg-white border-bottom py-3">
-                <span class="fw-bold text-uppercase d-flex align-items-center gap-2" style="font-size: 0.8rem; letter-spacing: 0.06em; color: var(--ink-secondary);">
-                    <i data-lucide="cloud-sun" class="icon"></i> Local Weather
-                </span>
-            </div>
-            <div class="card-body" data-weather-widget data-office-lat="{{ office_latitude }}" data-office-lon="{{ office_longitude }}" data-office-name="{{ office_location_name }}">
-                <p class="text-muted small mb-0" data-weather-status>Loading weather…</p>
-            </div>
-        </div>
-    </div>
-</div>
+<script>
+(function () {
+    var S = JSON.parse(document.getElementById('od-series').textContent);
+    if (!S.length) return;
+    var W = 720, H = 230, L = 42, R = 14, U = 14, B = 30, pw = W - L - R, ph = H - U - B;
+    var top = Math.max.apply(null, S.map(function (s) { return s.open; }).concat([1]));
+    var ymax = Math.max(5, (Math.floor(top * 1.1 / 5) + 1) * 5);
+    var x = function (i) { return S.length > 1 ? L + i * pw / (S.length - 1) : L; }, y = function (v) { return U + ph - v / ymax * ph; };
+    var html = '';
+    [0, Math.round(ymax / 2), ymax].forEach(function (t) { html += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="currentColor" stroke-opacity=".12"/><text x="' + (L - 6) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + t + '</text>'; });
+    S.forEach(function (s, i) {
+        if (i % 5 === 0 && i < S.length - 3) { var d = new Date(s.date + 'T12:00'); html += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + d.toLocaleDateString('en-US', {month: 'short', day: 'numeric'}) + '</text>'; }
+    });
+    html += '<text x="' + x(S.length - 1) + '" y="' + (H - 8) + '" text-anchor="middle">Today</text>';
+    html += '<polyline fill="none" stroke="var(--brand-primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="' + S.map(function (s, i) { return x(i) + ',' + y(s.open); }).join(' ') + '"/>';
+    html += '<line id="odGuide" y1="' + U + '" y2="' + (U + ph) + '" stroke="var(--brand-primary)" stroke-opacity=".35" stroke-dasharray="3 3" style="display:none"/>';
+    S.forEach(function (s, i) { html += '<circle id="odDot' + i + '" cx="' + x(i) + '" cy="' + y(s.open) + '" r="' + (i === S.length - 1 ? 4.5 : 3) + '" fill="var(--brand-primary)" stroke="white" stroke-width="1.5"/>'; });
+    var svg = document.getElementById('odSvg'), tip = document.getElementById('odTip'), box = document.getElementById('odChart'), last = -1;
+    svg.innerHTML = html;
+    function at(ev) {
+        var r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) / r.width * W;
+        var i = S.length > 1 ? Math.max(0, Math.min(S.length - 1, Math.round((px - L) / (pw / (S.length - 1))))) : 0;
+        if (last >= 0) document.getElementById('odDot' + last).setAttribute('r', last === S.length - 1 ? 4.5 : 3);
+        last = i; var s = S[i], net = s.opened - s.closed;
+        document.getElementById('odDot' + i).setAttribute('r', 6);
+        var g = document.getElementById('odGuide'); g.setAttribute('x1', x(i)); g.setAttribute('x2', x(i)); g.style.display = '';
+        tip.innerHTML = '<b>' + s.label + '</b><div class="r"><span>Open at end of day</span><span>' + s.open + '</span></div><div class="r"><span>Opened</span><span>' + s.opened + '</span></div><div class="r"><span>Closed</span><span>' + s.closed + '</span></div><div class="r"><span>Pile moved</span><span>' + (net > 0 ? '+' : '') + net + '</span></div>';
+        var bw = box.getBoundingClientRect();
+        tip.style.left = Math.max(90, Math.min(bw.width - 90, x(i) / W * r.width)) + 'px'; tip.style.top = Math.max(60, y(s.open) / H * r.height - 12) + 'px'; tip.style.opacity = 1;
+    }
+    svg.addEventListener('mousemove', at);
+    svg.addEventListener('mouseleave', function () { tip.style.opacity = 0; document.getElementById('odGuide').style.display = 'none'; if (last >= 0) { document.getElementById('odDot' + last).setAttribute('r', last === S.length - 1 ? 4.5 : 3); last = -1; } });
+})();
+</script>
 {% endblock %}

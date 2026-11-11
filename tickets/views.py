@@ -174,67 +174,18 @@ def dashboard(request):
 
 
 def _owner_dashboard(request):
-    """The Company Admin dashboard — see dashboard()'s branch above.
-    Rebuilt around exceptions and recent activity rather than totals and
-    percentages: a count you can't act on is noise, a list you can click
-    into is signal. Three time orientations, one panel each: reactive
-    tickets look backward (off_track_tickets), on-site work looks forward
-    (onsite_next_48h), recurring looks at drift at the RULE level, not the
-    instance (session_templates_drifting — the sessions app replaced the
-    old recurring-ticket system, which has since been removed) — plus departments/calendar (kept
-    close to what existed), today's movement, and a never-urgent "gone
-    quiet" panel last. All five panel queries live in
-    tickets/services/owner_dashboard.py, not inline here — see that
-    module for why each is shaped the way it is."""
+    """The Company Admin dashboard: who is in (the time bar), how tickets are opening and closing (the line, and who opened and closed how many today, this week and this month), what
+    happened today (updates and closed tickets, collapsed until opened) and how the short-term rentals are doing. What needs attention lives in the menu now (a number beside the part
+    of the system it belongs to) and at the top of that page. The panel queries live in tickets/services/owner_dashboard.py."""
+    from onsite.services import performance as performance_service
     now = timezone.now()
-
-    open_tickets = list(
-        Ticket.objects.filter(status__in=OPEN_STATUSES, property__isnull=False)
-        .select_related('property', 'assigned_staff__user', 'assigned_contact')
-    )
-    department_boxes = _department_boxes(open_tickets, now)
-
-    off_track = owner_dashboard_queries.off_track_tickets(now)
-    onsite = owner_dashboard_queries.onsite_next_48h(now)
     movement = owner_dashboard_queries.movement_today()
-    flow = owner_dashboard_queries.ticket_flow(30, now)
-
-    staff_profile = request.user.staff_profile
-    calendar_token = getattr(staff_profile, 'google_calendar_token', None)
-    calendar_days, available_calendars, enabled_calendar_ids = [], [], ''
-    if calendar_token:
-        raw_events, available_calendars = get_upcoming_events(calendar_token, days_ahead=0)
-        calendar_days = _format_calendar_events(raw_events, days_ahead=0)
-        primary_id = next((c['id'] for c in available_calendars if c['is_primary']), 'primary')
-        enabled_ids = [c for c in (calendar_token.enabled_calendar_ids or [primary_id])]
-        for c in available_calendars:
-            c['color'] = _calendar_color(c['id'])
-        enabled_calendar_ids = ','.join(enabled_ids)
-
-    from core.models import QuickBooksToken
-    from core.quickbooks import is_configured as quickbooks_is_configured
-    quickbooks_token = QuickBooksToken.objects.first()
-
     return render(request, 'tickets/owner_dashboard.html', {
-        'nudges': nudges.collect(request.user),
         'now': now,
-        'department_boxes': department_boxes,
-        'off_track': off_track,
-        'onsite': onsite,
         'movement': movement,
-        'flow': flow,
-        'calendar_configured': calendar_is_configured(),
-        'calendar_token': calendar_token,
-        'calendar_days': calendar_days,
-        'available_calendars': available_calendars,
-        'enabled_calendar_ids': enabled_calendar_ids,
-        'current_timezone': getattr(staff_profile, 'timezone', ''),
-        'timezone_choices': StaffProfile.Timezone.choices,
-        'quickbooks_token': quickbooks_token,
-        'quickbooks_configured': quickbooks_is_configured(),
-        'office_latitude': settings.OFFICE_LATITUDE,
-        'office_longitude': settings.OFFICE_LONGITUDE,
-        'office_location_name': settings.OFFICE_LOCATION_NAME,
+        'closed_total': len(movement['closed_reactive']) + len(movement['closed_recurring']),
+        'flow': owner_dashboard_queries.flow_windows(now),
+        'performance': performance_service.dashboard_summary(),
     })
 
 

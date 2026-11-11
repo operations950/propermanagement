@@ -312,6 +312,20 @@ class BudgetLine(models.Model):
         constraints = [models.UniqueConstraint(fields=['budget', 'account'], name='uniq_budget_account')]
 
 
+class PriorYearToDate(models.Model):
+    """What an account did in the fiscal year before our books began (a reserve's contributions from January to the month before we took over, say), loaded once from the
+    old system. Expense accounts do not need it: their year-to-date came across in the opening entry. A reserve account's opening entry is the fund's balance, not what was
+    put in this year, so the budget reads the year's contributions from here."""
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='prior_ytd')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='+')
+    year = models.PositiveSmallIntegerField(help_text='The year the fiscal year starts in.')
+    amount = models.DecimalField(**MONEY)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['association', 'account', 'year'], name='uniq_prior_ytd')]
+
+
 class BudgetVersion(models.Model):
     """One stage of a year's budget, kept exactly as it was at that stage: the draft I propose, the draft after the board's comments, the version edited at the meeting, and the approved (locked) one."""
     class Stage(models.TextChoices):

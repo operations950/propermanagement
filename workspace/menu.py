@@ -78,6 +78,8 @@ def build(request, profile):
         if key == 'portfolio' and not profile.is_portfolio_owner:
             continue
         keys.append(key)
+    from core import nudges
+    counts = nudges.nav_counts(user)
     out = []
     for key in keys:
         label, icon = ITEMS[key]
@@ -107,7 +109,7 @@ def build(request, profile):
             url, active = reverse('portfolio_dashboard'), any(path.startswith(p) for p in PREFIXES[key])
         else:
             url, active = reverse('ws_admin'), any(path.startswith(p) for p in PREFIXES[key])
-        out.append({'key': key, 'label': label, 'icon': icon, 'url': url, 'active': active})
+        out.append({'key': key, 'label': label, 'icon': icon, 'url': url, 'active': active, 'badge': counts.get(key, 0)})
     return out
 
 

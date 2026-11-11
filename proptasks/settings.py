@@ -202,6 +202,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'timeclock.context_processors.nav',
                 'workspace.context_processors.face',
+                'core.context_processors.alerts',
             ],
         },
     },

@@ -115,7 +115,7 @@ def week(start=None, today=None):
                     without_cleaning += ev['cleaning']['code'] == 'none'
                 kind = 'both' if c['outs'] and c['ins'] else ('out' if c['outs'] else ('in' if c['ins'] else ('stay' if c['stay'] else '')))
                 row_cells.append({'date': d, 'today': d == today, 'kind': kind, **c})
-            cities.setdefault((p.city or '').strip() or 'No city', []).append({'label': str_board._label(p, unit), 'property': p, 'cells': row_cells})
+            cities.setdefault((p.city or '').strip() or 'No city', []).append({'label': str_board._label(p, unit), 'unit': unit.label if unit else '', 'property': p, 'cells': row_cells})
     by_city = [(city, sorted(rows, key=lambda r: r['label'].lower())) for city, rows in sorted(cities.items(), key=lambda kv: (kv[0] == 'No city', kv[0].lower()))]
     return {
         'start': start, 'end': days[-1], 'days': [{'date': d, 'today': d == today} for d in days], 'by_city': by_city,

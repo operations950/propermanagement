@@ -3,12 +3,13 @@ import json
 from decimal import Decimal
 
 from django.contrib import messages
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from . import budget_export
 from . import budgeting as bg
 from . import closing, ledger
 from .models import ZERO, Account, BudgetVersionLine
@@ -57,30 +58,31 @@ def _chg(new, old):
 
 
 def _sheet(version, info, units):
-    """The approved budget as a clean sheet: no inputs, 2026 beside 2027 with the change."""
+    """The board sheet: no inputs. Last year's budget, where last year will land, and next year's budget, with the change from where last year will land."""
     rows = bg.line_rows(version, info)
     t = bg.totals(rows, units)
+    year = version.budget.year
+
+    def pack(prior, projected, proposed):
+        return {'prior': prior, 'projected': projected, 'proposed': proposed, 'd': proposed - projected, 'p': _chg(proposed, projected)}
+
     sections = []
-    for s in bg.SECTIONS:
-        lines = [r for r in rows if r['section'] == s and (r['prior'] or abs(r['proposed']) >= 0.5)]
-        tot = t['sections'][s]
-        sections.append({'name': 'Reserve contributions' if s == 'Reserves' else s, 'key': s, 'lines': [dict(r, d=r['proposed'] - r['prior'], p=_chg(r['proposed'], r['prior'])) for r in lines],
-                         'prior': tot['prior'], 'proposed': tot['proposed'], 'd': tot['proposed'] - tot['prior'], 'p': _chg(tot['proposed'], tot['prior'])})
+    for s_ in bg.SECTIONS:
+        lines = [r for r in rows if r['section'] == s_ and (r['prior'] or abs(r['projected']) >= 0.5 or abs(r['proposed']) >= 0.5)]
+        tot = t['sections'][s_]
+        sections.append(dict(pack(tot['prior'], tot['projected'], tot['proposed']), name='Reserve contributions' if s_ == 'Reserves' else s_, key=s_,
+                             lines=[dict(pack(r['prior'], r['projected'], r['proposed']), name=r['name']) for r in lines]))
+    u = units or 1
     per = [
         {'label': 'Monthly assessment', 'old': t['unit_month_prior'], 'new': t['unit_month'], 'bold': True},
         {'label': 'Annual per unit', 'old': t['unit_month_prior'] * 12, 'new': t['unit_year']},
-        {'label': 'Of that, operating (monthly)', 'old': t['op']['prior'] / (units or 1) / 12, 'new': t['op']['proposed'] / (units or 1) / 12},
-        {'label': 'Of that, reserves (monthly)', 'old': t['rs']['prior'] / (units or 1) / 12, 'new': t['rs']['proposed'] / (units or 1) / 12},
+        {'label': 'Of that, operating (monthly)', 'old': t['op']['prior'] / u / 12, 'new': t['op']['proposed'] / u / 12},
+        {'label': 'Of that, reserves (monthly)', 'old': t['rs']['prior'] / u / 12, 'new': t['rs']['proposed'] / u / 12},
     ]
     for p in per:
         p['d'], p['p'] = p['new'] - p['old'], _chg(p['new'], p['old'])
-    inc = t['income']
-    income = [{'name': 'Assessments', 'prior': inc['assessments']['prior'], 'proposed': inc['assessments']['proposed']}, {'name': 'Reserve assessment', 'prior': inc['reserve']['prior'], 'proposed': inc['reserve']['proposed']}]
-    for r in income:
-        r['d'], r['p'] = r['proposed'] - r['prior'], _chg(r['proposed'], r['prior'])
-    income_total = {'prior': inc['total']['prior'], 'proposed': inc['total']['proposed'], 'd': inc['total']['proposed'] - inc['total']['prior'], 'p': _chg(inc['total']['proposed'], inc['total']['prior'])}
-    return {'income': income, 'income_total': income_total, 'sections': sections, 'op': {'prior': t['op']['prior'], 'proposed': t['op']['proposed'], 'd': t['op']['proposed'] - t['op']['prior'], 'p': _chg(t['op']['proposed'], t['op']['prior'])},
-            'total': {'prior': t['total_prior'], 'proposed': t['total'], 'd': t['total'] - t['total_prior'], 'p': _chg(t['total'], t['total_prior'])}, 'per': per}
+    return {'year': year, 'proj_word': 'projected' if info['remaining'] else 'actual', 'sections': sections, 'op': pack(t['op']['prior'], t['op']['projected'], t['op']['proposed']),
+            'total': pack(t['total_prior'], t['total_projected'], t['total']), 'per': per, 'units': units}
 
 
 def _compare(have, units):
@@ -134,6 +136,14 @@ def budget_year(request, pk, year):
                 ver = bg.advance(bud, request.user)
                 messages.success(request, f'{bg.STAGE_LABEL[ver.stage]} is ready.' if ver.stage != 'approved' else f'The {year} budget is approved and locked.')
                 return redirect(here + f'?stage={ver.stage}')
+            elif action == 'refresh' and bud:
+                have_now = bg.versions(bud)
+                ver = have_now.get(request.POST.get('stage'))
+                if ver is None or not bg.is_editable(ver, have_now):
+                    raise ledger.LedgerError('Only a working version can be brought up to date.')
+                bg.refresh_actuals(ver)
+                messages.success(request, f'Actuals now run through {bg.info_for(ver)["through"]:%B %Y}. Your methods, adjustments and reasons are unchanged.')
+                return redirect(here + f'?stage={ver.stage}')
             elif action == 'reopen' and bud:
                 bg.reopen(bud)
                 messages.success(request, 'The approved budget is open again as the Meeting final.')
@@ -157,18 +167,35 @@ def budget_year(request, pk, year):
     ctx['hint'] = 'Everything side by side: what we proposed, what the board came back with, what changed at the meeting.' if stage == 'compare' else bg.STAGE_HINT[stage]
     ctx['latest'] = latest
     ctx['next_label'] = bg.NEXT_LABEL.get(latest) if stage == latest and latest != 'approved' else ''
+    if stage != 'compare' and stage in have:
+        bg.heal(have[stage], have)       # a draft made before the months ahead of our books counted as actual: bring it up to date, nothing typed in changes
+    sheet_view = stage == 'approved' or (stage in have and request.GET.get('sheet'))
+    ctx['sheet_on'] = bool(sheet_view) and stage != 'approved'
+    export = request.GET.get('export')
+    if stage != 'compare' and stage in have and export in ('pdf', 'xlsx'):
+        ver = have[stage]
+        sheet = _sheet(ver, bg.info_for(ver), ctx['units'])
+        sheet.update({'assoc': prop.name, 'stage_label': bg.STAGE_LABEL[stage], 'on': timezone.localdate()})
+        name = budget_export.file_name(prop.name, year, bg.STAGE_LABEL[stage], export)
+        data = budget_export.pdf(sheet) if export == 'pdf' else budget_export.xlsx(sheet)
+        resp = HttpResponse(data, content_type='application/pdf' if export == 'pdf' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = f'attachment; filename="{name}"'
+        return resp
     if stage == 'compare':
         ctx['view'] = 'compare'
         ctx['cmp'] = _compare({k: v for k, v in have.items() if k != 'approved'}, ctx['units'])
-    elif stage == 'approved':
+    elif sheet_view:
         ctx['view'] = 'approved'
-        ctx['sheet'] = _sheet(have['approved'], bg.info_for(have['approved']), ctx['units'])
-        ctx['approved_at'] = have['approved'].created_at
+        ctx['sheet'] = _sheet(have[stage], bg.info_for(have[stage]), ctx['units'])
+        ctx['sheet_note'] = 'approved' if stage == 'approved' else f'{bg.STAGE_LABEL[stage].lower()} for the board'
+        ctx['approved_at'] = have[stage].created_at
+        ctx['downloads'] = [('pdf', 'PDF'), ('xlsx', 'Excel')]
     else:
         ctx['view'] = 'editor'
         ctx['state_json'] = bg.editor_state(have[stage], have)
         ctx['edit_url'] = reverse('accounting:budget_edit', args=[pk, year]) + f'?stage={stage}'
         ctx['info_rest'] = bg.info_for(have[stage])
+        ctx['can_refresh'] = bg.is_stale(have[stage]) and bg.is_editable(have[stage], have)
     if latest == 'approved':
         ctx['can_reopen'] = True
     return render(request, 'accounting/budget_year.html', ctx)
@@ -229,7 +256,7 @@ def budget_edit(request, pk, year):
         if acct is None or not bg.is_budgetable(acct) or ver.lines.filter(account=acct).exists():
             return _err('That line cannot be added.')
         prior = bg.prior_budget(prop, year).get(acct.pk, ZERO)
-        act = bg._actuals(prop, info['window_start'], info['window_end'], [acct]).get(acct.pk, ZERO) if info['n'] else ZERO
+        act = bg.actuals_for(prop, info, [acct])[0].get(acct.pk, ZERO)
         line = BudgetVersionLine(version=ver, account=acct, prior_budget=prior, actual=act, recent=ZERO, method='none' if bg.is_reserve(acct) else bg.default_method(acct))
         bg.recompute(line, info)
         line.save()

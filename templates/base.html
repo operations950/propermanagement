@@ -234,6 +234,7 @@
         .list-group-item-action:hover { background: var(--surface-page); }
 
         .badge { font-weight: 500; }
+        .nav-pip { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px; margin-left: 6px; border-radius: 999px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: 1px; }
 
         /* The small (i) next to a label: the full explanation lives in a bubble that opens on click, so a screen can stay short.
            Use: {% include '_tip.html' with text='...' %}. Wired up at the bottom of this file. */
@@ -344,14 +345,14 @@
                 <div class="navbar-nav ms-auto align-items-xl-center">
                     {% if new_face %}
                     {% for item in ws_nav %}
-                    <a class="nav-link {% if item.active %}active{% endif %}" href="{{ item.url }}"><i data-lucide="{{ item.icon }}" class="icon"></i> {{ item.label }}</a>
+                    <a class="nav-link {% if item.active %}active{% endif %}" href="{{ item.url }}"><i data-lucide="{{ item.icon }}" class="icon"></i> {{ item.label }}{% if item.badge %}<span class="nav-pip" title="{{ item.badge }} thing{{ item.badge|pluralize }} need{{ item.badge|pluralize:'s,' }} attention">{{ item.badge }}</span>{% endif %}</a>
                     {% endfor %}
                     {% else %}
                     <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'ticket_list' and request.GET.source != 'recurring' %}active{% endif %}" href="{% url 'ticket_list' %}?source=reactive"><i data-lucide="ticket" class="icon"></i> Tickets</a>
-                    <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties</a>
-                    <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts</a>
-                    <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties{% if nav_alerts.properties %}<span class="nav-pip">{{ nav_alerts.properties }}</span>{% endif %}</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts{% if nav_alerts.contacts %}<span class="nav-pip">{{ nav_alerts.contacts }}</span>{% endif %}</a>
+                    <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site{% if nav_alerts.onsite %}<span class="nav-pip">{{ nav_alerts.onsite }}</span>{% endif %}</a>
                     <a class="nav-link" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i> Recurring</a>
                     <a class="nav-link" href="{% url 'supplies:cart' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
                     {% if tc_employee %}
@@ -364,7 +365,7 @@
                     <a class="nav-link" href="{% url 'portfolio_dashboard' %}"><i data-lucide="briefcase" class="icon"></i> Portfolio</a>
                     {% endif %}
                     {% if request.user.is_superuser or request.user.staff_profile.is_company_admin %}
-                    <a class="nav-link {% if request.resolver_match.url_name in 'close_home close_bank_tieout close_overview close_payouts close_statement close_property close_unit' or request.resolver_match.namespace == 'accounting' %}active{% endif %}" href="{% url 'close_home' %}"><i data-lucide="landmark" class="icon"></i> Financials</a>
+                    <a class="nav-link {% if request.resolver_match.url_name in 'close_home close_bank_tieout close_overview close_payouts close_statement close_property close_unit' or request.resolver_match.namespace == 'accounting' %}active{% endif %}" href="{% url 'close_home' %}"><i data-lucide="landmark" class="icon"></i> Financials{% if nav_alerts.financials %}<span class="nav-pip">{{ nav_alerts.financials }}</span>{% endif %}</a>
                     {% endif %}
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
                     {% endif %}

@@ -292,12 +292,17 @@ def attention():
     """What needs a person: {'places_without_links', 'unreadable', 'dropped'} counts, for the reminders."""
     from .models import Property
     active = Property.objects.filter(is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL).prefetch_related('units', 'listing_links')
-    without = 0
+    without, missing = 0, []
     for prop in active:
         units = [u for u in prop.units.all() if u.is_active]
         have = {(l.unit_id) for l in prop.listing_links.all()}
-        places = [u.pk for u in units] if units else [None]
-        without += sum(1 for place in places if place not in have)
+        if units:
+            left = [u.label for u in units if u.pk not in have and not u.no_listing_link]
+        else:
+            left = [prop.name] if None not in have and not prop.no_listing_link else []
+        if left:
+            without += len(left)
+            missing.append((prop, left))
     links = ListingLink.objects.filter(property__is_active=True)
     unreadable = links.filter(failures__gte=MAX_FAILURES).exclude(rating_source=ListingLink.Source.MANUAL, rating_checked_at__gte=timezone.now() - CHECK_EVERY).count()
     dropped = 0
@@ -305,7 +310,7 @@ def attention():
         recent = list(link.history.all()[:2])
         if len(recent) == 2 and recent[0].rating - recent[1].rating <= -DROP_ALERT and timezone.now() - recent[0].checked_at < CHECK_EVERY * 2:
             dropped += 1
-    return {'places_without_links': without, 'unreadable': unreadable, 'dropped': dropped}
+    return {'places_without_links': without, 'missing': missing, 'unreadable': unreadable, 'dropped': dropped}
 
 
 def links_for(prop):

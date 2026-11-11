@@ -11,7 +11,7 @@ from django.db import transaction
 
 from . import ledger
 from . import standard_chart as sc
-from .models import ZERO, Account, Budget, BudgetLine, BudgetVersion, BudgetVersionLine, MonthLock
+from .models import ZERO, Account, Budget, BudgetLine, BudgetVersion, BudgetVersionLine, JournalEntry, MonthLock, PriorYearToDate
 
 STAGES = [BudgetVersion.Stage.DRAFT, BudgetVersion.Stage.BOARD, BudgetVersion.Stage.MEETING, BudgetVersion.Stage.APPROVED]
 STAGE_KEYS = [s.value for s in STAGES]
@@ -54,8 +54,37 @@ def _add_months(day, n):
     return date(y, m + 1, 1)
 
 
+def _range_label(first_month, last_month):
+    if first_month == last_month:
+        return first_month.strftime('%b')
+    return f'{first_month:%b}–{last_month:%b}'
+
+
+def _window(fy_start, first, through):
+    """What follows from how far the actuals run: the months left to project, the months counted as actual (from the start of the fiscal year, so the months before our books
+    began count too: they came across in the opening entry), and how many of the last three months are months we closed ourselves."""
+    used = ((through.year - fy_start.year) * 12 + through.month - fy_start.month + 1) if through else 0
+    rest = [_add_months(fy_start, i) for i in range(used, 12)]
+    names = [m.strftime('%b') for m in rest]
+    if not rest:
+        rest_label = ''
+    elif len(rest) == 1:
+        rest_label = names[0]
+    elif len(rest) == 2:
+        rest_label = f'{names[0]} + {names[1]}'
+    else:
+        rest_label = f'{names[0]}–{names[-1]}'
+    recent_n = 0
+    if through and through >= first:
+        lo = max(first, _add_months(through, -2))
+        recent_n = (through.year - lo.year) * 12 + through.month - lo.month + 1
+    carried = (first.year - fy_start.year) * 12 + first.month - fy_start.month
+    return {'n': used, 'remaining': 12 - used, 'rest_label': rest_label, 'actual_label': _range_label(fy_start, through) if through else '', 'recent_n': recent_n, 'carried': max(carried, 0)}
+
+
 def base_info(prop, year):
-    """What the budget for `year` stands on: the fiscal year before it, and how far its books are closed (months closed one after another from the start; a gap stops the count)."""
+    """What the budget for `year` stands on: the fiscal year before it, and how far its books are closed (months closed one after another from the start; a gap stops the count).
+    The months of that year before our books began (we took over mid-year) count as actual too: Yardi's year to date came across in the opening entry."""
     profile = ledger.profile_for(prop)
     start_month = profile.fiscal_year_start_month or 1
     fy_start = date(year - 1, start_month, 1)
@@ -68,40 +97,56 @@ def base_info(prop, year):
         n += 1
         cur = _add_months(cur, 1)
     through = _add_months(first, n - 1) if n else None
-    used = ((through.year - fy_start.year) * 12 + through.month - fy_start.month + 1) if through else 0
-    remaining = 12 - used
-    rest = [_add_months(fy_start, i) for i in range(used, 12)]
-    names = [m.strftime('%b') for m in rest]
-    if not rest:
-        rest_label = ''
-    elif len(rest) == 1:
-        rest_label = names[0]
-    elif len(rest) == 2:
-        rest_label = f'{names[0]} + {names[1]}'
-    else:
-        rest_label = f'{names[0]}–{names[-1]}'
-    return {'fy_start': fy_start, 'first': first, 'n': n, 'through': through, 'remaining': remaining, 'rest_label': rest_label,
-            'window_start': first, 'window_end': ledger.month_end(through) if through else None, 'year': year}
+    info = {'fy_start': fy_start, 'first': first, 'n_closed': n, 'through': through, 'window_start': fy_start, 'window_end': ledger.month_end(through) if through else None, 'year': year}
+    info.update(_window(fy_start, first, through))
+    return info
 
 
 def closed_note(info):
-    if not info['n']:
+    if not info['n_closed']:
         return f'No month of {info["fy_start"].year} is closed yet'
     return f'Books closed through {info["through"]:%B %Y}'
 
 
 def can_start(info):
-    return info['n'] >= 1
+    return info['n_closed'] >= 1
 
 
-def _actuals(prop, start, end, accounts):
-    sums = ledger._sums(ledger.lines(prop).filter(entry__date__gte=start, entry__date__lte=end, account__in=accounts))
+def prior_ytd(prop, fy_year):
+    return {r.account_id: r.amount for r in PriorYearToDate.objects.filter(association=prop, year=fy_year)}
+
+
+def _actuals(prop, start, end, accounts, include_opening=True, prior=None):
+    """Per account, what happened in the window: expenses debits less credits, reserves what was put in. A reserve account's line in the opening entry is the fund's balance, not this
+    year's contribution, so it is left out and the year's contributions before our books are added from `prior`. `include_opening=False` leaves the opening entry out altogether
+    (it is a whole year to date in one line, so it says nothing about any one month)."""
+    qs = ledger.lines(prop).filter(entry__date__gte=start, entry__date__lte=end, account__in=accounts)
+    sums = {k: list(v) for k, v in ledger._sums(qs).items()}
+    reserve_ids = [a.pk for a in accounts if is_reserve(a)]
+    opening = qs.filter(entry__source=JournalEntry.Source.OPENING)
+    if include_opening:
+        opening = opening.filter(account_id__in=reserve_ids)
+    for pk, (d, c) in ledger._sums(opening).items():
+        sums[pk][0] -= d
+        sums[pk][1] -= c
     out = {}
     for a in accounts:
         if a.pk in sums:
             d, c = sums[a.pk]
             out[a.pk] = c if is_reserve(a) else d - c
+        if prior and is_reserve(a) and a.pk in prior:
+            out[a.pk] = out.get(a.pk, ZERO) + prior[a.pk]
     return out
+
+
+def actuals_for(prop, info, accounts):
+    """(actual, recent) per account for the months the budget counts as actual."""
+    if not info['n']:
+        return {}, {}
+    prior = prior_ytd(prop, info['fy_start'].year) if info['carried'] else None
+    act = _actuals(prop, info['window_start'], info['window_end'], accounts, True, prior)
+    rec = _actuals(prop, max(info['first'], _add_months(info['through'], -2)), info['window_end'], accounts, include_opening=False) if info['recent_n'] else {}
+    return act, rec
 
 
 def prior_budget(prop, year):
@@ -114,12 +159,10 @@ def default_method(acct):
 
 
 def snapshot(prop, info):
-    """Rows for a new draft: every expense and reserve account that has a budget last year or activity in the closed months."""
+    """Rows for a new draft: every expense and reserve account that has a budget last year or activity in the months counted as actual."""
     accounts = [a for a in Account.objects.filter(association=prop, is_active=True).order_by('code') if is_budgetable(a)]
     prior = prior_budget(prop, info['year'])
-    act = _actuals(prop, info['window_start'], info['window_end'], accounts) if info['n'] else {}
-    rec_start = max(info['window_start'], _add_months(info['through'], -2)) if info['n'] else None
-    rec = _actuals(prop, rec_start, info['window_end'], accounts) if info['n'] else {}
+    act, rec = actuals_for(prop, info, accounts)
     rows = []
     for a in accounts:
         p, x, r = prior.get(a.pk, ZERO), act.get(a.pk, ZERO), rec.get(a.pk, ZERO)
@@ -134,7 +177,7 @@ METHODS = ['avg', 'recent', 'b12', 'rest', 'none', 'custom']
 
 
 def method_label(code, info):
-    n, k, r = info['n'], min(3, info['n']), info['remaining']
+    n, k, r = info['n'], info['recent_n'], info['remaining']
     return {'avg': f'{n}-month average × {r}', 'recent': f'Last {k} month{"s" if k != 1 else ""} average × {r}', 'b12': f'Budget ÷ 12 × {r}',
             'rest': f'Rest of the budget lands in {info["rest_label"]}', 'none': 'Nothing more this year', 'custom': 'Custom amount'}[code]
 
@@ -146,7 +189,7 @@ def estimate(line, method, info):
     if method == 'avg':
         v = line.actual / n * r if n else ZERO
     elif method == 'recent':
-        k = min(3, n)
+        k = info['recent_n']
         v = line.recent / k * r if k else ZERO
     elif method == 'b12':
         v = line.prior_budget / 12 * r
@@ -195,19 +238,60 @@ def recompute(line, info):
 
 
 def info_for(version):
-    """The base info a version was built with (through month is stored with it, so later closings do not change a version already made)."""
+    """The base info a version was built with (through month and months counted are stored with it, so later closings do not change a version already made)."""
     prop, year = version.budget.association, version.budget.year
     info = base_info(prop, year)
-    if version.through_month and info['through'] != version.through_month:
-        # closed months moved after this version was made: the version keeps its own window
-        n = version.months_actual
-        fy = info['fy_start']
-        used = (version.through_month.year - fy.year) * 12 + version.through_month.month - fy.month + 1
-        rest = [_add_months(fy, i) for i in range(used, 12)]
-        names = [m.strftime('%b') for m in rest]
-        label = '' if not rest else names[0] if len(rest) == 1 else f'{names[0]} + {names[1]}' if len(rest) == 2 else f'{names[0]}–{names[-1]}'
-        info = dict(info, n=n, through=version.through_month, remaining=12 - used, rest_label=label, window_end=ledger.month_end(version.through_month))
+    if version.through_month and (info['through'] != version.through_month or version.months_actual != info['n']):
+        w = _window(info['fy_start'], info['first'], version.through_month)
+        n = version.months_actual or w['n']
+        label = _range_label(_add_months(version.through_month, -(n - 1)), version.through_month)
+        info = dict(info, through=version.through_month, window_end=ledger.month_end(version.through_month), **dict(w, n=n, actual_label=label))
     return info
+
+
+def is_stale(version):
+    """The books have moved on since this version was made (another month closed, or the months counted changed)."""
+    info = base_info(version.budget.association, version.budget.year)
+    return bool(version.through_month) and (info['through'] != version.through_month or info['n'] != version.months_actual)
+
+
+@transaction.atomic
+def refresh_actuals(version):
+    """Bring a working version up to the books as they stand: the actuals and the recent months of every line, lines for accounts that now have activity, the months counted.
+    Methods, adjustments, reasons and amounts typed in stay as they are."""
+    prop, year = version.budget.association, version.budget.year
+    info = base_info(prop, year)
+    if not can_start(info):
+        raise ledger.LedgerError('No month is closed yet, so there are no actuals to bring in.')
+    accounts = [a for a in Account.objects.filter(association=prop, is_active=True).order_by('code') if is_budgetable(a)]
+    act, rec = actuals_for(prop, info, accounts)
+    prior = prior_budget(prop, year)
+    have = {l.account_id: l for l in version.lines.all()}
+    version.through_month, version.months_actual = info['through'], info['n']
+    version.save(update_fields=['through_month', 'months_actual'])
+    fresh = info_for(version)
+    for a in accounts:
+        x, r = act.get(a.pk, ZERO), rec.get(a.pk, ZERO)
+        line = have.get(a.pk)
+        if line is None:
+            if not x:
+                continue
+            line = BudgetVersionLine(version=version, account=a, prior_budget=prior.get(a.pk, ZERO), method=default_method(a))
+        line.actual, line.recent = x, r
+        recompute(line, fresh)
+        line.save()
+    return version
+
+
+def heal(version, have):
+    """A working version made before the months of the year ahead of our books counted as actual still shows only the months we closed ourselves. When it was made through the same
+    month, bring its actuals up to date without anyone asking."""
+    if version.through_month and is_editable(version, have):
+        info = base_info(version.budget.association, version.budget.year)
+        if info['carried'] and info['through'] == version.through_month and version.months_actual < info['n']:
+            refresh_actuals(version)
+            return True
+    return False
 
 
 # ---------------------------------------------------------------- stages
@@ -342,8 +426,8 @@ def editor_state(version, have):
     for a in Account.objects.filter(association=version.budget.association, is_active=True).order_by('code'):
         if is_budgetable(a) and a.pk not in used:
             addable.setdefault(section_of(a), []).append({'id': a.pk, 'label': f'{a.code} {a.name}'})
-    return {'sections': SECTIONS, 'rows': rows, 'totals': t, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'],
-            'prev_label': STAGE_LABEL[STAGE_KEYS[idx - 1]] if idx else '', 'methods': [(m, method_label(m, info) if m != 'custom' else 'Custom amount') for m in METHODS]}
+    return {'sections': SECTIONS, 'rows': rows, 'totals': t, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'], 'actual_label': info['actual_label'], 'rest_label': info['rest_label'], 'recent_n': info['recent_n'], 'n': info['n'],
+            'stale': is_stale(version) and is_editable(version, have), 'prev_label': STAGE_LABEL[STAGE_KEYS[idx - 1]] if idx else '', 'methods': [(m, method_label(m, info) if m != 'custom' else 'Custom amount') for m in METHODS]}
 
 
 def compare_rows(have, units):

@@ -68,6 +68,11 @@ def run(request, prop, action, is_admin):
     elif action == 'save_listing_links':
         unit = _unit_of(prop, post.get('unit_id'))
         problems = 0
+        target = unit or prop
+        if 'no_listing_field' in post:      # the checkbox is only on this form, so absent means unticked
+            has_link = any(post.get(f'{platform}_url', '').strip() for platform in (ListingLink.Platform.AIRBNB, ListingLink.Platform.VRBO))
+            target.no_listing_link = post.get('no_listing_link') == 'on' and not has_link       # adding a link means it is on a platform after all
+            target.save(update_fields=['no_listing_link'])
         for platform in (ListingLink.Platform.AIRBNB, ListingLink.Platform.VRBO):
             key = f'{platform}_url'
             if key not in post:

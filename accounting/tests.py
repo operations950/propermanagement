@@ -1020,7 +1020,7 @@ class IncomeIsNotAnExpenseTests(TestCase):
     def test_the_per_unit_amount_comes_from_the_total(self):
         from .views_budget import _sheet
         sheet = _sheet(self.ver, bg.info_for(self.ver), 52)
-        self.assertEqual([r['name'] for r in sheet['income']], ['Assessments', 'Reserve assessment'])
+        self.assertEqual(sheet['total']['proposed'], 261366.0 + 57242.0)
         monthly = sheet['per'][0]['new']
         self.assertAlmostEqual(monthly, (261366 + 57242) / 52 / 12, places=4)
 
@@ -1299,3 +1299,100 @@ class ContractScreenTests(TestCase):
         self.assertFalse(c.confirmed)
         self.assertContains(r, 'Check every field')
         self.assertEqual((c.name, c.notice_days), ('Elevators', 90))
+
+
+from .models import JournalEntry, PriorYearToDate
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class BudgetAfterATakeoverTests(TestCase):
+    """We took over the books on Sep 30. January to September came across in one opening entry, and the budget must count them: insurance was $103,333 for the year, not October alone."""
+    def setUp(self):
+        self.prop = make_assoc('Took Over')
+        prof = ledger.profile_for(self.prop)
+        prof.books_start = date(2026, 9, 30)
+        prof.save()
+        a = lambda code: ledger.account(self.prop, code)
+        ledger.post_entry(self.prop, date(2026, 9, 30), [
+            {'account': a('6882'), 'debit': D('100000')}, {'account': a('6893'), 'debit': D('40000')},
+            {'account': a('3834'), 'credit': D('20000')},                    # the fund's balance, not what went in this year
+            {'account': a('1110'), 'credit': D('120000')}], memo='Opening balances', basis='accrual', source=JournalEntry.Source.OPENING, source_ref='yardi-sep30', allow_locked=True)
+        spend(self.prop, date(2026, 10, 10), '6882', '8000')
+        ledger.post_entry(self.prop, date(2026, 10, 20), [{'account': a('6900'), 'debit': D('2000')}, {'account': a('3834'), 'credit': D('2000')}], memo='Reserve contribution', basis='accrual')
+        ledger.lock_month(self.prop, date(2026, 10, 1))
+        bud = Budget.objects.create(association=self.prop, year=2026)
+        BudgetLine.objects.create(budget=bud, account=a('6882'), annual_amount=D('200000'))
+        BudgetLine.objects.create(budget=bud, account=a('3834'), annual_amount=D('24000'))
+        PriorYearToDate.objects.create(association=self.prop, account=a('3834'), year=2026, amount=D('18000'), note='Yardi Jan-Sep')
+        self.admin = get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678')
+        self.client.force_login(self.admin)
+
+    def test_the_months_before_our_books_count_as_actual(self):
+        info = bg.base_info(self.prop, 2027)
+        self.assertEqual((info['n'], info['n_closed'], info['carried'], info['remaining'], info['recent_n']), (10, 1, 9, 2, 1))
+        self.assertEqual((info['actual_label'], info['rest_label']), ('Jan–Oct', 'Nov + Dec'))
+        ver = bg.start_draft(self.prop, 2027, None)
+        ins = ver.lines.get(account__code='6882')
+        self.assertEqual(ins.actual, D('108000.00'))                      # the opening year to date plus October
+        self.assertEqual(ins.recent, D('8000.00'))                        # the opening entry says nothing about any one month
+        info = bg.info_for(ver)
+        self.assertEqual(bg.estimate(ins, 'avg', info), D('21600.00'))    # 108,000 / 10 months x 2
+        self.assertEqual(bg.estimate(ins, 'recent', info), D('16000.00'))
+        res = ver.lines.get(account__code='3834')
+        self.assertEqual(res.actual, D('20000.00'))                       # 18,000 before our books + October's 2,000: not the 20,000 balance as well
+        self.assertEqual(bg.compute(res, info)['proposed'], D('24000.00'))
+
+    def test_an_old_draft_is_brought_up_without_losing_what_was_typed(self):
+        ver = bg.start_draft(self.prop, 2027, None)
+        ins = ver.lines.get(account__code='6882')
+        ins.method, ins.adjust, ins.note = 'rest', '-3%', 'rebid'
+        ins.save()
+        # make it look like one made when only the months we closed ourselves counted
+        ver.months_actual = 1
+        ver.save()
+        ins.actual = D('8000')
+        ins.save()
+        have = bg.versions(ver.budget)
+        self.assertEqual(bg.info_for(ver)['actual_label'], 'Oct')
+        self.assertTrue(bg.heal(ver, have))
+        ver.refresh_from_db()
+        ins.refresh_from_db()
+        self.assertEqual((ver.months_actual, ins.actual, ins.method, ins.adjust, ins.note), (10, D('108000.00'), 'rest', '-3%', 'rebid'))
+        self.assertFalse(bg.is_stale(ver))
+        self.assertFalse(bg.heal(ver, have))
+
+    def test_the_board_sheet_and_its_downloads(self):
+        url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
+        self.client.post(url, {'action': 'start'})
+        r = self.client.get(url)
+        self.assertContains(r, 'Actual<br>Jan–Oct')
+        self.assertContains(r, 'Board sheet')
+        r = self.client.get(url + '?stage=draft&sheet=1')
+        self.assertContains(r, '2026 projected')
+        self.assertContains(r, 'Download PDF')
+        self.assertNotContains(r, 'class="bd-i')
+        pdf = self.client.get(url + '?stage=draft&export=pdf')
+        self.assertEqual(pdf['Content-Type'], 'application/pdf')
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
+        self.assertIn('attachment', pdf['Content-Disposition'])
+        xl = self.client.get(url + '?stage=draft&export=xlsx')
+        self.assertTrue(xl.content.startswith(b'PK'))
+        import io
+        import openpyxl
+        ws = openpyxl.load_workbook(io.BytesIO(xl.content)).active
+        texts = [c.value for row in ws.iter_rows() for c in row if c.value]
+        self.assertIn('Total expenses with reserves', texts)
+        self.assertIn('2026 projected', texts)
+
+    def test_bring_the_actuals_up_to_date_is_offered_when_a_month_closes(self):
+        url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
+        self.client.post(url, {'action': 'start'})
+        self.assertNotContains(self.client.get(url), 'Bring the actuals up to date')
+        spend(self.prop, date(2026, 11, 5), '6882', '1000')
+        ledger.lock_month(self.prop, date(2026, 11, 1))
+        self.assertContains(self.client.get(url), 'Bring the actuals up to date')
+        self.client.post(url, {'action': 'refresh', 'stage': 'draft'})
+        ver = BudgetVersion.objects.get(budget__association=self.prop, stage='draft')
+        self.assertEqual((ver.months_actual, ver.lines.get(account__code='6882').actual), (11, D('109000.00')))
+        self.assertNotContains(self.client.get(url), 'Bring the actuals up to date')

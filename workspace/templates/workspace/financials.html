@@ -1,7 +1,9 @@
 {% extends 'base.html' %}
+{% load alerts %}
 {% block title %}Financials{% endblock %}
 {% block content %}
 {% include 'workspace/_css.html' %}
+{% page_alerts 'financials' %}
 <h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> Financials</h2>
 <p class="small text-muted mb-3">Everything money in one place. The month-end close is the first stop; the screens below it are the ones you already use.</p>
 <div class="ws-label" style="margin-top:0">Month-end close</div>

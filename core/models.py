@@ -69,6 +69,7 @@ class Property(models.Model):
     # variable-length list — hence plain fields here rather than a side table.
     gate_code = models.CharField(max_length=50, blank=True)
     door_code = models.CharField(max_length=50, blank=True)
+    no_listing_link = models.BooleanField(default=False, help_text="Not on Airbnb or VRBO (or we won't link it): the missing-listing reminder leaves it alone.")
     lockbox_code = models.CharField(max_length=50, blank=True)
     alarm_code = models.CharField(max_length=50, blank=True)
     wifi_network = models.CharField(max_length=100, blank=True)
@@ -364,6 +365,10 @@ class Unit(models.Model):
     # A unit's own wifi and how to get in, when they differ from the building's
     # (the property's wifi_network / wifi_password / access_notes still apply to a
     # unit that leaves these blank).
+    no_listing_link = models.BooleanField(
+        default=False,
+        help_text="Not on Airbnb or VRBO (or we won't link it): the missing-listing reminder leaves it alone.",
+    )
     exclude_from_stats = models.BooleanField(
         default=False,
         help_text="Leave this unit out of the rental performance statistics — an owner's unit that is rarely rented, say. "

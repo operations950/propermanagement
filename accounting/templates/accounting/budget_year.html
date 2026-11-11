@@ -19,6 +19,21 @@
     .bd-table tr.tot td { font-weight: 700; background: #fafbfc; }
     .bd-table tr.grand td { font-weight: 800; background: #e8f0fe; border-top: 2px solid #c5d8fb; }
     .bd-table tr.chg td { background: #fff8e1; }
+    .bd-fit { table-layout: fixed; font-size: 13px; }
+    .bd-fit th, .bd-fit td { padding: 5px 7px; overflow: hidden; text-overflow: ellipsis; }
+    .bd-fit thead tr.grp th { text-align: center; font-size: 10.5px; letter-spacing: .6px; text-transform: uppercase; color: #52607a; background: #fff; border-bottom: 0; padding: 7px 4px 3px; }
+    .bd-fit thead tr.grp th .bar { display: block; border-top: 3px solid #cbd5e4; padding-top: 4px; }
+    .bd-fit thead tr.grp th.g-bud .bar { border-color: #98a6bd; } .bd-fit thead tr.grp th.g-land .bar { border-color: var(--brand-primary); }
+    .bd-fit thead tr.grp th.g-chg .bar { border-color: #d9a441; } .bd-fit thead tr.grp th.g-new .bar { border-color: #17803d; }
+    .bd-fit td.sep, .bd-fit th.sep { border-left: 1px solid var(--border-hairline); }
+    .bd-fit td.bud { background: #f7f8fa; color: #3b465a; } .bd-fit td.land { background: #f4f8ff; } .bd-fit td.new { background: #f3faf5; font-weight: 700; }
+    .bd-fit tr.tot td.bud, .bd-fit tr.tot td.land, .bd-fit tr.tot td.new { font-weight: 700; }
+    .bd-fit tr.grand td.bud, .bd-fit tr.grand td.land, .bd-fit tr.grand td.new { background: #e8f0fe; }
+    .bd-fit .bd-m { width: 100%; display: flex; justify-content: space-between; gap: 6px; padding: 3px 6px; font-size: 12px; }
+    .bd-fit .bd-m .a { color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; font-weight: 600; } .bd-fit .bd-m .b { color: var(--ink-primary); }
+    .bd-fit input.bd-i { width: 100%; padding: 3px 6px; font-size: 12.5px; } .bd-fit input.bd-i.note { width: 100%; }
+    .bd-adjshow { display: block; font-size: 10.5px; color: var(--ink-muted); line-height: 1.1; text-align: right; }
+    .bd-stale { background: #fff7e0; border: 1px solid #f0d58a; color: #7a5200; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
     .bd-pos { color: #b42318; } .bd-neg { color: #17803d; } .bd-mut { color: var(--ink-muted); }
     .bd-since { display: block; font-size: 11px; color: #b45309; font-weight: 600; }
     .bd-m { border: 1px solid var(--border-hairline); border-radius: 8px; padding: 3px 9px; background: #fff; cursor: pointer; font-weight: 600; font-size: 12.5px; color: #2a3a55; }
@@ -57,7 +72,8 @@
     </div>
     {% if stages %}
     <div class="bd-tabs">
-        {% for s in stages %}<a class="bd-tab {% if s.key == stage %}on{% endif %}" href="?stage={{ s.key }}">{{ s.label }}{% if s.key == 'approved' %}<span class="lk">🔒</span>{% endif %}</a>{% endfor %}
+        {% for s in stages %}<a class="bd-tab {% if s.key == stage and not sheet_on %}on{% endif %}" href="?stage={{ s.key }}">{{ s.label }}{% if s.key == 'approved' %}<span class="lk">🔒</span>{% endif %}</a>{% endfor %}
+        {% if stage and stage != 'compare' and stage != 'approved' %}<a class="bd-tab cmp {% if sheet_on %}on{% endif %}" href="?stage={{ stage }}&sheet=1">Board sheet</a>{% endif %}
         {% if stages|length > 1 %}<a class="bd-tab cmp {% if stage == 'compare' %}on{% endif %}" href="?stage=compare">Compare stages</a>{% endif %}
     </div>
     {% endif %}
@@ -82,6 +98,11 @@
 </div>
 
 {% if view == 'editor' %}
+{% if can_refresh %}
+<div class="bd-stale ac-noprint">The books have moved since this version was made.
+    <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="refresh"><input type="hidden" name="stage" value="{{ stage }}"><button class="btn btn-primary btn-sm">Bring the actuals up to date</button></form>
+    <span>Methods, adjustments and reasons stay as they are.</span></div>
+{% endif %}
 <div class="row g-2 mb-3">
     <div class="col-6 col-lg-3"><div class="bd-kpi"><div class="l">Operating expenses, {{ year }}</div><div class="v" id="kOp"></div><div class="d" id="kOpD"></div></div></div>
     <div class="col-6 col-lg-3"><div class="bd-kpi"><div class="l">Reserves, {{ year }}</div><div class="v" id="kRes"></div><div class="d" id="kResD"></div></div></div>
@@ -89,30 +110,39 @@
     <div class="col-6 col-lg-3"><div class="bd-kpi big"><div class="l">Per unit per month</div><div class="v" id="kUnit"></div><div class="d" id="kUnitD"></div></div></div>
 </div>
 <div class="card"><div style="overflow-x: auto;">
-<table class="bd-table" id="tbl" style="min-width: 1040px;"><thead><tr>
-    <th>Line</th><th>{{ year|add:"-1" }} budget</th>
-    <th>Actual, {{ info_rest.n }} mo {% include '_tip.html' with text="Accrual actuals from the closed months only. An open month is never counted." %}</th>
-    {% if info_rest.remaining %}<th>{{ info_rest.rest_label }}: how? {% include '_tip.html' with text="Click a method to see what each one gives for that line, then pick one. The projection and the proposed amount update right away." %}</th><th>{{ info_rest.rest_label }}</th>{% endif %}
-    <th>{{ year|add:"-1" }} projected</th><th>Adjust ($ or %)</th><th style="text-align: left;">Reason (optional)</th>
-    <th>{{ year }} proposed {% include '_tip.html' with text="Starts at the projected year and adds your adjustment. Orange text shows how much it moved since the previous stage." %}</th><th>vs {{ year|add:"-1" }} budget</th>
-</tr></thead><tbody id="body"></tbody></table>
+<table class="bd-table bd-fit" id="tbl" style="min-width: 980px;">
+<colgroup><col style="width: 21%"><col style="width: 8.5%">{% if info_rest.remaining %}<col style="width: 9%"><col style="width: 14.5%"><col style="width: 9.5%">{% else %}<col style="width: 10%"><col style="width: 10%">{% endif %}<col style="width: 8%"><col style="width: 13%"><col style="width: 9.5%"><col style="width: 6%"></colgroup>
+<thead>
+<tr class="grp"><th></th><th class="g-bud"><span class="bar">{{ year|add:"-1" }} budget</span></th><th colspan="{% if info_rest.remaining %}3{% else %}2{% endif %}" class="g-land sep"><span class="bar">Where {{ year|add:"-1" }} will land</span></th>
+    <th colspan="2" class="g-chg sep"><span class="bar">Your changes</span></th><th colspan="2" class="g-new sep"><span class="bar">{{ year }} {{ stage_label|lower }}</span></th></tr>
+<tr><th>Line</th><th>Budget</th>
+    <th class="sep">Actual<br>{{ info_rest.actual_label }} {% include '_tip.html' with text="Everything from the first day of the year through the last closed month, including what the old system had before our books began. An open month is never counted." %}</th>
+    {% if info_rest.remaining %}<th>{{ info_rest.rest_label }}<br><span style="font-weight: 400;">click to choose how</span> {% include '_tip.html' with text="Click a method to see what each one gives for that line, then pick one. The projection and the proposed amount update right away." %}</th>{% endif %}
+    <th>Projected<br>{{ year|add:"-1" }}</th><th class="sep">Adjust<br>$ or %</th><th style="text-align: left;">Reason</th>
+    <th class="sep">{{ year }}<br>{{ stage_label }} {% include '_tip.html' with text="Starts at the projected year and adds your adjustment. Orange text shows how much it moved since the previous stage." %}</th><th>vs {{ year|add:"-1" }}<br>proj.</th></tr>
+</thead><tbody id="body"></tbody></table>
 </div></div>
-<div class="small text-muted mt-2">Assessments are not typed: they come out of expenses plus reserves, divided by {{ units }} units (an equal share each). {% if not state_json.editable %}This version is frozen because the next stage was started from it.{% endif %}</div>
+<div class="small text-muted mt-2">Assessments are not typed: they come out of expenses plus reserves, divided by {{ units }} units (an equal share each). {% if not state_json.editable %}This version is frozen because the next stage was started from it.{% endif %}
+    <span class="ac-noprint">Board sheet: <a href="?stage={{ stage }}&sheet=1">see it</a> &middot; <a href="?stage={{ stage }}&export=pdf">PDF</a> &middot; <a href="?stage={{ stage }}&export=xlsx">Excel</a></span></div>
 {{ state_json|json_script:"bd-state" }}
 <script>
 (function () {
     var S = JSON.parse(document.getElementById('bd-state').textContent);
     var URL_ = '{{ edit_url|escapejs }}';
     var CSRF = '{{ csrf_token }}';
-    var YEAR = {{ year }}, N = {{ info_rest.n }};
+    var YEAR = {{ year }};
     var REM = S.remaining;
     var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
     var $ = function (n) { return (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US'); };
     var $2 = function (n) { return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); };
     var sgn = function (n) { return (n > 0 ? '+' : n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US'); };
     var pct = function (n, d) { return (n > 0 ? '+' : '') + n.toFixed(d); };
-    var cols = REM ? 10 : 8;
+    var chgOf = function (a, b) { return b ? (a / b - 1) * 100 : null; };
+    var cols = REM ? 9 : 8;
     var popEl = null;
+    var short = function (l) {
+        return {avg: 'Avg × ' + REM, recent: 'Last ' + S.recent_n + ' mo × ' + REM, b12: 'Budget ÷ 12 × ' + REM, rest: 'Rest of budget', none: 'Nothing more', custom: 'Custom'}[l.method];
+    };
 
     function send(body) {
         return fetch(URL_, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify(body)})
@@ -129,7 +159,7 @@
         var l = S.rows.find(function (r) { return r.id === id; });
         var rect = ev.currentTarget.getBoundingClientRect();
         popEl = document.createElement('div'); popEl.className = 'bd-pop';
-        popEl.style.left = Math.max(8, Math.min(window.innerWidth - 316, rect.left + window.scrollX)) + 'px';
+        popEl.style.left = Math.max(8, Math.min(window.innerWidth - 316, rect.left + window.scrollX - 120)) + 'px';
         popEl.style.top = (rect.bottom + window.scrollY + 4) + 'px';
         popEl.innerHTML = S.methods.filter(function (m) { return m[0] !== 'custom'; }).map(function (m) {
             return '<div class="o ' + (l.method === m[0] ? 'on' : '') + '" onclick="bdSet(' + id + ',\'method\',\'' + m[0] + '\')"><span>' + esc(m[1]) + '</span><span class="bd-mut">' + $(l.options[m[0]]) + '</span></div>';
@@ -139,43 +169,37 @@
     window.bdCustom = function (id) { var v = document.getElementById('cuIn').value; if (v === '') return; closePop(); bdSet(id, 'custom', v); };
     document.addEventListener('click', function (e) { if (popEl && !popEl.contains(e.target)) closePop(); });
 
-    function incomeRow(label, v, bold) {
-        var chg = v.prior ? (v.proposed / v.prior - 1) * 100 : null, b = bold ? ' style="font-weight:700"' : '';
-        return '<tr' + (bold ? ' class="tot"' : '') + '><td' + b + '>' + label + '</td><td>' + $(v.prior) + '</td><td></td>' + (REM ? '<td></td><td></td>' : '') + '<td></td><td></td><td></td><td' + b + '>' + $(v.proposed) + '</td><td>' + (chg === null ? '' : '<span class="bd-mut">' + pct(chg, 0) + '%</span>') + '</td></tr>';
-    }
-    function sum(rows, k) { return rows.reduce(function (a, r) { return a + r[k]; }, 0); }
     function render() {
         closePop();
         var ed = S.editable, html = '';
-        var I = S.totals.income;
-        html += '<tr class="sec"><td colspan="' + cols + '">Income (worked out: it is what the expenses and reserves add up to)</td></tr>' +
-            [['Assessments', I.assessments], ['Reserve assessment', I.reserve]].map(function (r) { return incomeRow(r[0], r[1]); }).join('') + incomeRow('Total income', I.total, true);
         S.sections.forEach(function (sec) {
             var rows = S.rows.filter(function (r) { return r.section === sec; });
             var label = sec === 'Reserves' ? 'Reserve contributions' : sec;
             if (!rows.length && !(ed && (S.addable[sec] || []).length)) return;
             html += '<tr class="sec"><td colspan="' + cols + '">' + label + '</td></tr>';
             rows.forEach(function (l) {
-                var chg = l.prior ? (l.proposed / l.prior - 1) * 100 : null;
-                var chgTxt = chg === null ? (l.proposed ? '<span class="bd-mut">new</span>' : '<span class="bd-mut">—</span>') : '<span class="' + (chg > 0.5 ? 'bd-pos' : chg < -0.5 ? 'bd-neg' : 'bd-mut') + '">' + pct(chg, 0) + '%</span>';
+                var chg = chgOf(l.proposed, l.projected);
+                var chgTxt = chg === null ? '<span class="bd-mut">' + (l.proposed ? 'new' : '—') + '</span>' : '<span class="' + (chg > 0.5 ? 'bd-pos' : chg < -0.5 ? 'bd-neg' : 'bd-mut') + '">' + pct(chg, 0) + '%</span>';
                 var since = (S.prev_label && Math.abs(l.since) >= 0.5) ? '<span class="bd-since">' + sgn(l.since) + ' since ' + esc(S.prev_label) + '</span>' : '';
-                html += '<tr><td>' + esc(l.name) + ' <span class="bd-mut small">' + l.code + '</span>' + (l.unbudgeted ? '<span class="bd-chip-un">not in last year\'s budget</span>' : '') + (l.removable ? '<span class="bd-chip-new">added</span>' : '') + '</td>' +
-                    '<td>' + $(l.prior) + '</td><td>' + $(l.actual) + '</td>' +
-                    (REM ? '<td style="text-align:left"><button class="bd-m ' + (l.method === 'custom' ? 'custom' : '') + '" ' + (ed ? '' : 'disabled') + ' onclick="bdPop(event,' + l.id + ')">' + esc(l.method_label) + '</button></td><td>' + $(l.nd) + '</td>' : '') +
-                    '<td><b>' + $(l.projected) + '</b></td>' +
-                    '<td><input class="bd-i" ' + (ed ? '' : 'disabled') + ' value="' + esc(l.adjust) + '" placeholder="$ or %" onchange="bdSet(' + l.id + ',\'adjust\',this.value)"></td>' +
+                var adjNote = l.adj ? '<span class="bd-adjshow">' + sgn(l.adj) + ' · ' + pct(chgOf(l.projected + l.adj, l.projected) || 0, 0) + '%</span>' : '';
+                html += '<tr><td title="' + esc(l.name) + '">' + esc(l.name) + ' <span class="bd-mut small">' + l.code + '</span>' + (l.unbudgeted ? '<span class="bd-chip-un">not in last year\'s budget</span>' : '') + (l.removable ? '<span class="bd-chip-new">added</span>' : '') + '</td>' +
+                    '<td class="bud">' + $(l.prior) + '</td><td class="sep">' + $(l.actual) + '</td>' +
+                    (REM ? '<td><button class="bd-m ' + (l.method === 'custom' ? 'custom' : '') + '" ' + (ed ? '' : 'disabled') + ' onclick="bdPop(event,' + l.id + ')"><span class="a">' + esc(short(l)) + '</span><span class="b">' + $(l.nd) + '</span></button></td>' : '') +
+                    '<td class="land"><b>' + $(l.projected) + '</b></td>' +
+                    '<td class="sep"><input class="bd-i" ' + (ed ? '' : 'disabled') + ' value="' + esc(l.adjust) + '" placeholder="$ or %" onchange="bdSet(' + l.id + ',\'adjust\',this.value)">' + adjNote + '</td>' +
                     '<td style="text-align:left"><input class="bd-i note" ' + (ed ? '' : 'disabled') + ' value="' + esc(l.note) + '" placeholder="why" onchange="bdSet(' + l.id + ',\'note\',this.value)"></td>' +
-                    '<td><b>' + $(l.proposed) + '</b>' + since + '</td><td>' + chgTxt + (ed && l.removable ? '<button class="bd-x" title="Remove this line" onclick="bdRemove(' + l.id + ')">×</button>' : '') + '</td></tr>';
+                    '<td class="new sep">' + $(l.proposed) + since + '</td><td>' + chgTxt + (ed && l.removable ? '<button class="bd-x" title="Remove this line" onclick="bdRemove(' + l.id + ')">×</button>' : '') + '</td></tr>';
             });
             if (ed && (S.addable[sec] || []).length) {
                 html += '<tr class="bd-addrow"><td colspan="' + cols + '"><select id="add-' + sec + '" class="form-select form-select-sm d-inline-block" style="width: auto; max-width: 320px;"><option value="">Add a line…</option>' +
                     S.addable[sec].map(function (a) { return '<option value="' + a.id + '">' + esc(a.label) + '</option>'; }).join('') + '</select> <button class="btn btn-sm btn-outline-secondary" onclick="bdAdd(\'' + sec + '\')">Add</button></td></tr>';
             }
-            var t = S.totals.sections[sec];
-            html += '<tr class="tot"><td>Total ' + label.toLowerCase() + '</td><td>' + $(t.prior) + '</td><td>' + $(t.actual) + '</td>' + (REM ? '<td></td><td>' + $(t.nd) + '</td>' : '') + '<td>' + $(t.projected) + '</td><td>' + (t.adj ? $(t.adj) : '') + '</td><td></td><td>' + $(t.proposed) + '</td><td>' + (t.prior ? '<span class="bd-mut">' + pct((t.proposed / t.prior - 1) * 100, 0) + '%</span>' : '') + '</td></tr>';
+            var t = S.totals.sections[sec], tc = chgOf(t.proposed, t.projected);
+            html += '<tr class="tot"><td>Total ' + label.toLowerCase() + '</td><td class="bud">' + $(t.prior) + '</td><td class="sep">' + $(t.actual) + '</td>' + (REM ? '<td>' + $(t.nd) + '</td>' : '') + '<td class="land">' + $(t.projected) + '</td><td class="sep">' + (t.adj ? sgn(t.adj) : '') + '</td><td></td><td class="new sep">' + $(t.proposed) + '</td><td>' + (tc === null ? '' : '<span class="bd-mut">' + pct(tc, 0) + '%</span>') + '</td></tr>';
         });
         var T = S.totals;
-        html += '<tr class="grand"><td>Total assessments needed</td><td>' + $(T.total_prior) + '</td><td></td>' + (REM ? '<td></td><td></td>' : '') + '<td>' + $(T.total_projected) + '</td><td></td><td></td><td>' + $(T.total) + '</td><td>' + (T.total_prior ? pct((T.total / T.total_prior - 1) * 100, 1) + '%' : '') + '</td></tr>';
+        var actTotal = S.sections.reduce(function (a, sec) { return a + T.sections[sec].actual; }, 0), ndTotal = S.sections.reduce(function (a, sec) { return a + T.sections[sec].nd; }, 0);
+        html += '<tr class="grand"><td>Total assessments needed</td><td class="bud">' + $(T.total_prior) + '</td><td class="sep">' + $(actTotal) + '</td>' + (REM ? '<td>' + $(ndTotal) + '</td>' : '') + '<td class="land">' + $(T.total_projected) + '</td><td class="sep"></td><td></td><td class="new sep">' + $(T.total) + '</td><td>' + (T.total_projected ? pct(chgOf(T.total, T.total_projected), 1) + '%' : '') + '</td></tr>';
         document.getElementById('body').innerHTML = html;
         document.getElementById('kOp').textContent = $(T.op.proposed);
         document.getElementById('kOpD').textContent = (YEAR - 1) + ' budget ' + $(T.op.prior) + ' · projected ' + $(T.op.projected);
@@ -213,28 +237,28 @@
 <div class="small text-muted mt-2">Each stage is kept exactly as it was. Highlighted rows are lines someone touched after the draft. "Why" is the reason typed on that line where it changed.</div>
 
 {% elif view == 'approved' %}
-<div class="d-flex justify-content-end mb-2 ac-noprint"><button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print / save as PDF</button></div>
+<div class="d-flex justify-content-end gap-2 mb-2 ac-noprint">
+    {% for key, label in downloads %}<a class="btn btn-outline-secondary btn-sm" href="?stage={{ stage }}&export={{ key }}"><i data-lucide="{% if key == 'pdf' %}file-text{% else %}table{% endif %}" class="icon"></i> Download {{ label }}</a>{% endfor %}
+    <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button>
+</div>
 <div class="bd-sheet">
-    <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; approved</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>Approved {{ approved_at|date:"M j, Y" }}</div></div>
-    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }} budget</th><th>{{ year }} budget</th><th>$ change</th><th>% change</th></tr></thead><tbody>
-    <tr class="sec"><td colspan="5">Income</td></tr>
-    {% for l in sheet.income %}<tr><td>{{ l.name }}</td><td>{{ l.prior|dollars }}</td><td>{{ l.proposed|dollars }}</td><td>{{ l.d|dchange }}</td><td>{{ l.p|pchange }}</td></tr>{% endfor %}
-    <tr class="tot"><td>Total income</td><td>{{ sheet.income_total.prior|dollars }}</td><td>{{ sheet.income_total.proposed|dollars }}</td><td>{{ sheet.income_total.d|dchange }}</td><td>{{ sheet.income_total.p|pchange }}</td></tr>
+    <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; {{ sheet_note }}</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>{% if stage == 'approved' %}Approved {% endif %}{{ approved_at|date:"M j, Y" }}</div></div>
+    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }} budget</th><th>{{ year|add:"-1" }} {{ sheet.proj_word }}</th><th>{{ year }} budget</th><th>$ change</th><th>% change</th></tr></thead><tbody>
     {% for sec in sheet.sections %}
     {% if sec.lines %}
-    <tr class="sec"><td colspan="5">{{ sec.name }}</td></tr>
-    {% for l in sec.lines %}<tr><td>{{ l.name }}</td><td>{{ l.prior|dollars }}</td><td>{{ l.proposed|dollars }}</td><td>{{ l.d|dchange }}</td><td>{{ l.p|pchange }}</td></tr>{% endfor %}
-    <tr class="tot"><td>Total {{ sec.name|lower }}</td><td>{{ sec.prior|dollars }}</td><td>{{ sec.proposed|dollars }}</td><td>{{ sec.d|dchange }}</td><td>{{ sec.p|pchange }}</td></tr>
+    <tr class="sec"><td colspan="6">{{ sec.name }}</td></tr>
+    {% for l in sec.lines %}<tr><td>{{ l.name }}</td><td>{{ l.prior|dollars }}</td><td>{{ l.projected|dollars }}</td><td>{{ l.proposed|dollars }}</td><td>{{ l.d|dchange }}</td><td>{{ l.p|pchange }}</td></tr>{% endfor %}
+    <tr class="tot"><td>Total {{ sec.name|lower }}</td><td>{{ sec.prior|dollars }}</td><td>{{ sec.projected|dollars }}</td><td>{{ sec.proposed|dollars }}</td><td>{{ sec.d|dchange }}</td><td>{{ sec.p|pchange }}</td></tr>
     {% endif %}
-    {% if sec.key == 'Operating' %}<tr class="tot"><td>Total expenses without reserves</td><td>{{ sheet.op.prior|dollars }}</td><td>{{ sheet.op.proposed|dollars }}</td><td>{{ sheet.op.d|dchange }}</td><td>{{ sheet.op.p|pchange }}</td></tr>{% endif %}
+    {% if sec.key == 'Operating' %}<tr class="tot"><td>Total expenses without reserves</td><td>{{ sheet.op.prior|dollars }}</td><td>{{ sheet.op.projected|dollars }}</td><td>{{ sheet.op.proposed|dollars }}</td><td>{{ sheet.op.d|dchange }}</td><td>{{ sheet.op.p|pchange }}</td></tr>{% endif %}
     {% endfor %}
-    <tr class="grand"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.proposed|dollars }}</td><td>{{ sheet.total.d|dchange }}</td><td>{{ sheet.total.p|pchange }}</td></tr>
+    <tr class="grand"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.projected|dollars }}</td><td>{{ sheet.total.proposed|dollars }}</td><td>{{ sheet.total.d|dchange }}</td><td>{{ sheet.total.p|pchange }}</td></tr>
     </tbody></table>
     <div class="bd-unitbox"><div class="t">What it means per unit ({{ units }} unit{{ units|pluralize }}, equal share)</div>
     <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th>{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
     {% for p in sheet.per %}<tr><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td>{% if p.bold %}<b>{{ p.new|money }}</b>{% else %}{{ p.new|money }}{% endif %}</td><td>{{ p.d|cents_change }}</td><td>{{ p.p|pchange }}</td></tr>{% endfor %}
     </tbody></table></div>
-    <div class="small text-muted mt-3">Lines with no budget in either year are left off. The working numbers behind this sheet (actuals, projections, reasons) stay in the Draft, Board draft and Meeting final tabs.</div>
+    <div class="small text-muted mt-3">Change is {{ year }} against the {{ year|add:"-1" }} {{ sheet.proj_word }}. Lines with no budget and no activity are left off. The working numbers behind this sheet (actuals, methods, reasons) stay in the working tabs and are not printed.</div>
 </div>
 {% endif %}
 {% endif %}

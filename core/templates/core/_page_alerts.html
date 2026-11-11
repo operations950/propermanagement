@@ -1,0 +1,17 @@
+{# The strip at the top of a page: what needs attention in this part of the system (core.nudges.section_items). Nothing here blocks anything; it only points. #}
+{% if items %}
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-left: 4px solid {% if items.0.level == 'warn' %}var(--status-warning){% else %}var(--brand-primary){% endif %};">
+    <div class="card-body py-2">
+        <div class="fw-semibold d-flex align-items-center gap-2 py-1"><i data-lucide="bell-ring" class="icon"></i> {{ items|length }} thing{{ items|length|pluralize }} need{{ items|length|pluralize:"s," }} attention in {{ title }}</div>
+        {% for n in items %}
+        <div class="d-flex justify-content-between align-items-center gap-3 py-2 border-top">
+            <div style="min-width: 0;">
+                <div class="fw-medium d-flex align-items-center gap-2"><i data-lucide="{{ n.icon }}" class="icon" style="color: {% if n.level == 'warn' %}#b07a00{% else %}var(--ink-muted){% endif %};"></i> {{ n.text }}</div>
+                {% if n.detail %}<div class="small" style="color: var(--ink-muted);">{{ n.detail }}</div>{% endif %}
+            </div>
+            <a href="{{ n.url }}" class="btn btn-outline-secondary btn-sm flex-shrink-0">Open <i data-lucide="arrow-right" class="icon"></i></a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

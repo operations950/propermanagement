@@ -581,3 +581,23 @@ def kpi_cards(data, is_admin, prop=None, unit_id=None):
         })
     cards.extend(_rating_cards(prop, unit_id))
     return cards
+
+
+def dashboard_summary(today=None):
+    """The few numbers the owner dashboard shows for the short-term rentals (what is booked ahead, what the last 30 days did, the vacancy gaps), kept ten minutes so the dashboard does not
+    rebuild the whole report on every visit. None when there is nothing to measure or the report cannot be built (the dashboard just leaves the box off)."""
+    from django.core.cache import cache
+    cached = cache.get('dash:performance')
+    if cached is not None:
+        return cached or None
+    try:
+        report = build_performance(today)
+    except Exception:
+        return None
+    ahead = {w['days']: w for w in report['ahead']}
+    back = {w['days']: w for w in report['back']}
+    out = {}
+    if report['scope']['units'] and 30 in ahead and 90 in ahead and 30 in back:
+        out = {'units': report['scope']['units'], 'properties': report['scope']['properties'], 'as_of': report['as_of'], 'ahead30': ahead[30], 'ahead90': ahead[90], 'back30': back[30]}
+    cache.set('dash:performance', out, 600)
+    return out or None

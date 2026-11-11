@@ -1,6 +1,8 @@
 {% extends 'base.html' %}
+{% load alerts %}
 {% block title %}Month-end close{% endblock %}
 {% block content %}
+{% page_alerts 'financials' %}
 <style>
     .ck-step { display: flex; gap: 12px; align-items: center; padding: 13px 16px; border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); margin-bottom: 8px; text-decoration: none; color: inherit; }
     .ck-step:hover { border-color: var(--brand-primary); }
