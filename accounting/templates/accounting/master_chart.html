@@ -1,27 +1,26 @@
 {% extends 'accounting/base_acc.html' %}
 {% block acc_title %}Chart of accounts{% endblock %}
 {% block acc_body %}
-<h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="list-tree" class="icon-lg"></i> Chart of accounts {% include '_tip.html' with text='The master list. A new association starts with a copy of it, then keeps its own. Changing a name here does not change the associations unless you press Update them.' %}</h2>
-<p class="text-muted mb-3">The master list every new association starts from. {{ books }} association{{ books|pluralize }} {{ books|pluralize:"has,have" }} books now.</p>
+<h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="list-tree" class="icon-lg"></i> Chart of accounts {% include '_tip.html' with text='One chart for every association. An account added, renamed, renumbered or turned off here changes in all of them at once.' %}</h2>
+<p class="text-muted mb-3">The one list every association uses. {{ books }} association{{ books|pluralize }} {{ books|pluralize:"has,have" }} books now. Numbers follow Yardi's, so an old report and a new one line up.</p>
 
 <form method="post" class="card mb-3"><div class="card-body">
     {% csrf_token %}<input type="hidden" name="action" value="add">
-    <h6 class="card-title">Add an account</h6>
+    <h6 class="card-title">Add an account <span class="fw-normal text-muted small">(it appears in every association)</span></h6>
     <div class="row g-2 align-items-end">
         <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Number</label><input class="form-control form-control-sm" name="code" inputmode="numeric" maxlength="4" placeholder="6921" required></div>
         <div class="col-12 col-md-5"><label class="form-label small text-muted mb-1">Name</label><input class="form-control form-control-sm" name="name" maxlength="120" placeholder="Pool Maintenance" required></div>
         <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Kind</label><select class="form-select form-select-sm" name="kind" required>{% for value, label in kinds %}<option value="{{ value }}"{% if value == 'expense' %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         <div class="col-6 col-md-2"><button class="btn btn-primary btn-sm w-100">Add</button></div>
     </div>
-    <div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="everywhere" id="everywhere" checked><label class="form-check-label small" for="everywhere">Also add it to every association that has books</label></div>
-    <div class="small text-muted mt-1">1xxx assets, 2xxx liabilities, 3xxx equity, 4xxx income, 5xxx&ndash;6xxx expenses. {{ reserve_note }}</div>
+    <div class="small text-muted mt-2">1xxx assets, 2xxx liabilities, 3xxx equity, 4xxx income, 5xxx&ndash;6xxx expenses. {{ reserve_note }} An expense account appears in each budget's "Add a line" list.</div>
 </div></form>
 
 {% for g in groups %}
 <div class="card mb-3">
     <div class="card-header bg-white py-2 fw-semibold">{{ g.label }} accounts <span class="text-muted fw-normal small">&middot; {{ g.rows|length }}</span></div>
     <div class="table-responsive"><table class="table table-sm align-middle mb-0 ac-table">
-        <thead><tr><th style="width: 90px;">Number</th><th>Name</th><th class="ac-num" style="width: 120px;">In associations</th><th style="width: 330px;"></th></tr></thead>
+        <thead><tr><th style="width: 90px;">Number</th><th>Name</th><th class="ac-num" style="width: 120px;">Entries in</th><th style="width: 250px;"></th></tr></thead>
         <tbody>
         {% for r in g.rows %}
         <tr{% if not r.m.is_active %} class="text-muted"{% endif %}>
@@ -33,9 +32,8 @@
                     {% if r.system %}<span class="ac-chip" title="The program posts to this account itself">system</span>{% endif %}{% if not r.m.is_active %}<span class="ac-chip">off</span>{% endif %}
                 </form>
             </td>
-            <td class="ac-num">{{ r.assocs }}{% if r.entries %} <span class="small text-muted" title="Associations with entries on it">&middot; {{ r.entries }} used</span>{% endif %}</td>
+            <td class="ac-num">{% if r.entries %}{{ r.entries }} of {{ r.assocs }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
             <td class="text-end">
-                {% if r.differs %}<form method="post" class="d-inline me-2">{% csrf_token %}<input type="hidden" name="action" value="sync"><input type="hidden" name="account" value="{{ r.m.pk }}"><span class="small text-muted">{{ r.differs }} named differently</span> <button class="btn btn-link btn-sm p-0">Update them</button></form>{% endif %}
                 {% if r.editable %}<form method="post" class="d-inline me-2">{% csrf_token %}<input type="hidden" name="action" value="edit"><input type="hidden" name="account" value="{{ r.m.pk }}">
                     <select class="form-select form-select-sm d-inline-block w-auto py-0" name="kind" title="Nothing is posted to it in any association, so the kind can be changed" onchange="this.form.submit()" aria-label="Kind of {{ r.m.code }}">{% for value, label in kinds %}<option value="{{ value }}"{% if value == r.m.kind %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></form>{% endif %}
                 {% if r.m.is_active and r.system %}<span class="small text-muted">always on</span>
@@ -47,5 +45,5 @@
     </table></div>
 </div>
 {% endfor %}
-<p class="small text-muted">Turning an account off here only keeps it off new associations; the ones that have it keep it. A number or kind changes everywhere at once, and only while nothing is posted to it in any association. Each association's own list is under its Accounting &rarr; Chart of accounts.</p>
+<p class="small text-muted">Accounts are never deleted: the books keep their history. A number or kind can change only while nothing is posted to the account in any association. Turning an account off hides it from pickers everywhere; it can't have a balance, and the accounts the program posts to itself stay on.</p>
 {% endblock %}

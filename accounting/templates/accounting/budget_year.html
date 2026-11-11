@@ -58,11 +58,14 @@
     .bd-chip-new { display: inline-block; font-size: 11px; border-radius: 999px; padding: 1px 7px; margin-left: 6px; background: #dcfce7; color: #17803d; }
     .bd-addrow td { text-align: left !important; }
     /* the approved sheet */
-    .bd-sheet { background: #fff; border: 1px solid var(--border-hairline); border-radius: 6px; max-width: 860px; margin: 0 auto; padding: 34px 40px 30px; box-shadow: 0 2px 10px rgba(20,30,50,.06); }
+    .bd-sheet { background: #fff; border: 1px solid var(--border-hairline); border-radius: 6px; max-width: 960px; margin: 0 auto; padding: 34px 32px 30px; box-shadow: 0 2px 10px rgba(20,30,50,.06); overflow-x: auto; }
+    .bd-sheet .bd-table { table-layout: auto; }
+    .bd-sheet .bd-table th:first-child, .bd-sheet .bd-table td:first-child { white-space: normal; min-width: 180px; }
+    .bd-sheet .bd-table th, .bd-sheet .bd-table td { padding-left: 7px; padding-right: 7px; }
     .bd-sheet .hd { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1c2430; padding-bottom: 10px; margin-bottom: 6px; }
     .bd-sheet h2 { margin: 0; font-size: 22px; }
     .bd-sheet .bd-table th { background: none; border-bottom: 1px solid #1c2430; color: #1c2430; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
-    .bd-sheet .bd-table td { padding: 4px 10px; border-bottom: 1px solid #f0f2f6; }
+    .bd-sheet .bd-table td { padding-top: 4px; padding-bottom: 4px; border-bottom: 1px solid #f0f2f6; }
     .bd-sheet .bd-table tr.sec td { background: none; border-bottom: 1px solid var(--border-hairline); color: #1c2430; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; padding-top: 16px; }
     .bd-sheet .bd-table tr.tot td { background: none; border-top: 1px solid #aab3c2; border-bottom: none; }
     .bd-sheet .bd-table tr.grand td { background: #f1f4f8; border-top: 2px solid #1c2430; border-bottom: 2px solid #1c2430; font-size: 15px; }
@@ -293,7 +296,7 @@
     <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th>{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
     {% for p in sheet.per %}<tr><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td>{% if p.bold %}<b>{{ p.new|money }}</b>{% else %}{{ p.new|money }}{% endif %}</td><td>{{ p.d|cents_change }}</td><td>{{ p.p|pchange }}</td></tr>{% endfor %}
     </tbody></table></div>
-    <div class="small text-muted mt-3">Change is {{ year }} against the {{ year|add:"-1" }} budget. Lines with no budget and no activity are left off. The working numbers behind this sheet (actuals, methods, reasons) stay in the working tabs and are not printed.</div>
+    <div class="small text-muted mt-3">Change is {{ year }} against the {{ year|add:"-1" }} budget. Lines of $1 or less in both budgets are left off; the totals still include them. The working numbers behind this sheet (actuals, methods, reasons) stay in the working tabs and are not printed.</div>
 </div>
 {% endif %}
 {% endif %}

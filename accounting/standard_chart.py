@@ -30,8 +30,8 @@ UNCATEGORIZED = '6902'
 # the accounts above, by number: the program posts to these itself, so they can never be turned off or renumbered
 SYSTEM_CODES = {v for n, v in list(globals().items()) if n.isupper() and isinstance(v, str) and v.isdigit()}
 
-# the reserve funds are equity accounts numbered 3810-3899 (the two interest accounts are in the range but are not budgeted funds)
-RESERVE_FIRST, RESERVE_LAST = '3810', '3899'
+# the reserve funds are equity accounts numbered 3810-3999 (the two interest accounts are in the range but are not budgeted funds)
+RESERVE_FIRST, RESERVE_LAST = '3810', '3999'
 RESERVE_INTEREST = {'3813', '3831'}
 
 CHART = [
@@ -58,7 +58,7 @@ CHART = [
     ('3826', 'Reserve Fund Painting', EQUITY), ('3827', 'Pooled Reserves', EQUITY), ('3828', 'Reserves Fund Plate Glass', EQUITY),
     ('3831', 'Reserve Fund Interest', EQUITY), ('3832', 'Reserve Fund Asphalt Replacement', EQUITY), ('3833', 'Reserve Insurance Deductible', EQUITY),
     ('3834', 'Reserve Fund Roof Replacement', EQUITY),
-    ('3835', 'Reserve Insurance', EQUITY),
+    ('3835', 'Reserve Insurance', EQUITY), ('3836', 'Reserve Perimeter Fence', EQUITY),
     # income
     ('4475', 'Prepaid Fees', INCOME), ('4500', 'Fees - Residential', INCOME), ('4510', 'Parking', INCOME), ('4511', 'Interest Income', INCOME),
     ('4512', 'Legal Fee Income', INCOME), ('4513', 'Special Assessments', INCOME), ('4514', 'Dock Fee Income', INCOME), ('4515', 'Special Assessment Income', INCOME),
@@ -99,8 +99,6 @@ def section(code):
         return 'Equity'
     if n <= int(RESERVE_LAST):
         return 'Reserve funds'
-    if n < 4000:
-        return 'Equity'
     if n < 5000:
         return 'Income'
     return 'Expenses'

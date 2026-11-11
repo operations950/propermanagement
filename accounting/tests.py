@@ -1433,173 +1433,122 @@ class BudgetAfterATakeoverTests(TestCase):
 @override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
                              'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
 class ChartOfAccountsTests(TestCase):
-    def setUp(self):
-        self.prop = make_assoc('Chart Condos')
-        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
-        self.url = reverse('accounting:chart', args=[self.prop.pk])
+    """One chart of accounts for the whole company: every association uses it."""
 
-    def post(self, **data):
-        return self.client.post(self.url, data, follow=True)
-
-    def test_add_an_account_and_it_is_usable_and_in_the_budgets_add_a_line_list(self):
-        self.assertContains(self.client.get(self.url), 'Add an account')
-        r = self.post(action='add', code='6921', name='  Pool   Maintenance ', kind='expense')
-        self.assertContains(r, '6921 Pool Maintenance is added.')
-        acct = ledger.account(self.prop, '6921')
-        self.assertEqual((acct.name, acct.kind, acct.is_active), ('Pool Maintenance', 'expense', True))
-        spend(self.prop, date(2026, 3, 5), '6921', '500')                 # the books can post to it
-        self.assertTrue(bg.is_budgetable(acct))
-        self.assertEqual(bg.section_of(acct), 'Operating')
-
-    def test_bad_numbers_names_and_duplicates_are_refused(self):
-        for data, words in [({'code': '69', 'name': 'X', 'kind': 'expense'}, 'four digits'), ({'code': '6921', 'name': '', 'kind': 'expense'}, 'name'),
-                            ({'code': '6820', 'name': 'Again', 'kind': 'expense'}, 'already an account'), ({'code': '6922', 'name': 'X', 'kind': 'nonsense'}, 'what kind')]:
-            self.assertContains(self.post(action='add', **data), words)
-        self.assertFalse(Account.objects.filter(association=self.prop, code__in=['69', '6922']).exists())
-
-    def test_a_number_that_does_not_match_its_kind_is_added_with_a_note(self):
-        self.assertContains(self.post(action='add', code='1999', name='Odd', kind='expense'), 'usually asset')
-        self.assertEqual(ledger.account(self.prop, '1999').kind, 'expense')
-
-    def test_rename_keeps_the_number_and_kind(self):
-        acct = ledger.account(self.prop, '6906')
-        self.post(action='rename', account=acct.pk, name='Pest and Termite')
-        acct.refresh_from_db()
-        self.assertEqual((acct.code, acct.kind, acct.name), ('6906', 'expense', 'Pest and Termite'))
-
-    def test_turning_off_is_refused_for_system_accounts_and_accounts_with_a_balance(self):
-        mgmt = ledger.account(self.prop, '6820')                         # the program posts the management fee here
-        self.assertContains(self.post(action='toggle', account=mgmt.pk), 'posts to itself')
-        pest = ledger.account(self.prop, '6906')
-        spend(self.prop, date.today(), '6906', '100')
-        self.assertContains(self.post(action='toggle', account=pest.pk), 'still has a balance')
-        quiet = ledger.account(self.prop, '6918')
-        self.assertContains(self.post(action='toggle', account=quiet.pk), 'is off')
-        quiet.refresh_from_db()
-        self.assertFalse(quiet.is_active)
-        self.post(action='toggle', account=quiet.pk)
-        quiet.refresh_from_db()
-        self.assertTrue(quiet.is_active)
-
-    def test_it_is_linked_from_the_hub_and_only_admins_open_it(self):
-        self.assertContains(self.client.get(reverse('accounting:hub', args=[self.prop.pk])), 'Chart of accounts')
-        self.client.logout()
-        self.client.force_login(get_user_model().objects.create_user('staffer2', password='pw12345678'))
-        self.assertNotEqual(self.client.get(self.url).status_code, 200)
-
-
-
-@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
-class MasterChartTests(TestCase):
     def setUp(self):
         self.a = make_assoc('Alpha Condos')
         self.b = make_assoc('Beta Condos')
         self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
         self.url = reverse('accounting:master_chart')
-        self.chart = lambda prop: reverse('accounting:chart', args=[prop.pk])
 
-    def post(self, url=None, **data):
-        return self.client.post(url or self.url, data, follow=True)
+    def post(self, **data):
+        return self.client.post(self.url, data, follow=True)
+
+    def names(self, code):
+        return [ledger.account(p, code).name for p in (self.a, self.b)]
 
     def test_the_master_starts_as_the_standard_chart_and_is_linked_from_financials(self):
         from . import standard_chart as sc
         from .models import MasterAccount
         self.assertEqual(MasterAccount.objects.count(), len(sc.CHART))
+        self.assertTrue(MasterAccount.objects.filter(code='3836', name='Reserve Perimeter Fence').exists())
         self.assertContains(self.client.get(reverse('ws_financials')), self.url)
         self.assertContains(self.client.get(self.url), 'Add an account')
 
-    def test_reserve_funds_are_3810_to_3899_and_interest_is_not_a_fund(self):
+    def test_there_is_no_chart_per_association_any_more(self):
+        r = self.client.get(reverse('accounting:chart', args=[self.a.pk]))
+        self.assertRedirects(r, self.url)
+        self.assertNotContains(self.client.get(reverse('accounting:hub', args=[self.a.pk])), 'Chart of accounts')
+
+    def test_reserve_funds_are_3810_to_3999_and_interest_is_not_a_fund(self):
         from . import standard_chart as sc
         mk = lambda code, kind='equity': Account(code=code, name='x', kind=kind)
-        for code in ('3810', '3827', '3836', '3850', '3899'):
+        for code in ('3810', '3827', '3836', '3899', '3950', '3999'):
             self.assertTrue(bg.is_reserve(mk(code)), code)
-        for code in ('3809', '3813', '3831', '3900'):
+        for code in ('3809', '3813', '3831', '4000'):
             self.assertFalse(bg.is_reserve(mk(code)), code)
-        self.assertEqual([sc.section(c) for c in ('3801', '3810', '3899', '3900')], ['Equity', 'Reserve funds', 'Reserve funds', 'Equity'])
+        self.assertEqual([sc.section(c) for c in ('3801', '3810', '3999', '4500')], ['Equity', 'Reserve funds', 'Reserve funds', 'Income'])
 
-    def test_adding_to_the_master_adds_it_to_every_association_and_reports_a_clash(self):
-        Account.objects.create(association=self.b, code='6930', name='Something Else', kind='expense')
-        r = self.post(action='add', code='6930', name='Pool Maintenance', kind='expense', everywhere='on')
-        self.assertContains(r, 'Added to 1 association')
-        self.assertContains(r, 'Beta Condos (has it as Something Else)')
-        self.assertEqual(ledger.account(self.a, '6930').name, 'Pool Maintenance')
-        self.assertEqual(ledger.account(self.b, '6930').name, 'Something Else')
-        self.assertContains(self.post(action='add', code='6930', name='Dup', kind='expense'), 'already on the master chart')
+    def test_an_added_account_appears_in_every_association_and_a_new_association_starts_with_it(self):
+        self.assertContains(self.post(action='add', code='6930', name='  Pool   Maintenance ', kind='expense'), '6930 Pool Maintenance is added to every association')
+        self.assertEqual(self.names('6930'), ['Pool Maintenance'] * 2)
+        spend(self.a, date(2026, 3, 5), '6930', '500')                       # the books can post to it
+        self.assertTrue(bg.is_budgetable(ledger.account(self.a, '6930')))
+        self.assertContains(self.post(action='add', code='6930', name='Dup', kind='expense'), 'already on the chart')
+        self.assertEqual(ledger.account(make_assoc('Gamma Condos'), '6930').name, 'Pool Maintenance')
 
-    def test_added_to_the_master_only_it_is_for_new_associations_and_off_ones_are_not_copied(self):
+    def test_bad_numbers_names_and_kinds_are_refused(self):
+        for data, words in [({'code': '69', 'name': 'X', 'kind': 'expense'}, 'four digits'), ({'code': '6921', 'name': '', 'kind': 'expense'}, 'name'),
+                            ({'code': '6820', 'name': 'Again', 'kind': 'expense'}, 'already'), ({'code': '6922', 'name': 'X', 'kind': 'nonsense'}, 'what kind')]:
+            self.assertContains(self.post(action='add', **data), words)
+        self.assertFalse(Account.objects.filter(code__in=['69', '6922']).exists())
+
+    def test_a_number_that_does_not_match_its_kind_is_added_with_a_note(self):
+        self.assertContains(self.post(action='add', code='1999', name='Odd', kind='expense'), 'usually asset')
+
+    def test_a_rename_reaches_every_association(self):
         from .models import MasterAccount
-        self.post(action='add', code='6931', name='Only New', kind='expense')
-        self.assertFalse(Account.objects.filter(association=self.a, code='6931').exists())
-        MasterAccount.objects.filter(code='6906').update(is_active=False)
-        c = make_assoc('Gamma Condos')
-        self.assertTrue(Account.objects.filter(association=c, code='6931').exists())
-        self.assertFalse(Account.objects.filter(association=c, code='6906').exists())
-        self.assertTrue(Account.objects.filter(association=c, code='6820').exists())      # the program's own accounts are always there
+        self.post(action='rename', account=MasterAccount.objects.get(code='6906').pk, name='Pest and Termite')
+        self.assertEqual(self.names('6906'), ['Pest and Termite'] * 2)
 
-    def test_an_account_renumbered_or_turned_off_on_purpose_is_not_put_back(self):
-        pest = ledger.account(self.a, '6906')
-        self.post(self.chart(self.a), action='edit', account=pest.pk, code='6940')
-        ledger.ensure_chart(self.a)
-        self.assertEqual(list(Account.objects.filter(association=self.a, name='Pest Control').values_list('code', flat=True)), ['6940'])
-        self.assertFalse(Account.objects.filter(association=self.a, code='6906').exists())
-
-    def test_an_unused_account_can_change_number_and_kind_but_not_a_used_or_system_one(self):
-        url = self.chart(self.a)
-        pest = ledger.account(self.a, '6906')
-        self.assertContains(self.post(url, action='edit', account=pest.pk, code='6941'), '6941')
-        pest.refresh_from_db()
-        self.assertEqual(pest.code, '6941')
-        self.post(url, action='edit', account=pest.pk, kind='income')
-        pest.refresh_from_db()
-        self.assertEqual(pest.kind, 'income')
-        self.assertContains(self.post(url, action='edit', account=pest.pk, code='6820'), 'already an account')
-        self.assertContains(self.post(url, action='edit', account=pest.pk, code='12'), 'four digits')
-        used = ledger.account(self.a, '6898')
-        spend(self.a, date(2026, 3, 5), '6898', '100')
-        self.assertContains(self.post(url, action='edit', account=used.pk, code='6942'), 'has entries')
-        used.refresh_from_db()
-        self.assertEqual(used.code, '6898')
-        mgmt = ledger.account(self.a, '6820')
-        self.assertContains(self.post(url, action='edit', account=mgmt.pk, code='6943'), 'posts to itself')
-
-    def test_the_association_screen_shows_a_number_field_only_for_unused_accounts(self):
-        spend(self.a, date(2026, 3, 5), '6898', '100')
-        html = self.client.get(self.chart(self.a)).content.decode()
-        self.assertIn(f'aria-label="Number of {ledger.account(self.a, "6906").name}"', html)
-        self.assertNotIn(f'aria-label="Number of {ledger.account(self.a, "6898").name}"', html)
-        self.assertNotIn(f'aria-label="Number of {ledger.account(self.a, "6820").name}"', html)
-
-    def test_a_number_changed_on_the_master_changes_everywhere_when_nothing_is_posted(self):
+    def test_an_unused_account_can_change_number_and_kind_everywhere_but_not_a_used_or_system_one(self):
         from .models import MasterAccount
         m = MasterAccount.objects.get(code='6906')
-        self.assertContains(self.post(action='edit', account=m.pk, code='6950'), 'here and in every association')
-        self.assertTrue(MasterAccount.objects.filter(code='6950').exists())
+        self.assertContains(self.post(action='edit', account=m.pk, code='6950'), 'in every association')
+        self.assertEqual(MasterAccount.objects.get(pk=m.pk).code, '6950')
         for prop in (self.a, self.b):
             self.assertEqual(ledger.account(prop, '6950').name, 'Pest Control')
             self.assertFalse(Account.objects.filter(association=prop, code='6906').exists())
-
-    def test_a_master_number_is_fixed_once_any_association_has_entries_or_if_the_program_uses_it(self):
-        from .models import MasterAccount
-        spend(self.b, date(2026, 3, 5), '6898', '100')
-        m = MasterAccount.objects.get(code='6898')
-        self.assertContains(self.post(action='edit', account=m.pk, code='6951'), 'has entries in an association')
-        self.assertTrue(MasterAccount.objects.filter(code='6898').exists())
+        self.post(action='edit', account=m.pk, kind='income')
+        self.assertEqual(ledger.account(self.b, '6950').kind, 'income')
+        self.assertContains(self.post(action='edit', account=m.pk, code='6820'), 'already an account')
+        self.assertContains(self.post(action='edit', account=m.pk, code='12'), 'four digits')
+        spend(self.b, date(2026, 3, 5), '6898', '100')                       # an entry in one association fixes the number for all
+        used = MasterAccount.objects.get(code='6898')
+        self.assertContains(self.post(action='edit', account=used.pk, code='6951'), 'has entries in an association')
+        self.assertEqual(ledger.account(self.a, '6898').code, '6898')
         mgmt = MasterAccount.objects.get(code='6820')
         self.assertContains(self.post(action='edit', account=mgmt.pk, code='6952'), 'posts to itself')
-        self.assertContains(self.post(action='toggle', account=mgmt.pk), 'stays on')
 
-    def test_a_master_rename_leaves_associations_until_they_are_updated(self):
-        from .models import MasterAccount
-        m = MasterAccount.objects.get(code='6906')
-        r = self.post(action='rename', account=m.pk, name='Pest and Termite')
-        self.assertContains(r, '2 named differently')
-        self.assertEqual(ledger.account(self.a, '6906').name, 'Pest Control')
-        self.assertContains(self.post(action='sync', account=m.pk), 'in 2 associations')
-        self.assertEqual(ledger.account(self.b, '6906').name, 'Pest and Termite')
+    def test_number_and_kind_fields_show_only_for_accounts_nothing_is_posted_to(self):
+        spend(self.a, date(2026, 3, 5), '6898', '100')
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('aria-label="Number of Pest Control"', html)
+        self.assertNotIn('aria-label="Number of General Maintenance"', html)
+        self.assertNotIn('aria-label="Number of Management Fees"', html)
 
-    def test_an_association_can_put_a_new_account_on_the_master_too(self):
+    def test_turning_off_applies_everywhere_and_is_refused_for_system_accounts_and_balances(self):
         from .models import MasterAccount
-        self.post(self.chart(self.a), action='add', code='6960', name='Dock Repairs', kind='expense', to_master='on')
-        self.assertEqual(MasterAccount.objects.get(code='6960').name, 'Dock Repairs')
-        self.assertFalse(Account.objects.filter(association=self.b, code='6960').exists())
+        self.assertContains(self.post(action='toggle', account=MasterAccount.objects.get(code='6820').pk), 'stays on')
+        spend(self.b, date.today(), '6906', '100')
+        pest = MasterAccount.objects.get(code='6906')
+        self.assertContains(self.post(action='toggle', account=pest.pk), 'still has a balance')
+        mist = MasterAccount.objects.get(code='6905')
+        self.post(action='toggle', account=mist.pk)
+        self.assertEqual([ledger.account(p, '6905').is_active for p in (self.a, self.b)], [False, False])
+        self.post(action='toggle', account=mist.pk)
+        self.assertTrue(ledger.account(self.a, '6905').is_active)
+
+    def test_an_association_that_drifted_is_brought_back_in_line(self):
+        Account.objects.filter(association=self.a, code='6906').update(name='Something else', is_active=False)
+        ledger.ensure_chart(self.a)
+        acct = ledger.account(self.a, '6906')
+        self.assertEqual((acct.name, acct.is_active), ('Pest Control', True))
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class BoardSheetSmallLinesTests(TestCase):
+    def test_a_line_of_one_dollar_or_less_in_both_budgets_is_left_off_even_with_actuals(self):
+        from . import views_budget as vb
+        rows = [{'section': 'Operating', 'name': 'Bank Fees', 'prior': 0, 'projected': 312, 'proposed': 0},
+                {'section': 'Operating', 'name': 'Dust', 'prior': 1, 'projected': 40, 'proposed': 0.5},
+                {'section': 'Operating', 'name': 'Insurance', 'prior': 200766, 'projected': 134064, 'proposed': 120000},
+                {'section': 'Operating', 'name': 'New Thing', 'prior': 0, 'projected': 0, 'proposed': 900}]
+        totals = {'sections': {s: dict(prior=0, projected=0, proposed=0) for s in bg.SECTIONS}, 'op': dict(prior=0, projected=0, proposed=0), 'rs': dict(prior=0, projected=0, proposed=0),
+                  'total_prior': 0, 'total_projected': 0, 'total': 0, 'unit_month_prior': 0, 'unit_month': 0, 'unit_year': 0}
+        import unittest.mock as mock
+        with mock.patch.object(bg, 'line_rows', return_value=rows), mock.patch.object(bg, 'totals', return_value=totals):
+            sheet = vb._sheet(mock.Mock(budget=mock.Mock(year=2027)), {'remaining': 2}, 52)
+        shown = [l['name'] for s in sheet['sections'] for l in s['lines']]
+        self.assertEqual(shown, ['Insurance', 'New Thing'])

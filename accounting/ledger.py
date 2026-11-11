@@ -60,15 +60,29 @@ def master_chart():
 
 
 def ensure_chart(association):
-    """Give an association its chart. A new one (no accounts yet) gets the whole master chart. One that already has accounts only gets back an account the program itself posts to,
-    so an account renumbered or turned off on purpose is never put back; a new account added to the master reaches existing associations when it is added. Safe to run again."""
-    have = set(Account.objects.filter(association=association).values_list('code', flat=True))
-    wanted = {r[0]: r for r in sc.CHART if r[0] in sc.SYSTEM_CODES}
-    if not have:
-        wanted.update({r[0]: r for r in master_chart()})
-    new = [Account(association=association, code=code, name=name, kind=kind) for code, name, kind in sorted(wanted.values()) if code not in have]
+    """Make the association's accounts match the company's one chart: add any it lacks, and bring a name or an on/off setting in line. There is one chart for every association,
+    so this is how a new association gets it and how an older one keeps up. Safe to run again; returns how many accounts it added."""
+    mine = {a.code: a for a in Account.objects.filter(association=association)}
+    rows = {code: (name, kind, True) for code, name, kind in sc.CHART if code in sc.SYSTEM_CODES}
+    masters = list(MasterAccount.objects.values_list('code', 'name', 'kind', 'is_active'))
+    rows.update({code: (name, kind, active) for code, name, kind, active in masters} if masters else {code: (name, kind, True) for code, name, kind in sc.CHART})
+    new = []
+    for code, (name, kind, active) in sorted(rows.items()):
+        a = mine.get(code)
+        if a is None:
+            new.append(Account(association=association, code=code, name=name, kind=kind, is_active=active))
+        elif a.name != name or a.is_active != active:
+            a.name, a.is_active = name, active
+            a.save(update_fields=['name', 'is_active'])
     Account.objects.bulk_create(new)
     return len(new)
+
+
+def sync_all_charts():
+    """ensure_chart for every association that has books."""
+    from core.models import Property
+    for prop in Property.objects.filter(pk__in=set(Account.objects.values_list('association_id', flat=True))):
+        ensure_chart(prop)
 
 
 def account(association, code):

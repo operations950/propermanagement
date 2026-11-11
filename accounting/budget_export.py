@@ -93,7 +93,7 @@ def pdf(sheet):
             pstyle.append(('FONT', (0, i), (-1, i), 'Helvetica-Bold', 8.5))
     pt = Table(per, colWidths=[2.55 * inch, 1.1 * inch, 1.1 * inch, 1.05 * inch, 0.9 * inch])
     pt.setStyle(TableStyle(pstyle))
-    story += [pt, Spacer(1, 8), Paragraph(f'Equal share per unit. Change is {sheet["year"]} against the {sheet["year"] - 1} budget.', sub)]
+    story += [pt, Spacer(1, 8), Paragraph(f'Equal share per unit. Change is {sheet["year"]} against the {sheet["year"] - 1} budget. Lines of $1 or less in both budgets are left off; the totals include them.', sub)]
 
     def footer(canvas, d):
         canvas.saveState()
@@ -170,7 +170,7 @@ def xlsx(sheet):
                 cell.font = ink
         r += 1
     r += 1
-    ws.cell(row=r, column=1, value=f'Equal share per unit. Change is {sheet["year"]} against the {sheet["year"] - 1} budget. Prepared by Proper Realty, {sheet["on"]:%B} {sheet["on"].day}, {sheet["on"].year}.').font = Font(color='667085', size=9)
+    ws.cell(row=r, column=1, value=f'Equal share per unit. Change is {sheet["year"]} against the {sheet["year"] - 1} budget. Lines of $1 or less in both budgets are left off; the totals include them. Prepared by Proper Realty, {sheet["on"]:%B} {sheet["on"].day}, {sheet["on"].year}.').font = Font(color='667085', size=9)
     ws.column_dimensions['A'].width = 44
     for c in range(2, 7):
         ws.column_dimensions[get_column_letter(c)].width = 16

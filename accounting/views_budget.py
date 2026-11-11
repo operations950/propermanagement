@@ -68,7 +68,7 @@ def _sheet(version, info, units):
 
     sections = []
     for s_ in bg.SECTIONS:
-        lines = [r for r in rows if r['section'] == s_ and (r['prior'] or abs(r['projected']) >= 0.5 or abs(r['proposed']) >= 0.5)]
+        lines = [r for r in rows if r['section'] == s_ and (abs(r['prior']) > 1 or abs(r['proposed']) > 1)]       # a line of $1 or less in both budgets is left off, whatever its actuals
         tot = t['sections'][s_]
         sections.append(dict(pack(tot['prior'], tot['projected'], tot['proposed']), name='Reserve contributions' if s_ == 'Reserves' else s_, key=s_,
                              lines=[dict(pack(r['prior'], r['projected'], r['proposed']), name=r['name']) for r in lines]))
