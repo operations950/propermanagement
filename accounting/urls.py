@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_budget, views_money, views_setup
+from . import views, views_budget, views_contracts, views_delinquency, views_money, views_setup
 
 app_name = 'accounting'
 
@@ -9,6 +9,10 @@ urlpatterns = [
     path('budgets/', views_budget.budgets, name='budgets'),
     path('<int:pk>/budget/<int:year>/', views_budget.budget_year, name='budget_year'),
     path('<int:pk>/budget/<int:year>/edit/', views_budget.budget_edit, name='budget_edit'),
+    path('<int:pk>/contracts/', views_contracts.contract_list, name='contracts'),
+    path('<int:pk>/contracts/print/', views_contracts.contract_print, name='contracts_print'),
+    path('<int:pk>/delinquencies/', views_delinquency.delinquencies, name='delinquencies'),
+    path('<int:pk>/cases/<int:case_pk>/', views_delinquency.case_detail, name='case'),
     path('<int:pk>/', views.hub, name='hub'),
     path('<int:pk>/close/<str:month>/', views.close_sheet, name='close'),
     path('<int:pk>/units/', views.units, name='units'),

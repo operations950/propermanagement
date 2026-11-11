@@ -1,0 +1,53 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Delinquencies - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="alarm-clock" class="icon-lg"></i> Delinquencies {% include '_tip.html' with text="Owners who owe more than the amount at the top. Charge their late fees and interest, make their late letters (making the first one opens their case), and review every open case each month. Each review comes back as a compliance item." %}</h2>
+        <div class="small text-muted">{{ assoc.name }}</div></div>
+    <form method="get" class="d-flex gap-2 align-items-end ac-noprint"><div><label class="small text-muted d-block mb-0">Behind by more than</label><div class="input-group input-group-sm" style="width: 140px;"><span class="input-group-text">$</span><input class="form-control" name="threshold" value="{{ threshold }}"></div></div>
+        <button class="btn btn-sm btn-outline-secondary">Show</button></form>
+</div>
+<div class="small text-muted mb-2">{% for t in terms|slice:":2" %}{{ t }} {% endfor %} <a href="{% url 'accounting:settings' assoc.pk %}#late">Change</a></div>
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Owners behind</div><div class="ac-big">{{ summary.count }}</div></div></div>
+    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">They owe</div><div class="ac-big">{{ summary.owed|money }}</div></div></div>
+    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Late fees ready</div><div class="ac-big">{{ summary.fees|money }}</div></div></div>
+    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Interest ready</div><div class="ac-big">{{ summary.interest|money }}</div></div></div>
+    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Needs a letter</div><div class="ac-big">{{ summary.letters }}</div></div></div>
+    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Cases to review</div><div class="ac-big" {% if summary.review %}style="color: #8a5a00;"{% endif %}>{{ summary.review }}</div></div></div>
+</div>
+
+<form method="post" id="dq-form">{% csrf_token %}<input type="hidden" name="threshold" value="{{ threshold }}">
+<div class="rp-wrap mb-2"><table class="rp">
+    <thead><tr><th style="width: 28px;"><input type="checkbox" id="dq-all" checked aria-label="Tick all"></th><th>Unit and owner</th><th>Where it stands</th><th>Owes</th><th>Oldest unpaid</th><th>Ready to charge</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}<tr>
+        <td><input type="checkbox" class="dq-pick" name="unit" value="{{ r.unit.pk }}" checked></td>
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}</td>
+        <td>{% if r.case %}{% include 'accounting/_case_icons.html' with icons=r.icons %} <span class="ac-chip">{{ r.case.get_stage_display }}</span>{% else %}<span class="ac-chip warn">Needs a letter</span>{% endif %}</td>
+        <td class="num" title="Assessments {{ r.b.assessments|money }}, late fees {{ r.b.late_fees|money }}, interest {{ r.b.interest|money }}{% if r.b.other %}, other {{ r.b.other|money }}{% endif %}"><strong>{{ r.b.total|money }}</strong></td>
+        <td>{% if r.b.oldest_due %}{{ r.b.oldest_due|mdate:'short' }} <span class="small text-muted">{{ r.days_late }} days</span>{% endif %}</td>
+        <td>{% if r.fee_due %}fee {{ r.fee_due|money }}{% endif %}{% if r.interest_due %}{% if r.fee_due %}, {% endif %}interest {{ r.interest_due|money }}{% endif %}</td>
+        <td class="text-end">{% if r.case %}<a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'accounting:case' assoc.pk r.case.pk %}">Open case</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="7" class="text-muted p-3">Nobody owes more than ${{ threshold }}.</td></tr>{% endfor %}
+    </tbody></table></div>
+{% if rows %}<div class="d-flex flex-wrap gap-2 ac-noprint">
+    <button class="btn btn-sm btn-primary" name="action" value="charge_late">Charge late fees to the ticked</button>
+    <button class="btn btn-sm btn-primary" name="action" value="charge_interest">Charge interest to the ticked</button>
+    <button class="btn btn-sm btn-outline-secondary" name="action" value="make_letters">Make late letters for the ticked</button>
+    <span class="small text-muted align-self-center">Only owners over ${{ threshold }} are listed. Making a late letter opens the owner's case.</span></div>{% endif %}
+</form>
+<form method="post" class="mt-2 ac-noprint d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="threshold"><input type="hidden" name="threshold" value="{{ threshold }}"><button class="btn btn-sm btn-link p-0">Make ${{ threshold }} the usual amount</button></form>
+
+<h6 class="mt-4">Open cases</h6>
+<div class="rp-wrap"><table class="rp">
+    <thead><tr><th>Unit and owner</th><th>Where it stands</th><th>Owes</th><th>Next review</th><th></th></tr></thead><tbody>
+    {% for c in cases %}<tr><td style="white-space: normal;"><span class="fw-semibold">{{ c.case.unit.label }}</span> {{ c.case.owner.name }}</td>
+        <td>{% include 'accounting/_case_icons.html' with icons=c.icons %} <span class="ac-chip">{{ c.case.get_stage_display }}</span>{% if c.paid %} <span class="ac-chip good">Paid in full</span>{% endif %}</td>
+        <td class="num">{{ c.b.total|money }}</td>
+        <td>{{ c.case.next_review|mdate:'short' }}{% if c.review_due %} <span class="ac-chip warn">Review due</span>{% endif %}</td>
+        <td class="text-end"><a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'accounting:case' assoc.pk c.case.pk %}">Open</a></td></tr>
+    {% empty %}<tr><td colspan="5" class="text-muted p-3">No open cases. A case opens when the first late letter is made.</td></tr>{% endfor %}</tbody></table></div>
+<script>(function () { var all = document.getElementById('dq-all'); if (all) all.addEventListener('change', function () { document.querySelectorAll('.dq-pick').forEach(function (c) { c.checked = all.checked; }); }); })();</script>
+{% endblock %}

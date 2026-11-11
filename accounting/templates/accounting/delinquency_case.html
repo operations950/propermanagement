@@ -1,0 +1,64 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Case: unit {{ case.unit.label }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div><h2 class="page-title fs-4 mb-0">Unit {{ case.unit.label }} &middot; {{ case.owner.name }}</h2>
+        <div class="small text-muted">{{ assoc.name }} &middot; opened {{ case.opened_on|mdate }}{% if case.resolved_on %} &middot; resolved {{ case.resolved_on|mdate }}{% endif %}</div></div>
+    <div class="d-flex align-items-center gap-2">{% include 'accounting/_case_icons.html' with icons=icons %}<span class="ac-chip {% if case.resolved_on %}good{% else %}warn{% endif %}">{{ case.get_stage_display }}{% if case.attorney_name %}: {{ case.attorney_name }}{% endif %}</span></div>
+</div>
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="card-title">What is owed</h6>
+            <table class="table table-sm ac-table mb-2"><tbody>
+                <tr><td>Assessments</td><td class="ac-num">{{ b.assessments|money }}</td></tr><tr><td>Late fees</td><td class="ac-num">{{ b.late_fees|money }}</td></tr><tr><td>Interest</td><td class="ac-num">{{ b.interest|money }}</td></tr>
+                {% if b.other %}<tr><td>Other charges</td><td class="ac-num">{{ b.other|money }}</td></tr>{% endif %}
+                <tr class="fw-bold"><td>Total</td><td class="ac-num">{{ b.total|money }}</td></tr></tbody></table>
+            <details><summary class="small" style="cursor: pointer;">The charges behind it</summary>
+                {% for c in open_charges %}<div class="d-flex justify-content-between small py-1 border-top"><span>{{ c.due_date|mdate:'short' }} {{ c.description }}</span><span class="ac-num">{{ c.balance|money }}</span></div>{% endfor %}</details>
+            {% if b.total <= 0 and not case.resolved_on %}<div class="ac-strip small mt-2">The account is paid in full. Resolve the case below.</div>{% endif %}
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="card-title">Timeline</h6>
+            {% for e in events %}<div class="d-flex gap-2 py-2 {% if not forloop.first %}border-top{% endif %}"><div style="width: 90px;" class="small text-muted">{{ e.date|mdate:'short' }}</div>
+                <div class="flex-grow-1"><span class="ac-chip me-1">{{ e.get_kind_display }}</span>{{ e.summary }}{% if e.document %} <a class="small" href="{% url 'legalforms:detail' e.document.pk %}">open the letter ({{ e.document.get_status_display }}{% if e.document.mailed_on %}, mailed {{ e.document.mailed_on|mdate:'short' }}{% endif %})</a>{% endif %}
+                    {% if e.by %}<span class="small text-muted"> &middot; {{ e.by.get_full_name|default:e.by.username }}</span>{% endif %}</div></div>{% endfor %}
+        </div></div>
+    </div>
+    <div class="col-lg-5">
+        {% if not case.resolved_on %}
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="card-title">Review {% include '_tip.html' with text="Every open case is looked at every 30 days. Add what you did, or just mark it reviewed. It then comes back in 30 days as a compliance item." %}</h6>
+            <div class="small mb-2">Next review: <strong>{{ case.next_review|mdate }}</strong>{% if case.next_review and case.next_review <= today %} <span class="ac-chip warn">Due</span>{% endif %}</div>
+            <form method="post" class="d-flex gap-2 mb-2">{% csrf_token %}<input type="hidden" name="action" value="review"><input class="form-control form-control-sm" name="note" placeholder="Note (optional)"><button class="btn btn-sm btn-primary text-nowrap">Mark reviewed</button></form>
+            <form method="post" class="d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="review_date"><label class="small text-muted mb-0">or set the next review for</label><input type="date" class="form-control form-control-sm" style="width: 150px;" name="review_date" value="{{ case.next_review|date:'Y-m-d' }}"><button class="btn btn-sm btn-outline-secondary">Set</button></form>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="card-title">Next step</h6>
+            <form method="post" class="row g-2">{% csrf_token %}<input type="hidden" name="action" value="stage">
+                <div class="col-12"><div class="ac-pills">{% for s in stages %}<span><input type="radio" id="st{{ s.value }}" name="stage" value="{{ s.value }}" {% if case.stage == s.value %}checked{% endif %}><label for="st{{ s.value }}">{{ s.label }}</label></span>{% endfor %}</div></div>
+                <div class="col-md-6"><input class="form-control form-control-sm" name="attorney" placeholder="Attorney (if with the attorney)" value="{{ case.attorney_name }}"></div>
+                <div class="col-md-6"><input class="form-control form-control-sm" name="note" placeholder="Note"></div>
+                <div class="col-12"><button class="btn btn-sm btn-outline-secondary">Move it</button></div></form>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="card-title">Late letters</h6>
+            <a class="btn btn-sm btn-primary mb-2" href="{% url 'legalforms:new' 'nola' %}?property={{ assoc.pk }}&unit={{ case.unit.pk }}">Make another late letter</a>
+            {% for d in letters %}<div class="small py-1 border-top d-flex justify-content-between"><a href="{% url 'legalforms:detail' d.pk %}">{{ d.created_at|mdate:'short' }}: {{ d.get_status_display }}</a><span class="text-muted">{% if d.mailed_on %}mailed {{ d.mailed_on|mdate:'short' }}{% endif %}</span></div>{% empty %}<div class="small text-muted">None yet.</div>{% endfor %}
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="card-title">Add to the timeline</h6>
+            <form method="post" class="row g-2">{% csrf_token %}
+                <div class="col-12"><input class="form-control form-control-sm" name="note" placeholder="What happened" required></div>
+                <div class="col-md-5"><input type="date" class="form-control form-control-sm" name="date" value="{{ today|date:'Y-m-d' }}"></div>
+                <div class="col-md-7 d-flex gap-1 flex-wrap"><button class="btn btn-sm btn-outline-secondary" name="action" value="call">A call</button><button class="btn btn-sm btn-outline-secondary" name="action" value="letter">A letter sent</button><button class="btn btn-sm btn-outline-secondary" name="action" value="note">A note</button></div></form>
+        </div></div>
+        <div class="card"><div class="card-body">
+            <h6 class="card-title">Resolve</h6>
+            <form method="post" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="action" value="resolve"><input class="form-control form-control-sm" name="note" placeholder="How it ended (paid, plan completed...)"><button class="btn btn-sm btn-outline-secondary text-nowrap" onclick="return confirm('Close this case?')">Resolve the case</button></form>
+        </div></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

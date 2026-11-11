@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 
 from . import ledger
+from . import standard_chart as sc
 from .models import ZERO, Account, Budget, BudgetLine, BudgetVersion, BudgetVersionLine, MonthLock
 
 STAGES = [BudgetVersion.Stage.DRAFT, BudgetVersion.Stage.BOARD, BudgetVersion.Stage.MEETING, BudgetVersion.Stage.APPROVED]
@@ -270,8 +271,13 @@ def advance(budget, user):
 def write_budget_lines(budget, version):
     """The approved amounts become the year's budget lines, which the income report compares the books against. Income lines are left alone."""
     budgetable = [a.pk for a in Account.objects.filter(association=budget.association) if is_budgetable(a)]
-    BudgetLine.objects.filter(budget=budget, account_id__in=budgetable).delete()
-    BudgetLine.objects.bulk_create([BudgetLine(budget=budget, account_id=l.account_id, annual_amount=l.proposed) for l in version.lines.all() if l.proposed])
+    assessments = Account.objects.filter(association=budget.association, code=sc.INCOME_ASSESSMENT).first()
+    BudgetLine.objects.filter(budget=budget, account_id__in=budgetable + ([assessments.pk] if assessments else [])).delete()
+    lines = [l for l in version.lines.select_related('account') if is_budgetable(l.account) and l.proposed]
+    BudgetLine.objects.bulk_create([BudgetLine(budget=budget, account_id=l.account_id, annual_amount=l.proposed) for l in lines])
+    total = sum((l.proposed for l in lines), ZERO)
+    if assessments and total:      # what owners pay in a year: the expenses and the reserves together (one assessment, collected in operating)
+        BudgetLine.objects.create(budget=budget, account=assessments, annual_amount=total)
 
 
 @transaction.atomic
@@ -279,7 +285,7 @@ def reopen(budget):
     have = versions(budget)
     if 'approved' not in have:
         raise ledger.LedgerError('This budget is not approved.')
-    budgetable = [a.pk for a in Account.objects.filter(association=budget.association) if is_budgetable(a)]
+    budgetable = [a.pk for a in Account.objects.filter(association=budget.association) if is_budgetable(a) or a.code == sc.INCOME_ASSESSMENT]
     BudgetLine.objects.filter(budget=budget, account_id__in=budgetable).delete()
     have['approved'].delete()
 
@@ -295,6 +301,8 @@ def line_rows(version, info, prev_version=None):
     prev = {l.account_id: l.proposed for l in prev_version.lines.all()} if prev_version else None
     rows = []
     for l in version.lines.select_related('account'):
+        if not is_budgetable(l.account):
+            continue           # an income line (the assessments) is worked out from the expenses, never added up as one
         c = compute(l, info)
         options = {m: float(estimate(l, m, info)) for m in METHODS if m != 'custom'}
         rows.append({
@@ -317,7 +325,8 @@ def totals(rows, units):
     rs = out['Reserves']
     tot, tot_b, tot_p = op['proposed'] + rs['proposed'], op['prior'] + rs['prior'], op['projected'] + rs['projected']
     u = units or 1
-    return {'sections': out, 'op': op, 'rs': rs, 'total': tot, 'total_prior': tot_b, 'total_projected': tot_p,
+    income = {'assessments': {'prior': op['prior'], 'proposed': op['proposed']}, 'reserve': {'prior': rs['prior'], 'proposed': rs['proposed']}, 'total': {'prior': tot_b, 'proposed': tot}}
+    return {'sections': out, 'op': op, 'rs': rs, 'income': income, 'total': tot, 'total_prior': tot_b, 'total_projected': tot_p,
             'unit_month': tot / u / 12, 'unit_month_prior': tot_b / u / 12, 'unit_year': tot / u, 'units': units}
 
 
@@ -344,6 +353,8 @@ def compare_rows(have, units):
     for k in keys:
         info = info_for(have[k])
         for l in have[k].lines.select_related('account'):
+            if not is_budgetable(l.account):
+                continue
             by.setdefault(l.account_id, {'account': l.account, 'prior': l.prior_budget, 'v': {}, 'note': {}})
             by[l.account_id]['v'][k] = compute(l, info)['proposed']
             by[l.account_id]['note'][k] = l.note

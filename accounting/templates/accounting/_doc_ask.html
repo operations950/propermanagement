@@ -1,0 +1,73 @@
+{# Ask the documents: answers already given are filtered and ranked as you type, free; a new question is the only thing that uses credits #}
+<style>.qa-item { border-top: 1px solid var(--border-hairline); } .qa-item > summary { list-style: none; cursor: pointer; padding: 6px 0; } .qa-item > summary::-webkit-details-marker { display: none; }
+    .qa-score { display: inline-block; min-width: 3.4em; text-align: center; border-radius: 999px; background: #e8f0fe; color: #1f4fb4; font-size: .72rem; font-weight: 700; padding: 0 7px; }
+    .qa-meta { font-size: .72rem; color: var(--ink-muted); } .qa-ans { white-space: pre-wrap; font-size: .88rem; background: var(--bs-light, #f1f3f5); border-radius: 8px; padding: 8px 10px; }</style>
+<div class="doc-ask" id="docask">
+    <form method="post" action="{% url 'accounting:settings' ask_pk %}" class="d-flex gap-2" id="qa-form">{% csrf_token %}<input type="hidden" name="action" value="ask">{% if ask_next %}<input type="hidden" name="next" value="{{ ask_next }}">{% endif %}
+        <input class="form-control form-control-sm" name="question" id="qa-input" autocomplete="off" placeholder="Ask the documents, for example: Can an owner rent a unit for a week at a time?" required><button class="btn btn-sm btn-primary text-nowrap" id="qa-ask">Ask</button></form>
+    <div class="small text-muted mt-1" id="qa-hint">Start typing: answers already given appear below and cost nothing. Only a new question reads the documents.</div>
+    <details class="mt-2" id="qa-wrap"><summary class="small fw-semibold" style="cursor: pointer;"><span id="qa-title">Questions already answered</span></summary>
+        <div id="qa-list" class="mt-1"></div></details>
+</div>
+{{ ap_qa|json_script:"qa-data" }}
+<script>
+(function () {
+    var root = document.getElementById('docask');
+    if (!root) return;
+    var DATA = JSON.parse(document.getElementById('qa-data').textContent);
+    var input = document.getElementById('qa-input'), list = document.getElementById('qa-list'), wrap = document.getElementById('qa-wrap'), title = document.getElementById('qa-title');
+    var STOP = 'the and for are with that this from have will shall may not can you any all per who what when where how does did our their about into than then there been being its is of to in on or an as at by be if a it do get was were has had would could should which these those such upon under over also only more most other some'.split(' ');
+    var CSRF = root.querySelector('input[name=csrfmiddlewaretoken]').value, ACTION = document.getElementById('qa-form').action;
+    function stem(w) { var s = ['ing', 'ed', 'es', 's', 'ly']; for (var i = 0; i < s.length; i++) if (w.length - s[i].length >= 4 && w.slice(-s[i].length) === s[i]) return w.slice(0, -s[i].length); return w; }
+    function terms(t) { return (String(t || '').toLowerCase().match(/[a-z]{3,}/g) || []).filter(function (w) { return STOP.indexOf(w) < 0; }).map(stem); }
+    function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    DATA.forEach(function (d) { d.qt = terms(d.q); d.at = terms(d.a); });
+    function score(d, q) {
+        if (!q.length) return 0;
+        var inQ = q.filter(function (t) { return d.qt.indexOf(t) >= 0; }).length / q.length, inA = q.filter(function (t) { return d.at.indexOf(t) >= 0; }).length / q.length;
+        return Math.min(100, Math.round(100 * (0.75 * inQ + 0.25 * inA) * (1 + 0.05 * Math.log(1 + d.reads + d.asks))));
+    }
+    var shown = [], timer = null, counted = {};
+    function render() {
+        var q = terms(input.value), rows;
+        if (q.length) {
+            rows = DATA.map(function (d) { return {d: d, s: score(d, q)}; }).filter(function (r) { return r.s >= 25; }).sort(function (a, b) { return b.s - a.s || (b.d.reads + b.d.asks) - (a.d.reads + a.d.asks); }).slice(0, 8);
+            title.textContent = rows.length ? rows.length + ' already answered that look like yours' : 'Nothing answered looks like this: press Ask';
+            if (rows.length) wrap.open = true;
+        } else {
+            rows = DATA.slice(0, 40).map(function (d) { return {d: d, s: null}; });
+            title.textContent = 'Questions already answered (' + DATA.length + '), most useful first';
+        }
+        shown = rows;
+        list.innerHTML = rows.map(function (r) {
+            var d = r.d;
+            return '<details class="qa-item" data-id="' + d.id + '"' + (String(d.id) === asked ? ' open' : '') + '><summary><span class="fw-semibold small">' + esc(d.q) + '</span> ' + (r.s !== null ? '<span class="qa-score" title="How closely it matches what you typed">' + r.s + '</span> ' : '') +
+                '<span class="qa-meta">asked ' + d.asks + ' · read ' + d.reads + ' · ' + esc(d.when) + '</span></summary><div class="qa-ans">' + esc(d.a) + '</div>' +
+                (d.sources.length ? '<details class="mt-1"><summary class="qa-meta" style="cursor: pointer;">Source: ' + d.sources.length + ' page' + (d.sources.length === 1 ? '' : 's') + ' read</summary><div class="qa-meta">' + d.sources.map(esc).join('<br>') + '</div></details>' : '') +
+                (d.stale ? '<form method="post" action="' + ACTION + '" class="mt-1">' + '<input type="hidden" name="csrfmiddlewaretoken" value="' + CSRF + '"><input type="hidden" name="action" value="ask"><input type="hidden" name="again" value="1"><input type="hidden" name="question" value="' + esc(d.q) + '">' +
+                    (NEXT ? '<input type="hidden" name="next" value="' + esc(NEXT) + '">' : '') + '<span class="qa-meta">' + (d.stale === 'documents' ? 'A document that matters was added or changed since this was answered.' : 'Answered over 90 days ago: the law or the documents may have moved.') + '</span> <button class="btn btn-sm btn-outline-secondary py-0">Ask again</button></form>' : '') + '</details>';
+        }).join('');
+        schedule();
+    }
+    // sitting with answers on screen for ~15 seconds counts as reading them: +1 read, once a day per person
+    function schedule() {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            var ids = [];
+            Array.prototype.forEach.call(list.querySelectorAll('details.qa-item[open]'), function (e) { ids.push(e.dataset.id); });
+            if (!ids.length && terms(input.value).length && shown.length) ids = shown.slice(0, 3).map(function (r) { return String(r.d.id); });
+            ids = ids.filter(function (i) { return !counted[i]; });
+            if (!ids.length) return;
+            ids.forEach(function (i) { counted[i] = 1; });
+            var body = new URLSearchParams(); body.append('action', 'q_read'); body.append('csrfmiddlewaretoken', CSRF); ids.forEach(function (i) { body.append('ids', i); });
+            fetch(ACTION, {method: 'POST', body: body, credentials: 'same-origin'}).catch(function () {});
+        }, 15000);
+    }
+    var NEXT = (document.querySelector('#qa-form input[name=next]') || {}).value || '';
+    var asked = new URLSearchParams(location.search).get('asked');
+    input.addEventListener('input', render);
+    list.addEventListener('toggle', schedule, true);
+    render();
+    if (asked) { wrap.open = true; var e = list.querySelector('details.qa-item[data-id="' + asked + '"]'); if (e) { e.open = true; setTimeout(function () { e.scrollIntoView({block: 'center'}); }, 100); } }
+})();
+</script>

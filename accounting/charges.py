@@ -19,7 +19,9 @@ from .models import ZERO, Application, BankAccount, Charge, ChargeRule, JournalE
 
 FREQ_MONTHS = {'monthly': 1, 'quarterly': 3, 'semiannual': 6, 'annual': 12}
 INCOME_FOR_KIND = {Charge.Kind.ASSESSMENT: sc.INCOME_ASSESSMENT, Charge.Kind.SPECIAL: sc.INCOME_SPECIAL, Charge.Kind.LATE_FEE: sc.INCOME_LATE_FEE,
-                   Charge.Kind.FINE: sc.INCOME_MISC, Charge.Kind.OTHER: sc.INCOME_MISC, Charge.Kind.OPENING: sc.INCOME_ASSESSMENT}
+                   Charge.Kind.FINE: sc.INCOME_MISC, Charge.Kind.OTHER: sc.INCOME_MISC, Charge.Kind.OPENING: sc.INCOME_ASSESSMENT, Charge.Kind.INTEREST: sc.INTEREST_INCOME}
+# A payment goes first to interest, then to late fees, then to costs and fines, and last to the assessment itself (the declaration and Florida law say so).
+PAY_ORDER = {Charge.Kind.INTEREST: 0, Charge.Kind.LATE_FEE: 1, Charge.Kind.FINE: 2, Charge.Kind.OTHER: 2}
 
 
 class ChargeError(Exception):
@@ -107,7 +109,7 @@ def post_due(association, today, user=None):
     """Post every recurring charge that has come due. Returns [(rule, due, count)] for what was posted."""
     done = []
     for rule in ChargeRule.objects.filter(association=association, is_active=True).select_related('income_account'):
-        for due in rule_due_dates(rule, today):
+        for due in rule_due_dates(rule, today + timedelta(days=rule.post_days_ahead or 0)):
             try:
                 n = post_rule(rule, due, user=user)
             except ledger.LedgerError:
@@ -168,7 +170,9 @@ def void_charge(charge, user=None, day=None):
 # ---------------------------------------------------------------- what owners pay
 
 def open_charges(unit, owner):
-    return [c for c in Charge.objects.filter(unit=unit, owner=owner, is_void=False).order_by('due_date', 'id').prefetch_related('applications') if c.balance > 0]
+    """What the owner still owes, in the order a payment pays it: interest, late fees, costs, then assessments, the oldest first within each."""
+    rows = [c for c in Charge.objects.filter(unit=unit, owner=owner, is_void=False).order_by('due_date', 'id').prefetch_related('applications') if c.balance > 0]
+    return sorted(rows, key=lambda c: (PAY_ORDER.get(c.kind, 3), c.due_date, c.id))
 
 
 def _income_lines(applied):
@@ -271,27 +275,122 @@ def late_fee_amount(profile, charge):
     return ZERO
 
 
-def assess_late_fees(association, today, user=None):
-    """Charge a late fee on every assessment that is past its grace period and still unpaid, once each. Returns the late-fee charges made."""
+def _late_fee_rows(association, today, units=None):
+    """[(charge, fee, due)]: the late fees that are owed today (past the grace period, still unpaid, none charged yet for that installment)."""
     profile = ledger.profile_for(association)
     if not profile.late_fee_is_set():
         return []
     grace = profile.late_fee_grace_days or 0
-    made = []
-    for charge in Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL],
-                                        due_date__lt=today - timedelta(days=grace)).select_related('unit', 'owner').prefetch_related('applications'):
+    rows = []
+    qs = Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL], due_date__lt=today - timedelta(days=grace))
+    if units is not None:
+        qs = qs.filter(unit_id__in=units)
+    for charge in qs.select_related('unit', 'owner').prefetch_related('applications'):
         if charge.balance <= 0 or Charge.objects.filter(parent=charge, kind=Charge.Kind.LATE_FEE).exists():
             continue
         fee = late_fee_amount(profile, charge)
-        if fee <= 0:
-            continue
-        due = charge.due_date + timedelta(days=grace + 1)
+        if fee > 0:
+            rows.append((charge, fee, charge.due_date + timedelta(days=grace + 1)))
+    return rows
+
+
+def assess_late_fees(association, today, user=None, units=None):
+    """Charge a late fee on every assessment that is past its grace period and still unpaid, once each. Returns the late-fee charges made."""
+    made = []
+    for charge, fee, due in _late_fee_rows(association, today, units):
         try:
-            made.append(post_charge(association, charge.unit, charge.owner, Charge.Kind.LATE_FEE, f'Late fee on {charge.description}', max(due, today if due > today else due), fee,
-                                    user=user, parent=charge))
+            made.append(post_charge(association, charge.unit, charge.owner, Charge.Kind.LATE_FEE, f'Late fee on {charge.description}', max(due, today if due > today else due), fee, user=user, parent=charge))
         except ledger.LedgerError:
             continue
     return made
+
+
+def interest_for_period(charge, start, end, rate, grace_days=0):
+    """Simple daily interest on what is unpaid of an assessment, from `start` to `end`: each day after it fell due (and the grace days), the unpaid balance at the close of the
+    day before times rate / 365. Paying on a day stops interest from the day after."""
+    first = max(start, charge.due_date + timedelta(days=(grace_days or 0) + 1))
+    if first > end:
+        return ZERO
+    apps = [(a.date, a.amount) for a in charge.applications.all()]
+    total, day = ZERO, first
+    while day <= end:
+        before = day - timedelta(days=1)
+        balance = charge.amount - sum((amt for d, amt in apps if d <= before), ZERO)
+        if balance > 0:
+            total += balance * Decimal(rate) / Decimal(100) / Decimal(365)
+        day += timedelta(days=1)
+    return ledger.money(total)
+
+
+def _interest_rows(association, today, units=None):
+    """[(charge, month_first, month_end, amount)]: interest owed for the last three completed months that has not been charged yet."""
+    profile = ledger.profile_for(association)
+    if not profile.interest_is_set():
+        return []
+    months, cur = [], ledger.month_start(today)
+    for _ in range(3):
+        cur = ledger.previous_month(cur)
+        months.append(cur)
+    rows = []
+    qs = Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL])
+    if units is not None:
+        qs = qs.filter(unit_id__in=units)
+    for charge in qs.select_related('unit', 'owner').prefetch_related('applications'):
+        for month_first in sorted(months):
+            end = ledger.month_end(month_first)
+            if charge.due_date > end or Charge.objects.filter(parent=charge, kind=Charge.Kind.INTEREST, due_date=end).exists():
+                continue
+            amount = interest_for_period(charge, month_first, end, profile.interest_rate, profile.interest_grace_days)
+            if amount >= Decimal('0.01'):
+                rows.append((charge, month_first, end, amount))
+    return rows
+
+
+def assess_interest(association, today, user=None, units=None):
+    """Charge the interest that has built up on unpaid assessments, one charge a month for each, dated the last day of the month. Months already closed are left alone."""
+    made = []
+    for charge, month_first, end, amount in _interest_rows(association, today, units):
+        try:
+            made.append(post_charge(association, charge.unit, charge.owner, Charge.Kind.INTEREST, f'Interest on {charge.description}, {month_first:%B %Y}', end, amount, user=user, parent=charge))
+        except ledger.LedgerError:
+            continue
+    return made
+
+
+def _plain(value):
+    """5.000 as 5, 7.500 as 7.5 (a percent as people write it)."""
+    if value is None:
+        return None
+    d = Decimal(value)
+    return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
+
+
+def terms_sentences(profile, example=None):
+    """The late fee and interest rules in plain words, for the person to check against the declaration. `example` is an assessment amount to show the fee on."""
+    out = []
+    kind = profile.late_fee_kind
+    flat, pct = profile.late_fee_flat, _plain(profile.late_fee_percent)
+    days = profile.late_fee_grace_days or 0
+    when = 'the day after it is due' if not days else f'{days} days after it is due'
+    if kind == profile.LateFeeKind.NONE:
+        out.append('No late fee is charged.')
+    else:
+        what = {'flat': f'${flat or 0:,.2f}', 'percent': f'{pct or 0}% of the installment', 'greater': f'the greater of ${flat or 0:,.2f} or {pct or 0}% of the installment'}[kind]
+        line = f'A late fee of {what} is charged {when}, once for each late installment.'
+        if example:
+            class _C:
+                amount = Decimal(example)
+            line += f' On a ${Decimal(example):,.2f} assessment that is ${late_fee_amount(profile, _C):,.2f}.'
+        out.append(line)
+    rate = _plain(profile.interest_rate)
+    if not rate or rate <= 0:
+        out.append('No interest is charged.')
+    else:
+        start = 'from the due date' if not profile.interest_grace_days else f'starting {profile.interest_grace_days} days after the due date'
+        daily = Decimal(rate) / Decimal(365)
+        out.append(f'Interest at {rate}% a year (simple, on the unpaid balance, {daily:.4f}% a day) is charged {start}, once a month.')
+    out.append('A payment goes first to interest, then late fees, then costs, then the assessment.')
+    return out
 
 
 # ---------------------------------------------------------------- reading it back

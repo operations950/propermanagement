@@ -1,0 +1,8 @@
+{# what has happened on a case, as icons: letters sent, calls, the attorney (scales), a payment plan, resolved #}
+<span class="d-inline-flex align-items-center gap-2" style="color: var(--ink-muted);">
+    {% if icons.resolved %}<span title="Resolved" style="color: #0b6a0b;"><i data-lucide="circle-check" class="icon"></i></span>{% endif %}
+    {% if icons.letters %}<span title="{{ icons.letters }} late letter{{ icons.letters|pluralize }}" class="d-inline-flex align-items-center gap-1"><i data-lucide="mail" class="icon"></i>{% if icons.letters > 1 %}<small>{{ icons.letters }}</small>{% endif %}</span>{% endif %}
+    {% if icons.calls %}<span title="{{ icons.calls }} call{{ icons.calls|pluralize }}" class="d-inline-flex align-items-center gap-1"><i data-lucide="phone" class="icon"></i>{% if icons.calls > 1 %}<small>{{ icons.calls }}</small>{% endif %}</span>{% endif %}
+    {% if icons.plan %}<span title="Payment plan"><i data-lucide="handshake" class="icon"></i></span>{% endif %}
+    {% if icons.attorney %}<span title="With the attorney" style="color: #8a5a00;"><i data-lucide="scale" class="icon"></i></span>{% endif %}
+</span>

@@ -74,7 +74,12 @@ def _sheet(version, info, units):
     ]
     for p in per:
         p['d'], p['p'] = p['new'] - p['old'], _chg(p['new'], p['old'])
-    return {'sections': sections, 'op': {'prior': t['op']['prior'], 'proposed': t['op']['proposed'], 'd': t['op']['proposed'] - t['op']['prior'], 'p': _chg(t['op']['proposed'], t['op']['prior'])},
+    inc = t['income']
+    income = [{'name': 'Assessments', 'prior': inc['assessments']['prior'], 'proposed': inc['assessments']['proposed']}, {'name': 'Reserve assessment', 'prior': inc['reserve']['prior'], 'proposed': inc['reserve']['proposed']}]
+    for r in income:
+        r['d'], r['p'] = r['proposed'] - r['prior'], _chg(r['proposed'], r['prior'])
+    income_total = {'prior': inc['total']['prior'], 'proposed': inc['total']['proposed'], 'd': inc['total']['proposed'] - inc['total']['prior'], 'p': _chg(inc['total']['proposed'], inc['total']['prior'])}
+    return {'income': income, 'income_total': income_total, 'sections': sections, 'op': {'prior': t['op']['prior'], 'proposed': t['op']['proposed'], 'd': t['op']['proposed'] - t['op']['prior'], 'p': _chg(t['op']['proposed'], t['op']['prior'])},
             'total': {'prior': t['total_prior'], 'proposed': t['total'], 'd': t['total'] - t['total_prior'], 'p': _chg(t['total'], t['total_prior'])}, 'per': per}
 
 

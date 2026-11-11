@@ -14,12 +14,15 @@ from collections import Counter
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.db.models import F
 from django.utils import timezone
 
 from core.contact_document_import import _file_to_content_blocks  # noqa: F401  (docreader uses it for a picture)
 
 from . import ledger
-from .models import AssociationDocument, DocumentPage, DocumentQuestion, SettingProposal
+from datetime import timedelta
+
+from .models import AssociationDocument, DocumentPage, DocumentQuestion, DocumentQuestionRead, SettingProposal
 
 logger = logging.getLogger(__name__)
 MODEL = 'claude-sonnet-5'
@@ -29,6 +32,9 @@ Kind = AssociationDocument.Kind
 WANTED = [Kind.DECLARATION, Kind.ARTICLES, Kind.BYLAWS, Kind.RULES, Kind.CONTRACT, Kind.BUDGET]
 REQUIRED = (Kind.CONTRACT, Kind.BUDGET)
 PAGES_FIRST_TRY, PAGES_SECOND_TRY, PAGE_CHARS = 12, 40, 6000
+TAG_WEIGHT = 3          # a page Claude tagged with the question's subject counts this many times a page that merely mentions it
+SIGNIFICANT = (Kind.DECLARATION, Kind.ARTICLES, Kind.BYLAWS, Kind.RULES, Kind.AMENDMENT, Kind.CONTRACT)
+ASK_AGAIN_DAYS = 90
 
 
 class DocumentError(Exception):
@@ -60,16 +66,91 @@ def _where(src):
     return f'{src["doc"].name}, {pages}'
 
 
+def _guess_parent(section):
+    """Which document an amendment amends, from its title, when the sorter did not say."""
+    title = (section.get('title') or '').lower()
+    for kind, word in ((Kind.DECLARATION, 'declaration'), (Kind.ARTICLES, 'articles'), (Kind.BYLAWS, 'bylaw'), (Kind.RULES, 'rule')):
+        if word in title:
+            return kind
+    return ''
+
+
+def _node(doc, section, role):
+    start, end = section.get('start'), section.get('end')
+    where = doc.name if start is None else (f'page {start}' if start == end else f'pages {start} to {end}')
+    return {'doc': doc, 'kind': section['kind'], 'role': role, 'start': start, 'title': (section.get('title') or doc.name), 'where': where,
+            'url': (doc.file.url + (f'#page={start}' if start else '')) if doc.file else '', 'children': [], 'repeat': bool(section.get('repeat_of'))}
+
+
+def _count(nodes, tally):
+    for n in nodes:
+        tally[n['role']] = tally.get(n['role'], 0) + 1
+        _count(n['children'], tally)
+    return tally
+
+
+def _summary(tally):
+    bits = []
+    for role, one, many in (('amendment', 'amendment', 'amendments'), ('exhibit', 'exhibit', 'exhibits'), ('copy', 'second copy', 'second copies')):
+        if tally.get(role):
+            bits.append(f'{tally[role]} {one if tally[role] == 1 else many}')
+    return ' · '.join(bits)
+
+
 def checklist(association):
-    """The documents we want on file, each with its status and where it is."""
-    have = _sources(association)
-    rows = []
-    for kind in WANTED + ([Kind.AMENDMENT] if have.get(Kind.AMENDMENT) else []) + ([Kind.EXHIBIT] if have.get(Kind.EXHIBIT) else []):
-        srcs = have.get(kind) or []
-        first = srcs[0] if srcs else None
-        rows.append({'kind': kind, 'label': 'Amendments' if kind == Kind.AMENDMENT else ('Exhibits and surveys' if kind == Kind.EXHIBIT else Kind(kind).label), 'doc': first['doc'] if first else None, 'required': kind in REQUIRED,
-                     'where': [_where(s) for s in srcs], 'url': (first['doc'].file.url + (f'#page={first["start"]}' if first['start'] else '')) if first and first['doc'].file else '', 'count': len(srcs)})
-    return rows
+    """The documents we want on file, each with its status and where it is, as a tree: an amendment sits under the document it amends, an exhibit under the amendment (or
+    document) it is attached to, and a second copy under the document it copies. Anything that cannot be placed goes in a last row, 'Needs a look'."""
+    rows = {k: {'kind': k, 'label': Kind(k).label, 'required': k in REQUIRED, 'mains': [], 'items': []} for k in WANTED}
+    unplaced = []
+    for d in AssociationDocument.objects.filter(property=association).order_by('uploaded_at'):
+        if d.auto_sort:
+            if d.sort_status != 'confirmed':
+                continue
+            sections = d.sections or []
+        else:
+            sections = [{'kind': d.kind, 'title': d.name, 'start': None, 'end': None}]
+        by_start, anchor = {}, None
+        for s in sections:
+            kind = s.get('kind')
+            if s.get('repeat_of'):
+                node = _node(d, s, 'copy')
+                parent = by_start.get(s['repeat_of'])
+                (parent['children'] if parent is not None and parent['role'] != 'doc' else rows[parent['kind']]['items'] if parent is not None else unplaced).append(node)
+                by_start[s['start']] = node
+                continue
+            if kind in rows:
+                node = _node(d, s, 'doc')
+                rows[kind]['mains'].append(node)
+                anchor = node
+            elif kind == Kind.AMENDMENT:
+                node = _node(d, s, 'amendment')
+                target = s.get('applies_to') or _guess_parent(s)
+                (rows[target]['items'] if target in rows else unplaced).append(node)
+                anchor = node
+            elif kind == Kind.EXHIBIT:
+                node = _node(d, s, 'exhibit')
+                parent = by_start.get(s.get('parent_page')) or anchor
+                if parent is None:
+                    unplaced.append(node)
+                elif parent['role'] == 'doc':
+                    rows[parent['kind']]['items'].append(node)
+                else:
+                    parent['children'].append(node)
+            else:
+                node = _node(d, s, 'other')
+                unplaced.append(node)
+            if s.get('start') is not None:
+                by_start[s['start']] = node
+    out = []
+    for kind in WANTED:
+        r = rows[kind]
+        first = r['mains'][0] if r['mains'] else None
+        tally = _count(r['items'], {})
+        out.append({'kind': kind, 'label': r['label'], 'doc': first['doc'] if first else None, 'required': r['required'], 'where': [m['where'] if m['start'] is not None else m['doc'].name for m in r['mains']],
+                    'url': first['url'] if first else '', 'count': len(r['mains']), 'items': r['items'], 'summary': _summary(tally), 'main': first['where'] if first and first['start'] is not None else ''})
+    if unplaced:
+        out.append({'kind': 'unplaced', 'label': 'Needs a look', 'doc': None, 'required': False, 'where': [], 'url': '', 'count': 0, 'items': unplaced, 'summary': f'{len(unplaced)} piece{"s" if len(unplaced) != 1 else ""} not placed yet', 'main': '', 'unplaced': True})
+    return out
 
 
 def has_contract(association):
@@ -90,7 +171,13 @@ def files(association):
             state = 'sorting'
         else:
             state = 'ready'
-        out.append({'doc': d, 'state': state, 'sections': d.sections if d.auto_sort else []})
+        secs = d.sections if d.auto_sort else []
+        summary = ''
+        if d.auto_sort and d.sort_status == 'confirmed' and secs:
+            docs = sum(1 for s in secs if not s.get('repeat_of') and s.get('kind') in WANTED)
+            rest = len(secs) - docs
+            summary = f'Sorted into {docs} document{"s" if docs != 1 else ""} and {rest} attachment{"s" if rest != 1 else ""}: see the list above'
+        out.append({'doc': d, 'state': state, 'sections': secs, 'summary': summary})
     return out
 
 
@@ -131,9 +218,15 @@ def confirm_sections(doc, choices):
     if len(choices) != len(sections):
         raise DocumentError('That list changed. Reload the page.')
     valid = {k for k, _ in Kind.choices}
-    for s, (kind, title) in zip(sections, choices):
+    for s, choice in zip(sections, choices):
+        kind, title = choice[0], choice[1]
         s['kind'] = kind if kind in valid else 'other'
         s['title'] = (title or '').strip()[:160] or s['title']
+        applies = choice[2] if len(choice) > 2 else None
+        if s['kind'] == 'amendment' and applies in ('declaration', 'articles', 'bylaws', 'rules'):
+            s['applies_to'] = applies
+        elif s['kind'] != 'amendment':
+            s.pop('applies_to', None)
     doc.sections, doc.sort_status = sections, 'confirmed'
     doc.save(update_fields=['sections', 'sort_status'])
 
@@ -205,16 +298,21 @@ def rank_pages(pages, query, k):
     q = set(_terms(query))
     if not pages:
         return []
-    tfs, df = [], Counter()
+    tfs, df, tag_sets, tag_df = [], Counter(), [], Counter()
     for p in pages:
         tf = Counter(_terms(p.text))
         tfs.append(tf)
         for t in tf:
             df[t] += 1
+        tags = set(_terms(getattr(p, 'tags', '') or ''))          # what Claude noted the page is about, once, when it was read
+        tag_sets.append(tags)
+        for t in tags:
+            tag_df[t] += 1
     n = len(pages)
     scored = []
     for i, tf in enumerate(tfs):
         s = sum((1 + math.log(tf[t])) * math.log(1 + n / df[t]) for t in q if t in tf)
+        s += TAG_WEIGHT * sum(math.log(1 + n / tag_df[t]) for t in q if t in tag_sets[i])
         if s > 0:
             scored.append((s, i))
     scored.sort(reverse=True)
@@ -243,8 +341,32 @@ def _signature(docs):
     return hashlib.sha1('|'.join(f'{d.pk}:{d.page_count}:{d.text_status}' for d in sorted(docs, key=lambda d: d.pk)).encode()).hexdigest()
 
 
-def ask(association, question, user=None):
-    """Answer from the pages most likely to hold the answer. Returns the DocumentQuestion; `from_memory` is set on it when no Claude call was made."""
+def significant_signature(association):
+    """Which documents that could change an answer are on file: the declaration, articles, bylaws, rules, amendments and the contract (not exhibits, repeats or the budget)."""
+    parts = []
+    for d in AssociationDocument.objects.filter(property=association).order_by('pk'):
+        if d.auto_sort:
+            if d.sort_status != 'confirmed':
+                continue
+            parts += [f'{d.pk}:{s.get("start")}-{s.get("end")}:{s.get("kind")}' for s in d.sections or [] if s.get('kind') in SIGNIFICANT and not s.get('repeat_of')]
+        elif d.kind in SIGNIFICANT:
+            parts.append(f'{d.pk}:{d.kind}')
+    return hashlib.sha1('|'.join(parts).encode()).hexdigest()
+
+
+def staleness(q, current_sig=None, now=None):
+    """Why an answer deserves to be asked again: 'documents' (a document that matters was added or changed since), 'age' (over 90 days: the law may have moved), or ''."""
+    now = now or timezone.now()
+    if q.sig_significant and current_sig and q.sig_significant != current_sig:
+        return 'documents'
+    if now - (q.answered_at or q.created_at) > timedelta(days=ASK_AGAIN_DAYS):
+        return 'age'
+    return ''
+
+
+def ask(association, question, user=None, force=False):
+    """Answer from the pages most likely to answer. A question asked before is shown from memory, free, with a note when it is worth asking again; `force` asks Claude again.
+    Returns the DocumentQuestion with `from_memory` set (no Claude call was made)."""
     question = (question or '').strip()
     if not question:
         raise DocumentError('Type a question.')
@@ -252,19 +374,19 @@ def ask(association, question, user=None):
     if not docs:
         raise DocumentError('Upload a document first: there is nothing to read yet.')
     usable = _ensure_read(docs)
-    sig = _signature(usable)
+    sig, sig_sig = _signature(usable), significant_signature(association)
     wanted = _norm_question(question)
-    for old in DocumentQuestion.objects.filter(property=association, docs_signature=sig).order_by('-created_at')[:60]:
-        if _norm_question(old.question) == wanted:
-            old.created_at = timezone.now()
-            old.save(update_fields=['created_at'])
-            old.from_memory = True
-            return old
+    old = next((o for o in DocumentQuestion.objects.filter(property=association).order_by('-created_at')[:300] if _norm_question(o.question) == wanted and o.answer), None)
+    if old is not None and not force:
+        old.asks += 1
+        old.save(update_fields=['asks'])
+        old.from_memory = True
+        return old
     client = _client()
     pages = list(DocumentPage.objects.filter(document__in=usable).select_related('document').order_by('document_id', 'number'))
     skip = {d.pk: {n for s in (d.sections or []) if d.sort_status == 'confirmed' and (s.get('repeat_of') or s.get('kind') == 'exhibit') for n in range(s['start'], s['end'] + 1)} for d in usable if d.auto_sort}
     pages = [p for p in pages if p.number not in skip.get(p.document_id, ())]      # not a second copy, and not the drawings
-    answer = ''
+    answer, chosen = '', []
     for k in (PAGES_FIRST_TRY, PAGES_SECOND_TRY):
         chosen = rank_pages(pages, question, k)
         if not chosen:
@@ -283,10 +405,38 @@ def ask(association, question, user=None):
         if not answer.upper().startswith('NOT_FOUND'):
             break
         answer = ''
-    q = DocumentQuestion.objects.create(property=association, question=question, answer=answer or "The documents don't say. I looked through the pages most likely to, in every file on record.",
-                                        docs_signature=sig, asked_by=user)
+    text = answer or "The documents don't say. I looked through the pages most likely to, in every file on record."
+    sources = '\n'.join(source_label(p.document, p.number) for p in chosen)
+    now = timezone.now()
+    if old is not None:
+        old.answer, old.docs_signature, old.sig_significant, old.sources, old.answered_at, old.asks = text, sig, sig_sig, sources, now, old.asks + 1
+        old.save(update_fields=['answer', 'docs_signature', 'sig_significant', 'sources', 'answered_at', 'asks'])
+        q = old
+    else:
+        q = DocumentQuestion.objects.create(property=association, question=question, answer=text, docs_signature=sig, sig_significant=sig_sig, sources=sources, answered_at=now, asked_by=user)
     q.from_memory = False
     return q
+
+
+def qa_payload(association, limit=300):
+    """Every answered question, for the screen to filter and rank as the person types: most read and asked first."""
+    sig = significant_signature(association)
+    now = timezone.now()
+    rows = []
+    for q in DocumentQuestion.objects.filter(property=association).exclude(answer='')[:limit]:
+        when = q.answered_at or q.created_at
+        rows.append({'id': q.pk, 'q': q.question, 'a': q.answer, 'sources': [s for s in (q.sources or '').split('\n') if s], 'reads': q.reads, 'asks': q.asks,
+                     'stale': staleness(q, sig, now), 'when': f'{when:%b} {when.day}, {when.year}'})
+    rows.sort(key=lambda r: (-(r['reads'] + r['asks']), r['q']))
+    return rows
+
+
+def record_read(question, user):
+    """Someone sat with this answer on screen: count it once for that person that day."""
+    _, new = DocumentQuestionRead.objects.get_or_create(question=question, user=user, day=timezone.localdate())
+    if new:
+        DocumentQuestion.objects.filter(pk=question.pk).update(reads=F('reads') + 1, last_read_at=timezone.now())
+    return new
 
 
 # ---------------------------------------------------------------- proposals

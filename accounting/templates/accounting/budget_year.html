@@ -139,10 +139,17 @@
     window.bdCustom = function (id) { var v = document.getElementById('cuIn').value; if (v === '') return; closePop(); bdSet(id, 'custom', v); };
     document.addEventListener('click', function (e) { if (popEl && !popEl.contains(e.target)) closePop(); });
 
+    function incomeRow(label, v, bold) {
+        var chg = v.prior ? (v.proposed / v.prior - 1) * 100 : null, b = bold ? ' style="font-weight:700"' : '';
+        return '<tr' + (bold ? ' class="tot"' : '') + '><td' + b + '>' + label + '</td><td>' + $(v.prior) + '</td><td></td>' + (REM ? '<td></td><td></td>' : '') + '<td></td><td></td><td></td><td' + b + '>' + $(v.proposed) + '</td><td>' + (chg === null ? '' : '<span class="bd-mut">' + pct(chg, 0) + '%</span>') + '</td></tr>';
+    }
     function sum(rows, k) { return rows.reduce(function (a, r) { return a + r[k]; }, 0); }
     function render() {
         closePop();
         var ed = S.editable, html = '';
+        var I = S.totals.income;
+        html += '<tr class="sec"><td colspan="' + cols + '">Income (worked out: it is what the expenses and reserves add up to)</td></tr>' +
+            [['Assessments', I.assessments], ['Reserve assessment', I.reserve]].map(function (r) { return incomeRow(r[0], r[1]); }).join('') + incomeRow('Total income', I.total, true);
         S.sections.forEach(function (sec) {
             var rows = S.rows.filter(function (r) { return r.section === sec; });
             var label = sec === 'Reserves' ? 'Reserve contributions' : sec;
@@ -210,15 +217,18 @@
 <div class="bd-sheet">
     <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; approved</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>Approved {{ approved_at|date:"M j, Y" }}</div></div>
     <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }} budget</th><th>{{ year }} budget</th><th>$ change</th><th>% change</th></tr></thead><tbody>
+    <tr class="sec"><td colspan="5">Income</td></tr>
+    {% for l in sheet.income %}<tr><td>{{ l.name }}</td><td>{{ l.prior|dollars }}</td><td>{{ l.proposed|dollars }}</td><td>{{ l.d|dchange }}</td><td>{{ l.p|pchange }}</td></tr>{% endfor %}
+    <tr class="tot"><td>Total income</td><td>{{ sheet.income_total.prior|dollars }}</td><td>{{ sheet.income_total.proposed|dollars }}</td><td>{{ sheet.income_total.d|dchange }}</td><td>{{ sheet.income_total.p|pchange }}</td></tr>
     {% for sec in sheet.sections %}
     {% if sec.lines %}
     <tr class="sec"><td colspan="5">{{ sec.name }}</td></tr>
     {% for l in sec.lines %}<tr><td>{{ l.name }}</td><td>{{ l.prior|dollars }}</td><td>{{ l.proposed|dollars }}</td><td>{{ l.d|dchange }}</td><td>{{ l.p|pchange }}</td></tr>{% endfor %}
     <tr class="tot"><td>Total {{ sec.name|lower }}</td><td>{{ sec.prior|dollars }}</td><td>{{ sec.proposed|dollars }}</td><td>{{ sec.d|dchange }}</td><td>{{ sec.p|pchange }}</td></tr>
     {% endif %}
-    {% if sec.key == 'Operating' %}<tr class="tot"><td>Total operating expenses</td><td>{{ sheet.op.prior|dollars }}</td><td>{{ sheet.op.proposed|dollars }}</td><td>{{ sheet.op.d|dchange }}</td><td>{{ sheet.op.p|pchange }}</td></tr>{% endif %}
+    {% if sec.key == 'Operating' %}<tr class="tot"><td>Total expenses without reserves</td><td>{{ sheet.op.prior|dollars }}</td><td>{{ sheet.op.proposed|dollars }}</td><td>{{ sheet.op.d|dchange }}</td><td>{{ sheet.op.p|pchange }}</td></tr>{% endif %}
     {% endfor %}
-    <tr class="grand"><td>Total budget (assessments)</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.proposed|dollars }}</td><td>{{ sheet.total.d|dchange }}</td><td>{{ sheet.total.p|pchange }}</td></tr>
+    <tr class="grand"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.proposed|dollars }}</td><td>{{ sheet.total.d|dchange }}</td><td>{{ sheet.total.p|pchange }}</td></tr>
     </tbody></table>
     <div class="bd-unitbox"><div class="t">What it means per unit ({{ units }} unit{{ units|pluralize }}, equal share)</div>
     <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th>{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>

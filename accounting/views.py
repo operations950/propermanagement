@@ -338,8 +338,11 @@ def charge_form(request, pk, rule_pk=None):
                 raise ValueError('Choose how often.')
             account = get_object_or_404(Account, pk=request.POST.get('income_account'), association=prop)
             installments = int(request.POST['installments']) if (request.POST.get('installments') or '').strip() else None
+            ahead = int(request.POST.get('post_days_ahead') or 0)
+            if not 0 <= ahead <= 60:
+                raise ValueError('Post the charges between 0 and 60 days early.')
             fields = dict(name=name, is_special=bool(request.POST.get('is_special')), frequency=freq, first_due=first_due, method=method, amount=amount,
-                          share_kind=kind if method == 'share' else None, income_account=account, installments=installments)
+                          share_kind=kind if method == 'share' else None, income_account=account, installments=installments, post_days_ahead=ahead)
             if rule is None:
                 rule = ChargeRule.objects.create(association=prop, **fields)
             else:

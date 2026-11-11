@@ -1,18 +1,38 @@
 {% extends 'accounting/base_acc.html' %}
 {% load acc_extras %}
-{% block acc_title %}Recurring bills - {{ assoc.name }}{% endblock %}
+{% block acc_title %}Recurring - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="refresh-cw" class="icon-lg"></i> Recurring bills</h2>
-        <div class="small text-muted">{{ assoc.name }}. A fixed bill posts itself on its date and waits to be paid. A bill whose amount changes (a utility) is made from the bank statement line, for the amount the bank paid. Both are paid and matched by themselves when the statement is read, if the statement shows the text below (or the exact amount).</div></div>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="refresh-cw" class="icon-lg"></i> Recurring {% include '_tip.html' with text="Everything that happens on a schedule. Bills and charges post by themselves on their dates when automatic posting is on. A bill whose amount changes waits for the bank statement. The close sheet only asks you to check that all of it worked." %}</h2>
+        <div class="small text-muted">{{ assoc.name }}{% if not profile.auto_post %} &middot; <span style="color: #8a5a00;">Automatic posting is off for this association.</span> <a href="{% url 'accounting:settings' assoc.pk %}#terms">Switch it on</a>{% endif %}</div></div>
+    <div class="btn-group btn-group-sm ac-noprint">
+        <a href="?tab={{ tab }}&month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?tab={{ tab }}&month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+<style>.rc-tabs { display: flex; gap: 6px; margin: 10px 0 12px; flex-wrap: wrap; } .rc-tab { padding: 7px 16px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, #fff); color: inherit; text-decoration: none; font-weight: 600; }
+    .rc-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; } .rc-tab .n { display: inline-block; min-width: 1.3em; text-align: center; border-radius: 999px; background: #b45309; color: #fff; font-size: .72rem; margin-left: 6px; padding: 0 5px; }</style>
+<div class="rc-tabs ac-noprint">
+    <a class="rc-tab {% if tab == 'bills' %}on{% endif %}" href="?tab=bills&month={{ month|date:'Y-m' }}">Bills{% if counts.bills %}<span class="n">{{ counts.bills }}</span>{% endif %}</a>
+    <a class="rc-tab {% if tab == 'charges' %}on{% endif %}" href="?tab=charges&month={{ month|date:'Y-m' }}">Charges to owners{% if counts.charges %}<span class="n">{{ counts.charges }}</span>{% endif %}</a>
+    <a class="rc-tab {% if tab == 'entries' %}on{% endif %}" href="?tab=entries&month={{ month|date:'Y-m' }}">Journal entries{% if counts.entries %}<span class="n">{{ counts.entries }}</span>{% endif %}</a>
+</div>
+
+{% if tab == 'bills' %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div class="small text-muted">What we pay on a schedule. A fixed bill posts itself on its date and waits to be paid. A bill whose amount changes (a utility) is made from the bank statement line, for the amount the bank paid. Both are paid and matched when the statement is read.</div>
     <form method="post" class="ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="post_due">Post what is due now</button></form>
 </div>
+{% if needs %}<div class="ac-strip small mb-2">{{ month|date:"F" }}: {% for r in needs %}<strong>{{ r.description }}</strong> {% if r.this_month == 'waiting' %}is waiting on the bank statement{% else %}has not posted{% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}.</div>{% endif %}
 <div class="card mb-3"><div class="card-body p-2">
-<table class="table table-sm ac-table mb-0"><thead><tr><th>Bill</th><th>Vendor</th><th>How often</th><th>Next</th><th>Paid by</th><th class="ac-num">Amount</th><th></th></tr></thead><tbody>
-{% for r in rows %}<tr class="{% if not r.is_active %}text-muted{% endif %}"><td><a class="text-decoration-none fw-semibold" href="?edit={{ r.pk }}">{{ r.description }}</a>{% if not r.is_active %} <span class="ac-chip">Stopped</span>{% endif %}</td><td>{{ r.vendor.name }}</td><td>{{ r.get_frequency_display }}</td><td>{{ r.next_date|mdate }}</td>
+<table class="table table-sm ac-table mb-0"><thead><tr><th>Bill</th><th>Vendor</th><th>How often</th><th>Next</th><th>Paid by</th><th class="ac-num">Amount</th><th>{{ month|date:"F" }}</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr class="{% if not r.is_active %}text-muted{% endif %}"><td><a class="text-decoration-none fw-semibold" href="?tab=bills&edit={{ r.pk }}">{{ r.description }}</a>{% if not r.is_active %} <span class="ac-chip">Stopped</span>{% endif %}</td><td>{{ r.vendor.name }}</td><td>{{ r.get_frequency_display }}</td>
+    <td>{{ r.next_date|mdate }}{% if r.post_on_month_end %} <span class="ac-chip" title="Billed in arrears: dated the last day of the month it covers">month end</span>{% endif %}</td>
     <td>{% if r.pay_method == 'ach' %}Automatic{% else %}Check{% endif %}</td><td class="ac-num">{% if r.amount is not None %}{{ r.amount|money }}{% else %}<span class="text-muted">varies</span>{% endif %}</td>
+    <td>{% if r.this_month == 'posted' %}<span class="ac-chip good">Posted</span>{% elif r.this_month == 'waiting' %}<span class="ac-chip warn">Waiting on the statement</span>{% elif r.this_month == 'missing' %}<span class="ac-chip warn">Not posted</span>{% endif %}</td>
     <td class="text-end ac-noprint"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="rec" value="{{ r.pk }}">{% if r.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="stop">Stop</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="resume">Resume</button>{% endif %}</form></td></tr>
-{% empty %}<tr><td colspan="7" class="text-muted p-3">No recurring bills yet. Add the ones that come every month: the same landscaping bill, the pool service, the power bill.</td></tr>{% endfor %}</tbody></table>
+{% empty %}<tr><td colspan="8" class="text-muted p-3">No recurring bills yet. Add the ones that come every month: the same landscaping bill, the pool service, the power bill.</td></tr>{% endfor %}</tbody></table>
 </div></div>
 <div class="card"><div class="card-body">
     <h6 class="card-title">{% if edit %}Edit {{ edit.description }}{% else %}Add a recurring bill{% endif %}</h6>
@@ -26,8 +46,69 @@
         <div class="col-md-3"><label class="form-label small text-muted mb-1">Next one dated</label><input class="form-control form-control-sm" type="date" name="next_date" value="{{ edit.next_date|date:'Y-m-d' }}" required></div>
         <div class="col-md-3"><label class="form-label small text-muted mb-1">Paid by</label><select class="form-select form-select-sm" name="pay_method"><option value="check" {% if edit.pay_method == 'check' %}selected{% endif %}>We write a check</option><option value="ach" {% if edit.pay_method == 'ach' %}selected{% endif %}>Automatic bank payment</option></select></div>
         <div class="col-md-6"><label class="form-label small text-muted mb-1">Text the bank statement shows (to recognise it)</label><input class="form-control form-control-sm" name="statement_match" value="{{ edit.statement_match }}" placeholder="e.g. FPL"></div>
-        <div class="col-md-6 d-flex align-items-end gap-2"><button class="btn btn-sm btn-primary">Save</button>{% if edit %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:recurring' assoc.pk %}">Cancel</a>{% endif %}</div>
+        <div class="col-md-6 pt-md-4"><label class="small"><input type="checkbox" name="post_on_month_end" {% if edit.post_on_month_end %}checked{% endif %}> Billed in arrears: dated the last day of the month it covers <span class="text-muted">(set "Next one dated" to that month's last day)</span></label></div>
+        <div class="col-12 d-flex align-items-end gap-2"><button class="btn btn-sm btn-primary">Save</button>{% if edit %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:recurring' assoc.pk %}">Cancel</a>{% endif %}</div>
     </form>
-    {% if not profile.auto_post %}<div class="small text-muted mt-2">Automatic posting is off for this association, so these post when you press "Post what is due now" or in the month's close. Switch it on in the accounting settings.</div>{% endif %}
 </div></div>
+
+{% elif tab == 'charges' %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div class="small text-muted">What owners are charged on a schedule: the monthly assessment, special assessments. Each posts a few days before it is due, dated the due date, so owners can see their balance.</div>
+    <div class="d-flex gap-2 ac-noprint"><form method="post">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="charges_due">Post what is due now</button></form><a class="btn btn-sm btn-primary" href="{% url 'accounting:charge_new' assoc.pk %}">Add a charge</a></div>
+</div>
+<div class="card"><div class="card-body p-2">
+<table class="table table-sm ac-table mb-0"><thead><tr><th>Charge</th><th class="ac-num">Amount</th><th>How often</th><th>Next due</th><th>Posted early</th><th>Last one</th><th></th></tr></thead><tbody>
+{% for r in rules %}<tr class="{% if not r.is_active %}text-muted{% endif %}"><td><a class="text-decoration-none fw-semibold" href="{% url 'accounting:charge_edit' assoc.pk r.pk %}">{{ r.name }}</a>{% if r.is_special %} <span class="ac-chip">Special</span>{% endif %}{% if not r.is_active %} <span class="ac-chip">Stopped</span>{% endif %}</td>
+    <td class="ac-num">{{ r.amount|money }}{% if r.method == 'flat' %} <span class="small text-muted">a unit</span>{% else %} <span class="small text-muted">split by share</span>{% endif %}</td><td>{{ r.get_frequency_display }}</td>
+    <td>{{ r.st.next_due|mdate }}</td><td>{{ r.post_days_ahead }} day{{ r.post_days_ahead|pluralize }}</td>
+    <td>{% if r.st.last_due %}{{ r.st.last_due|mdate:'short' }}: {% if r.st.pending %}<span class="ac-chip warn">{{ r.st.posted }} of {{ r.st.units }} posted</span>{% else %}<span class="ac-chip good">Posted to {{ r.st.posted }}</span>{% endif %}{% endif %}</td><td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:charge_edit' assoc.pk r.pk %}">Edit</a></td></tr>
+{% empty %}<tr><td colspan="7" class="text-muted p-3">No recurring charges yet.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+<div class="card mt-3"><div class="card-body">
+    <h6 class="card-title">Late fees and interest</h6>
+    {% if not profile.late_fee_is_set and not profile.interest_is_set %}<div class="small text-muted">Neither is set up yet. <a href="{% url 'accounting:settings' assoc.pk %}#late">Set them from the declaration</a>.</div>
+    {% else %}
+    <div class="d-flex flex-wrap gap-3">
+        {% if profile.late_fee_is_set %}<div class="flex-grow-1"><div class="fw-semibold">Late fees</div>
+            {% if late_rows %}<div class="small">{{ late_rows|length }} owed, {{ late_total|money }}.</div>
+            <details class="small"><summary style="cursor: pointer;">See who</summary>{% for r in late_rows %}<div class="d-flex justify-content-between"><span>{{ r.unit }} {{ r.owner }}</span><span class="ac-num">{{ r.amount|money }}</span></div>{% endfor %}</details>
+            <form method="post" class="mt-1 ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="assess_late">Charge them</button></form>
+            {% else %}<div class="small text-muted">None owed.</div>{% endif %}</div>{% endif %}
+        {% if profile.interest_is_set %}<div class="flex-grow-1"><div class="fw-semibold">Interest</div>
+            {% if interest_rows %}<div class="small">{{ interest_rows|length }} charge{{ interest_rows|length|pluralize }} built up, {{ interest_total|money }}.</div>
+            <details class="small"><summary style="cursor: pointer;">See who</summary>{% for r in interest_rows %}<div class="d-flex justify-content-between"><span>{{ r.unit }} {{ r.owner }}: {{ r.what }}</span><span class="ac-num">{{ r.amount|money }}</span></div>{% endfor %}</details>
+            <form method="post" class="mt-1 ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="assess_interest">Charge it</button></form>
+            {% else %}<div class="small text-muted">None built up.</div>{% endif %}</div>{% endif %}
+    </div>
+    <div class="small text-muted mt-2">These are charged when you press the button, so you see them first. The close sheet reminds you each month.</div>
+    {% endif %}
+</div></div>
+
+{% else %}
+<div class="small text-muted mb-2">Entries that post themselves on a day of the month and do not touch cash: the cash is already on the bank statement, and the reconciliation catches it. The first is the reserve contribution.</div>
+{% for jr in jrules %}
+<div class="card mb-3 {% if not jr.is_active %}text-muted{% endif %}"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div><h6 class="card-title mb-0">{{ jr.name }}{% if not jr.is_active %} <span class="ac-chip">Stopped</span>{% endif %}</h6>
+            <div class="small text-muted">{{ jr.st.split.year }} budget's reserve lines ÷ 12, dated the day the transfer happens. {% if jr.st.split.has_budget %}{{ jr.st.split.total|money }} a month.{% endif %}</div></div>
+        <div>{% if jr.st.state == 'posted' %}<span class="ac-chip good">{{ month|date:"F" }}: posted {{ jr.st.entry.date|mdate:'short' }}, J-{{ jr.st.entry.number }}</span>
+            {% elif jr.st.state == 'no_budget' %}<span class="ac-chip warn">No {{ jr.st.split.year }} budget with reserve lines</span>
+            {% elif jr.st.state == 'due' %}<span class="ac-chip warn">{{ month|date:"F" }}: due {{ jr.st.day|mdate:'short' }}</span>{% else %}<span class="ac-chip">{{ month|date:"F" }}: scheduled {{ jr.st.day|mdate:'short' }}</span>{% endif %}</div>
+    </div>
+    {% if jr.st.split.has_budget %}<table class="table table-sm ac-table mt-2 mb-2" style="max-width: 460px;"><tbody>{% for acct, amt in jr.st.split.lines %}<tr><td>{{ acct }}</td><td class="ac-num">{{ amt|money }}</td></tr>{% endfor %}
+        <tr class="fw-bold"><td>Reserve contribution (expense: Reserve Transfer)</td><td class="ac-num">{{ jr.st.split.total|money }}</td></tr></tbody></table>{% endif %}
+    <div class="d-flex flex-wrap gap-2 align-items-center ac-noprint">
+        <form method="post" class="d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="jr_save"><input type="hidden" name="rule" value="{{ jr.pk }}"><label class="small text-muted mb-0">Transfer day</label><input class="form-control form-control-sm" type="number" min="1" max="31" name="day_of_month" value="{{ jr.day_of_month }}" style="width: 80px;"><button class="btn btn-sm btn-outline-secondary">Save</button></form>
+        {% if jr.is_active and jr.st.state == 'due' or jr.is_active and jr.st.state == 'scheduled' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="jr_post"><input type="hidden" name="rule" value="{{ jr.pk }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><button class="btn btn-sm btn-primary">Post {{ month|date:"F" }} now</button></form>{% endif %}
+        <form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="rule" value="{{ jr.pk }}">{% if jr.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="jr_stop">Stop</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="jr_resume">Resume</button>{% endif %}</form>
+    </div>
+</div></div>
+{% empty %}
+<div class="card"><div class="card-body">
+    <h6 class="card-title">Reserve contribution</h6>
+    <p class="small text-muted">Each month the association moves part of what operating collected to the reserve account. The bank statements show the transfer; this entry books which reserve fund each part belongs to, from the approved budget's reserve lines divided by 12, dated the day the transfer happens.</p>
+    <form method="post" class="d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="jr_add"><label class="small text-muted mb-0">The transfer happens on day</label><input class="form-control form-control-sm" type="number" min="1" max="31" name="day_of_month" value="27" style="width: 80px;"><button class="btn btn-sm btn-primary">Schedule it</button></form>
+</div></div>
+{% endfor %}
+{% endif %}
 {% endblock %}

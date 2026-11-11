@@ -1,0 +1,14 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Contracts of {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-end mb-2"><div><h2 class="page-title fs-4 mb-0">Contracts of {{ assoc.name }}</h2><div class="small text-muted">Official records, as of {{ today|mdate }}</div></div>
+    <button class="btn btn-sm btn-outline-secondary ac-noprint" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button></div>
+<div class="rp-wrap"><table class="rp">
+    <thead><tr><th>Contract</th><th>Vendor</th><th>Term</th><th>Renews</th><th>Price</th><th>Approved by the board</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td style="white-space: normal;"><strong>{{ r.c.name }}</strong>{% if r.c.description %}<div class="small text-muted">{{ r.c.description|truncatechars:140 }}</div>{% endif %}</td>
+        <td>{{ r.c.vendor.name|default:r.c.vendor_name }}</td><td>{{ r.c.start_date|mdate:'short' }}{% if r.c.start_date or r.end %} to {% endif %}{{ r.end|mdate:'short' }}</td>
+        <td>{% if r.c.auto_renews %}By itself, every {{ r.c.renewal_months }} months; {{ r.c.notice_days }} days' written notice{% else %}No{% endif %}</td>
+        <td>{% if r.c.amount %}{{ r.c.amount|money }} {{ r.c.get_frequency_display|lower }}{% endif %}</td><td>{{ r.c.board_approved_on|mdate:'short' }}</td></tr>
+    {% empty %}<tr><td colspan="6" class="text-muted p-3">No contracts are on the list.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

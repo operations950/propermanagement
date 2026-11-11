@@ -14,6 +14,9 @@ from .models import GeneratedDocument
 LOGO_TOKEN = '@@LOGO@@'          # swapped for the logo's current address when a document is shown (see views.show_html)
 
 
+import logging  # noqa: E402
+
+
 class FormError(ValueError):
     pass
 
@@ -117,6 +120,12 @@ def initial_values(template, prop, unit, user, parent=None, run=None):
         if parent is not None and f['key'] == 'notice_kind':
             value = NOTICE_KIND_BY_SLUG.get(parent.template.slug, value)
         out[f['key']] = value
+    if template.slug == 'nola' and unit is not None:
+        try:
+            from accounting import delinquency
+            out.update(delinquency.nola_values(prop, unit, out))      # the amounts owed and the rates, from the association's books
+        except Exception:
+            logging.getLogger(__name__).exception('Could not fill the late letter from the books')
     return out
 
 
@@ -221,6 +230,7 @@ def save_document(template, prop, unit, user, raw_values, parent=None, doc=None,
     except FormError as exc:
         return None, {'general': str(exc)}
     stored = {f['key']: (typed[f['key']].isoformat() if hasattr(typed[f['key']], 'isoformat') else str(typed[f['key']])) if typed[f['key']] != '' else '' for f in template.fields}
+    is_new = doc is None
     if doc is None:
         doc = GeneratedDocument(template=template, property=prop, unit=unit, parent=parent, created_by=user, process_step=process_step)
     doc.template_version = template.version
@@ -232,6 +242,12 @@ def save_document(template, prop, unit, user, raw_values, parent=None, doc=None,
         step = doc.process_step
         step.response = {**(step.response or {}), 'document_id': doc.pk}
         step.save(update_fields=['response'])
+    if template.slug == 'nola' and unit is not None and is_new:
+        try:
+            from accounting import delinquency
+            delinquency.letter_made(doc, user)       # the first late letter opens the owner's case
+        except Exception:
+            logging.getLogger(__name__).exception('Could not open the delinquency case for a late letter')
     return doc, {}
 
 

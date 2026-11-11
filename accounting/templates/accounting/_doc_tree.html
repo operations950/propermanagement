@@ -1,0 +1,15 @@
+{# the documents checklist: the big documents first, everything that belongs to one tucked under it #}
+<style>.dt-row { border-top: 1px solid var(--border-hairline); } .dt-row:first-child { border-top: 0; } .dt-row > summary { list-style: none; cursor: pointer; } .dt-row > summary::-webkit-details-marker { display: none; }
+    .dt-caret { display: inline-block; width: 1em; color: var(--ink-muted); transition: transform .15s; } details[open] > summary .dt-caret { transform: rotate(90deg); }</style>
+{% for d in ap_docs %}
+{% if d.items %}
+<details class="dt-row py-1" {% if d.unplaced %}open{% endif %}><summary class="d-flex justify-content-between align-items-center gap-2 py-1">
+    <span><span class="dt-caret">&#9656;</span><span class="fw-semibold">{{ d.label }}</span> <span class="small text-muted">{% if d.main %}{{ d.main }} &middot; {% endif %}{{ d.summary }}</span></span>
+    <span>{% if d.doc %}{% if d.url %}<a class="small me-2" href="{{ d.url }}" target="_blank" onclick="event.stopPropagation()">open</a>{% endif %}<span class="ac-chip good">On file</span>{% elif d.unplaced %}<span class="ac-chip warn">Needs a look</span>{% elif d.required %}<span class="ac-chip warn">Required</span>{% else %}<span class="ac-chip">Not uploaded</span>{% endif %}</span></summary>
+    <div class="pb-2 ps-3">{% for n in d.items %}{% include 'accounting/_doc_node.html' with n=n depth=0 %}{% endfor %}</div>
+</details>
+{% else %}
+<div class="dt-row d-flex justify-content-between align-items-center gap-2 py-2"><span><span class="dt-caret"></span><span class="fw-semibold">{{ d.label }}</span> <span class="small text-muted">{% for w in d.where %}{{ w }}{% if not forloop.last %}; {% endif %}{% endfor %}</span></span>
+    <span>{% if d.doc %}{% if d.url %}<a class="small me-2" href="{{ d.url }}" target="_blank">open</a>{% endif %}<span class="ac-chip good">On file</span>{% elif d.required %}<span class="ac-chip warn">Required</span>{% else %}<span class="ac-chip">Not uploaded</span>{% endif %}</span></div>
+{% endif %}
+{% endfor %}

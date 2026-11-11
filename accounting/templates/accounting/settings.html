@@ -18,19 +18,65 @@
     <table class="table table-sm mb-0"><tbody>{% for r in ap_rows %}{% if r.key != 'financials' %}<tr><td>{{ r.label }}</td><td class="text-muted">{{ r.value }}</td><td class="text-end"><span class="ac-chip {% if r.ok %}good{% else %}warn{% endif %}">{% if r.ok %}Set{% else %}Not set up{% endif %}</span></td><td class="text-end">{% if r.url %}<a class="btn btn-sm btn-outline-secondary" href="{{ r.url }}{% if r.anchor %}#{{ r.anchor }}{% endif %}">Open</a>{% endif %}</td></tr>{% endif %}{% endfor %}</tbody></table>
 </div></div>
 
+<form method="post" class="card mb-3" id="late"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="late_terms">
+    <h6 class="card-title">Late fees and interest <span class="small fw-normal text-muted">Set from the declaration: <a href="#documents">ask it or read it for settings</a></span></h6>
+    <div class="row g-3">
+        <div class="col-lg-6"><label class="form-label small fw-semibold d-block">Late fee</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="late_fee_kind"><input type="hidden" name="late_fee_kind" data-bubble-input value="{{ profile.late_fee_kind }}"><div class="bubble-slot" data-bubble-slot data-empty-text="Choose"></div>
+                <div class="bubble-pool" data-bubble-pool><button type="button" class="bubble" data-value="none" data-label="No late fee">No late fee</button><button type="button" class="bubble" data-value="flat" data-label="A flat amount">A flat amount</button><button type="button" class="bubble" data-value="percent" data-label="A percent">A percent</button><button type="button" class="bubble" data-value="greater" data-label="The greater of an amount and a percent">The greater of an amount and a percent</button></div></div>
+            <div class="d-flex gap-2 align-items-center mt-2 flex-wrap"><div id="lf-flat" class="input-group input-group-sm" style="width: 130px;"><span class="input-group-text">$</span><input class="form-control" name="late_fee_flat" value="{{ profile.late_fee_flat|default_if_none:'' }}" placeholder="25.00"></div>
+                <div id="lf-pct" class="input-group input-group-sm" style="width: 120px;"><input class="form-control" name="late_fee_percent" value="{{ profile.late_fee_percent|default_if_none:'' }}" placeholder="5"><span class="input-group-text">%</span></div></div></div>
+        <div class="col-lg-6"><label class="form-label small fw-semibold d-block">The late fee is charged</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="late_grace"><input type="hidden" name="late_grace" data-bubble-input value="{{ profile.late_fee_grace_days|default:0 }}"><div class="bubble-slot" data-bubble-slot data-empty-text="Choose"></div>
+                <div class="bubble-pool" data-bubble-pool>{% for d, l in late_days %}<button type="button" class="bubble" data-value="{{ d }}" data-label="{{ l }}">{{ l }}</button>{% endfor %}</div></div></div>
+        <div class="col-lg-6"><label class="form-label small fw-semibold d-block">Interest, a year</label>
+            <div class="input-group input-group-sm" style="width: 140px;"><input class="form-control" name="interest" value="{{ profile.interest_rate|default_if_none:'' }}" placeholder="18"><span class="input-group-text">%</span></div>
+            <div class="small text-muted mt-1">Simple interest on the unpaid balance, by the day. Leave blank for none.</div></div>
+        <div class="col-lg-6"><label class="form-label small fw-semibold d-block">Interest starts</label>
+            <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="interest_grace"><input type="hidden" name="interest_grace" data-bubble-input value="{{ profile.interest_grace_days|default:0 }}"><div class="bubble-slot" data-bubble-slot data-empty-text="Choose"></div>
+                <div class="bubble-pool" data-bubble-pool>{% for d, l in interest_days %}<button type="button" class="bubble" data-value="{{ d }}" data-label="{% if d == 0 %}From the due date{% else %}{{ l }}{% endif %}">{% if d == 0 %}From the due date{% else %}{{ l }}{% endif %}</button>{% endfor %}</div></div></div>
+    </div>
+    <div class="ac-live mt-3" id="late-sentences">{% for line in terms_lines %}<div class="small">{{ line }}</div>{% endfor %}</div>
+    <button class="btn btn-sm btn-primary mt-2">Save</button>
+</div></form>
+<script>
+(function () {
+    var card = document.getElementById('late');
+    if (!card) return;
+    var EXAMPLE = {{ example_assessment|default_if_none:'null' }};
+    function v(name) { var e = card.querySelector('[name="' + name + '"]'); return e ? e.value.trim() : ''; }
+    function money(n) { return '$' + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function refresh() {
+        var kind = v('late_fee_kind'), flat = parseFloat(v('late_fee_flat')) || 0, pct = parseFloat(v('late_fee_percent')) || 0, days = parseInt(v('late_grace') || '0', 10);
+        document.getElementById('lf-flat').style.display = (kind === 'flat' || kind === 'greater') ? '' : 'none';
+        document.getElementById('lf-pct').style.display = (kind === 'percent' || kind === 'greater') ? '' : 'none';
+        var out = [], when = days ? days + ' days after it is due' : 'the day after it is due';
+        if (!kind || kind === 'none') out.push('No late fee is charged.');
+        else {
+            var what = kind === 'flat' ? money(flat) : kind === 'percent' ? pct + '% of the installment' : 'the greater of ' + money(flat) + ' or ' + pct + '% of the installment';
+            var line = 'A late fee of ' + what + ' is charged ' + when + ', once for each late installment.';
+            if (EXAMPLE) { var fee = kind === 'flat' ? flat : kind === 'percent' ? EXAMPLE * pct / 100 : Math.max(flat, EXAMPLE * pct / 100); line += ' On a ' + money(EXAMPLE) + ' assessment that is ' + money(fee) + '.'; }
+            out.push(line);
+        }
+        var rate = parseFloat(v('interest')) || 0, ig = parseInt(v('interest_grace') || '0', 10);
+        out.push(rate > 0 ? 'Interest at ' + rate + '% a year (simple, on the unpaid balance, ' + (rate / 365).toFixed(4) + '% a day) is charged ' + (ig ? 'starting ' + ig + ' days after the due date' : 'from the due date') + ', once a month.' : 'No interest is charged.');
+        out.push('A payment goes first to interest, then late fees, then costs, then the assessment.');
+        document.getElementById('late-sentences').innerHTML = out.map(function (t) { return '<div class="small"></div>'; }).join('');
+        Array.prototype.forEach.call(document.getElementById('late-sentences').children, function (d, i) { d.textContent = out[i]; });
+    }
+    card.addEventListener('click', function () { setTimeout(refresh, 450); });
+    card.addEventListener('input', refresh);
+    refresh();
+})();
+</script>
+
 <form method="post" class="card mb-3" id="terms"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="terms">
     <h6 class="card-title">Terms and defaults</h6>
     <div class="row g-3">
-        <div class="col-md-4"><label class="form-label small text-muted mb-1">Late fee</label><select class="form-select form-select-sm" name="late_fee_kind">
-            <option value="none" {% if profile.late_fee_kind == 'none' %}selected{% endif %}>No late fee</option><option value="flat" {% if profile.late_fee_kind == 'flat' %}selected{% endif %}>A flat amount</option>
-            <option value="percent" {% if profile.late_fee_kind == 'percent' %}selected{% endif %}>A percent of the charge</option><option value="greater" {% if profile.late_fee_kind == 'greater' %}selected{% endif %}>The greater of an amount and a percent</option></select></div>
-        <div class="col-md-2"><label class="form-label small text-muted mb-1">Flat amount</label><input class="form-control form-control-sm" name="late_fee_flat" value="{{ profile.late_fee_flat|default_if_none:'' }}"></div>
-        <div class="col-md-2"><label class="form-label small text-muted mb-1">Percent</label><input class="form-control form-control-sm" name="late_fee_percent" value="{{ profile.late_fee_percent|default_if_none:'' }}"></div>
-        <div class="col-md-2"><label class="form-label small text-muted mb-1">Grace days</label><input class="form-control form-control-sm" name="grace" value="{{ profile.late_fee_grace_days|default_if_none:'' }}"></div>
-        <div class="col-md-2"><label class="form-label small text-muted mb-1">Interest, % a year</label><input class="form-control form-control-sm" name="interest" value="{{ profile.interest_rate|default_if_none:'' }}"></div>
         <div class="col-md-4"><label class="form-label small text-muted mb-1">We may spend without the board, up to</label><input class="form-control form-control-sm" name="spending_limit" value="{{ profile.spending_limit|default_if_none:'' }}"></div>
         <div class="col-md-4"><label class="form-label small text-muted mb-1">Management fee, a month</label><input class="form-control form-control-sm" name="management_fee" value="{{ profile.management_fee|default_if_none:'' }}"></div>
         <div class="col-md-4"><label class="form-label small text-muted mb-1">Fiscal year starts in</label><select class="form-select form-select-sm" name="fiscal_month">{% for n, m in months %}<option value="{{ n }}" {% if profile.fiscal_year_start_month == n %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Delinquency reviews and contract alerts go to</label><select class="form-select form-select-sm" name="compliance_owner"><option value="">The first company admin</option>{% for sp in staff_choices %}<option value="{{ sp.pk }}" {% if profile.compliance_owner_id == sp.pk %}selected{% endif %}>{{ sp.user.get_full_name|default:sp.user.username }}</option>{% endfor %}</select></div>
         <div class="col-12"><label class="small"><input type="checkbox" name="auto_post" {% if profile.auto_post %}checked{% endif %}> Post recurring charges and bills by themselves on their dates</label></div>
     </div>
     <div class="small text-muted mt-2">Best set from the documents below, where the program shows the page each one comes from. Reserve spending always needs the board.</div>
@@ -39,9 +85,7 @@
 
 <div class="card mb-3" id="documents"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Documents &amp; rules</h6>
-    <table class="table table-sm mb-2"><tbody>{% for d in ap_docs %}<tr><td style="width: 34%;">{{ d.label }}</td>
-        <td class="small text-muted">{% for w in d.where %}<div>{{ w }}</div>{% endfor %}</td>
-        <td class="text-end">{% if d.doc %}{% if d.url %}<a class="small me-2" href="{{ d.url }}" target="_blank">open</a>{% endif %}<span class="ac-chip good">On file</span>{% elif d.required %}<span class="ac-chip warn">Required</span>{% else %}<span class="ac-chip">Not uploaded</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+    <div class="mb-2">{% include 'accounting/_doc_tree.html' %}</div>
     <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="upload_many">
         <input type="file" name="files" multiple class="form-control form-control-sm" style="max-width: 360px;" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv" required><button class="btn btn-sm btn-primary">Upload</button>
         <span class="small text-muted w-100">One file or several, a binder or single documents, up to 50 MB each. Each is read once, then sorted into the declaration, articles, bylaws, rules, amendments, contract or budget it holds, and you confirm.</span></form>
@@ -67,9 +111,9 @@
                 {% for s in f.sections %}<div class="row g-1 align-items-center mb-1"><div class="col-auto small text-muted" style="width: 110px;">{% if s.start == s.end %}Page {{ s.start }}{% else %}Pages {{ s.start }}&ndash;{{ s.end }}{% endif %}</div>
                     <div class="col-md-3"><select class="form-select form-select-sm" name="kind_{{ forloop.counter0 }}">{% for k, label in doc_kinds %}<option value="{{ k }}" {% if k == s.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
                     <div class="col"><input class="form-control form-control-sm" name="title_{{ forloop.counter0 }}" value="{{ s.title }}"></div>
-                    <div class="col-auto">{% if s.repeat_of %}<span class="ac-chip">Second copy of the one at page {{ s.repeat_of }}</span> {% endif %}{% if s.confidence < 0.6 and f.doc.sort_status != 'manual' %}<span class="ac-chip warn">Not sure</span>{% endif %}</div></div>{% endfor %}
+                    <div class="col-auto">{% if s.kind == 'amendment' %}<select class="form-select form-select-sm d-inline-block" style="width: auto;" name="applies_{{ forloop.counter0 }}" title="Which document this amends"><option value="">Amends...</option>{% for v, l in applies_choices %}<option value="{{ v }}" {% if s.applies_to == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select> {% endif %}{% if s.repeat_of %}<span class="ac-chip">Second copy of the one at page {{ s.repeat_of }}</span> {% endif %}{% if s.confidence < 0.6 and f.doc.sort_status != 'manual' %}<span class="ac-chip warn">Not sure</span>{% endif %}</div></div>{% endfor %}
                 <button class="btn btn-sm btn-primary" name="action" value="sort_confirm">Looks right</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="sort_again">Sort it again</button></form>
-            {% elif f.sections %}<div class="small text-muted mt-1">{% for s in f.sections %}<div>{{ s.title|default:'Untitled' }}: {% if s.start == s.end %}page {{ s.start }}{% else %}pages {{ s.start }} to {{ s.end }}{% endif %}{% if s.repeat_of %} (second copy){% endif %}</div>{% endfor %}</div>{% endif %}
+            {% elif f.summary %}<div class="small text-muted mt-1">{{ f.summary }}</div>{% endif %}
         </div>{% endfor %}</div>{% endif %}
 
     {% if ap_proposals %}<div class="mt-3 pt-3 border-top"><div class="ac-lab mb-2">Found in the documents: confirm each one that is right</div>
@@ -77,10 +121,7 @@
             <div class="d-flex justify-content-between flex-wrap gap-2"><div><strong>{{ p.label }}</strong>: {{ p.summary }} <span class="small text-muted">{{ p.source }}</span><div class="small text-muted fst-italic">"{{ p.quote|truncatechars:240 }}"</div></div>
                 <div class="d-flex gap-1 align-items-start">{% for k, v in p.value.items %}{% if k != 'kind' %}<input class="form-control form-control-sm" style="width: 100px;" name="v_{{ k }}" value="{{ v|default_if_none:'' }}" title="{{ k }}">{% endif %}{% endfor %}<button class="btn btn-sm btn-primary" name="action" value="confirm">Confirm</button><button class="btn btn-sm btn-outline-secondary" name="action" value="dismiss">Dismiss</button></div></div></form>{% endfor %}</div>{% endif %}
 
-    <div class="mt-3 pt-3 border-top"><div class="ac-lab mb-1">Ask the documents</div>
-        <form method="post" class="d-flex gap-2">{% csrf_token %}<input type="hidden" name="action" value="ask"><input class="form-control form-control-sm" name="question" placeholder="For example: Can an owner rent a unit for a week at a time?" required><button class="btn btn-sm btn-primary">Ask</button></form>
-        <div class="small text-muted mt-1">Only the pages most likely to answer are read, and a question asked before is answered from memory.</div>
-        {% for q in ap_questions %}<div class="mt-2 p-2 rounded" style="background: var(--bs-light, #f1f3f5);"><div class="small fw-semibold">{{ q.question }}</div><div class="small" style="white-space: pre-wrap;">{{ q.answer }}</div></div>{% endfor %}</div>
+    <div class="mt-3 pt-3 border-top"><div class="ac-lab mb-1">Ask the documents</div>{% include 'accounting/_doc_ask.html' with ask_pk=assoc.pk ask_next='' %}</div>
 </div></div>
 
 <div class="card mb-3" id="banks"><div class="card-body">

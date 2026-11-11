@@ -59,6 +59,10 @@ class AssociationProfile(models.Model):
     late_fee_grace_days = models.PositiveSmallIntegerField(null=True, blank=True)
     interest_rate = models.DecimalField(null=True, blank=True, max_digits=6, decimal_places=3, help_text='Annual percent charged on unpaid assessments.')
     late_fee_confirmed = models.BooleanField(default=False)
+    interest_grace_days = models.PositiveSmallIntegerField(default=0, help_text='Days after the due date before interest starts (0: from the due date, as Florida law and most declarations say).')
+    interest_confirmed = models.BooleanField(default=False)
+    delinquency_threshold = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('100.00'), help_text='An owner is chased (late fee, interest, a late letter) once the balance is more than this.')
+    compliance_owner = models.ForeignKey('core.StaffProfile', null=True, blank=True, on_delete=models.SET_NULL, related_name='+', help_text='Who the monthly delinquency reviews and the contract alerts are assigned to.')
     auto_post = models.BooleanField(default=True, help_text='Post recurring charges and bills by themselves on their dates.')
 
     # printing checks
@@ -74,6 +78,9 @@ class AssociationProfile(models.Model):
 
     def late_fee_is_set(self):
         return self.late_fee_kind != self.LateFeeKind.NONE and self.late_fee_confirmed
+
+    def interest_is_set(self):
+        return bool(self.interest_rate) and self.interest_rate > 0 and self.interest_confirmed
 
     def registered_agent_is_us(self):
         return 'proper realty' in (self.registered_agent or '').lower()
@@ -118,6 +125,7 @@ class AssociationDocument(models.Model):
     auto_sort = models.BooleanField(default=False, help_text='Uploaded without saying what it is: the program works it out and a person confirms.')
     sort_status = models.CharField(max_length=10, blank=True, default='', help_text="'' nothing to sort, waiting, proposed (needs a look), manual (choose by hand), confirmed.")
     sections = models.JSONField(default=list, blank=True, help_text='[{"kind","title","start","end","confidence"}] by page, once sorted.')
+    indexed = models.BooleanField(default=False, help_text='Claude has noted what each page is about (once), so a question finds the right pages.')
 
     class Meta:
         ordering = ['kind', '-uploaded_at']
@@ -132,6 +140,7 @@ class DocumentPage(models.Model):
     number = models.PositiveIntegerField()
     text = models.TextField(blank=True)
     by_claude = models.BooleanField(default=False, help_text='A scanned page that had to be read by Claude, once.')
+    tags = models.TextField(blank=True, help_text='What the page is about, noted once by Claude: used to find the pages that answer a question.')
 
     class Meta:
         ordering = ['document_id', 'number']
@@ -167,9 +176,25 @@ class DocumentQuestion(models.Model):
     docs_signature = models.CharField(max_length=40, blank=True, help_text='Which documents were on file when it was answered: the same question is answered from memory until they change.')
     asked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
+    answered_at = models.DateTimeField(null=True, blank=True, help_text='When Claude last answered it (created_at for older rows).')
+    sig_significant = models.CharField(max_length=40, blank=True, help_text='Which declaration, articles, bylaws, rules, amendments and contract were on file when it was answered.')
+    sources = models.TextField(blank=True, help_text='The pages Claude was given, one per line.')
+    asks = models.PositiveIntegerField(default=1, help_text='How many times this question was asked (a repeat is answered from memory).')
+    reads = models.PositiveIntegerField(default=0, help_text='How many times someone sat with its answer on screen.')
+    last_read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
+
+
+class DocumentQuestionRead(models.Model):
+    """One person reading one answer on one day: counted once, so the list's ranking cannot be inflated."""
+    question = models.ForeignKey(DocumentQuestion, on_delete=models.CASCADE, related_name='read_log')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    day = models.DateField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['question', 'user', 'day'], name='uniq_question_read_per_day')]
 
 
 # ---------------------------------------------------------------- the ledger
@@ -441,6 +466,7 @@ class ChargeRule(models.Model):
     share_kind = models.ForeignKey(ShareKind, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     income_account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='+')
     installments = models.PositiveSmallIntegerField(null=True, blank=True, help_text='Stop after this many charges.')
+    post_days_ahead = models.PositiveSmallIntegerField(default=10, help_text='Post the charges this many days before they are due, dated the due date, so owners can see the balance.')
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -454,6 +480,7 @@ class Charge(models.Model):
         ASSESSMENT = 'assessment', 'Assessment'
         SPECIAL = 'special', 'Special assessment'
         LATE_FEE = 'late_fee', 'Late fee'
+        INTEREST = 'interest', 'Interest'
         FINE = 'fine', 'Fine'
         OTHER = 'other', 'Other charge'
         OPENING = 'opening', 'Balance forward'
@@ -564,6 +591,7 @@ class RecurringBill(models.Model):
     next_date = models.DateField()
     pay_method = models.CharField(max_length=6, choices=VendorTerms.Pay.choices, default=VendorTerms.Pay.CHECK)
     statement_match = models.CharField(max_length=80, blank=True, help_text='Text the bank statement line contains, to recognise the payment.')
+    post_on_month_end = models.BooleanField(default=False, help_text='Billed in arrears: the bill is dated the last day of the month it covers, and posts that day.')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -573,6 +601,19 @@ class RecurringBill(models.Model):
     @property
     def is_fixed(self):
         return self.amount is not None
+
+
+class JournalRule(models.Model):
+    """A scheduled journal entry. For now one kind: the monthly reserve contribution, split by the approved budget's reserve lines (see scheduled.py)."""
+    class Kind(models.TextChoices):
+        RESERVE = 'reserve', 'Reserve contribution'
+
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='journal_rules')
+    name = models.CharField(max_length=120, default='Reserve contribution')
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.RESERVE)
+    day_of_month = models.PositiveSmallIntegerField(default=27, help_text='The day the transfer to the reserve account happens; 31 means the last day of the month.')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class Bill(models.Model):
@@ -824,3 +865,99 @@ class SeenEmail(models.Model):
     outcome = models.CharField(max_length=200, blank=True)
     needs_home = models.BooleanField(default=False, help_text='An invoice was found but not which association it is for.')
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+# ---------------------------------------------------------------- collections: owners who are behind
+
+class DelinquencyCase(models.Model):
+    """One owner who is behind, from the day their first late letter is made until the balance is paid. It is reviewed every 30 days: each review is a compliance item."""
+    class Stage(models.TextChoices):
+        LETTER = 'letter', 'Letter sent'
+        FINAL = 'final', 'Final notice'
+        ATTORNEY = 'attorney', 'With the attorney'
+        PLAN = 'plan', 'Payment plan'
+        RESOLVED = 'resolved', 'Resolved'
+
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='delinquency_cases')
+    unit = models.ForeignKey(Unit, on_delete=models.CASCADE, related_name='delinquency_cases')
+    owner = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name='delinquency_cases')
+    stage = models.CharField(max_length=10, choices=Stage.choices, default=Stage.LETTER)
+    opened_on = models.DateField()
+    next_review = models.DateField(null=True, blank=True)
+    resolved_on = models.DateField(null=True, blank=True)
+    attorney_name = models.CharField(max_length=120, blank=True)
+    review_line = models.ForeignKey('worksessions.SessionLine', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-opened_on', '-pk']
+
+    @property
+    def is_open(self):
+        return self.resolved_on is None
+
+
+class CaseEvent(models.Model):
+    """One thing that happened on a case: the timeline."""
+    class Kind(models.TextChoices):
+        LETTER = 'letter', 'Letter'
+        CALL = 'call', 'Call'
+        NOTE = 'note', 'Note'
+        STAGE = 'stage', 'Step'
+        FEE = 'fee', 'Fee or interest'
+        REVIEW = 'review', 'Reviewed'
+        PLAN = 'plan', 'Payment plan'
+        ATTORNEY = 'attorney', 'Attorney'
+        RESOLVED = 'resolved', 'Resolved'
+
+    case = models.ForeignKey(DelinquencyCase, on_delete=models.CASCADE, related_name='events')
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.NOTE)
+    date = models.DateField()
+    summary = models.CharField(max_length=500)
+    document = models.ForeignKey('legalforms.GeneratedDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-pk']
+
+
+# ---------------------------------------------------------------- contracts
+
+class Contract(models.Model):
+    """A contract of the association: the record the law makes us keep and show, and what drives its recurring bill and its alerts."""
+    class Frequency(models.TextChoices):
+        MONTHLY = 'monthly', 'Every month'
+        QUARTERLY = 'quarterly', 'Every 3 months'
+        SEMIANNUAL = 'semiannual', 'Twice a year'
+        ANNUAL = 'annual', 'Once a year'
+        ONCE = 'once', 'One time'
+
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='contracts')
+    name = models.CharField(max_length=200, help_text='What it is, e.g. "Landscaping" or "Elevator service".')
+    vendor = models.ForeignKey(Contact, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    vendor_name = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True, help_text='When the current term ends.')
+    auto_renews = models.BooleanField(default=False)
+    renewal_months = models.PositiveSmallIntegerField(default=12, help_text='How long each renewal lasts.')
+    notice_days = models.PositiveSmallIntegerField(default=60, help_text='Days before the term ends that cancelling must be in writing.')
+    amount = models.DecimalField(null=True, blank=True, **MONEY)
+    frequency = models.CharField(max_length=12, choices=Frequency.choices, default=Frequency.MONTHLY)
+    expense_account = models.ForeignKey(Account, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    recurring_bill = models.ForeignKey('RecurringBill', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    document = models.ForeignKey(AssociationDocument, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    board_approved_on = models.DateField(null=True, blank=True)
+    visible_to_owners = models.BooleanField(default=True, help_text='Owners may ask to see it; it is on the official-records list.')
+    is_active = models.BooleanField(default=True)
+    confirmed = models.BooleanField(default=True, help_text='False while the fields were read from the file and nobody has checked them.')
+    notes = models.TextField(blank=True)
+    alerts_made = models.JSONField(default=list, blank=True, help_text='The alerts already put on the compliance screen, so none is made twice.')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name

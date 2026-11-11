@@ -13,9 +13,9 @@ from django.utils import timezone
 
 from core.models import Contact, Unit
 
-from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, payables, reporting
+from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, payables, reporting, scheduled
 from . import standard_chart as sc
-from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, JournalEntry, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
+from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, ChargeRule, JournalEntry, JournalRule, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
 from .web import admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month
 
 
@@ -455,7 +455,8 @@ def recurring(request, pk):
                     raise ValueError('Give the date of the next bill.')
                 fields = dict(vendor=vendor, description=(request.POST.get('description') or vendor.name).strip()[:200], account=account, amount=amount, next_date=nxt,
                               frequency=request.POST.get('frequency') if request.POST.get('frequency') in dict(RecurringBill.Frequency.choices) else 'monthly',
-                              pay_method=request.POST.get('pay_method') if request.POST.get('pay_method') in ('check', 'ach') else 'check', statement_match=(request.POST.get('statement_match') or '').strip()[:80])
+                              pay_method=request.POST.get('pay_method') if request.POST.get('pay_method') in ('check', 'ach') else 'check', statement_match=(request.POST.get('statement_match') or '').strip()[:80],
+                              post_on_month_end=bool(request.POST.get('post_on_month_end')))
                 rid = request.POST.get('rec')
                 if rid:
                     RecurringBill.objects.filter(pk=rid, association=prop).update(**fields)
@@ -470,13 +471,63 @@ def recurring(request, pk):
             elif action == 'post_due':
                 made = payables.post_recurring(prop, timezone.localdate(), request.user)
                 messages.success(request, f'Posted {len(made)} bill{"s" if len(made) != 1 else ""}.' if made else 'Nothing was due.')
-        except (ValueError, payables.PayableError, ledger.LedgerError) as e:
+            elif action == 'charges_due':
+                done = charges.post_due(prop, timezone.localdate(), request.user)
+                n = sum(c for _, _, c in done)
+                messages.success(request, f'Posted {n} charge{"s" if n != 1 else ""}.' if n else 'Nothing was due.')
+                return redirect(here + '?tab=charges')
+            elif action in ('assess_late', 'assess_interest'):
+                made = charges.assess_late_fees(prop, timezone.localdate(), request.user) if action == 'assess_late' else charges.assess_interest(prop, timezone.localdate(), request.user)
+                what = 'late fee' if action == 'assess_late' else 'interest charge'
+                messages.success(request, f'Charged {len(made)} {what}{"s" if len(made) != 1 else ""}: ${sum((c.amount for c in made), ZERO):,.2f}.' if made else f'No {what}s were owed.')
+                return redirect(here + '?tab=charges')
+            elif action in ('jr_add', 'jr_save'):
+                day = int(request.POST.get('day_of_month') or 0)
+                if not 1 <= day <= 31:
+                    raise ValueError('Give the day of the month the transfer happens (1 to 31; 31 means the last day).')
+                if action == 'jr_add':
+                    JournalRule.objects.create(association=prop, kind='reserve', name='Reserve contribution', day_of_month=day)
+                else:
+                    JournalRule.objects.filter(pk=request.POST.get('rule'), association=prop).update(day_of_month=day)
+                messages.success(request, 'Saved.')
+                return redirect(here + '?tab=entries')
+            elif action in ('jr_stop', 'jr_resume'):
+                JournalRule.objects.filter(pk=request.POST.get('rule'), association=prop).update(is_active=(action == 'jr_resume'))
+                return redirect(here + '?tab=entries')
+            elif action == 'jr_post':
+                rule = get_object_or_404(JournalRule, pk=request.POST.get('rule'), association=prop)
+                month_first = parse_month(request.POST.get('month'), ledger.month_start(timezone.localdate()))
+                entry = scheduled.post_contribution(prop, rule, month_first, request.user)
+                messages.success(request, f'Posted J-{entry.number}: ${sum(l.credit for l in entry.lines.all()):,.2f} to the reserve funds, dated {entry.date:%b} {entry.date.day}.')
+                return redirect(here + '?tab=entries')
+        except (ValueError, payables.PayableError, ledger.LedgerError, charges.ChargeError) as e:
             messages.error(request, str(e))
+            if action and action.startswith('jr_'):
+                return redirect(here + '?tab=entries')
         return redirect(here)
+    tab = request.GET.get('tab') if request.GET.get('tab') in ('bills', 'charges', 'entries') else 'bills'
+    today = timezone.localdate()
+    month = parse_month(request.GET.get('month'), ledger.month_start(today))
     rows = list(RecurringBill.objects.filter(association=prop).select_related('vendor', 'account').order_by('-is_active', 'description'))
+    state = {r['rec'].pk: r for r in payables.recurring_status(prop, month)}
+    for r in rows:
+        st = state.get(r.pk)
+        r.this_month = None if not r.is_active or st is None or not st['due'] else ('posted' if st['posted'] else ('waiting' if not st['fixed'] else 'missing'))
     edit = next((r for r in rows if str(r.pk) == request.GET.get('edit')), None)
+    rules = list(ChargeRule.objects.filter(association=prop).order_by('is_special', 'name'))
+    for rule in rules:
+        rule.st = charges.rule_status(rule, today)
+    late_rows = [{'unit': c.unit.label, 'owner': c.owner.name, 'what': f'Late fee on {c.description}', 'amount': fee} for c, fee, due in charges._late_fee_rows(prop, today)]
+    interest_rows = [{'unit': c.unit.label, 'owner': c.owner.name, 'what': f'Interest on {c.description}, {mf:%B %Y}', 'amount': amt} for c, mf, me, amt in charges._interest_rows(prop, today)]
+    jrules = list(JournalRule.objects.filter(association=prop).order_by('name'))
+    for jr in jrules:
+        jr.st = scheduled.status(prop, jr, month, today)
+    needs = [r for r in rows if r.this_month in ('waiting', 'missing')]
+    counts = {'bills': len(needs), 'charges': sum(1 for r in rules if r.is_active and r.st['pending']) + (1 if late_rows or interest_rows else 0), 'entries': sum(1 for jr in jrules if jr.is_active and jr.st['state'] in ('due', 'no_budget'))}
     return render(request, 'accounting/recurring.html', {'assoc': prop, 'rows': rows, 'edit': edit, 'vendors': _vendor_names(prop), 'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'),
-                                                         'frequencies': RecurringBill.Frequency.choices, 'profile': ledger.profile_for(prop), 'today': timezone.localdate(), 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting'})
+                                                         'frequencies': RecurringBill.Frequency.choices, 'profile': ledger.profile_for(prop), 'today': today, 'tab': tab, 'rules': rules, 'jrules': jrules, 'counts': counts,
+                                                         'late_rows': late_rows, 'interest_rows': interest_rows, 'late_total': sum((r['amount'] for r in late_rows), ZERO), 'interest_total': sum((r['amount'] for r in interest_rows), ZERO),
+                                                         'needs': needs, 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting', **month_context(month)})
 
 
 # ---------------------------------------------------------------- journal

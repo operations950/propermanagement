@@ -250,6 +250,14 @@ def outstanding_checks(association, bank_account=None):
 
 # ---------------------------------------------------------------- recurring bills
 
+def next_after(rec, day):
+    """The date of the bill after the one dated `day`: the same day of a later month, or the last day of that month for a bill billed in arrears."""
+    n = FREQ_MONTHS[rec.frequency]
+    if rec.post_on_month_end:
+        return ledger.month_end(add_months(day.replace(day=1), n))
+    return add_months(day, n)
+
+
 def post_recurring(association, today, user=None):
     """Post every recurring bill of a fixed amount that has come due; a bill whose amount changes (a utility) waits for the bank statement."""
     made = []
@@ -266,7 +274,7 @@ def post_recurring(association, today, user=None):
                                             kind=Bill.Kind.ROUTINE, source=Bill.Source.RECURRING, user=user, recurring=rec, memo=rec.description))
                 except ledger.LedgerError:
                     pass   # that month is closed
-            rec.next_date = add_months(day, FREQ_MONTHS[rec.frequency])
+            rec.next_date = next_after(rec, day)
             rec.save(update_fields=['next_date'])
     return made
 
@@ -280,7 +288,7 @@ def skip_past(rec, day):
     """A bill made from the bank statement counts as that month's, so the recurring date moves on past the month and the schedule does not post it a second time."""
     end, moved = ledger.month_end(day), False
     while rec.next_date <= end:
-        rec.next_date, moved = add_months(rec.next_date, FREQ_MONTHS[rec.frequency]), True
+        rec.next_date, moved = next_after(rec, rec.next_date), True
     if moved:
         rec.save(update_fields=['next_date'])
 
@@ -296,7 +304,7 @@ def post_month(association, month_first, user=None, apply=True):
         gap = (rec.next_date.year - month_first.year) * 12 + rec.next_date.month - month_first.month
         if gap < 0 or gap % FREQ_MONTHS[rec.frequency]:
             continue
-        day = month_first.replace(day=min(rec.next_date.day, end.day))
+        day = end if rec.post_on_month_end else month_first.replace(day=min(rec.next_date.day, end.day))
         bill = None
         if apply:
             try:

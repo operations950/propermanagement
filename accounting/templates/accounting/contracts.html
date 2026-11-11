@@ -1,0 +1,52 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Contracts - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-signature" class="icon-lg"></i> Contracts {% include '_tip.html' with text="The association's contracts, kept as records the law says we must keep and show. A contract sets up its recurring bill and warns you on the compliance screen before its term ends and before the cancellation notice is due." %}</h2>
+        <div class="small text-muted">{{ assoc.name }}</div></div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:contracts_print' assoc.pk %}" target="_blank"><i data-lucide="printer" class="icon"></i> Official records list</a>
+</div>
+<div class="card mb-3"><div class="card-body p-2">
+<table class="table table-sm ac-table mb-0"><thead><tr><th>Contract</th><th>Vendor</th><th class="ac-num">Price</th><th>Term ends</th><th>Cancel by</th><th>Next date</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr class="{% if not r.c.is_active %}text-muted{% endif %}">
+    <td><a class="text-decoration-none fw-semibold" href="?edit={{ r.c.pk }}">{{ r.c.name }}</a>{% if not r.c.confirmed %} <span class="ac-chip warn">Check it</span>{% endif %}{% if not r.c.is_active %} <span class="ac-chip">Stopped</span>{% endif %}{% if r.c.document %} <a class="small" href="{{ r.c.document.file.url }}" target="_blank">file</a>{% endif %}</td>
+    <td>{{ r.c.vendor.name|default:r.c.vendor_name }}</td>
+    <td class="ac-num">{% if r.c.amount %}{{ r.c.amount|money }} <span class="small text-muted">{{ r.c.get_frequency_display|lower }}</span>{% endif %}</td>
+    <td>{{ r.end|mdate }}{% if r.c.auto_renews %} <span class="ac-chip" title="Renews by itself unless cancelled">renews</span>{% endif %}</td>
+    <td>{{ r.deadline|mdate }}</td>
+    <td>{% if r.state == 'notice' %}<span class="ac-chip warn">Notice due in {{ r.days }} days</span>{% elif r.state == 'ending' %}<span class="ac-chip warn">Ends in {{ r.days }} days</span>{% elif r.state == 'ended' %}<span class="ac-chip">Ended</span>{% elif r.next %}{{ r.next|mdate:'short' }}{% endif %}</td>
+    <td class="text-end ac-noprint"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="contract" value="{{ r.c.pk }}">{% if r.c.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="stop">Stop</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="resume">Resume</button>{% endif %}</form></td></tr>
+{% empty %}<tr><td colspan="7" class="text-muted p-3">No contracts yet. Add the landscaping, the pest control, the insurance, the management agreement: anything with a term.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+
+<div class="card mb-3 ac-noprint"><div class="card-body">
+    <h6 class="card-title">Read a contract from its file</h6>
+    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="read">
+        <input type="file" name="file" class="form-control form-control-sm" style="max-width: 340px;" accept=".pdf,.jpg,.jpeg,.png" required><button class="btn btn-sm btn-primary">Read it</button>
+        <span class="small text-muted w-100">Claude reads the vendor, term, renewal, cancellation notice and price and fills the form below. You check it, then save. It uses a little credit, once per file.</span></form>
+</div></div>
+
+<div class="card"><div class="card-body">
+    <h6 class="card-title">{% if edit %}{{ edit.name }}{% else %}Add a contract{% endif %}</h6>
+    {% if edit and not edit.confirmed %}<div class="ac-strip small mb-2">These were read from the file. Check every field against the contract before saving.</div>{% endif %}
+    <form method="post" enctype="multipart/form-data" class="row g-2">{% csrf_token %}<input type="hidden" name="action" value="save">{% if edit %}<input type="hidden" name="contract" value="{{ edit.pk }}">{% endif %}
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">What it is for</label><input class="form-control form-control-sm" name="name" value="{{ edit.name }}" placeholder="Landscaping" required></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Vendor</label><input class="form-control form-control-sm" name="vendor_name" value="{{ vendor_text }}"></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Expense account</label><select class="form-select form-select-sm ac-pick" name="expense_account"><option value="">Choose...</option>{% for a in expense_accounts %}<option value="{{ a.pk }}" {% if edit.expense_account_id == a.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Term starts</label><input class="form-control form-control-sm" type="date" name="start_date" value="{{ edit.start_date|date:'Y-m-d' }}"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Term ends</label><input class="form-control form-control-sm" type="date" name="end_date" value="{{ edit.end_date|date:'Y-m-d' }}"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Cancel notice (days)</label><input class="form-control form-control-sm" type="number" min="0" name="notice_days" value="{{ edit.notice_days|default:60 }}"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Renews for (months)</label><input class="form-control form-control-sm" type="number" min="1" name="renewal_months" value="{{ edit.renewal_months|default:12 }}"></div>
+        <div class="col-md-2 pt-md-4"><label class="small"><input type="checkbox" name="auto_renews" {% if edit.auto_renews %}checked{% endif %}> Renews by itself</label></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Price</label><div class="input-group input-group-sm"><span class="input-group-text">$</span><input class="form-control text-end" name="amount" value="{{ edit.amount|default_if_none:'' }}"></div></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Billed</label><select class="form-select form-select-sm" name="frequency">{% for v, l in frequencies %}<option value="{{ v }}" {% if edit.frequency == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Approved by the board</label><input class="form-control form-control-sm" type="date" name="board_approved_on" value="{{ edit.board_approved_on|date:'Y-m-d' }}"></div>
+        <div class="col-md-3 pt-md-4"><label class="small"><input type="checkbox" name="visible_to_owners" {% if not edit or edit.visible_to_owners %}checked{% endif %}> On the owners' records list</label></div>
+        <div class="col-12"><label class="form-label small text-muted mb-1">What is provided, and notes</label><textarea class="form-control form-control-sm" name="description" rows="2">{{ edit.description }}</textarea></div>
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">The signed copy</label><input type="file" name="file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png"></div>
+        <div class="col-md-6"><div class="small mt-md-4">{% if edit.recurring_bill_id %}<span class="ac-chip good">Its recurring bill is kept in step</span>{% else %}<label><input type="checkbox" name="make_bill"> Make its recurring bill, first one dated</label> <input class="form-control form-control-sm d-inline-block" style="width: 150px;" type="date" name="next_bill_date">{% endif %}</div></div>
+        <div class="col-12 d-flex gap-2"><button class="btn btn-sm btn-primary">Save</button>{% if edit %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:contracts' assoc.pk %}">Cancel</a>{% endif %}</div>
+    </form>
+</div></div>
+{% endblock %}

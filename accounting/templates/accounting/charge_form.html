@@ -12,6 +12,7 @@
             <div class="ac-pills" id="freq">{% for value, label in frequencies %}<span><input type="radio" id="f{{ value }}" name="frequency" value="{{ value }}" {% if rule.frequency == value or not rule and value == 'quarterly' %}checked{% endif %}><label for="f{{ value }}">{{ label }}</label></span>{% endfor %}</div></div>
         <div class="col-md-4"><label class="form-label small text-muted mb-1">First due</label><input class="form-control" type="date" name="first_due" id="first_due" value="{{ rule.first_due|date:'Y-m-d' }}" required>
             <div class="small text-muted mt-1" id="pastnote" style="display: none;">That date has passed, so the charges post when you save, dated then.</div></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Post them this many days early</label><input class="form-control" type="number" min="0" max="60" name="post_days_ahead" value="{{ rule.post_days_ahead|default:10 }}"><div class="small text-muted mt-1">Dated the due date, but visible to owners this many days before.</div></div>
         <div class="col-md-4"><label class="form-label small text-muted mb-1">Stops after this many charges (optional)</label><input class="form-control" type="number" min="1" name="installments" value="{{ rule.installments|default_if_none:'' }}"></div>
         <div class="col-12"><label class="form-label small text-muted mb-1">How much</label>
             <div class="row g-2">

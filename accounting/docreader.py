@@ -31,7 +31,9 @@ SORT_TOOL = {
     'input_schema': {'type': 'object', 'properties': {'documents': {'type': 'array', 'items': {'type': 'object', 'properties': {
         'kind': {'type': 'string', 'enum': KINDS}, 'title': {'type': 'string', 'description': 'What it is called, with its date or recording details when the page says them.'},
         'start_page': {'type': 'integer'}, 'end_page': {'type': 'integer'}, 'confidence': {'type': 'number', 'description': '0 to 1: how sure you are of the kind and of where it starts and ends.'},
-        'repeat_of_page': {'type': 'integer', 'description': 'When this is a second copy of a document that appears earlier in the file, the page where the earlier copy starts; otherwise 0.'}},
+        'repeat_of_page': {'type': 'integer', 'description': 'When this is a second copy of a document that appears earlier in the file, the page where the earlier copy starts; otherwise 0.'},
+        'applies_to': {'type': 'string', 'enum': ['declaration', 'articles', 'bylaws', 'rules', 'unknown'], 'description': 'For an amendment: which document it amends (read its title). Otherwise unknown.'},
+        'parent_page': {'type': 'integer', 'description': 'For an exhibit or survey: the page where the amendment or document it is attached to starts. Otherwise 0.'}},
         'required': ['kind', 'title', 'start_page', 'end_page', 'confidence']}}}, 'required': ['documents']},
 }
 
@@ -201,6 +203,14 @@ def clean_sections(found, n):
             repeat = 0
         if 0 < repeat < start:
             row['repeat_of'] = repeat
+        if s.get('applies_to') in ('declaration', 'articles', 'bylaws', 'rules'):
+            row['applies_to'] = s['applies_to']
+        try:
+            parent = int(s.get('parent_page') or 0)
+        except (TypeError, ValueError):
+            parent = 0
+        if 0 < parent < start:
+            row['parent_page'] = parent
         rows.append(row)
     rows.sort(key=lambda r: (r['start'], r['end']))
     out, cursor = [], 1
@@ -235,7 +245,8 @@ def sort_document(doc):
               'Say where each document in the file starts and ends. Every page belongs to exactly one document. Use "amendment" for an amendment to the declaration, bylaws or articles and say which one in the title. '
               'Use "exhibit" for the surveys, plats, floor plans, drawings and legal descriptions attached to a declaration or an amendment (pages that are mostly drawings or surveyors\' certificates). '
               'Use "other" for anything else (a cover sheet, a certificate, minutes). Give each a short title with its date or recording details when the pages state them. '
-              'The same document is sometimes in the file twice: report the second copy as its own entry and set repeat_of_page to the page where the first copy starts.\n\n' + outline)
+              'The same document is sometimes in the file twice: report the second copy as its own entry and set repeat_of_page to the page where the first copy starts. '
+              'For an amendment set applies_to to the document it amends (declaration, articles, bylaws or rules), and for an exhibit or survey set parent_page to the page where the amendment or document it belongs to starts.\n\n' + outline)
     try:
         client = documents._client()
         sections = []
@@ -258,6 +269,51 @@ def sort_document(doc):
         sections, status = whole, 'manual'
     doc.sections, doc.sort_status = sections, status
     doc.save(update_fields=['sections', 'sort_status'])
+
+
+# ---------------------------------------------------------------- noting what each page is about
+
+TAG_TOOL = {
+    'name': 'tag_pages',
+    'description': 'For each page, the subjects it covers.',
+    'input_schema': {'type': 'object', 'properties': {'pages': {'type': 'array', 'items': {'type': 'object', 'properties': {
+        'page': {'type': 'integer', 'description': 'The page number as labelled.'},
+        'tags': {'type': 'array', 'items': {'type': 'string'}, 'description': '3 to 8 short lowercase subject phrases a person might ask about, such as "interest on unpaid assessments", "administrative late fee", "pets", "leasing", "hurricane shutters". An empty list for a page with no real text (a drawing, a blank page).'}},
+        'required': ['page', 'tags']}}}, 'required': ['pages']},
+}
+TAG_CHUNK, TAG_CHARS = 30, 1500
+
+
+def index_document(doc):
+    """Note once what every page is about, so a question can be matched to the pages that cover its subject and not only to pages that happen to use its words. Pages already
+    tagged are never done again, so a run that stops halfway picks up where it was. Returns the number of pages tagged."""
+    from . import documents
+    client = documents._client()
+    todo = [p for p in DocumentPage.objects.filter(document=doc).order_by('number') if not p.tags and len(re.findall(r'[A-Za-z]', p.text)) >= 60]
+    done = 0
+    for start in range(0, len(todo), TAG_CHUNK):
+        chunk = todo[start:start + TAG_CHUNK]
+        body = '\n\n'.join(f'[page {p.number}]\n' + ' '.join(p.text.split())[:TAG_CHARS] for p in chunk)
+        message = client.messages.create(
+            model=documents.MODEL, max_tokens=4000, tools=[TAG_TOOL], tool_choice={'type': 'tool', 'name': 'tag_pages'},
+            messages=[{'role': 'user', 'content': [{'type': 'text', 'text': 'These are pages of the governing documents of a Florida condominium association (the text may be scanned and imperfect). '
+                                                    'For each page, list the subjects it covers, in plain lowercase phrases.\n\n' + body}]}])
+        by_page = {p.number: p for p in chunk}
+        for row in as_dicts(_tool_input(message, 'tag_pages').get('pages'), 'pages'):
+            try:
+                page = by_page.get(int(row.get('page')))
+            except (TypeError, ValueError):
+                continue
+            tags = [str(t).strip().lower() for t in as_strings(row.get('tags')) if str(t).strip()]
+            if page is not None and tags:
+                page.tags = '; '.join(tags)[:600]
+                page.save(update_fields=['tags'])
+                done += 1
+    left = sum(1 for p in DocumentPage.objects.filter(document=doc) if not p.tags and len(re.findall(r'[A-Za-z]', p.text)) >= 60)
+    if not left:
+        doc.indexed = True
+        doc.save(update_fields=['indexed'])
+    return done
 
 
 # ---------------------------------------------------------------- the job
@@ -287,4 +343,10 @@ def process_waiting(limit=3, log=None):
     for doc in AssociationDocument.objects.filter(auto_sort=True, sort_status='waiting', text_status__in=['ready', 'partial']):
         sort_document(doc)
         say(f'sorted {doc.name}: {doc.sort_status}')
+    for doc in list(AssociationDocument.objects.filter(indexed=False, text_status__in=['ready', 'partial']).order_by('uploaded_at')[:1]):      # one file a run: it is a few calls
+        try:
+            n = index_document(doc)
+            say(f'noted the subjects of {n} pages of {doc.name}')
+        except Exception:
+            logger.exception('Could not note what the pages of "%s" are about', doc.name)
     return done

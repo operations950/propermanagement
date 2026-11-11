@@ -10,7 +10,7 @@ from core.models import Property, Unit
 
 from . import budgeting as bg
 from . import ledger
-from .models import Budget, BudgetLine, BudgetVersion, MonthLock
+from .models import Budget, BudgetLine, BudgetVersion, BudgetVersionLine, MonthLock
 
 
 def make_assoc(name='Test Condos'):
@@ -192,7 +192,7 @@ class BudgetScreenTests(TestCase):
         self.client.post(url, {'action': 'advance'})
         self.client.post(url, {'action': 'advance'})
         r = self.client.get(url + '?stage=approved')
-        self.assertContains(r, 'Total budget (assessments)')
+        self.assertContains(r, 'Total expenses with reserves')
         self.assertContains(r, 'Monthly assessment')
         self.assertNotContains(r, 'class="bd-i')     # a clean sheet: nothing to type in
         r = self.client.get(reverse('accounting:budgets') + '?year=2027')
@@ -534,5 +534,768 @@ class SortingTests(TestCase):
         self.assertEqual(len(src['articles']), 1)                 # the repeat is left out
         self.assertEqual(len(src['exhibit']), 1)
         rows = {r['kind']: r for r in documents.checklist(self.prop)}
-        self.assertEqual(rows['exhibit']['label'], 'Exhibits and surveys')
         self.assertEqual(rows['articles']['count'], 1)
+        self.assertNotIn('exhibit', rows)                          # exhibits hang under the document they belong to, not in a row of their own
+
+
+SAG_SECTIONS = [
+    {'kind': 'declaration', 'title': 'Declaration of Condominium', 'start': 1, 'end': 55, 'confidence': 0.9},
+    {'kind': 'amendment', 'title': 'Fourth Amendment to Declaration', 'start': 56, 'end': 59, 'confidence': 0.9, 'applies_to': 'declaration'},
+    {'kind': 'exhibit', 'title': 'Surveys for the Fourth Amendment', 'start': 60, 'end': 73, 'confidence': 0.8, 'parent_page': 56},
+    {'kind': 'articles', 'title': 'Articles of Incorporation', 'start': 74, 'end': 84, 'confidence': 0.9},
+    {'kind': 'articles', 'title': 'Articles of Incorporation (again)', 'start': 85, 'end': 94, 'confidence': 0.8, 'repeat_of': 74},
+    {'kind': 'bylaws', 'title': 'Bylaws', 'start': 95, 'end': 122, 'confidence': 0.9},
+    {'kind': 'amendment', 'title': 'Second Amendment to Declaration of Condominium', 'start': 123, 'end': 125, 'confidence': 0.7},       # no applies_to: read from the title
+    {'kind': 'exhibit', 'title': 'Survey of the property', 'start': 126, 'end': 133, 'confidence': 0.7},                                      # no parent_page: the amendment before it
+    {'kind': 'amendment', 'title': 'Fourth Amendment (again)', 'start': 141, 'end': 144, 'confidence': 0.8, 'repeat_of': 56},
+    {'kind': 'exhibit', 'title': 'Surveys (again)', 'start': 145, 'end': 183, 'confidence': 0.7, 'repeat_of': 60},
+    {'kind': 'amendment', 'title': 'Some amendment', 'start': 184, 'end': 184, 'confidence': 0.6},                                         # cannot be placed
+]
+
+
+class DocumentTreeTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.doc = AssociationDocument.objects.create(property=self.prop, name='Governing Docs', file='gov.pdf', auto_sort=True, sort_status='confirmed', text_status='ready', page_count=186, sections=SAG_SECTIONS)
+        self.rows = {r['kind']: r for r in documents.checklist(self.prop)}
+
+    def test_the_big_documents_are_the_rows(self):
+        self.assertEqual([r['kind'] for r in documents.checklist(self.prop)][:6], ['declaration', 'articles', 'bylaws', 'rules', 'contract', 'budget'])
+        self.assertTrue(self.rows['declaration']['doc'] and self.rows['articles']['doc'] and self.rows['bylaws']['doc'])
+        self.assertFalse(self.rows['rules']['doc'])
+
+    def test_amendments_sit_under_the_document_they_amend_and_exhibits_under_the_amendment(self):
+        items = self.rows['declaration']['items']
+        self.assertEqual([i['title'] for i in items], ['Fourth Amendment to Declaration', 'Second Amendment to Declaration of Condominium'])
+        fourth, second = items
+        self.assertEqual([c['role'] for c in fourth['children']], ['exhibit', 'copy'])                   # its surveys, and the second copy of the amendment
+        self.assertEqual([c['role'] for c in second['children']], ['exhibit'])                         # placed after the amendment it follows
+        copy = next(c for c in fourth['children'] if c['role'] == 'copy')
+        self.assertEqual(copy['title'], 'Fourth Amendment (again)')
+        surveys = next(c for c in fourth['children'] if c['role'] == 'exhibit')
+        self.assertEqual([c['role'] for c in surveys['children']], ['copy'])                           # the copy of the surveys is under the surveys
+
+    def test_a_second_copy_of_a_document_sits_under_that_document(self):
+        art = self.rows['articles']
+        self.assertEqual([(i['role'], i['title']) for i in art['items']], [('copy', 'Articles of Incorporation (again)')])
+        self.assertEqual(art['summary'], '1 second copy')
+        self.assertEqual(art['count'], 1)
+
+    def test_summary_counts_everything_under_a_row(self):
+        self.assertEqual(self.rows['declaration']['summary'], '2 amendments · 2 exhibits · 2 second copies')
+
+    def test_what_cannot_be_placed_goes_in_a_last_row(self):
+        last = documents.checklist(self.prop)[-1]
+        self.assertEqual(last['kind'], 'unplaced')
+        self.assertEqual([i['title'] for i in last['items']], ['Some amendment'])
+
+    def test_the_file_reads_as_one_line(self):
+        f = documents.files(self.prop)[0]
+        self.assertEqual(f['summary'], 'Sorted into 3 documents and 8 attachments: see the list above')
+
+    def test_confirming_keeps_which_document_an_amendment_amends(self):
+        doc = AssociationDocument.objects.create(property=self.prop, name='Another', file='a.pdf', auto_sort=True, sort_status='proposed', text_status='ready',
+                                                 sections=[{'kind': 'amendment', 'title': 'Amendment', 'start': 1, 'end': 2, 'confidence': 0.5}])
+        documents.confirm_sections(doc, [('amendment', 'Amendment to the bylaws', 'bylaws')])
+        doc.refresh_from_db()
+        self.assertEqual(doc.sections[0]['applies_to'], 'bylaws')
+        self.assertEqual(documents.checklist(self.prop)[2]['items'][0]['title'], 'Amendment to the bylaws')
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class DocumentTreeScreenTests(TestCase):
+    def test_the_settings_page_shows_the_tree_with_drop_downs(self):
+        prop = make_assoc()
+        AssociationDocument.objects.create(property=prop, name='Governing Docs', file='gov.pdf', auto_sort=True, sort_status='confirmed', text_status='ready', page_count=186, sections=SAG_SECTIONS)
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        html = self.client.get(reverse('accounting:settings', args=[prop.pk])).content.decode()
+        self.assertIn('2 amendments', html)
+        self.assertIn('Second copy', html)
+        self.assertIn('<details class="dt-row', html)
+        self.assertIn('Sorted into 3 documents', html)
+        self.assertNotIn('Surveys (again): pages', html)          # no flat list of every piece
+
+
+from . import charges, closing, payables, scheduled
+from .models import ChargeRule, JournalRule, RecurringBill
+
+RESERVES_2026 = {'3815': '4064', '3816': '2356', '3817': '1322', '3826': '10277', '3818': '2292', '3832': '10048', '3834': '26883'}
+
+
+def budget_with_reserves(prop, year=2026):
+    bud = Budget.objects.create(association=prop, year=year)
+    for code, amt in RESERVES_2026.items():
+        BudgetLine.objects.create(budget=bud, account=ledger.account(prop, code), annual_amount=D(amt))
+    return bud
+
+
+class ReserveContributionTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.rule = JournalRule.objects.create(association=self.prop, day_of_month=27)
+
+    def test_split_is_the_budget_divided_by_twelve_and_adds_to_the_transfer(self):
+        budget_with_reserves(self.prop)
+        sp = scheduled.reserve_split(self.prop, date(2026, 10, 27))
+        self.assertEqual(sp['total'], D('4770.17'))                      # 57,242 / 12
+        by = {a.code: amt for a, amt in sp['lines']}
+        self.assertEqual(by['3834'], D('2240.25'))                       # 26,883 / 12
+        self.assertEqual(sum(by.values()), D('4770.17'))
+
+    def test_the_pennies_rounding_leaves_go_on_the_largest_fund(self):
+        bud = Budget.objects.create(association=self.prop, year=2026)
+        for code in ('3815', '3816', '3817'):
+            BudgetLine.objects.create(budget=bud, account=ledger.account(self.prop, code), annual_amount=D('100'))      # 8.33 each; 100 / 12 x 3 = 25.00
+        BudgetLine.objects.create(budget=bud, account=ledger.account(self.prop, '3834'), annual_amount=D('200'))      # 16.67
+        sp = scheduled.reserve_split(self.prop, date(2026, 10, 27))
+        self.assertEqual(sp['total'], D('41.67'))                        # 500 / 12
+        self.assertEqual(sum(a for _, a in sp['lines']), sp['total'])
+
+    def test_posting_books_the_split_dated_the_transfer_day(self):
+        budget_with_reserves(self.prop)
+        entry = scheduled.post_contribution(self.prop, self.rule, date(2026, 10, 1))
+        self.assertEqual(entry.date, date(2026, 10, 27))
+        debit = entry.lines.get(account__code='6900')
+        self.assertEqual(debit.debit, D('4770.17'))
+        self.assertEqual(entry.lines.filter(account__code__startswith='38').count(), 7)
+        with self.assertRaises(ledger.LedgerError):                         # not twice
+            scheduled.post_contribution(self.prop, self.rule, date(2026, 10, 1))
+
+    def test_a_contribution_made_by_hand_counts_as_posted(self):
+        budget_with_reserves(self.prop)
+        ledger.post_entry(self.prop, date(2026, 10, 27), [{'account': ledger.account(self.prop, '6900'), 'debit': D('4770.17')}, {'account': ledger.account(self.prop, '3834'), 'credit': D('4770.17')}], memo='by hand')
+        self.assertEqual(scheduled.status(self.prop, self.rule, date(2026, 10, 1), date(2026, 11, 10))['state'], 'posted')
+        self.assertEqual(scheduled.post_due(self.prop, date(2026, 11, 10)), [])        # October is done; November's day has not come
+
+    def test_no_budget_means_nothing_posts(self):
+        self.assertEqual(scheduled.status(self.prop, self.rule, date(2026, 10, 1), date(2026, 10, 30))['state'], 'no_budget')
+        with self.assertRaises(ledger.LedgerError):
+            scheduled.post_contribution(self.prop, self.rule, date(2026, 10, 1))
+
+    def test_the_schedule_posts_on_the_day_and_not_before(self):
+        budget_with_reserves(self.prop)
+        first = scheduled.post_due(self.prop, date(2026, 10, 26))
+        self.assertEqual([e.date for e in first], [date(2026, 9, 27)])             # last month's, which was never posted; this month's day has not come
+        made = scheduled.post_due(self.prop, date(2026, 10, 27))
+        self.assertEqual([e.date for e in made], [date(2026, 10, 27)])
+        self.assertEqual(scheduled.post_due(self.prop, date(2026, 10, 28)), [])      # already there
+
+    def test_reserve_tie_out(self):
+        BankAccount.objects.create(association=self.prop, name='Reserve', kind='reserve', account=ledger.account(self.prop, '1120'))
+        cash = ledger.post_entry(self.prop, date(2026, 10, 5), [{'account': ledger.account(self.prop, '1120'), 'debit': D('1000')}, {'account': ledger.account(self.prop, '3834'), 'credit': D('1000')}])
+        self.assertEqual(scheduled.reserve_tie(self.prop, date(2026, 10, 31))['diff'], D('0.00'))
+        ledger.post_entry(self.prop, date(2026, 10, 6), [{'account': ledger.account(self.prop, '1120'), 'debit': D('250')}, {'account': ledger.account(self.prop, '1110'), 'credit': D('250')}])
+        tie = scheduled.reserve_tie(self.prop, date(2026, 10, 31))
+        self.assertEqual((tie['cash'], tie['funds'], tie['diff']), (D('1250.00'), D('1000.00'), D('250.00')))
+
+
+class BillsInArrearsTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        from core.models import Contact
+        self.vendor = Contact.objects.create(name='Proper Realty Co')
+        self.rec = RecurringBill.objects.create(association=self.prop, vendor=self.vendor, description='Management fee', account=ledger.account(self.prop, '6820'), amount=D('1400'),
+                                                next_date=date(2026, 10, 31), post_on_month_end=True)
+
+    def test_posts_on_the_last_day_dated_that_day_and_moves_to_the_next_month_end(self):
+        self.assertEqual(payables.post_recurring(self.prop, date(2026, 10, 30)), [])
+        made = payables.post_recurring(self.prop, date(2026, 10, 31))
+        self.assertEqual([b.date for b in made], [date(2026, 10, 31)])
+        self.rec.refresh_from_db()
+        self.assertEqual(self.rec.next_date, date(2026, 11, 30))
+        payables.post_recurring(self.prop, date(2026, 11, 30))
+        self.rec.refresh_from_db()
+        self.assertEqual(self.rec.next_date, date(2026, 12, 31))              # not December 30
+
+    def test_a_normal_bill_keeps_its_day(self):
+        self.rec.post_on_month_end, self.rec.next_date = False, date(2026, 10, 9)
+        self.rec.save()
+        payables.post_recurring(self.prop, date(2026, 10, 9))
+        self.rec.refresh_from_db()
+        self.assertEqual(self.rec.next_date, date(2026, 11, 9))
+
+
+class ChargesAheadTests(TestCase):
+    def test_charges_post_ten_days_before_they_are_due(self):
+        prop = make_assoc()
+        rule = ChargeRule.objects.create(association=prop, name='Monthly assessment', frequency='monthly', first_due=date(2026, 12, 1), amount=D('615'), income_account=ledger.account(prop, '4500'))
+        self.assertEqual(rule.post_days_ahead, 10)
+        posted = []
+        with mock.patch.object(charges, 'post_rule', side_effect=lambda r, due, user=None: posted.append(due) or 1):
+            charges.post_due(prop, date(2026, 11, 20))
+            self.assertEqual(posted, [])                                    # 11 days before: too early
+            charges.post_due(prop, date(2026, 11, 21))
+            self.assertEqual(posted, [date(2026, 12, 1)])                   # dated the due date, posted early
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class RecurringScreenAndCloseSheetTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        from core.models import Contact
+        vendor = Contact.objects.create(name='FPL')
+        self.fpl = RecurringBill.objects.create(association=self.prop, vendor=vendor, description='Electricity', account=ledger.account(self.prop, '6410'), amount=None, next_date=date(2026, 10, 24))
+        self.bank = bank_for(self.prop)
+        BankAccount.objects.create(association=self.prop, name='Reserve', kind='reserve', account=ledger.account(self.prop, '1120'))
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:recurring', args=[self.prop.pk])
+
+    def test_three_tabs_open(self):
+        for tab in ('bills', 'charges', 'entries'):
+            r = self.client.get(self.url + f'?tab={tab}&month=2026-10')
+            self.assertEqual(r.status_code, 200, tab)
+        html = self.client.get(self.url + '?tab=bills&month=2026-10').content.decode()
+        self.assertIn('Charges to owners', html)
+        self.assertIn('Journal entries', html)
+        self.assertIn('Waiting on the statement', html)                       # the variable bill has no value yet
+
+    def test_scheduling_and_posting_the_reserve_contribution_from_the_screen(self):
+        budget_with_reserves(self.prop)
+        self.client.post(self.url, {'action': 'jr_add', 'day_of_month': '27'})
+        rule = JournalRule.objects.get()
+        self.assertEqual(rule.day_of_month, 27)
+        r = self.client.post(self.url, {'action': 'jr_post', 'rule': rule.pk, 'month': '2026-10'}, follow=True)
+        self.assertContains(r, 'Posted J-')
+        self.assertEqual(scheduled.status(self.prop, rule, date(2026, 10, 1), date(2026, 11, 1))['state'], 'posted')
+
+    def test_close_sheet_puts_the_bank_reconciliation_last_and_does_not_block_on_recurring_items(self):
+        budget_with_reserves(self.prop)
+        JournalRule.objects.create(association=self.prop, day_of_month=27)
+        sheet = closing.close_sheet(self.prop, date(2026, 10, 1), today=date(2026, 11, 10))
+        keys = [i['key'] for i in sheet['items']]
+        self.assertEqual(keys[-1], 'lock')
+        self.assertTrue(keys[-2].startswith('bank'))
+        by = {i['key']: i for i in sheet['items']}
+        self.assertFalse(by['recurring']['blocks'])
+        self.assertFalse(by['charges']['blocks'])
+        self.assertEqual(by[f'journal{JournalRule.objects.get().pk}']['status'], 'attention')       # due, not posted yet
+        self.assertIn('Electricity', by['recurring']['detail'])
+        self.assertIn('reserve_tie', by)
+        self.assertTrue(by['bank%d' % self.bank.pk]['blocks'])
+
+
+from core.models import Contact as _Contact
+from .models import Charge, Ownership
+
+
+def owner_of(prop, unit, name='Pat Owner'):
+    person = _Contact.objects.create(name=name, contact_type=_Contact.ContactType.OWNER)
+    person.units.add(unit)
+    person.properties.add(prop)
+    Ownership.objects.create(unit=unit, person=person, start_date=date(2020, 1, 1), is_billed=True)
+    return person
+
+
+class LateFeesAndInterestTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.bank = bank_for(self.prop)
+        prof = ledger.profile_for(self.prop)
+        prof.late_fee_kind, prof.late_fee_flat, prof.late_fee_percent, prof.late_fee_grace_days, prof.late_fee_confirmed = 'greater', D('25'), D('5'), 10, True
+        prof.interest_rate, prof.interest_grace_days, prof.interest_confirmed = D('18'), 0, True
+        prof.save()
+        self.unit = Unit.objects.filter(property=self.prop).first()
+        self.owner = owner_of(self.prop, self.unit)
+        self.charge = charges.post_charge(self.prop, self.unit, self.owner, Charge.Kind.ASSESSMENT, 'Monthly assessment', date(2026, 10, 1), D('615'))
+
+    def test_greater_of_25_or_5_percent(self):
+        prof = ledger.profile_for(self.prop)
+
+        class C:
+            amount = D('615')
+        self.assertEqual(charges.late_fee_amount(prof, C), D('30.75'))
+        C.amount = D('400')
+        self.assertEqual(charges.late_fee_amount(prof, C), D('25.00'))
+
+    def test_the_plain_english_summary(self):
+        lines = charges.terms_sentences(ledger.profile_for(self.prop), D('615'))
+        self.assertIn('the greater of $25.00 or 5% of the installment', lines[0])
+        self.assertIn('10 days after it is due', lines[0])
+        self.assertIn('$30.75', lines[0])
+        self.assertIn('Interest at 18% a year', lines[1])
+        self.assertIn('from the due date', lines[1])
+        self.assertIn('interest, then late fees', lines[2])
+
+    def test_late_fee_waits_for_the_grace_days(self):
+        self.assertEqual(charges.assess_late_fees(self.prop, date(2026, 10, 11)), [])
+        made = charges.assess_late_fees(self.prop, date(2026, 10, 12))
+        self.assertEqual([c.amount for c in made], [D('30.75')])
+        self.assertEqual(charges.assess_late_fees(self.prop, date(2026, 10, 20)), [])       # once for each installment
+
+    def test_interest_is_simple_daily_and_monthly(self):
+        # 30 days late in October (Oct 2 to Oct 31): 615 x 18% / 365 x 30
+        made = charges.assess_interest(self.prop, date(2026, 11, 10))
+        self.assertEqual(len(made), 1)
+        self.assertEqual(made[0].amount, D('9.10'))
+        self.assertEqual(made[0].due_date, date(2026, 10, 31))
+        self.assertEqual(made[0].kind, 'interest')
+        self.assertEqual(charges.assess_interest(self.prop, date(2026, 11, 11)), [])           # not twice
+        self.assertEqual(charges.assess_interest(self.prop, date(2026, 10, 20)), [])           # October is not over yet
+
+    def test_a_payment_stops_the_interest(self):
+        charges.receive_payment(self.prop, self.unit, self.owner, date(2026, 10, 11), D('615'), bank_account=self.bank)
+        made = charges.assess_interest(self.prop, date(2026, 11, 10))
+        self.assertEqual([c.amount for c in made], [D('3.03')])                              # Oct 2 to Oct 11: 10 days
+
+    def test_a_payment_goes_to_interest_then_late_fee_then_the_assessment(self):
+        charges.assess_late_fees(self.prop, date(2026, 10, 12))
+        charges.assess_interest(self.prop, date(2026, 11, 10))
+        rc = charges.receive_payment(self.prop, self.unit, self.owner, date(2026, 11, 12), D('40'), bank_account=self.bank)
+        paid = {a.charge.kind: a.amount for a in rc.applications.all()}
+        self.assertEqual(paid, {'interest': D('9.10'), 'late_fee': D('30.75'), 'assessment': D('0.15')})
+
+
+from datetime import timedelta as _td
+
+from django.utils import timezone as _tz
+
+from .models import DocumentQuestion, DocumentQuestionRead
+
+
+def claude_text(answer):
+    """A stand-in client whose every reply is `answer` as plain text."""
+    calls = []
+
+    def create(**kw):
+        calls.append(kw)
+        return SimpleNamespace(content=[SimpleNamespace(type='text', text=answer)])
+    return SimpleNamespace(messages=SimpleNamespace(create=create)), calls
+
+
+class TopicIndexTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.doc = AssociationDocument.objects.create(property=self.prop, name='Declaration', file='d.pdf', text_status='ready', page_count=3)
+        words = 'assessments and installments not paid when due shall bear interest ' * 3
+        for i, text in enumerate(('Cover page of the declaration of condominium and recording stamp information ' * 3, words, 'Pets and animals are limited to two per unit and must be leashed in common areas ' * 3), start=1):
+            DocumentPage.objects.create(document=self.doc, number=i, text=text)
+
+    def fake(self, rows):
+        calls = []
+
+        def create(**kw):
+            calls.append(kw)
+            return SimpleNamespace(content=[SimpleNamespace(type='tool_use', name='tag_pages', input={'pages': rows})])
+        return SimpleNamespace(messages=SimpleNamespace(create=create)), calls
+
+    def test_every_page_is_tagged_once_and_the_file_marked_indexed(self):
+        client, calls = self.fake(_json.dumps([{'page': 1, 'tags': ['cover']}, {'page': 2, 'tags': ['interest on unpaid assessments', 'administrative late fee']}, {'page': 3, 'tags': ['pets', 'animals']}]))
+        with mock.patch.object(documents, '_client', return_value=client):
+            self.assertEqual(docreader.index_document(self.doc), 3)
+            self.assertEqual(docreader.index_document(self.doc), 0)               # already done: no call
+        self.assertEqual(len(calls), 1)
+        self.doc.refresh_from_db()
+        self.assertTrue(self.doc.indexed)
+        self.assertEqual(DocumentPage.objects.get(document=self.doc, number=2).tags, 'interest on unpaid assessments; administrative late fee')
+
+    def test_a_page_tagged_with_the_subject_beats_a_page_that_only_mentions_the_words(self):
+        pages = list(DocumentPage.objects.filter(document=self.doc).order_by('number'))
+        pages[0].text += ' late fees interest'                                    # mentions the words in passing
+        pages[1].text = 'assessments and installments not paid when due ' * 3      # and the middle page does not mention them
+        pages[2].tags = 'late fee; interest on unpaid assessments'
+        numbers = [p.number for p in documents.rank_pages(pages, 'What is the late fee and interest?', 1)]
+        self.assertIn(3, numbers)                      # the tagged page is the best one (with the page before it)
+        self.assertNotIn(1, numbers)                   # not the page that only mentions the words
+
+
+class AskTheDocumentsTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.doc = AssociationDocument.objects.create(property=self.prop, name='Declaration', kind='declaration', file='d.pdf', text_status='ready', page_count=1)
+        DocumentPage.objects.create(document=self.doc, number=1, text='Interest accrues from the due date at eighteen percent. The late fee is the greater of $25 or 5%.')
+
+    def ask(self, question, answer='Interest is 18%.', **kw):
+        client, calls = claude_text(answer)
+        with mock.patch.object(documents, '_client', return_value=client):
+            q = documents.ask(self.prop, question, **kw)
+        return q, calls
+
+    def test_a_new_question_uses_claude_once_and_a_repeat_is_free(self):
+        q, calls = self.ask('What is the interest rate?')
+        self.assertEqual((len(calls), q.from_memory, q.asks), (1, False, 1))
+        self.assertIn('Declaration', q.sources)
+        again, calls2 = self.ask('what is the INTEREST rate')
+        self.assertEqual((len(calls2), again.from_memory, again.pk, again.asks), (0, True, q.pk, 2))
+
+    def test_ask_again_refreshes_in_place_and_keeps_the_counts(self):
+        q, _ = self.ask('What is the interest rate?')
+        DocumentQuestion.objects.filter(pk=q.pk).update(reads=7)
+        new, calls = self.ask('What is the interest rate?', answer='Eighteen percent a year.', force=True)
+        self.assertEqual((len(calls), new.pk, new.answer, new.reads), (1, q.pk, 'Eighteen percent a year.', 7))
+
+    def test_old_answers_and_changed_documents_are_flagged_for_asking_again(self):
+        q, _ = self.ask('What is the interest rate?')
+        sig = documents.significant_signature(self.prop)
+        self.assertEqual(documents.staleness(q, sig), '')
+        self.assertEqual(documents.staleness(q, sig, now=_tz.now() + _td(days=91)), 'age')
+        AssociationDocument.objects.create(property=self.prop, name='First amendment', kind='amendment', file='a.pdf', text_status='ready')
+        self.assertEqual(documents.staleness(q, documents.significant_signature(self.prop)), 'documents')
+
+    def test_an_exhibit_or_budget_does_not_make_an_answer_stale(self):
+        q, _ = self.ask('What is the interest rate?')
+        AssociationDocument.objects.create(property=self.prop, name='Survey', kind='exhibit', file='s.pdf', text_status='ready')
+        AssociationDocument.objects.create(property=self.prop, name='Budget', kind='budget', file='b.pdf', text_status='ready')
+        self.assertEqual(documents.staleness(q, documents.significant_signature(self.prop)), '')
+
+    def test_reading_counts_once_a_day_per_person(self):
+        q, _ = self.ask('What is the interest rate?')
+        user = get_user_model().objects.create_user('reader', password='pw12345678')
+        self.assertTrue(documents.record_read(q, user))
+        self.assertFalse(documents.record_read(q, user))
+        other = get_user_model().objects.create_user('reader2', password='pw12345678')
+        self.assertTrue(documents.record_read(q, other))
+        q.refresh_from_db()
+        self.assertEqual(q.reads, 2)
+        self.assertEqual(DocumentQuestionRead.objects.count(), 2)
+
+    def test_payload_is_ranked_by_how_much_it_is_asked_and_read(self):
+        a, _ = self.ask('What is the interest rate?')
+        b, _ = self.ask('Can I keep a dog?', answer='Two pets.')
+        DocumentQuestion.objects.filter(pk=b.pk).update(reads=9)
+        rows = documents.qa_payload(self.prop)
+        self.assertEqual([r['q'] for r in rows], ['Can I keep a dog?', 'What is the interest rate?'])
+        self.assertEqual(rows[0]['reads'], 9)
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class AskScreenTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        doc = AssociationDocument.objects.create(property=self.prop, name='Declaration', kind='declaration', file='d.pdf', text_status='ready', page_count=1)
+        DocumentPage.objects.create(document=doc, number=1, text='Interest accrues from the due date at eighteen percent.')
+        self.q = DocumentQuestion.objects.create(property=self.prop, question='What is the interest rate?', answer='18% a year.', answered_at=_tz.now())
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:settings', args=[self.prop.pk])
+
+    def test_the_page_carries_the_questions_and_the_late_fee_card(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('qa-data', html)
+        self.assertIn('What is the interest rate?', html)
+        self.assertIn('id="late"', html)
+        self.assertIn('data-bubble-picker', html)
+
+    def test_reading_is_counted_from_the_page(self):
+        r = self.client.post(self.url, {'action': 'q_read', 'ids': [self.q.pk]})
+        self.assertEqual(r.json(), {'counted': 1})
+        self.assertEqual(self.client.post(self.url, {'action': 'q_read', 'ids': [self.q.pk]}).json(), {'counted': 0})
+        self.q.refresh_from_db()
+        self.assertEqual(self.q.reads, 1)
+
+    def test_saving_the_late_fee_and_interest_terms(self):
+        r = self.client.post(self.url, {'action': 'late_terms', 'late_fee_kind': 'greater', 'late_fee_flat': '25', 'late_fee_percent': '5', 'late_grace': '10', 'interest': '18', 'interest_grace': '0'}, follow=True)
+        self.assertContains(r, 'the greater of $25.00 or 5% of the installment')
+        prof = ledger.profile_for(self.prop)
+        self.assertEqual((prof.late_fee_kind, prof.late_fee_grace_days, prof.interest_rate, prof.interest_grace_days), ('greater', 10, D('18'), 0))
+        self.assertTrue(prof.late_fee_is_set() and prof.interest_is_set())
+        bad = self.client.post(self.url, {'action': 'late_terms', 'late_fee_kind': 'greater', 'late_fee_flat': '', 'late_fee_percent': '5', 'late_grace': '10', 'interest': ''}, follow=True)
+        self.assertContains(bad, 'flat amount')
+
+
+class IncomeIsNotAnExpenseTests(TestCase):
+    """The approved 2026 budget of St Andrews Grand counted its Assessments income line as an operating expense: $710,278, $1,138.27 a unit. Income is worked out, never added up."""
+    def setUp(self):
+        self.prop = make_assoc()
+        for i in range(48):
+            Unit.objects.create(property=self.prop, label=f'20{i}')            # 52 units with the four from make_assoc
+        bud = Budget.objects.create(association=self.prop, year=2026)
+        self.ver = BudgetVersion.objects.create(budget=bud, stage='approved')
+        rows = [('4500', '326518'), ('6820', '16800'), ('6882', '200766'), ('6893', '43800'), ('3834', '26883'), ('3815', '30359')]       # reserves 57,242
+        for code, amt in rows:
+            BudgetVersionLine.objects.create(version=self.ver, account=ledger.account(self.prop, code), method='custom', custom=D(amt), proposed=D(amt))
+
+    def test_the_income_line_is_not_a_line_of_the_budget(self):
+        info = bg.info_for(self.ver)
+        rows = bg.line_rows(self.ver, info)
+        self.assertNotIn('4500', [r['code'] for r in rows])
+        t = bg.totals(rows, 52)
+        self.assertEqual(t['op']['proposed'], 261366.0)                       # 16,800 + 200,766 + 43,800
+        self.assertEqual(t['total'], 261366.0 + 57242.0)
+        self.assertEqual(t['income']['total']['proposed'], t['total'])
+        self.assertEqual(t['income']['assessments']['proposed'], 261366.0)
+        self.assertEqual(t['income']['reserve']['proposed'], 57242.0)
+
+    def test_the_per_unit_amount_comes_from_the_total(self):
+        from .views_budget import _sheet
+        sheet = _sheet(self.ver, bg.info_for(self.ver), 52)
+        self.assertEqual([r['name'] for r in sheet['income']], ['Assessments', 'Reserve assessment'])
+        monthly = sheet['per'][0]['new']
+        self.assertAlmostEqual(monthly, (261366 + 57242) / 52 / 12, places=4)
+
+    def test_approving_writes_the_income_budget_as_the_total(self):
+        bud = self.ver.budget
+        ver = bud.versions.get()
+        bg.write_budget_lines(bud, ver)
+        self.assertEqual(BudgetLine.objects.get(budget=bud, account__code='4500').annual_amount, D('318608.00'))      # expenses + reserves
+        self.assertEqual(BudgetLine.objects.get(budget=bud, account__code='6820').annual_amount, D('16800.00'))
+
+
+from django.core.management import call_command
+
+from . import delinquency
+from .models import CaseEvent, DelinquencyCase
+
+
+def staff_admin(username='mgr'):
+    from core.models import StaffProfile
+    user = get_user_model().objects.create_user(username, password='pw12345678', first_name='Alexis')
+    return StaffProfile.objects.create(user=user, role=StaffProfile.Role.ACCOUNTING, is_company_admin=True)
+
+
+class DelinquencyBase(TestCase):
+    def setUp(self):
+        call_command('seed_legal_templates', verbosity=0)
+        self.prop = make_assoc()
+        self.bank = bank_for(self.prop)
+        prof = ledger.profile_for(self.prop)
+        prof.late_fee_kind, prof.late_fee_flat, prof.late_fee_percent, prof.late_fee_grace_days, prof.late_fee_confirmed = 'greater', D('25'), D('5'), 10, True
+        prof.interest_rate, prof.interest_confirmed = D('18'), True
+        prof.save()
+        self.staff = staff_admin()
+        units = list(Unit.objects.filter(property=self.prop).order_by('label'))
+        self.late_unit, self.ok_unit = units[0], units[1]
+        self.owner = owner_of(self.prop, self.late_unit, 'Late Owner')
+        self.good = owner_of(self.prop, self.ok_unit, 'Good Owner')
+        charges.post_charge(self.prop, self.late_unit, self.owner, Charge.Kind.ASSESSMENT, 'Monthly assessment', date(2026, 10, 1), D('615'))
+        charges.post_charge(self.prop, self.ok_unit, self.good, Charge.Kind.ASSESSMENT, 'Monthly assessment', date(2026, 10, 1), D('615'))
+        charges.receive_payment(self.prop, self.ok_unit, self.good, date(2026, 10, 5), D('615'), bank_account=self.bank)
+        self.today = date(2026, 11, 12)
+
+
+class DelinquentListTests(DelinquencyBase):
+    def test_only_owners_over_the_threshold_are_listed(self):
+        rows = delinquency.delinquent_rows(self.prop, self.today, D('100'))
+        self.assertEqual([r['owner'].name for r in rows], ['Late Owner'])
+        self.assertEqual(rows[0]['b']['total'], D('615.00'))
+        self.assertEqual(rows[0]['days_late'], 42)
+        self.assertTrue(rows[0]['needs_letter'])
+        self.assertEqual(delinquency.delinquent_rows(self.prop, self.today, D('700')), [])
+
+    def test_late_fee_and_interest_ready_show_on_the_row(self):
+        row = delinquency.delinquent_rows(self.prop, self.today, D('100'))[0]
+        self.assertEqual(row['fee_due'], D('30.75'))
+        self.assertEqual(row['interest_due'], D('9.10'))            # October's interest, charged in November
+
+    def test_fees_are_charged_only_to_the_units_ticked(self):
+        self.assertEqual(charges.assess_late_fees(self.prop, self.today, units=[self.ok_unit.pk]), [])
+        made = charges.assess_late_fees(self.prop, self.today, units=[self.late_unit.pk])
+        self.assertEqual([c.amount for c in made], [D('30.75')])
+
+
+class LateLetterOpensTheCaseTests(DelinquencyBase):
+    def make_letter(self):
+        from legalforms import services
+        from legalforms.models import DocumentTemplate
+        template = DocumentTemplate.objects.get(slug='nola')
+        values = services.initial_values(template, self.prop, self.late_unit, self.staff.user)
+        return services.save_document(template, self.prop, self.late_unit, self.staff.user, {k: '' if v is None else str(v) for k, v in values.items()})
+
+    def test_the_letter_is_filled_from_the_books(self):
+        from legalforms import services
+        from legalforms.models import DocumentTemplate
+        template = DocumentTemplate.objects.get(slug='nola')
+        values = services.initial_values(template, self.prop, self.late_unit, self.staff.user)
+        self.assertEqual(values['owner_name'], 'Late Owner')
+        self.assertEqual(values['regular_assessments'], '615.00')
+        self.assertEqual(values['late_fee_rate'], '5')
+        self.assertEqual(values['interest_rate'], '18')
+
+    def test_making_the_first_letter_opens_a_case_with_a_review_in_30_days(self):
+        doc, errors = self.make_letter()
+        self.assertFalse(errors)
+        case = DelinquencyCase.objects.get()
+        self.assertEqual((case.unit, case.owner, case.stage), (self.late_unit, self.owner, 'letter'))
+        self.assertEqual(case.next_review, case.opened_on + _td(days=30))
+        kinds = list(case.events.values_list('kind', flat=True))
+        self.assertIn('letter', kinds)
+        self.assertEqual(case.events.get(kind='letter').document_id, doc.pk)
+        self.assertEqual(delinquency.case_icons(case)['letters'], 1)
+
+    def test_a_second_letter_goes_on_the_same_case(self):
+        self.make_letter()
+        self.make_letter()
+        self.assertEqual(DelinquencyCase.objects.count(), 1)
+        self.assertEqual(DelinquencyCase.objects.get().events.filter(kind='letter').count(), 2)
+
+    def test_the_review_is_a_line_on_the_compliance_screen(self):
+        from worksessions.models import Session, SessionLine
+        self.make_letter()
+        case = DelinquencyCase.objects.get()
+        line = case.review_line
+        self.assertIsNotNone(line)
+        self.assertEqual((line.session.due_at, line.session.template.name, line.state), (case.next_review, 'Delinquency case reviews', 'pending'))
+        self.assertEqual(Session.objects.count(), 1)
+
+    def test_reviewing_moves_it_on_30_days_and_makes_the_next_line(self):
+        self.make_letter()
+        case = DelinquencyCase.objects.get()
+        first = case.review_line
+        delinquency.review(case, self.staff.user, 'Called, no answer')
+        case.refresh_from_db()
+        first.refresh_from_db()
+        self.assertEqual(first.state, 'done')
+        self.assertNotEqual(case.review_line_id, first.pk)
+        self.assertEqual(case.review_line.state, 'pending')
+        self.assertTrue(case.events.filter(kind='review', summary='Called, no answer').exists())
+
+    def test_ticking_the_line_on_the_compliance_screen_counts_as_a_review(self):
+        self.make_letter()
+        case = DelinquencyCase.objects.get()
+        line = case.review_line
+        line.state = 'done'
+        line.save()
+        self.assertEqual(delinquency.sync_reviews(self.today), 1)
+        case.refresh_from_db()
+        self.assertEqual(case.review_line.state, 'pending')
+        self.assertTrue(case.events.filter(summary='Reviewed from the compliance screen.').exists())
+
+    def test_the_attorney_step_shows_the_scales_and_resolving_ends_the_reminders(self):
+        self.make_letter()
+        case = DelinquencyCase.objects.get()
+        delinquency.set_stage(case, 'attorney', self.staff.user, attorney='Smith & Jones')
+        case.refresh_from_db()
+        self.assertTrue(delinquency.case_icons(case)['attorney'])
+        self.assertEqual(case.attorney_name, 'Smith & Jones')
+        delinquency.resolve(case, self.staff.user, 'Paid in full')
+        case.refresh_from_db()
+        self.assertEqual((case.stage, case.next_review), ('resolved', None))
+        self.assertEqual(case.review_line.state, 'done')
+        self.assertIsNone(delinquency.open_case_for(self.prop, self.late_unit))
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class DelinquencyScreenTests(DelinquencyBase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:delinquencies', args=[self.prop.pk])
+
+    def test_screen_lists_the_owner_with_the_icons_and_a_needs_a_letter_chip(self):
+        with mock.patch('django.utils.timezone.localdate', return_value=self.today):
+            html = self.client.get(self.url).content.decode()
+        self.assertIn('Late Owner', html)
+        self.assertNotIn('Good Owner', html)
+        self.assertIn('Needs a letter', html)
+
+    def test_making_letters_from_the_screen_opens_cases(self):
+        r = self.client.post(self.url, {'action': 'make_letters', 'unit': [self.late_unit.pk]}, follow=True)
+        self.assertContains(r, 'Made 1 late letter')
+        self.assertEqual(DelinquencyCase.objects.count(), 1)
+        case = DelinquencyCase.objects.get()
+        page = self.client.get(reverse('accounting:case', args=[self.prop.pk, case.pk]))
+        self.assertContains(page, 'Late Owner')
+        self.assertContains(page, 'Mark reviewed')
+
+    def test_case_actions(self):
+        self.client.post(self.url, {'action': 'make_letters', 'unit': [self.late_unit.pk]})
+        case = DelinquencyCase.objects.get()
+        url = reverse('accounting:case', args=[self.prop.pk, case.pk])
+        self.client.post(url, {'action': 'call', 'note': 'Spoke with the owner', 'date': '2026-11-12'})
+        self.client.post(url, {'action': 'stage', 'stage': 'plan', 'note': 'Three payments'})
+        case.refresh_from_db()
+        self.assertEqual(case.stage, 'plan')
+        self.assertTrue(case.events.filter(kind='call').exists())
+        self.client.post(url, {'action': 'resolve', 'note': 'Paid'})
+        case.refresh_from_db()
+        self.assertIsNotNone(case.resolved_on)
+
+    def test_the_close_sheet_has_a_delinquencies_step_that_links_here(self):
+        sheet = closing.close_sheet(self.prop, date(2026, 10, 1), today=self.today)
+        item = next(i for i in sheet['items'] if i['key'] == 'delinquency')
+        self.assertEqual(item['url'], self.url)
+        self.assertIn('need a late letter', item['detail'])
+        self.assertFalse(item['blocks'])
+
+
+from . import contracts
+from .models import Contract
+
+
+class ContractAlertTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        staff_admin('contractmgr')
+        self.c = Contract.objects.create(association=self.prop, name='Landscaping', vendor_name='RCH Lawn Maintenance', start_date=date(2025, 1, 1), end_date=date(2026, 12, 31),
+                                         auto_renews=True, renewal_months=12, notice_days=60, amount=D('3500'), frequency='monthly', expense_account=ledger.account(self.prop, '6893'))
+
+    def test_the_dates_that_matter(self):
+        today = date(2026, 11, 10)
+        self.assertEqual(contracts.current_end(self.c, today), date(2026, 12, 31))
+        self.assertEqual(contracts.notice_deadline(self.c, today), date(2026, 11, 1))          # 60 days before the end
+        keys = {k.split(':')[0]: d for k, d, _ in contracts.milestones(self.c, today)}
+        self.assertEqual(keys['end30'], date(2026, 12, 1))
+        self.assertEqual(keys['notice0'], date(2026, 11, 1))
+
+    def test_a_contract_that_renews_by_itself_rolls_into_the_next_term(self):
+        self.assertEqual(contracts.current_end(self.c, date(2027, 2, 1)), date(2027, 12, 31))
+        self.c.auto_renews = False
+        self.assertEqual(contracts.current_end(self.c, date(2027, 2, 1)), date(2026, 12, 31))
+
+    def test_alerts_go_on_the_compliance_screen_two_weeks_ahead_and_once(self):
+        from worksessions.models import SessionLine
+        n = contracts.ensure_alerts(date(2026, 10, 20))
+        # the 90-day warning (10/2), the 30-day-before-notice warning (10/2), the 60-day warning (11/1) and the notice itself (11/1); the 30-day warning (12/1) is too far off
+        self.assertEqual(n, 4)
+        lines = SessionLine.objects.filter(session__template__name='Contract alerts')
+        self.assertEqual(lines.count(), 4)
+        self.assertTrue(all('Landscaping' in l.label for l in lines))
+        self.assertEqual(contracts.ensure_alerts(date(2026, 10, 21)), 0)           # nothing is made twice
+        self.assertEqual(contracts.ensure_alerts(date(2026, 11, 20)), 1)           # the 30-day warning, 12/1, is now within two weeks
+
+    def test_the_recurring_bill_follows_the_contract(self):
+        bill = contracts.sync_bill(self.c, date(2026, 12, 1))
+        self.assertEqual((bill.amount, bill.frequency, bill.description), (D('3500.00'), 'monthly', 'Landscaping'))
+        self.c.amount = D('3650')
+        self.c.save()
+        contracts.sync_bill(self.c)
+        bill.refresh_from_db()
+        self.assertEqual(bill.amount, D('3650.00'))
+        self.assertEqual(RecurringBill.objects.count(), 1)
+
+    def test_upcoming_flags_a_notice_that_is_close(self):
+        rows = contracts.upcoming(self.prop, date(2026, 10, 20))
+        self.assertEqual(rows[0]['state'], 'notice')
+        self.assertEqual(rows[0]['days'], 12)
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class ContractScreenTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        staff_admin('contractmgr2')
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:contracts', args=[self.prop.pk])
+
+    def test_adding_a_contract_with_its_recurring_bill(self):
+        acct = ledger.account(self.prop, '6906')
+        self.client.post(self.url, {'action': 'save', 'name': 'Pest control', 'vendor_name': '4-Evergone', 'end_date': '2027-06-30', 'notice_days': '30', 'auto_renews': 'on', 'renewal_months': '12',
+                                    'amount': '1175', 'frequency': 'quarterly', 'expense_account': acct.pk, 'visible_to_owners': 'on', 'make_bill': 'on', 'next_bill_date': '2026-12-28'})
+        c = Contract.objects.get()
+        self.assertEqual((c.name, c.amount, c.auto_renews, c.notice_days), ('Pest control', D('1175.00'), True, 30))
+        self.assertIsNotNone(c.recurring_bill)
+        self.assertEqual(c.recurring_bill.next_date, date(2026, 12, 28))
+        page = self.client.get(self.url).content.decode()
+        self.assertIn('Pest control', page)
+        self.assertIn('4-Evergone', page)
+
+    def test_the_official_records_list_shows_only_what_owners_may_see(self):
+        Contract.objects.create(association=self.prop, name='Visible one', end_date=date(2027, 1, 1))
+        Contract.objects.create(association=self.prop, name='Hidden one', end_date=date(2027, 1, 1), visible_to_owners=False)
+        html = self.client.get(reverse('accounting:contracts_print', args=[self.prop.pk])).content.decode()
+        self.assertIn('Visible one', html)
+        self.assertNotIn('Hidden one', html)
+
+    def test_reading_a_file_fills_the_form_and_asks_for_a_check(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        found = {'vendor_name': 'Acme', 'name': 'Elevators', 'description': 'Service', 'start_date': date(2026, 1, 1), 'end_date': date(2028, 12, 31), 'auto_renews': True, 'renewal_months': 12,
+                 'notice_days': 90, 'amount': D('900'), 'frequency': 'monthly', 'notes': 'quote'}
+        with mock.patch.object(contracts, 'read_contract', return_value=found):
+            r = self.client.post(self.url, {'action': 'read', 'file': SimpleUploadedFile('c.pdf', b'%PDF-1.4 test')}, follow=True)
+        c = Contract.objects.get()
+        self.assertFalse(c.confirmed)
+        self.assertContains(r, 'Check every field')
+        self.assertEqual((c.name, c.notice_days), ('Elevators', 90))
