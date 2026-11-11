@@ -1575,10 +1575,11 @@ class BoardSheetSmallLinesTests(TestCase):
                   'oi': dict(prior=0, projected=0, proposed=0), 'needed': 0, 'needed_prior': 0, 'needed_projected': 0}
         import unittest.mock as mock
         groups = ([{'label': 'All 4 units, the same dues', 'units': '1, 2, 3, 4', 'count': 4, 'fraction': 0.25}], 'equal')
-        with mock.patch.object(bg, 'line_rows', return_value=rows), mock.patch.object(bg, 'totals', return_value=totals), mock.patch.object(bg, 'unit_groups', return_value=groups):
+        with mock.patch.object(bg, 'line_rows', return_value=rows), mock.patch.object(bg, 'totals', return_value=totals), mock.patch.object(bg, 'unit_groups', return_value=groups), \
+                mock.patch.object(bg, 'assessment_row', return_value={'prior': 0.0, 'actual': 0.0, 'nd': 0.0, 'projected': 0.0, 'proposed': 0.0}):
             sheet = vb._sheet(mock.Mock(budget=mock.Mock(year=2027)), {'remaining': 2}, 52)
         shown = [l['name'] for s in sheet['sections'] for l in s['lines']]
-        self.assertEqual(shown, ['Insurance', 'New Thing'])
+        self.assertEqual(shown, ['Regular assessments', 'Insurance', 'New Thing'])
 
 
 @override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
@@ -1727,15 +1728,17 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         self.assertEqual(sheet['needed']['tone'], 'good')
         self.assertEqual(sheet['calc'][0]['rows'][0]['tone'], 'good')                                              # owners pay less each month
         self.assertEqual((by['Late Fee']['p'], by['Late Fee']['ptone']), (None, 'good'))                           # "new" is coloured like the dollar change
-        self.assertTrue(sheet['has_income'])
+        self.assertEqual(sheet['sections'][0]['lines'][0]['name'], 'Regular assessments')
         from .views_budget import _tone
         self.assertEqual((_tone(500), _tone(-500), _tone(500, income=True), _tone(-500, income=True), _tone(0.2)), ('bad', 'good', 'good', 'bad', ''))
 
     def test_the_sheet_screen_shows_it_all_and_boxes_the_new_years_column(self):
         self.client.post(self.url, {'action': 'start'})
         html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
-        for word in ('OTHER INCOME', 'Other income', 'Assessments needed', '($70,400)', 'class="t-good"', 'class="c27"', 'tr class="grand last"'):
-            self.assertIn(word.lower() if word == 'OTHER INCOME' else word, html.lower() if word == 'OTHER INCOME' else html)
+        for word in ('Regular assessments', 'Total income', 'Total expenses with reserves', '($70,400)', 'class="t-good"', 'class="c27"', 'tr class="grand last"', '3px double'):
+            self.assertIn(word, html)
+        self.assertNotIn('Net income', html)
+        self.assertNotIn('Assessments needed', html)
         self.assertNotIn('>-$70,400<', html)
 
     def test_the_downloads_carry_the_same_formatting(self):
@@ -1747,14 +1750,16 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         xl = self.client.get(self.url + '?stage=draft&export=xlsx')
         ws = openpyxl.load_workbook(io.BytesIO(xl.content)).active
         rows = {ws.cell(row=r, column=1).value: r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value}
-        need, ins = rows['Assessments needed'], rows['Insurance - Hazard, Liability & Property']
+        need, ins = rows['Total expenses with reserves'], rows['Insurance - Hazard, Liability & Property']
+        self.assertNotIn('Net income', rows)
+        self.assertEqual(ws.cell(row=need, column=2).border.bottom.style, 'double')                              # totals: a line above, a double line below
         self.assertEqual(ws.cell(row=ins, column=5).value, 129600 - 200000)
         self.assertIn('(', ws.cell(row=ins, column=5).number_format)
-        self.assertEqual(ws.cell(row=ins, column=5).font.color.rgb[-6:].upper(), '17803D')                       # green: less than the budget
+        self.assertEqual(ws.cell(row=ins, column=5).font.color.rgb[-6:].upper(), '4C7F5E')                       # green: less than the budget
         for r in (4, ins, need):
             c = ws.cell(row=r, column=4)
             self.assertEqual((c.border.left.style, c.border.right.style, c.fill.fgColor.rgb[-6:].upper()), ('medium', 'medium', 'E4EDFB'))
-        self.assertEqual((ws.cell(row=4, column=4).border.top.style, ws.cell(row=need, column=4).border.bottom.style), ('medium', 'medium'))
+        self.assertEqual((ws.cell(row=4, column=4).border.top.style, ws.cell(row=need, column=4).border.bottom.style), ('medium', 'double'))
 
 
     def test_by_unit_calculation_is_one_group_when_everyone_pays_the_same(self):
@@ -1764,7 +1769,7 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         self.assertNotIn('What it means per unit', html)
         self.assertNotIn('Of that', html)
         self.assertIn('All 4 units, the same dues', html)
-        self.assertIn('100, 101, 102, 103', html)
+        self.assertNotIn('100, 101, 102, 103', html)                                                              # no list of units when everyone pays the same
         self.assertIn('Every unit pays the same.', html)
 
     def _shares(self, percents):
@@ -1813,6 +1818,27 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
         col = [str(ws.cell(row=r, column=1).value) for r in range(1, ws.max_row + 1)]
         self.assertTrue(any(c == 'By unit calculation' for c in col))
-        self.assertTrue(any(c.startswith('All 4 units, the same dues: 100, 101') for c in col))
+        self.assertTrue(any(c == 'All 4 units, the same dues' for c in col))
         self.assertFalse(any('Of that' in c for c in col))
         self.assertEqual(self.client.get(self.url + '?stage=draft&export=pdf').content[:4], b'%PDF')
+
+
+    def test_the_assessments_are_the_first_income_line_and_total_income_matches_the_expenses_next_year(self):
+        from .views_budget import _sheet
+        a = ledger.account(self.prop, '1110'), ledger.account(self.prop, '4500')
+        ledger.post_entry(self.prop, date(2026, 10, 3), [{'account': a[0], 'debit': D('30000')}, {'account': a[1], 'credit': D('30000')}], memo='Assessments', basis='accrual', allow_locked=True)
+        ver = self.draft()
+        info = bg.info_for(ver)
+        sheet = _sheet(ver, info, 4)
+        inc = sheet['sections'][0]
+        self.assertEqual((inc['key'], inc['name'], inc['lines'][0]['name']), ('Income', 'Income', 'Regular assessments'))
+        reg = inc['lines'][0]
+        self.assertEqual((reg['prior'], reg['projected'], round(reg['proposed'], 2)), (200000.0, 36000.0, 126840.0))      # 30,000 so far, and two more months at the same pace
+        self.assertEqual(round(inc['proposed'], 2), round(sheet['total']['proposed'], 2))                              # next year the income covers the expenses exactly
+        self.assertEqual([l['name'] for l in inc['lines']][1:], ['Interest Income', 'Late Fee'])
+        self.assertEqual(bg.editor_state(ver, bg.versions(ver.budget))['assess']['projected'], 36000.0)
+
+    def test_totals_have_a_line_above_and_a_double_line_below(self):
+        self.client.post(self.url, {'action': 'start'})
+        html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
+        self.assertIn('.bd-sheet .bd-table tr.tot td, .bd-sheet .bd-table tr.grand td { border-top: 1px solid #1c2430; border-bottom: 3px double #1c2430; }', html)

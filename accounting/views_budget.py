@@ -75,13 +75,17 @@ def _sheet(version, info, units):
         d, p = proposed - prior, _chg(proposed, prior)
         return {'prior': prior, 'projected': projected, 'proposed': proposed, 'd': d, 'p': p, 'tone': _tone(d, income), 'ptone': _tone(d, income)}
 
+    A = bg.assessment_row(version, info, t['needed'])
     sections = []
     for s_ in bg.SECTIONS:
         inc = s_ == 'Income'
         lines = [r for r in rows if r['section'] == s_ and (abs(r['prior']) > 1 or abs(r['proposed']) > 1)]       # a line of $1 or less in both budgets is left off, whatever its actuals
-        tot = t['sections'][s_]
-        sections.append(dict(pack(tot['prior'], tot['projected'], tot['proposed'], inc), name='Other income' if inc else 'Reserve contributions' if s_ == 'Reserves' else s_, key=s_, income=inc,
-                             lines=[dict(pack(r['prior'], r['projected'], r['proposed'], inc), name=r['name']) for r in lines]))
+        tot = dict(t['sections'][s_])
+        packed = [dict(pack(r['prior'], r['projected'], r['proposed'], inc), name=r['name']) for r in lines]
+        if inc:                  # the assessments come first, the way a P&L starts: what the budget needs them to bring in
+            packed.insert(0, dict(pack(A['prior'], A['projected'], A['proposed'], True), name='Regular assessments'))
+            tot = {'prior': tot['prior'] + A['prior'], 'projected': tot['projected'] + A['projected'], 'proposed': tot['proposed'] + A['proposed']}
+        sections.append(dict(pack(tot['prior'], tot['projected'], tot['proposed'], inc), name='Income' if inc else 'Reserve contributions' if s_ == 'Reserves' else s_, key=s_, income=inc, lines=packed))
     groups, basis = bg.unit_groups(version.budget.association)
     calc = []
     for g in groups:
@@ -94,9 +98,8 @@ def _sheet(version, info, units):
             rows_.append({'label': label, 'old': old, 'new': new, 'd': d, 'p': p, 'tone': tone, 'ptone': tone, 'bold': bold})
         calc.append({'header': g['label'], 'units': g['units'], 'rows': rows_})
     basis_note = 'Every unit pays the same.' if basis == 'equal' else "Split by each unit's share of the common expenses."
-    has_income = any(sec['lines'] for sec in sections if sec['income'])
     return {'year': year, 'proj_word': 'projected' if info['remaining'] else 'actual', 'sections': sections, 'op': pack(t['op']['prior'], t['op']['projected'], t['op']['proposed']),
-            'total': pack(t['total_prior'], t['total_projected'], t['total']), 'needed': pack(t['needed_prior'], t['needed_projected'], t['needed']), 'has_income': has_income,
+            'total': pack(t['total_prior'], t['total_projected'], t['total']), 'needed': pack(t['needed_prior'], t['needed_projected'], t['needed']),
             'calc': calc, 'basis_note': basis_note, 'units': units}
 
 

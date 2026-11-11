@@ -74,10 +74,12 @@
     .bd-sheet .bd-table tr.sec td { background: none; border-bottom: 1px solid var(--border-hairline); color: #1c2430; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; padding-top: 16px; }
     .bd-sheet .bd-table tr.tot td { background: none; border-top: 1px solid #aab3c2; border-bottom: none; }
     .bd-sheet .bd-table tr.grand td { background: #f1f4f8; border-top: 2px solid #1c2430; border-bottom: 2px solid #1c2430; font-size: 15px; }
-    .t-good { color: #17803d; font-weight: 600; } .t-bad { color: #b42318; font-weight: 600; }
+    .t-good { color: #4c7f5e; font-weight: 500; } .t-bad { color: #a5524c; font-weight: 500; }
+    .bd-sheet .bd-table tr.tot td, .bd-sheet .bd-table tr.grand td { border-top: 1px solid #1c2430; border-bottom: 3px double #1c2430; }
+    .bd-sheet .bd-table tr.grand td { background: #f1f4f8; }
     .bd-sheet .bd-table tr td.c27, .bd-sheet .bd-table thead tr th.c27 { background: #e4edfb; font-weight: 700; border-left: 2px solid #1c2430; border-right: 2px solid #1c2430; }
     .bd-sheet .bd-table thead tr th.c27 { border-top: 2px solid #1c2430; }
-    .bd-sheet .bd-table tr.last td.c27 { border-bottom: 2px solid #1c2430; }
+    .bd-sheet .bd-table tr.last td.c27 { border-bottom: 3px double #1c2430; }
     .bd-unitbox { margin-top: 22px; border: 1px solid #1c2430; border-radius: 6px; overflow: hidden; }
     .bd-unitbox .t { background: #1c2430; color: #fff; padding: 7px 12px; font-weight: 700; }
     .bd-unitbox .bd-table td, .bd-unitbox .bd-table th { padding: 7px 12px; }
@@ -227,9 +229,14 @@
         var ed = S.editable, html = '';
         S.sections.forEach(function (sec) {
             var rows = S.rows.filter(function (r) { return r.section === sec; });
-            var label = sec === 'Reserves' ? 'Reserve contributions' : sec === 'Income' ? 'Other income' : sec, isInc = sec === 'Income';
-            if (!rows.length && !(ed && (S.addable[sec] || []).length)) return;
+            var label = sec === 'Reserves' ? 'Reserve contributions' : sec, isInc = sec === 'Income';
+            if (!rows.length && sec !== 'Income' && !(ed && (S.addable[sec] || []).length)) return;
             html += '<tr class="sec"><td colspan="' + cols + '">' + label + '</td></tr>';
+            if (isInc) {
+                var A = S.assess, ac = chgOf(A.proposed, A.prior);
+                html += '<tr><td>Regular assessments <span class="bd-mut small">what the budget must collect</span></td><td class="bud">' + $(A.prior) + '</td><td class="sep">' + $(A.actual) + '</td>' + (REM ? '<td class="bd-mut">' + $(A.nd) + '</td>' : '') +
+                    '<td class="land"><b>' + $(A.projected) + '</b></td><td class="sep"></td><td></td><td class="new sep">' + $(A.proposed) + '</td><td>' + (ac === null ? '<span class="bd-mut">new</span>' : '<span class="bd-mut">' + pct(ac, 0) + '%</span>') + '</td></tr>';
+            }
             rows.forEach(function (l) {
                 var chg = chgOf(l.proposed, l.prior);
                 var chgTxt = chg === null ? '<span class="bd-mut">' + (l.proposed ? 'new' : '—') + '</span>' : '<span class="' + (chg > 0.5 ? (isInc ? 'bd-neg' : 'bd-pos') : chg < -0.5 ? (isInc ? 'bd-pos' : 'bd-neg') : 'bd-mut') + '">' + pct(chg, 0) + '%</span>';
@@ -247,16 +254,14 @@
                 html += '<tr class="bd-addrow"><td colspan="' + cols + '"><select id="add-' + sec + '" class="form-select form-select-sm d-inline-block" style="width: auto; max-width: 320px;"><option value="">Add a line…</option>' +
                     S.addable[sec].map(function (a) { return '<option value="' + a.id + '">' + esc(a.label) + '</option>'; }).join('') + '</select> <button class="btn btn-sm btn-outline-secondary" onclick="bdAdd(\'' + sec + '\')">Add</button></td></tr>';
             }
-            var t = S.totals.sections[sec], tc = chgOf(t.proposed, t.prior);
+            var t = S.totals.sections[sec];
+            if (isInc) t = {prior: t.prior + S.assess.prior, actual: t.actual + S.assess.actual, nd: t.nd + S.assess.nd, projected: t.projected + S.assess.projected, adj: t.adj, proposed: t.proposed + S.assess.proposed};
+            var tc = chgOf(t.proposed, t.prior);
             html += '<tr class="tot"><td>Total ' + label.toLowerCase() + '</td><td class="bud">' + $(t.prior) + '</td><td class="sep">' + $(t.actual) + '</td>' + (REM ? '<td>' + $(t.nd) + '</td>' : '') + '<td class="land">' + $(t.projected) + '</td><td class="sep">' + (t.adj ? sgn(t.adj) : '') + '</td><td></td><td class="new sep">' + $(t.proposed) + '</td><td>' + (tc === null ? '' : '<span class="bd-mut">' + pct(tc, 0) + '%</span>') + '</td></tr>';
         });
         var T = S.totals;
-        var hasInc = S.rows.some(function (r) { return r.section === 'Income'; }), inc = T.sections.Income;
         var expAct = S.sections.reduce(function (a, sec) { return a + (sec === 'Income' ? 0 : T.sections[sec].actual); }, 0), expNd = S.sections.reduce(function (a, sec) { return a + (sec === 'Income' ? 0 : T.sections[sec].nd); }, 0);
-        if (hasInc) {
-            html += '<tr class="tot"><td>Total expenses with reserves</td><td class="bud">' + $(T.total_prior) + '</td><td class="sep">' + $(expAct) + '</td>' + (REM ? '<td>' + $(expNd) + '</td>' : '') + '<td class="land">' + $(T.total_projected) + '</td><td class="sep"></td><td></td><td class="new sep">' + $(T.total) + '</td><td></td></tr>';
-        }
-        html += '<tr class="grand"><td>Total assessments needed</td><td class="bud">' + $(T.needed_prior) + '</td><td class="sep">' + $(expAct - inc.actual) + '</td>' + (REM ? '<td>' + $(expNd - inc.nd) + '</td>' : '') + '<td class="land">' + $(T.needed_projected) + '</td><td class="sep"></td><td></td><td class="new sep">' + $(T.needed) + '</td><td>' + (T.needed_prior ? pct(chgOf(T.needed, T.needed_prior), 1) + '%' : '') + '</td></tr>';
+        html += '<tr class="grand"><td>Total expenses with reserves</td><td class="bud">' + $(T.total_prior) + '</td><td class="sep">' + $(expAct) + '</td>' + (REM ? '<td>' + $(expNd) + '</td>' : '') + '<td class="land">' + $(T.total_projected) + '</td><td class="sep"></td><td></td><td class="new sep">' + $(T.total) + '</td><td>' + (T.total_prior ? pct(chgOf(T.total, T.total_prior), 1) + '%' : '') + '</td></tr>';
         document.getElementById('body').innerHTML = html;
         document.getElementById('kOp').textContent = $(T.op.proposed);
         document.getElementById('kOpD').textContent = (YEAR - 1) + ' budget ' + $(T.op.prior) + ' · projected ' + $(T.op.projected);
@@ -309,12 +314,11 @@
     {% endif %}
     {% if sec.key == 'Operating' %}<tr class="tot"><td>Total expenses without reserves</td><td>{{ sheet.op.prior|dollars }}</td><td>{{ sheet.op.projected|dollars }}</td><td class="c27">{{ sheet.op.proposed|dollars }}</td><td class="t-{{ sheet.op.tone }}">{{ sheet.op.d|dparen }}</td><td class="t-{{ sheet.op.ptone }}">{{ sheet.op.p|pparen }}</td></tr>{% endif %}
     {% endfor %}
-    <tr class="{% if sheet.has_income %}tot{% else %}grand last{% endif %}"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.projected|dollars }}</td><td class="c27">{{ sheet.total.proposed|dollars }}</td><td class="t-{{ sheet.total.tone }}">{{ sheet.total.d|dparen }}</td><td class="t-{{ sheet.total.ptone }}">{{ sheet.total.p|pparen }}</td></tr>
-    {% if sheet.has_income %}<tr class="grand last"><td>Assessments needed</td><td>{{ sheet.needed.prior|dollars }}</td><td>{{ sheet.needed.projected|dollars }}</td><td class="c27">{{ sheet.needed.proposed|dollars }}</td><td class="t-{{ sheet.needed.tone }}">{{ sheet.needed.d|dparen }}</td><td class="t-{{ sheet.needed.ptone }}">{{ sheet.needed.p|pparen }}</td></tr>{% endif %}
+    <tr class="grand last"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.projected|dollars }}</td><td class="c27">{{ sheet.total.proposed|dollars }}</td><td class="t-{{ sheet.total.tone }}">{{ sheet.total.d|dparen }}</td><td class="t-{{ sheet.total.ptone }}">{{ sheet.total.p|pparen }}</td></tr>
     </tbody></table>
     <div class="bd-unitbox"><div class="t">By unit calculation</div>
     <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th class="c27">{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
-    {% for g in sheet.calc %}<tr class="ghd"><td><b>{{ g.header }}</b><div class="gu">{{ g.units }}</div></td><td></td><td class="c27"></td><td></td><td></td></tr>
+    {% for g in sheet.calc %}<tr class="ghd"><td><b>{{ g.header }}</b>{% if g.units %}<div class="gu">{{ g.units }}</div>{% endif %}</td><td></td><td class="c27"></td><td></td><td></td></tr>
     {% for p in g.rows %}<tr{% if forloop.last and forloop.parentloop.last %} class="last"{% endif %}><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td class="c27">{{ p.new|money }}</td><td class="t-{{ p.tone }}">{{ p.d|cparen }}</td><td class="t-{{ p.ptone }}">{{ p.p|pparen }}</td></tr>{% endfor %}
     {% endfor %}
     </tbody></table></div>

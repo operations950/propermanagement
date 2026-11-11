@@ -14,7 +14,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 INK = '#1c2430'
-GOOD, BAD = '#17803d', '#b42318'
+GOOD, BAD = '#4c7f5e', '#a5524c'
 TINT = '#e4edfb'
 NOTE = 'Lines of $1 or less in both budgets are left off; the totals include them.'
 
@@ -75,10 +75,11 @@ def pdf(sheet):
         if kind == 'section':
             style.extend([('FONT', (0, i), (-1, i), 'Helvetica-Bold', 8.5), ('TOPPADDING', (0, i), (-1, i), 9), ('LINEBELOW', (0, i), (-1, i), 0.5, colors.HexColor('#c9d2e0'))])
         elif kind == 'total':
-            style.extend([('FONT', (0, i), (-1, i), 'Helvetica-Bold', 8.5), ('LINEABOVE', (0, i), (-1, i), 0.5, colors.HexColor('#98a2b3'))])
+            style.extend([('FONT', (0, i), (-1, i), 'Helvetica-Bold', 8.5), ('LINEABOVE', (0, i), (-1, i), 0.6, colors.HexColor(INK)),
+                          ('LINEBELOW', (0, i), (-1, i), 0.5, colors.HexColor(INK), 1, None, None, 2, 1.4)])
         elif kind == 'grand':
-            style.extend([('FONT', (0, i), (-1, i), 'Helvetica-Bold', 9.5), ('BACKGROUND', (0, i), (-1, i), colors.HexColor('#eef2f7')), ('LINEABOVE', (0, i), (-1, i), 1.2, colors.HexColor(INK)),
-                          ('LINEBELOW', (0, i), (-1, i), 1.2, colors.HexColor(INK))])
+            style.extend([('FONT', (0, i), (-1, i), 'Helvetica-Bold', 9.5), ('BACKGROUND', (0, i), (-1, i), colors.HexColor('#eef2f7')), ('LINEABOVE', (0, i), (-1, i), 0.6, colors.HexColor(INK)),
+                          ('LINEBELOW', (0, i), (-1, i), 0.5, colors.HexColor(INK), 1, None, None, 2, 1.4)])
         if _hex(tone):
             style.append(('TEXTCOLOR', (4, i), (4, i), colors.HexColor(_hex(tone))))
         if _hex(ptone):
@@ -96,15 +97,11 @@ def pdf(sheet):
         line(f'Total {sec["name"].lower()}', sec, 'total')
         if sec['key'] == 'Operating':
             line('Total expenses without reserves', sheet['op'], 'total')
-    if sheet['has_income']:
-        line('Total expenses with reserves', sheet['total'], 'total')
-        line('Assessments needed', sheet['needed'], 'grand')
-    else:
-        line('Total expenses with reserves', sheet['total'], 'grand')
+    line('Total expenses with reserves', sheet['total'], 'grand')
     last = len(rows) - 1
     ink = colors.HexColor(INK)
     style.extend([('BACKGROUND', (3, 0), (3, last), colors.HexColor(TINT)), ('LINEBEFORE', (3, 0), (3, last), 1.8, ink), ('LINEAFTER', (3, 0), (3, last), 1.8, ink),
-                  ('LINEABOVE', (3, 0), (3, 0), 1.8, ink), ('LINEBELOW', (3, last), (3, last), 1.8, ink), ('FONT', (3, 1), (3, last), 'Helvetica-Bold', 8.5)])
+                  ('LINEABOVE', (3, 0), (3, 0), 1.8, ink), ('FONT', (3, 1), (3, last), 'Helvetica-Bold', 8.5)])
     table = Table(rows, colWidths=[2.55 * inch, 0.95 * inch, 0.95 * inch, 0.95 * inch, 0.8 * inch, 0.6 * inch], repeatRows=1)
     table.setStyle(TableStyle(style))
     story += [table, Spacer(1, 14)]
@@ -115,7 +112,7 @@ def pdf(sheet):
               ('FONT', (0, 1), (-1, -1), 'Helvetica', 8.5), ('BOX', (0, 0), (-1, -1), 0.8, ink), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
               ('TOPPADDING', (0, 0), (-1, -1), 3.5), ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5)]
     for g in sheet['calc']:
-        per.append([[Paragraph(g['header'], pb), Paragraph(g['units'], ps)], '', '', '', ''])
+        per.append([[Paragraph(g['header'], pb)] + ([Paragraph(g['units'], ps)] if g['units'] else []), '', '', '', ''])
         pstyle.append(('BACKGROUND', (0, len(per) - 1), (1, len(per) - 1), colors.HexColor('#f6f8fb')))
         for p in g['rows']:
             per.append([p['label'], _c2(p['old']), _c2(p['new']), _c2chg(p['d']), _pc(p['p'])])
@@ -170,7 +167,7 @@ def xlsx(sheet):
     head_row = r
     r += 1
 
-    def put(label, x, bold=False, fill=None, top=False):
+    def put(label, x, bold=False, fill=None, top=False, double=False):
         nonlocal r
         for c, v in enumerate([label, x['prior'], x['projected'], x['proposed'], x['d'], None if x['p'] is None else x['p'] / 100], 1):
             if c == 6 and v is None:
@@ -182,8 +179,8 @@ def xlsx(sheet):
                 cell.font = ink
             if fill:
                 cell.fill = PatternFill('solid', fgColor=fill)
-            if top:
-                cell.border = Border(top=thin)
+            if top or double:
+                cell.border = Border(top=Side(style='thin', color=INK.lstrip('#')), bottom=Side(style='double', color=INK.lstrip('#')))
             tone = {5: x['tone'], 6: x['ptone']}.get(c)
             if _hex(tone):
                 cell.font = Font(bold=bold, color=_hex(tone).lstrip('#'))
@@ -200,12 +197,8 @@ def xlsx(sheet):
             put(l['name'], l)
         put(f'Total {sec["name"].lower()}', sec, bold=True, top=True)
         if sec['key'] == 'Operating':
-            put('Total expenses without reserves', sheet['op'], bold=True)
-    if sheet['has_income']:
-        put('Total expenses with reserves', sheet['total'], bold=True, top=True)
-        put('Assessments needed', sheet['needed'], bold=True, fill='EEF2F7', top=True)
-    else:
-        put('Total expenses with reserves', sheet['total'], bold=True, fill='EEF2F7', top=True)
+            put('Total expenses without reserves', sheet['op'], bold=True, top=True)
+    put('Total expenses with reserves', sheet['total'], bold=True, fill='EEF2F7', top=True, double=True)
     last_row = r - 1
 
     def box(col, first, last):
@@ -213,7 +206,7 @@ def xlsx(sheet):
         for row in range(first, last + 1):
             cell = ws.cell(row=row, column=col)
             b = cell.border
-            cell.border = Border(left=med, right=med, top=med if row == first else b.top, bottom=med if row == last else b.bottom)
+            cell.border = Border(left=med, right=med, top=med if row == first else b.top, bottom=b.bottom if (b.bottom.style == 'double') else (med if row == last else b.bottom))
             cell.fill = tint
 
     box(4, head_row, last_row)
@@ -226,7 +219,7 @@ def xlsx(sheet):
         cell.alignment = Alignment(horizontal='left' if c == 1 else 'right')
     r += 1
     for g in sheet['calc']:
-        text = f'{g["header"]}: {g["units"]}'
+        text = f'{g["header"]}: {g["units"]}' if g['units'] else g['header']
         cell = ws.cell(row=r, column=1, value=text)
         cell.font = Font(bold=True, color=INK.lstrip('#'))
         cell.alignment = Alignment(wrap_text=True, vertical='top')

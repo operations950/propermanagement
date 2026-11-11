@@ -507,6 +507,20 @@ def totals(rows, units):
             'unit_month': need / u / 12, 'unit_month_prior': need_b / u / 12, 'unit_year': need / u, 'units': units}
 
 
+def assessment_row(version, info, needed):
+    """The regular assessments as a line of the budget, the way a P&L shows them: last year's approved budget for them, where this year will land (what is booked so far plus the months
+    left at the same pace) and next year's amount, which is what the budget needs them to bring in."""
+    prop = version.budget.association
+    acct = Account.objects.filter(association=prop, code=sc.INCOME_ASSESSMENT).first()
+    prior = actual = ZERO
+    if acct:
+        prior = prior_budget(prop, version.budget.year).get(acct.pk, ZERO)
+        actual = actuals_for(prop, info, [acct])[0].get(acct.pk, ZERO)
+    n, r = info['n'], info['remaining']
+    nd = (actual / n * r).quantize(Decimal('0.01')) if n and r else ZERO
+    return {'prior': float(prior), 'actual': float(actual), 'nd': float(nd), 'projected': float(actual + nd), 'proposed': float(needed)}
+
+
 def unit_groups(prop):
     """How a year's assessments are divided among the units: ([{'label', 'units', 'count', 'fraction'}], 'equal' | 'share'). The association's own assessment rule decides: the same for
     every unit, or split by each unit's share of the common expenses. With no rule yet, the shares decide when they differ. Units that pay the same are one group."""
@@ -521,7 +535,7 @@ def unit_groups(prop):
     rules = list(ChargeRule.objects.filter(association=prop, is_active=True, is_special=False))
     by_share = any(r.method == ChargeRule.Method.SHARE for r in rules) if rules else (complete and len(set(pct.values())) > 1)
     if not (by_share and complete):
-        return [{'label': f'All {n} unit{"s" if n != 1 else ""}, the same dues', 'units': ', '.join(u.label for u in units), 'count': n, 'fraction': 1 / n if n else 0.0}], 'equal'
+        return [{'label': f'All {n} unit{"s" if n != 1 else ""}, the same dues', 'units': '', 'count': n, 'fraction': 1 / n if n else 0.0}], 'equal'
     total = sum(pct[u.pk] for u in units)
     groups = {}
     for u in units:             # shares that agree to four decimals are the same share
@@ -541,12 +555,13 @@ def editor_state(version, have):
     rows = line_rows(version, info, prev)
     units = unit_count(version.budget.association)
     t = totals(rows, units)
+    assess = assessment_row(version, info, t['needed'])
     used = {l.account_id for l in version.lines.all()}
     addable = {}
     for a in Account.objects.filter(association=version.budget.association, is_active=True).order_by('code'):
         if is_budgetable(a) and a.pk not in used:
             addable.setdefault(section_of(a), []).append({'id': a.pk, 'label': f'{a.code} {a.name}'})
-    return {'sections': SECTIONS, 'rows': rows, 'totals': t, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'], 'actual_label': info['actual_label'], 'rest_label': info['rest_label'], 'recent_n': info['recent_n'], 'n': info['n'],
+    return {'sections': SECTIONS, 'rows': rows, 'totals': t, 'assess': assess, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'], 'actual_label': info['actual_label'], 'rest_label': info['rest_label'], 'recent_n': info['recent_n'], 'n': info['n'],
             'stale': is_stale(version) and is_editable(version, have), 'prev_label': STAGE_LABEL[STAGE_KEYS[idx - 1]] if idx else '', 'methods': [(m, method_label(m, info) if m != 'custom' else 'Custom amount') for m in METHODS]}
 
 
