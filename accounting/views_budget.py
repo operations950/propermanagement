@@ -58,13 +58,13 @@ def _chg(new, old):
 
 
 def _sheet(version, info, units):
-    """The board sheet: no inputs. Last year's budget, where last year will land, and next year's budget, with the change from where last year will land."""
+    """The board sheet: no inputs. Last year's budget, where last year will land, and next year's budget, with the change from last year's approved budget."""
     rows = bg.line_rows(version, info)
     t = bg.totals(rows, units)
     year = version.budget.year
 
     def pack(prior, projected, proposed):
-        return {'prior': prior, 'projected': projected, 'proposed': proposed, 'd': proposed - projected, 'p': _chg(proposed, projected)}
+        return {'prior': prior, 'projected': projected, 'proposed': proposed, 'd': proposed - prior, 'p': _chg(proposed, prior)}
 
     sections = []
     for s_ in bg.SECTIONS:

@@ -1396,3 +1396,17 @@ class BudgetAfterATakeoverTests(TestCase):
         ver = BudgetVersion.objects.get(budget__association=self.prop, stage='draft')
         self.assertEqual((ver.months_actual, ver.lines.get(account__code='6882').actual), (11, D('109000.00')))
         self.assertNotContains(self.client.get(url), 'Bring the actuals up to date')
+
+    def test_the_change_is_against_last_years_approved_budget_not_its_projection(self):
+        from .views_budget import _sheet
+        ver = bg.start_draft(self.prop, 2027, None)
+        sheet = _sheet(ver, bg.info_for(ver), 4)
+        ins = next(l for sec in sheet['sections'] for l in sec['lines'] if l['name'].startswith('Insurance'))
+        self.assertEqual((ins['prior'], ins['projected'], ins['proposed']), (200000.0, 129600.0, 129600.0))
+        self.assertEqual(ins['d'], 129600.0 - 200000.0)                 # against the 2026 budget
+        self.assertAlmostEqual(ins['p'], (129600 / 200000 - 1) * 100)
+        self.assertEqual(sheet['total']['d'], sheet['total']['proposed'] - sheet['total']['prior'])
+        url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
+        self.client.post(url, {'action': 'start'})
+        self.assertContains(self.client.get(url), 'vs 2026<br>budget')
+        self.assertContains(self.client.get(url + '?stage=draft&sheet=1'), 'against the 2026 budget')

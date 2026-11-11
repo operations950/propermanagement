@@ -119,7 +119,7 @@
     <th class="sep">Actual<br>{{ info_rest.actual_label }} {% include '_tip.html' with text="Everything from the first day of the year through the last closed month, including what the old system had before our books began. An open month is never counted." %}</th>
     {% if info_rest.remaining %}<th>{{ info_rest.rest_label }}<br><span style="font-weight: 400;">click to choose how</span> {% include '_tip.html' with text="Click a method to see what each one gives for that line, then pick one. The projection and the proposed amount update right away." %}</th>{% endif %}
     <th>Projected<br>{{ year|add:"-1" }}</th><th class="sep">Adjust<br>$ or %</th><th style="text-align: left;">Reason</th>
-    <th class="sep">{{ year }}<br>{{ stage_label }} {% include '_tip.html' with text="Starts at the projected year and adds your adjustment. Orange text shows how much it moved since the previous stage." %}</th><th>vs {{ year|add:"-1" }}<br>proj.</th></tr>
+    <th class="sep">{{ year }}<br>{{ stage_label }} {% include '_tip.html' with text="Starts at the projected year and adds your adjustment. Orange text shows how much it moved since the previous stage." %}</th><th>vs {{ year|add:"-1" }}<br>budget</th></tr>
 </thead><tbody id="body"></tbody></table>
 </div></div>
 <div class="small text-muted mt-2">Assessments are not typed: they come out of expenses plus reserves, divided by {{ units }} units (an equal share each). {% if not state_json.editable %}This version is frozen because the next stage was started from it.{% endif %}
@@ -178,7 +178,7 @@
             if (!rows.length && !(ed && (S.addable[sec] || []).length)) return;
             html += '<tr class="sec"><td colspan="' + cols + '">' + label + '</td></tr>';
             rows.forEach(function (l) {
-                var chg = chgOf(l.proposed, l.projected);
+                var chg = chgOf(l.proposed, l.prior);
                 var chgTxt = chg === null ? '<span class="bd-mut">' + (l.proposed ? 'new' : '—') + '</span>' : '<span class="' + (chg > 0.5 ? 'bd-pos' : chg < -0.5 ? 'bd-neg' : 'bd-mut') + '">' + pct(chg, 0) + '%</span>';
                 var since = (S.prev_label && Math.abs(l.since) >= 0.5) ? '<span class="bd-since">' + sgn(l.since) + ' since ' + esc(S.prev_label) + '</span>' : '';
                 var adjNote = l.adj ? '<span class="bd-adjshow">' + sgn(l.adj) + ' · ' + pct(chgOf(l.projected + l.adj, l.projected) || 0, 0) + '%</span>' : '';
@@ -194,12 +194,12 @@
                 html += '<tr class="bd-addrow"><td colspan="' + cols + '"><select id="add-' + sec + '" class="form-select form-select-sm d-inline-block" style="width: auto; max-width: 320px;"><option value="">Add a line…</option>' +
                     S.addable[sec].map(function (a) { return '<option value="' + a.id + '">' + esc(a.label) + '</option>'; }).join('') + '</select> <button class="btn btn-sm btn-outline-secondary" onclick="bdAdd(\'' + sec + '\')">Add</button></td></tr>';
             }
-            var t = S.totals.sections[sec], tc = chgOf(t.proposed, t.projected);
+            var t = S.totals.sections[sec], tc = chgOf(t.proposed, t.prior);
             html += '<tr class="tot"><td>Total ' + label.toLowerCase() + '</td><td class="bud">' + $(t.prior) + '</td><td class="sep">' + $(t.actual) + '</td>' + (REM ? '<td>' + $(t.nd) + '</td>' : '') + '<td class="land">' + $(t.projected) + '</td><td class="sep">' + (t.adj ? sgn(t.adj) : '') + '</td><td></td><td class="new sep">' + $(t.proposed) + '</td><td>' + (tc === null ? '' : '<span class="bd-mut">' + pct(tc, 0) + '%</span>') + '</td></tr>';
         });
         var T = S.totals;
         var actTotal = S.sections.reduce(function (a, sec) { return a + T.sections[sec].actual; }, 0), ndTotal = S.sections.reduce(function (a, sec) { return a + T.sections[sec].nd; }, 0);
-        html += '<tr class="grand"><td>Total assessments needed</td><td class="bud">' + $(T.total_prior) + '</td><td class="sep">' + $(actTotal) + '</td>' + (REM ? '<td>' + $(ndTotal) + '</td>' : '') + '<td class="land">' + $(T.total_projected) + '</td><td class="sep"></td><td></td><td class="new sep">' + $(T.total) + '</td><td>' + (T.total_projected ? pct(chgOf(T.total, T.total_projected), 1) + '%' : '') + '</td></tr>';
+        html += '<tr class="grand"><td>Total assessments needed</td><td class="bud">' + $(T.total_prior) + '</td><td class="sep">' + $(actTotal) + '</td>' + (REM ? '<td>' + $(ndTotal) + '</td>' : '') + '<td class="land">' + $(T.total_projected) + '</td><td class="sep"></td><td></td><td class="new sep">' + $(T.total) + '</td><td>' + (T.total_prior ? pct(chgOf(T.total, T.total_prior), 1) + '%' : '') + '</td></tr>';
         document.getElementById('body').innerHTML = html;
         document.getElementById('kOp').textContent = $(T.op.proposed);
         document.getElementById('kOpD').textContent = (YEAR - 1) + ' budget ' + $(T.op.prior) + ' · projected ' + $(T.op.projected);
@@ -258,7 +258,7 @@
     <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th>{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
     {% for p in sheet.per %}<tr><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td>{% if p.bold %}<b>{{ p.new|money }}</b>{% else %}{{ p.new|money }}{% endif %}</td><td>{{ p.d|cents_change }}</td><td>{{ p.p|pchange }}</td></tr>{% endfor %}
     </tbody></table></div>
-    <div class="small text-muted mt-3">Change is {{ year }} against the {{ year|add:"-1" }} {{ sheet.proj_word }}. Lines with no budget and no activity are left off. The working numbers behind this sheet (actuals, methods, reasons) stay in the working tabs and are not printed.</div>
+    <div class="small text-muted mt-3">Change is {{ year }} against the {{ year|add:"-1" }} budget. Lines with no budget and no activity are left off. The working numbers behind this sheet (actuals, methods, reasons) stay in the working tabs and are not printed.</div>
 </div>
 {% endif %}
 {% endif %}
