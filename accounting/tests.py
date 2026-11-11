@@ -1388,14 +1388,14 @@ class BudgetAfterATakeoverTests(TestCase):
     def test_bring_the_actuals_up_to_date_is_offered_when_a_month_closes(self):
         url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
         self.client.post(url, {'action': 'start'})
-        self.assertNotContains(self.client.get(url), 'Bring the actuals up to date')
+        self.assertNotContains(self.client.get(url), 'The books have moved since this version was made')
         spend(self.prop, date(2026, 11, 5), '6882', '1000')
         ledger.lock_month(self.prop, date(2026, 11, 1))
-        self.assertContains(self.client.get(url), 'Bring the actuals up to date')
+        self.assertContains(self.client.get(url), 'The books have moved since this version was made')
         self.client.post(url, {'action': 'refresh', 'stage': 'draft'})
         ver = BudgetVersion.objects.get(budget__association=self.prop, stage='draft')
         self.assertEqual((ver.months_actual, ver.lines.get(account__code='6882').actual), (11, D('109000.00')))
-        self.assertNotContains(self.client.get(url), 'Bring the actuals up to date')
+        self.assertNotContains(self.client.get(url), 'The books have moved since this version was made')
 
     def test_the_change_is_against_last_years_approved_budget_not_its_projection(self):
         from .views_budget import _sheet
@@ -1410,3 +1410,80 @@ class BudgetAfterATakeoverTests(TestCase):
         self.client.post(url, {'action': 'start'})
         self.assertContains(self.client.get(url), 'vs 2026<br>budget')
         self.assertContains(self.client.get(url + '?stage=draft&sheet=1'), 'against the 2026 budget')
+
+    def test_drilling_into_an_actual_shows_the_carried_figure_and_every_entry_and_ties_out(self):
+        url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
+        self.client.post(url, {'action': 'start'})
+        ver = BudgetVersion.objects.get(budget__association=self.prop, stage='draft')
+        detail = reverse('accounting:budget_detail', args=[self.prop.pk, 2027]) + '?stage=draft&line='
+        ins = ver.lines.get(account__code='6882')
+        d = self.client.get(detail + str(ins.pk)).json()
+        self.assertEqual(d['carried'], 100000.0)
+        self.assertEqual(d['carried_label'], 'Jan–Sep, carried from the old system')
+        self.assertEqual([(r['date'], r['amount']) for r in d['rows']], [('2026-10-10', 8000.0)])
+        self.assertEqual((d['total'], d['actual'], d['matches']), (108000.0, 108000.0, True))
+        res = self.client.get(detail + str(ver.lines.get(account__code='3834').pk)).json()
+        self.assertEqual(res['carried'], 18000.0)                       # the contributions before our books, not the fund's balance
+        self.assertEqual([r['amount'] for r in res['rows']], [2000.0])
+        self.assertEqual((res['total'], res['matches']), (20000.0, True))
+        self.assertContains(self.client.get(url), 'bdDetail(')
+        self.assertEqual(self.client.get(detail + '999999').status_code, 404)
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class ChartOfAccountsTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc('Chart Condos')
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:chart', args=[self.prop.pk])
+
+    def post(self, **data):
+        return self.client.post(self.url, data, follow=True)
+
+    def test_add_an_account_and_it_is_usable_and_in_the_budgets_add_a_line_list(self):
+        self.assertContains(self.client.get(self.url), 'Add an account')
+        r = self.post(action='add', code='6921', name='  Pool   Maintenance ', kind='expense')
+        self.assertContains(r, '6921 Pool Maintenance is added.')
+        acct = ledger.account(self.prop, '6921')
+        self.assertEqual((acct.name, acct.kind, acct.is_active), ('Pool Maintenance', 'expense', True))
+        spend(self.prop, date(2026, 3, 5), '6921', '500')                 # the books can post to it
+        self.assertTrue(bg.is_budgetable(acct))
+        self.assertEqual(bg.section_of(acct), 'Operating')
+
+    def test_bad_numbers_names_and_duplicates_are_refused(self):
+        for data, words in [({'code': '69', 'name': 'X', 'kind': 'expense'}, 'four digits'), ({'code': '6921', 'name': '', 'kind': 'expense'}, 'name'),
+                            ({'code': '6820', 'name': 'Again', 'kind': 'expense'}, 'already an account'), ({'code': '6922', 'name': 'X', 'kind': 'nonsense'}, 'what kind')]:
+            self.assertContains(self.post(action='add', **data), words)
+        self.assertFalse(Account.objects.filter(association=self.prop, code__in=['69', '6922']).exists())
+
+    def test_a_number_that_does_not_match_its_kind_is_added_with_a_note(self):
+        self.assertContains(self.post(action='add', code='1999', name='Odd', kind='expense'), 'usually asset')
+        self.assertEqual(ledger.account(self.prop, '1999').kind, 'expense')
+
+    def test_rename_keeps_the_number_and_kind(self):
+        acct = ledger.account(self.prop, '6906')
+        self.post(action='rename', account=acct.pk, name='Pest and Termite')
+        acct.refresh_from_db()
+        self.assertEqual((acct.code, acct.kind, acct.name), ('6906', 'expense', 'Pest and Termite'))
+
+    def test_turning_off_is_refused_for_system_accounts_and_accounts_with_a_balance(self):
+        mgmt = ledger.account(self.prop, '6820')                         # the program posts the management fee here
+        self.assertContains(self.post(action='toggle', account=mgmt.pk), 'posts to itself')
+        pest = ledger.account(self.prop, '6906')
+        spend(self.prop, date.today(), '6906', '100')
+        self.assertContains(self.post(action='toggle', account=pest.pk), 'still has a balance')
+        quiet = ledger.account(self.prop, '6918')
+        self.assertContains(self.post(action='toggle', account=quiet.pk), 'is off')
+        quiet.refresh_from_db()
+        self.assertFalse(quiet.is_active)
+        self.post(action='toggle', account=quiet.pk)
+        quiet.refresh_from_db()
+        self.assertTrue(quiet.is_active)
+
+    def test_it_is_linked_from_the_hub_and_only_admins_open_it(self):
+        self.assertContains(self.client.get(reverse('accounting:hub', args=[self.prop.pk])), 'Chart of accounts')
+        self.client.logout()
+        self.client.force_login(get_user_model().objects.create_user('staffer2', password='pw12345678'))
+        self.assertNotEqual(self.client.get(self.url).status_code, 200)
+

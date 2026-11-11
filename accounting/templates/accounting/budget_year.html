@@ -33,6 +33,14 @@
     .bd-fit .bd-m .a { color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; font-weight: 600; } .bd-fit .bd-m .b { color: var(--ink-primary); }
     .bd-fit input.bd-i { width: 100%; padding: 3px 6px; font-size: 12.5px; } .bd-fit input.bd-i.note { width: 100%; }
     .bd-adjshow { display: block; font-size: 10.5px; color: var(--ink-muted); line-height: 1.1; text-align: right; }
+    .bd-act { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; border-bottom: 1px dotted #98a2b3; }
+    .bd-act:hover { color: var(--brand-primary); border-bottom-color: var(--brand-primary); }
+    .bd-modal { position: fixed; inset: 0; z-index: 1080; background: rgba(20,30,50,.45); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 12px; overflow-y: auto; }
+    .bd-modal .box { background: #fff; border-radius: 14px; width: 100%; max-width: 860px; box-shadow: 0 20px 60px rgba(20,30,50,.35); overflow: hidden; }
+    .bd-modal .hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border-hairline); }
+    .bd-modal .bd-table td, .bd-modal .bd-table th { white-space: normal; }
+    .bd-modal tr.carried td { background: #f7f8fa; font-style: italic; }
+    @media print { .bd-modal { display: none !important; } }
     .bd-stale { background: #fff7e0; border: 1px solid #f0d58a; color: #7a5200; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
     .bd-pos { color: #b42318; } .bd-neg { color: #17803d; } .bd-mut { color: var(--ink-muted); }
     .bd-since { display: block; font-size: 11px; color: #b45309; font-weight: 600; }
@@ -168,6 +176,33 @@
     };
     window.bdCustom = function (id) { var v = document.getElementById('cuIn').value; if (v === '') return; closePop(); bdSet(id, 'custom', v); };
     document.addEventListener('click', function (e) { if (popEl && !popEl.contains(e.target)) closePop(); });
+    var DETAIL_URL = '{{ detail_url|escapejs }}';
+    function closeDetail() { var m = document.getElementById('bdModal'); if (m) m.remove(); }
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDetail(); });
+    window.bdDetail = function (id) {
+        closeDetail();
+        var m = document.createElement('div'); m.id = 'bdModal'; m.className = 'bd-modal';
+        m.onclick = function (e) { if (e.target === m) closeDetail(); };
+        m.innerHTML = '<div class="box"><div class="hd"><div><b>Loading…</b></div><button class="bd-x" onclick="bdCloseDetail()">×</button></div></div>';
+        document.body.appendChild(m);
+        fetch(DETAIL_URL + '&line=' + id).then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); }).then(function (x) {
+            if (!x.ok) { m.querySelector('.hd div').innerHTML = esc(x.j.error || 'That did not load.'); return; }
+            var d = x.j, fmt = function (n) { return $2(n); };
+            var rows = '';
+            if (d.carried) rows += '<tr class="carried"><td></td><td colspan="3" style="text-align:left">' + esc(d.carried_label) + ' <span class="bd-mut">(one figure: the old system\'s year to date)</span></td><td>' + fmt(d.carried) + '</td></tr>';
+            d.rows.forEach(function (r) {
+                var dt = new Date(r.date + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+                rows += '<tr><td style="text-align:left">' + dt + '</td><td style="text-align:left">' + esc(r.what || r.source) + '</td><td style="text-align:left">' + esc(r.who) + '</td><td style="text-align:left" class="bd-mut">' + esc(r.ref) + ' · ' + esc(r.source) + '</td><td>' + fmt(r.amount) + '</td></tr>';
+            });
+            if (!rows) rows = '<tr><td colspan="5" class="bd-mut" style="text-align:center;padding:18px">Nothing in the books for this line.</td></tr>';
+            m.innerHTML = '<div class="box"><div class="hd"><div><div style="font-size:17px;font-weight:700">' + esc(d.name) + ' <span class="bd-mut small">' + esc(d.code) + '</span></div><div class="bd-mut small">Actual ' + esc(d.label) + (d.reserve ? ' · what was put into the reserve' : '') + '</div></div><button class="bd-x" title="Close" onclick="bdCloseDetail()">×</button></div>' +
+                '<div style="max-height:62vh;overflow-y:auto"><table class="bd-table"><thead><tr><th>Date</th><th style="text-align:left">What</th><th style="text-align:left">Who</th><th style="text-align:left">Entry</th><th>Amount</th></tr></thead><tbody>' + rows +
+                '<tr class="tot"><td colspan="4">Total</td><td>' + fmt(d.total) + '</td></tr></tbody></table></div>' +
+                '<div class="small bd-mut" style="padding:10px 18px">' + (d.matches ? '' : '<span style="color:#b45309">This does not equal the ' + fmt(d.actual) + ' on the line: the books have moved since this version was made. Use "Bring the actuals up to date".</span> ') +
+                (d.carried ? 'Detail for the months before our books began is not in the system: the old system\'s year to date came across as one figure.' : '') + '</div></div>';
+        }).catch(function () { m.querySelector('.hd div').innerHTML = 'That did not load. Check the connection and try again.'; });
+    };
+    window.bdCloseDetail = closeDetail;
 
     function render() {
         closePop();
@@ -183,7 +218,7 @@
                 var since = (S.prev_label && Math.abs(l.since) >= 0.5) ? '<span class="bd-since">' + sgn(l.since) + ' since ' + esc(S.prev_label) + '</span>' : '';
                 var adjNote = l.adj ? '<span class="bd-adjshow">' + sgn(l.adj) + ' · ' + pct(chgOf(l.projected + l.adj, l.projected) || 0, 0) + '%</span>' : '';
                 html += '<tr><td title="' + esc(l.name) + '">' + esc(l.name) + ' <span class="bd-mut small">' + l.code + '</span>' + (l.unbudgeted ? '<span class="bd-chip-un">not in last year\'s budget</span>' : '') + (l.removable ? '<span class="bd-chip-new">added</span>' : '') + '</td>' +
-                    '<td class="bud">' + $(l.prior) + '</td><td class="sep">' + $(l.actual) + '</td>' +
+                    '<td class="bud">' + $(l.prior) + '</td><td class="sep">' + (l.actual ? '<button class="bd-act" title="See what is in this" onclick="bdDetail(' + l.id + ')">' + $(l.actual) + '</button>' : $(l.actual)) + '</td>' +
                     (REM ? '<td><button class="bd-m ' + (l.method === 'custom' ? 'custom' : '') + '" ' + (ed ? '' : 'disabled') + ' onclick="bdPop(event,' + l.id + ')"><span class="a">' + esc(short(l)) + '</span><span class="b">' + $(l.nd) + '</span></button></td>' : '') +
                     '<td class="land"><b>' + $(l.projected) + '</b></td>' +
                     '<td class="sep"><input class="bd-i" ' + (ed ? '' : 'disabled') + ' value="' + esc(l.adjust) + '" placeholder="$ or %" onchange="bdSet(' + l.id + ',\'adjust\',this.value)">' + adjNote + '</td>' +

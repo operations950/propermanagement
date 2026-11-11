@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_budget, views_contracts, views_delinquency, views_money, views_setup
+from . import views, views_budget, views_chart, views_contracts, views_delinquency, views_money, views_setup
 
 app_name = 'accounting'
 
@@ -9,6 +9,7 @@ urlpatterns = [
     path('budgets/', views_budget.budgets, name='budgets'),
     path('<int:pk>/budget/<int:year>/', views_budget.budget_year, name='budget_year'),
     path('<int:pk>/budget/<int:year>/edit/', views_budget.budget_edit, name='budget_edit'),
+    path('<int:pk>/budget/<int:year>/detail/', views_budget.budget_detail, name='budget_detail'),
     path('<int:pk>/contracts/', views_contracts.contract_list, name='contracts'),
     path('<int:pk>/contracts/print/', views_contracts.contract_print, name='contracts_print'),
     path('<int:pk>/delinquencies/', views_delinquency.delinquencies, name='delinquencies'),
@@ -47,5 +48,6 @@ urlpatterns = [
     path('<int:pk>/reports/checks/', views_money.report_checks, name='report_checks'),
     path('<int:pk>/reports/budget/', views_money.budget, name='budget'),
     path('<int:pk>/reports/bank/<int:bank_pk>/<str:month>/', views_money.report_rec, name='report_rec'),
+    path('<int:pk>/chart/', views_chart.chart, name='chart'),
     path('<int:pk>/settings/', views_setup.settings, name='settings'),
 ]

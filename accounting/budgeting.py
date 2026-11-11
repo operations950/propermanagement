@@ -283,6 +283,35 @@ def refresh_actuals(version):
     return version
 
 
+def actual_detail(version, line):
+    """Everything behind one line's actual, so the screen can show it: the part that came across from the old system as a single figure (the months before our books began), then
+    every entry in our books after that. The total is the actual on the line; `matches` says whether it is (it is not when the books have moved since the version was made)."""
+    prop = version.budget.association
+    info = info_for(version)
+    acct = line.account
+    reserve = is_reserve(acct)
+    carried, rows = ZERO, []
+    if info['n']:
+        qs = (ledger.lines(prop).filter(account=acct, entry__date__gte=info['window_start'], entry__date__lte=info['window_end'])
+              .select_related('entry', 'vendor').order_by('entry__date', 'entry__number', 'id'))
+        for l in qs:
+            amount = l.credit if reserve else l.debit - l.credit
+            if l.entry.source == JournalEntry.Source.OPENING:
+                if not reserve:
+                    carried += amount           # a reserve's opening line is the fund's balance, not what was put in this year
+                continue
+            if reserve and not l.credit:
+                continue
+            rows.append({'date': l.entry.date.isoformat(), 'what': l.memo or l.entry.memo, 'who': l.vendor.name if l.vendor_id else '', 'ref': f'J-{l.entry.number}',
+                         'source': l.entry.get_source_display(), 'amount': float(amount)})
+        if reserve and info['carried']:
+            carried += prior_ytd(prop, info['fy_start'].year).get(acct.pk, ZERO)
+    total = carried + sum((Decimal(str(r['amount'])) for r in rows), ZERO)
+    carried_label = f'{_range_label(info["fy_start"], _add_months(info["first"], -1))}, carried from the old system' if info['carried'] else 'Carried from the old system'
+    return {'code': acct.code, 'name': acct.name, 'label': info['actual_label'], 'carried': float(carried), 'carried_label': carried_label, 'rows': rows, 'total': float(total),
+            'actual': float(line.actual), 'matches': abs(total - line.actual) < Decimal('0.005'), 'reserve': reserve}
+
+
 def heal(version, have):
     """A working version made before the months of the year ahead of our books counted as actual still shows only the months we closed ourselves. When it was made through the same
     month, bring its actuals up to date without anyone asking."""

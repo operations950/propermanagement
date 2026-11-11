@@ -195,10 +195,23 @@ def budget_year(request, pk, year):
         ctx['state_json'] = bg.editor_state(have[stage], have)
         ctx['edit_url'] = reverse('accounting:budget_edit', args=[pk, year]) + f'?stage={stage}'
         ctx['info_rest'] = bg.info_for(have[stage])
+        ctx['detail_url'] = reverse('accounting:budget_detail', args=[pk, year]) + f'?stage={stage}'
         ctx['can_refresh'] = bg.is_stale(have[stage]) and bg.is_editable(have[stage], have)
     if latest == 'approved':
         ctx['can_reopen'] = True
     return render(request, 'accounting/budget_year.html', ctx)
+
+
+@admin_only
+def budget_detail(request, pk, year):
+    """The entries behind one line's actual, for the drill-down on the working screen."""
+    prop = association_or_404(pk)
+    have = bg.versions(bg.get_budget(prop, year))
+    ver = have.get(request.GET.get('stage'))
+    line = ver.lines.select_related('account').filter(pk=request.GET.get('line')).first() if ver else None
+    if line is None:
+        return JsonResponse({'error': 'That line is gone. Reload the page.'}, status=404)
+    return JsonResponse(bg.actual_detail(ver, line))
 
 
 def _err(msg, status=400):
