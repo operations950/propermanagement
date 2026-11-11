@@ -30,6 +30,7 @@ STEP = {
     Frequency.BIWEEKLY: relativedelta(weeks=2),
     Frequency.MONTHLY: relativedelta(months=1),
     Frequency.QUARTERLY: relativedelta(months=3),
+    Frequency.SEMIANNUAL: relativedelta(months=6),
     Frequency.YEARLY: relativedelta(years=1),
 }
 
@@ -78,7 +79,7 @@ def advance(cursor, frequency, workday_of_month):
     return cursor + STEP[frequency]
 
 
-_MONTH_GRANULAR = {Frequency.MONTHLY, Frequency.MONTHLY_WORKDAY, Frequency.QUARTERLY, Frequency.YEARLY}
+_MONTH_GRANULAR = {Frequency.MONTHLY, Frequency.MONTHLY_WORKDAY, Frequency.QUARTERLY, Frequency.SEMIANNUAL, Frequency.YEARLY}
 
 
 def period_label_for(cursor, frequency):

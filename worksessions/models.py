@@ -49,6 +49,7 @@ class Frequency(models.TextChoices):
     MONTHLY = 'monthly', 'Monthly'
     MONTHLY_WORKDAY = 'monthly_workday', 'Monthly (by working day)'
     QUARTERLY = 'quarterly', 'Quarterly'
+    SEMIANNUAL = 'semiannual', 'Twice a year'
     YEARLY = 'yearly', 'Yearly'
     ONCE = 'once', 'One time'
 
