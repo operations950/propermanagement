@@ -27,12 +27,12 @@ NEXT_LABEL = {'draft': 'Send to the board: start the Board draft', 'board': 'Pre
 SECTIONS = ['Administrative', 'Utilities', 'Operating', 'Reserves']
 UTILITIES = {'6410', '6420', '6425', '6429', '6430', '6431', '6435', '6440', '6450'}
 ADMIN = {'6320', '6350', '6460', '6510', '6610', '6611', '6800', '6820', '6830', '6880', '6881', '6882', '6883', '6884', '6885', '6886', '6891', '6894', '6895', '6899', '6902', '6904', '6916', '6917', '6920'}
-RESERVE_INTEREST = {'3813', '3831'}
+RESERVE_INTEREST = sc.RESERVE_INTEREST
 LEFT_OUT = {'6900'}   # the transfer to reserves: the reserve lines carry it
 
 
 def is_reserve(acct):
-    return acct.kind == Account.Kind.EQUITY and '3811' <= acct.code <= '3835' and acct.code not in RESERVE_INTEREST
+    return acct.kind == Account.Kind.EQUITY and sc.RESERVE_FIRST <= acct.code <= sc.RESERVE_LAST and acct.code not in RESERVE_INTEREST
 
 
 def is_budgetable(acct):

@@ -593,7 +593,7 @@ def journal(request, pk):
         return redirect(here)
     month = parse_month(request.GET.get('month'), ledger.month_start(timezone.localdate()))
     entries = JournalEntry.objects.filter(association=prop, date__gte=month, date__lte=ledger.month_end(month)).prefetch_related('lines__account').order_by('-date', '-number')
-    return render(request, 'accounting/journal.html', {'assoc': prop, 'entries': entries, 'accounts': prop.accounts.filter(is_active=True).order_by('code'), 'reserve_funds': prop.accounts.filter(kind='equity', code__gte='3811', code__lte='3899').order_by('code'),
+    return render(request, 'accounting/journal.html', {'assoc': prop, 'entries': entries, 'accounts': prop.accounts.filter(is_active=True).order_by('code'), 'reserve_funds': prop.accounts.filter(kind='equity', code__gte=sc.RESERVE_FIRST, code__lte=sc.RESERVE_LAST).order_by('code'),
                                                        'banks': prop.bank_accounts.filter(is_active=True), 'today': timezone.localdate(), 'range': range(1, 7), 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting', **month_context(month)})
 
 

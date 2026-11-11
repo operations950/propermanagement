@@ -1487,3 +1487,119 @@ class ChartOfAccountsTests(TestCase):
         self.client.force_login(get_user_model().objects.create_user('staffer2', password='pw12345678'))
         self.assertNotEqual(self.client.get(self.url).status_code, 200)
 
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class MasterChartTests(TestCase):
+    def setUp(self):
+        self.a = make_assoc('Alpha Condos')
+        self.b = make_assoc('Beta Condos')
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:master_chart')
+        self.chart = lambda prop: reverse('accounting:chart', args=[prop.pk])
+
+    def post(self, url=None, **data):
+        return self.client.post(url or self.url, data, follow=True)
+
+    def test_the_master_starts_as_the_standard_chart_and_is_linked_from_financials(self):
+        from . import standard_chart as sc
+        from .models import MasterAccount
+        self.assertEqual(MasterAccount.objects.count(), len(sc.CHART))
+        self.assertContains(self.client.get(reverse('ws_financials')), self.url)
+        self.assertContains(self.client.get(self.url), 'Add an account')
+
+    def test_reserve_funds_are_3810_to_3899_and_interest_is_not_a_fund(self):
+        from . import standard_chart as sc
+        mk = lambda code, kind='equity': Account(code=code, name='x', kind=kind)
+        for code in ('3810', '3827', '3836', '3850', '3899'):
+            self.assertTrue(bg.is_reserve(mk(code)), code)
+        for code in ('3809', '3813', '3831', '3900'):
+            self.assertFalse(bg.is_reserve(mk(code)), code)
+        self.assertEqual([sc.section(c) for c in ('3801', '3810', '3899', '3900')], ['Equity', 'Reserve funds', 'Reserve funds', 'Equity'])
+
+    def test_adding_to_the_master_adds_it_to_every_association_and_reports_a_clash(self):
+        Account.objects.create(association=self.b, code='6930', name='Something Else', kind='expense')
+        r = self.post(action='add', code='6930', name='Pool Maintenance', kind='expense', everywhere='on')
+        self.assertContains(r, 'Added to 1 association')
+        self.assertContains(r, 'Beta Condos (has it as Something Else)')
+        self.assertEqual(ledger.account(self.a, '6930').name, 'Pool Maintenance')
+        self.assertEqual(ledger.account(self.b, '6930').name, 'Something Else')
+        self.assertContains(self.post(action='add', code='6930', name='Dup', kind='expense'), 'already on the master chart')
+
+    def test_added_to_the_master_only_it_is_for_new_associations_and_off_ones_are_not_copied(self):
+        from .models import MasterAccount
+        self.post(action='add', code='6931', name='Only New', kind='expense')
+        self.assertFalse(Account.objects.filter(association=self.a, code='6931').exists())
+        MasterAccount.objects.filter(code='6906').update(is_active=False)
+        c = make_assoc('Gamma Condos')
+        self.assertTrue(Account.objects.filter(association=c, code='6931').exists())
+        self.assertFalse(Account.objects.filter(association=c, code='6906').exists())
+        self.assertTrue(Account.objects.filter(association=c, code='6820').exists())      # the program's own accounts are always there
+
+    def test_an_account_renumbered_or_turned_off_on_purpose_is_not_put_back(self):
+        pest = ledger.account(self.a, '6906')
+        self.post(self.chart(self.a), action='edit', account=pest.pk, code='6940')
+        ledger.ensure_chart(self.a)
+        self.assertEqual(list(Account.objects.filter(association=self.a, name='Pest Control').values_list('code', flat=True)), ['6940'])
+        self.assertFalse(Account.objects.filter(association=self.a, code='6906').exists())
+
+    def test_an_unused_account_can_change_number_and_kind_but_not_a_used_or_system_one(self):
+        url = self.chart(self.a)
+        pest = ledger.account(self.a, '6906')
+        self.assertContains(self.post(url, action='edit', account=pest.pk, code='6941'), '6941')
+        pest.refresh_from_db()
+        self.assertEqual(pest.code, '6941')
+        self.post(url, action='edit', account=pest.pk, kind='income')
+        pest.refresh_from_db()
+        self.assertEqual(pest.kind, 'income')
+        self.assertContains(self.post(url, action='edit', account=pest.pk, code='6820'), 'already an account')
+        self.assertContains(self.post(url, action='edit', account=pest.pk, code='12'), 'four digits')
+        used = ledger.account(self.a, '6898')
+        spend(self.a, date(2026, 3, 5), '6898', '100')
+        self.assertContains(self.post(url, action='edit', account=used.pk, code='6942'), 'has entries')
+        used.refresh_from_db()
+        self.assertEqual(used.code, '6898')
+        mgmt = ledger.account(self.a, '6820')
+        self.assertContains(self.post(url, action='edit', account=mgmt.pk, code='6943'), 'posts to itself')
+
+    def test_the_association_screen_shows_a_number_field_only_for_unused_accounts(self):
+        spend(self.a, date(2026, 3, 5), '6898', '100')
+        html = self.client.get(self.chart(self.a)).content.decode()
+        self.assertIn(f'aria-label="Number of {ledger.account(self.a, "6906").name}"', html)
+        self.assertNotIn(f'aria-label="Number of {ledger.account(self.a, "6898").name}"', html)
+        self.assertNotIn(f'aria-label="Number of {ledger.account(self.a, "6820").name}"', html)
+
+    def test_a_number_changed_on_the_master_changes_everywhere_when_nothing_is_posted(self):
+        from .models import MasterAccount
+        m = MasterAccount.objects.get(code='6906')
+        self.assertContains(self.post(action='edit', account=m.pk, code='6950'), 'here and in every association')
+        self.assertTrue(MasterAccount.objects.filter(code='6950').exists())
+        for prop in (self.a, self.b):
+            self.assertEqual(ledger.account(prop, '6950').name, 'Pest Control')
+            self.assertFalse(Account.objects.filter(association=prop, code='6906').exists())
+
+    def test_a_master_number_is_fixed_once_any_association_has_entries_or_if_the_program_uses_it(self):
+        from .models import MasterAccount
+        spend(self.b, date(2026, 3, 5), '6898', '100')
+        m = MasterAccount.objects.get(code='6898')
+        self.assertContains(self.post(action='edit', account=m.pk, code='6951'), 'has entries in an association')
+        self.assertTrue(MasterAccount.objects.filter(code='6898').exists())
+        mgmt = MasterAccount.objects.get(code='6820')
+        self.assertContains(self.post(action='edit', account=mgmt.pk, code='6952'), 'posts to itself')
+        self.assertContains(self.post(action='toggle', account=mgmt.pk), 'stays on')
+
+    def test_a_master_rename_leaves_associations_until_they_are_updated(self):
+        from .models import MasterAccount
+        m = MasterAccount.objects.get(code='6906')
+        r = self.post(action='rename', account=m.pk, name='Pest and Termite')
+        self.assertContains(r, '2 named differently')
+        self.assertEqual(ledger.account(self.a, '6906').name, 'Pest Control')
+        self.assertContains(self.post(action='sync', account=m.pk), 'in 2 associations')
+        self.assertEqual(ledger.account(self.b, '6906').name, 'Pest and Termite')
+
+    def test_an_association_can_put_a_new_account_on_the_master_too(self):
+        from .models import MasterAccount
+        self.post(self.chart(self.a), action='add', code='6960', name='Dock Repairs', kind='expense', to_master='on')
+        self.assertEqual(MasterAccount.objects.get(code='6960').name, 'Dock Repairs')
+        self.assertFalse(Account.objects.filter(association=self.b, code='6960').exists())

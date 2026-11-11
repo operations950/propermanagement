@@ -975,3 +975,17 @@ class Contract(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class MasterAccount(models.Model):
+    """The master chart of accounts: the list a new association starts from. Each association has its own copy (Account); this is where the company keeps the standard."""
+    code = models.CharField(max_length=8, unique=True)
+    name = models.CharField(max_length=120)
+    kind = models.CharField(max_length=10, choices=Account.Kind.choices)
+    is_active = models.BooleanField(default=True, help_text='Off: new associations do not start with it. Existing associations keep theirs.')
+
+    class Meta:
+        ordering = ['code']
+
+    def __str__(self):
+        return f'{self.code} {self.name}'

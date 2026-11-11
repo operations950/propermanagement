@@ -49,5 +49,6 @@ urlpatterns = [
     path('<int:pk>/reports/budget/', views_money.budget, name='budget'),
     path('<int:pk>/reports/bank/<int:bank_pk>/<str:month>/', views_money.report_rec, name='report_rec'),
     path('<int:pk>/chart/', views_chart.chart, name='chart'),
+    path('master-chart/', views_chart.master, name='master_chart'),
     path('<int:pk>/settings/', views_setup.settings, name='settings'),
 ]

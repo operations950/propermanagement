@@ -14,7 +14,7 @@ from django.db import transaction
 from django.db.models import Max, Q, Sum
 
 from . import standard_chart as sc
-from .models import ZERO, Account, AssociationProfile, JournalEntry, JournalLine, MonthLock
+from .models import ZERO, Account, AssociationProfile, JournalEntry, JournalLine, MasterAccount, MonthLock
 
 ACCRUAL, CASH = 'accrual', 'cash'
 
@@ -53,10 +53,20 @@ def profile_for(association):
 
 # ---------------------------------------------------------------- accounts
 
+def master_chart():
+    """The master chart a new association starts from, as (number, name, kind). Falls back to the built-in standard if the master list is empty."""
+    rows = list(MasterAccount.objects.filter(is_active=True).order_by('code').values_list('code', 'name', 'kind'))
+    return rows or list(sc.CHART)
+
+
 def ensure_chart(association):
-    """Give an association the standard chart. Safe to run again: existing accounts are left alone."""
+    """Give an association its chart. A new one (no accounts yet) gets the whole master chart. One that already has accounts only gets back an account the program itself posts to,
+    so an account renumbered or turned off on purpose is never put back; a new account added to the master reaches existing associations when it is added. Safe to run again."""
     have = set(Account.objects.filter(association=association).values_list('code', flat=True))
-    new = [Account(association=association, code=code, name=name, kind=kind) for code, name, kind in sc.CHART if code not in have]
+    wanted = {r[0]: r for r in sc.CHART if r[0] in sc.SYSTEM_CODES}
+    if not have:
+        wanted.update({r[0]: r for r in master_chart()})
+    new = [Account(association=association, code=code, name=name, kind=kind) for code, name, kind in sorted(wanted.values()) if code not in have]
     Account.objects.bulk_create(new)
     return len(new)
 

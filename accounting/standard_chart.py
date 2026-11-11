@@ -27,6 +27,13 @@ MANAGEMENT_FEES = '6820'
 RESERVE_TRANSFER = '6900'
 UNCATEGORIZED = '6902'
 
+# the accounts above, by number: the program posts to these itself, so they can never be turned off or renumbered
+SYSTEM_CODES = {v for n, v in list(globals().items()) if n.isupper() and isinstance(v, str) and v.isdigit()}
+
+# the reserve funds are equity accounts numbered 3810-3899 (the two interest accounts are in the range but are not budgeted funds)
+RESERVE_FIRST, RESERVE_LAST = '3810', '3899'
+RESERVE_INTEREST = {'3813', '3831'}
+
 CHART = [
     # assets
     ('1110', 'Operating Cash', ASSET), ('1111', 'Operating Cash #2', ASSET), ('1120', 'Escrow Cash', ASSET), ('1121', 'Escrow Cash #2', ASSET),
@@ -88,10 +95,12 @@ def section(code):
         return 'Other assets'
     if n < 3000:
         return 'Liabilities'
-    if n < 3811:
+    if n < int(RESERVE_FIRST):
         return 'Equity'
-    if n < 4000:
+    if n <= int(RESERVE_LAST):
         return 'Reserve funds'
+    if n < 4000:
+        return 'Equity'
     if n < 5000:
         return 'Income'
     return 'Expenses'
