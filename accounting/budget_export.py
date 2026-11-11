@@ -16,7 +16,6 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 INK = '#1c2430'
 GOOD, BAD = '#4c7f5e', '#a5524c'
 TINT = '#e4edfb'
-NOTE = 'Lines of $1 or less in both budgets are left off; the totals include them.'
 
 
 def file_name(assoc_name, year, stage_label, ext):
@@ -129,7 +128,7 @@ def pdf(sheet):
                    ('LINEABOVE', (2, 0), (2, 0), 1.8, ink), ('LINEBELOW', (2, n), (2, n), 1.8, ink)])
     pt = Table(per, colWidths=[2.55 * inch, 1.1 * inch, 1.1 * inch, 1.05 * inch, 0.9 * inch], repeatRows=1)
     pt.setStyle(TableStyle(pstyle))
-    story += [pt, Spacer(1, 8), Paragraph(f'{sheet["basis_note"]} Change is {sheet["year"]} against the {sheet["year"] - 1} budget. {NOTE}', sub)]
+    story += [pt]
 
     def footer(canvas, d):
         canvas.saveState()
@@ -242,7 +241,7 @@ def xlsx(sheet):
     for row in range(per_head + 1, r):
         ws.cell(row=row, column=3).font = ink
     r += 1
-    ws.cell(row=r, column=1, value=f'{sheet["basis_note"]} Change is {sheet["year"]} against the {sheet["year"] - 1} budget. {NOTE} Prepared by Proper Realty, {sheet["on"]:%B} {sheet["on"].day}, {sheet["on"].year}.').font = Font(color='667085', size=9)
+    ws.cell(row=r, column=1, value=f'Prepared by Proper Realty, {sheet["on"]:%B} {sheet["on"].day}, {sheet["on"].year}.').font = Font(color='667085', size=9)
     ws.column_dimensions['A'].width = 44
     for c in range(2, 7):
         ws.column_dimensions[get_column_letter(c)].width = 16

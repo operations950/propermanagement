@@ -1409,7 +1409,7 @@ class BudgetAfterATakeoverTests(TestCase):
         url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
         self.client.post(url, {'action': 'start'})
         self.assertContains(self.client.get(url), 'vs 2026<br>budget')
-        self.assertContains(self.client.get(url + '?stage=draft&sheet=1'), 'against the 2026 budget')
+        self.assertNotContains(self.client.get(url + '?stage=draft&sheet=1'), 'against the 2026 budget')                # the sheet carries no footnote
 
     def test_drilling_into_an_actual_shows_the_carried_figure_and_every_entry_and_ties_out(self):
         url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
@@ -1770,7 +1770,8 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         self.assertNotIn('Of that', html)
         self.assertIn('All 4 units, the same dues', html)
         self.assertNotIn('100, 101, 102, 103', html)                                                              # no list of units when everyone pays the same
-        self.assertIn('Every unit pays the same.', html)
+        self.assertNotIn('Every unit pays the same.', html)
+        self.assertNotIn('left off; the totals', html)
 
     def _shares(self, percents):
         from .models import ShareKind, UnitShare

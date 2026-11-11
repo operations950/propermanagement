@@ -322,7 +322,6 @@
     {% for p in g.rows %}<tr{% if forloop.last and forloop.parentloop.last %} class="last"{% endif %}><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td class="c27">{{ p.new|money }}</td><td class="t-{{ p.tone }}">{{ p.d|cparen }}</td><td class="t-{{ p.ptone }}">{{ p.p|pparen }}</td></tr>{% endfor %}
     {% endfor %}
     </tbody></table></div>
-    <div class="small text-muted mt-3">{{ sheet.basis_note }} Change is {{ year }} against the {{ year|add:"-1" }} budget. Lines of $1 or less in both budgets are left off; the totals still include them. The working numbers behind this sheet (actuals, methods, reasons) stay in the working tabs and are not printed.</div>
 </div>
 {% endif %}
 {% endif %}
