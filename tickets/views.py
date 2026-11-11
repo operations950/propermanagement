@@ -287,6 +287,7 @@ def _format_calendar_events(events, days_ahead=2):
     other days are just a simple chronological list — see
     _dashboard_calendar.html."""
     today = timezone.localdate()
+    now = timezone.now()
     days = [today + timedelta(days=i) for i in range(days_ahead + 1)]
     by_day = {d: {'all_day': [], 'timed': []} for d in days}
 
@@ -323,7 +324,7 @@ def _format_calendar_events(events, days_ahead=2):
         if d not in by_day:
             continue
         by_day[d]['timed'].append({
-            'title': title, 'start': start_dt, 'end': end_dt, 'color': color, 'all_day': False,
+            'title': title, 'start': start_dt, 'end': end_dt, 'color': color, 'all_day': False, 'past': end_dt <= now,
             'start_label': start_dt.strftime('%I:%M %p').lstrip('0'),
             'end_label': end_dt.strftime('%I:%M %p').lstrip('0'),
             'event_id': e.get('id', ''), 'calendar_id': e.get('_calendar_id', ''),

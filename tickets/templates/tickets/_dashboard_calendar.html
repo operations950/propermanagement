@@ -130,13 +130,13 @@
                     <div class="position-absolute rounded px-1 overflow-hidden calendar-event-clickable" style="
                         top: {{ e.top_pct }}%; height: {{ e.height_pct }}%;
                         left: {{ e.left_pct }}%; width: {{ e.width_pct }}%;
-                        background: color-mix(in srgb, {{ e.color }} 85%, black);
-                        color: #fff; font-size: 0.72rem; line-height: 1.15; z-index: 2; cursor: pointer;
+                        {% if e.past %}background: color-mix(in srgb, {{ e.color }} 22%, white); color: var(--ink-muted);{% else %}background: color-mix(in srgb, {{ e.color }} 85%, black); color: #fff;{% endif %}
+                        font-size: 0.72rem; line-height: 1.15; z-index: 2; cursor: pointer;
                     "
                         data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
                         data-all-day="0" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
                         <div class="fw-medium text-truncate">{{ e.title }}</div>
-                        <div class="text-truncate" style="opacity: 0.85;">{{ e.start_label }}</div>
+                        <div class="text-truncate" style="opacity: 0.85;">{{ e.start_label }}{% if e.past %} · done{% endif %}</div>
                     </div>
                     {% endfor %}
                 </div>

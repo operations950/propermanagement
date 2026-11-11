@@ -82,7 +82,7 @@ def credentials_for(token):
 
 
 def get_upcoming_events(token, days_ahead=2):
-    """Today's remaining events plus the next `days_ahead` days, from
+    """All of today's events (the ones already over too, so the day still reads as a whole) plus the next `days_ahead` days, from
     whichever of the staff member's own Google calendars they've chosen to
     pull in (token.enabled_calendar_ids — empty means "just the primary
     calendar", the default before anyone's touched the picker on the
@@ -105,7 +105,7 @@ def get_upcoming_events(token, days_ahead=2):
     try:
         creds = credentials_for(token)
         service = build('calendar', 'v3', credentials=creds, cache_discovery=False)
-        now = timezone.now()
+        start_of_today = timezone.make_aware(timezone.datetime.combine(timezone.localdate(), timezone.datetime.min.time()))
         time_max = timezone.make_aware(
             timezone.datetime.combine(timezone.localdate() + timedelta(days=days_ahead), timezone.datetime.max.time())
         )
@@ -150,7 +150,7 @@ def get_upcoming_events(token, days_ahead=2):
             entry['enabled'] = True
             try:
                 result = service.events().list(
-                    calendarId=calendar_id, timeMin=now.isoformat(), timeMax=time_max.isoformat(),
+                    calendarId=calendar_id, timeMin=start_of_today.isoformat(), timeMax=time_max.isoformat(),
                     singleEvents=True, orderBy='startTime', maxResults=50,
                 ).execute()
             except HttpError as exc:
