@@ -1021,8 +1021,8 @@ class IncomeIsNotAnExpenseTests(TestCase):
         from .views_budget import _sheet
         sheet = _sheet(self.ver, bg.info_for(self.ver), 52)
         self.assertEqual(sheet['total']['proposed'], 261366.0 + 57242.0)
-        monthly = sheet['per'][0]['new']
-        self.assertAlmostEqual(monthly, (261366 + 57242) / 52 / 12, places=4)
+        monthly = sheet['calc'][0]['rows'][0]['new']
+        self.assertAlmostEqual(monthly, (261366 + 57242) / bg.unit_count(self.ver.budget.association) / 12, places=4)
 
     def test_approving_writes_the_income_budget_as_the_total(self):
         bud = self.ver.budget
@@ -1571,9 +1571,11 @@ class BoardSheetSmallLinesTests(TestCase):
                 {'section': 'Operating', 'name': 'Insurance', 'prior': 200766, 'projected': 134064, 'proposed': 120000},
                 {'section': 'Operating', 'name': 'New Thing', 'prior': 0, 'projected': 0, 'proposed': 900}]
         totals = {'sections': {s: dict(prior=0, projected=0, proposed=0) for s in bg.SECTIONS}, 'op': dict(prior=0, projected=0, proposed=0), 'rs': dict(prior=0, projected=0, proposed=0),
-                  'total_prior': 0, 'total_projected': 0, 'total': 0, 'unit_month_prior': 0, 'unit_month': 0, 'unit_year': 0}
+                  'total_prior': 0, 'total_projected': 0, 'total': 0, 'unit_month_prior': 0, 'unit_month': 0, 'unit_year': 0,
+                  'oi': dict(prior=0, projected=0, proposed=0), 'needed': 0, 'needed_prior': 0, 'needed_projected': 0}
         import unittest.mock as mock
-        with mock.patch.object(bg, 'line_rows', return_value=rows), mock.patch.object(bg, 'totals', return_value=totals):
+        groups = ([{'label': 'All 4 units, the same dues', 'units': '1, 2, 3, 4', 'count': 4, 'fraction': 0.25}], 'equal')
+        with mock.patch.object(bg, 'line_rows', return_value=rows), mock.patch.object(bg, 'totals', return_value=totals), mock.patch.object(bg, 'unit_groups', return_value=groups):
             sheet = vb._sheet(mock.Mock(budget=mock.Mock(year=2027)), {'remaining': 2}, 52)
         shown = [l['name'] for s in sheet['sections'] for l in s['lines']]
         self.assertEqual(shown, ['Insurance', 'New Thing'])
@@ -1655,3 +1657,162 @@ class OldSystemLedgerLoadTests(TestCase):
             gl_detail.check('cash', [dict(prop='Nobody Condos', code='1110', ctrl='K-1', debit=D('1'), credit=D('0'))])
         with self.assertRaises(gl_detail.GLError):
             gl_detail.read(self.good(book='Both'))
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class BudgetIncomeAndBoardSheetFormatTests(TestCase):
+    """Other income is part of the budget: the assessments needed are the expenses and reserves less it. The board sheet shows changes in parentheses, green when good for owners, red when bad,
+    and the new year's column is boxed."""
+
+    def setUp(self):
+        self.prop = make_assoc('Income Condos')
+        prof = ledger.profile_for(self.prop)
+        prof.books_start = date(2026, 9, 30)
+        prof.save()
+        a = lambda code: ledger.account(self.prop, code)
+        ledger.post_entry(self.prop, date(2026, 9, 30), [{'account': a('6882'), 'debit': D('100000')}, {'account': a('4800'), 'credit': D('2000')}, {'account': a('1110'), 'credit': D('98000')}],
+                          memo='Opening balances', basis='accrual', source=JournalEntry.Source.OPENING, source_ref='yardi-sep30', allow_locked=True)
+        spend(self.prop, date(2026, 10, 10), '6882', '8000')
+        ledger.post_entry(self.prop, date(2026, 10, 12), [{'account': a('1110'), 'debit': D('300')}, {'account': a('4511'), 'credit': D('300')}], memo='Interest', basis='accrual')
+        ledger.lock_month(self.prop, date(2026, 10, 1))
+        bud = Budget.objects.create(association=self.prop, year=2026)
+        BudgetLine.objects.create(budget=bud, account=a('6882'), annual_amount=D('200000'))
+        BudgetLine.objects.create(budget=bud, account=a('4500'), annual_amount=D('200000'))
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
+
+    def draft(self):
+        return bg.start_draft(self.prop, 2027, None)
+
+    def test_other_income_is_a_section_and_the_assessment_is_net_of_it(self):
+        ver = self.draft()
+        self.assertEqual(sorted(ver.lines.values_list('account__code', flat=True)), ['4511', '4800', '6882'])      # the assessments are never a line
+        self.assertEqual(ver.lines.get(account__code='4800').actual, D('2000.00'))                                 # income is credits less debits
+        rows = bg.line_rows(ver, bg.info_for(ver))
+        self.assertEqual({r['code']: r['section'] for r in rows}, {'4511': 'Income', '4800': 'Income', '6882': 'Administrative'})
+        t = bg.totals(rows, 4)
+        self.assertEqual(round(t['oi']['proposed'], 2), 2760.0)                                                     # 2,000 + 300, each with two more months at its average
+        self.assertEqual((round(t['total'], 2), round(t['needed'], 2)), (129600.0, 126840.0))
+        self.assertEqual(round(t['unit_month'], 2), round(126840 / 4 / 12, 2))
+        self.assertEqual(round(t['needed_prior'], 2), 200000.0)
+
+    def test_the_drill_down_shows_income_as_a_positive_amount(self):
+        ver = self.draft()
+        d = bg.actual_detail(ver, ver.lines.get(account__code='4800'))
+        self.assertEqual((d['carried'], d['total'], d['actual'], d['matches']), (2000.0, 2000.0, 2000.0, True))
+
+    def test_a_draft_made_before_income_counted_gets_its_income_lines(self):
+        ver = self.draft()
+        ver.lines.filter(account__code__in=['4800', '4511']).delete()
+        self.assertTrue(bg.heal(ver, bg.versions(ver.budget)))
+        self.assertEqual(sorted(ver.lines.values_list('account__code', flat=True)), ['4511', '4800', '6882'])
+        self.assertFalse(bg.heal(ver, bg.versions(ver.budget)))
+
+    def test_approving_writes_the_income_lines_and_the_assessment_net_of_them(self):
+        ver = self.draft()
+        bg.write_budget_lines(ver.budget, ver)
+        amounts = {l.account.code: l.annual_amount for l in BudgetLine.objects.filter(budget=ver.budget).select_related('account')}
+        self.assertEqual((amounts['4800'], amounts['4511'], amounts['6882'], amounts['4500']), (D('2400.00'), D('360.00'), D('129600.00'), D('126840.00')))
+
+    def test_changes_are_in_parentheses_and_green_when_good_red_when_bad(self):
+        from .views_budget import _sheet
+        from .templatetags.acc_extras import cparen, dparen, pparen
+        self.assertEqual((dparen(-80766), dparen(1234), dparen(0.2), pparen(-40.24), pparen(3.14), pparen(None), pparen(0.01), cparen(-2.5)), ('($80,766)', '$1,234', '—', '(40.2%)', '3.1%', 'new', '—', '($2.50)'))
+        ver = self.draft()
+        sheet = _sheet(ver, bg.info_for(ver), 4)
+        by = {l['name']: l for sec in sheet['sections'] for l in sec['lines']}
+        self.assertEqual(by['Insurance - Hazard, Liability & Property']['tone'], 'good')                          # spending $70,400 less than the budget
+        self.assertEqual(by['Late Fee']['tone'], 'good')                                                           # more income than the (nil) budget
+        self.assertEqual(sheet['needed']['tone'], 'good')
+        self.assertEqual(sheet['calc'][0]['rows'][0]['tone'], 'good')                                              # owners pay less each month
+        self.assertEqual((by['Late Fee']['p'], by['Late Fee']['ptone']), (None, 'good'))                           # "new" is coloured like the dollar change
+        self.assertTrue(sheet['has_income'])
+        from .views_budget import _tone
+        self.assertEqual((_tone(500), _tone(-500), _tone(500, income=True), _tone(-500, income=True), _tone(0.2)), ('bad', 'good', 'good', 'bad', ''))
+
+    def test_the_sheet_screen_shows_it_all_and_boxes_the_new_years_column(self):
+        self.client.post(self.url, {'action': 'start'})
+        html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
+        for word in ('OTHER INCOME', 'Other income', 'Assessments needed', '($70,400)', 'class="t-good"', 'class="c27"', 'tr class="grand last"'):
+            self.assertIn(word.lower() if word == 'OTHER INCOME' else word, html.lower() if word == 'OTHER INCOME' else html)
+        self.assertNotIn('>-$70,400<', html)
+
+    def test_the_downloads_carry_the_same_formatting(self):
+        import io
+        import openpyxl
+        self.client.post(self.url, {'action': 'start'})
+        pdf = self.client.get(self.url + '?stage=draft&export=pdf')
+        self.assertEqual((pdf.status_code, pdf.content[:4]), (200, b'%PDF'))
+        xl = self.client.get(self.url + '?stage=draft&export=xlsx')
+        ws = openpyxl.load_workbook(io.BytesIO(xl.content)).active
+        rows = {ws.cell(row=r, column=1).value: r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value}
+        need, ins = rows['Assessments needed'], rows['Insurance - Hazard, Liability & Property']
+        self.assertEqual(ws.cell(row=ins, column=5).value, 129600 - 200000)
+        self.assertIn('(', ws.cell(row=ins, column=5).number_format)
+        self.assertEqual(ws.cell(row=ins, column=5).font.color.rgb[-6:].upper(), '17803D')                       # green: less than the budget
+        for r in (4, ins, need):
+            c = ws.cell(row=r, column=4)
+            self.assertEqual((c.border.left.style, c.border.right.style, c.fill.fgColor.rgb[-6:].upper()), ('medium', 'medium', 'E4EDFB'))
+        self.assertEqual((ws.cell(row=4, column=4).border.top.style, ws.cell(row=need, column=4).border.bottom.style), ('medium', 'medium'))
+
+
+    def test_by_unit_calculation_is_one_group_when_everyone_pays_the_same(self):
+        self.client.post(self.url, {'action': 'start'})
+        html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
+        self.assertIn('By unit calculation', html)
+        self.assertNotIn('What it means per unit', html)
+        self.assertNotIn('Of that', html)
+        self.assertIn('All 4 units, the same dues', html)
+        self.assertIn('100, 101, 102, 103', html)
+        self.assertIn('Every unit pays the same.', html)
+
+    def _shares(self, percents):
+        from .models import ShareKind, UnitShare
+        kind = ShareKind.objects.create(association=self.prop, name='Common expenses', is_default=True)
+        for unit, pc in zip(sorted(self.prop.units.all(), key=lambda u: u.label), percents):
+            UnitShare.objects.create(unit=unit, kind=kind, percent=D(pc))
+
+    def test_unequal_shares_make_one_group_per_share_with_its_units_listed(self):
+        from .views_budget import _sheet
+        self._shares(['30', '30', '20', '20'])
+        ver = self.draft()
+        sheet = _sheet(ver, bg.info_for(ver), 4)
+        g1, g2 = sheet['calc']
+        self.assertEqual((g1['header'], g1['units'], g2['header'], g2['units']), ('2 units with a 30% share', '100, 101', '2 units with a 20% share', '102, 103'))
+        self.assertAlmostEqual(g1['rows'][0]['new'], 126840 * 0.30 / 12, places=2)
+        self.assertAlmostEqual(g2['rows'][0]['new'], 126840 * 0.20 / 12, places=2)
+        self.assertAlmostEqual(g1['rows'][0]['old'], 200000 * 0.30 / 12, places=2)                                # the 2026 budget divided the same way
+        self.assertAlmostEqual(g1['rows'][1]['new'], g1['rows'][0]['new'] * 12, places=2)
+        self.assertEqual(sheet['basis_note'], "Split by each unit's share of the common expenses.")
+        self.client.post(self.url, {'action': 'start'})
+        html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
+        self.assertIn('2 units with a 30% share', html)
+
+    def test_a_flat_assessment_rule_beats_the_shares_and_a_share_rule_beats_equal_dues(self):
+        from .models import ChargeRule
+        self._shares(['30', '30', '20', '20'])
+        rule = ChargeRule.objects.create(association=self.prop, name='Monthly assessment', frequency='monthly', first_due=date(2026, 1, 1), method='flat', amount=D('615'),
+                                         income_account=ledger.account(self.prop, '4500'))
+        groups, basis = bg.unit_groups(self.prop)
+        self.assertEqual((basis, len(groups), groups[0]['count']), ('equal', 1, 4))
+        rule.method = 'share'
+        rule.save()
+        self.assertEqual((bg.unit_groups(self.prop)[1], len(bg.unit_groups(self.prop)[0])), ('share', 2))
+
+    def test_the_drill_down_dates_are_month_and_day_numbers(self):
+        self.client.post(self.url, {'action': 'start'})
+        page = self.client.get(self.url).content.decode()
+        self.assertIn("var dt = r.date.slice(5);", page)
+        self.assertNotIn("toLocaleDateString", page)
+
+    def test_the_downloads_carry_the_by_unit_calculation(self):
+        import io
+        import openpyxl
+        self.client.post(self.url, {'action': 'start'})
+        ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
+        col = [str(ws.cell(row=r, column=1).value) for r in range(1, ws.max_row + 1)]
+        self.assertTrue(any(c == 'By unit calculation' for c in col))
+        self.assertTrue(any(c.startswith('All 4 units, the same dues: 100, 101') for c in col))
+        self.assertFalse(any('Of that' in c for c in col))
+        self.assertEqual(self.client.get(self.url + '?stage=draft&export=pdf').content[:4], b'%PDF')

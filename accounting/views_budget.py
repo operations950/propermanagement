@@ -57,32 +57,47 @@ def _chg(new, old):
     return float((Decimal(str(new)) / Decimal(str(old)) - 1) * 100)
 
 
+def _tone(d, income=False, eps=0.5):
+    """Whether a change is good for the owners: green for good, red for bad. A drop in an expense (or in what the assessments must bring in) is good; more income is good."""
+    if abs(d) < eps:
+        return ''
+    return 'good' if (d > 0) == income else 'bad'
+
+
 def _sheet(version, info, units):
-    """The board sheet: no inputs. Last year's budget, where last year will land, and next year's budget, with the change from last year's approved budget."""
+    """The board sheet: no inputs. Last year's budget, where last year will land, and next year's budget, with the change from last year's approved budget. Other income comes first;
+    the assessments needed are the expenses and reserves less that income."""
     rows = bg.line_rows(version, info)
     t = bg.totals(rows, units)
     year = version.budget.year
 
-    def pack(prior, projected, proposed):
-        return {'prior': prior, 'projected': projected, 'proposed': proposed, 'd': proposed - prior, 'p': _chg(proposed, prior)}
+    def pack(prior, projected, proposed, income=False):
+        d, p = proposed - prior, _chg(proposed, prior)
+        return {'prior': prior, 'projected': projected, 'proposed': proposed, 'd': d, 'p': p, 'tone': _tone(d, income), 'ptone': _tone(d, income)}
 
     sections = []
     for s_ in bg.SECTIONS:
+        inc = s_ == 'Income'
         lines = [r for r in rows if r['section'] == s_ and (abs(r['prior']) > 1 or abs(r['proposed']) > 1)]       # a line of $1 or less in both budgets is left off, whatever its actuals
         tot = t['sections'][s_]
-        sections.append(dict(pack(tot['prior'], tot['projected'], tot['proposed']), name='Reserve contributions' if s_ == 'Reserves' else s_, key=s_,
-                             lines=[dict(pack(r['prior'], r['projected'], r['proposed']), name=r['name']) for r in lines]))
-    u = units or 1
-    per = [
-        {'label': 'Monthly assessment', 'old': t['unit_month_prior'], 'new': t['unit_month'], 'bold': True},
-        {'label': 'Annual per unit', 'old': t['unit_month_prior'] * 12, 'new': t['unit_year']},
-        {'label': 'Of that, operating (monthly)', 'old': t['op']['prior'] / u / 12, 'new': t['op']['proposed'] / u / 12},
-        {'label': 'Of that, reserves (monthly)', 'old': t['rs']['prior'] / u / 12, 'new': t['rs']['proposed'] / u / 12},
-    ]
-    for p in per:
-        p['d'], p['p'] = p['new'] - p['old'], _chg(p['new'], p['old'])
+        sections.append(dict(pack(tot['prior'], tot['projected'], tot['proposed'], inc), name='Other income' if inc else 'Reserve contributions' if s_ == 'Reserves' else s_, key=s_, income=inc,
+                             lines=[dict(pack(r['prior'], r['projected'], r['proposed'], inc), name=r['name']) for r in lines]))
+    groups, basis = bg.unit_groups(version.budget.association)
+    calc = []
+    for g in groups:
+        f = g['fraction']
+        rows_ = []
+        for label, mult, bold in (('Monthly assessment', 1, True), ('Annual per unit', 12, False)):
+            old, new = t['needed_prior'] * f / 12 * mult, t['needed'] * f / 12 * mult
+            d, p = new - old, _chg(new, old)
+            tone = _tone(d, False, 0.005)
+            rows_.append({'label': label, 'old': old, 'new': new, 'd': d, 'p': p, 'tone': tone, 'ptone': tone, 'bold': bold})
+        calc.append({'header': g['label'], 'units': g['units'], 'rows': rows_})
+    basis_note = 'Every unit pays the same.' if basis == 'equal' else "Split by each unit's share of the common expenses."
+    has_income = any(sec['lines'] for sec in sections if sec['income'])
     return {'year': year, 'proj_word': 'projected' if info['remaining'] else 'actual', 'sections': sections, 'op': pack(t['op']['prior'], t['op']['projected'], t['op']['proposed']),
-            'total': pack(t['total_prior'], t['total_projected'], t['total']), 'per': per, 'units': units}
+            'total': pack(t['total_prior'], t['total_projected'], t['total']), 'needed': pack(t['needed_prior'], t['needed_projected'], t['needed']), 'has_income': has_income,
+            'calc': calc, 'basis_note': basis_note, 'units': units}
 
 
 def _compare(have, units):
@@ -111,9 +126,11 @@ def _compare(have, units):
     totals = [
         trow('Operating expenses', lambda t, prior=False: t['op']['prior' if prior else 'proposed']),
         trow('Reserves', lambda t, prior=False: t['rs']['prior' if prior else 'proposed']),
-        trow('Total assessments needed', lambda t, prior=False: t['total_prior' if prior else 'total']),
+        trow('Other income', lambda t, prior=False: t['oi']['prior' if prior else 'proposed']),
+        trow('Total assessments needed', lambda t, prior=False: t['needed_prior' if prior else 'needed']),
         trow('Per unit per month', lambda t, prior=False: t['unit_month_prior' if prior else 'unit_month'], True),
     ]
+    totals = [r for r in totals if r['label'] != 'Other income' or r['prior'] or any(c['v'] for c in r['cells'])]
     return {'keys': keys, 'labels': [bg.STAGE_LABEL[k] for k in keys], 'sections': sections, 'totals': totals, 'cols': 2 * len(keys) + 2}
 
 

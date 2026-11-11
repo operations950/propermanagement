@@ -24,7 +24,10 @@ STAGE_HINT = {
 }
 NEXT_LABEL = {'draft': 'Send to the board: start the Board draft', 'board': 'Prepare the meeting version', 'meeting': 'Approve and lock (after the meeting)'}
 
-SECTIONS = ['Administrative', 'Utilities', 'Operating', 'Reserves']
+SECTIONS = ['Income', 'Administrative', 'Utilities', 'Operating', 'Reserves']
+EXPENSE_SECTIONS = ['Administrative', 'Utilities', 'Operating']
+# Income that is not a line of the budget: the assessments are what the budget works out (expenses and reserves, less the other income), the special assessments are their own thing
+NOT_OTHER_INCOME = {'4500', '4701', '4475', '4513', '4515', '4516'}
 UTILITIES = {'6410', '6420', '6425', '6429', '6430', '6431', '6435', '6440', '6450'}
 ADMIN = {'6320', '6350', '6460', '6510', '6610', '6611', '6800', '6820', '6830', '6880', '6881', '6882', '6883', '6884', '6885', '6886', '6891', '6894', '6895', '6899', '6902', '6904', '6916', '6917', '6920'}
 RESERVE_INTEREST = sc.RESERVE_INTEREST
@@ -35,11 +38,22 @@ def is_reserve(acct):
     return acct.kind == Account.Kind.EQUITY and sc.RESERVE_FIRST <= acct.code <= sc.RESERVE_LAST and acct.code not in RESERVE_INTEREST
 
 
+def is_other_income(acct):
+    return acct.kind == Account.Kind.INCOME and acct.code not in NOT_OTHER_INCOME
+
+
 def is_budgetable(acct):
-    return is_reserve(acct) or (acct.kind == Account.Kind.EXPENSE and acct.code not in LEFT_OUT)
+    return is_reserve(acct) or is_other_income(acct) or (acct.kind == Account.Kind.EXPENSE and acct.code not in LEFT_OUT)
+
+
+def amount_of(acct, debit, credit):
+    """What a line's amount is: a reserve is what was put in, income is credits less debits, an expense is debits less credits."""
+    return credit if is_reserve(acct) else (credit - debit if acct.kind == Account.Kind.INCOME else debit - credit)
 
 
 def section_of(acct):
+    if is_other_income(acct):
+        return 'Income'
     if is_reserve(acct):
         return 'Reserves'
     if acct.code in UTILITIES:
@@ -133,7 +147,7 @@ def _actuals(prop, start, end, accounts, include_opening=True, prior=None):
     for a in accounts:
         if a.pk in sums:
             d, c = sums[a.pk]
-            out[a.pk] = c if is_reserve(a) else d - c
+            out[a.pk] = amount_of(a, d, c)
         if prior and is_reserve(a) and a.pk in prior:
             out[a.pk] = out.get(a.pk, ZERO) + prior[a.pk]
     return out
@@ -295,7 +309,7 @@ def carried_detail(prop, acct, info, reserve):
     for l in qs:
         if reserve and not l.credit:
             continue
-        rows.append({'date': l.date.isoformat(), 'what': l.remarks or l.who, 'who': l.who if l.remarks else '', 'ref': l.ctrl, 'source': l.reference, 'amount': l.credit if reserve else l.debit - l.credit})
+        rows.append({'date': l.date.isoformat(), 'what': l.remarks or l.who, 'who': l.who if l.remarks else '', 'ref': l.ctrl, 'source': l.reference, 'amount': amount_of(acct, l.debit, l.credit)})
     return rows, (book if rows else '')
 
 
@@ -311,7 +325,7 @@ def actual_detail(version, line):
         qs = (ledger.lines(prop).filter(account=acct, entry__date__gte=info['window_start'], entry__date__lte=info['window_end'])
               .select_related('entry', 'vendor').order_by('entry__date', 'entry__number', 'id'))
         for l in qs:
-            amount = l.credit if reserve else l.debit - l.credit
+            amount = amount_of(acct, l.debit, l.credit)
             if l.entry.source == JournalEntry.Source.OPENING:
                 if not reserve:
                     carried += amount           # a reserve's opening line is the fund's balance, not what was put in this year
@@ -340,11 +354,34 @@ def heal(version, have):
     """A working version made before the months of the year ahead of our books counted as actual still shows only the months we closed ourselves. When it was made through the same
     month, bring its actuals up to date without anyone asking."""
     if version.through_month and is_editable(version, have):
+        added = add_missing_income(version)
         info = base_info(version.budget.association, version.budget.year)
         if info['carried'] and info['through'] == version.through_month and version.months_actual < info['n']:
             refresh_actuals(version)
             return True
+        return bool(added)
     return False
+
+
+def add_missing_income(version):
+    """Income lines for a version made before income was part of the budget: every income account with a budget last year or activity in the months counted. Nothing already there changes."""
+    prop = version.budget.association
+    have = set(version.lines.values_list('account_id', flat=True))
+    accounts = [a for a in Account.objects.filter(association=prop, is_active=True).order_by('code') if is_other_income(a) and a.pk not in have]
+    if not accounts:
+        return 0
+    info = info_for(version)
+    prior = prior_budget(prop, version.budget.year)
+    act, rec = actuals_for(prop, info, accounts)
+    n = 0
+    for a in accounts:
+        p, x, r = prior.get(a.pk, ZERO), act.get(a.pk, ZERO), rec.get(a.pk, ZERO)
+        if p or x:
+            line = BudgetVersionLine(version=version, account=a, prior_budget=p, actual=x, recent=r, method=default_method(a))
+            recompute(line, info)
+            line.save()
+            n += 1
+    return n
 
 
 # ---------------------------------------------------------------- stages
@@ -406,13 +443,13 @@ def advance(budget, user):
 
 
 def write_budget_lines(budget, version):
-    """The approved amounts become the year's budget lines, which the income report compares the books against. Income lines are left alone."""
+    """The approved amounts become the year's budget lines, which the income report compares the books against. The assessment line is the expenses and reserves less the other income."""
     budgetable = [a.pk for a in Account.objects.filter(association=budget.association) if is_budgetable(a)]
     assessments = Account.objects.filter(association=budget.association, code=sc.INCOME_ASSESSMENT).first()
     BudgetLine.objects.filter(budget=budget, account_id__in=budgetable + ([assessments.pk] if assessments else [])).delete()
     lines = [l for l in version.lines.select_related('account') if is_budgetable(l.account) and l.proposed]
     BudgetLine.objects.bulk_create([BudgetLine(budget=budget, account_id=l.account_id, annual_amount=l.proposed) for l in lines])
-    total = sum((l.proposed for l in lines), ZERO)
+    total = sum((l.proposed * (-1 if l.account.kind == Account.Kind.INCOME else 1) for l in lines), ZERO)
     if assessments and total:      # what owners pay in a year: the expenses and the reserves together (one assessment, collected in operating)
         BudgetLine.objects.create(budget=budget, account=assessments, annual_amount=total)
 
@@ -458,13 +495,43 @@ def totals(rows, units):
     for s in SECTIONS:
         rs = [r for r in rows if r['section'] == s]
         out[s] = {k: sum(r[k] for r in rs) for k in ('prior', 'actual', 'nd', 'projected', 'adj', 'proposed')}
-    op = {k: sum(out[s][k] for s in SECTIONS[:3]) for k in ('prior', 'projected', 'proposed')}
+    op = {k: sum(out[s][k] for s in EXPENSE_SECTIONS) for k in ('prior', 'projected', 'proposed')}
     rs = out['Reserves']
-    tot, tot_b, tot_p = op['proposed'] + rs['proposed'], op['prior'] + rs['prior'], op['projected'] + rs['projected']
+    oi = {k: out['Income'][k] for k in ('prior', 'projected', 'proposed')}
+    tot, tot_b, tot_p = op['proposed'] + rs['proposed'], op['prior'] + rs['prior'], op['projected'] + rs['projected']      # expenses and reserves
+    need, need_b, need_p = tot - oi['proposed'], tot_b - oi['prior'], tot_p - oi['projected']                                # what the assessments must bring in
     u = units or 1
-    income = {'assessments': {'prior': op['prior'], 'proposed': op['proposed']}, 'reserve': {'prior': rs['prior'], 'proposed': rs['proposed']}, 'total': {'prior': tot_b, 'proposed': tot}}
-    return {'sections': out, 'op': op, 'rs': rs, 'income': income, 'total': tot, 'total_prior': tot_b, 'total_projected': tot_p,
-            'unit_month': tot / u / 12, 'unit_month_prior': tot_b / u / 12, 'unit_year': tot / u, 'units': units}
+    income = {'assessments': {'prior': op['prior'], 'proposed': op['proposed']}, 'reserve': {'prior': rs['prior'], 'proposed': rs['proposed']}, 'total': {'prior': need_b, 'proposed': need}}
+    return {'sections': out, 'op': op, 'rs': rs, 'oi': oi, 'income': income, 'total': tot, 'total_prior': tot_b, 'total_projected': tot_p,
+            'needed': need, 'needed_prior': need_b, 'needed_projected': need_p,
+            'unit_month': need / u / 12, 'unit_month_prior': need_b / u / 12, 'unit_year': need / u, 'units': units}
+
+
+def unit_groups(prop):
+    """How a year's assessments are divided among the units: ([{'label', 'units', 'count', 'fraction'}], 'equal' | 'share'). The association's own assessment rule decides: the same for
+    every unit, or split by each unit's share of the common expenses. With no rule yet, the shares decide when they differ. Units that pay the same are one group."""
+    import re
+    from . import owners
+    from .models import ChargeRule, ShareKind, UnitShare
+    units = sorted(owners.active_units(prop), key=lambda u: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', u.label)])
+    n = len(units)
+    kind = ShareKind.objects.filter(association=prop, is_default=True).first() or ShareKind.objects.filter(association=prop).first()
+    pct = {s.unit_id: s.percent for s in UnitShare.objects.filter(kind=kind, unit__in=units)} if kind else {}
+    complete = bool(units) and all(u.pk in pct for u in units) and sum(pct.values()) > 0
+    rules = list(ChargeRule.objects.filter(association=prop, is_active=True, is_special=False))
+    by_share = any(r.method == ChargeRule.Method.SHARE for r in rules) if rules else (complete and len(set(pct.values())) > 1)
+    if not (by_share and complete):
+        return [{'label': f'All {n} unit{"s" if n != 1 else ""}, the same dues', 'units': ', '.join(u.label for u in units), 'count': n, 'fraction': 1 / n if n else 0.0}], 'equal'
+    total = sum(pct[u.pk] for u in units)
+    groups = {}
+    for u in units:             # shares that agree to four decimals are the same share
+        groups.setdefault(round(pct[u.pk], 4), []).append(u)
+    out = []
+    for p, members in sorted(groups.items(), key=lambda kv: -kv[0]):
+        txt = ('%.4f' % p).rstrip('0').rstrip('.')
+        mean = sum(pct[u.pk] for u in members) / len(members)
+        out.append({'label': f'{len(members)} unit{"s" if len(members) != 1 else ""} with a {txt}% share', 'units': ', '.join(u.label for u in members), 'count': len(members), 'fraction': float(mean / total)})
+    return out, 'share'
 
 
 def editor_state(version, have):

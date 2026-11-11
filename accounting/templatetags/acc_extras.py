@@ -98,6 +98,34 @@ def pchange(value):
 
 
 @register.filter
+def dparen(value):
+    """$1,750 / ($1,750) / a dash for no change: the board sheet's way."""
+    try:
+        d = int(round(float(value)))
+    except (TypeError, ValueError):
+        return ''
+    return '—' if d == 0 else (f'${d:,}' if d > 0 else f'(${abs(d):,})')
+
+
+@register.filter
+def pparen(value):
+    """5.0% / (3.3%) / new when there was nothing before / a dash for no change."""
+    if value is None:
+        return 'new'
+    v = float(value)
+    return '—' if abs(v) < 0.05 else (f'{v:.1f}%' if v > 0 else f'({abs(v):.1f}%)')
+
+
+@register.filter
+def cparen(value):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return ''
+    return '—' if abs(v) < 0.005 else (f'${v:,.2f}' if v > 0 else f'(${abs(v):,.2f})')
+
+
+@register.filter
 def cents_change(value):
     try:
         v = float(value)
