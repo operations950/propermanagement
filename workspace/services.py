@@ -309,29 +309,60 @@ def compliance_rules(params):
 
 
 # ---- Projects: process runs and templates ----
+def _due_matches(due, params, today):
+    """The Tickets list's due-date bubbles, applied to one date (or None) in Python."""
+    from tickets.views import DUE_WINDOWS
+    pick = params.get('due')
+    if pick == 'none':
+        return due is None
+    if pick in ('overdue', 'today', 'tomorrow', 'custom') or pick in DUE_WINDOWS:
+        if due is None:
+            return False
+        if pick == 'overdue':
+            return due < today
+        if pick == 'today':
+            return due == today
+        if pick == 'tomorrow':
+            return due == today + timedelta(days=1)
+        if pick == 'custom':
+            from django.utils.dateparse import parse_date
+            d = parse_date(params.get('due_on') or '')
+            return due == d if d else True
+        return today <= due <= today + timedelta(days=DUE_WINDOWS[pick])
+    return True
+
+
 def project_runs(params):
-    """The running projects, and only projects: a ticket or compliance line that just has a process attached is not listed here."""
-    kind = 'project'
+    """The running projects, and only projects: a ticket or compliance line that just has a process attached is not listed here. Returns (the selected filters, the rows)."""
     today = timezone.localdate()
-    qs = (ProcessRun.objects.filter(status=ProcessRun.Status.ACTIVE, process_template__kind=kind)
+    qs = (ProcessRun.objects.filter(status=ProcessRun.Status.ACTIVE, process_template__kind=ProcessTemplate.Kind.PROJECT)
           .select_related('process_template', 'ticket__property', 'ticket__assigned_staff__user', 'property', 'contact', 'assigned_to__user', 'session_line__session__template').prefetch_related('steps'))
     q = (params.get('q') or '').strip()
     if q:
         qs = qs.filter(Q(process_template__name__icontains=q) | Q(ticket__title__icontains=q) | Q(property__name__icontains=q) | Q(ticket__property__name__icontains=q))
-    if params.get('property'):
-        qs = qs.filter(Q(property_id=params['property']) | Q(ticket__property_id=params['property']))
+    prop = Property.objects.filter(pk=params['property']).first() if (params.get('property') or '').isdigit() else None
+    if prop:
+        qs = qs.filter(Q(property_id=prop.pk) | Q(ticket__property_id=prop.pk))
+    owner = params.get('owner') or ''
+    if owner == 'none':
+        qs = qs.filter(assigned_to__isnull=True)
+    elif owner.isdigit():
+        qs = qs.filter(assigned_to_id=owner)
+    sel = {'q': q, 'property': prop, 'owner': owner, 'due': params.get('due') or '', 'due_on': params.get('due_on') or ''}
     rows = []
     for run in qs:
         steps = list(run.steps.all())
         done = sum(1 for s in steps if s.is_complete)
         cur = next((s for s in steps if not s.is_complete), None)
         due = _local_date(run.ticket.due_date) if run.ticket_id and run.ticket.due_date else None
+        if not _due_matches(due, params, today):
+            continue
         rows.append({'origin': run.origin_text(), 'who': _person(run.assigned_to) if run.assigned_to_id else '',
                      'title': run.ticket.title if run.ticket_id else (run.session_line.session.template.name if run.session_line_id else run.process_template.name), 'template': run.process_template.name,
                      'where': (run.ticket.property.name if run.ticket_id and run.ticket.property_id else run.property.name if run.property_id else run.contact.name if run.contact_id else ''),
                      'done': done, 'total': len(steps), 'pct': int(100 * done / len(steps)) if steps else 0, 'next': cur.label if cur else 'All steps done',
                      'due': due_label(due, today) if due else '', 'late': bool(due and due < today), 'from_ticket': run.ticket_id is not None, 'url': run_url(run)})
-    return kind, rows
+    return sel, rows
 
 
 def project_templates(params):

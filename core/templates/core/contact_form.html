@@ -109,19 +109,44 @@
                 </div>
             </div>
 
-            {% if all_units %}
-            <div class="mb-4">
-                <label class="form-label fw-medium d-block">Units <span class="fw-normal" style="color: var(--ink-muted);">(optional — which specific unit(s), if any of the properties above have them, e.g. which condo an Owner actually owns)</span></label>
-                <div class="d-flex flex-wrap gap-3">
-                    {% for unit in all_units %}
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="units" value="{{ unit.pk }}" id="unit-{{ unit.pk }}" {% if unit.pk in selected_unit_ids %}checked{% endif %}>
-                        <label class="form-check-label small" for="unit-{{ unit.pk }}">{{ unit.property.name }} — {{ unit.label }}</label>
+            {% if units_by_property %}
+            <div class="mb-4" id="units-field" hidden>
+                <label class="form-label fw-medium d-block">Units <span class="fw-normal" style="color: var(--ink-muted);">(optional &mdash; which unit(s) this contact owns or occupies)</span></label>
+                <div class="bubble-picker" data-bubble-picker data-mode="multi" data-name="units" id="units-picker" data-initial-values="{{ selected_unit_ids|join:',' }}">
+                    <div class="bubble-slot" data-bubble-slot data-empty-text="No units selected"></div>
+                    {% for group in units_by_property %}
+                    <div class="bubble-pool" data-bubble-pool data-unit-property="{{ group.property.pk }}" hidden>
+                        <span class="small w-100" style="color: var(--ink-muted);">{{ group.property.name }}</span>
+                        {% if group.units|length > 12 %}<input type="text" class="form-control form-control-sm bubble-filter" placeholder="Type to narrow&hellip;" data-bubble-filter>{% endif %}
+                        {% for unit in group.units %}<button type="button" class="bubble" data-value="{{ unit.pk }}" data-label="{{ unit.label }}" data-property="{{ group.property.pk }}">{{ unit.label }}</button>{% endfor %}
                     </div>
                     {% endfor %}
                 </div>
                 {% if form.units.errors %}<div class="text-danger small mt-1">{{ form.units.errors|join:', ' }}</div>{% endif %}
             </div>
+            <script>
+            (function () {
+                // Units are offered only for the properties chosen above; taking a property off drops its units.
+                var props = document.querySelector('[data-name="properties"]'), units = document.getElementById('units-picker'), field = document.getElementById('units-field');
+                if (!props || !units || !field) return;
+                function sync() {
+                    var chosen = Array.prototype.map.call(props.querySelectorAll('input[name="properties"]'), function (i) { return i.value; });
+                    units.querySelectorAll('.bubble-slot .bubble').forEach(function (b) {
+                        if (chosen.indexOf(b.dataset.property) === -1 && units._bubbleApi) units._bubbleApi.unlock(b, 0);
+                    });
+                    var any = false;
+                    units.querySelectorAll('[data-unit-property]').forEach(function (pool) {
+                        var on = chosen.indexOf(pool.dataset.unitProperty) !== -1;
+                        pool.hidden = !on;
+                        any = any || on;
+                    });
+                    field.hidden = !any && !units.querySelector('.bubble-slot .bubble');
+                }
+                props.addEventListener('bubble:lock', sync);
+                props.addEventListener('bubble:unlock', sync);
+                window.addEventListener('load', sync);
+            })();
+            </script>
             {% endif %}
 
             <div class="mb-4">

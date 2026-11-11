@@ -10,13 +10,7 @@
 </div>
 <div class="ws-note">{% if tab == 'active' %}Projects are multi-day work. A ticket or a compliance item becomes one when it will run for days or weeks; it leaves its list and is tracked here, with a link back. A process (steps done in one sitting) stays on its ticket or item and is not listed here.{% else %}Where projects and processes are set up. A project template has steps over days; a process template is plain checkbox steps for one sitting, and is attached to a ticket or used by a compliance rule. Nothing is scheduled here: scheduling is done in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>.{% endif %}</div>
 {% if tab == 'active' %}
-<form method="get" class="ws-filter">
-<input type="hidden" name="tab" value="active">
-<input type="text" name="q" value="{{ params.q }}" placeholder="Search">
-<select name="property"><option value="">Any property</option>{% for p in properties %}<option value="{{ p.pk }}" {% if params.property == p.pk|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
-<button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
-{% if params.q or params.property %}<a href="?tab=active" class="small">Clear</a>{% endif %}
-</form>
+{% include 'workspace/_project_filters.html' %}
 {% for r in rows %}
 <a class="ws-row k-project" href="{{ r.url }}" style="grid-template-columns: 8.5rem minmax(0,1fr) 6rem 3.6rem 0.9rem;"><span class="where">{{ r.where }}</span><span class="main"><b>{{ r.title }}</b><small>Step {{ r.done|add:1 }} of {{ r.total }}: {{ r.next }} &middot; {{ r.origin }}{% if r.who %} &middot; {{ r.who }}{% endif %}</small></span><span class="ws-pb"><i style="width: {{ r.pct }}%"></i></span><span class="due{% if r.late %} late{% endif %}">{{ r.due }}</span><span class="go">&rsaquo;</span></a>
 {% empty %}

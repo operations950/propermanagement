@@ -117,9 +117,15 @@ def compliance(request):
 def projects(request):
     tab = 'templates' if request.GET.get('tab') == 'templates' else 'active'
     params = request.GET
-    ctx = {'tab': tab, 'params': params, 'properties': Property.objects.filter(is_active=True).order_by('name')}
+    ctx = {'tab': tab, 'params': params}
     if tab == 'active':
-        _, ctx['rows'] = services.project_runs(params)
+        from core.models import properties_by_type
+        from tickets.views import DUE_OPTIONS
+        staff_list = StaffProfile.objects.select_related('user').order_by('user__first_name')
+        sel, ctx['rows'] = services.project_runs(params)
+        sel.update(due_label=dict(DUE_OPTIONS).get(sel['due'], 'Custom date' if sel['due'] == 'custom' else ''),
+                   owner_name=next((str(s) for s in staff_list if str(s.pk) == sel['owner']), ''))
+        ctx.update(sel=sel, staff_list=staff_list, due_options=DUE_OPTIONS, properties_by_type=properties_by_type())
     else:
         ctx['project_templates'], ctx['process_templates'] = services.project_templates(params)
     return render(request, 'workspace/projects.html', ctx)

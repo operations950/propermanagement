@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -6,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -46,8 +48,12 @@ def _client_ip(request):
     return request.META.get('REMOTE_ADDR', '0.0.0.0')
 
 
-def _run_redirect(run):
+def _run_redirect(request, run):
+    """Back to where the step was worked: the run's own screen when that is where the person was, otherwise the ticket, property or contact it belongs to."""
     if run.session_line_id:
+        return redirect('ws_run_detail', pk=run.pk)
+    referer = request.META.get('HTTP_REFERER', '')
+    if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}) and urlparse(referer).path == reverse('ws_run_detail', args=[run.pk]):
         return redirect('ws_run_detail', pk=run.pk)
     if run.ticket_id:
         return redirect('ticket_detail', pk=run.ticket_id)
@@ -309,7 +315,7 @@ def process_run_attach(request):
         if referer and url_has_allowed_host_and_scheme(referer, allowed_hosts={request.get_host()}):
             return redirect(referer)
         return redirect('dashboard')
-    return _run_redirect(run)
+    return _run_redirect(request, run)
 
 
 @login_required
@@ -321,7 +327,7 @@ def process_run_step_update(request, step_pk):
     if request.method == 'POST':
         if step.requires_upload and not step.attachments.exists():
             messages.error(request, 'Attach a file to this step before completing it.')
-            return _run_redirect(step.run)
+            return _run_redirect(request, step.run)
 
         if step.step_type == StepType.CHECKBOX:
             step.response = {'checked': True}
@@ -335,7 +341,7 @@ def process_run_step_update(request, step_pk):
                 step.response = {'value': float(raw)} if raw else {}
             except ValueError:
                 messages.error(request, 'Enter a valid number.')
-                return _run_redirect(step.run)
+                return _run_redirect(request, step.run)
         elif step.step_type == StepType.DATE_TIME:
             step.response = {'value': request.POST.get('value', '').strip()}
         elif step.step_type == StepType.DROPDOWN_MULTISELECT:
@@ -346,7 +352,7 @@ def process_run_step_update(request, step_pk):
             step.response = {'accepted': True}
         step.mark_complete(request.user)
         messages.success(request, 'Saved.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -370,7 +376,7 @@ def process_run_step_upload(request, step_pk):
             messages.error(request, ' '.join(
                 error for errors in form.errors.values() for error in errors
             ) or 'Could not attach that file.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -387,7 +393,7 @@ def process_run_step_complete_upload(request, step_pk):
         else:
             step.mark_complete(request.user)
             messages.success(request, 'Saved.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -414,7 +420,7 @@ def process_run_step_assign_task(request, step_pk):
         step.response = {'ticket_id': ticket.pk}
         step.save(update_fields=['response'])
         messages.success(request, f'Created task "{ticket.title}".')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -432,7 +438,7 @@ def process_run_step_complete_task(request, step_pk):
         else:
             step.mark_complete(request.user)
             messages.success(request, 'Saved.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -450,7 +456,7 @@ def process_run_step_schedule_event(request, step_pk):
     token = GoogleCalendarToken.objects.filter(staff=getattr(request.user, 'staff_profile', None)).first()
     if not token:
         messages.error(request, 'Connect your Google Calendar first (see your department dashboard) to schedule an event.')
-        return _run_redirect(run)
+        return _run_redirect(request, run)
 
     if request.method == 'POST':
         start = parse_datetime(request.POST.get('event_datetime', ''))
@@ -458,7 +464,7 @@ def process_run_step_schedule_event(request, step_pk):
             start = timezone.make_aware(start)
         if not start:
             messages.error(request, 'Pick a valid date and time — nothing was scheduled.')
-            return _run_redirect(run)
+            return _run_redirect(request, run)
         duration = step.config.get('default_duration_minutes', 60)
         end = start + timedelta(minutes=duration)
         calendar_id = token.enabled_calendar_ids[0] if token.enabled_calendar_ids else 'primary'
@@ -469,7 +475,7 @@ def process_run_step_schedule_event(request, step_pk):
             )
         except GoogleCalendarWriteError as e:
             messages.error(request, str(e))
-            return _run_redirect(run)
+            return _run_redirect(request, run)
 
         entry_points = event.get('conferenceData', {}).get('entryPoints', [])
         video_link = next((e['uri'] for e in entry_points if e.get('entryPointType') == 'video'), event.get('hangoutLink', ''))
@@ -482,7 +488,7 @@ def process_run_step_schedule_event(request, step_pk):
         }
         step.mark_complete(request.user)
         messages.success(request, 'Event scheduled.')
-    return _run_redirect(run)
+    return _run_redirect(request, run)
 
 
 @login_required
@@ -508,7 +514,7 @@ def process_run_step_decide(request, step_pk):
                     sequence_order__gt=step.sequence_order, sequence_order__lt=target.sequence_order,
                 ).update(is_required=False)
         messages.success(request, 'Decision recorded.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -521,7 +527,7 @@ def process_run_step_mark_sent(request, step_pk):
         step.response = {'note': request.POST.get('note', '').strip()}
         step.mark_complete(request.user)
         messages.success(request, 'Marked sent.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -534,15 +540,15 @@ def process_run_step_meeting(request, step_pk):
             date_value = datetime.strptime(raw_date, '%Y-%m-%d').date()
         except ValueError:
             messages.error(request, 'Enter the date of the meeting.')
-            return _run_redirect(step.run)
+            return _run_redirect(request, step.run)
         time_text, place = request.POST.get('time', '').strip(), request.POST.get('place', '').strip()
         if not time_text or not place:
             messages.error(request, 'Enter the time and the place of the meeting.')
-            return _run_redirect(step.run)
+            return _run_redirect(request, step.run)
         step.response = {'date': date_value.isoformat(), 'time': time_text[:40], 'place': place[:300], 'video_link': request.POST.get('video_link', '').strip()[:300]}
         step.mark_complete(request.user)
         messages.success(request, 'Meeting details saved. They fill in the notices and the affidavit.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -556,19 +562,19 @@ def process_run_step_person(request, step_pk):
         phone = request.POST.get('phone', '').strip()
         if not name:
             messages.error(request, 'Enter the name.')
-            return _run_redirect(step.run)
+            return _run_redirect(request, step.run)
         if email:
             try:
                 validate_email(email)
             except ValidationError:
                 messages.error(request, 'Enter a valid email address, or leave it blank for now.')
-                return _run_redirect(step.run)
+                return _run_redirect(request, step.run)
         if phone:
             try:
                 Contact._meta.get_field('phone').run_validators(phone)
             except ValidationError:
                 messages.error(request, 'Enter the phone as XXX-XXX-XXXX, for example 561-599-6300.')
-                return _run_redirect(step.run)
+                return _run_redirect(request, step.run)
         kind = Contact.ContactType.TENANT if step.config.get('role') == 'tenant' else Contact.ContactType.OWNER
         contact = Contact.objects.filter(email__iexact=email, contact_type=kind).first() if email else None
         if contact is None:
@@ -582,7 +588,7 @@ def process_run_step_person(request, step_pk):
         step.response = {'contact_id': contact.pk, 'name': contact.name, 'email': contact.email, 'phone': contact.phone}
         step.mark_complete(request.user)
         messages.success(request, f'{contact.name} saved as a contact.' + ('' if contact.email else ' No email yet: add it before sending a letter by email.'))
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 @login_required
@@ -595,7 +601,7 @@ def process_run_step_resume_wait(request, step_pk):
         step.response = {**step.response, 'resumed_at': timezone.now().isoformat(), 'resumed_by': 'manual'}
         step.mark_complete(request.user)
         messages.success(request, 'Resumed.')
-    return _run_redirect(step.run)
+    return _run_redirect(request, step.run)
 
 
 # ---------------------------------------------------------------------------
@@ -617,7 +623,7 @@ def process_run_external_link_create(request, run_pk):
             messages.success(request, f'Link created: {link_url}')
         else:
             messages.error(request, 'Could not create link.')
-    return _run_redirect(run)
+    return _run_redirect(request, run)
 
 
 def process_external_access(request, token):

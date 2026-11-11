@@ -1768,6 +1768,14 @@ def contact_import_commit(request):
     return JsonResponse({'success': True, 'created': created, 'message': ' '.join(parts)})
 
 
+def _units_by_property():
+    """Active units grouped under their property (only properties that have units), so the contact form can offer a property's units once that property is chosen."""
+    groups = {}
+    for unit in Unit.objects.filter(is_active=True, property__is_active=True).select_related('property').order_by('property__name', 'label'):
+        groups.setdefault(unit.property_id, {'property': unit.property, 'units': []})['units'].append(unit)
+    return list(groups.values())
+
+
 def _contact_form_context(form, **extra):
     selected_ids = [str(v.pk if hasattr(v, 'pk') else v) for v in (form['properties'].value() or [])]
     selected_unit_ids = [str(v.pk if hasattr(v, 'pk') else v) for v in (form['units'].value() or [])]
@@ -1776,7 +1784,7 @@ def _contact_form_context(form, **extra):
     return {
         'form': form, 'properties_by_type': properties_by_type(),
         'selected_property_ids': ','.join(selected_ids),
-        'all_units': Unit.objects.filter(is_active=True).select_related('property').order_by('property__name', 'label'),
+        'units_by_property': _units_by_property(),
         'selected_unit_ids': [int(v) for v in selected_unit_ids],
         'trade_choices': TRADE_CHOICES,
         'trade_is_other': bool(trade_value) and trade_value not in TRADE_CHOICES,

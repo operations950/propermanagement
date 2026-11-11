@@ -1,0 +1,55 @@
+{% comment %}The filter bubbles for Projects: the same box, bubbles and layers as the Tickets and Compliance lists (look and open/back script shared: tickets/_filter_box_style.html and _filter_box_script.html).{% endcomment %}
+{% include 'tickets/_filter_box_style.html' %}
+<form method="get" class="d-flex gap-2 mb-2">
+    <input type="hidden" name="tab" value="active">
+    {% if sel.property %}<input type="hidden" name="property" value="{{ sel.property.pk }}">{% endif %}
+    {% if sel.owner %}<input type="hidden" name="owner" value="{{ sel.owner }}">{% endif %}
+    {% if sel.due %}<input type="hidden" name="due" value="{{ sel.due }}">{% endif %}
+    {% if sel.due_on %}<input type="hidden" name="due_on" value="{{ sel.due_on }}">{% endif %}
+    <input type="text" name="q" class="form-control" style="min-width: min(280px, 100%);" placeholder="Search projects&hellip;" value="{{ sel.q }}">
+</form>
+<div class="tf-box" id="tf-box">
+    <div class="tf-head">
+        <i data-lucide="sliders-horizontal" class="icon"></i> Filters
+        {% if sel.q or sel.owner or sel.property or sel.due %}
+        <a href="{% querystring q=None property=None due=None due_on=None owner=None %}">Clear filters</a>
+        {% endif %}
+    </div>
+
+    <div class="tf-layer" data-tf-layer="root">
+        <span class="tf-pair"><button type="button" class="bubble{% if sel.property %} bubble-locked{% endif %}" data-tf-open="property">Property{% if sel.property %}: {{ sel.property.name }}{% endif %}</button>{% if sel.property %}<a class="tf-x" href="{% querystring property=None %}" title="Clear">&times;</a>{% endif %}</span>
+        <span class="tf-pair"><button type="button" class="bubble{% if sel.due %} bubble-locked{% endif %}" data-tf-open="due">Due date{% if sel.due %}: {{ sel.due_label }}{% endif %}</button>{% if sel.due %}<a class="tf-x" href="{% querystring due=None due_on=None %}" title="Clear">&times;</a>{% endif %}</span>
+        <span class="tf-pair"><button type="button" class="bubble{% if sel.owner %} bubble-locked{% endif %}" data-tf-open="staff">Assigned to{% if sel.owner == 'none' %}: Unassigned{% elif sel.owner %}: {{ sel.owner_name }}{% endif %}</button>{% if sel.owner %}<a class="tf-x" href="{% querystring owner=None %}" title="Clear">&times;</a>{% endif %}</span>
+    </div>
+
+    <div class="tf-layer" data-tf-layer="property" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        {% for entry in properties_by_type %}<button type="button" class="bubble" data-tf-open="property-{{ entry.type_key }}">{{ entry.type_label }}</button>{% endfor %}
+    </div>
+    {% for entry in properties_by_type %}
+    <div class="tf-layer" data-tf-layer="property-{{ entry.type_key }}" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="property">&larr; Back</button>
+        {% if entry.needs_city_tier %}
+            {% for city_entry in entry.cities %}
+                <span class="tf-city">{{ city_entry.city }}</span>
+                {% for p in city_entry.properties %}<a href="{% querystring property=p.id %}" class="bubble{% if sel.property.pk == p.id %} bubble-locked{% endif %}">{{ p.name }}</a>{% endfor %}
+            {% endfor %}
+        {% else %}
+            {% for p in entry.properties %}<a href="{% querystring property=p.id %}" class="bubble{% if sel.property.pk == p.id %} bubble-locked{% endif %}">{{ p.name }}</a>{% empty %}<span class="small text-muted">No properties of this type.</span>{% endfor %}
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="tf-layer" data-tf-layer="due" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        {% for value, label in due_options %}<a href="{% querystring due=value due_on=None %}" class="bubble{% if sel.due == value %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
+        <span class="tf-pair"><input type="date" class="form-control form-control-sm" style="width: auto;" data-due-custom-input value="{{ sel.due_on }}" aria-label="Custom date"><span class="small text-muted">custom date</span></span>
+    </div>
+
+    <div class="tf-layer" data-tf-layer="staff" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        <a href="{% querystring owner='none' %}" class="bubble{% if sel.owner == 'none' %} bubble-locked{% endif %}">Unassigned</a>
+        {% for sp in staff_list %}<a href="{% querystring owner=sp.id %}" class="bubble{% if sel.owner == sp.id|stringformat:'s' %} bubble-locked{% endif %}">{{ sp.user.get_full_name|default:sp.user.username }}</a>{% endfor %}
+    </div>
+</div>
+{% include 'tickets/_filter_box_script.html' %}
