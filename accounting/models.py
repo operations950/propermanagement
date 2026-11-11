@@ -989,3 +989,26 @@ class MasterAccount(models.Model):
 
     def __str__(self):
         return f'{self.code} {self.name}'
+
+
+class LedgerDetail(models.Model):
+    """One line of the old system's general ledger, kept as detail behind the year-to-date figures we carried across as a single number. It is not a journal entry and changes no balance."""
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='ledger_detail')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='ledger_detail')
+    book = models.CharField(max_length=8, choices=[('cash', 'Cash'), ('accrual', 'Accrual')])
+    date = models.DateField()
+    period = models.DateField(help_text='The first of the month the old system counted it in.')
+    who = models.CharField(max_length=200, blank=True)
+    ctrl = models.CharField(max_length=30, blank=True, help_text="The old system's control number, like K-1529 or R-2846.")
+    reference = models.CharField(max_length=80, blank=True)
+    debit = models.DecimalField(default=ZERO, **MONEY)
+    credit = models.DecimalField(default=ZERO, **MONEY)
+    remarks = models.CharField(max_length=500, blank=True)
+    batch = models.CharField(max_length=60, blank=True)
+
+    class Meta:
+        ordering = ['date', 'id']
+        indexes = [models.Index(fields=['association', 'account', 'book'], name='ledger_detail_lookup')]
+
+    def __str__(self):
+        return f'{self.date} {self.account.code} {self.who}'

@@ -1429,6 +1429,31 @@ class BudgetAfterATakeoverTests(TestCase):
         self.assertContains(self.client.get(url), 'bdDetail(')
         self.assertEqual(self.client.get(detail + '999999').status_code, 404)
 
+    def test_the_old_systems_lines_replace_the_carried_figure_in_the_drill_down_and_still_tie_out(self):
+        from .models import LedgerDetail
+        ins = ledger.account(self.prop, '6882')
+        mk = lambda book, day, who, remarks, ctrl, debit, credit='0': LedgerDetail.objects.create(
+            association=self.prop, account=ins, book=book, date=day, period=day.replace(day=1), who=who, remarks=remarks, ctrl=ctrl, reference='Check 12', debit=D(debit), credit=D(credit))
+        mk('cash', date(2026, 2, 3), 'Cash only Co', 'cash line', 'K-1', '5')
+        mk('accrual', date(2026, 2, 3), 'Citizens', 'Windstorm premium', 'K-1529', '60000')
+        mk('accrual', date(2026, 5, 9), 'Citizens', 'Flood premium', 'K-1700', '39000')
+        mk('accrual', date(2026, 5, 9), 'Citizens', 'Refund', 'K-1701', '0', '1000')
+        url = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
+        self.client.post(url, {'action': 'start'})
+        ver = BudgetVersion.objects.get(budget__association=self.prop, stage='draft')
+        detail = reverse('accounting:budget_detail', args=[self.prop.pk, 2027]) + '?stage=draft&line='
+        d = self.client.get(detail + str(ver.lines.get(account__code='6882').pk)).json()
+        self.assertEqual(d['old_book'], 'accrual')                                  # the accrual lines win once they are loaded
+        self.assertEqual([(r['date'], r['amount'], r['ref']) for r in d['rows'] if r.get('old')], [('2026-02-03', 60000.0, 'K-1529'), ('2026-05-09', 39000.0, 'K-1700'), ('2026-05-09', -1000.0, 'K-1701')])
+        self.assertEqual(d['rows'][0]['what'], 'Windstorm premium')
+        self.assertEqual((d['carried'], d['old_total']), (2000.0, 98000.0))          # what the lines do not explain stays as one row
+        self.assertIn('Not itemized', d['carried_label'])
+        self.assertEqual((d['total'], d['actual'], d['matches']), (108000.0, 108000.0, True))
+        self.assertEqual(d['rows'][-1]['date'], '2026-10-10')                       # our own entries follow the old system's lines
+        LedgerDetail.objects.filter(book='accrual').delete()
+        d = self.client.get(detail + str(ver.lines.get(account__code='6882').pk)).json()
+        self.assertEqual((d['old_book'], d['old_total'], d['carried']), ('cash', 5.0, 99995.0))
+
 
 @override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
                              'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
@@ -1552,3 +1577,81 @@ class BoardSheetSmallLinesTests(TestCase):
             sheet = vb._sheet(mock.Mock(budget=mock.Mock(year=2027)), {'remaining': 2}, 52)
         shown = [l['name'] for s in sheet['sections'] for l in s['lines']]
         self.assertEqual(shown, ['Insurance', 'New Thing'])
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                             'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class OldSystemLedgerLoadTests(TestCase):
+    """The Yardi general ledger export becomes read-only detail behind the carried figures."""
+
+    def setUp(self):
+        self.prop = make_assoc('Alpha Condos')
+        ledger.post_entry(self.prop, date(2026, 9, 30), [{'account': '1110', 'debit': '700'}, {'account': '6882', 'debit': '1000'}, {'account': '4500', 'credit': '1700'}],
+                          memo='Opening balance', source=JournalEntry.Source.OPENING, basis='cash')
+
+    def export(self, rows, book='Cash'):
+        import tempfile
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(['General Ledger']); ws.append(['Active Properties']); ws.append(['Period = Jan 2026-Sep 2026']); ws.append([f'Book = {book}'])
+        ws.append(['Property Name', 'Date', 'Period', 'Person/Description', 'CTRL Number', 'Reference', 'Debit', 'Credit', 'Balance', 'Remarks'])
+        for code, name, lines in rows:
+            ws.append([code, None, None, name, None, None, None, None, 0, '= Beginning Balance ='])
+            for day, who, ctrl, ref, dr, cr, remarks in lines:
+                ws.append(['Alpha Condos', day, day.replace(day=1), who, ctrl, ref, dr, cr, 0, remarks])
+            ws.append([None, None, None, '  Net Change=0', None, None, None, None, None, '= Ending Balance ='])
+            ws.append([None] * 10)
+        f = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+        f.close()
+        wb.save(f.name)
+        return f.name
+
+    def good(self, **kw):
+        from datetime import datetime
+        d = lambda m, n: datetime(2026, m, n)
+        return self.export([('1110', 'Operating Cash', [(d(3, 2), 'Owner', 'R-1', 'Check 5', 1700, 0, 'Assessment'), (d(4, 1), 'Citizens', 'K-2', '88', 0, 1000, 'Insurance')]),
+                            ('4500', 'Fees - Residential', [(d(3, 2), 'Owner', 'R-1', 'Check 5', 0, 1700, 'Assessment')]),
+                            ('6882', 'Insurance', [(d(4, 1), 'Citizens', 'K-2', '88', 1000, 0, 'Insurance')])], **kw)
+
+    def test_a_file_that_ties_to_what_we_carried_is_stored_as_detail_and_changes_no_balance(self):
+        from . import gl_detail
+        from .models import JournalLine, LedgerDetail
+        gl_detail.ALIASES['Alpha Condos'] = 'Alpha Condos'
+        book, period, lines = gl_detail.read(self.good())
+        self.assertEqual((book, len(lines)), ('cash', 4))
+        res = gl_detail.check(book, lines)
+        self.assertEqual((res['unbalanced'], res['missing_accounts'], res['differences']), ([], [], []))
+        before = JournalLine.objects.count()
+        self.assertEqual(gl_detail.load(book, period, lines), {'Alpha Condos': 4})
+        self.assertEqual(JournalLine.objects.count(), before)
+        self.assertEqual(LedgerDetail.objects.filter(book='cash').count(), 4)
+        gl_detail.load(book, period, lines)                                          # again: replaced, not doubled
+        self.assertEqual(LedgerDetail.objects.filter(book='cash').count(), 4)
+
+    def test_a_file_that_does_not_add_up_is_reported_and_the_command_refuses_to_store_it(self):
+        import io
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from datetime import datetime
+        from . import gl_detail
+        from .models import LedgerDetail
+        gl_detail.ALIASES['Alpha Condos'] = 'Alpha Condos'
+        bad = self.export([('1110', 'Operating Cash', [(datetime(2026, 4, 1), 'Citizens', 'K-2', '88', 0, 900, 'Insurance')]), ('6882', 'Insurance', [(datetime(2026, 4, 1), 'Citizens', 'K-2', '88', 900, 0, 'Insurance')])])
+        book, period, lines = gl_detail.read(bad)
+        res = gl_detail.check(book, lines)
+        self.assertEqual(sorted((d[1], d[3], d[4]) for d in res['differences']), [('4500', 0, -1700), ('6882', 900, 1000)])
+        with self.assertRaises(CommandError):
+            call_command('load_gl_detail', bad, '--apply', stdout=io.StringIO())
+        self.assertFalse(LedgerDetail.objects.exists())
+        call_command('load_gl_detail', self.good(), stdout=io.StringIO())             # a dry run keeps nothing
+        self.assertFalse(LedgerDetail.objects.exists())
+        call_command('load_gl_detail', self.good(), '--apply', stdout=io.StringIO())
+        self.assertEqual(LedgerDetail.objects.count(), 4)
+
+    def test_an_unknown_association_or_unlabelled_book_is_refused(self):
+        from . import gl_detail
+        with self.assertRaises(gl_detail.GLError):
+            gl_detail.check('cash', [dict(prop='Nobody Condos', code='1110', ctrl='K-1', debit=D('1'), credit=D('0'))])
+        with self.assertRaises(gl_detail.GLError):
+            gl_detail.read(self.good(book='Both'))

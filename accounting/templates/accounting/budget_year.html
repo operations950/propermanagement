@@ -36,10 +36,15 @@
     .bd-act { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; border-bottom: 1px dotted #98a2b3; }
     .bd-act:hover { color: var(--brand-primary); border-bottom-color: var(--brand-primary); }
     .bd-modal { position: fixed; inset: 0; z-index: 1080; background: rgba(20,30,50,.45); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 12px; overflow-y: auto; }
-    .bd-modal .box { background: #fff; border-radius: 14px; width: 100%; max-width: 860px; box-shadow: 0 20px 60px rgba(20,30,50,.35); overflow: hidden; }
+    .bd-modal .box { background: #fff; border-radius: 14px; width: 100%; max-width: 1040px; box-shadow: 0 20px 60px rgba(20,30,50,.35); overflow: hidden; }
     .bd-modal .hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border-hairline); }
-    .bd-modal .bd-table td, .bd-modal .bd-table th { white-space: normal; }
+    .bd-modal .bd-table { table-layout: fixed; font-size: 12px; }
+    .bd-modal .bd-table td, .bd-modal .bd-table th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 8px; line-height: 1.35; }
+    .bd-modal .bd-table th { padding-top: 5px; padding-bottom: 5px; font-size: 11px; }
+    .bd-modal .bd-table td:last-child, .bd-modal .bd-table th:last-child { text-align: right; }
+    .bd-modal .bd-table tr:hover td { background: #f6f8fb; }
     .bd-modal tr.carried td { background: #f7f8fa; font-style: italic; }
+    .bd-modal tr.old td { color: #4a5568; }
     @media print { .bd-modal { display: none !important; } }
     .bd-stale { background: #fff7e0; border: 1px solid #f0d58a; color: #7a5200; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
     .bd-pos { color: #b42318; } .bd-neg { color: #17803d; } .bd-mut { color: var(--ink-muted); }
@@ -192,17 +197,19 @@
             if (!x.ok) { m.querySelector('.hd div').innerHTML = esc(x.j.error || 'That did not load.'); return; }
             var d = x.j, fmt = function (n) { return $2(n); };
             var rows = '';
-            if (d.carried) rows += '<tr class="carried"><td></td><td colspan="3" style="text-align:left">' + esc(d.carried_label) + ' <span class="bd-mut">(one figure: the old system\'s year to date)</span></td><td>' + fmt(d.carried) + '</td></tr>';
+            var cell = function (txt, cls) { txt = txt || ''; return '<td style="text-align:left"' + (cls ? ' class="' + cls + '"' : '') + ' title="' + esc(txt) + '">' + esc(txt) + '</td>'; };
+            if (d.carried) rows += '<tr class="carried"><td></td><td colspan="3" style="text-align:left" title="' + esc(d.carried_label) + '">' + esc(d.carried_label) + (d.old_book ? '' : ' <span class="bd-mut">(one figure: the old system\'s year to date)</span>') + '</td><td>' + fmt(d.carried) + '</td></tr>';
             d.rows.forEach(function (r) {
                 var dt = new Date(r.date + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
-                rows += '<tr><td style="text-align:left">' + dt + '</td><td style="text-align:left">' + esc(r.what || r.source) + '</td><td style="text-align:left">' + esc(r.who) + '</td><td style="text-align:left" class="bd-mut">' + esc(r.ref) + ' · ' + esc(r.source) + '</td><td>' + fmt(r.amount) + '</td></tr>';
+                var ent = [r.ref, r.source].filter(function (x) { return x; }).join(' · ');
+                rows += '<tr' + (r.old ? ' class="old"' : '') + '><td style="text-align:left">' + dt + '</td>' + cell(r.what || r.source) + cell(r.who) + cell(ent, 'bd-mut') + '<td>' + fmt(r.amount) + '</td></tr>';
             });
             if (!rows) rows = '<tr><td colspan="5" class="bd-mut" style="text-align:center;padding:18px">Nothing in the books for this line.</td></tr>';
             m.innerHTML = '<div class="box"><div class="hd"><div><div style="font-size:17px;font-weight:700">' + esc(d.name) + ' <span class="bd-mut small">' + esc(d.code) + '</span></div><div class="bd-mut small">Actual ' + esc(d.label) + (d.reserve ? ' · what was put into the reserve' : '') + '</div></div><button class="bd-x" title="Close" onclick="bdCloseDetail()">×</button></div>' +
-                '<div style="max-height:62vh;overflow-y:auto"><table class="bd-table"><thead><tr><th>Date</th><th style="text-align:left">What</th><th style="text-align:left">Who</th><th style="text-align:left">Entry</th><th>Amount</th></tr></thead><tbody>' + rows +
+                '<div style="max-height:62vh;overflow-y:auto"><table class="bd-table"><colgroup><col style="width:62px"><col><col style="width:24%"><col style="width:20%"><col style="width:96px"></colgroup><thead><tr><th style="text-align:left">Date</th><th style="text-align:left">What</th><th style="text-align:left">Who</th><th style="text-align:left">Entry</th><th>Amount</th></tr></thead><tbody>' + rows +
                 '<tr class="tot"><td colspan="4">Total</td><td>' + fmt(d.total) + '</td></tr></tbody></table></div>' +
                 '<div class="small bd-mut" style="padding:10px 18px">' + (d.matches ? '' : '<span style="color:#b45309">This does not equal the ' + fmt(d.actual) + ' on the line: the books have moved since this version was made. Use "Bring the actuals up to date".</span> ') +
-                (d.carried ? 'Detail for the months before our books began is not in the system: the old system\'s year to date came across as one figure.' : '') + '</div></div>';
+                (d.old_book ? 'The lines before our books began are from the old system\'s ' + d.old_book + ' ledger.' : (d.carried ? 'Detail for the months before our books began is not in the system: the old system\'s year to date came across as one figure.' : '')) + '</div></div>';
         }).catch(function () { m.querySelector('.hd div').innerHTML = 'That did not load. Check the connection and try again.'; });
     };
     window.bdCloseDetail = closeDetail;

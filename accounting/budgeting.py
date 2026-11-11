@@ -283,6 +283,22 @@ def refresh_actuals(version):
     return version
 
 
+def carried_detail(prop, acct, info, reserve):
+    """The old system's own ledger lines behind the figure carried across for the months before our books began (rows, book). Uses the accrual lines when they have been loaded, since the budget
+    runs on the accrual book, otherwise the cash lines."""
+    from .models import LedgerDetail
+    if not info['carried']:
+        return [], ''
+    book = 'accrual' if LedgerDetail.objects.filter(association=prop, book='accrual').exists() else 'cash'
+    qs = LedgerDetail.objects.filter(association=prop, account=acct, book=book, period__gte=info['fy_start'], period__lte=_add_months(info['first'], -1)).order_by('date', 'id')
+    rows = []
+    for l in qs:
+        if reserve and not l.credit:
+            continue
+        rows.append({'date': l.date.isoformat(), 'what': l.remarks or l.who, 'who': l.who if l.remarks else '', 'ref': l.ctrl, 'source': l.reference, 'amount': l.credit if reserve else l.debit - l.credit})
+    return rows, (book if rows else '')
+
+
 def actual_detail(version, line):
     """Everything behind one line's actual, so the screen can show it: the part that came across from the old system as a single figure (the months before our books began), then
     every entry in our books after that. The total is the actual on the line; `matches` says whether it is (it is not when the books have moved since the version was made)."""
@@ -306,10 +322,18 @@ def actual_detail(version, line):
                          'source': l.entry.get_source_display(), 'amount': float(amount)})
         if reserve and info['carried']:
             carried += prior_ytd(prop, info['fy_start'].year).get(acct.pk, ZERO)
-    total = carried + sum((Decimal(str(r['amount'])) for r in rows), ZERO)
+    old, book = carried_detail(prop, acct, info, reserve)
     carried_label = f'{_range_label(info["fy_start"], _add_months(info["first"], -1))}, carried from the old system' if info['carried'] else 'Carried from the old system'
+    itemized = sum((r['amount'] for r in old), ZERO)
+    if old:                       # the old system's lines replace the one figure; whatever they do not explain stays as a single row so the total is still the actual
+        carried_total = carried
+        carried = carried_total - itemized
+        rows = sorted([dict(r, amount=float(r['amount']), old=True) for r in old] + rows, key=lambda r: r['date'])
+        if abs(carried) >= Decimal('0.005'):
+            carried_label = f'Not itemized: the old system carried {carried_total:,.2f} and its {book} lines add to {itemized:,.2f}'
+    total = carried + sum((Decimal(str(r['amount'])) for r in rows), ZERO)
     return {'code': acct.code, 'name': acct.name, 'label': info['actual_label'], 'carried': float(carried), 'carried_label': carried_label, 'rows': rows, 'total': float(total),
-            'actual': float(line.actual), 'matches': abs(total - line.actual) < Decimal('0.005'), 'reserve': reserve}
+            'actual': float(line.actual), 'matches': abs(total - line.actual) < Decimal('0.005'), 'reserve': reserve, 'old_book': book, 'old_total': float(itemized)}
 
 
 def heal(version, have):
