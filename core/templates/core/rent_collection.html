@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}Long-term rent collection{% endblock %}
+{% block content %}
+<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Long-term rent collection {% include '_tip.html' with text="Rent comes in the first days of the month. For each long-term rental, the rent we expect is compared with what QuickBooks shows came in this month. Confirm each one. An owner who is paid the month it is collected is paid for it only once its rent is confirmed here." %}</h2>
+        <div class="small text-muted">{{ rent_month|date:"F Y" }} rent &middot; {{ summary.detail }}</div></div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ rent_month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+<div class="card" style="border-radius: 12px;"><div class="card-body p-2"><div class="table-responsive">
+<table class="table table-sm align-middle mb-0" style="font-size: 0.9rem;">
+    <thead><tr><th>Rental</th><th>Owner is paid</th><th style="text-align: right;">Expected rent</th><th style="text-align: right;">QuickBooks shows</th><th style="text-align: right;">Difference</th><th>Confirm</th></tr></thead>
+    <tbody>
+    {% for r in rows %}<tr>
+        <td class="fw-semibold">{{ r.property.name }}</td>
+        <td class="small">{{ r.timing }}</td>
+        <td style="text-align: right;">{% if r.expected is not None %}{{ r.expected|money }}{% else %}
+            <form method="post" class="d-inline-flex gap-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_rent"><input type="hidden" name="property" value="{{ r.property.pk }}"><input class="form-control form-control-sm text-end" style="width: 7rem;" name="monthly_rent" placeholder="Monthly rent"><button class="btn btn-sm btn-outline-secondary">Set</button></form>{% endif %}</td>
+        <td style="text-align: right;">{{ r.seen|money }}</td>
+        <td style="text-align: right;">{% if r.diff is None %}&mdash;{% elif r.kind == 'matches' %}<span style="color: var(--status-good);">&#10003; 0.00</span>{% else %}<span style="color: #9a6a00;">{{ r.diff|money }}</span>{% endif %}</td>
+        <td>
+            {% if r.check %}<span class="badge rounded-pill {% if r.check.status == 'received' %}text-bg-success{% elif r.check.status == 'partial' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ r.check.get_status_display }}</span>
+                {% if r.check.note %}<span class="small text-muted">{{ r.check.note }}</span>{% endif %}
+                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="unconfirm"><input type="hidden" name="property" value="{{ r.property.pk }}"><button class="btn btn-link btn-sm text-muted p-0">Undo</button></form>
+            {% else %}
+            <form method="post" class="d-flex flex-wrap gap-1 align-items-center">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="confirm"><input type="hidden" name="property" value="{{ r.property.pk }}">
+                <input class="form-control form-control-sm" style="width: 11rem;" name="note" placeholder="{% if r.kind == 'matches' or r.kind == 'no_rent' %}Note (optional){% else %}Why the difference{% endif %}">
+                <button class="btn btn-sm btn-primary" name="status" value="received">{% if r.kind == 'matches' %}Rent received{% else %}Confirm received{% endif %}</button>
+                <button class="btn btn-sm btn-outline-secondary" name="status" value="partial">Partly</button>
+                <button class="btn btn-sm btn-outline-secondary" name="status" value="not_received">Not received</button></form>
+            {% endif %}
+        </td></tr>
+    {% empty %}<tr><td colspan="6" class="text-muted p-3">No long-term rentals are set up for the close.</td></tr>{% endfor %}
+    </tbody></table></div></div></div>
+<p class="small text-muted mt-2">The rent shown is the deposits coded in QuickBooks this month for the rental. Set a rental's monthly rent once; it is kept. If the books are not right yet, do the bookkeeping first and look again.</p>
+{% endblock %}

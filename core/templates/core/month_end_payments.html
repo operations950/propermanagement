@@ -42,7 +42,7 @@
             {% for r in b.rows %}
             <tr>
                 <td>{% if r.state == 'payable' %}<input type="checkbox" class="form-check-input" name="pick" value="{{ r.property.pk }}" data-pick aria-label="Pay {{ r.property.name }}">{% endif %}</td>
-                <td class="fw-semibold">{{ r.property.name }}{% if b.owner %}<div class="small fw-normal {% if not r.property.owner_legal_name %}text-warning-emphasis{% else %}text-muted{% endif %}">{% if r.property.owner_legal_name %}Pay to {{ r.property.owner_legal_name }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#owner-legal-name" class="text-decoration-none" style="color: #8a5a00;">No legal name set</a>{% endif %}</div>{% endif %}</td>
+                <td class="fw-semibold">{{ r.property.name }}{% if r.timing %} <span class="mp-chip progress" title="{% if r.timing == 'Same month' %}Paid for {{ r.pay_month|date:'F' }}, the month it is collected: only once that rent is confirmed{% else %}Paid for {{ r.pay_month|date:'F' }}, the month that has closed{% endif %}">{{ r.timing }}: {{ r.pay_month|date:"F" }}</span>{% endif %}{% if b.owner %}<div class="small fw-normal {% if not r.property.owner_legal_name %}text-warning-emphasis{% else %}text-muted{% endif %}">{% if r.property.owner_legal_name %}Pay to {{ r.property.owner_legal_name }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#owner-legal-name" class="text-decoration-none" style="color: #8a5a00;">No legal name set</a>{% endif %}</div>{% endif %}</td>
                 <td class="num">
                     {% if r.state == 'payable' %}<input type="text" inputmode="decimal" class="form-control form-control-sm text-end d-inline-block" style="width: 8rem;" name="amount_{{ r.property.pk }}" value="{{ r.amount }}" data-amount data-pid="{{ r.property.pk }}" aria-label="Amount for {{ r.property.name }}">
                     {% elif r.state == 'not_closed' or r.state == 'no_figures' %}<span class="text-muted">&mdash;</span>
@@ -51,6 +51,7 @@
                 <td class="small">
                     {% if r.state == 'payable' %}<button type="submit" form="hold-{{ b.kind }}-{{ r.property.pk }}" class="btn btn-link btn-sm text-muted p-0">Skip this month</button>
                     {% elif r.state == 'held' %}<span class="mp-chip progress">Skipped</span> <button type="submit" form="hold-{{ b.kind }}-{{ r.property.pk }}-undo" class="btn btn-link btn-sm text-muted p-0">Undo</button>
+                    {% elif r.state == 'waiting_rent' %}<span class="mp-chip attention">Waiting for {{ r.pay_month|date:"F" }} rent</span> <a href="{% url 'close_rent_collection' %}?month={{ month|date:'Y-m' }}" class="small">Confirm it</a>
                     {% elif r.state == 'rides' %}<span class="text-muted">Negative: carries to next month, no payment</span>
                     {% elif r.state == 'not_closed' %}<span class="mp-chip attention">Month not closed yet</span> <a href="{% url 'close_overview' %}?month={{ month|date:'Y-m' }}" class="small">Close it</a>
                     {% elif r.state == 'no_figures' %}<span class="text-muted">Closed before payables were worked out</span>
@@ -58,7 +59,7 @@
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="4" class="text-muted p-3">{% if b.paid_rows %}Everything is paid.{% else %}No short-term rentals are set up for this.{% endif %}</td></tr>
+            <tr><td colspan="4" class="text-muted p-3">{% if b.paid_rows %}Everything is paid.{% elif group == 'ltr' %}No long-term rentals are set up for this.{% else %}No short-term rentals are set up for this.{% endif %}</td></tr>
             {% endfor %}
             </tbody>
         </table></div>

@@ -155,6 +155,10 @@ class Property(models.Model):
         help_text="The legal name we pay this rental's owner to (the person or company on the owner's W-9 and ACH form), as it must appear on the payment. "
                   "Pay owners shows it beside the rental, and warns when it is missing.",
     )
+    monthly_rent = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="A long-term rental's rent each month: the month-end close compares what came into QuickBooks to it, and a same-month owner is paid only once it is confirmed.",
+    )
     owner_portal_open = models.BooleanField(
         default=False,
         help_text="The owner portal is open for this rental: its owner contacts (with an email address) can sign up and see the months you release to owners, "
@@ -1706,3 +1710,62 @@ class MonthEndBooking(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['entity', 'qb_id'], name='uniq_month_end_booking')]
+
+
+
+class RentCheck(models.Model):
+    """One long-term rental's rent for one month, checked against QuickBooks: what we expected, what the books show came in, and the person's confirmation."""
+    class Status(models.TextChoices):
+        RECEIVED = 'received', 'Received'
+        PARTIAL = 'partial', 'Partly received'
+        NOT_RECEIVED = 'not_received', 'Not received'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='rent_checks')
+    month = models.DateField(help_text='The first day of the month whose rent this is.')
+    expected = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    seen = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text='The rent deposits the books showed when it was confirmed.')
+    status = models.CharField(max_length=14, choices=Status.choices)
+    note = models.CharField(max_length=300, blank=True)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    confirmed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['property', 'month'], name='uniq_rent_check')]
+
+    @builtins.property      # (this class has a field called `property`)
+    def counts_as_collected(self):
+        return self.status in (self.Status.RECEIVED, self.Status.PARTIAL)
+
+
+class SalesTaxReturn(models.Model):
+    """A sales tax return we are responsible for filing (kept by hand: which return, for which LLC, how often). The month-end close lists the ones that are due and each is ticked off."""
+    class Frequency(models.TextChoices):
+        MONTHLY = 'monthly', 'Every month'
+        QUARTERLY = 'quarterly', 'Every quarter'
+        ANNUAL = 'annual', 'Once a year (for December)'
+
+    name = models.CharField(max_length=160, help_text='What it is, e.g. "FL sales tax, 123 Main St".')
+    entity = models.CharField(max_length=160, blank=True, help_text='The LLC it is filed for.')
+    frequency = models.CharField(max_length=10, choices=Frequency.choices, default=Frequency.MONTHLY)
+    due_day = models.PositiveSmallIntegerField(default=20, help_text='The day of the month after the period that it is due.')
+    note = models.CharField(max_length=300, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['entity', 'name']
+
+    def due_in(self, month):
+        """Whether a period ending in this month (the first of it) has a return to file."""
+        return self.is_active and (self.frequency == self.Frequency.MONTHLY or (self.frequency == self.Frequency.QUARTERLY and month.month in (3, 6, 9, 12)) or (self.frequency == self.Frequency.ANNUAL and month.month == 12))
+
+
+class SalesTaxFiling(models.Model):
+    """A return filed for a period (the month it ends in)."""
+    tax_return = models.ForeignKey(SalesTaxReturn, on_delete=models.CASCADE, related_name='filings')
+    month = models.DateField(help_text='The first day of the month the period ends in.')
+    filed_on = models.DateField()
+    confirmation = models.CharField(max_length=80, blank=True)
+    filed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['tax_return', 'month'], name='uniq_sales_tax_filing')]

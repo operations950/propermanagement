@@ -16,6 +16,13 @@ PROPERTY_TYPE_ICONS = {
 
 
 @register.filter
+def same_month_settle(totals):
+    """The settlement figures for a rental paid the month it is collected (see ledger.same_month_settlement)."""
+    from core import ledger
+    return ledger.same_month_settlement(totals)
+
+
+@register.filter
 def property_type_icon(property_type):
     return PROPERTY_TYPE_ICONS.get(property_type, 'circle-dot')
 

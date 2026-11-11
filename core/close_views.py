@@ -15,6 +15,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import bank_tieout, escrow, ledger, month_end_booking, month_end_payments, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
+from . import close_ltr_tax, month_close_project, workdays
+from .models import SalesTaxFiling, SalesTaxReturn
 from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, MonthEndPayment, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
 from .views import _is_admin
 
@@ -698,12 +700,9 @@ def close_misc(request):
     return _ledger_page(request, escrow.MISC)
 
 
-@login_required
-@user_passes_test(_is_admin)
-def close_home(request):
-    """The month-end checklist: the prior month by default, one numbered step after another."""
-    today = timezone.localdate()
-    month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
+def close_steps(month, today=None):
+    """The month-end checklist for a month: each step with its status, the day it is done on and the date that is (working days, less US holidays)."""
+    today = today or timezone.localdate()
     tie = bank_tieout.summary(month)
     q = f'?month={month:%Y-%m}'
     if tie['status'] == 'done':
@@ -729,6 +728,9 @@ def close_home(request):
     tax_status, tax_detail = _tourist_tax_step(month)
     assoc_status, assoc_detail = _associations_step(month)
     owners_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['owners'])
+    ltr_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['ltr_owners'], 'ltr')
+    rent_step = close_ltr_tax.rent_summary(month)
+    sales_step = close_ltr_tax.tax_summary(month)
     proper_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['proper'])
     steps = [
         {'n': 1, 'title': 'Bank tie-out', 'icon': 'landmark', 'status': tie['status'], 'detail': tie_detail, 'url': reverse('close_bank_tieout') + q},
@@ -740,16 +742,43 @@ def close_home(request):
         {'n': 7, 'title': 'Pay owners', 'icon': 'users', 'status': owners_pay['status'], 'detail': owners_pay['detail'], 'url': reverse('close_pay_owners') + q},
         {'n': 8, 'title': 'Pay Proper', 'icon': 'arrow-right-left', 'status': proper_pay['status'], 'detail': proper_pay['detail'], 'url': reverse('close_pay_proper') + q},
         {'n': 9, 'title': 'Tourist tax', 'icon': 'receipt', 'status': tax_status, 'detail': tax_detail, 'url': reverse('tourist_tax') + q},
-        {'n': 10, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
+        {'n': 10, 'title': 'Pay sales tax', 'icon': 'landmark', 'status': sales_step['status'], 'detail': sales_step['detail'], 'url': reverse('close_sales_tax') + q},
+        {'n': 11, 'title': 'Long-term rent collection', 'icon': 'key-round', 'status': rent_step['status'], 'detail': rent_step['detail'], 'url': reverse('close_rent_collection') + q},
+        {'n': 12, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
+        {'n': 13, 'title': 'Pay long-term owners', 'icon': 'users', 'status': ltr_pay['status'], 'detail': ltr_pay['detail'], 'url': reverse('close_pay_ltr_owners') + q},
     ]
+    pay_next = ledger.next_month(month)
+    for step in steps:
+        step['day'] = month_close_project.STEP_DAY[step['n']]
+        step['due'] = workdays.workday_of_month(pay_next.year, pay_next.month, step['day'])
+        if step['n'] in month_close_project.OWNER_STEPS:
+            step['deadline'] = pay_next.replace(day=5)
     for step in steps:
         # A step under way (not started, needs attention and done each have their own chip) shows just its count, such as "12 of 38"; the full sentence is the link's hover text.
         found = re.match(r'(\d+ of \d+)', step['detail'] or '')
         step['progress'] = found.group(1) if found and step['status'] not in ('done', 'attention', 'not_started') else ''
         if not step['status'] and not step['progress']:
             step['status'] = 'not_started'   # nothing done yet reads the same as a step not begun: a grey chip
+    return steps
+
+
+@login_required
+@user_passes_test(_is_admin)
+def close_home(request):
+    """The month-end checklist: the prior month by default, a day at a time, one numbered step after another."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
+    steps = close_steps(month, today)
+    days = []
+    for step in steps:
+        if not days or days[-1]['day'] != step['day']:
+            days.append({'day': step['day'], 'due': step['due'], 'steps': []})
+        days[-1]['steps'].append(step)
+    for d in days:
+        d['done'] = all(st['status'] == 'done' for st in d['steps'])
+        d['overdue'] = (not d['done']) and d['due'] < today
     return render(request, 'core/close_home.html', {
-        'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'steps': steps,
+        'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'steps': steps, 'days': days, 'today': today,
         'done_count': sum(1 for s in steps if s['status'] == 'done'),
         'month_over': today >= ledger.next_month(month), 'is_current': month == ledger.month_of(today),
     })
@@ -940,7 +969,8 @@ def _pay_page(request, section, page_title):
     today = timezone.localdate()
     month = _parse_month(request.GET.get('month') or request.POST.get('month'), ledger.previous_month(today))
     kinds = month_end_payments.SECTIONS[section]
-    here = reverse('close_pay_owners' if section == 'owners' else 'close_pay_proper') + f'?month={month:%Y-%m}'
+    group = 'ltr' if section == 'ltr_owners' else 'str'
+    here = reverse({'owners': 'close_pay_owners', 'proper': 'close_pay_proper', 'ltr_owners': 'close_pay_ltr_owners'}[section]) + f'?month={month:%Y-%m}'
     if request.method == 'POST':
         action = request.POST.get('action')
         kind = request.POST.get('kind')
@@ -966,7 +996,7 @@ def _pay_page(request, section, page_title):
                     paid_on = datetime.strptime(request.POST.get('paid_on') or '', '%Y-%m-%d').date()
                 except ValueError:
                     raise month_end_payments.PaymentError('Enter the date the money was sent.')
-                payment = month_end_payments.record(month, kind, picks, paid_on, request.POST.get('reference'), request.user)
+                payment = month_end_payments.record(month, kind, picks, paid_on, request.POST.get('reference'), request.user, group=group)
                 count = payment.lines.count()
                 messages.success(request, f'Recorded {payment.get_kind_display().lower()}: ${payment.total:,.2f} across {count} line{"" if count == 1 else "s"}. That is the amount to look for in the bank.')
             elif action in ('hold', 'unhold'):
@@ -982,8 +1012,9 @@ def _pay_page(request, section, page_title):
         return redirect(here)
     blocks = []
     for kind in kinds:
-        rws = month_end_payments.rows(month, kind)
-        payments = list(MonthEndPayment.objects.filter(month=month, kind=kind).prefetch_related('lines__property', 'bookings'))
+        rws = month_end_payments.rows(month, kind, group)
+        wanted_type = Property.Type.LONG_TERM_RENTAL if group == 'ltr' else Property.Type.SHORT_TERM_RENTAL
+        payments = list(MonthEndPayment.objects.filter(month=month, kind=kind, lines__property__property_type=wanted_type).distinct().prefetch_related('lines__property', 'bookings'))
         paid_rows = [r for r in rws if r['state'] == 'paid']
         blocks.append({
             'kind': kind, 'title': month_end_payments.TITLES[kind], 'rows': [r for r in rws if r['state'] != 'paid'], 'paid_rows': paid_rows,
@@ -995,7 +1026,7 @@ def _pay_page(request, section, page_title):
         })
     return render(request, 'core/month_end_payments.html', {
         'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'blocks': blocks, 'title': page_title, 'section': section,
-        'today': today, 'summary': month_end_payments.summary(month, kinds),
+        'today': today, 'summary': month_end_payments.summary(month, kinds, group), 'group': group,
     })
 
 
@@ -1003,6 +1034,79 @@ def _pay_page(request, section, page_title):
 @user_passes_test(_is_admin)
 def pay_owners(request):
     return _pay_page(request, 'owners', 'Pay owners')
+
+
+@login_required
+@user_passes_test(_is_admin)
+def rent_collection(request):
+    """Long-term rent collection: this month's rent for every long-term rental, against what QuickBooks shows came in. The person confirms each one."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month') or request.POST.get('month'), ledger.previous_month(today))
+    here = reverse('close_rent_collection') + f'?month={month:%Y-%m}'
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            prop = get_object_or_404(Property, pk=request.POST.get('property'))
+            if action == 'set_rent':
+                amount = _money(request.POST.get('monthly_rent'))
+                if amount is None or amount < 0:
+                    raise ValueError('Type the monthly rent as an amount.')
+                prop.monthly_rent = amount
+                prop.save(update_fields=['monthly_rent'])
+                messages.success(request, f'{prop.name}: the rent is ${amount:,.2f} a month.')
+            elif action == 'confirm':
+                close_ltr_tax.confirm_rent(prop, month, request.POST.get('status'), request.POST.get('note'), request.user)
+                messages.success(request, f'{prop.name}: confirmed.')
+            elif action == 'unconfirm':
+                from .models import RentCheck
+                RentCheck.objects.filter(property=prop, month=close_ltr_tax.rent_month(month)).delete()
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect(here)
+    rows = close_ltr_tax.rent_rows(month)
+    return render(request, 'core/rent_collection.html', {'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'rent_month': close_ltr_tax.rent_month(month),
+                                                         'rows': rows, 'summary': close_ltr_tax.rent_summary(month), 'today': today})
+
+
+@login_required
+@user_passes_test(_is_admin)
+def sales_tax_returns(request):
+    """The sales tax returns we are responsible for, a list kept by hand: tick off the ones due for the month's period as they are filed."""
+    today = timezone.localdate()
+    month = _parse_month(request.GET.get('month') or request.POST.get('month'), ledger.previous_month(today))
+    here = reverse('close_sales_tax') + f'?month={month:%Y-%m}'
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'add':
+                name = (request.POST.get('name') or '').strip()
+                if not name:
+                    raise ValueError('Name the return.')
+                freq = request.POST.get('frequency') if request.POST.get('frequency') in SalesTaxReturn.Frequency.values else 'monthly'
+                SalesTaxReturn.objects.create(name=name[:160], entity=(request.POST.get('entity') or '').strip()[:160], frequency=freq, due_day=max(1, min(28, int(request.POST.get('due_day') or 20))))
+                messages.success(request, 'Added.')
+            elif action in ('stop', 'resume'):
+                SalesTaxReturn.objects.filter(pk=request.POST.get('ret')).update(is_active=(action == 'resume'))
+            elif action == 'file':
+                ret = get_object_or_404(SalesTaxReturn, pk=request.POST.get('ret'))
+                try:
+                    filed_on = datetime.strptime(request.POST.get('filed_on') or '', '%Y-%m-%d').date()
+                except ValueError:
+                    filed_on = today
+                SalesTaxFiling.objects.update_or_create(tax_return=ret, month=month, defaults={'filed_on': filed_on, 'confirmation': (request.POST.get('confirmation') or '').strip()[:80], 'filed_by': request.user})
+            elif action == 'unfile':
+                SalesTaxFiling.objects.filter(tax_return_id=request.POST.get('ret'), month=month).delete()
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect(here)
+    return render(request, 'core/sales_tax.html', {'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'rows': close_ltr_tax.tax_rows(month),
+                                                   'summary': close_ltr_tax.tax_summary(month), 'all_returns': SalesTaxReturn.objects.all(), 'today': today})
+
+
+@login_required
+@user_passes_test(_is_admin)
+def pay_ltr_owners(request):
+    return _pay_page(request, 'ltr_owners', 'Pay long-term owners')
 
 
 @login_required

@@ -92,6 +92,11 @@ def _run_post_accounting_recurring():
     _run_command('post_accounting_recurring')
 
 
+def _run_sync_month_close():
+    """The month-end close as a project: make each step's compliance item on its working day, and finish the ones whose steps are done."""
+    _run_command('sync_month_close')
+
+
 def _run_read_documents():
     """Association books: read uploaded governing documents once (words kept page by page) and sort them into what each file holds."""
     _run_command('read_documents')
@@ -158,6 +163,7 @@ def start():
         _run_refresh_listing_ratings, 'interval', hours=12, next_run_time=datetime.now() + timedelta(minutes=10),
     )
     _scheduler.add_job(_run_post_accounting_recurring, 'interval', hours=6, next_run_time=datetime.now() + timedelta(minutes=15))
+    _scheduler.add_job(_run_sync_month_close, 'interval', hours=2, next_run_time=datetime.now() + timedelta(minutes=25))
     _scheduler.add_job(_run_read_invoice_inbox, 'interval', minutes=30, next_run_time=datetime.now() + timedelta(minutes=20))
     _scheduler.add_job(_run_read_documents, 'interval', minutes=1, next_run_time=datetime.now() + timedelta(minutes=2))
     _scheduler.add_job(_run_check_sunbiz, 'interval', days=7, next_run_time=datetime.now() + timedelta(minutes=40))

@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% load core_extras %}
+{% block title %}Sales tax{% endblock %}
+{% block content %}
+<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> Pay sales tax {% include '_tip.html' with text="The sales tax returns we are responsible for, kept by hand: add each return once with its LLC and how often it is filed. The ones due for the month's period are listed here to tick off as you file them." %}</h2>
+        <div class="small text-muted">Period ending {{ month|date:"F Y" }} &middot; {{ summary.detail }}</div></div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+<div class="card mb-3" style="border-radius: 12px;"><div class="card-body p-2"><table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Return</th><th>LLC</th><th>Due</th><th>Filed</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td class="fw-semibold">{{ r.ret.name }}</td><td>{{ r.ret.entity }}</td><td class="small">{{ r.ret.get_frequency_display }}, by the {{ r.ret.due_day }}th</td>
+        <td>{% if r.filing %}<span class="badge rounded-pill text-bg-success">Filed {{ r.filing.filed_on|date:"M j" }}</span>{% if r.filing.confirmation %} <span class="small text-muted">{{ r.filing.confirmation }}</span>{% endif %}
+            <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="unfile"><input type="hidden" name="ret" value="{{ r.ret.pk }}"><button class="btn btn-link btn-sm text-muted p-0">Undo</button></form>
+            {% else %}<form method="post" class="d-flex gap-1 align-items-center">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="file"><input type="hidden" name="ret" value="{{ r.ret.pk }}">
+                <input type="date" class="form-control form-control-sm" style="width: 9.5rem;" name="filed_on" value="{{ today|date:'Y-m-d' }}"><input class="form-control form-control-sm" style="width: 10rem;" name="confirmation" placeholder="Confirmation (optional)"><button class="btn btn-sm btn-primary">Filed</button></form>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="4" class="text-muted p-3">No return is due for {{ month|date:"F" }}. Add the ones you file below.</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card" style="border-radius: 12px;"><div class="card-body">
+    <h6 class="card-title">The returns we are responsible for</h6>
+    {% for r in all_returns %}<div class="d-flex justify-content-between align-items-center border-top py-1 small {% if not r.is_active %}text-muted{% endif %}"><span><strong>{{ r.name }}</strong> {{ r.entity }} &middot; {{ r.get_frequency_display }}, by the {{ r.due_day }}th</span>
+        <form method="post">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="ret" value="{{ r.pk }}">{% if r.is_active %}<button class="btn btn-link btn-sm p-0 text-muted" name="action" value="stop">Stop</button>{% else %}<button class="btn btn-link btn-sm p-0" name="action" value="resume">Resume</button>{% endif %}</form></div>{% endfor %}
+    <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="add">
+        <div class="col-md-4"><input class="form-control form-control-sm" name="name" placeholder="Return, e.g. FL sales tax, 123 Main St" required></div>
+        <div class="col-md-3"><input class="form-control form-control-sm" name="entity" placeholder="LLC"></div>
+        <div class="col-md-2"><select class="form-select form-select-sm" name="frequency"><option value="monthly">Every month</option><option value="quarterly">Every quarter</option><option value="annual">Once a year</option></select></div>
+        <div class="col-md-1"><input class="form-control form-control-sm" type="number" min="1" max="28" name="due_day" value="20" title="Day of the month it is due"></div>
+        <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100">Add</button></div></form>
+</div></div>
+{% endblock %}

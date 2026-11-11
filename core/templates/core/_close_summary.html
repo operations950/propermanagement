@@ -40,8 +40,16 @@
             {% if totals.prior_status == 'ok' %}
             <tr><td>{% if totals.prior_opening %}Opening balance{% else %}Owed from {{ totals.prior_month|date:"F" }}{% endif %}</td><td>{{ totals.prior_reimbursable|money }}</td><td>{{ totals.prior_commission|money }}</td><td>{% if totals.prior_owner is not None %}{{ totals.prior_owner|money }}{% else %}–{% endif %}</td></tr>
             {% endif %}
+            {% if property.owner_paid_in == 'same_month' %}{% with sm=totals|same_month_settle %}{% if sm %}
+            <tr><td>Owed from {{ month|date:"F" }}</td><td>{{ sm.this.reimb|money }}</td><td>{{ sm.this.comm|money }}</td><td>{{ sm.this.owner|money }}</td></tr>{% endif %}{% endwith %}{% endif %}
             <tr><td>Paid in {{ month|date:"F" }}</td><td>{{ totals.reimbursement_trust|money }}</td><td>{{ totals.commission|money }}</td><td>{{ totals.owner_payment|money }}</td></tr>
-            {% if totals.prior_status == 'ok' %}
+            {% if property.owner_paid_in == 'same_month' and totals|same_month_settle %}{% with sm=totals|same_month_settle %}
+            <tr class="diff"><td>Difference</td>
+                <td>{% if sm.diff.reimb == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ sm.diff.reimb|money }}</span>{% endif %}</td>
+                <td>{% if sm.diff.comm == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ sm.diff.comm|money }}</span>{% endif %}</td>
+                <td>{% if sm.diff.owner is None %}–{% elif sm.diff.owner == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ sm.diff.owner|money }}</span>{% endif %}</td></tr>
+            {% endwith %}
+            {% elif totals.prior_status == 'ok' %}
             <tr class="diff"><td>Difference</td>
                 <td>{% if totals.reimbursement_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.reimbursement_diff|money }}</span>{% endif %}</td>
                 <td>{% if totals.commission_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.commission_diff|money }}</span>{% endif %}</td>
@@ -49,7 +57,7 @@
             {% endif %}
         </tbody>
     </table>
-    <div class="text-muted mt-1" style="font-size: 0.72rem;">{% if totals.prior_status == 'ok' %}What is paid out in {{ month|date:"F" }} settles {% if totals.prior_opening %}what was still owed at the end of {{ totals.prior_month|date:"F" }} (the opening balance, entered by hand){% else %}{{ totals.prior_month|date:"F" }}{% endif %}; the difference should be zero.{% if not totals.prior_closed %} {{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.{% endif %}{% else %}{% include 'core/_close_prior_note.html' %}{% endif %}</div>
+    <div class="text-muted mt-1" style="font-size: 0.72rem;">{% if totals.prior_status == 'ok' and property.owner_paid_in == 'same_month' %}This rental is paid in the month it is collected, so what is paid out in {{ month|date:"F" }} settles both what was still owed from {{ totals.prior_month|date:"F" }} and what {{ month|date:"F" }} earned. Zero means it was all paid out; a negative figure is still owed and a positive one is paid ahead.{% if not totals.prior_closed %} {{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.{% endif %}{% elif totals.prior_status == 'ok' %}What is paid out in {{ month|date:"F" }} settles {% if totals.prior_opening %}what was still owed at the end of {{ totals.prior_month|date:"F" }} (the opening balance, entered by hand){% else %}{{ totals.prior_month|date:"F" }}{% endif %}; the difference should be zero.{% if not totals.prior_closed %} {{ totals.prior_month|date:"F" }} isn't closed, so its figures are as coded now.{% endif %}{% else %}{% include 'core/_close_prior_note.html' %}{% endif %}</div>
 </div>
 {% endif %}
 {% else %}

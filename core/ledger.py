@@ -864,6 +864,17 @@ def derive(t):
     return t
 
 
+def same_month_settlement(t):
+    """For a rental whose owner is paid the month it is collected: what a payment settles is last month's balance AND this month's earnings (the owner payment, the reimbursement and the commission).
+    Returns {'this': what this month earned, 'diff': what was paid less both} per item, or None when there is nothing to compare with. A diff of zero means it was all paid out."""
+    if not t or not t.get('calc') or t.get('prior_status') != 'ok' or t.get('owner_collects'):
+        return None
+    this = {'reimb': t['expenses_reimbursable'], 'comm': t['commission_due'], 'owner': t['owner_due']}
+    diff = {'reimb': t['reimbursement_trust'] - t['prior_reimbursable'] - this['reimb'], 'comm': t['commission'] - t['prior_commission'] - this['comm'],
+            'owner': (t['owner_payment'] - t['prior_owner'] - this['owner']) if t.get('prior_owner') is not None else None}
+    return {'this': this, 'diff': diff}
+
+
 def prior_settlement(book, month, memo=None):
     """What last month left to be paid in this one: the accounts payable at the end of last month, per
     item: the reimbursable expenses (reimbursed to us out of the trust account), our commission and the

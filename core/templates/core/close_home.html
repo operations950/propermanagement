@@ -27,13 +27,18 @@
 </div>
 {% if not month_over %}<div class="small text-muted mb-2"><i data-lucide="clock" class="icon"></i> {{ month|date:"F" }} isn't over yet, so month-end balances aren't final.</div>{% endif %}
 
-{% for step in steps %}
+{% for d in days %}
+<div class="d-flex align-items-center gap-2 mt-3 mb-1"><span class="fw-bold">Day {{ d.day }}</span><span class="small text-muted">{{ d.due|date:"l, M j" }}</span>
+    {% if d.done %}<span class="ck-chip done">Done</span>{% elif d.overdue %}<span class="ck-chip attention">Overdue</span>{% elif d.due == today %}<span class="ck-chip attention">Today</span>{% endif %}</div>
+{% for step in d.steps %}
 <a class="ck-step" href="{{ step.url }}"{% if step.detail %} title="{{ step.detail }}"{% endif %}>
     <div class="ck-n {{ step.status|default:'' }}">{% if step.status == 'done' %}<i data-lucide="check" class="icon"></i>{% else %}{{ step.n }}{% endif %}</div>
     <i data-lucide="{{ step.icon }}" class="icon ck-ico"></i>
     <span class="ck-title flex-grow-1">{{ step.title }}</span>
     {% if step.status == 'done' %}<span class="ck-chip done">Complete</span>{% elif step.status == 'attention' %}<span class="ck-chip attention">Needs attention</span>{% elif step.status == 'not_started' %}<span class="ck-chip not_started">Not started</span>{% elif step.progress %}<span class="ck-chip progress">{{ step.progress }}</span>{% endif %}
+    {% if step.deadline %}<span class="small text-muted" title="Owners must be paid by the 5th">by {{ step.deadline|date:"M j" }}</span>{% endif %}
     <i data-lucide="chevron-right" class="icon text-muted"></i>
 </a>
+{% endfor %}
 {% endfor %}
 {% endblock %}
