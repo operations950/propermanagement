@@ -56,7 +56,9 @@ def section_of(acct):
         return 'Income'
     if is_reserve(acct):
         return 'Reserves'
-    if acct.code in UTILITIES:
+    if acct.budget_section in EXPENSE_SECTIONS:                  # set on the chart of accounts
+        return acct.budget_section
+    if acct.code in UTILITIES:                                   # not set: the number decides, as it always did
         return 'Utilities'
     if acct.code in ADMIN:
         return 'Administrative'

@@ -9,18 +9,19 @@
     <h6 class="card-title">Add an account <span class="fw-normal text-muted small">(it appears in every association)</span></h6>
     <div class="row g-2 align-items-end">
         <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Number</label><input class="form-control form-control-sm" name="code" inputmode="numeric" maxlength="4" placeholder="6921" required></div>
-        <div class="col-12 col-md-5"><label class="form-label small text-muted mb-1">Name</label><input class="form-control form-control-sm" name="name" maxlength="120" placeholder="Pool Maintenance" required></div>
-        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Kind</label><select class="form-select form-select-sm" name="kind" required>{% for value, label in kinds %}<option value="{{ value }}"{% if value == 'expense' %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-12 col-md-4"><label class="form-label small text-muted mb-1">Name</label><input class="form-control form-control-sm" name="name" maxlength="120" placeholder="Pool Maintenance" required></div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Kind</label><select class="form-select form-select-sm" name="kind" required>{% for value, label in kinds %}<option value="{{ value }}"{% if value == 'expense' %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Budget section {% include '_tip.html' with text='Expense accounts only: where the account sits in each budget and on the profit and loss. It can be changed later.' %}</label><select class="form-select form-select-sm" name="budget_section">{% for s in sections %}<option value="{{ s }}"{% if s == 'Operating' %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></div>
         <div class="col-6 col-md-2"><button class="btn btn-primary btn-sm w-100">Add</button></div>
     </div>
-    <div class="small text-muted mt-2">1xxx assets, 2xxx liabilities, 3xxx equity, 4xxx income, 5xxx&ndash;6xxx expenses. {{ reserve_note }} An expense account appears in each budget's "Add a line" list.</div>
+    <div class="small text-muted mt-2">1xxx assets, 2xxx liabilities, 3xxx equity, 4xxx income, 5xxx&ndash;6xxx expenses. {{ reserve_note }} An expense account appears in each budget's "Add a line" list, under its budget section.</div>
 </div></form>
 
 {% for g in groups %}
 <div class="card mb-3">
     <div class="card-header bg-white py-2 fw-semibold">{{ g.label }} accounts <span class="text-muted fw-normal small">&middot; {{ g.rows|length }}</span></div>
     <div class="table-responsive"><table class="table table-sm align-middle mb-0 ac-table">
-        <thead><tr><th style="width: 90px;">Number</th><th>Name</th><th class="ac-num" style="width: 120px;">Entries in</th><th style="width: 250px;"></th></tr></thead>
+        <thead><tr><th style="width: 90px;">Number</th><th>Name</th>{% if g.kind == 'expense' %}<th style="width: 170px;">Budget section {% include '_tip.html' with text='Where the account sits in each budget and on the profit and loss. Changing it moves the account in every association.' %}</th>{% endif %}<th class="ac-num" style="width: 120px;">Entries in</th><th style="width: 250px;"></th></tr></thead>
         <tbody>
         {% for r in g.rows %}
         <tr{% if not r.m.is_active %} class="text-muted"{% endif %}>
@@ -32,6 +33,8 @@
                     {% if r.system %}<span class="ac-chip" title="The program posts to this account itself">system</span>{% endif %}{% if not r.m.is_active %}<span class="ac-chip">off</span>{% endif %}
                 </form>
             </td>
+            {% if g.kind == 'expense' %}<td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="section"><input type="hidden" name="account" value="{{ r.m.pk }}">
+                <select class="form-select form-select-sm py-0 w-auto" name="budget_section" onchange="this.form.submit()" aria-label="Budget section of {{ r.m.code }} {{ r.m.name }}">{% for s in sections %}<option value="{{ s }}"{% if s == r.section %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></form></td>{% endif %}
             <td class="ac-num">{% if r.entries %}{{ r.entries }} of {{ r.assocs }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
             <td class="text-end">
                 {% if r.editable %}<form method="post" class="d-inline me-2">{% csrf_token %}<input type="hidden" name="action" value="edit"><input type="hidden" name="account" value="{{ r.m.pk }}">
@@ -40,7 +43,7 @@
                 {% else %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="toggle"><input type="hidden" name="account" value="{{ r.m.pk }}"><button class="btn btn-link btn-sm p-0">{% if r.m.is_active %}Turn off{% else %}Turn on{% endif %}</button></form>{% endif %}
             </td>
         </tr>
-        {% empty %}<tr><td colspan="4" class="text-center text-muted py-3">None.</td></tr>{% endfor %}
+        {% empty %}<tr><td colspan="5" class="text-center text-muted py-3">None.</td></tr>{% endfor %}
         </tbody>
     </table></div>
 </div>

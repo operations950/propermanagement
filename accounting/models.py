@@ -212,6 +212,7 @@ class Account(models.Model):
     name = models.CharField(max_length=120)
     kind = models.CharField(max_length=10, choices=Kind.choices)
     is_active = models.BooleanField(default=True)
+    budget_section = models.CharField(max_length=14, blank=True, default='', help_text='Where an expense account sits in the budget. Blank: the program decides from the number.')
 
     class Meta:
         ordering = ['code']
@@ -983,6 +984,7 @@ class MasterAccount(models.Model):
     name = models.CharField(max_length=120)
     kind = models.CharField(max_length=10, choices=Account.Kind.choices)
     is_active = models.BooleanField(default=True, help_text='Off: new associations do not start with it. Existing associations keep theirs.')
+    budget_section = models.CharField(max_length=14, blank=True, default='', help_text="Where an expense account sits in every association's budget: Administrative, Utilities or Operating.")
 
     class Meta:
         ordering = ['code']

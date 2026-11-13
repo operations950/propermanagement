@@ -12,6 +12,7 @@ from django.urls import reverse
 from core.models import Property
 
 from . import ledger
+from .budgeting import EXPENSE_SECTIONS, section_of
 from . import standard_chart as sc
 from .models import Account, JournalLine, MasterAccount
 from .web import admin_only
@@ -44,6 +45,15 @@ def _clean_kind(kind):
     return kind
 
 
+def _clean_section(section, kind):
+    """The budget section of an expense account (Administrative, Utilities or Operating); any other kind of account has none."""
+    if kind != Account.Kind.EXPENSE:
+        return ''
+    if section not in EXPENSE_SECTIONS:
+        raise ValueError('Pick where the account goes in the budget: Administrative, Utilities or Operating.')
+    return section
+
+
 def _mismatch_note(code, kind):
     if FIRST_DIGIT.get(code[0]) == kind:
         return ''
@@ -67,7 +77,7 @@ def _master_rows():
         rows = []
         for m in MasterAccount.objects.filter(kind=kind).order_by('code'):
             s = stats.get(m.code, {'assocs': 0, 'entries': 0})
-            rows.append({'m': m, 'assocs': s['assocs'], 'entries': s['entries'], 'system': m.code in SYSTEM_CODES, 'editable': m.code not in SYSTEM_CODES and not s['entries']})
+            rows.append({'m': m, 'assocs': s['assocs'], 'entries': s['entries'], 'system': m.code in SYSTEM_CODES, 'editable': m.code not in SYSTEM_CODES and not s['entries'], 'section': m.budget_section or section_of(m)})
         out.append({'kind': kind, 'label': Account.Kind(kind).label, 'rows': rows})
     return out
 
@@ -94,10 +104,11 @@ def master(request):
         try:
             if action == 'add':
                 code, name, kind = _clean_code(request.POST.get('code')), _clean_name(request.POST.get('name')), _clean_kind(request.POST.get('kind'))
+                section = _clean_section(request.POST.get('budget_section') or 'Operating', kind)
                 if MasterAccount.objects.filter(code=code).exists():
                     raise ValueError(f'{code} is already on the chart ({MasterAccount.objects.get(code=code).name}). Pick another number.')
                 with transaction.atomic():
-                    MasterAccount.objects.create(code=code, name=name, kind=kind)
+                    MasterAccount.objects.create(code=code, name=name, kind=kind, budget_section=section)
                     ledger.sync_all_charts()
                 messages.success(request, f'{code} {name} is added to every association.{_mismatch_note(code, kind)}')
             elif action == 'rename':
@@ -123,6 +134,16 @@ def master(request):
                     m.code, m.kind = code, kind
                     m.save(update_fields=['code', 'kind'])
                 messages.success(request, f'{old} {m.name} is now {code} ({Account.Kind(kind).label.lower()}) in every association.{_mismatch_note(code, kind)}')
+            elif action == 'section':           # where the account sits in the budget: only a grouping, so it can change even with entries posted
+                m = MasterAccount.objects.get(pk=request.POST.get('account'))
+                if m.kind != Account.Kind.EXPENSE:
+                    raise ValueError('Only expense accounts have a place in the budget sections.')
+                section = _clean_section(request.POST.get('budget_section'), m.kind)
+                with transaction.atomic():
+                    m.budget_section = section
+                    m.save(update_fields=['budget_section'])
+                    Account.objects.filter(code=m.code).update(budget_section=section)
+                messages.success(request, f'{m.code} {m.name} is in the {section} section of every budget.')
             elif action == 'toggle':
                 m = MasterAccount.objects.get(pk=request.POST.get('account'))
                 if m.is_active:
@@ -141,5 +162,5 @@ def master(request):
             messages.error(request, str(e))
         return redirect(here)
     ledger.sync_all_charts()
-    return render(request, 'accounting/master_chart.html', {'groups': _master_rows(), 'kinds': Account.Kind.choices, 'books': len(_books()), 'reserve_note': RESERVE_NOTE,
+    return render(request, 'accounting/master_chart.html', {'groups': _master_rows(), 'kinds': Account.Kind.choices, 'sections': EXPENSE_SECTIONS, 'books': len(_books()), 'reserve_note': RESERVE_NOTE,
                                                             'acc_back': reverse('ws_financials'), 'acc_back_label': 'Financials'})

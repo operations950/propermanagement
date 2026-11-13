@@ -63,17 +63,17 @@ def ensure_chart(association):
     """Make the association's accounts match the company's one chart: add any it lacks, and bring a name or an on/off setting in line. There is one chart for every association,
     so this is how a new association gets it and how an older one keeps up. Safe to run again; returns how many accounts it added."""
     mine = {a.code: a for a in Account.objects.filter(association=association)}
-    rows = {code: (name, kind, True) for code, name, kind in sc.CHART if code in sc.SYSTEM_CODES}
-    masters = list(MasterAccount.objects.values_list('code', 'name', 'kind', 'is_active'))
-    rows.update({code: (name, kind, active) for code, name, kind, active in masters} if masters else {code: (name, kind, True) for code, name, kind in sc.CHART})
+    rows = {code: (name, kind, True, '') for code, name, kind in sc.CHART if code in sc.SYSTEM_CODES}
+    masters = list(MasterAccount.objects.values_list('code', 'name', 'kind', 'is_active', 'budget_section'))
+    rows.update({code: (name, kind, active, section) for code, name, kind, active, section in masters} if masters else {code: (name, kind, True, '') for code, name, kind in sc.CHART})
     new = []
-    for code, (name, kind, active) in sorted(rows.items()):
+    for code, (name, kind, active, section) in sorted(rows.items()):
         a = mine.get(code)
         if a is None:
-            new.append(Account(association=association, code=code, name=name, kind=kind, is_active=active))
-        elif a.name != name or a.is_active != active:
-            a.name, a.is_active = name, active
-            a.save(update_fields=['name', 'is_active'])
+            new.append(Account(association=association, code=code, name=name, kind=kind, is_active=active, budget_section=section))
+        elif a.name != name or a.is_active != active or a.budget_section != section:
+            a.name, a.is_active, a.budget_section = name, active, section
+            a.save(update_fields=['name', 'is_active', 'budget_section'])
     Account.objects.bulk_create(new)
     return len(new)
 

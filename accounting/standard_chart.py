@@ -78,7 +78,7 @@ CHART = [
     ('6891', 'Licensing Fees', EXPENSE), ('6892', 'Security Gate Repairs', EXPENSE), ('6893', 'Landscaping - Maintenance', EXPENSE), ('6894', 'Legal Fees and Costs', EXPENSE),
     ('6895', 'Accounting', EXPENSE), ('6896', 'Fire Alarm - Sprinklers', EXPENSE), ('6897', 'Security System', EXPENSE), ('6898', 'General Maintenance', EXPENSE),
     ('6899', 'Background Check Fees', EXPENSE), ('6900', 'Reserve Transfer', EXPENSE), ('6901', 'Concrete Restoration', EXPENSE), ('6902', 'Uncategorized Expense', EXPENSE),
-    ('6904', 'Bank Charges & Fees', EXPENSE), ('6905', 'Beach Cleanup', EXPENSE), ('6906', 'Pest Control', EXPENSE), ('6909', 'Landscaping - Extras', EXPENSE),
+    ('6903', 'Insurance Financing', EXPENSE), ('6904', 'Bank Charges & Fees', EXPENSE), ('6905', 'Beach Cleanup', EXPENSE), ('6906', 'Pest Control', EXPENSE), ('6909', 'Landscaping - Extras', EXPENSE),
     ('6910', 'Fire Alarm Repair & Maintenance', EXPENSE), ('6911', 'Seawall', EXPENSE), ('6912', 'Building Janitorial', EXPENSE), ('6913', 'Fire Alarm Monitoring', EXPENSE),
     ('6915', 'Security Gate', EXPENSE), ('6916', 'Audit Fee', EXPENSE), ('6917', 'Mgmt & Accounting Fees', EXPENSE), ('6918', 'Termite Control', EXPENSE),
     ('6919', 'Tree Trimming', EXPENSE), ('6920', 'Bad Debt Expense', EXPENSE),
