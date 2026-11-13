@@ -1823,21 +1823,36 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         self.assertFalse(any('Of that' in c for c in col))
         self.assertEqual(self.client.get(self.url + '?stage=draft&export=pdf').content[:4], b'%PDF')
 
-    def test_the_change_columns_say_they_are_against_last_years_budget(self):
+    def test_the_change_columns_are_headed_2027_budget_versus_2026_budget(self):
         import io
         import openpyxl
         from pypdf import PdfReader
         self.client.post(self.url, {'action': 'start'})
         said = 'compare the 2027 budget with the 2026 budget'
         html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
-        self.assertEqual((html.count('vs 2026 budget</small>'), html.count('vs 2026</small>'), said in html), (2, 2, True))                       # $ and % change, in the sheet
+        self.assertIn('>2027 budget vs 2026 budget</th>', html)                                                    # over the $ and % change columns
+        self.assertIn('>2027 vs 2026</th>', html)                                                                  # and over the by-unit box's
+        self.assertNotIn('bd-vs', html)
+        self.assertIn(said, html)
         pdf = PdfReader(io.BytesIO(self.client.get(self.url + '?stage=draft&export=pdf').content)).pages[0].extract_text()
+        self.assertEqual(pdf.count('2027 budget vs 2026 budget'), 1)
+        self.assertIn('2027 vs 2026', pdf)
         self.assertIn(said, pdf)
-        self.assertEqual(pdf.count('vs 2026 budget'), 2)
         ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
         self.assertIn(said, str(ws['A3'].value))
-        heads = [str(ws.cell(row=4, column=c).value) for c in range(1, 7)]
-        self.assertEqual(heads[4:], ['$ change\nvs 2026 budget', '% change\nvs 2026 budget'])
+        self.assertEqual(ws['E4'].value, '2027 budget vs 2026 budget')
+        self.assertIn('E4:F4', [str(r) for r in ws.merged_cells.ranges])
+        self.assertEqual([str(ws.cell(row=5, column=c).value) for c in range(5, 7)], ['$ change', '% change'])
+        self.assertEqual(str(ws['A6'].value), 'INCOME')
+
+    def test_the_budget_screen_has_download_buttons_at_the_top(self):
+        self.client.post(self.url, {'action': 'start'})
+        html = self.client.get(self.url + '?stage=draft').content.decode()
+        self.assertIn('Download PDF', html)
+        self.assertIn('Download Excel', html)
+        self.assertIn('?stage=draft&export=pdf', html)
+        for stage_page in (self.url + '?stage=draft&export=pdf', self.url + '?stage=draft&export=xlsx'):
+            self.assertEqual(self.client.get(stage_page).status_code, 200)
 
 
     def test_the_assessments_are_the_first_income_line_and_total_income_matches_the_expenses_next_year(self):

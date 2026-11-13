@@ -53,8 +53,12 @@ def _hex(tone):
 
 
 def heads(sheet):
-    vs = f'vs {sheet["year"] - 1} budget'      # the change columns are the new budget against last year's budget, not against the projection
-    return ['', f'{sheet["year"] - 1} budget', f'{sheet["year"] - 1} {sheet["proj_word"]}', f'{sheet["year"]} budget', f'$ change\n{vs}', f'% change\n{vs}']
+    return ['', f'{sheet["year"] - 1} budget', f'{sheet["year"] - 1} {sheet["proj_word"]}', f'{sheet["year"]} budget', '$ change', '% change']
+
+
+def group_label(sheet):
+    """What the two change columns are: the new budget against last year's budget (not against the projection beside it)."""
+    return f'{sheet["year"]} budget vs {sheet["year"] - 1} budget'
 
 
 def pdf(sheet):
@@ -66,9 +70,10 @@ def pdf(sheet):
     sub = ParagraphStyle('s', fontName='Helvetica', fontSize=9.5, leading=13, textColor=colors.HexColor('#667085'))
     story = [Paragraph(sheet['assoc'], title), Paragraph(f'{sheet["year"]} proposed budget &middot; {sheet["stage_label"]} &middot; {sheet["units"]} unit{"s" if sheet["units"] != 1 else ""}', sub),
              Paragraph(f'The $ and % change columns compare the {sheet["year"]} budget with the {sheet["year"] - 1} budget.', sub), Spacer(1, 10)]
-    rows, style = [heads(sheet)], [('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 8), ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor(INK)), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-                                  ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor(INK)), ('FONT', (0, 1), (-1, -1), 'Helvetica', 8.5), ('TOPPADDING', (0, 0), (-1, -1), 2.6),
-                                  ('BOTTOMPADDING', (0, 0), (-1, -1), 2.6), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]
+    rows = [['', '', '', '', group_label(sheet), ''], heads(sheet)]
+    style = [('FONT', (0, 0), (-1, -1), 'Helvetica', 8.5), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('TOPPADDING', (0, 0), (-1, -1), 2.6), ('BOTTOMPADDING', (0, 0), (-1, -1), 2.6), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+             ('FONT', (0, 1), (-1, 1), 'Helvetica-Bold', 8), ('TEXTCOLOR', (0, 1), (-1, 1), colors.HexColor(INK)), ('LINEBELOW', (0, 1), (-1, 1), 1, colors.HexColor(INK)),
+             ('SPAN', (4, 0), (5, 0)), ('ALIGN', (4, 0), (5, 0), 'CENTER'), ('FONT', (4, 0), (5, 0), 'Helvetica', 7.5), ('TEXTCOLOR', (4, 0), (5, 0), colors.HexColor('#8a94a6')), ('LINEBELOW', (4, 0), (5, 0), 0.5, colors.HexColor('#c9d2e0'))]
 
     def add(cells, kind='line', tone='', ptone=''):
         rows.append(cells)
@@ -103,15 +108,17 @@ def pdf(sheet):
     ink = colors.HexColor(INK)
     style.extend([('BACKGROUND', (3, 0), (3, last), colors.HexColor(TINT)), ('LINEBEFORE', (3, 0), (3, last), 1.8, ink), ('LINEAFTER', (3, 0), (3, last), 1.8, ink),
                   ('LINEABOVE', (3, 0), (3, 0), 1.8, ink), ('FONT', (3, 1), (3, last), 'Helvetica-Bold', 8.5)])
-    table = Table(rows, colWidths=[2.45 * inch, 0.95 * inch, 0.95 * inch, 0.95 * inch, 1.0 * inch, 1.0 * inch], repeatRows=1)
+    table = Table(rows, colWidths=[2.45 * inch, 0.95 * inch, 0.95 * inch, 0.95 * inch, 1.0 * inch, 1.0 * inch], repeatRows=2)
     table.setStyle(TableStyle(style))
     story += [table, Spacer(1, 14)]
     ps = ParagraphStyle('u', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#667085'))
     pb = ParagraphStyle('ub', fontName='Helvetica-Bold', fontSize=8.5, leading=10.5, textColor=colors.HexColor(INK))
-    per = [['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', f'$ change\nvs {sheet["year"] - 1}', f'% change\nvs {sheet["year"] - 1}']]
-    pstyle = [('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 8.5), ('BACKGROUND', (0, 0), (-1, 0), ink), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-              ('FONT', (0, 1), (-1, -1), 'Helvetica', 8.5), ('BOX', (0, 0), (-1, -1), 0.8, ink), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-              ('TOPPADDING', (0, 0), (-1, -1), 3.5), ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5)]
+    per = [['', '', '', f'{sheet["year"]} vs {sheet["year"] - 1}', ''], ['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', '$ change', '% change']]
+    pstyle = [('FONT', (0, 0), (-1, -1), 'Helvetica', 8.5), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('BOX', (0, 0), (-1, -1), 0.8, ink), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+              ('TOPPADDING', (0, 0), (-1, -1), 3.5), ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
+              ('BACKGROUND', (0, 0), (-1, 1), ink), ('TEXTCOLOR', (0, 0), (-1, 1), colors.white), ('FONT', (0, 1), (-1, 1), 'Helvetica-Bold', 8.5),
+              ('SPAN', (3, 0), (4, 0)), ('ALIGN', (3, 0), (4, 0), 'CENTER'), ('FONT', (3, 0), (4, 0), 'Helvetica', 7.5), ('TEXTCOLOR', (3, 0), (4, 0), colors.HexColor('#aab4c5')), ('LINEBELOW', (3, 0), (4, 0), 0.5, colors.HexColor('#5b667a')),
+              ('TOPPADDING', (0, 0), (-1, 0), 2.5), ('BOTTOMPADDING', (0, 0), (-1, 0), 1.5)]
     for g in sheet['calc']:
         per.append([[Paragraph(g['header'], pb)] + ([Paragraph(g['units'], ps)] if g['units'] else []), '', '', '', ''])
         pstyle.append(('BACKGROUND', (0, len(per) - 1), (1, len(per) - 1), colors.HexColor('#f6f8fb')))
@@ -126,9 +133,9 @@ def pdf(sheet):
             if _hex(p['ptone']):
                 pstyle.append(('TEXTCOLOR', (4, i), (4, i), colors.HexColor(_hex(p['ptone']))))
     n = len(per) - 1
-    pstyle.extend([('BACKGROUND', (2, 1), (2, n), colors.HexColor(TINT)), ('FONT', (2, 1), (2, n), 'Helvetica-Bold', 8.5), ('LINEBEFORE', (2, 0), (2, n), 1.8, ink), ('LINEAFTER', (2, 0), (2, n), 1.8, ink),
+    pstyle.extend([('BACKGROUND', (2, 2), (2, n), colors.HexColor(TINT)), ('FONT', (2, 2), (2, n), 'Helvetica-Bold', 8.5), ('LINEBEFORE', (2, 0), (2, n), 1.8, ink), ('LINEAFTER', (2, 0), (2, n), 1.8, ink),
                    ('LINEABOVE', (2, 0), (2, 0), 1.8, ink), ('LINEBELOW', (2, n), (2, n), 1.8, ink)])
-    pt = Table(per, colWidths=[2.55 * inch, 1.1 * inch, 1.1 * inch, 1.05 * inch, 0.9 * inch], repeatRows=1)
+    pt = Table(per, colWidths=[2.55 * inch, 1.1 * inch, 1.1 * inch, 1.05 * inch, 0.9 * inch], repeatRows=2)
     pt.setStyle(TableStyle(pstyle))
     story += [pt]
 
@@ -162,12 +169,18 @@ def xlsx(sheet):
     ws['A3'] = f'The $ and % change columns compare the {sheet["year"]} budget with the {sheet["year"] - 1} budget.'
     ws['A3'].font = Font(color='667085')
     r = 4
+    ws.merge_cells(start_row=r, start_column=5, end_row=r, end_column=6)
+    g = ws.cell(row=r, column=5, value=group_label(sheet))
+    g.font = Font(color='8A94A6', size=9)
+    g.alignment = Alignment(horizontal='center')
+    for c in (5, 6):
+        ws.cell(row=r, column=c).border = Border(bottom=Side(style='thin', color='C9D2E0'))
+    r += 1
     for c, h in enumerate(heads(sheet), 1):
         cell = ws.cell(row=r, column=c, value=h)
         cell.font = ink
         cell.alignment = Alignment(horizontal='left' if c == 1 else 'right', wrap_text=True, vertical='bottom')
         cell.border = Border(bottom=Side(style='medium', color=INK.lstrip('#')))
-    ws.row_dimensions[r].height = 30
     head_row = r
     r += 1
 
@@ -213,15 +226,22 @@ def xlsx(sheet):
             cell.border = Border(left=med, right=med, top=med if row == first else b.top, bottom=b.bottom if (b.bottom.style == 'double') else (med if row == last else b.bottom))
             cell.fill = tint
 
-    box(4, head_row, last_row)
+    box(4, head_row - 1, last_row)                  # the box starts at the group row above the headings, as in the PDF
     r += 1
     per_head = r
-    for c, h in enumerate(['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', f'$ change\nvs {sheet["year"] - 1}', f'% change\nvs {sheet["year"] - 1}'], 1):
+    ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=5)
+    for c in range(1, 6):
+        ws.cell(row=r, column=c).fill = PatternFill('solid', fgColor=INK.lstrip('#'))
+    gcell = ws.cell(row=r, column=4, value=f'{sheet["year"]} vs {sheet["year"] - 1}')
+    gcell.font = Font(color='AAB4C5', size=9)
+    gcell.alignment = Alignment(horizontal='center')
+    r += 1
+    per_head = r
+    for c, h in enumerate(['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', '$ change', '% change'], 1):
         cell = ws.cell(row=r, column=c, value=h)
         cell.font = Font(bold=True, color='FFFFFF')
         cell.fill = PatternFill('solid', fgColor=INK.lstrip('#'))
         cell.alignment = Alignment(horizontal='left' if c == 1 else 'right', wrap_text=True, vertical='bottom')
-    ws.row_dimensions[r].height = 30
     r += 1
     for g in sheet['calc']:
         text = f'{g["header"]}: {g["units"]}' if g['units'] else g['header']
@@ -251,12 +271,12 @@ def xlsx(sheet):
     ws.column_dimensions['A'].width = 44
     for c in range(2, 7):
         ws.column_dimensions[get_column_letter(c)].width = 16
-    ws.freeze_panes = 'A5'
+    ws.freeze_panes = 'A6'
     ws.page_setup.orientation = 'portrait'
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_title_rows = '4:4'
+    ws.print_title_rows = '4:5'
     ws.sheet_view.showGridLines = False
     out = io.BytesIO()
     wb.save(out)
