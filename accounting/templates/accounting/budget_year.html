@@ -69,6 +69,7 @@
     .bd-sheet .bd-table th, .bd-sheet .bd-table td { padding-left: 7px; padding-right: 7px; }
     .bd-sheet .hd { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1c2430; padding-bottom: 10px; margin-bottom: 6px; }
     .bd-sheet h2 { margin: 0; font-size: 22px; }
+    .bd-sheet .bd-table th small.bd-vs { display: block; font-size: 9.5px; font-weight: 400; text-transform: none; letter-spacing: 0; color: #667085; white-space: nowrap; }
     .bd-sheet .bd-table th { background: none; border-bottom: 1px solid #1c2430; color: #1c2430; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
     .bd-sheet .bd-table td { padding-top: 4px; padding-bottom: 4px; border-bottom: 1px solid #f0f2f6; }
     .bd-sheet .bd-table tr.sec td { background: none; border-bottom: 1px solid var(--border-hairline); color: #1c2430; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; padding-top: 16px; }
@@ -304,8 +305,8 @@
     <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button>
 </div>
 <div class="bd-sheet">
-    <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; {{ sheet_note }}</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>{% if stage == 'approved' %}Approved {% endif %}{{ approved_at|date:"M j, Y" }}</div></div>
-    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }} budget</th><th>{{ year|add:"-1" }} {{ sheet.proj_word }}</th><th class="c27">{{ year }} budget</th><th>$ change</th><th>% change</th></tr></thead><tbody>
+    <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; {{ sheet_note }}</div><div class="text-muted small">The $ and % change columns compare the {{ year }} budget with the {{ year|add:"-1" }} budget.</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>{% if stage == 'approved' %}Approved {% endif %}{{ approved_at|date:"M j, Y" }}</div></div>
+    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }} budget</th><th>{{ year|add:"-1" }} {{ sheet.proj_word }}</th><th class="c27">{{ year }} budget</th><th>$ change<small class="bd-vs">vs {{ year|add:"-1" }} budget</small></th><th>% change<small class="bd-vs">vs {{ year|add:"-1" }} budget</small></th></tr></thead><tbody>
     {% for sec in sheet.sections %}
     {% if sec.lines %}
     <tr class="sec"><td>{{ sec.name }}</td><td></td><td></td><td class="c27"></td><td></td><td></td></tr>
@@ -317,7 +318,7 @@
     <tr class="grand last"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.projected|dollars }}</td><td class="c27">{{ sheet.total.proposed|dollars }}</td><td class="t-{{ sheet.total.tone }}">{{ sheet.total.d|dparen }}</td><td class="t-{{ sheet.total.ptone }}">{{ sheet.total.p|pparen }}</td></tr>
     </tbody></table>
     <div class="bd-unitbox"><div class="t">By unit calculation</div>
-    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th class="c27">{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
+    <table class="bd-table"><thead><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th class="c27">{{ year }}</th><th>$ change<small class="bd-vs">vs {{ year|add:"-1" }}</small></th><th>% change<small class="bd-vs">vs {{ year|add:"-1" }}</small></th></tr></thead><tbody>
     {% for g in sheet.calc %}<tr class="ghd"><td><b>{{ g.header }}</b>{% if g.units %}<div class="gu">{{ g.units }}</div>{% endif %}</td><td></td><td class="c27"></td><td></td><td></td></tr>
     {% for p in g.rows %}<tr{% if forloop.last and forloop.parentloop.last %} class="last"{% endif %}><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td class="c27">{{ p.new|money }}</td><td class="t-{{ p.tone }}">{{ p.d|cparen }}</td><td class="t-{{ p.ptone }}">{{ p.p|pparen }}</td></tr>{% endfor %}
     {% endfor %}
