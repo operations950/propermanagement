@@ -189,9 +189,13 @@
             </div>
         </div>
 
-        <button class="btn btn-primary" type="submit">{% if template %}<i data-lucide="check" class="icon"></i> Save changes{% else %}<i data-lucide="plus" class="icon"></i> Create {% if new_face %}compliance{% else %}recurring{% endif %} rule{% endif %}</button>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-primary" type="submit">{% if template %}<i data-lucide="check" class="icon"></i> Save changes{% else %}<i data-lucide="plus" class="icon"></i> Create {% if new_face %}compliance{% else %}recurring{% endif %} rule{% endif %}</button>
+            {% if template %}<button class="btn btn-outline-danger btn-sm ms-auto" type="submit" form="delete-rule" formnovalidate onclick="return confirm('Delete this rule{% if open_items %} and its {{ open_items }} open item{{ open_items|pluralize }}{% endif %}? This cannot be undone.');"><i data-lucide="trash-2" class="icon"></i> Delete</button>{% endif %}
+        </div>
     </div>
 </form>
+{% if template %}<form id="delete-rule" method="post" action="{% url 'session_template_delete' template.pk %}" hidden>{% csrf_token %}</form>{% endif %}
 </div>
 
 <div class="col-lg-5">

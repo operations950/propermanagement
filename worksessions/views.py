@@ -16,6 +16,8 @@ from .forms import SessionTemplateForm
 from .models import Session, SessionLine, SessionTemplate
 from .services import generation as generation_service
 from .services import lifecycle as lifecycle_service
+from .services import rules as rules_service
+from django.views.decorators.http import require_POST
 
 
 @login_required
@@ -253,8 +255,27 @@ def session_template_form_view(request, pk=None):
         'attributes': PropertyAttribute.objects.order_by('category', 'label'),
         'staff': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__username'),
         'process_templates': ProcessTemplate.objects.filter(is_active=True).order_by('kind', 'name'),
+        'open_items': rules_service.open_items(template) if template else 0,
         'chosen_ids': set(form.data.getlist('properties')) if form.is_bound else ({str(p) for p in template.properties.values_list('pk', flat=True)} if template else set()),
     })
+
+
+@require_POST
+@login_required
+def session_template_delete(request, pk):
+    """Delete a compliance rule (only one with no history; see services/rules.py)."""
+    template = get_object_or_404(SessionTemplate, pk=pk)
+    name = template.name
+    try:
+        gone = rules_service.delete_rule(template)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('session_template_edit', template.pk)
+    messages.success(request, f'Deleted "{name}"' + (f' and its {gone} open item{"s" if gone != 1 else ""}.' if gone else '.'))
+    profile = getattr(request.user, 'staff_profile', None)
+    if profile and profile.new_face:
+        return redirect(f"{reverse('ws_compliance')}?tab=rules")
+    return redirect('session_template_list')
 
 
 @login_required

@@ -9,5 +9,6 @@ urlpatterns = [
     path('rules/new/', views.session_template_form_view, name='session_template_create'),
     path('rules/<int:pk>/', views.session_template_detail, name='session_template_detail'),
     path('rules/<int:pk>/edit/', views.session_template_form_view, name='session_template_edit'),
+    path('rules/<int:pk>/delete/', views.session_template_delete, name='session_template_delete'),
     path('rules/preview/', views.session_template_preview, name='session_template_preview'),
 ]
