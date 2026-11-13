@@ -448,7 +448,7 @@ def aging(association, as_of):
     """Open charges by how long they have been owed, per owner and unit."""
     out = {}
     for c in Charge.objects.filter(association=association, is_void=False).select_related('unit', 'owner').prefetch_related('applications'):
-        bal = c.balance
+        bal = c.amount - sum((a.amount for a in c.applications.all() if a.date <= as_of), ZERO)       # what was still owed on that date, not today
         if bal <= 0 or c.due_date > as_of:
             continue
         age = (as_of - c.due_date).days

@@ -4,6 +4,11 @@
 {% block acc_body %}
 <h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="chart-column" class="icon-lg"></i> Reports</h2>
 <p class="text-muted">{{ assoc.name }}. Each report shows the accrual book or the cash book, from the same entries.</p>
+<form method="get" action="{% url 'accounting:report_package' assoc.pk %}" target="_blank" class="ac-step flex-wrap">
+<i data-lucide="file-stack" class="icon ac-ico"></i><span class="flex-grow-1"><span class="fw-semibold">Monthly financial package</span><br><span class="small text-muted">One PDF: profit and loss, balance sheet, budget vs actual, owner aging, then the bank statements.</span></span>
+<input type="month" name="month" value="{{ month|date:'Y-m' }}" class="form-control form-control-sm" style="width: auto;" aria-label="Month">
+<select name="basis" class="form-select form-select-sm" style="width: auto;" aria-label="Book"><option value="accrual">Accrual</option><option value="cash">Cash</option></select>
+<button class="btn btn-sm btn-dark" type="submit">Open the package</button></form>
 <a class="ac-step" href="{% url 'accounting:report_tb' assoc.pk %}"><i data-lucide="scale" class="icon ac-ico"></i><span class="flex-grow-1"><span class="fw-semibold">Trial balance</span><br><span class="small text-muted">Every account's balance forward, activity and ending balance</span></span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
 <a class="ac-step" href="{% url 'accounting:report_bs' assoc.pk %}"><i data-lucide="landmark" class="icon ac-ico"></i><span class="flex-grow-1"><span class="fw-semibold">Balance sheet</span><br><span class="small text-muted">What the association has and owes, and its funds</span></span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
 <a class="ac-step" href="{% url 'accounting:report_pl' assoc.pk %}"><i data-lucide="receipt" class="icon ac-ico"></i><span class="flex-grow-1"><span class="fw-semibold">Profit and loss</span><br><span class="small text-muted">Income, expenses and net income: this month, last month, year to date, or month by month</span></span><i data-lucide="chevron-right" class="icon text-muted"></i></a>

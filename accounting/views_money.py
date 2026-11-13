@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from core.models import Contact, Unit
 
-from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, payables, reporting, scheduled
+from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, package, payables, reporting, scheduled
 from . import standard_chart as sc
 from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, ChargeRule, JournalEntry, JournalRule, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
 from .web import admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month
@@ -616,6 +616,18 @@ def reports(request, pk):
         return redirect_to
     month = default_month()
     return render(request, 'accounting/reports.html', {'assoc': prop, 'month': month, 'banks': prop.bank_accounts.filter(is_active=True), 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting', 'today': timezone.localdate()})
+
+
+@admin_only
+def report_package(request, pk):
+    """The month's financial package as one PDF: statements, aging, then the bank statements."""
+    prop, redirect_to = _books(request, pk)
+    if redirect_to:
+        return redirect_to
+    month = parse_month(request.GET.get('month'), default_month())
+    response = HttpResponse(package.build(prop, month, _basis(request)), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{package.file_name(prop, month)}"'
+    return response
 
 
 @admin_only

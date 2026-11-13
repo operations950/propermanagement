@@ -164,7 +164,7 @@ def expense_group(acct):
 
 
 def profit_and_loss(prop, end, basis=ACCRUAL, view='compare'):
-    """view: 'compare' (this month, last month, year to date) or 'months' (each month of the year so far, and the year)."""
+    """view: 'compare' (this month, last month, year to date), 'month_ytd' (this month and year to date: the board package) or 'months' (each month of the year so far, and the year)."""
     fy = ledger.profile_for(prop).fiscal_year_start(end)
     first = ledger.month_start(end)
     if view == 'months':
@@ -173,6 +173,8 @@ def profit_and_loss(prop, end, basis=ACCRUAL, view='compare'):
             periods.append((_label(cur), cur, min(ledger.month_end(cur), end)))
             cur = ledger.next_month(cur)
         periods.append(('Year to date', fy, end))
+    elif view == 'month_ytd':
+        periods = [(_label(first), first, end), ('Year to date', fy, end)]
     else:
         prev = ledger.previous_month(end)
         periods = [(_label(first), first, end), (_label(prev), prev, ledger.month_end(prev)), ('Year to date', fy, end)]

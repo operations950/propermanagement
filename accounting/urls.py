@@ -37,6 +37,7 @@ urlpatterns = [
     path('<int:pk>/recurring/', views_money.recurring, name='recurring'),
     path('<int:pk>/journal/', views_money.journal, name='journal'),
     path('<int:pk>/reports/', views_money.reports, name='reports'),
+    path('<int:pk>/reports/package/', views_money.report_package, name='report_package'),
     path('<int:pk>/reports/trial-balance/', views_money.report_tb, name='report_tb'),
     path('<int:pk>/reports/balance-sheet/', views_money.report_bs, name='report_bs'),
     path('<int:pk>/reports/income/', views_money.report_is, name='report_is'),
