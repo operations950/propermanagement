@@ -17,14 +17,21 @@
     <div class="small text-muted mt-2">1xxx assets, 2xxx liabilities, 3xxx equity, 4xxx income, 5xxx&ndash;6xxx expenses. {{ reserve_note }} An expense account appears in each budget's "Add a line" list, under its budget section.</div>
 </div></form>
 
+<div class="card mb-3"><div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
+    <i data-lucide="search" class="icon"></i>
+    <input type="search" id="chart-q" class="form-control form-control-sm" placeholder="Search by number or name&hellip;" autocomplete="off" style="max-width: 360px;" aria-label="Search the chart of accounts">
+    <span class="small text-muted" id="chart-q-count" aria-live="polite"></span>
+    <button type="button" class="btn btn-link btn-sm p-0" id="chart-q-clear" hidden>Clear</button>
+</div></div>
+
 {% for g in groups %}
-<div class="card mb-3">
-    <div class="card-header bg-white py-2 fw-semibold">{{ g.label }} accounts <span class="text-muted fw-normal small">&middot; {{ g.rows|length }}</span></div>
+<div class="card mb-3" data-group>
+    <div class="card-header bg-white py-2 fw-semibold">{{ g.label }} accounts <span class="text-muted fw-normal small">&middot; <span class="js-gcount">{{ g.rows|length }}</span></span></div>
     <div class="table-responsive"><table class="table table-sm align-middle mb-0 ac-table">
         <thead><tr><th style="width: 90px;">Number</th><th>Name</th>{% if g.kind == 'expense' %}<th style="width: 170px;">Budget section {% include '_tip.html' with text='Where the account sits in each budget and on the profit and loss. Changing it moves the account in every association.' %}</th>{% endif %}<th class="ac-num" style="width: 120px;">Entries in</th><th style="width: 250px;"></th></tr></thead>
         <tbody>
         {% for r in g.rows %}
-        <tr{% if not r.m.is_active %} class="text-muted"{% endif %}>
+        <tr data-acct="{{ r.m.code }} {{ r.m.name|lower }}{% if not r.m.is_active %} off{% endif %}"{% if not r.m.is_active %} class="text-muted"{% endif %}>
             <td>{% if r.editable %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="edit"><input type="hidden" name="account" value="{{ r.m.pk }}">
                 <input class="form-control form-control-sm px-1" name="code" value="{{ r.m.code }}" inputmode="numeric" maxlength="4" style="width: 66px;" title="Nothing is posted to it in any association, so the number can be changed" onchange="this.form.submit()" aria-label="Number of {{ r.m.name }}"></form>{% else %}{{ r.m.code }}{% endif %}</td>
             <td>
@@ -48,5 +55,31 @@
     </table></div>
 </div>
 {% endfor %}
+<script>
+(function () {
+    var q = document.getElementById('chart-q'), count = document.getElementById('chart-q-count'), clear = document.getElementById('chart-q-clear');
+    var rows = Array.prototype.slice.call(document.querySelectorAll('tr[data-acct]')), groups = document.querySelectorAll('[data-group]');
+    function run() {
+        var terms = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+        rows.forEach(function (r) {
+            var ok = terms.every(function (w) { return r.dataset.acct.indexOf(w) !== -1; });
+            r.hidden = !ok;
+            if (ok) shown++;
+        });
+        groups.forEach(function (g) {
+            var n = g.querySelectorAll('tr[data-acct]:not([hidden])').length;
+            g.hidden = terms.length > 0 && n === 0;
+            var c = g.querySelector('.js-gcount');
+            if (c) c.textContent = n;
+        });
+        count.textContent = terms.length ? (shown ? shown + ' of ' + rows.length + ' accounts' : 'No accounts match') : '';
+        clear.hidden = !terms.length;
+    }
+    q.addEventListener('input', run);
+    q.addEventListener('keydown', function (e) { if (e.key === 'Escape') { q.value = ''; run(); } });
+    clear.addEventListener('click', function () { q.value = ''; run(); q.focus(); });
+    run();
+})();
+</script>
 <p class="small text-muted">Accounts are never deleted: the books keep their history. A number or kind can change only while nothing is posted to the account in any association. Turning an account off hides it from pickers everywhere; it can't have a balance, and the accounts the program posts to itself stay on.</p>
 {% endblock %}

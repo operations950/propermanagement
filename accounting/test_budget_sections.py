@@ -96,3 +96,14 @@ class BudgetSectionOfAnAccountTests(TestCase):
         self.assertIn('Budget section', html)
         self.assertIn('Budget section of 6903 Insurance Financing', html)
         self.assertNotIn('Budget section of 4800', html)
+
+    def test_the_chart_page_has_a_search_box_that_filters_as_you_type(self):
+        MasterAccount.objects.filter(code='6906').update(is_active=False)
+        html = self.client.get(self.chart).content.decode()
+        self.assertIn('id="chart-q"', html)
+        self.assertIn('placeholder="Search by number or name', html)
+        self.assertIn('data-acct="6903 insurance financing"', html)                                               # every row carries its number and name to search
+        self.assertIn('data-acct="6906 pest control off"', html)                                                   # a switched-off account can be found by typing "off"
+        self.assertIn("q.addEventListener('input', run)", html)
+        self.assertIn("e.key === 'Escape'", html)
+        self.assertEqual(html.count('" data-group>'), 5)                                                              # one block per kind of account, hidden when nothing in it matches
