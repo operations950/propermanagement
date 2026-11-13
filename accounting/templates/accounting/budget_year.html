@@ -82,8 +82,8 @@
     .bd-sheet .bd-table tr td.c27, .bd-sheet .bd-table thead tr th.c27 { background: #e4edfb; font-weight: 700; border-left: 2px solid #1c2430; border-right: 2px solid #1c2430; }
     .bd-sheet .bd-table thead tr th.c27 { border-top: 2px solid #1c2430; }
     .bd-sheet .bd-table tr.last td.c27 { border-bottom: 3px double #1c2430; }
-    .bd-unitbox { margin-top: 22px; border: 1px solid #1c2430; border-radius: 6px; overflow: hidden; }
-    .bd-unitbox .t { background: #1c2430; color: #fff; padding: 7px 12px; font-weight: 700; }
+    .bd-unitbox { margin-top: 22px; border: 1px solid #b9c3d3; border-radius: 6px; overflow: hidden; }
+    .bd-unitbox .t { background: #d9e1ec; color: #1c2430; padding: 7px 12px; font-weight: 700; }
     .bd-unitbox .bd-table td, .bd-unitbox .bd-table th { padding: 7px 12px; }
     .bd-unitbox tr.ghd td { background: #f6f8fb; padding-top: 9px; padding-bottom: 5px; }
     .bd-unitbox tr.ghd td:first-child { white-space: normal; width: 42%; }
@@ -310,7 +310,7 @@
     <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button>
 </div>
 <div class="bd-sheet">
-    <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; {{ sheet_note }}</div><div class="text-muted small">The $ and % change columns compare the {{ year }} budget with the {{ year|add:"-1" }} budget.</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>{% if stage == 'approved' %}Approved {% endif %}{{ approved_at|date:"M j, Y" }}</div></div>
+    <div class="hd"><div><h2>{{ assoc.name }}</h2><div class="text-muted">{{ year }} annual budget &middot; {{ sheet_note }}</div></div><div class="text-end text-muted small">{{ units }} unit{{ units|pluralize }}<br>{% if stage == 'approved' %}Approved {% endif %}{{ approved_at|date:"M j, Y" }}</div></div>
     <table class="bd-table"><thead><tr class="grp"><th colspan="3"></th><th class="c27"></th><th colspan="2" class="bd-grp">{{ year }} budget vs {{ year|add:"-1" }} budget</th></tr><tr><th>&nbsp;</th><th>{{ year|add:"-1" }} budget</th><th>{{ year|add:"-1" }} {{ sheet.proj_word }}</th><th class="c27">{{ year }} budget</th><th>$ change</th><th>% change</th></tr></thead><tbody>
     {% for sec in sheet.sections %}
     {% if sec.lines %}

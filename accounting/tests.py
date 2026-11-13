@@ -1833,17 +1833,32 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         self.assertIn('>2027 budget vs 2026 budget</th>', html)                                                    # over the $ and % change columns
         self.assertIn('>2027 vs 2026</th>', html)                                                                  # and over the by-unit box's
         self.assertNotIn('bd-vs', html)
-        self.assertIn(said, html)
+        self.assertNotIn(said, html)                                                                               # the columns are labeled; no sentence is needed
         pdf = PdfReader(io.BytesIO(self.client.get(self.url + '?stage=draft&export=pdf').content)).pages[0].extract_text()
         self.assertEqual(pdf.count('2027 budget vs 2026 budget'), 1)
         self.assertIn('2027 vs 2026', pdf)
-        self.assertIn(said, pdf)
+        self.assertNotIn(said, pdf)
         ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
-        self.assertIn(said, str(ws['A3'].value))
+        self.assertIsNone(ws['A3'].value)
         self.assertEqual(ws['E4'].value, '2027 budget vs 2026 budget')
         self.assertIn('E4:F4', [str(r) for r in ws.merged_cells.ranges])
         self.assertEqual([str(ws.cell(row=5, column=c).value) for c in range(5, 7)], ['$ change', '% change'])
         self.assertEqual(str(ws['A6'].value), 'INCOME')
+
+    def test_the_by_unit_box_is_muted_not_black(self):
+        import io
+        import openpyxl
+        self.client.post(self.url, {'action': 'start'})
+        html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
+        self.assertIn('.bd-unitbox .t { background: #d9e1ec; color: #1c2430;', html)
+        self.assertNotIn('.bd-unitbox .t { background: #1c2430', html)
+        ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
+        head = next(r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == 'By unit calculation')
+        for c in (1, 2, 4, 5):
+            self.assertEqual(ws.cell(row=head, column=c).fill.fgColor.rgb[-6:].upper(), 'D9E1EC')
+            self.assertEqual(ws.cell(row=head - 1, column=1 if c == 5 else c).fill.fgColor.rgb[-6:].upper(), 'D9E1EC')       # (the group row's last cell is merged into the one before it)
+        self.assertEqual(ws.cell(row=head, column=3).fill.fgColor.rgb[-6:].upper(), 'E4EDFB')                    # the 2027 column keeps its tint
+        self.assertEqual(ws.cell(row=head, column=1).font.color.rgb[-6:].upper(), '1C2430')                      # dark text on the muted band
 
     def test_the_budget_screen_has_download_buttons_at_the_top(self):
         self.client.post(self.url, {'action': 'start'})

@@ -16,6 +16,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 INK = '#1c2430'
 GOOD, BAD = '#4c7f5e', '#a5524c'
 TINT = '#e4edfb'
+BAND = '#d9e1ec'        # the by-unit box's header: muted, not black
 
 
 def file_name(assoc_name, year, stage_label, ext):
@@ -69,7 +70,7 @@ def pdf(sheet):
     title = ParagraphStyle('t', fontName='Helvetica-Bold', fontSize=17, leading=21, textColor=colors.HexColor(INK))
     sub = ParagraphStyle('s', fontName='Helvetica', fontSize=9.5, leading=13, textColor=colors.HexColor('#667085'))
     story = [Paragraph(sheet['assoc'], title), Paragraph(f'{sheet["year"]} proposed budget &middot; {sheet["stage_label"]} &middot; {sheet["units"]} unit{"s" if sheet["units"] != 1 else ""}', sub),
-             Paragraph(f'The $ and % change columns compare the {sheet["year"]} budget with the {sheet["year"] - 1} budget.', sub), Spacer(1, 10)]
+             Spacer(1, 10)]
     rows = [['', '', '', '', group_label(sheet), ''], heads(sheet)]
     style = [('FONT', (0, 0), (-1, -1), 'Helvetica', 8.5), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('TOPPADDING', (0, 0), (-1, -1), 2.6), ('BOTTOMPADDING', (0, 0), (-1, -1), 2.6), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
              ('FONT', (0, 1), (-1, 1), 'Helvetica-Bold', 8), ('TEXTCOLOR', (0, 1), (-1, 1), colors.HexColor(INK)), ('LINEBELOW', (0, 1), (-1, 1), 1, colors.HexColor(INK)),
@@ -114,10 +115,10 @@ def pdf(sheet):
     ps = ParagraphStyle('u', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#667085'))
     pb = ParagraphStyle('ub', fontName='Helvetica-Bold', fontSize=8.5, leading=10.5, textColor=colors.HexColor(INK))
     per = [['', '', '', f'{sheet["year"]} vs {sheet["year"] - 1}', ''], ['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', '$ change', '% change']]
-    pstyle = [('FONT', (0, 0), (-1, -1), 'Helvetica', 8.5), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('BOX', (0, 0), (-1, -1), 0.8, ink), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    pstyle = [('FONT', (0, 0), (-1, -1), 'Helvetica', 8.5), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#b9c3d3')), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
               ('TOPPADDING', (0, 0), (-1, -1), 3.5), ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
-              ('BACKGROUND', (0, 0), (-1, 1), ink), ('TEXTCOLOR', (0, 0), (-1, 1), colors.white), ('FONT', (0, 1), (-1, 1), 'Helvetica-Bold', 8.5),
-              ('SPAN', (3, 0), (4, 0)), ('ALIGN', (3, 0), (4, 0), 'CENTER'), ('FONT', (3, 0), (4, 0), 'Helvetica', 7.5), ('TEXTCOLOR', (3, 0), (4, 0), colors.HexColor('#aab4c5')), ('LINEBELOW', (3, 0), (4, 0), 0.5, colors.HexColor('#5b667a')),
+              ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor(BAND)), ('TEXTCOLOR', (0, 0), (-1, 1), ink), ('FONT', (0, 1), (-1, 1), 'Helvetica-Bold', 8.5),
+              ('SPAN', (3, 0), (4, 0)), ('ALIGN', (3, 0), (4, 0), 'CENTER'), ('FONT', (3, 0), (4, 0), 'Helvetica', 7.5), ('TEXTCOLOR', (3, 0), (4, 0), colors.HexColor('#667085')), ('LINEBELOW', (3, 0), (4, 0), 0.5, colors.HexColor('#aab4c5')),
               ('TOPPADDING', (0, 0), (-1, 0), 2.5), ('BOTTOMPADDING', (0, 0), (-1, 0), 1.5)]
     for g in sheet['calc']:
         per.append([[Paragraph(g['header'], pb)] + ([Paragraph(g['units'], ps)] if g['units'] else []), '', '', '', ''])
@@ -166,8 +167,6 @@ def xlsx(sheet):
     ws['A1'].font = Font(bold=True, size=15)
     ws['A2'] = f'{sheet["year"]} proposed budget · {sheet["stage_label"]} · {sheet["units"]} unit{"s" if sheet["units"] != 1 else ""}'
     ws['A2'].font = Font(color='667085')
-    ws['A3'] = f'The $ and % change columns compare the {sheet["year"]} budget with the {sheet["year"] - 1} budget.'
-    ws['A3'].font = Font(color='667085')
     r = 4
     ws.merge_cells(start_row=r, start_column=5, end_row=r, end_column=6)
     g = ws.cell(row=r, column=5, value=group_label(sheet))
@@ -231,16 +230,16 @@ def xlsx(sheet):
     per_head = r
     ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=5)
     for c in range(1, 6):
-        ws.cell(row=r, column=c).fill = PatternFill('solid', fgColor=INK.lstrip('#'))
+        ws.cell(row=r, column=c).fill = PatternFill('solid', fgColor=BAND.lstrip('#'))
     gcell = ws.cell(row=r, column=4, value=f'{sheet["year"]} vs {sheet["year"] - 1}')
-    gcell.font = Font(color='AAB4C5', size=9)
+    gcell.font = Font(color='667085', size=9)
     gcell.alignment = Alignment(horizontal='center')
     r += 1
     per_head = r
     for c, h in enumerate(['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', '$ change', '% change'], 1):
         cell = ws.cell(row=r, column=c, value=h)
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = PatternFill('solid', fgColor=INK.lstrip('#'))
+        cell.font = Font(bold=True, color=INK.lstrip('#'))
+        cell.fill = PatternFill('solid', fgColor=BAND.lstrip('#'))
         cell.alignment = Alignment(horizontal='left' if c == 1 else 'right', wrap_text=True, vertical='bottom')
     r += 1
     for g in sheet['calc']:
