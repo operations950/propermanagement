@@ -7,10 +7,14 @@ from datetime import date
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from xml.sax.saxutils import escape
+
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 INK = '#1c2430'
@@ -62,6 +66,29 @@ def group_label(sheet):
     return f'{sheet["year"]} budget vs {sheet["year"] - 1} budget'
 
 
+COLS = [2.45 * inch, 0.95 * inch, 0.95 * inch, 0.95 * inch, 1.0 * inch, 1.0 * inch]            # the main table's columns
+UNIT_COLS = [2.55 * inch, 1.1 * inch, 1.1 * inch, 1.05 * inch, 0.9 * inch]                      # the by-unit box's columns
+PAD = 12                                                                                        # the table's left and right padding together, in points
+
+
+def _label_cell(text, bold=False, size=8.5):
+    """A name that wraps onto the next line inside its own column; nothing is allowed to run into the column beside it."""
+    return Paragraph(escape(str(text)), ParagraphStyle('lb', fontName='Helvetica-Bold' if bold else 'Helvetica', fontSize=size, leading=size + 2.2, textColor=colors.HexColor(INK)))
+
+
+def _fit(text, width, bold=False, size=8.5, color=None):
+    """A figure that always fits its column: left as it is when it fits, otherwise the same figure in a smaller type."""
+    text = str(text)
+    font = 'Helvetica-Bold' if bold else 'Helvetica'
+    room = width - PAD
+    if not text or stringWidth(text, font, size) <= room:
+        return text
+    small = size
+    while small > 5 and stringWidth(text, font, small) > room:
+        small -= 0.25
+    return Paragraph(escape(text), ParagraphStyle('fit', fontName=font, fontSize=small, leading=small + 2, alignment=TA_RIGHT, textColor=colors.HexColor(color or INK)))
+
+
 def pdf(sheet):
     """The sheet as a PDF (letter, portrait). `sheet` is views_budget._sheet's dict with assoc name, year, stage label, unit count and date added."""
     buf = io.BytesIO()
@@ -77,6 +104,9 @@ def pdf(sheet):
              ('SPAN', (4, 0), (5, 0)), ('ALIGN', (4, 0), (5, 0), 'CENTER'), ('FONT', (4, 0), (5, 0), 'Helvetica', 7.5), ('TEXTCOLOR', (4, 0), (5, 0), colors.HexColor('#8a94a6')), ('LINEBELOW', (4, 0), (5, 0), 0.5, colors.HexColor('#c9d2e0'))]
 
     def add(cells, kind='line', tone='', ptone=''):
+        size = 9.5 if kind == 'grand' else 8.5
+        cells = [_label_cell(cells[0], kind != 'line', size)] + [_fit(c, COLS[n], kind != 'line' or n == 3, size, _hex(tone) if n == 4 else _hex(ptone) if n == 5 else None)
+                                                                  for n, c in enumerate(cells[1:], 1)]
         rows.append(cells)
         i = len(rows) - 1
         if kind == 'section':
@@ -109,7 +139,7 @@ def pdf(sheet):
     ink = colors.HexColor(INK)
     style.extend([('BACKGROUND', (3, 0), (3, last), colors.HexColor(TINT)), ('LINEBEFORE', (3, 0), (3, last), 1.8, ink), ('LINEAFTER', (3, 0), (3, last), 1.8, ink),
                   ('LINEABOVE', (3, 0), (3, 0), 1.8, ink), ('FONT', (3, 1), (3, last), 'Helvetica-Bold', 8.5)])
-    table = Table(rows, colWidths=[2.45 * inch, 0.95 * inch, 0.95 * inch, 0.95 * inch, 1.0 * inch, 1.0 * inch], repeatRows=2)
+    table = Table(rows, colWidths=COLS, repeatRows=2)
     table.setStyle(TableStyle(style))
     story += [table, Spacer(1, 14)]
     ps = ParagraphStyle('u', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#667085'))
@@ -124,7 +154,9 @@ def pdf(sheet):
         per.append([[Paragraph(g['header'], pb)] + ([Paragraph(g['units'], ps)] if g['units'] else []), '', '', '', ''])
         pstyle.append(('BACKGROUND', (0, len(per) - 1), (1, len(per) - 1), colors.HexColor('#f6f8fb')))
         for p in g['rows']:
-            per.append([p['label'], _c2(p['old']), _c2(p['new']), _c2chg(p['d']), _pc(p['p'])])
+            bold = bool(p.get('bold'))
+            per.append([_label_cell(p['label'], bold), _fit(_c2(p['old']), UNIT_COLS[1], bold), _fit(_c2(p['new']), UNIT_COLS[2], True), _fit(_c2chg(p['d']), UNIT_COLS[3], bold, 8.5, _hex(p['tone'])),
+                        _fit(_pc(p['p']), UNIT_COLS[4], bold, 8.5, _hex(p['ptone']))])
             i = len(per) - 1
             pstyle.append(('LINEBELOW', (0, i), (-1, i), 0.3, colors.HexColor('#e3e8ef')))
             if p.get('bold'):
@@ -136,7 +168,7 @@ def pdf(sheet):
     n = len(per) - 1
     pstyle.extend([('BACKGROUND', (2, 2), (2, n), colors.HexColor(TINT)), ('FONT', (2, 2), (2, n), 'Helvetica-Bold', 8.5), ('LINEBEFORE', (2, 0), (2, n), 1.8, ink), ('LINEAFTER', (2, 0), (2, n), 1.8, ink),
                    ('LINEABOVE', (2, 0), (2, 0), 1.8, ink), ('LINEBELOW', (2, n), (2, n), 1.8, ink)])
-    pt = Table(per, colWidths=[2.55 * inch, 1.1 * inch, 1.1 * inch, 1.05 * inch, 0.9 * inch], repeatRows=2)
+    pt = Table(per, colWidths=UNIT_COLS, repeatRows=2)
     pt.setStyle(TableStyle(pstyle))
     story += [pt]
 
@@ -190,7 +222,7 @@ def xlsx(sheet):
                 v = 'new' if round(x['d']) else '—'
             cell = ws.cell(row=r, column=c, value=v)
             cell.number_format = pct if c == 6 else chg_fmt if c == 5 else money
-            cell.alignment = Alignment(horizontal='left' if c == 1 else 'right')
+            cell.alignment = Alignment(horizontal='left', wrap_text=True, vertical='top') if c == 1 else Alignment(horizontal='right', vertical='top')
             if bold:
                 cell.font = ink
             if fill:
