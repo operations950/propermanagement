@@ -7,7 +7,29 @@
 <div class="mo-page">
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+{# Phones: a strip of the week's seven days and the chosen day's visits below it (a month grid does not fit a phone). Wide screens: the month grid, as it always was. #}
+<div class="d-md-none">
+    <div class="mo-weekhead">
+        <a href="?day={{ prev_week }}" class="mo-wknav" aria-label="Earlier week"><i data-lucide="chevron-left" class="icon"></i></a>
+        <div class="mo-wklabel">{{ week_label }}</div>
+        <a href="?day={{ today_iso }}" class="mo-wknav">Today</a>
+        <a href="?day={{ next_week }}" class="mo-wknav" aria-label="Next week"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+    <div class="mo-weekstrip">
+        {% for d in phone_days %}
+        <a href="?day={{ d.date|date:'Y-m-d' }}" class="mo-wkday{% if d.is_selected %} on{% endif %}{% if d.is_today %} today{% endif %}" aria-label="{{ d.date|date:'l, F j' }}: {{ d.count }} visit{{ d.count|pluralize }}"{% if d.is_selected %} aria-current="date"{% endif %}>
+            <span class="mo-wkd">{{ d.date|date:"D" }}</span><span class="mo-wkn">{{ d.date.day }}</span><span class="mo-wkc{% if not d.count %} none{% endif %}">{{ d.count }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    <div class="mo-dayhead">
+        <span>{{ sel_day|date:"l, M j" }}</span>
+        <span class="mo-count ms-auto">{{ sel_visits|length }} visit{{ sel_visits|length|pluralize }}</span>
+    </div>
+    {% for visit in sel_visits %}{% include 'onsite/_phone_visit_card.html' %}{% empty %}<div class="mo-empty">No visits this day.</div>{% endfor %}
+</div>
+
+<div class="d-none d-md-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h2 class="page-title mb-0">{{ month_label }}</h2>
     <div class="d-flex gap-2">
         <a href="?month={{ prev_month }}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chevron-left" class="icon"></i></a>
@@ -16,7 +38,7 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card d-none d-md-block">
     <div class="card-body p-2 p-md-3">
         <div class="calendar-grid">
             <div class="calendar-dow small text-muted text-uppercase fw-bold text-center">Sun</div>

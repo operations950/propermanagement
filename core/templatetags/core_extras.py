@@ -85,6 +85,20 @@ def tel_href(phone):
 
 
 @register.filter
+def quo_dial_url(phone):
+    """openphone://dial?... that opens a call to this number in the Quo app, or '' when the number has no Quo form (see core/quo_links.py)."""
+    from core import quo_links
+    return quo_links.dial_url(phone)
+
+
+@register.filter
+def quo_text_url(phone):
+    """openphone://message?... that opens a text to this number in the Quo app, or '' when the number has no Quo form."""
+    from core import quo_links
+    return quo_links.message_url(phone)
+
+
+@register.filter
 def maps_href(address):
     """A link that opens an address in the phone's maps app (or Google Maps in a browser)."""
     from urllib.parse import quote_plus

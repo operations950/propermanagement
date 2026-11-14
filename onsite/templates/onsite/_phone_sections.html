@@ -1,0 +1,11 @@
+{% comment %}
+The On-Site sections as one scrolling row of chips on a phone, for people who are not on the new layout (the new layout has the same row from workspace/_onsite_tabs.html). Phone-only markup.
+{% endcomment %}
+<div class="mo-sections d-md-none">
+    <a href="{% url 'onsite_dashboard' %}" class="on">Visits</a>
+    <a href="{% url 'ws_week' %}">Properties</a>
+    <a href="{% url 'onsite_str_today' %}">Requests</a>
+    <a href="{% url 'onsite_reservation_list' %}">Reservations</a>
+    {% if is_admin %}<a href="{% url 'onsite_cleaner_activity' %}">Cleaner activity</a>{% endif %}
+    <a href="{% url 'onsite_performance' %}">Performance</a>
+</div>

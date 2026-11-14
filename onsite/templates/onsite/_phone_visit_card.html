@@ -1,0 +1,19 @@
+{% load onsite_phone %}{% comment %}
+One visit as a compact phone card (about 70px): the property and the kind of visit on the first line; when it has to be ready, who has it and ONE small tag on the second. The kind of visit and who has it are shown short ("Turnover", "Charlotte") so a phone's width cuts less. The whole card opens the visit; the
+Directions button at the right edge opens Maps. The tag is only for something worth a glance: a visit that is at risk, under way, done or nobody's yet, else the same-day check-in / vacancy hint. A visit that
+is simply scheduled shows no tag at all. Used by the visits list and the calendar's day agenda (phone-only markup). Expects: visit (with derived_status set).
+{% endcomment %}
+<div class="mo-vc">
+    <a href="{% url 'onsite_visit_detail' visit.pk %}" class="mo-vc-main stretched-link">
+        <span class="mo-vc-l1"><span class="mo-vc-name">{{ visit.property.name }}{% if visit.unit %} &middot; {{ visit.unit.label }}{% endif %}</span><span class="mo-vc-type">{{ visit.visit_type|short_type }}{% if visit.is_deep_clean %} + deep{% endif %}</span></span>
+        <span class="mo-vc-l2"><span class="mo-vc-text">{% if visit.ready_by %}Ready by {{ visit.ready_by|time:"g:i A" }}{% elif visit.scheduled_start %}{{ visit.scheduled_start|time:"g:i A" }}{% else %}Any time{% endif %} &middot; {{ visit.assignee_label|first_name }}</span>
+            {% if visit.derived_status == 'at_risk' %}<span class="mo-tag bad">At risk</span>
+            {% elif visit.derived_status == 'in_progress' %}<span class="mo-tag warn">In progress</span>
+            {% elif visit.derived_status == 'submitted' or visit.derived_status == 'verified' %}<span class="mo-tag good">Done</span>
+            {% elif visit.status == 'unassigned' %}<span class="mo-tag warn">Unassigned</span>
+            {% elif visit.is_same_day_checkin %}<span class="mo-tag bad">Same-day check-in</span>
+            {% elif visit.vacancy_days and visit.vacancy_days < 30 %}<span class="mo-tag">{{ visit.vacancy_days }}d vacant</span>{% endif %}
+        </span>
+    </a>
+    {% if visit.property.address %}<a href="https://www.google.com/maps/search/?api=1&amp;query={{ visit.property.address|urlencode }}" target="_blank" rel="noopener" class="mo-vc-dir" aria-label="Directions to {{ visit.property.name }}"><i data-lucide="navigation" class="icon"></i></a>{% endif %}
+</div>

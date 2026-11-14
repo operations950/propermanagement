@@ -758,29 +758,50 @@ def _list_back_url(request):
     return reverse('ticket_list') + (f'?{saved}' if saved else '')
 
 
-def _phone_filter_links(request, status, due, assigned_staff_id, priority, profile):
-    """The phone list's one-tap filter chips: [{'label', 'url', 'on'}]. Each one is a filter the full list already has (status, due date, assigned staff)
-    or the priority filter; a chip that is on links to the list without it, so tapping it again clears it."""
-    def link(set_=None, drop=()):
-        params = request.GET.copy()
-        for key in ('page',) + tuple(drop):
-            params.pop(key, None)
-        for key, value in (set_ or {}).items():
-            params[key] = value
-        query = params.urlencode()
-        return '?' + query if query else '?'
+def _phone_link(request, set_=None, drop=()):
+    """The list's own address with one filter changed: the other filters stay, a new page starts at its first page."""
+    params = request.GET.copy()
+    for key in ('page',) + tuple(drop):
+        params.pop(key, None)
+    for key, value in (set_ or {}).items():
+        params[key] = value
+    query = params.urlencode()
+    return '?' + query if query else '?'
 
+
+def _phone_filter_links(request, status, due, assigned_staff_id, priority, profile):
+    """The phone list's one-tap filter chips: [{'label', 'url', 'on'}]: Mine, Urgent, Due today and Late. Each one is a filter the full list already has (assigned staff, due date)
+    or the priority filter; a chip that is on links to the list without it, so tapping it again clears it. Open and Done are not chips: the list is the open tickets unless
+    the status is changed in More filters."""
+    link = lambda set_=None, drop=(): _phone_link(request, set_, drop)
     chips = []
     if profile:
         on = str(assigned_staff_id or '') == str(profile.pk)
         chips.append({'label': 'Mine', 'on': on, 'url': link(drop=('assigned_staff',)) if on else link({'assigned_staff': profile.pk})})
-    chips.append({'label': 'Open', 'on': status == 'active', 'url': link(drop=('status',))})
     chips.append({'label': 'Urgent', 'on': priority == 'urgent', 'url': link(drop=('priority',)) if priority == 'urgent' else link({'priority': 'urgent'})})
     chips.append({'label': 'Due today', 'on': due == 'today', 'url': link(drop=('due', 'due_on')) if due == 'today' else link({'due': 'today'}, drop=('due_on',))})
     chips.append({'label': 'Late', 'on': due == 'overdue', 'url': link(drop=('due', 'due_on')) if due == 'overdue' else link({'due': 'overdue'}, drop=('due_on',))})
-    chips.append({'label': 'In progress', 'on': status == 'in_progress', 'url': link(drop=('status',)) if status == 'in_progress' else link({'status': 'in_progress'})})
-    chips.append({'label': 'Done', 'on': status == 'complete', 'url': link(drop=('status',)) if status == 'complete' else link({'status': 'complete'})})
     return chips
+
+
+def _phone_properties(request, selected_property):
+    """The phone's "Select property" sheet: every property the full list's property filter offers, the ones with the most open tickets first ("Most used"), then the rest A to Z.
+    Each links to the list with that property chosen and the other filters kept."""
+    counts = dict(Ticket.objects.filter(status__in=OPEN_STATUSES, property__isnull=False).values_list('property_id').annotate(n=Count('pk')))
+    found = []
+    for entry in properties_by_type():
+        groups = [c['properties'] for c in entry['cities']] if entry.get('needs_city_tier') else [entry['properties']]
+        for props in groups:
+            for p in props:
+                found.append({'id': p['id'], 'name': p['name'], 'type': entry['type_label'], 'n': counts.get(p['id'], 0)})
+    top = sorted((p for p in found if p['n']), key=lambda p: (-p['n'], p['name'].lower()))[:6]
+    top_ids = {p['id'] for p in top}
+    rest = sorted((p for p in found if p['id'] not in top_ids), key=lambda p: p['name'].lower())
+    items = []
+    for i, p in enumerate(top + rest):
+        items.append(dict(p, top=i < len(top), first_top=i == 0 and bool(top), first_rest=i == len(top) and bool(top) and bool(rest),
+                          on=bool(selected_property and selected_property.pk == p['id']), url=_phone_link(request, {'property': p['id']})))
+    return items
 
 
 @login_required
@@ -952,10 +973,12 @@ def ticket_list(request):
         'sort_columns': _ticket_sort_columns(request.GET.get('sort', '')),
         'selected_priority': priority,
         'phone_chips': _phone_filter_links(request, status, due, assigned_staff_id, priority, profile),
-        # how many filters the phone's "More filters" sheet holds that are switched on (the chips show the others)
-        'phone_more_count': sum([bool(role), bool(property_id), bool(assigned_contact_id),
+        'phone_properties': _phone_properties(request, selected_property),
+        'phone_property_all_url': _phone_link(request, drop=('property',)),
+        # how many filters the phone's "More filters" sheet holds that are switched on (the property control and the chips show the others; the default status is Open)
+        'phone_more_count': sum([bool(role), bool(assigned_contact_id),
                                  bool(assigned_staff_id and not (profile and str(assigned_staff_id) == str(profile.pk))),
-                                 bool(due and due not in ('today', 'overdue')), status not in ('active', 'in_progress', 'complete')]),
+                                 bool(due and due not in ('today', 'overdue')), status != 'active']),
     }
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -1502,6 +1525,10 @@ def ticket_create(request):
             if contact:
                 field = 'assigned_contact' if contact.contact_type == Contact.ContactType.VENDOR else 'reporter_contact'
                 initial[field] = contact.pk
+        # "New ticket" from a property's own page (the phone property screen): the property is already chosen.
+        property_id = request.GET.get('property')
+        if property_id and property_id.isdigit():
+            initial['property'] = int(property_id)
         form = TicketForm(initial=initial)
 
     vendor_contacts = [

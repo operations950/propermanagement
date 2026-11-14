@@ -37,7 +37,8 @@
             });
             sections.push(el);
         });
-        sections.forEach(function (el, i) { setOpen(el, i === 0); });
+        var none = root.hasAttribute('data-m-acc-none');                  // the property page's "More" group: every card starts closed
+        sections.forEach(function (el, i) { setOpen(el, !none && i === 0); });
         ready = true;
         openFromHash(false);
     }

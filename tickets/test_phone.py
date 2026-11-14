@@ -47,29 +47,30 @@ class PhoneTicketListTests(TestCase):
     def titles(self, response):
         return {t.title for t in response.context['tickets']}
 
-    def test_the_phone_header_has_a_big_new_ticket_button_the_chips_a_search_box_and_more_filters(self):
+    def test_the_phone_header_has_new_ticket_then_the_property_control_then_four_chips_a_search_box_and_more_filters(self):
         html = self.client.get(self.url).content.decode()
         self.assertIn('class="m-tk d-md-none"', html)
         self.assertIn(f'class="m-tk-new" href="{reverse("ticket_create")}"', html)
-        for label in ('Mine', 'Open', 'Urgent', 'Due today', 'Late', 'In progress', 'Done'):
-            self.assertIn(f'>{label}</a>', html)
+        chips = html.split('class="m-tk-chips"')[1].split('</div>')[0]
+        for label in ('Mine', 'Urgent', 'Due today', 'Late'):
+            self.assertIn(f'>{label}</a>', chips)
+        for label in ('Open', 'In progress', 'Done'):                     # not quick filters any more: the list is the open tickets, and status lives in More filters
+            self.assertNotIn(f'>{label}</a>', chips)
+        self.assertLess(html.index('data-m-prop-open'), html.index('class="m-tk-chips"'))          # the property control comes first
+        self.assertIn('All properties', html)
         self.assertIn('class="m-tk-search"', html)
         self.assertIn('data-m-filters-open', html)
-
     def test_each_chip_is_a_filter_and_tapping_a_chip_that_is_on_clears_it(self):
         chips = {c['label']: c for c in self.client.get(self.url).context['phone_chips']}
+        self.assertEqual([c['label'] for c in self.client.get(self.url).context['phone_chips']], ['Mine', 'Urgent', 'Due today', 'Late'])
         self.assertEqual(chips['Urgent']['url'], '?priority=urgent')
         self.assertEqual(chips['Late']['url'], '?due=overdue')
         self.assertEqual(chips['Due today']['url'], '?due=today')
-        self.assertEqual(chips['In progress']['url'], '?status=in_progress')
-        self.assertEqual(chips['Done']['url'], '?status=complete')
         self.assertEqual(chips['Mine']['url'], f'?assigned_staff={self.staff.pk}')
-        self.assertTrue(chips['Open']['on'])
         on = {c['label']: c for c in self.client.get(self.url + '?priority=urgent&due=overdue').context['phone_chips']}
         self.assertTrue(on['Urgent']['on'] and on['Late']['on'])
         self.assertEqual(on['Urgent']['url'], '?due=overdue')                  # off again: the rest of the filters stay
         self.assertEqual(on['Late']['url'], '?priority=urgent')
-
     def test_the_chips_show_what_the_list_shows(self):
         self.assertEqual(self.titles(self.client.get(self.url + '?priority=urgent')), {'Roof leak over the laundry'})
         self.assertEqual(self.titles(self.client.get(self.url + '?due=overdue')), {'Roof leak over the laundry'})
@@ -92,18 +93,62 @@ class PhoneTicketListTests(TestCase):
         self.assertNotIn('Mine', labels)
         self.assertIn('Urgent', labels)
 
-    def test_more_filters_counts_only_the_filters_that_are_not_chips(self):
-        self.assertEqual(self.client.get(self.url).context['phone_more_count'], 0)
-        self.assertEqual(self.client.get(self.url + '?priority=urgent&due=overdue&status=in_progress').context['phone_more_count'], 0)
-        self.assertEqual(self.client.get(self.url + f'?property={self.prop.pk}&role=maintenance').context['phone_more_count'], 2)
-
-    def test_a_card_is_one_big_link_to_the_ticket_with_the_things_that_matter(self):
+    def test_more_filters_counts_only_the_filters_that_are_not_the_property_control_or_a_chip(self):
+        self.assertEqual(self.client.get(self.url).context['phone_more_count'], 0)                       # the default is Open
+        self.assertEqual(self.client.get(self.url + '?priority=urgent&due=overdue').context['phone_more_count'], 0)
+        self.assertEqual(self.client.get(self.url + f'?property={self.prop.pk}').context['phone_more_count'], 0)
+        self.assertEqual(self.client.get(self.url + '?status=complete').context['phone_more_count'], 1)
+        self.assertEqual(self.client.get(self.url + f'?property={self.prop.pk}&role=maintenance&status=all').context['phone_more_count'], 2)
+    def test_a_card_is_one_compact_link_with_the_title_an_inline_urgent_tag_and_the_property_and_due_date(self):
         html = self.client.get(self.url).content.decode()
         self.assertIn(f'<a class="m-tk-card is-urgent is-late" href="{reverse("ticket_detail", args=[self.urgent.pk])}">', html)
-        for text in ('Roof leak over the laundry', 'Grand Condos', 'Justin Browne', 'Late', 'Called the roofer', 'Urgent'):
+        for text in ('Roof leak over the laundry', 'Grand Condos', 'Late', 'Urgent'):
             self.assertIn(text, html)
         self.assertIn('is-high', html)
+        card = html.split(f'href="{reverse("ticket_detail", args=[self.urgent.pk])}">')[1].split('</a>')[0]
+        self.assertIn('<span class="m-tk-flag m-tk-flag-urgent">Urgent</span> Roof leak', card)          # the tag sits in the title line, not on its own row
+        self.assertNotIn('m-tk-row1', card)
 
+    def test_a_card_no_longer_shows_who_has_it_the_status_or_the_latest_update(self):
+        html = self.client.get(self.url).content.decode()
+        cards = html.split('id="ticket-mobile-cards"')[1]
+        for gone in ('Justin Browne', 'Called the roofer', 'm-tk-status', 'm-tk-who', 'm-tk-note', 'In progress', 'Assigned'):
+            self.assertNotIn(gone, cards)
+
+    def test_the_list_is_the_open_tickets_by_default_and_status_is_chosen_in_more_filters(self):
+        response = self.client.get(self.url)
+        self.assertEqual(self.titles(response), {'Roof leak over the laundry', 'Gate code not working', 'Pool pump noise'})        # Open, with no chip pressed
+        html = response.content.decode()
+        sheet = html.split('data-tf-layer="status"')[1].split('data-tf-layer="source"')[0]
+        self.assertIn('<span class="d-md-none">Open</span>', sheet)
+        self.assertIn('<span class="d-md-none">Done</span>', sheet)
+        self.assertIn('<span class="d-md-none">All</span>', sheet)
+        self.assertIn('?status=complete', sheet)
+        self.assertEqual(sheet.count('d-none d-md-inline-flex'), len(response.context['status_choices']))                       # the finer statuses only on wide screens
+        self.assertEqual(self.titles(self.client.get(self.url + '?status=complete')), {'Replace bulbs'})
+        self.assertIn('>Done<', self.client.get(self.url + '?status=complete').content.decode())
+
+    def test_the_property_sheet_lists_every_property_most_used_first_and_keeps_the_other_filters(self):
+        response = self.client.get(self.url + '?priority=urgent')
+        rows = response.context['phone_properties']
+        self.assertEqual({r['name'] for r in rows}, {'Grand Condos', 'Pine Villas'})
+        self.assertEqual(rows[0]['name'], 'Grand Condos')                       # two open tickets (the roof leak and the pump), against one
+        self.assertTrue(rows[0]['first_top'] and rows[0]['top'])
+        self.assertEqual(rows[0]['url'], f'?priority=urgent&property={self.prop.pk}')
+        self.assertEqual(response.context['phone_property_all_url'], '?priority=urgent')
+        html = response.content.decode()
+        self.assertIn('id="m-prop-sheet"', html)
+        self.assertIn('Most used', html)
+        self.assertIn('id="m-ps-q"', html)
+
+    def test_a_chosen_property_shows_its_name_with_a_clear_button(self):
+        html = self.client.get(self.url + f'?property={self.prop.pk}&due=overdue').content.decode()
+        control = html.split('class="m-tk-propsel')[1].split('class="m-tk-chips"')[0]
+        self.assertIn('Grand Condos', control)
+        self.assertIn('m-tk-propclear', control)
+        self.assertIn('href="?due=overdue"', control)                           # clearing keeps the other filters
+        self.assertNotIn('All properties', control)
+        self.assertEqual(self.titles(self.client.get(self.url + f'?property={self.prop.pk}')), {'Roof leak over the laundry', 'Pool pump noise'})
     def test_an_empty_list_says_so_and_offers_a_way_back(self):
         html = self.client.get(self.url + '?q=zzzznothing').content.decode()
         self.assertIn('No tickets here', html)
@@ -172,6 +217,12 @@ class PhoneTicketPageAndFormTests(TestCase):
         names = [p['name'] for p in response.context['recent_properties']]
         self.assertEqual(set(names), {'Grand Condos', 'Pine Villas'})
         self.assertEqual(response.context['my_staff_id'], self.staff.pk)
+
+    def test_new_ticket_from_a_property_page_has_that_property_already_chosen(self):
+        form = self.client.get(reverse('ticket_create') + f'?property={self.prop.pk}').context['form']
+        self.assertEqual(form.initial.get('property'), self.prop.pk)
+        junk = self.client.get(reverse('ticket_create') + '?property=abc').context['form']
+        self.assertNotIn('property', junk.initial)
 
     def test_recent_properties_put_the_most_used_first(self):
         other = Property.objects.create(name='Pine Villas', property_type=Property.Type.ASSOCIATION, is_active=True)

@@ -78,7 +78,7 @@ class PhoneLists(TestCase):
         html = self.client.get(reverse('property_detail', args=[self.grand.pk])).content.decode()
         self.assertIn('data-m-acc-root', html)
         self.assertIn(f'{reverse("ticket_create")}?property={self.grand.pk}', html)
-        self.assertIn('Open tickets (2)', html)
+        self.assertIn('Tickets (2)', html)
         self.assertIn('https://www.google.com/maps/search/?api=1&amp;query=1+Main+St', html)           # the address opens in Maps
         self.assertIn('href="tel:5615550110"', html)                                       # the board member, not the vendor, is offered first
         self.assertIn('Call Dana Whitfield', html)
@@ -87,7 +87,7 @@ class PhoneLists(TestCase):
 
     def test_no_call_button_when_nobody_at_the_property_has_a_phone_number(self):
         html = self.client.get(reverse('property_detail', args=[self.palm.pk])).content.decode()
-        self.assertNotIn('Call ', html.split('data-m-acc-root')[1].split('</div>')[0])
+        self.assertNotIn('Call ', html.split('class="pp d-md-none"')[1].split('<div class="pp-more"')[0])
         self.assertIn('New ticket', html)
 
     def test_the_desktop_header_and_section_nav_are_kept_and_only_shown_on_wide_screens(self):
@@ -115,14 +115,14 @@ class PhoneLists(TestCase):
         self.assertEqual(parts[3], '')
 
     # ---------------------------------------------------------------- the contacts list
-    def test_a_contact_is_one_card_the_name_opens_it_and_call_and_email_are_their_own_buttons(self):
+    def test_a_contact_is_one_card_the_name_opens_it_and_call_text_and_email_are_their_own_buttons(self):
         html = self.client.get(reverse('contact_list')).content.decode()
-        self.assertEqual(html.count('class="ml-card"'), 3)
+        self.assertEqual(html.count('class="ml-card ml-contact"'), 3)
         self.assertIn(f'href="{reverse("contact_detail", args=[self.board.pk])}" class="ml-card-main"', html)
-        self.assertIn('href="tel:5615550110" class="ml-act"', html)
+        self.assertIn('href="tel:5615550110" data-quo="openphone://dial?number=%2B15615550110&amp;action=call" class="ml-act"', html)
         self.assertIn('href="mailto:dana@example.com" class="ml-act"', html)
         self.assertIn('Vendor / Contractor &middot; Plumbing', html)
-        card = html.split('Quick Plumbing')[1].split('class="ml-card"')[0]
+        card = html.split('Quick Plumbing')[-1].split('class="ml-card ml-contact"')[0]
         self.assertNotIn('Call</a>', card)                                                 # no phone, no Call button
 
     def test_the_contact_search_and_type_filters_still_work(self):

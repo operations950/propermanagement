@@ -83,6 +83,25 @@ def delinquent_rows(prop, today, threshold):
     return rows
 
 
+def delinquent_as_of(prop, asof, threshold):
+    """The owners who owed more than `threshold` ON `asof`, whatever they owe now: the charges that had fallen due by then, less the payments applied by then (a payment received after the
+    date does not count, and a charge that fell due after it is not counted). This is the list for late letters: who was late as of the end of last month. One row for each owner:
+    what they owed by kind, how many days the oldest assessment was overdue on that day, and their case if they have one."""
+    cases = {c.unit_id: c for c in DelinquencyCase.objects.filter(association=prop, resolved_on__isnull=True).select_related('owner', 'unit').prefetch_related('events')}
+    rows = []
+    for acct in charges.accounts(prop):
+        if not acct['current']:
+            continue
+        b = breakdown(acct['unit'], acct['owner'], asof)
+        if b['total'] <= threshold:
+            continue
+        case = cases.get(acct['unit'].pk)
+        rows.append({'unit': acct['unit'], 'owner': acct['owner'], 'b': b, 'days_late': (asof - b['oldest_due']).days if b['oldest_due'] else 0, 'case': case, 'icons': case_icons(case),
+                     'needs_letter': case is None})
+    rows.sort(key=lambda r: (-r['days_late'], -r['b']['total']))
+    return rows
+
+
 def open_cases(prop, today):
     """Every open case with what it owes now and whether a review is due."""
     out = []

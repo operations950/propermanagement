@@ -49,8 +49,6 @@
 .pgw .vd.a { background: var(--warn-bg); color: var(--warn-ink); }
 .pgw .vd.r { background: var(--bad-bg); color: var(--bad-ink); }
 .pgw .pgscroll { overflow-x: auto; }
-.pg-phone .nothing { display: none; }
-.pg-phone .days:empty + .nothing { display: block; }
 .pgw .pgin { min-width: 980px; }
 @media (max-width: 640px) { .pg { grid-template-columns: 9rem repeat(7, minmax(0, 1fr)); } .pg .t { font-size: 0.68rem; padding: 1px 2px; } }
 </style>
@@ -65,12 +63,20 @@
   <a class="ms-auto text-decoration-none" href="{% url 'onsite_rentals_calendar' %}" style="color:var(--ink-muted)">30-day calendar</a>
 </div>
 <div class="pg-phone">
-{% for city, rows in w.by_city %}
-<div class="city">{{ city }}</div>
-{% for r in rows %}
-<div class="pcard">
-  <a class="pname" href="{% url 'property_detail' r.property.pk %}">{{ r.property.name }}{% if r.unit %}<small>{{ r.unit }}</small>{% endif %}</a>
-  <div class="days">{% for c in r.cells %}{% if c.kind %}<div class="dayrow"><div class="dlabel{% if c.today %} today{% endif %}">{{ c.date|date:"l, M j" }}{% if c.today %}<span class="tag">Today</span>{% endif %}</div>
+{# Phones: one day at a time. A strip of the days stays at the top; swipe sideways (or tap a day) to move to the next one. Each day lists only the properties that have something on it. #}
+{% if w.by_city %}
+<div class="pd-strip" id="pdStrip">{% for d in w.phone_days %}<a href="#pd-{{ d.date|date:'Y-m-d' }}" class="pd-chip{% if d.today %} today{% endif %}{% if forloop.first %} on{% endif %}"><span class="pd-dow">{% if d.today %}Today{% else %}{{ d.date|date:"D" }}{% endif %}</span><span class="pd-num">{{ d.date.day }}</span>{% if d.count %}<span class="pd-n">{{ d.count }}</span>{% endif %}</a>{% endfor %}</div>
+<div class="pd-pager" id="pdPager">
+{% for d in w.phone_days %}
+<section class="pd-page" id="pd-{{ d.date|date:'Y-m-d' }}" aria-label="{{ d.date|date:'l, F j' }}">
+  <h3 class="pd-h">{{ d.date|date:"l, M j" }}{% if d.today %}<span class="tag">Today</span>{% endif %}<span class="pd-count">{{ d.count }} propert{{ d.count|pluralize:"y,ies" }}</span></h3>
+  {% for it in d.items %}{% ifchanged it.city %}<div class="city">{{ it.city }}</div>{% endifchanged %}
+  {% with r=it.row c=it.c %}
+  {% if c.kind == 'stay' %}
+  <div class="pcard pcard-stay"><a class="pname" href="{% url 'property_detail' r.property.pk %}">{{ r.property.name }}{% if r.unit %}<small>{{ r.unit }}</small>{% endif %}</a><div class="staybar">Guest in house</div></div>
+  {% else %}
+  <div class="pcard">
+    <a class="pname" href="{% url 'property_detail' r.property.pk %}">{{ r.property.name }}{% if r.unit %}<small>{{ r.unit }}</small>{% endif %}</a>
     <div class="evs">
       {% for e in c.outs %}
       <button type="button" class="evbtn {% if c.kind == 'both' %}both{% else %}out{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkout" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }} &middot; {{ e.guest }}"><span>Check-out {{ e.time }}</span><span class="hint">{% if e.state == 'pending' %}Waiting for a yes{% elif e.state == 'approved' %}Agreed &#10003;{% else %}Tap to change{% endif %}</span></button>
@@ -80,13 +86,17 @@
       <button type="button" class="evbtn {% if c.kind == 'both' %}both{% else %}in{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkin" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }} &middot; {{ e.guest }}"><span>Check-in {{ e.time }}</span><span class="hint">{% if e.state == 'pending' %}Waiting for a yes{% elif e.state == 'approved' %}Agreed &#10003;{% else %}Tap to change{% endif %}</span></button>
       {% endfor %}
       {% if c.kind == 'stay' %}<div class="staybar">Guest in house</div>{% endif %}
-    </div></div>{% endif %}{% endfor %}</div>
-  <div class="nothing">Nothing this week.</div>
+    </div>
+  </div>
+  {% endif %}
+  {% endwith %}
+  {% empty %}<div class="mo-empty">Nothing on this day.</div>{% endfor %}
+</section>
+{% endfor %}
 </div>
-{% endfor %}
-{% empty %}
+{% else %}
 <div class="text-muted p-3">No short-term rentals yet.</div>
-{% endfor %}
+{% endif %}
 </div>
 <div class="pgscroll"><div class="pgin">
 {% for city, rows in w.by_city %}
@@ -159,6 +169,24 @@
   </div></div>
 </div>
 </div>
+<script>
+(function () {
+  var pager = document.getElementById('pdPager'), strip = document.getElementById('pdStrip');
+  if (!pager || !strip) return;
+  var chips = [].slice.call(strip.querySelectorAll('.pd-chip')), timer = null;
+  function showing() { return Math.max(0, Math.min(chips.length - 1, Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth)))); }
+  function mark() {
+    var i = showing();
+    chips.forEach(function (c, j) { c.classList.toggle('on', j === i); });
+    var c = chips[i];
+    if (c && strip.scrollTo) strip.scrollTo({ left: c.offsetLeft - (strip.clientWidth - c.offsetWidth) / 2, behavior: 'smooth' });
+  }
+  pager.addEventListener('scroll', function () { clearTimeout(timer); timer = setTimeout(mark, 80); }, { passive: true });
+  chips.forEach(function (c, j) {
+    c.addEventListener('click', function (e) { e.preventDefault(); pager.scrollTo({ left: j * pager.clientWidth, behavior: 'smooth' }); });
+  });
+})();
+</script>
 <script>
 (function () {
   if (!window.bootstrap) return;

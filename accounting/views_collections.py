@@ -7,7 +7,21 @@ from django.utils import timezone
 from . import charges, closing, delinquency, ledger, owner_collections
 from .models import ZERO, CaseEvent, DelinquencyCase
 from .views_delinquency import _ids, _make_letters
-from .web import admin_only, association_or_404, books_or_redirect
+from .web import admin_only, association_or_404, books_or_redirect, parse_date, parse_money
+
+
+def _asof(request, today):
+    """(the date the list is worked out for, whether the person chose it). Unless a date is chosen it is the end of last month; a date in the future means today."""
+    day = parse_date(request.POST.get('asof') or request.GET.get('asof') or '')
+    if day is None:
+        return owner_collections.default_asof(today), False
+    return min(day, today), True
+
+
+def _back(here, tab, asof, given):
+    """Back to this screen on the same tab and the same date (the date only when the person chose one, so the plain address stays plain)."""
+    bits = ([f'tab={tab}'] if tab else []) + ([f'asof={asof:%Y-%m-%d}'] if given else [])
+    return here + ('?' + '&'.join(bits) if bits else '')
 
 
 @admin_only
@@ -31,10 +45,18 @@ def collections(request, pk):
     today = timezone.localdate()
     here = reverse('accounting:collections', args=[pk])
     tab = request.POST.get('tab') or request.GET.get('tab') or ''
+    asof, given = _asof(request, today)
     if request.method == 'POST':
         action = request.POST.get('action')
         try:
-            if action == 'advance':
+            if action == 'threshold':
+                amount = parse_money(request.POST.get('amount'))
+                if amount < 0:
+                    raise ValueError('The amount cannot be below zero.')
+                profile.delinquency_threshold = amount
+                profile.save(update_fields=['delinquency_threshold'])
+                messages.success(request, f'Saved: owners are listed once they owe more than ${amount:,.2f}.')
+            elif action == 'advance':
                 case = get_object_or_404(DelinquencyCase.objects.select_related('unit', 'owner'), pk=request.POST.get('case'), association=prop, resolved_on__isnull=True)
                 stage = delinquency.advance(case, request.user, note=request.POST.get('note') or '', attorney=request.POST.get('attorney') or '')
                 messages.success(request, f'{case.owner.name}, unit {case.unit.label}: now at "{DelinquencyCase.Stage(stage).label}". The next review is in 30 days.')
@@ -43,7 +65,7 @@ def collections(request, pk):
                 units = _ids(request)
                 if not units:
                     raise ValueError('Tick the owners first.')
-                made, problems = _make_letters(prop, units, request.user)
+                made, problems = _make_letters(prop, units, request.user, asof=asof if given else None)
                 if made:
                     messages.success(request, f'Made {len(made)} late letter{"s" if len(made) != 1 else ""} as drafts and opened their cases. Open each one to read it through, make it final and mail it.')
                     tab = 'letter'
@@ -51,12 +73,14 @@ def collections(request, pk):
                     messages.error(request, p)
         except (ValueError, ledger.LedgerError) as e:
             messages.error(request, str(e))
-        return redirect(f'{here}?tab={tab}' if tab else here)
-    data = owner_collections.board(prop, today)
+        return redirect(_back(here, tab, asof, given))
+    data = owner_collections.board(prop, today, asof)
     by_key = {t['key']: t for t in data['tabs']}
     if tab not in by_key:                      # open on the first step that has something to do, else the first that has anyone
         tab = next((t['key'] for t in data['tabs'] if t['key'] != 'resolved' and t['alerts']), None) or next((t['key'] for t in data['tabs'] if t['key'] != 'resolved' and t['count']), 'none')
     ctx = {'assoc': prop, 'profile': profile, 'data': data, 'tabs': data['tabs'], 'tab': by_key[tab], 'today': today, 'terms': charges.terms_sentences(profile), 'threshold': data['threshold'],
+           'asof': asof, 'default_asof': data['default_asof'], 'asof_given': given, 'asof_is_default': asof == data['default_asof'], 'asof_is_today': asof == today,
+           'asof_qs': f'&asof={asof:%Y-%m-%d}' if given else '',
            'letter_days': owner_collections.LETTER_DAYS, 'notice_days': owner_collections.NOTICE_DAYS, 'acc_back': reverse('accounting:hub', args=[pk]), 'acc_back_label': 'Accounting'}
     return render(request, 'accounting/collections.html', ctx)
 

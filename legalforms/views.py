@@ -100,7 +100,12 @@ def document_new(request, slug):
     step = _step_from(request.GET)
     if prop is None:
         return render(request, 'legalforms/choose.html', {'template': template, 'properties': _properties(), 'units_json': _units_json()})
-    values = services.initial_values(template, prop, unit, request.user, parent=parent, run=step.run if step else None)
+    overrides = {}
+    try:                                                                  # a late letter started from Owner collections carries the date the owner was behind as of
+        overrides['balance_as_of'] = datetime.fromisoformat(request.GET['balance_as_of']).date().isoformat() if request.GET.get('balance_as_of') else ''
+    except ValueError:
+        overrides = {}
+    values = services.initial_values(template, prop, unit, request.user, parent=parent, run=step.run if step else None, overrides=overrides)
     return _form_page(request, template, prop, unit, parent, values, {}, step=step)
 
 

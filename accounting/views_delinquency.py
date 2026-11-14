@@ -69,8 +69,8 @@ def delinquencies(request, pk):
     return render(request, 'accounting/delinquencies.html', ctx)
 
 
-def _make_letters(prop, unit_ids, user):
-    """A draft Notice of Late Assessment for each unit, filled from the books. Making one opens the owner's case."""
+def _make_letters(prop, unit_ids, user, asof=None):
+    """A draft Notice of Late Assessment for each unit, filled from the books. Making one opens the owner's case. `asof`: the date the owner was behind as of (the letter's "balance as of")."""
     from core.models import Unit
     from legalforms import services
     from legalforms.models import DocumentTemplate
@@ -79,7 +79,7 @@ def _make_letters(prop, unit_ids, user):
         return [], ['The Notice of Late Assessment form is not set up.']
     made, problems = [], []
     for unit in Unit.objects.filter(property=prop, pk__in=unit_ids):
-        values = services.initial_values(template, prop, unit, user)
+        values = services.initial_values(template, prop, unit, user, overrides={'balance_as_of': asof.isoformat()} if asof else None)
         raw = {k: ('' if v is None else str(v)) for k, v in values.items()}
         doc, errors = services.save_document(template, prop, unit, user, raw)
         if doc:

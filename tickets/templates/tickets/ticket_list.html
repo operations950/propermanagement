@@ -3,11 +3,17 @@
 {% block title %}{% if selected_source == 'recurring' %}Earlier recurring tasks{% else %}Tickets{% endif %}{% endblock %}
 {% block extra_head %}<link href="{% static 'css/mobile-tickets.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
-{# Phones: a big New ticket button, one-tap filter chips, a search box and a More filters button, then big cards. Wide screens: everything below as it always was. #}
+{# Phones: the heading with a New ticket button, then the property control FIRST, four one-tap chips (Mine, Urgent, Due today, Late), a search box and a More filters button (Open / Done live there; the list is the open tickets unless that is changed), then compact cards. Wide screens: everything below as it always was. #}
 <div class="m-tk d-md-none">
+    <div class="m-tk-top">
+        <div class="m-tk-heading"><h1 class="m-tk-h1">{% if selected_status == 'complete' %}Done{% elif selected_status == 'all' %}All tickets{% else %}Tickets{% endif %}</h1><span class="m-tk-count">{{ page_obj.paginator.count }}</span></div>
+        <a class="m-tk-new" href="{% url 'ticket_create' %}"><i data-lucide="plus" class="icon"></i> New ticket</a>
+    </div>
     <div class="m-tk-sticky">
-        <div class="m-tk-heading"><h1 class="m-tk-h1">{% if selected_status == 'complete' %}Done{% else %}Tickets{% endif %}</h1><span class="m-tk-count">{{ page_obj.paginator.count }}</span></div>
-        <a class="m-tk-new" href="{% url 'ticket_create' %}"><i data-lucide="plus" class="icon-lg"></i> New ticket</a>
+        <div class="m-tk-propsel{% if selected_property %} on{% endif %}">
+            <button type="button" class="m-tk-propbtn" data-m-prop-open aria-haspopup="dialog"><i data-lucide="building-2" class="icon"></i><span class="m-tk-proplabel">{% if selected_property %}{{ selected_property.name }}{% else %}All properties{% endif %}</span><i data-lucide="chevron-down" class="icon"></i></button>
+            {% if selected_property %}<a class="m-tk-propclear" href="{{ phone_property_all_url }}" aria-label="Show all properties">&times;</a>{% endif %}
+        </div>
         <div class="m-tk-chips" role="group" aria-label="Quick filters">
             {% for c in phone_chips %}<a class="m-tk-chip{% if c.on %} on{% endif %}" href="{{ c.url }}"{% if c.on %} aria-pressed="true"{% endif %}>{{ c.label }}</a>{% endfor %}
         </div>
@@ -18,6 +24,18 @@
         <button type="submit" class="m-tk-go">Search</button>
     </form>
     <button type="button" class="m-tk-more" data-m-filters-open><i data-lucide="sliders-horizontal" class="icon"></i> More filters{% if phone_more_count %} <span class="m-tk-badge">{{ phone_more_count }}</span>{% endif %}</button>
+    <div class="m-ps" id="m-prop-sheet" role="dialog" aria-modal="true" aria-label="Select property" hidden>
+        <div class="m-ps-head"><span>Select property</span><button type="button" class="m-tf-close" data-m-prop-close>Close</button></div>
+        <div class="m-ps-searchrow"><input type="search" id="m-ps-q" class="m-ps-q" placeholder="Search properties" autocomplete="off" enterkeyhint="search" aria-label="Search properties"></div>
+        <div class="m-ps-list">
+            <a class="m-ps-row m-ps-all{% if not selected_property %} on{% endif %}" href="{{ phone_property_all_url }}"><span class="m-ps-name">All properties</span></a>
+            {% for p in phone_properties %}
+            {% if p.first_top %}<div class="m-ps-group" data-m-ps-group>Most used</div>{% elif p.first_rest %}<div class="m-ps-group" data-m-ps-group>All properties</div>{% endif %}
+            <a class="m-ps-row{% if p.on %} on{% endif %}" href="{{ p.url }}" data-m-ps-name="{{ p.name|lower }}"><span class="m-ps-name">{{ p.name }}</span><span class="m-ps-meta">{{ p.type }}{% if p.n %} &middot; {{ p.n }} open{% endif %}</span></a>
+            {% endfor %}
+            <p class="m-ps-none" hidden>No property matches.</p>
+        </div>
+    </div>
 </div>
 <div class="d-none d-md-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2">
@@ -40,7 +58,7 @@
 {% endif %}
 
 {% if selected_property %}
-<div class="d-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
+<div class="d-none d-md-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
      style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">
     <span>Showing tickets & tasks for: <strong>{{ selected_property.name }}</strong></span>
     <a href="{% url 'property_detail' selected_property.pk %}" class="small" style="color: var(--brand-primary);">View property</a>
@@ -127,13 +145,13 @@
 
     {# Layer 1: one bubble per filter. Picking one replaces these with that filter's own layer, and a Back bubble. #}
     <div class="tf-layer" data-tf-layer="root">
-        <button type="button" class="bubble{% if selected_status != 'active' %} bubble-locked{% endif %}" data-tf-open="status">Status{% if selected_status == 'active' %}: Active{% elif selected_status == 'complete' %}: Completed &amp; cancelled{% elif selected_status == 'all' %}: All{% else %}: {{ selected_status_label }}{% endif %}</button>
+        <button type="button" class="bubble{% if selected_status != 'active' %} bubble-locked{% endif %}" data-tf-open="status">Status{% if selected_status == 'active' %}: <span class="d-none d-md-inline">Active</span><span class="d-md-none">Open</span>{% elif selected_status == 'complete' %}: <span class="d-none d-md-inline">Completed &amp; cancelled</span><span class="d-md-none">Done</span>{% elif selected_status == 'all' %}: All{% else %}: {{ selected_status_label }}{% endif %}</button>
 
         {% if not new_face %}<span class="tf-pair"><button type="button" class="bubble{% if selected_source %} bubble-locked{% endif %}" data-tf-open="source">Type{% if selected_source == 'reactive' %}: Tickets{% elif selected_source == 'recurring' %}: Earlier recurring{% endif %}</button>{% if selected_source %}<a class="tf-x" href="{% querystring source=None %}" title="Clear">&times;</a>{% endif %}</span>{% endif %}
 
         <span class="tf-pair"><button type="button" class="bubble{% if selected_role %} bubble-locked{% endif %}" data-tf-open="department">Department{% if selected_role == 'none' %}: None{% elif selected_role %}: {{ selected_role_label }}{% endif %}</button>{% if selected_role %}<a class="tf-x" href="{% querystring role=None %}" title="Clear">&times;</a>{% endif %}</span>
 
-        <span class="tf-pair"><button type="button" class="bubble{% if selected_property %} bubble-locked{% endif %}" data-tf-open="property">Property{% if selected_property %}: {{ selected_property.name }}{% endif %}</button>{% if selected_property %}<a class="tf-x" href="{% querystring property=None %}" title="Clear">&times;</a>{% endif %}</span>
+        <span class="tf-pair m-hide-phone"><button type="button" class="bubble{% if selected_property %} bubble-locked{% endif %}" data-tf-open="property">Property{% if selected_property %}: {{ selected_property.name }}{% endif %}</button>{% if selected_property %}<a class="tf-x" href="{% querystring property=None %}" title="Clear">&times;</a>{% endif %}</span>
 
         <span class="tf-pair"><button type="button" class="bubble{% if selected_due %} bubble-locked{% endif %}" data-tf-open="due">Due date{% if selected_due %}: {{ selected_due_label }}{% endif %}</button>{% if selected_due %}<a class="tf-x" href="{% querystring due=None due_on=None %}" title="Clear">&times;</a>{% endif %}</span>
 
@@ -144,10 +162,10 @@
 
     <div class="tf-layer" data-tf-layer="status" hidden>
         <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
-        <a href="{% querystring status='active' %}" class="bubble{% if selected_status == 'active' %} bubble-locked{% endif %}">Active tickets</a>
-        <a href="{% querystring status='complete' %}" class="bubble{% if selected_status == 'complete' %} bubble-locked{% endif %}">Completed &amp; cancelled</a>
-        <a href="{% querystring status='all' %}" class="bubble{% if selected_status == 'all' %} bubble-locked{% endif %}">All statuses</a>
-        {% for value, label in status_choices %}<a href="{% querystring status=value %}" class="bubble{% if value == selected_status %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
+        <a href="{% querystring status='active' %}" class="bubble{% if selected_status == 'active' %} bubble-locked{% endif %}"><span class="d-none d-md-inline">Active tickets</span><span class="d-md-none">Open</span></a>
+        <a href="{% querystring status='complete' %}" class="bubble{% if selected_status == 'complete' %} bubble-locked{% endif %}"><span class="d-none d-md-inline">Completed &amp; cancelled</span><span class="d-md-none">Done</span></a>
+        <a href="{% querystring status='all' %}" class="bubble{% if selected_status == 'all' %} bubble-locked{% endif %}"><span class="d-none d-md-inline">All statuses</span><span class="d-md-none">All</span></a>
+        {% for value, label in status_choices %}<a href="{% querystring status=value %}" class="bubble d-none d-md-inline-flex{% if value == selected_status %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
     </div>
 
     <div class="tf-layer" data-tf-layer="source" hidden>

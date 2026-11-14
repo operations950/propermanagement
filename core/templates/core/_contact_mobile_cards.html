@@ -1,7 +1,7 @@
 {% load core_extras %}
 <div class="ml-list">
 {% for c in contacts %}
-<div class="ml-card">
+<div class="ml-card ml-contact">
     <a href="{% url 'contact_detail' c.pk %}" class="ml-card-main">
         <span class="ml-ico"><i data-lucide="user" class="icon"></i></span>
         <span class="ml-main">
@@ -13,7 +13,10 @@
     </a>
     {% if c.phone or c.email %}
     <div class="ml-acts">
-        {% if c.phone %}<a href="tel:{{ c.phone|tel_href }}" class="ml-act"><i data-lucide="phone" class="icon"></i> Call</a>{% endif %}
+        {% if c.phone %}
+        <a href="tel:{{ c.phone|tel_href }}"{% with q=c.phone|quo_dial_url %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="ml-act"><i data-lucide="phone" class="icon"></i> Call</a>
+        <a href="sms:{{ c.phone|tel_href }}"{% with q=c.phone|quo_text_url %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="ml-act"><i data-lucide="message-circle" class="icon"></i> Text</a>
+        {% endif %}
         {% if c.email %}<a href="mailto:{{ c.email }}" class="ml-act"><i data-lucide="mail" class="icon"></i> Email</a>{% endif %}
     </div>
     {% endif %}

@@ -397,6 +397,9 @@ QUO_CONTACT_SYNC_INTERVAL_MINUTES = int(os.environ.get('QUO_CONTACT_SYNC_INTERVA
 # thread still always sends from whichever line that contact already talks
 # to, this is only the "we're initiating, not replying" fallback.
 QUO_DEFAULT_FROM_NUMBER = os.environ.get('QUO_DEFAULT_FROM_NUMBER', '+15615996300')
+# The Quo line the phone app's Call and Text buttons open from (core/quo_links.py: openphone://dial and openphone://message take an optional `from`). Blank, the default: Quo
+# uses whichever line the person last had selected in the app. Set it to the shared line (E.164, e.g. +15615996300) to have everyone call and text from it.
+QUO_FROM_NUMBER = os.environ.get('QUO_FROM_NUMBER', '')
 # How often link_quo_contact_threads runs — a cheap global conversation crawl
 # that fills in QuoThreadState rows purely by phone-number match, so a
 # contact's text history is discoverable (contact/property "view

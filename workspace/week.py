@@ -117,8 +117,13 @@ def week(start=None, today=None):
                 row_cells.append({'date': d, 'today': d == today, 'kind': kind, **c})
             cities.setdefault((p.city or '').strip() or 'No city', []).append({'label': str_board._label(p, unit), 'unit': unit.label if unit else '', 'property': p, 'cells': row_cells})
     by_city = [(city, sorted(rows, key=lambda r: r['label'].lower())) for city, rows in sorted(cities.items(), key=lambda kv: (kv[0] == 'No city', kv[0].lower()))]
+    # The same board turned the other way round for a phone: one page per day, listing only the properties that have something on it (a check-out, a check-in or a guest in house).
+    by_day = []
+    for i, d in enumerate(days):
+        items = [{'city': city, 'row': row, 'c': row['cells'][i]} for city, rows in by_city for row in rows if row['cells'][i]['kind']]
+        by_day.append({'date': d, 'today': d == today, 'items': items, 'count': len(items)})
     return {
-        'start': start, 'end': days[-1], 'days': [{'date': d, 'today': d == today} for d in days], 'by_city': by_city,
+        'start': start, 'end': days[-1], 'days': [{'date': d, 'today': d == today} for d in days], 'by_city': by_city, 'phone_days': by_day,
         'previous': start - timedelta(days=DAYS), 'next': start + timedelta(days=DAYS), 'is_current': start == today,
         'pending': pending, 'outs': outs, 'without_cleaning': without_cleaning, 'cleaners': cleaners(),
     }

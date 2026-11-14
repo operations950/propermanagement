@@ -97,7 +97,7 @@ NOTICE_KIND_BY_SLUG = {
 }
 
 
-def initial_values(template, prop, unit, user, parent=None, run=None):
+def initial_values(template, prop, unit, user, parent=None, run=None, overrides=None):
     """What each field starts as: its default, then what the program knows, then what was typed last time for this
     unit, then (for a companion form) the document it goes with."""
     tokens = prefill_tokens(prop, unit, user, run=run)
@@ -120,6 +120,9 @@ def initial_values(template, prop, unit, user, parent=None, run=None):
         if parent is not None and f['key'] == 'notice_kind':
             value = NOTICE_KIND_BY_SLUG.get(parent.template.slug, value)
         out[f['key']] = value
+    for key, value in (overrides or {}).items():                         # e.g. the late letter's "balance as of", chosen on the Owner collections screen
+        if key in out and value:
+            out[key] = value
     if template.slug == 'nola' and unit is not None:
         try:
             from accounting import delinquency

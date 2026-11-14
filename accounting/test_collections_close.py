@@ -204,7 +204,7 @@ class TheBoardAndItsAlertsTests(CollectionsBase):
         tab = self.tab('none')
         self.assertEqual([r['owner'].name for r in tab['rows']], ['Late Owner'])
         self.assertEqual(tab['alerts'], 1)
-        self.assertEqual((tab['rows'][0]['months'], tab['rows'][0]['days_late']), (1, 42))      # Oct 1 to Nov 12 is 42 days: a month and a bit
+        self.assertEqual((tab['rows'][0]['months'], tab['rows'][0]['days_late']), (1, 30))      # worked out as of the end of last month: Oct 1 to Oct 31 is 30 days
         self.assertEqual(owner_collections.attention(self.prop, self.today)['bits'], ['1 need a late letter'])
 
     def test_the_first_letter_moves_the_owner_to_letter_sent(self):
@@ -440,3 +440,113 @@ class TheOldStepsMapToTheNewOnesTests(CollectionsBase):
         migration.backwards(django_apps, None)
         made['attorney'].refresh_from_db()
         self.assertEqual(made['attorney'].stage, 'attorney')
+
+
+@override_settings(STORAGES=STORAGES)
+class TheAsOfDateAndTheAmountOnTheScreenTests(CollectionsBase):
+    """Who was late as of the end of last month (not today: this month's payments are not entered yet), and the amount that puts an owner in scope, set on the screen itself."""
+
+    def setUp(self):
+        super().setUp()
+        prof = ledger.profile_for(self.prop)
+        prof.delinquency_threshold = D('100')
+        prof.save()
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:collections', args=[self.prop.pk])
+        self.oct31, self.nov5 = date(2026, 10, 31), date(2026, 11, 5)
+
+    def get(self, **query):
+        with mock.patch('django.utils.timezone.localdate', return_value=self.today):
+            return self.client.get(self.url, query)
+
+    def none_rows(self, asof=None, today=None):
+        board = owner_collections.board(self.prop, today or self.today, asof)
+        return next(t for t in board['tabs'] if t['key'] == 'none')['rows']
+
+    def test_the_date_is_the_end_of_last_month_unless_another_is_chosen(self):
+        self.assertEqual(owner_collections.default_asof(date(2026, 11, 12)), self.oct31)
+        self.assertEqual(owner_collections.default_asof(date(2027, 1, 5)), date(2026, 12, 31))
+        self.assertEqual(owner_collections.board(self.prop, self.today)['asof'], self.oct31)
+        self.assertEqual(owner_collections.board(self.prop, self.today, self.today)['asof'], self.today)
+        self.assertEqual(owner_collections.board(self.prop, self.today, date(2027, 1, 1))['asof'], self.today)       # a date in the future means today
+
+    def test_a_payment_received_after_the_date_does_not_count_for_that_date(self):
+        charges.receive_payment(self.prop, self.late_unit, self.owner, self.nov5, D('615'), bank_account=self.bank)         # Late Owner pays on Nov 5
+        rows = self.none_rows()                                                                                             # as of Oct 31: still behind
+        self.assertEqual([r['owner'].name for r in rows], ['Late Owner'])
+        self.assertEqual(rows[0]['b']['total'], D('615.00'))
+        self.assertEqual(self.none_rows(asof=self.today), [])                                                               # as of today: paid
+
+    def test_a_charge_that_fell_due_after_the_date_is_not_counted(self):
+        charges.post_charge(self.prop, self.ok_unit, self.good, Charge.Kind.ASSESSMENT, 'Monthly assessment Nov', date(2026, 11, 1), D('615'))     # Good Owner has not paid November
+        charges.post_charge(self.prop, self.late_unit, self.owner, Charge.Kind.ASSESSMENT, 'Monthly assessment Nov', date(2026, 11, 1), D('615'))
+        self.assertEqual([(r['owner'].name, r['b']['total']) for r in self.none_rows()], [('Late Owner', D('615.00'))])         # as of Oct 31: only October's
+        today_rows = {r['owner'].name: r['b']['total'] for r in self.none_rows(asof=self.today)}
+        self.assertEqual(today_rows, {'Late Owner': D('1230.00'), 'Good Owner': D('615.00')})
+
+    def test_how_late_is_counted_to_the_date_not_to_today(self):
+        first, second = self.none_rows()[0], self.none_rows(asof=self.today)[0]
+        self.assertEqual((first['days_late'], first['months']), (30, 1))
+        self.assertEqual((second['days_late'], second['months']), (42, 1))
+
+    def test_the_amount_decides_who_is_listed(self):
+        prof = ledger.profile_for(self.prop)
+        prof.delinquency_threshold = D('700')
+        prof.save()
+        self.assertEqual(self.none_rows(), [])
+        prof.delinquency_threshold = D('600')
+        prof.save()
+        self.assertEqual([r['owner'].name for r in self.none_rows()], ['Late Owner'])
+
+    def test_the_screen_says_which_date_and_which_amount_the_first_tab_is_for(self):
+        html = self.get().content.decode()
+        self.assertIn('Owners who owed more than $100 on Oct 31, 2026 and have no late letter yet', html)
+        self.assertIn('Behind as of', html)
+        self.assertIn('End of last month', html)
+        self.assertIn('name="amount"', html)
+        self.assertNotIn('Change the amount', html)                                      # no more trip to the Delinquencies screen
+        self.assertNotIn(reverse('accounting:delinquencies', args=[self.prop.pk]), html)
+        self.assertIn('Owed<span class="d-none d-md-inline"> Oct 31</span>', html)
+
+    def test_a_chosen_date_is_kept_in_the_links_between_the_tabs_and_the_late_letter_link(self):
+        html = self.get(asof='2026-11-05', tab='none').content.decode()
+        self.assertIn('tab=letter&amp;asof=2026-11-05', html)
+        self.assertIn('tab=resolved&amp;asof=2026-11-05', html)
+        self.assertIn('balance_as_of=2026-11-05', html)
+        self.assertIn('Owners who owed more than $100 on Nov 5, 2026', html)
+        plain = self.get().content.decode()
+        self.assertIn('balance_as_of=2026-10-31', plain)                                 # the default date goes to the letter too
+        self.assertNotIn('asof=', plain.split('class="oc-tabs')[1].split('</div>')[0])   # and the plain address stays plain
+
+    def test_a_date_in_the_future_is_taken_as_today(self):
+        html = self.get(asof='2027-01-01').content.decode()
+        self.assertIn('value="2026-11-12"', html)
+
+    def test_saving_the_amount_stays_on_owner_collections_and_keeps_the_tab_and_date(self):
+        r = self.client.post(self.url, {'action': 'threshold', 'amount': '$700.50', 'tab': 'none', 'asof': '2026-11-05'}, follow=True)
+        self.assertEqual(ledger.profile_for(self.prop).delinquency_threshold, D('700.50'))
+        self.assertEqual(r.redirect_chain[-1][0], self.url + '?tab=none&asof=2026-11-05')
+        self.assertNotIn('delinquenc', r.redirect_chain[-1][0])
+        self.assertContains(r, 'Saved: owners are listed once they owe more than $700.50.')
+        r = self.client.post(self.url, {'action': 'threshold', 'amount': '650', 'tab': 'letter'})
+        self.assertEqual(r['Location'], self.url + '?tab=letter')                       # no date chosen: none added
+        self.assertEqual(ledger.profile_for(self.prop).delinquency_threshold, D('650.00'))
+
+    def test_a_bad_amount_is_refused_and_nothing_changes(self):
+        for bad in ('abc', '-5', ''):
+            r = self.client.post(self.url, {'action': 'threshold', 'amount': bad, 'tab': 'none'}, follow=True)
+            self.assertEqual(ledger.profile_for(self.prop).delinquency_threshold, D('100.00'), bad)
+            self.assertTrue(any(m.level_tag == 'error' for m in r.context['messages']), bad)
+
+    def test_the_letters_made_from_the_screen_are_for_the_date_chosen(self):
+        from legalforms.models import GeneratedDocument
+        self.client.post(self.url, {'action': 'make_letters', 'unit': [self.late_unit.pk], 'tab': 'none', 'asof': '2026-10-20'})
+        doc = GeneratedDocument.objects.get()
+        self.assertIn('2026-10-20', str(doc.values.get('balance_as_of')))
+
+    def test_the_close_step_counts_who_was_behind_at_the_end_of_last_month_like_the_screen(self):
+        charges.receive_payment(self.prop, self.late_unit, self.owner, self.nov5, D('615'), bank_account=self.bank)         # paid in November, after the date
+        step = next(i for i in closing.close_sheet(self.prop, date(2026, 10, 1), today=self.today)['items'] if i['key'] == 'collections')
+        self.assertIn('1 need a late letter', step['detail'])
+        self.assertEqual(owner_collections.attention(self.prop, self.today)['count'], len(self.none_rows()))
+        self.assertEqual(owner_collections.attention(self.prop, self.today, asof=self.today)['count'], 0)

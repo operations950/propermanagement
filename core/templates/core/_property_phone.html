@@ -1,0 +1,90 @@
+{% load core_extras property_phone %}{% comment %}
+The property page on a phone: the name and address, four big buttons, then the few things that matter for THIS kind of property (access codes, main contacts, open tickets, units and owners, trash)
+as tap-to-open sections, in the order that kind of property needs them (core/templatetags/property_phone.py). Everything else on the page is under "More" (property_detail.html).
+Phones only (d-md-none); the up-one-level Back is the phone top bar's. Context: property, plus whatever the page already has.
+{% endcomment %}{% property_phone as pp %}{% property_call_contact property as call_contact %}
+<div class="pp d-md-none">
+    <h1 class="pp-name">{{ property.name }}</h1>
+    {% if property.address %}<a href="{{ property.address|maps_href }}" target="_blank" rel="noopener" class="pp-address"><i data-lucide="map-pin" class="icon"></i><span>{{ property.address }}</span></a>{% endif %}
+    {% if not property.is_active %}<div class="pp-inactive">This property is not active.</div>{% endif %}
+
+    <div class="pp-actions">
+        <a href="{% url 'ticket_create' %}?property={{ property.pk }}" class="pp-btn pp-btn-primary"><i data-lucide="plus" class="icon"></i> New ticket</a>
+        {% if pp.has_tickets %}<a href="#pp-tickets" data-pp-jump class="pp-btn"><i data-lucide="ticket" class="icon"></i> Tickets ({{ open_tickets|length }})</a>{% endif %}
+        {% if property.address %}<a href="{{ property.address|maps_href }}" target="_blank" rel="noopener" class="pp-btn{% if not pp.has_tickets %} pp-btn-wide{% endif %}"><i data-lucide="navigation" class="icon"></i> Directions</a>{% endif %}
+        {% if call_contact %}<a href="tel:{{ call_contact.phone|tel_href }}"{% with q=call_contact.phone|pp_quo_dial %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="pp-btn pp-btn-wide"><i data-lucide="phone" class="icon"></i> Call {{ call_contact.name }}</a>{% endif %}
+    </div>
+
+    {% for s in pp.sections %}
+    <section class="pp-sec{% if s.open %} pp-open{% endif %}" id="pp-{{ s.key }}" data-pp-sec>
+        <button type="button" class="pp-head" aria-expanded="{% if s.open %}true{% else %}false{% endif %}" data-pp-toggle>
+            <i data-lucide="{{ s.icon }}" class="icon pp-ico"></i>
+            <span class="pp-title">{{ s.title }}</span>
+            {% if s.hint %}<span class="pp-hint">{{ s.hint }}</span>{% endif %}
+            <i data-lucide="chevron-down" class="icon pp-chev"></i>
+        </button>
+        <div class="pp-body">
+        {% if s.key == 'access' %}
+            {% for g in s.groups %}
+            <div class="pp-group">
+                {% if g.title %}<div class="pp-group-title">{{ g.title }}</div>{% endif %}
+                {% for r in g.rows %}
+                <div class="pp-code">
+                    <div class="pp-code-text"><div class="pp-code-label">{{ r.label }}</div><div class="pp-code-val">{{ r.value }}</div></div>
+                    {% if r.copy %}<button type="button" class="pp-copy" data-pp-copy="{{ r.value }}" aria-label="Copy {{ r.label }}"><i data-lucide="copy" class="icon"></i> <span>Copy</span></button>{% endif %}
+                </div>
+                {% endfor %}
+                {% if g.notes %}<div class="pp-note">{{ g.notes }}</div>{% endif %}
+                {% if g.shutoffs %}
+                <div class="pp-sub">Shutoffs and systems</div>
+                {% for loc in g.shutoffs %}<div class="pp-line"><strong>{{ loc.name }}</strong> {{ loc.where }}</div>{% endfor %}
+                {% endif %}
+            </div>
+            {% endfor %}
+            <a href="{{ s.edit }}" data-pp-jump class="pp-link">Edit access info</a>
+
+        {% elif s.key == 'contacts' %}
+            {% for r in s.rows %}
+            <div class="pp-contact">
+                <a href="{% url 'contact_detail' r.pk %}" class="pp-contact-main">
+                    <span class="pp-cname">{{ r.name }}</span>
+                    <span class="pp-cmeta">{{ r.role }}{% if r.trade %} &middot; {{ r.trade }}{% endif %}</span>
+                </a>
+                {% if r.phone or r.email %}
+                <div class="pp-cacts">
+                    {% if r.phone %}
+                    <a href="tel:{{ r.tel }}"{% if r.dial %} data-quo="{{ r.dial }}"{% endif %} class="pp-act"><i data-lucide="phone" class="icon"></i> Call</a>
+                    <a href="sms:{{ r.tel }}"{% if r.text %} data-quo="{{ r.text }}"{% endif %} class="pp-act"><i data-lucide="message-circle" class="icon"></i> Text</a>
+                    {% endif %}
+                    {% if r.email %}<a href="mailto:{{ r.email }}" class="pp-act"><i data-lucide="mail" class="icon"></i> Email</a>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% if s.total > s.rows|length %}<a href="{{ s.edit }}" data-pp-jump class="pp-link">All {{ s.total }} contacts</a>{% endif %}
+
+        {% elif s.key == 'tickets' %}
+            {% for r in s.rows %}
+            <a href="{% url 'ticket_detail' r.pk %}" class="pp-ticket">
+                <span class="pp-ticket-title">{% if r.urgent %}<span class="pp-urgent">Urgent</span> {% endif %}{{ r.title }}</span>
+                {% if r.due %}<span class="pp-due{% if r.late %} pp-late{% endif %}">{% if r.late %}Late &middot; {% endif %}{{ r.due|date:"M j" }}</span>{% endif %}
+            </a>
+            {% endfor %}
+            <a href="{{ s.all_url }}" class="pp-link">{% if s.more %}All {{ s.total }} open tickets{% else %}Open in Tickets{% endif %}</a>
+
+        {% elif s.key == 'units' %}
+            {% for r in s.rows %}
+            <div class="pp-unit"><span class="pp-unit-label">{{ r.label }}</span>{% if r.line %}<span class="pp-unit-line">{{ r.line }}</span>{% endif %}</div>
+            {% endfor %}
+            {% if s.more %}<a href="{{ s.edit }}" data-pp-jump class="pp-link">All {{ s.total }} units</a>{% elif s.edit %}<a href="{{ s.edit }}" data-pp-jump class="pp-link">Open the details</a>{% endif %}
+
+        {% elif s.key == 'trash' %}
+            {% for r in s.rows %}
+            <div class="pp-unit"><span class="pp-unit-label">{{ r.label }}</span>{% if r.line %}<span class="pp-unit-line">{{ r.line }}</span>{% endif %}</div>
+            {% endfor %}
+            {% if s.edit %}<a href="{{ s.edit }}" data-pp-jump class="pp-link">Edit the pickup days</a>{% endif %}
+        {% endif %}
+        </div>
+    </section>
+    {% endfor %}
+</div>

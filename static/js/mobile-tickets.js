@@ -8,6 +8,41 @@
     else if (e.target.closest('[data-m-filters-close]')) { document.body.classList.remove('m-tf-open'); }
   });
 
+  // The list: the "Select property" sheet opens full screen over the list; typing in its box narrows the rows (nothing is submitted until a row is tapped).
+  function propSheet() { return document.getElementById('m-prop-sheet'); }
+  function openProps() {
+    var sheet = propSheet();
+    if (!sheet) return;
+    sheet.hidden = false;
+    document.body.classList.add('m-ps-open');
+    sheet.scrollTop = 0;
+  }
+  function closeProps() {
+    var sheet = propSheet();
+    if (!sheet) return;
+    sheet.hidden = true;
+    document.body.classList.remove('m-ps-open');
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-m-prop-open]')) openProps();
+    else if (e.target.closest('[data-m-prop-close]')) closeProps();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeProps(); });
+  document.addEventListener('input', function (e) {
+    if (!e.target.matches || !e.target.matches('#m-ps-q')) return;
+    var q = e.target.value.trim().toLowerCase();
+    var sheet = propSheet();
+    var shown = 0;
+    sheet.querySelectorAll('[data-m-ps-name]').forEach(function (row) {
+      var hit = !q || row.dataset.mPsName.indexOf(q) !== -1;
+      row.hidden = !hit;
+      if (hit) shown += 1;
+    });
+    sheet.querySelectorAll('[data-m-ps-group], .m-ps-all').forEach(function (el) { el.hidden = !!q; });         // the headings and "All properties" only make sense for the whole list
+    var none = sheet.querySelector('.m-ps-none');
+    if (none) none.hidden = !(q && shown === 0);
+  });
+
   // The ticket page: sections become tap-to-open rows; the big buttons at the top open a section and scroll to it.
   function accordions() {
     if (!phone.matches) return;

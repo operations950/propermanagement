@@ -256,12 +256,47 @@ def calendar_view(request):
     prev_month = (first_day - timedelta(days=1)).replace(day=1)
     next_month = (last_day + timedelta(days=1))
 
+    # The phone shows no month grid: a strip of one week (Monday to Sunday) with the count of visits under each date, and the visits of the chosen day (?day=YYYY-MM-DD, today by default) below it.
+    # The grid above is untouched; these only feed the phone block.
+    try:
+        sel_day = datetime.strptime(request.GET.get('day', ''), '%Y-%m-%d').date()
+    except ValueError:
+        sel_day = today
+    week_start = sel_day - timedelta(days=sel_day.weekday())
+    week_counts = dict(
+        Visit.objects.filter(scheduled_date__gte=week_start, scheduled_date__lte=week_start + timedelta(days=6))
+        .exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED])
+        .values_list('scheduled_date')
+        .annotate(n=Count('id'))
+        .values_list('scheduled_date', 'n')
+    )
+    phone_days = [{'date': week_start + timedelta(days=i), 'count': week_counts.get(week_start + timedelta(days=i), 0), 'is_today': week_start + timedelta(days=i) == today,
+                   'is_selected': week_start + timedelta(days=i) == sel_day} for i in range(7)]
+    now = timezone.now()
+    sel_visits = list(
+        Visit.objects.filter(scheduled_date=sel_day)
+        .exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED])
+        .select_related('property', 'visit_type', 'assigned_staff__user', 'assigned_contact', 'booking', 'next_booking')
+        .order_by('ready_by', 'scheduled_start', 'property__name')
+    )
+    for visit in sel_visits:
+        visit.derived_status = _visit_status(visit, now)
+    week_end = week_start + timedelta(days=6)
+    week_label = f'{week_start:%b} {week_start.day} \u2013 {week_end.day}' if week_start.month == week_end.month else f'{week_start:%b} {week_start.day} \u2013 {week_end:%b} {week_end.day}'
+
     return render(request, 'onsite/calendar.html', {
         'weeks': weeks,
         'month_label': first_day.strftime('%B %Y'),
         'prev_month': prev_month.strftime('%Y-%m'),
         'next_month': next_month.strftime('%Y-%m'),
         'this_month': today.strftime('%Y-%m'),
+        'phone_days': phone_days,
+        'sel_day': sel_day,
+        'sel_visits': sel_visits,
+        'week_label': week_label,
+        'prev_week': (week_start - timedelta(days=7)).isoformat(),
+        'next_week': (week_start + timedelta(days=7)).isoformat(),
+        'today_iso': today.isoformat(),
     })
 
 

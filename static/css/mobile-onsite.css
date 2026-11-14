@@ -1,15 +1,15 @@
 /*
- * Phone presentation of the On-Site screens (visits list, visit detail, the 7-day properties board).
+ * Phone presentation of the On-Site screens (visits list, calendar, visit detail, the properties board).
  *
- * The rule behind every number here: a phone is used with one thumb. Text is 16px or more, anything you tap is at least 48px tall with space
- * around it, nothing hides behind hover, nothing needs sideways scrolling, and the one thing you most likely want to do is the biggest thing on the screen.
+ * The rule behind every number here: a phone is used with one thumb. Text is 16px or more for what you read, anything you tap is at least 44-48px tall with space
+ * around it, nothing hides behind hover, nothing needs sideways scrolling except a row of chips or the day pager (which snap), and the one thing you most likely
+ * want to do is the biggest thing on the screen. Compact where it can be: a visit is two lines, not a block of rows.
  *
  * Everything that changes the look of an existing element sits inside the phone media query (767.98px, Bootstrap's md breakpoint), so desktop is untouched.
- * The .mo-* classes are only ever used inside blocks that are themselves phone-only (d-md-none) or inside the media query.
+ * The .mo-* / .pd-* classes are only ever used inside blocks that are themselves phone-only (d-md-none) or inside the media query.
  */
 
 /* ---- the building blocks (used only inside phone-only markup) ---- */
-.mo-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem; }
 .mo-btn {
   display: flex; align-items: center; justify-content: center; gap: 0.5rem;
   min-height: 52px; padding: 0.6rem 1rem; border-radius: 0.9rem;
@@ -21,28 +21,9 @@
 .mo-btn.primary { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
 .mo-btn.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
 .mo-btn .icon { width: 1.25rem; height: 1.25rem; flex: none; }
-.mo-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.9rem; }
-.mo-more { margin-bottom: 0.9rem; }
-.mo-more > summary { list-style: none; cursor: pointer; }
-.mo-more > summary::-webkit-details-marker { display: none; }
-.mo-more > summary::after { content: '\25BE'; margin-left: 0.4rem; }
-.mo-more[open] > summary::after { content: '\25B4'; }
-.mo-more .mo-links { display: grid; gap: 0.5rem; margin-top: 0.6rem; }
-.mo-dayhead { display: flex; align-items: center; gap: 0.6rem; margin: 1.1rem 0 0.6rem; font-size: 1.2rem; font-weight: 700; color: var(--ink-primary); }
-.mo-dayhead .mo-count { font-size: 0.95rem; font-weight: 600; color: var(--ink-muted); }
-.mo-card {
-  position: relative; display: block; background: #fff; border: 1px solid var(--border-hairline); border-radius: 1rem;
-  padding: 1rem 1rem 1rem; margin-bottom: 0.75rem; box-shadow: 0 1px 2px rgba(43, 43, 46, 0.06);
-}
-.mo-card .mo-title { font-size: 1.2rem; font-weight: 700; line-height: 1.25; color: var(--ink-primary); text-decoration: none; }
-.mo-card .mo-meta { font-size: 1rem; color: var(--ink-secondary); margin-top: 0.2rem; }
-.mo-card .mo-addr { font-size: 1rem; color: var(--ink-muted); margin-top: 0.35rem; }
-.mo-card .mo-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; }
 .mo-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.7rem; border-radius: 1rem; font-size: 0.92rem; font-weight: 500; background: #f4f3f8; border: 1px solid var(--border-hairline); color: var(--ink-secondary); }
 .mo-chip .icon { width: 1rem; height: 1rem; }
 .mo-chip.urgent { background: color-mix(in srgb, var(--priority-urgent) 12%, white); border-color: color-mix(in srgb, var(--priority-urgent) 35%, white); color: var(--priority-urgent); }
-.mo-card .mo-dir { position: relative; z-index: 2; margin-top: 0.8rem; min-height: 48px; font-size: 1rem; }
-.mo-card .badge { font-size: 0.9rem; padding: 0.4em 0.75em; }
 .mo-back {
   display: flex; align-items: center; gap: 0.5rem; min-height: 52px; padding: 0.5rem 1rem; margin-bottom: 0.9rem; border-radius: 0.9rem;
   background: #fff; border: 1.5px solid var(--border-hairline); color: var(--ink-primary); font-size: 1.05rem; font-weight: 600; text-decoration: none;
@@ -50,42 +31,144 @@
 .mo-back .icon { width: 1.25rem; height: 1.25rem; }
 .mo-empty { padding: 1.2rem; text-align: center; color: var(--ink-muted); font-size: 1.05rem; background: #fff; border: 1px solid var(--border-hairline); border-radius: 1rem; }
 
-/* ---- the properties board on a phone: one card per property, a row for each day that has something ---- */
-.pg-phone .city { font-size: 1.2rem; font-weight: 700; margin: 1.2rem 0 0.5rem; }
-.pg-phone .pcard { background: #fff; border: 1px solid var(--border-hairline); border-radius: 1rem; padding: 0.9rem; margin-bottom: 0.75rem; box-shadow: 0 1px 2px rgba(43, 43, 46, 0.06); }
-.pg-phone .pname { display: block; font-size: 1.15rem; font-weight: 700; color: var(--ink-primary); text-decoration: none; line-height: 1.25; margin-bottom: 0.5rem; }
+/* ---- the sections row and the day chips: one line each, scrolling sideways when they are wider than the screen ---- */
+.mo-chiprow, .mo-sections {
+  display: flex; flex-wrap: nowrap; gap: 0.4rem; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  margin: 0 -1rem 0.55rem; padding: 0.1rem 1rem; scroll-snap-type: x proximity;
+}
+.mo-chiprow::-webkit-scrollbar, .mo-sections::-webkit-scrollbar { display: none; }
+.mo-pill, .mo-sections a {
+  flex: none; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0.3rem 0.95rem;
+  border: 1.5px solid var(--border-hairline); border-radius: 1.4rem; background: #fff; color: var(--ink-secondary);
+  font-size: 1rem; font-weight: 600; line-height: 1.2; white-space: nowrap; text-decoration: none; scroll-snap-align: start; -webkit-tap-highlight-color: transparent;
+}
+.mo-pill .icon { width: 1.15rem; height: 1.15rem; flex: none; }
+.mo-pill.on, .mo-sections a.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+.mo-pill:active, .mo-sections a:active { filter: brightness(0.95); }
+
+/* New visit: one big button that floats at the bottom of the screen */
+.mo-fab {
+  position: fixed; z-index: 1020; right: max(1rem, env(safe-area-inset-right, 0px)); bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 56px; padding: 0 1.3rem; border-radius: 2rem;
+  background: var(--brand-primary); color: #fff; font-size: 1.05rem; font-weight: 700; text-decoration: none; box-shadow: 0 4px 14px rgba(43, 43, 46, 0.28);
+}
+.mo-fab:active { filter: brightness(0.95); }
+.mo-fab .icon { width: 1.3rem; height: 1.3rem; flex: none; }
+
+/* ---- a day's heading and the compact visit card (about 70px: the property and the kind of visit; when, who and one small tag) ---- */
+.mo-dayhead { display: flex; align-items: center; gap: 0.6rem; margin: 0.8rem 0 0.4rem; font-size: 1.1rem; font-weight: 700; color: var(--ink-primary); }
+.mo-dayhead .mo-count { font-size: 0.95rem; font-weight: 600; color: var(--ink-muted); }
+.mo-vc {
+  position: relative; display: flex; align-items: stretch; min-height: 64px; margin-bottom: 0.5rem; background: #fff; border: 1px solid var(--border-hairline);
+  border-radius: 0.9rem; box-shadow: 0 1px 2px rgba(43, 43, 46, 0.06);
+}
+.mo-vc-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0.15rem; padding: 0.55rem 0.3rem 0.55rem 0.85rem; color: var(--ink-primary); text-decoration: none; }
+.mo-vc-l1 { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; min-width: 0; }
+.mo-vc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.1rem; font-weight: 700; line-height: 1.25; }
+.mo-vc-type {
+  flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; font-weight: 600; color: var(--ink-secondary);
+  background: #f4f3f8; border: 1px solid var(--border-hairline); border-radius: 1rem; padding: 0.05rem 0.6rem;
+}
+.mo-vc-l2 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 0; font-size: 1rem; line-height: 1.3; color: var(--ink-secondary); }
+.mo-vc-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-tag { flex: none; font-size: 0.85rem; font-weight: 600; line-height: 1.35; padding: 0.02rem 0.55rem; border-radius: 1rem; white-space: nowrap; background: #f4f3f8; border: 1px solid var(--border-hairline); color: var(--ink-secondary); }
+.mo-tag.bad { background: color-mix(in srgb, var(--priority-urgent) 12%, white); border-color: color-mix(in srgb, var(--priority-urgent) 35%, white); color: var(--priority-urgent); }
+.mo-tag.warn { background: color-mix(in srgb, var(--status-warning) 15%, white); border-color: color-mix(in srgb, var(--status-warning) 38%, white); color: color-mix(in srgb, var(--status-warning) 62%, black); }
+.mo-tag.good { background: color-mix(in srgb, var(--status-good) 14%, white); border-color: color-mix(in srgb, var(--status-good) 35%, white); color: var(--status-good); }
+.mo-vc-dir {
+  position: relative; z-index: 2; flex: none; display: flex; align-items: center; justify-content: center; width: 52px; border-left: 1px solid var(--border-hairline);
+  border-radius: 0 0.9rem 0.9rem 0; color: var(--brand-primary); text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.mo-vc-dir:active { background: #f4f3f8; }
+.mo-vc-dir .icon { width: 1.4rem; height: 1.4rem; }
+
+/* ---- the calendar on a phone: a strip of the week's seven days (the count of visits under each date) and that day's visits below ---- */
+.mo-weekhead { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem; }
+.mo-wklabel { flex: 1 1 auto; min-width: 0; text-align: center; font-size: 1.1rem; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-wknav {
+  flex: none; display: flex; align-items: center; justify-content: center; min-width: 48px; min-height: 48px; padding: 0 0.8rem; border: 1.5px solid var(--border-hairline);
+  border-radius: 0.9rem; background: #fff; color: var(--ink-primary); font-size: 1rem; font-weight: 600; text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.mo-wknav .icon { width: 1.3rem; height: 1.3rem; }
+.mo-weekstrip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.25rem; margin-bottom: 0.3rem; }
+.mo-wkday {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem; min-height: 74px; padding: 0.35rem 0; min-width: 0;
+  border: 1.5px solid var(--border-hairline); border-radius: 0.8rem; background: #fff; color: var(--ink-primary); text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.mo-wkd { font-size: 0.78rem; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; line-height: 1.2; }
+.mo-wkn { font-size: 1.25rem; font-weight: 700; line-height: 1.1; }
+.mo-wkc { min-width: 1.4rem; padding: 0 0.3rem; border-radius: 1rem; text-align: center; font-size: 0.85rem; font-weight: 700; line-height: 1.35; color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 14%, white); }
+.mo-wkc.none { visibility: hidden; }
+.mo-wkday.today { border-color: var(--brand-primary); border-width: 2px; }
+.mo-wkday.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+.mo-wkday.on .mo-wkd { color: rgba(255, 255, 255, 0.85); }
+.mo-wkday.on .mo-wkc { color: #fff; background: rgba(255, 255, 255, 0.26); }
+
+/* ---- the properties board on a phone: ONE DAY at a time, swipe sideways to the next day; a strip of the days stays under the top bar ---- */
+.pg-phone .pd-strip {
+  position: sticky; top: 0; z-index: 6; display: flex; gap: 0.3rem; overflow-x: auto; scrollbar-width: none; margin: 0 -1rem 0.3rem; padding: 0.4rem 1rem;
+  background: var(--surface-page, #fff); border-bottom: 1px solid var(--border-hairline);
+}
+html:not(.m-full) .pg-phone .pd-strip { top: var(--m-bar-h, 56px); }
+.pg-phone .pd-strip::-webkit-scrollbar { display: none; }
+.pg-phone .pd-chip {
+  flex: 1 0 3.3rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.05rem; min-height: 58px; padding: 0.2rem 0.3rem;
+  border: 1.5px solid var(--border-hairline); border-radius: 0.8rem; background: #fff; color: var(--ink-secondary); text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.pg-phone .pd-dow { font-size: 0.8rem; font-weight: 600; line-height: 1.2; }
+.pg-phone .pd-num { font-size: 1.15rem; font-weight: 700; line-height: 1.1; color: var(--ink-primary); }
+.pg-phone .pd-n { font-size: 0.75rem; font-weight: 700; line-height: 1.3; padding: 0 0.4rem; border-radius: 1rem; background: color-mix(in srgb, var(--brand-primary) 14%, white); color: var(--brand-primary); }
+.pg-phone .pd-chip.today { border-color: var(--brand-primary); }
+.pg-phone .pd-chip.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+.pg-phone .pd-chip.on .pd-num { color: #fff; }
+.pg-phone .pd-chip.on .pd-n { background: rgba(255, 255, 255, 0.26); color: #fff; }
+.pg-phone .pd-pager {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; scrollbar-width: none; margin: 0 -1rem;
+}
+.pg-phone .pd-pager::-webkit-scrollbar { display: none; }
+.pg-phone .pd-page { flex: 0 0 100%; min-width: 0; box-sizing: border-box; padding: 0.2rem 1rem 1.2rem; scroll-snap-align: start; scroll-snap-stop: always; }
+.pg-phone .pd-h { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 0.2rem; font-size: 1.2rem; font-weight: 700; }
+.pg-phone .pd-h .tag { padding: 0.05rem 0.6rem; border-radius: 1rem; background: #f4f3f8; border: 1px solid var(--border-hairline); font-size: 0.85rem; font-weight: 600; }
+.pg-phone .pd-h .pd-count { margin-left: auto; font-size: 0.95rem; font-weight: 600; color: var(--ink-muted); }
+.pg-phone .city { font-size: 1rem; font-weight: 700; color: var(--ink-muted); margin: 0.9rem 0 0.35rem; }
+.pg-phone .pcard { background: #fff; border: 1px solid var(--border-hairline); border-radius: 1rem; padding: 0.7rem 0.75rem; margin-bottom: 0.6rem; box-shadow: 0 1px 2px rgba(43, 43, 46, 0.06); }
+.pg-phone .pname { display: flex; flex-direction: column; justify-content: center; min-height: 44px; font-size: 1.1rem; font-weight: 700; color: var(--ink-primary); text-decoration: none; line-height: 1.25; margin-bottom: 0.2rem; overflow-wrap: anywhere; }
 .pg-phone .pname small { display: block; font-size: 0.95rem; font-weight: 500; color: var(--ink-muted); }
-.pg-phone .dayrow { border-top: 1px solid var(--border-hairline); padding: 0.6rem 0; }
-.pg-phone .dayrow:first-of-type { border-top: 0; }
-.pg-phone .dlabel { font-size: 1rem; font-weight: 600; color: var(--ink-secondary); margin-bottom: 0.4rem; }
-.pg-phone .dlabel.today { color: var(--ink-primary); }
-.pg-phone .dlabel .tag { margin-left: 0.4rem; padding: 0.1rem 0.55rem; border-radius: 1rem; background: #f4f3f8; border: 1px solid var(--border-hairline); font-size: 0.85rem; font-weight: 600; }
-.pg-phone .evs { display: grid; gap: 0.5rem; }
+.pg-phone .evs { display: grid; gap: 0.4rem; }
 .pg-phone .evbtn {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; width: 100%; min-height: 52px; padding: 0.6rem 0.9rem;
-  border: 0; border-radius: 0.8rem; font-size: 1.05rem; font-weight: 600; text-align: left; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; width: 100%; min-height: 48px; padding: 0.5rem 0.8rem;
+  border: 0; border-radius: 0.8rem; font-size: 1.02rem; font-weight: 600; text-align: left; cursor: pointer;
 }
 .pg-phone .evbtn.out { background: var(--out-bg, #efe6d3); color: var(--out-ink, #6b4f10); }
 .pg-phone .evbtn.in { background: var(--in-bg, #dfeaf3); color: var(--in-ink, #3d6178); }
 .pg-phone .evbtn.both { background: var(--bad-bg, #f7dcdc); color: var(--bad-ink, #8a2a2a); }
 .pg-phone .evbtn.pending { outline: 2px dashed var(--warn-bar, #d98e04); }
-.pg-phone .evbtn .hint { font-size: 0.9rem; font-weight: 500; }
+.pg-phone .evbtn .hint { font-size: 0.88rem; font-weight: 500; }
 .pg-phone .cleanbtn {
-  display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 48px; padding: 0.5rem 0.9rem; border-radius: 0.8rem; border: 1.5px solid var(--border-hairline);
+  display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 48px; padding: 0.45rem 0.8rem; border-radius: 0.8rem; border: 1.5px solid var(--border-hairline);
   background: #fff; color: var(--ink-primary); font-size: 1rem; font-weight: 500; text-align: left; cursor: pointer;
 }
 .pg-phone .cleanbtn .dot { width: 0.9rem; height: 0.9rem; border-radius: 50%; flex: none; background: var(--good-bar, #4f8f66); }
 .pg-phone .cleanbtn.open .dot { background: var(--warn-bar, #d98e04); }
 .pg-phone .cleanbtn.none .dot { background: #fff; border: 2px solid var(--bad-bar, #c0392b); }
-.pg-phone .staybar { background: var(--stay, #e4edf4); color: var(--ink-secondary); border-radius: 0.8rem; padding: 0.55rem 0.9rem; font-size: 1rem; }
-.pg-phone .nothing { color: var(--ink-muted); font-size: 1rem; padding: 0.3rem 0; }
+.pg-phone .staybar { background: var(--stay, #e4edf4); color: var(--ink-secondary); border-radius: 0.8rem; padding: 0.5rem 0.8rem; font-size: 1rem; }
+.pg-phone .pcard-stay { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.25rem 0.75rem; margin-bottom: 0.45rem; }
+.pg-phone .pcard-stay .pname { flex: 1 1 auto; min-width: 0; margin: 0; }
+.pg-phone .pcard-stay .staybar { flex: none; padding: 0.2rem 0.7rem; border-radius: 1rem; font-size: 0.9rem; font-weight: 600; }
 
 /* ---- everything below changes how existing markup looks, on a phone only ---- */
 @media (max-width: 767.98px) {
-  /* the section tabs (Visits, Properties, Requests, ...): big two-column buttons instead of a ragged line of small links */
-  body .ws-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; border-bottom: 0; margin: 0.25rem 0 1rem; align-items: stretch; }
+  /* the section tabs (Visits, Properties, Requests, ...): one scrolling row of chips instead of a ragged line of small links */
+  body .ws-sub {
+    display: flex; flex-wrap: nowrap; gap: 0.4rem; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; align-items: center;
+    margin: 0 -1rem 0.55rem; padding: 0.1rem 1rem; border-bottom: 0; scroll-snap-type: x proximity;
+  }
+  body .ws-sub::-webkit-scrollbar { display: none; }
   body .ws-sub .sp { display: none; }
-  body .ws-sub a { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0.4rem 0.6rem; margin: 0; border: 1.5px solid var(--border-hairline); border-radius: 0.8rem; background: #fff; font-size: 1.02rem; text-align: center; color: var(--ink-secondary); }
+  body .ws-sub a {
+    flex: none; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.3rem 0.95rem; margin: 0; white-space: nowrap;
+    border: 1.5px solid var(--border-hairline); border-radius: 1.4rem; background: #fff; font-size: 1rem; line-height: 1.2; text-align: center; color: var(--ink-secondary); scroll-snap-align: start;
+  }
   body .ws-sub a.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; font-weight: 600; }
   body .ws-sub a[style] { font-size: 1rem !important; }
 
@@ -99,17 +182,19 @@
   .mo-page .small, .mo-page small { font-size: 1rem; }
   .mo-page .card-title { font-size: 1.1rem; }
   .mo-page .badge { font-size: 0.9rem; }
-  .mo-page .daywrap { background: transparent; border: 0; box-shadow: none; }
+  .mo-page .daywrap { background: transparent; border: 0; box-shadow: none; margin-bottom: 0 !important; }
   .mo-page .daywrap > .card-body { padding: 0; }
   .mo-page .list-group-item { padding-top: 0.85rem !important; padding-bottom: 0.85rem !important; font-size: 1.05rem; }
   .mo-page .list-group-item .btn { min-width: 6.5rem; }
 
-  /* the properties board: the wide grid steps aside for the cards (the markup is the same data) */
+  /* the properties board: the wide grid steps aside for the one-day pager (the markup is the same data) */
   .pgw .pgscroll { display: none; }
   .pgw .top { font-size: 1rem; gap: 0.5rem; }
   .pgw .top a.nv { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; min-height: 48px; padding: 0 0.9rem; font-size: 1.05rem; }
   .pgw .wn { font-size: 1rem; padding: 0.7rem 0.9rem; }
-  .pgw .lg { font-size: 0.95rem; }
+  .pgw .wn { display: none; }                                           /* the banner about check-outs with no cleaning: every such check-out says so on its own card, in red */
+  .pgw .top a.ms-auto { display: none; }                                /* the wide 30-day timeline does not fit a phone */
+  .pgw .lg { display: none; }                                           /* the grid's colour key: the phone cards say it in words */
   .pgw .chips button { min-height: 48px; min-width: 56px; font-size: 1rem; padding: 0.3rem 0.9rem; border-radius: 1.5rem; }
   .pgw .vd { font-size: 1rem; }
   #wkModal .btn, #wkClean .btn { min-height: 48px; font-size: 1rem; }

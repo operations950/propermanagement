@@ -41,6 +41,16 @@ def letter_sent_on(case):
     return best
 
 
+def default_asof(today):
+    """The date the late-letter list is worked out for unless someone picks another: the last day of last month. The payments of this month are not entered until its end, so
+    who is late is who was late when last month closed."""
+    return today.replace(day=1) - timedelta(days=1)
+
+
+def _dollars(amount):
+    return f'${amount:,.0f}' if amount == amount.to_integral_value() else f'${amount:,.2f}'
+
+
 def months_behind(b, today):
     """How many months the oldest unpaid assessment is overdue (a month is 30 days; at least one for anyone who owes)."""
     if not b['oldest_due']:
@@ -69,15 +79,18 @@ def case_row(case, today):
             'move_label': MOVE_LABEL.get(case.stage, ''), 'icons': delinquency.case_icons(case), 'needs': bool(alert) or review_due or b['total'] <= 0}
 
 
-def board(prop, today=None):
-    """{'tabs': [{'key', 'label', 'help', 'rows', 'count', 'alerts'}], 'attention': owners needing a look, 'threshold'}. Every tab's alert count is what the tab badge shows."""
+def board(prop, today=None, asof=None):
+    """{'tabs': [{'key', 'label', 'help', 'rows', 'count', 'alerts'}], 'attention': owners needing a look, 'threshold', 'asof'}. Every tab's alert count is what the tab badge shows.
+    The first tab (owners with no case who need a late letter) is worked out as of `asof` (default: the end of last month); the tabs of cases already open show where each stands today."""
     today = today or timezone.localdate()
+    default = default_asof(today)
+    asof = min(asof, today) if asof else default
     threshold = ledger.profile_for(prop).delinquency_threshold
     open_cases = list(DelinquencyCase.objects.filter(association=prop, resolved_on__isnull=True).select_related('unit', 'owner').prefetch_related('events__document').order_by('stage_since', 'unit__label'))
     rows = {k: [] for k, _, _ in TABS}
-    for r in delinquency.delinquent_rows(prop, today, threshold):
+    for r in delinquency.delinquent_as_of(prop, asof, threshold):
         if r['case'] is None:
-            r['months'] = months_behind(r['b'], today)
+            r['months'] = months_behind(r['b'], asof)
             r['alert'] = 'Behind and no late letter yet'
             rows['none'].append(r)
     for case in open_cases:
@@ -89,14 +102,19 @@ def board(prop, today=None):
     tabs = []
     for key, label, help_text in TABS:
         alerts = sum(1 for r in rows[key] if r.get('needs') or (key == 'none'))
+        if key == 'none':
+            help_text = (f'Owners who owed more than {_dollars(threshold)} on {asof:%b} {asof.day}, {asof.year} and have no late letter yet. Write the first late letter: it opens their case.')
+        elif key != Stage.RESOLVED:
+            help_text += ' The amounts owed here are as of today.'
         tabs.append({'key': str(key), 'label': label, 'help': help_text, 'rows': rows[key], 'count': len(rows[key]), 'alerts': alerts})
     attention = len(rows['none']) + sum(1 for k in (Stage.LETTER, Stage.NOTICE1, Stage.NOTICE2, Stage.LIEN) for r in rows[k] if r['needs'])
-    return {'tabs': tabs, 'attention': attention, 'threshold': threshold, 'today': today}
+    return {'tabs': tabs, 'attention': attention, 'threshold': threshold, 'today': today, 'asof': asof, 'default_asof': default}
 
 
-def attention(prop, today=None):
-    """For the close sheet and the list of associations: how many owners need a look, and why. {'count', 'bits': [...], 'open': open cases}"""
-    data = board(prop, today)
+def attention(prop, today=None, asof=None):
+    """For the close sheet and the list of associations: how many owners need a look, and why. {'count', 'bits': [...], 'open': open cases}. Counted as of the same date the screen
+    opens on (the end of last month), so the number here is the number there."""
+    data = board(prop, today, asof)
     by = {t['key']: t for t in data['tabs']}
     bits = []
     if by['none']['count']:

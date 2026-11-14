@@ -2,24 +2,25 @@
 {% load alerts %}
 {% load static %}
 {% block title %}Contacts{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}"><script src="{% static 'js/quo-links.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="ml-scope">
-{% page_alerts 'contacts' %}
-<div class="ml-title-row d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+{# what needs attention (alerts, contacts to review, possible duplicates, import) is back-office work: on a phone it is left out #}
+<div class="d-none d-md-block">{% page_alerts 'contacts' %}</div>
+<div class="ml-title-row ml-title-one d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="contact" class="icon-lg"></i> Contacts</h2>
     <div class="ml-title-actions d-flex flex-wrap gap-2">
         {% if pending_review_count %}
-        <a href="{% url 'contact_review' %}" class="btn btn-outline-warning d-flex align-items-center gap-1">
+        <a href="{% url 'contact_review' %}" class="btn btn-outline-warning d-none d-md-flex align-items-center gap-1">
             <i data-lucide="circle-alert" class="icon"></i> {{ pending_review_count }} to review
         </a>
         {% endif %}
         {% if duplicate_group_count %}
-        <a href="{% url 'contact_duplicates' %}" class="btn btn-outline-danger d-flex align-items-center gap-1">
+        <a href="{% url 'contact_duplicates' %}" class="btn btn-outline-danger d-none d-md-flex align-items-center gap-1">
             <i data-lucide="copy" class="icon"></i> {{ duplicate_group_count }} possible duplicate{{ duplicate_group_count|pluralize }}
         </a>
         {% endif %}
-        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importContactsModal">
+        <button type="button" class="btn btn-outline-secondary d-none d-md-inline-block" data-bs-toggle="modal" data-bs-target="#importContactsModal">
             <i data-lucide="upload" class="icon"></i> Import contacts
         </button>
         <a href="{% url 'contact_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New contact</a>

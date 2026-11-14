@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
-{% load core_extras ticket_extras static %}
+{% load core_extras ticket_extras static property_phone %}
 {% block title %}{{ property.name }}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
+{% block mobile_back_url %}{{ back_url }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}"><link rel="stylesheet" href="{% static 'css/mobile-property.css' %}"><script src="{% static 'js/quo-links.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="my-3 d-none d-md-block">
     <a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Properties</a>
@@ -28,34 +29,21 @@
     </div>
 </div>
 
-{# The phone version of the top of this page: big back link, name, one primary action, big buttons. The cards below become tap-to-open sections (static/js/mobile-accordion.js). #}
-<div class="ml-scope d-md-none" data-m-acc-root>
-    <a href="{{ back_url }}" class="ml-back"><i data-lucide="arrow-left" class="icon"></i> Properties</a>
-    <h1 class="ml-title">{{ property.name }}</h1>
-    <div class="ml-tags">
-        <span class="ml-tag">{{ property.get_property_type_display }}</span>
-        {% if property.is_general %}<span class="ml-tag">General</span>{% endif %}
-        {% if not property.is_active %}<span class="ml-tag ml-tag-warn">Inactive</span>{% endif %}
-        {% if property.address_verified %}<span class="ml-tag">USPS verified</span>{% endif %}
+{# The phone version of this page (core/_property_phone.html): name, address, four big buttons, then only what matters for this kind of property. Everything else is under "More" (collapsed on phones, in place on a computer). #}
+{% include 'core/_property_phone.html' %}
+
+<div class="pp-more" data-pp-more>
+    <button type="button" class="pp-more-head d-md-none" data-pp-more-toggle aria-expanded="false">
+        <i data-lucide="layers" class="icon pp-ico"></i><span class="pp-title">More</span><span class="pp-hint">Everything else</span><i data-lucide="chevron-down" class="icon pp-chev"></i>
+    </button>
+    <div class="pp-more-body" data-pp-more-body>
+    <span class="d-md-none" data-m-acc-root data-m-acc-none></span>
+    {% if property.property_type == 'str' and property.is_active and not property.is_general %}
+    <div class="pp-quiet d-md-none">
+        <a href="{% url 'onsite_performance_calendar' property.pk %}"><i data-lucide="calendar-days" class="icon"></i> Calendar</a>
+        <a href="{% url 'onsite_performance_property' property.pk %}"><i data-lucide="chart-column" class="icon"></i> Performance</a>
     </div>
-    {% if property.address %}<div class="ml-sub">{{ property.address }}</div>{% endif %}
-    {% property_call_contact property as call_contact %}
-    <div class="ml-btns">
-        <a href="{% url 'ticket_create' %}?property={{ property.pk }}" class="ml-btn ml-btn-primary"><i data-lucide="plus" class="icon"></i> New ticket</a>
-        <a href="#tickets" data-m-acc-link class="ml-btn"><i data-lucide="ticket" class="icon"></i> Open tickets{% if open_tickets|length %} ({{ open_tickets|length }}){% endif %}</a>
-        {% if property.address %}<a href="{{ property.address|maps_href }}" target="_blank" rel="noopener" class="ml-btn"><i data-lucide="map-pin" class="icon"></i> Directions</a>{% endif %}
-        {% if call_contact %}<a href="tel:{{ call_contact.phone|tel_href }}" class="ml-btn ml-btn-wide"><i data-lucide="phone" class="icon"></i> Call {{ call_contact.name }}</a>{% endif %}
-    </div>
-    <div class="ml-btns">
-        {% if property.property_type == 'str' and property.is_active and not property.is_general %}
-        <a href="{% url 'onsite_performance_calendar' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="calendar-days" class="icon"></i> Calendar</a>
-        <a href="{% url 'onsite_performance_property' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="chart-column" class="icon"></i> Performance</a>
-        {% endif %}
-        {% if ap %}<a href="{% url 'accounting:hub' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="chart-column" class="icon"></i> Accounting</a>{% endif %}
-        <a href="{% url 'property_edit' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="pencil" class="icon"></i> Edit</a>
-        <button type="button" class="ml-btn ml-btn-quiet ml-btn-wide" data-m-acc-all>Open all sections</button>
-    </div>
-</div>
+    {% endif %}
 
 {% if specs_summary %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
@@ -1032,5 +1020,8 @@
     });
 })();
 </script>
+    </div>{# /pp-more-body #}
+</div>{# /pp-more #}
 <script src="{% static 'js/mobile-accordion.js' %}"></script>
+<script src="{% static 'js/mobile-property.js' %}"></script>
 {% endblock %}

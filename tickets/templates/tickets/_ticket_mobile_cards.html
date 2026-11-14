@@ -1,23 +1,17 @@
 {% load ticket_extras %}
 {% comment %}
-The phone list: one big card per ticket, and the whole card is the tap target (a plain link to the ticket). Title, property, who has it, when it is due
-and the latest update; Urgent and High show as a flag and a coloured edge, late shows in red. Editing happens on the ticket itself. Expects: tickets, now.
+The phone list: one compact card per ticket, and the whole card is the tap target (a plain link to the ticket). Two lines: the title (with a small Urgent or High tag in
+front of it) and "property · due date" (late in red). Who has it, the status and the latest update are on the ticket itself. Expects: tickets, now.
 Phones only (the list page shows this inside d-md-none); the full table keeps the inline editing.
 {% endcomment %}
 {% for t in tickets %}
 {% with late=t|is_overdue:now %}
 <a class="m-tk-card{% if t.priority == 'urgent' %} is-urgent{% elif t.priority == 'high' %} is-high{% endif %}{% if late %} is-late{% endif %}" href="{% url 'ticket_detail' t.pk %}">
-    <span class="m-tk-row1">
-        {% if t.priority == 'urgent' %}<span class="m-tk-flag m-tk-flag-urgent">Urgent</span>{% elif t.priority == 'high' %}<span class="m-tk-flag m-tk-flag-high">High</span>{% endif %}
-        <span class="m-tk-status">{{ t.get_status_display }}</span>
+    <span class="m-tk-title">{% if t.priority == 'urgent' %}<span class="m-tk-flag m-tk-flag-urgent">Urgent</span> {% elif t.priority == 'high' %}<span class="m-tk-flag m-tk-flag-high">High</span> {% endif %}{{ t.title }}</span>
+    <span class="m-tk-line2">
+        <span class="m-tk-prop">{% if t.property %}{{ t.property.name }}{% if t.unit %} &middot; {{ t.unit.label }}{% endif %}{% else %}No property yet{% endif %}</span>
+        <span class="m-tk-due{% if late %} late{% endif %}">&middot; {% if t.due_date %}{% if late %}Late{% else %}Due{% endif %} {{ t.due_date|date:'D, M j' }}{% else %}No due date{% endif %}</span>
     </span>
-    <span class="m-tk-title">{{ t.title }}</span>
-    <span class="m-tk-prop">{% if t.property %}{{ t.property.name }}{% if t.unit %} &middot; {{ t.unit.label }}{% endif %}{% else %}No property yet{% endif %}</span>
-    <span class="m-tk-meta">
-        <span class="m-tk-who">{% if t.assigned_staff %}{{ t.assigned_staff }}{% elif t.assigned_contact %}{{ t.assigned_contact }}{% else %}{{ t.get_assigned_role_display|default:'Unassigned' }}{% endif %}</span>
-        <span class="m-tk-due{% if late %} late{% endif %}">{% if t.due_date %}{% if late %}Late &middot; {% endif %}Due {{ t.due_date|date:'D, M j' }}{% else %}No due date{% endif %}</span>
-    </span>
-    {% with note=t.latest_note_body|default:t.closing_body %}{% if note %}<span class="m-tk-note">{{ note|truncatechars:110 }}</span>{% endif %}{% endwith %}
 </a>
 {% endwith %}
 {% empty %}

@@ -36,6 +36,13 @@
 .ml-act + .ml-act { border-left: 1px solid var(--border-hairline); }
 .ml-act .icon { width: 1.25rem; height: 1.25rem; }
 .ml-card:not(:has(.ml-acts)) .ml-card-main { border-radius: var(--ml-radius); }
+/* contacts: a bit more compact (about 15% less height per card) without going under 48px targets or 16px text */
+.ml-card.ml-contact { margin-bottom: .55rem; }
+.ml-card.ml-contact .ml-card-main { min-height: 60px; padding: .6rem .85rem; gap: .7rem; }
+.ml-card.ml-contact .ml-ico { flex-basis: 40px; width: 40px; height: 40px; }
+.ml-card.ml-contact .ml-name { font-size: 1.125rem; line-height: 1.2; }
+.ml-card.ml-contact .ml-line { line-height: 1.25; margin-top: 0; }
+.ml-card.ml-contact .ml-act { min-height: 48px; }
 
 /* ---------- big buttons ---------- */
 .ml-btns { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; margin: .75rem 0 1rem; }
@@ -96,6 +103,10 @@
     .ml-scope .ml-title-row .btn, .ml-scope .ml-title-actions .btn { min-height: 52px; font-size: 1.0625rem; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: var(--ml-radius); }
     .ml-scope .ml-title-actions { width: 100%; }
     .ml-scope .ml-title-actions .btn { flex: 1 1 auto; }
+    /* contacts: with the back-office buttons left out of the phone screen, the title and the one New contact button share a line */
+    .ml-scope .ml-title-one { flex-wrap: nowrap !important; }
+    .ml-scope .ml-title-one .ml-title-actions { width: auto; flex: 0 0 auto; flex-wrap: nowrap; }
+    .ml-scope .ml-title-one .ml-title-actions .btn { flex: 0 0 auto; padding-left: 1rem; padding-right: 1rem; }
     .ml-scope .ml-search-form .col-auto { width: 100%; flex: 0 0 100%; }
     .ml-scope .ml-search-form input[type=text] { width: 100%; min-height: 56px; font-size: 1.125rem; border-radius: var(--ml-radius); padding-left: 3.1rem !important; }
     .ml-scope .ml-search-form .position-relative > .icon { left: 1.05rem !important; width: 22px; height: 22px; }

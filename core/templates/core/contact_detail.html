@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load core_extras ticket_extras static %}
 {% block title %}{{ contact.name }}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}"><script src="{% static 'js/quo-links.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="ml-scope ml-page mx-auto" style="max-width: 640px;">
     <a href="{% url 'contact_list' %}" class="ml-back"><i data-lucide="arrow-left" class="icon"></i> Contacts</a>
@@ -16,8 +16,8 @@
     {% endif %}
 
     <div class="ml-btns">
-        {% if contact.phone %}<a href="tel:{{ contact.phone|tel_href }}" class="ml-btn ml-btn-primary"><i data-lucide="phone" class="icon"></i> Call {{ contact.phone }}</a>{% endif %}
-        {% if contact.phone %}<a href="sms:{{ contact.phone|tel_href }}" class="ml-btn"><i data-lucide="message-circle" class="icon"></i> Text</a>{% endif %}
+        {% if contact.phone %}<a href="tel:{{ contact.phone|tel_href }}"{% with q=contact.phone|quo_dial_url %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="ml-btn ml-btn-primary"><i data-lucide="phone" class="icon"></i> Call {{ contact.phone }}</a>{% endif %}
+        {% if contact.phone %}<a href="sms:{{ contact.phone|tel_href }}"{% with q=contact.phone|quo_text_url %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="ml-btn"><i data-lucide="message-circle" class="icon"></i> Text</a>{% endif %}
         {% if contact.email %}<a href="mailto:{{ contact.email }}" class="ml-btn"><i data-lucide="mail" class="icon"></i> Email</a>{% endif %}
         <a href="{% url 'ticket_create' %}?contact={{ contact.pk }}" class="ml-btn{% if not contact.phone %} ml-btn-primary{% endif %}"><i data-lucide="plus" class="icon"></i> New ticket</a>
         <a href="{% url 'contact_edit' contact.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="pencil" class="icon"></i> Edit</a>
