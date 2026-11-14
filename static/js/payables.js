@@ -82,7 +82,8 @@
     function post(form, action) {
         var fd = new FormData(form);
         fd.set('action', action);
-        return fetch(form.action, {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+        // getAttribute, not form.action: the buttons are named "action", and a named field shadows the form's own .action property (it would be an object, and the request would go nowhere)
+        return fetch(form.getAttribute('action') || window.location.href, {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
             .then(function (r) { return r.json(); });
     }
     function replaceCard(card, html) {
@@ -139,6 +140,86 @@
             if (data.error) banner(card, data.error, true); else if (data.note) banner(card, data.note, false);
         }).catch(function () { busyCard(card, false); banner(card, 'That did not work. Try again.', true); });
     });
+
+    // ---------------------------------------------------------------- type-to-search pickers
+    // A <select data-combo> becomes a search box: type any part of the code or name ("irr" finds Irrigation, "6240" finds HVAC), arrows and Enter pick, Esc closes.
+    // The real <select> stays in the form (hidden), so a pick is just a change on it and the card refreshes as before. Without this script the plain select still works.
+    function upgradeCombo(sel) {
+        if (sel.dataset.comboReady) return;
+        sel.dataset.comboReady = '1';
+        var items = Array.prototype.map.call(sel.options, function (o) { return {value: o.value, text: o.textContent.replace(/\s+/g, ' ').trim()}; }).filter(function (o) { return o.value !== ''; });
+        var wrap = document.createElement('div');
+        wrap.className = 'combo';
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = sel.className.replace('form-select', 'form-control');
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('role', 'combobox');
+        input.setAttribute('aria-expanded', 'false');
+        input.placeholder = sel.dataset.placeholder || 'Type to search';
+        var list = document.createElement('ul');
+        list.className = 'combo-list d-none';
+        list.setAttribute('role', 'listbox');
+        sel.classList.add('d-none');
+        sel.parentNode.insertBefore(wrap, sel);
+        wrap.appendChild(input);
+        wrap.appendChild(list);
+        wrap.appendChild(sel);
+        var shown = [], active = -1;
+        function current() { var o = sel.options[sel.selectedIndex]; return o && o.value !== '' ? o.textContent.replace(/\s+/g, ' ').trim() : ''; }
+        function render(query) {
+            var words = query.toLowerCase().split(/\s+/).filter(Boolean);
+            shown = items.filter(function (it) { var t = it.text.toLowerCase(); return words.every(function (w) { return t.indexOf(w) !== -1; }); });
+            list.innerHTML = '';
+            if (!shown.length) { var none = document.createElement('li'); none.className = 'combo-none'; none.textContent = 'No account matches "' + query + '"'; list.appendChild(none); }
+            shown.forEach(function (it, i) {
+                var li = document.createElement('li');
+                li.setAttribute('role', 'option');
+                li.dataset.i = i;
+                li.textContent = it.text;
+                if (it.value === sel.value) li.classList.add('chosen');
+                list.appendChild(li);
+            });
+            active = shown.length ? Math.max(0, shown.findIndex(function (it) { return it.value === sel.value; })) : -1;
+            mark();
+        }
+        function mark() {
+            Array.prototype.forEach.call(list.querySelectorAll('li[role=option]'), function (li, i) {
+                li.classList.toggle('active', i === active);
+                if (i === active && li.scrollIntoView) li.scrollIntoView({block: 'nearest'});
+            });
+        }
+        function open() { list.classList.remove('d-none'); input.setAttribute('aria-expanded', 'true'); }
+        function close() { list.classList.add('d-none'); input.setAttribute('aria-expanded', 'false'); input.value = current(); }
+        function pick(i) {
+            var it = shown[i];
+            if (!it) return;
+            list.classList.add('d-none');
+            input.setAttribute('aria-expanded', 'false');
+            input.value = it.text;
+            if (sel.value !== it.value) { sel.value = it.value; sel.dispatchEvent(new Event('change', {bubbles: true})); }
+        }
+        input.value = current();
+        input.addEventListener('focus', function () { input.select(); render(''); open(); });
+        input.addEventListener('click', function () { if (list.classList.contains('d-none')) { render(''); open(); } });
+        input.addEventListener('input', function () { render(input.value); open(); });
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); if (list.classList.contains('d-none')) { render(input.value); open(); } else if (shown.length) { active = (active + 1) % shown.length; mark(); } }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); if (shown.length) { active = (active - 1 + shown.length) % shown.length; mark(); } }
+            else if (e.key === 'Enter') { if (!list.classList.contains('d-none')) { e.preventDefault(); pick(active); } }
+            else if (e.key === 'Escape') { close(); }
+        });
+        input.addEventListener('blur', function () { window.setTimeout(close, 120); });
+        list.addEventListener('mousedown', function (e) {                           // mousedown, so the pick lands before the box loses focus
+            var li = e.target.closest ? e.target.closest('li[role=option]') : null;
+            if (!li) return;
+            e.preventDefault();
+            pick(parseInt(li.dataset.i, 10));
+        });
+    }
+    function upgradeCombos(root) { Array.prototype.forEach.call((root || document).querySelectorAll('select[data-combo]'), upgradeCombo); }
+    upgradeCombos(document);
+    if (cards && window.MutationObserver) new MutationObserver(function () { upgradeCombos(cards); }).observe(cards, {childList: true, subtree: true});
 
     document.addEventListener('click', function (e) {
         var skip = e.target.closest ? e.target.closest('[data-skip]') : null;

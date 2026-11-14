@@ -1,5 +1,6 @@
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -45,14 +46,20 @@ class PhoneOnSiteTests(TestCase):
         self.assertIn('d-none d-md-block table-responsive', html)            # the desktop table, untouched
         self.assertIn('d-none d-md-flex', html)                              # and the desktop toolbar
 
+    def morning(self):
+        """Pin the clock to 9 AM today: a visit is "at risk" in the 90 minutes before its ready-by time, so these tests must not depend on what time of day they run."""
+        return mock.patch('django.utils.timezone.now', return_value=timezone.make_aware(datetime.combine(self.today, time(9, 0))))
+
     def test_a_scheduled_visit_shows_no_status_word_only_something_worth_a_glance_does(self):
-        html = self.client.get(reverse('onsite_dashboard')).content.decode()
+        with self.morning():
+            html = self.client.get(reverse('onsite_dashboard')).content.decode()
         card = html.split('class="mo-vc"')[1].split('mo-vc-dir')[0]
         self.assertNotIn('>Scheduled<', card)                                # the normal state is left unsaid
         self.assertNotIn('mo-tag bad">At risk', card)
         Visit.objects.create(property=self.prop, visit_type=self.vt, scheduled_date=self.today, status=Visit.Status.UNASSIGNED)
         Visit.objects.create(property=self.prop, visit_type=self.vt, scheduled_date=self.today, status=Visit.Status.IN_PROGRESS, assigned_staff=self.cleaner)
-        html = self.client.get(reverse('onsite_dashboard')).content.decode()
+        with self.morning():
+            html = self.client.get(reverse('onsite_dashboard')).content.decode()
         self.assertIn('<span class="mo-tag warn">Unassigned</span>', html)
         self.assertIn('<span class="mo-tag warn">In progress</span>', html)
         for one_card in html.split('class="mo-vc"')[1:]:
@@ -118,11 +125,12 @@ class PhoneOnSiteTests(TestCase):
         self.assertNotIn('vacant', card)                                     # "30+ days vacant" says nothing on a phone: only a real, short vacancy is worth a tag
 
     def test_a_short_vacancy_is_still_tagged(self):
-        now = timezone.now()
-        nxt = Booking.objects.create(property=self.prop, source='manual', external_uid='nb', guest_name='Lee', check_in=now.replace(hour=16, minute=0) + timedelta(days=3), check_out=now + timedelta(days=6))
-        self.visit.next_booking = nxt
-        self.visit.save()
-        html = self.client.get(reverse('onsite_dashboard')).content.decode()
+        with self.morning():                                                 # at 9 AM, a 4 PM check-in three days on is exactly 3 days away whatever time the test runs
+            now = timezone.now()
+            nxt = Booking.objects.create(property=self.prop, source='manual', external_uid='nb', guest_name='Lee', check_in=now.replace(hour=16, minute=0) + timedelta(days=3), check_out=now + timedelta(days=6))
+            self.visit.next_booking = nxt
+            self.visit.save()
+            html = self.client.get(reverse('onsite_dashboard')).content.decode()
         self.assertIn('<span class="mo-tag">3d vacant</span>', html)
 
     # ---------------------------------------------------------------- the calendar on a phone

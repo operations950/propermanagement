@@ -43,6 +43,15 @@ def fetch(url):
         raise SunbizError(f'Could not reach SunBiz ({e}).')
 
 
+def search_link(legal_name):
+    """A link a person can click that lands on SunBiz's list of entities starting with this name (the one we want is at or near the top). '' when there is no name.
+    SunBiz has no plain link for a document-number search (that needs a form post and a bare link lands on its error page), so the name search is the link that works."""
+    term = ' '.join((legal_name or '').replace(',', ' ').replace('.', ' ').split())
+    if not term:
+        return ''
+    return BY_NAME.format(term=urllib.parse.quote(term), order=re.sub(r'[^A-Z0-9]', '', term.upper()))
+
+
 def _text(fragment):
     """An HTML fragment as plain lines joined with commas (an address block)."""
     parts = re.split(r'<br\s*/?>', fragment or '')

@@ -52,7 +52,7 @@
     <div class="row g-3 mt-1">
         <div class="col-12 col-md-7">
             <label class="form-label small text-muted mb-1" for="pa-{{ c.upload.pk }}">Where it goes in the books {% include '_tip.html' with text="The expense account this bill is recorded against. It is suggested from what we paid this vendor before, or from what the invoice says. A line with nothing in the budget gets a warning, never a block." %}</label>
-            <select id="pa-{{ c.upload.pk }}" name="account_id" class="form-select form-select-lg" data-refresh>
+            <select id="pa-{{ c.upload.pk }}" name="account_id" class="form-select form-select-lg" data-refresh data-combo data-placeholder="Type to search accounts, like irrigation or 6240">
                 {% if not c.account %}<option value="">Pick an account</option>{% endif %}
                 {% for a in c.accounts %}<option value="{{ a.pk }}" {% if c.account.pk == a.pk %}selected{% endif %}>{{ a.code }} &middot; {{ a.name }}</option>{% endfor %}
             </select>

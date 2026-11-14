@@ -309,7 +309,8 @@ def _profile(prop, cfg):
     p.legal_name, p.state_doc_number, p.ein, p.state_status = sb['legal_name'], sb['doc'], sb['ein'], sb['status']
     p.date_filed, p.annual_report_filed = date.fromisoformat(sb['filed']), date.fromisoformat(sb['annual'])
     p.principal_address, p.mailing_address, p.registered_agent = sb['principal'], sb['mailing'], sb['agent']
-    p.sunbiz_url = f"https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults?inquiryType=DocumentNumber&searchTerm={sb['doc']}"
+    from . import sunbiz
+    p.sunbiz_url = sunbiz.search_link(sb['legal_name'])
     p.sunbiz_officers = [{'name': n, 'title': t} for n, t in sb['officers']]
     p.sunbiz_checked_on, p.sunbiz_checked_by = date(2026, 10, 29), 'hand'
     p.sunbiz_alerts = [f'The registered agent is {sb["agent"].split(",")[0]}, not Proper Realty Co.'] if 'proper realty' not in sb['agent'].lower() else []

@@ -82,6 +82,11 @@ class AssociationProfile(models.Model):
     def interest_is_set(self):
         return bool(self.interest_rate) and self.interest_rate > 0 and self.interest_confirmed
 
+    def sunbiz_link(self):
+        """Where "Open on SunBiz" goes: a name search built from the legal name (always works), else whatever link was typed in."""
+        from . import sunbiz
+        return sunbiz.search_link(self.legal_name) or self.sunbiz_url
+
     def registered_agent_is_us(self):
         return 'proper realty' in (self.registered_agent or '').lower()
 

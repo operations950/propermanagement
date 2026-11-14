@@ -471,6 +471,32 @@ class PagesTests(PayablesBase):
         r = self.client.post(self.card_url(up), {'action': 'discard'})
         self.assertRedirects(r, self.home, fetch_redirect_response=False)
 
+    def test_the_card_script_reads_the_form_address_from_its_attribute(self):
+        """The card's buttons are named "action", and a field with that name shadows form.action in the browser (it becomes the list of fields, so the request went to "[object RadioNodeList]" and
+        every card button failed on the live site). The script must read the address with getAttribute."""
+        import re
+        from pathlib import Path
+        from django.conf import settings
+        up = self.drop()
+        html = self.client.get(self.home).content.decode()
+        form = re.search(r'<form[^>]*data-card-form[^>]*>', html).group(0)
+        self.assertIn(f'action="{self.card_url(up)}"', form)
+        self.assertIn('name="action"', html)                                              # the button that shadows the property
+        js = (Path(settings.BASE_DIR) / 'static' / 'js' / 'payables.js').read_text(encoding='utf-8')
+        code = '\n'.join(line for line in js.splitlines() if not line.strip().startswith('//'))
+        self.assertNotRegex(code, r'form\.action\b')
+        self.assertIn("form.getAttribute('action')", code)
+
+    def test_the_books_account_is_a_type_to_search_box(self):
+        self.drop()
+        html = self.client.get(self.home).content.decode()
+        self.assertRegex(html, r'<select[^>]*name="account_id"[^>]*data-combo')
+        self.assertIn('combo-list', html)                                                 # its styles ship with the page
+        from pathlib import Path
+        from django.conf import settings
+        js = (Path(settings.BASE_DIR) / 'static' / 'js' / 'payables.js').read_text(encoding='utf-8')
+        self.assertIn('select[data-combo]', js)
+
     def test_only_an_administrator_can_use_the_page(self):
         self.client.logout()
         self.client.force_login(get_user_model().objects.create_user('staffer', password='pw12345678'))

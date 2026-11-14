@@ -160,7 +160,7 @@
 </div></div>
 
 <form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="official">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building" class="icon"></i> Official record <span class="small fw-normal text-muted ms-auto">{% if profile.sunbiz_checked_on %}Checked {{ profile.sunbiz_checked_on|mdate }}{% endif %}{% if profile.sunbiz_url %} &middot; <a href="{{ profile.sunbiz_url }}" target="_blank">Open on SunBiz</a>{% endif %}</span></h6>
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building" class="icon"></i> Official record <span class="small fw-normal text-muted ms-auto">{% if profile.sunbiz_checked_on %}Checked {{ profile.sunbiz_checked_on|mdate }}{% endif %}{% if profile.sunbiz_link %} &middot; <a href="{{ profile.sunbiz_link }}" target="_blank" rel="noopener">Open on SunBiz</a>{% endif %}</span></h6>
     <div class="row g-2">
         <div class="col-md-6"><label class="form-label small text-muted mb-1">Legal name</label><input class="form-control form-control-sm" name="legal_name" value="{{ profile.legal_name }}"></div>
         <div class="col-md-3"><label class="form-label small text-muted mb-1">State document number</label><input class="form-control form-control-sm" name="state_doc_number" value="{{ profile.state_doc_number }}"></div>

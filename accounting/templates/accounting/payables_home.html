@@ -14,6 +14,12 @@
     .pay-file { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 0.92rem; }
     .pay-card .form-control-lg, .pay-card .form-select-lg { font-size: 1rem; }
     .min-w-0 { min-width: 0; }
+    .combo { position: relative; }
+    .combo-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin: 4px 0 0; padding: 4px; list-style: none; max-height: 280px; overflow-y: auto; background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.14); -webkit-overflow-scrolling: touch; }
+    .combo-list li { padding: 10px 12px; border-radius: 8px; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+    .combo-list li.active { background: color-mix(in srgb, var(--brand-primary) 12%, white); }
+    .combo-list li.chosen { font-weight: 700; }
+    .combo-list li.combo-none { cursor: default; color: var(--text-muted, #6b7280); }
     @media (max-width: 768px) { .pay-card .btn-lg { width: 100%; } }
 </style>
 <div class="mb-3">
