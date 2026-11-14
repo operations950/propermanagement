@@ -3,97 +3,125 @@
 {% block acc_title %}Print checks{% endblock %}
 {% block acc_body %}
 <style>
-    .cr-group .cr-check { border-top: 1px solid var(--border-hairline); padding: 10px 0 4px; }
-    .cr-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    .cr-inv { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 4px 0 4px 4px; margin: 0; cursor: pointer; }
-    .cr-inv .form-check-input { flex: none; width: 1.35rem; height: 1.35rem; margin: 0; }
-    .cr-inv-text { flex: 1 1 auto; min-width: 0; }
-    .cr-inv .ac-num { flex: none; }
-    .cr-check.cr-off .cr-head { opacity: .45; }
-    .cr-bar { position: sticky; bottom: 0; z-index: 20; background: #fff; border: 1px solid var(--border-hairline); border-radius: 14px; box-shadow: 0 -2px 14px rgba(0, 0, 0, .08); padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-    .cr-printed { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border-hairline); }
-    .cr-act { display: flex; gap: 6px; justify-content: flex-end; }
+    .cr-group .cr-check { border-top: 1px solid var(--border-hairline); padding: 2px 0; }
+    .cr-group .cr-check:first-of-type { border-top: 0; }
+    .cr-head { display: flex; align-items: center; gap: 12px; min-height: 44px; margin: 0; cursor: pointer; }
+    .cr-head .form-check-input, .cr-inv .form-check-input { flex: none; width: 1.15rem; height: 1.15rem; margin: 0; }
+    .cr-payee { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+    .cr-no { color: var(--ink-muted); font-size: .85rem; white-space: nowrap; }
+    .cr-inv { display: flex; align-items: center; gap: 10px; padding: 0 0 6px 30px; font-size: .86rem; color: var(--ink-muted); }
+    .cr-inv .cr-it { flex: 1 1 auto; min-width: 0; }
+    .cr-check.cr-off .cr-head, .cr-check.cr-off .cr-inv { opacity: .45; }
+    .cr-more { position: relative; }
+    .cr-more summary { list-style: none; cursor: pointer; color: var(--ink-muted); padding: 0 6px; min-height: 28px; display: inline-flex; align-items: center; }
+    .cr-more summary::-webkit-details-marker { display: none; }
+    .cr-more[open] .cr-pop { display: flex; }
+    .cr-pop { display: none; position: absolute; right: 0; z-index: 10; gap: 6px; align-items: center; flex-wrap: wrap; background: #fff; border: 1px solid var(--border-hairline); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 8px; min-width: 250px; }
+    .cr-bar { position: sticky; bottom: 0; z-index: 20; background: #fff; border: 1px solid var(--border-hairline); border-radius: 10px; box-shadow: 0 -2px 12px rgba(0,0,0,.07); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .cr-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--border-hairline); }
+    .cr-row:first-child { border-top: 0; }
     @media (max-width: 768px) {
-        .cr-printed { grid-template-columns: 1fr auto; }
-        .cr-act { grid-column: 1 / -1; justify-content: flex-start; }
-        .cr-act .btn { min-height: 44px; }
-        .cr-bar .btn-lg { width: 100%; min-height: 52px; }
         .cr-bar > div { width: 100%; }
+        .cr-bar .btn { width: 100%; min-height: 46px; }
+        .cr-pop { right: auto; left: 0; }
     }
 </style>
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
-        {% url 'accounting:payables' as payables_url %}{% if payables_url %}<a href="{{ payables_url }}" class="small text-decoration-none d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Payables</a>{% endif %}
-        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> Print checks {% include '_tip.html' with text='Every approved payable that is ready, for every association, set out as the checks that will be written. One check pays all of a vendor\'s invoices from the same bank account. Pressing Print records those payables as paid today, numbers the checks in order (by association, then due date) and opens one PDF of all of them. If the printer jams, use Reprint (the same numbers, nothing posted again) or Void.' %}</h2>
-        <div class="small text-muted">Ready to pay: {{ n_bills }} payable{{ n_bills|pluralize }}{% if blocked %}, and {{ blocked|length }} that cannot print yet{% endif %}.</div>
+        <h2 class="page-title fs-5 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon"></i> Print checks {% include '_tip.html' with text='Every approved payable that is ready, for every association, set out as the checks that will be written. One check pays all of a vendor\'s invoices from the same bank account. Pressing Print records the ticked payables as paid today, numbers the checks in order (by association, then due date) and opens one PDF. If the printer jams, use Reprint (same numbers, nothing posted again) or Void.' %}</h2>
+        <div class="small text-muted">{{ n_bills }} payable{{ n_bills|pluralize }} ready{% if blocked %} &middot; {{ blocked|length }} can't print yet{% endif %}{% if autopay %} &middot; {{ autopay|length }} paid by the bank{% endif %}</div>
     </div>
-    <a class="btn btn-outline-secondary" href="{% url 'accounting:payables_print_envelopes' %}"><i data-lucide="mail" class="icon"></i> Print envelopes</a>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if groups %}<button type="button" class="btn btn-sm btn-outline-secondary" data-select="all">Select all</button><button type="button" class="btn btn-sm btn-outline-secondary" data-select="none">Select none</button>{% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:payables_print_envelopes' %}"><i data-lucide="mail" class="icon"></i> Envelopes</a>
+    </div>
 </div>
+
+<form method="post" id="voidForm" class="d-none">{% csrf_token %}<input type="hidden" name="action" value="void_bill"></form>
+<form method="post" id="paidForm" class="d-none">{% csrf_token %}<input type="hidden" name="action" value="mark_paid"></form>
 
 {% if groups %}
 <form method="post" id="runForm" target="_blank">{% csrf_token %}<input type="hidden" name="action" value="print">
 {% for g in groups %}
-<div class="card mb-3 cr-group" data-assoc="{{ g.association_id }}" data-start="{{ g.start }}"><div class="card-body">
-    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-start">
-        <div><div class="fw-semibold fs-5">{{ g.association.name }}</div><div class="small text-muted">Paid from {{ g.bank.label }}</div></div>
-        <div class="text-end"><div class="ac-big" data-gtotal>{{ g.total|money }}</div><a class="small d-inline-block py-1" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ g.association_id }}">Test print on plain paper</a>{% if g.standard_face %} <span class="small text-muted">&middot;</span> <a class="small d-inline-block py-1" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ g.association_id }}&amp;guides=1">with alignment guides</a>{% endif %}</div>
+<div class="card mb-3 cr-group" data-assoc="{{ g.association_id }}" data-start="{{ g.start }}"><div class="card-body py-3">
+    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-baseline mb-1">
+        <div><span class="fw-semibold">{{ g.association.name }}</span> <span class="small text-muted">&middot; Paid from {{ g.bank.label }}</span></div>
+        <div class="small text-muted"><span class="ac-num fw-semibold text-body" data-gtotal>{{ g.total|money }}</span> &middot; <a target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ g.association_id }}">Test print on plain paper</a>{% if g.standard_face %} &middot; <a target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ g.association_id }}&amp;guides=1">with alignment guides</a>{% endif %}</div>
     </div>
-    {% for w in g.warnings %}<div class="ac-strip small mt-2"><i data-lucide="triangle-alert" class="icon"></i> {{ w.text }}{% if w.url %} <a href="{{ w.url }}">{{ w.label }}</a>{% endif %}</div>{% endfor %}
-    <div class="mt-2">
+    {% for w in g.warnings %}<div class="ac-strip small mb-1"><i data-lucide="triangle-alert" class="icon"></i> {{ w.text }}{% if w.url %} <a href="{{ w.url }}">{{ w.label }}</a>{% endif %}</div>{% endfor %}
     {% for c in g.checks %}
-        <div class="cr-check{% if not c.number %} cr-off{% endif %}" data-check>
-            <div class="cr-head"><div class="fw-semibold">{{ c.payee }}</div>
-                <div><span class="ac-chip">Check <span data-no>{% if c.number %}{{ c.number }}{% else %}-{% endif %}</span></span> <strong class="ac-num ms-1" data-ctotal>{{ c.total|money }}</strong></div></div>
-            {% for b in c.bills %}
-            <label class="cr-inv"><input type="checkbox" class="form-check-input" name="bill" value="{{ b.pk }}" data-amt="{{ b.balance }}"{% if b.ticked %} checked{% endif %} aria-label="Pay invoice {{ b.number|default:'without a number' }} from {{ c.payee }}">
-                <span class="cr-inv-text">Invoice {{ b.number|default:"(no number)" }} &middot; {{ b.date|mdate }}{% if b.due_date %} &middot; due {{ b.due_date|mdate }}{% endif %}{% if b.memo %}<span class="text-muted"> &middot; {{ b.memo|truncatechars:40 }}</span>{% endif %}</span>
-                <span class="ac-num">{{ b.balance|money }}</span></label>
-            {% endfor %}
+    {% with many=c.bills|length %}
+    <div class="cr-check{% if not c.number %} cr-off{% endif %}" data-check>
+        <label class="cr-head"><input type="checkbox" class="form-check-input" data-master aria-label="Print the check to {{ c.payee }}"{% if c.number %} checked{% endif %}>
+            <span class="cr-payee">{{ c.payee }}</span><span class="cr-no">No. <span data-no>{% if c.number %}{{ c.number }}{% else %}-{% endif %}</span></span><strong class="ac-num" data-ctotal>{{ c.total|money }}</strong></label>
+        {% for b in c.bills %}
+        <div class="cr-inv">
+            <input type="checkbox" class="form-check-input{% if many == 1 %} d-none{% endif %}" name="bill" value="{{ b.pk }}" data-amt="{{ b.balance }}"{% if b.ticked %} checked{% endif %} aria-label="Pay invoice {{ b.number|default:'without a number' }} from {{ c.payee }}">
+            <span class="cr-it">Invoice {{ b.number|default:"(no number)" }} &middot; {{ b.date|mdate }}{% if b.due_date %} &middot; due {{ b.due_date|mdate }}{% endif %}{% if b.memo %} &middot; {{ b.memo|truncatechars:40 }}{% endif %}{% if many > 1 %} &middot; <span class="ac-num">{{ b.balance|money }}</span>{% endif %}</span>
+            <details class="cr-more"><summary aria-label="More for this payable">&hellip;</summary><div class="cr-pop">
+                <input type="date" form="paidForm" name="date" value="{{ today|date:'Y-m-d' }}" class="form-control form-control-sm w-auto" aria-label="Date the bank paid it"><button type="submit" form="paidForm" name="bill" value="{{ b.pk }}" class="btn btn-sm btn-outline-secondary" title="The bank already took this payment: record it as paid">Already paid</button>
+                {% if b.source != 'opening' %}<button type="submit" form="voidForm" name="bill" value="{{ b.pk }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Void this payable to {{ c.payee|escapejs }}?')">Void</button>{% endif %}
+            </div></details>
         </div>
-    {% endfor %}
+        {% endfor %}
     </div>
+    {% endwith %}
+    {% endfor %}
 </div></div>
 {% endfor %}
 <div class="cr-bar ac-noprint">
-    <div><strong data-count>{{ n_checks }}</strong> check<span data-plural>{{ n_checks|pluralize }}</span> &middot; <strong data-grand>{{ total|money }}</strong> <span class="small text-muted d-block d-md-inline">Untick a payable to hold it out of this run.</span></div>
+    <div><strong data-count>{{ n_checks }}</strong> check<span data-plural>{{ n_checks|pluralize }}</span> &middot; <strong data-grand>{{ total|money }}</strong></div>
     <div class="d-flex gap-2 align-items-center flex-wrap">
         <label class="small text-muted mb-0">Check date <input type="date" name="date" value="{{ today|date:'Y-m-d' }}" class="form-control form-control-sm d-inline-block w-auto" required></label>
-        <button class="btn btn-primary btn-lg" id="printBtn"><i data-lucide="printer" class="icon"></i> Print checks</button>
+        <button class="btn btn-primary" id="printBtn"><i data-lucide="printer" class="icon"></i> Print checks</button>
     </div>
 </div>
 </form>
 {% else %}
-<div class="card mb-3"><div class="card-body text-muted">Nothing is ready to print. Payables that are approved show up here.</div></div>
+<div class="card mb-3"><div class="card-body text-muted">Nothing is ready to print. Approved payables for vendors we pay by check show up here.</div></div>
 {% endif %}
 
-{% if blocked %}
-<h6 class="mt-4 d-flex align-items-center gap-2">Can't print yet ({{ blocked|length }}) {% include '_tip.html' with text='These approved payables cannot become a check because their association has no bank account to write checks from, has several and none is chosen, or the bank account is missing something a check needs (the routing and account numbers, the payer name and address). Set the bank account up and they appear above.' %}</h6>
-<div class="card mb-3"><div class="card-body py-2">
-{% for x in blocked %}
-    <div class="cr-printed" style="grid-template-columns: 1fr auto;">
-        <div><span class="fw-semibold">{{ x.bill.payee }}</span> <span class="small text-muted">&middot; {{ x.bill.association.name }} &middot; invoice {{ x.bill.number|default:"(no number)" }}</span><div class="small text-muted">{{ x.why }}</div></div>
-        <div class="text-end"><div class="ac-num">{{ x.bill.balance|money }}</div></div>
-        <div class="cr-act" style="grid-column: 1 / -1; justify-content: flex-start;"><a class="btn btn-sm btn-outline-primary" href="{{ x.url }}">{{ x.label }}</a></div>
+{% if autopay %}
+<h6 class="mt-4 mb-2 d-flex align-items-center gap-2">Paid by the bank ({{ autopay|length }}) {% include '_tip.html' with text='These vendors take their payment from the bank by themselves, so no check is written. When the withdrawal shows on the bank statement, press Already paid and enter the date it came out: the payable is then recorded as paid.' %}</h6>
+<div class="card mb-3"><div class="card-body py-1">
+{% for b in autopay %}
+    <div class="cr-row">
+        <div><span class="fw-semibold">{{ b.payee }}</span> <span class="small text-muted">&middot; {{ b.association.name }} &middot; {{ b.number|default:"no invoice number" }} &middot; {{ b.date|mdate }}{% if b.due_date %} &middot; due {{ b.due_date|mdate }}{% endif %}</span></div>
+        <div class="d-flex gap-2 align-items-center flex-wrap"><span class="ac-num fw-semibold">{{ b.balance|money }}</span>
+            <input type="date" form="paidForm" name="date" value="{{ b.due_date|default:today|date:'Y-m-d' }}" class="form-control form-control-sm w-auto" aria-label="Date the bank paid it">
+            <button type="submit" form="paidForm" name="bill" value="{{ b.pk }}" class="btn btn-sm btn-outline-primary">Already paid</button>
+            {% if b.source != 'opening' %}<button type="submit" form="voidForm" name="bill" value="{{ b.pk }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Void this payable to {{ b.payee|escapejs }}?')">Void</button>{% endif %}
+        </div>
     </div>
 {% endfor %}
 </div></div>
 {% endif %}
 
-<h6 class="mt-4 d-flex align-items-center gap-2">Printed recently {% include '_tip.html' with text='The checks printed in the last two weeks. Reprint draws the same check again with the same number and posts nothing. Void cancels the check and puts its payables back in the list above. A check that has cleared the bank cannot be voided here.' %}</h6>
+{% if blocked %}
+<h6 class="mt-4 mb-2 d-flex align-items-center gap-2">Can't print yet ({{ blocked|length }}) {% include '_tip.html' with text='These approved payables cannot become a check because their association has no bank account to write checks from, has several and none is chosen, or the bank account is missing something a check needs (the routing and account numbers, the payer name and address). Set the bank account up and they appear above.' %}</h6>
+<div class="card mb-3"><div class="card-body py-1">
+{% for x in blocked %}
+    <div class="cr-row">
+        <div><span class="fw-semibold">{{ x.bill.payee }}</span> <span class="small text-muted">&middot; {{ x.bill.association.name }} &middot; {{ x.bill.number|default:"no invoice number" }}</span><div class="small text-muted">{{ x.why }}</div></div>
+        <div class="d-flex gap-2 align-items-center"><span class="ac-num fw-semibold">{{ x.bill.balance|money }}</span><a class="btn btn-sm btn-outline-primary" href="{{ x.url }}">{{ x.label }}</a></div>
+    </div>
+{% endfor %}
+</div></div>
+{% endif %}
+
+<h6 class="mt-4 mb-2 d-flex align-items-center gap-2">Printed recently {% include '_tip.html' with text='The checks printed in the last two weeks. Reprint draws the same check again with the same number and posts nothing. Void cancels the check and puts its payables back in the list above. A check that has cleared the bank cannot be voided here.' %}</h6>
 {% for r in runs %}
-<div class="card mb-3"><div class="card-body">
-    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
-        <div><strong>{{ r.when|date:"M j, Y g:i A" }}</strong> <span class="text-muted small">{% if r.by %}by {{ r.by.get_full_name|default:r.by.username }} &middot; {% endif %}{{ r.n }} check{{ r.n|pluralize }} &middot; {{ r.total|money }}</span></div>
-        <div class="d-flex gap-2 flex-wrap"><a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?run={{ r.key }}">Reprint all</a><a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:payables_print_envelopes' %}?run={{ r.key }}">Envelopes</a></div>
+<div class="card mb-3"><div class="card-body py-3">
+    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center mb-1">
+        <div><span class="fw-semibold">{{ r.when|date:"M j, Y g:i A" }}</span> <span class="text-muted small">{% if r.by %}{{ r.by.get_full_name|default:r.by.username }} &middot; {% endif %}{{ r.n }} check{{ r.n|pluralize }} &middot; {{ r.total|money }}</span></div>
+        <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?run={{ r.key }}">Reprint all</a>
     </div>
     {% for p in r.payments %}
-    <div class="cr-printed{% if p.status == 'void' %} text-muted{% endif %}">
-        <div><span class="fw-semibold">#{{ p.number }}</span> {{ p.payee }} <span class="small text-muted">&middot; {{ p.association.name }}</span>
-            {% if p.status == 'void' %}<span class="ac-chip">void</span>{% elif p.status == 'cleared' %}<span class="ac-chip good">cleared</span>{% endif %}
-            {% if p.memo %}<div class="small text-muted">{{ p.memo }}</div>{% endif %}</div>
-        <div class="ac-num">{{ p.amount|money }}</div>
-        <div class="cr-act">{% if p.status == 'outstanding' %}
-            <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?payment={{ p.pk }}">Reprint</a>
+    <div class="cr-row{% if p.status == 'void' %} text-muted{% endif %}">
+        <div><span class="fw-semibold">#{{ p.number }}</span> {{ p.payee }} <span class="small text-muted">&middot; {{ p.association.name }}{% if p.memo %} &middot; {{ p.memo }}{% endif %}</span>
+            {% if p.status == 'void' %}<span class="ac-chip">void</span>{% elif p.status == 'cleared' %}<span class="ac-chip good">cleared</span>{% endif %}</div>
+        <div class="d-flex gap-2 align-items-center"><span class="ac-num">{{ p.amount|money }}</span>
+            {% if p.status == 'outstanding' %}<a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?payment={{ p.pk }}">Reprint</a>
             <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="void"><input type="hidden" name="payment" value="{{ p.pk }}"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Void check {{ p.number }} to {{ p.payee|escapejs }}? Its payables go back to ready to pay.')">Void</button></form>{% endif %}</div>
     </div>
     {% endfor %}
@@ -107,6 +135,14 @@
     var form = document.getElementById('runForm');
     if (!form) return;
     function money(n) { return '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+    function billBoxes(c) { return c.querySelectorAll('input[name=bill]'); }
+    function syncMaster(c) {
+        var boxes = billBoxes(c), on = 0;
+        boxes.forEach(function (b) { if (b.checked) on++; });
+        var m = c.querySelector('[data-master]');
+        m.checked = on > 0 && on === boxes.length;
+        m.indeterminate = on > 0 && on < boxes.length;
+    }
     function recount() {
         var counters = {}, count = 0, grand = 0;
         form.querySelectorAll('.cr-group').forEach(function (g) {
@@ -115,11 +151,12 @@
             var gtotal = 0;
             g.querySelectorAll('[data-check]').forEach(function (c) {
                 var t = 0, any = false;
-                c.querySelectorAll('input[name=bill]').forEach(function (b) { if (b.checked) { t += Math.round(parseFloat(b.dataset.amt) * 100); any = true; } });
+                billBoxes(c).forEach(function (b) { if (b.checked) { t += Math.round(parseFloat(b.dataset.amt) * 100); any = true; } });
                 t = t / 100;
                 c.classList.toggle('cr-off', !any);
                 c.querySelector('[data-no]').textContent = any ? counters[assoc]++ : '-';
                 c.querySelector('[data-ctotal]').textContent = money(t);
+                syncMaster(c);
                 if (any) count++;
                 gtotal += t;
             });
@@ -129,11 +166,23 @@
         form.querySelector('[data-count]').textContent = count;
         form.querySelector('[data-plural]').textContent = count === 1 ? '' : 's';
         form.querySelector('[data-grand]').textContent = money(grand);
-        var btn = document.getElementById('printBtn');
-        btn.disabled = count === 0;
+        document.getElementById('printBtn').disabled = count === 0;
         form._count = count; form._grand = grand;
     }
-    form.addEventListener('change', recount);
+    form.addEventListener('change', function (e) {
+        if (e.target.matches && e.target.matches('[data-master]')) {
+            var c = e.target.closest('[data-check]');
+            billBoxes(c).forEach(function (b) { b.checked = e.target.checked; });
+        }
+        recount();
+    });
+    document.querySelectorAll('[data-select]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var on = btn.dataset.select === 'all';
+            form.querySelectorAll('input[name=bill]').forEach(function (b) { b.checked = on; });
+            recount();
+        });
+    });
     form.addEventListener('submit', function (e) {
         if (!form._count) { e.preventDefault(); return; }
         if (!confirm('Print ' + form._count + ' check' + (form._count === 1 ? '' : 's') + ' for ' + money(form._grand) + '? They are recorded as paid now.')) { e.preventDefault(); return; }

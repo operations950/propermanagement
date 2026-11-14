@@ -66,4 +66,6 @@ urlpatterns = [
     path('<int:pk>/chart/', views_chart.chart, name='chart'),
     path('master-chart/', views_chart.master, name='master_chart'),
     path('<int:pk>/settings/', views_setup.settings, name='settings'),
+    path('<int:pk>/settings/signature/', views_setup.check_signature_image, name='check_signature'),
+    path('payments/', views.receipt_pick, name='receipt_pick'),
 ]

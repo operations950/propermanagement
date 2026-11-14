@@ -393,6 +393,16 @@ def charge_one(request, pk):
 
 
 @admin_only
+def receipt_pick(request):
+    """Record an owner's payment: first choose the association (only the ones whose books we keep), then the usual payment form opens."""
+    from .models import AssociationProfile
+    profiles = AssociationProfile.objects.filter(we_do_financials=True).select_related('property').order_by('property__name')
+    if profiles.count() == 1:
+        return redirect('accounting:receipt_new', pk=profiles[0].property_id)
+    return render(request, 'accounting/receipt_pick.html', {'profiles': profiles})
+
+
+@admin_only
 def receipt_new(request, pk):
     """Record money an owner paid."""
     prop = association_or_404(pk)

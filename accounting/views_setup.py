@@ -31,6 +31,38 @@ def _clean_last4(raw):
     return digits[-4:]
 
 
+def _check_signature_image(f):
+    """The uploaded signature must be a real PNG or JPEG of a sensible size. Raises ValueError with what is wrong."""
+    if f is None:
+        raise ValueError('Choose the signature image.')
+    if f.size > 2 * 1024 * 1024:
+        raise ValueError('That image is over 2 MB. A signature needs only a small picture.')
+    try:
+        from PIL import Image
+        img = Image.open(f)
+        kind = (img.format or '').upper()
+        img.verify()
+        f.seek(0)
+    except Exception:
+        raise ValueError('That file is not a picture. Use a PNG or JPEG image of the signature.')
+    if kind not in ('PNG', 'JPEG'):
+        raise ValueError('Use a PNG or JPEG image of the signature (a PNG with a clear background looks best).')
+
+
+@admin_only
+def check_signature_image(request, pk):
+    """The signature on file for an association, as an image for the settings page preview. Administrators only; it is never public."""
+    from django.http import FileResponse, Http404
+    prop = association_or_404(pk)
+    profile = ledger.profile_for(prop)
+    if not profile.check_signature:
+        raise Http404
+    try:
+        return FileResponse(profile.check_signature.open('rb'), content_type='image/png')
+    except Exception:
+        raise Http404
+
+
 def _save_bank(prop, bank, post):
     """Rename or change one of the association's bank accounts in place. The cash account in the books can only change while nothing is tied to it."""
     name = (post.get('name') or '').strip()
@@ -245,6 +277,20 @@ def settings(request, pk):
                 bank = get_object_or_404(BankAccount, pk=request.POST.get('bank'), association=prop)
                 _save_bank(prop, bank, request.POST)
                 messages.success(request, f'Saved: {bank.label}.')
+            elif action == 'signature':
+                f = request.FILES.get('signature')
+                _check_signature_image(f)
+                profile.check_signature.save(f'signature-{prop.pk}-{f.name}'[:90], f, save=True)
+                if request.POST.get('all_associations'):
+                    from .models import AssociationProfile
+                    AssociationProfile.objects.exclude(pk=profile.pk).update(check_signature=profile.check_signature.name)       # the same stored file, so one upload covers every association
+                    messages.success(request, 'The signature is saved and will print on the checks of every association.')
+                else:
+                    messages.success(request, 'The signature is saved and will print on this association\'s checks.')
+            elif action == 'signature_remove':
+                profile.check_signature = ''
+                profile.save(update_fields=['check_signature'])
+                messages.success(request, 'The signature is removed from this association\'s checks.')
             elif action == 'bank_off':
                 BankAccount.objects.filter(pk=request.POST.get('bank'), association=prop).update(is_active=False)
             elif action == 'bank_on':

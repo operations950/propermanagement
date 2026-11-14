@@ -12,7 +12,7 @@
     <div class="row g-3">
         <div class="col-12 col-md-6">
             <label class="form-label small text-muted mb-1" for="pp-{{ c.upload.pk }}">Property {% include '_tip.html' with text="Only associations whose books we keep and that have a bank account here can have a payable. Anything else is listed under Not available with the reason." %}</label>
-            <select id="pp-{{ c.upload.pk }}" name="property_id" class="form-select form-select-lg" data-refresh>
+            <select id="pp-{{ c.upload.pk }}" name="property_id" class="form-select" data-refresh>
                 {% if not c.prop %}<option value="">Which property is this for?</option>{% endif %}
                 <optgroup label="We can write checks for">{% for r in properties %}{% if r.ok %}<option value="{{ r.p.pk }}" {% if c.prop.pk == r.p.pk %}selected{% endif %}>{{ r.p.name }}</option>{% endif %}{% endfor %}</optgroup>
                 <optgroup label="Not available yet">{% for r in properties %}{% if not r.ok %}<option value="{{ r.p.pk }}" {% if c.prop.pk == r.p.pk %}selected{% endif %}>{{ r.p.name }}</option>{% endif %}{% endfor %}</optgroup>
@@ -22,7 +22,7 @@
         </div>
         <div class="col-12 col-md-6">
             <label class="form-label small text-muted mb-1" for="pv-{{ c.upload.pk }}">From (the vendor)</label>
-            <input id="pv-{{ c.upload.pk }}" name="vendor_text" list="payVendors" class="form-control form-control-lg" value="{% if c.vendor %}{{ c.vendor.name }}{% elif c.vendor_text %}{{ c.vendor_text }}{% else %}{{ c.read.vendor }}{% endif %}" autocomplete="off" data-refresh>
+            <input id="pv-{{ c.upload.pk }}" name="vendor_text" list="payVendors" class="form-control" value="{% if c.vendor %}{{ c.vendor.name }}{% elif c.vendor_text %}{{ c.vendor_text }}{% else %}{{ c.read.vendor }}{% endif %}" autocomplete="off" data-refresh>
             {% if c.vendor %}<div class="small mt-1"><span class="ac-chip good"><i data-lucide="check" class="icon"></i> A vendor we have</span> <span class="text-muted">matched by {{ c.vendor_how }}. Type another name to pick a different vendor.</span></div>{% endif %}
         </div>
     </div>
@@ -41,10 +41,10 @@
     {% endif %}
 
     <div class="row g-3 mt-1">
-        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Amount</label><input name="amount" inputmode="decimal" class="form-control form-control-lg" value="{{ c.amount }}" data-refresh></div>
-        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Invoice number</label><input name="number" class="form-control form-control-lg" value="{{ c.number }}" data-refresh></div>
-        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Invoice date</label><input type="date" name="date" class="form-control form-control-lg" value="{{ c.date }}" data-refresh></div>
-        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Due date</label><input type="date" name="due" class="form-control form-control-lg" value="{{ c.due }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Amount</label><input name="amount" inputmode="decimal" class="form-control" value="{{ c.amount }}" data-refresh></div>
+        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Invoice number</label><input name="number" class="form-control" value="{{ c.number }}" data-refresh></div>
+        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Invoice date</label><input type="date" name="date" class="form-control" value="{{ c.date }}" data-refresh></div>
+        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Due date</label><input type="date" name="due" class="form-control" value="{{ c.due }}"></div>
         <div class="col-12"><label class="form-label small text-muted mb-1">What it is for</label><input name="memo" class="form-control" value="{{ c.memo }}" maxlength="200"></div>
     </div>
 
@@ -52,7 +52,7 @@
     <div class="row g-3 mt-1">
         <div class="col-12 col-md-7">
             <label class="form-label small text-muted mb-1" for="pa-{{ c.upload.pk }}">Where it goes in the books {% include '_tip.html' with text="The expense account this bill is recorded against. It is suggested from what we paid this vendor before, or from what the invoice says. A line with nothing in the budget gets a warning, never a block." %}</label>
-            <select id="pa-{{ c.upload.pk }}" name="account_id" class="form-select form-select-lg" data-refresh data-combo data-placeholder="Type to search accounts, like irrigation or 6240">
+            <select id="pa-{{ c.upload.pk }}" name="account_id" class="form-select" data-refresh data-combo data-placeholder="Type to search accounts, like irrigation or 6240">
                 {% if not c.account %}<option value="">Pick an account</option>{% endif %}
                 {% for a in c.accounts %}<option value="{{ a.pk }}" {% if c.account.pk == a.pk %}selected{% endif %}>{{ a.code }} &middot; {{ a.name }}</option>{% endfor %}
             </select>
@@ -64,10 +64,10 @@
             {% if not c.bank.options %}
             <div class="ac-strip small"><i data-lucide="octagon-alert" class="icon"></i> {{ c.bank.message }} <a class="fw-semibold" href="{{ c.bank.fix_url }}">Set up a bank account</a></div>
             {% elif c.bank.only %}
-            <div class="form-control form-control-lg bg-light d-flex align-items-center">{{ c.bank.selected.label }}</div><input type="hidden" name="bank_id" value="{{ c.bank.selected.pk }}">
+            <div class="form-control bg-light d-flex align-items-center">{{ c.bank.selected.label }}</div><input type="hidden" name="bank_id" value="{{ c.bank.selected.pk }}">
             <div class="small text-muted mt-1">Chosen for you: it is the only one.</div>
             {% else %}
-            <select name="bank_id" class="form-select form-select-lg" data-refresh>{% for b in c.bank.options %}<option value="{{ b.pk }}" {% if c.bank.selected.pk == b.pk %}selected{% endif %}>{{ b.label }}</option>{% endfor %}</select>
+            <select name="bank_id" class="form-select" data-refresh>{% for b in c.bank.options %}<option value="{{ b.pk }}" {% if c.bank.selected.pk == b.pk %}selected{% endif %}>{{ b.label }}</option>{% endfor %}</select>
             <div class="ac-strip small mt-2"><i data-lucide="triangle-alert" class="icon"></i> More than one bank account: make sure this is the right one.
                 <label class="d-block mt-1 mb-0"><input type="checkbox" name="bank_confirmed" class="form-check-input me-1" {% if c.bank.confirmed %}checked{% endif %} data-refresh> Yes, pay from {{ c.bank.selected.label }}</label></div>
             {% endif %}
@@ -95,7 +95,7 @@
 
     {% if c.blocks %}<div class="small mt-3 text-muted"><strong>Before you can create it:</strong> {% for b in c.blocks %}{{ b }}{% if not forloop.last %} {% endif %}{% endfor %}</div>{% endif %}
     <div class="d-flex gap-2 flex-wrap align-items-center mt-3">
-        <button type="submit" name="action" value="create" class="btn btn-primary btn-lg" {% if not c.can_create %}disabled{% endif %}><i data-lucide="check" class="icon"></i> Create payable</button>
+        <button type="submit" name="action" value="create" class="btn btn-primary" {% if not c.can_create %}disabled{% endif %}><i data-lucide="check" class="icon"></i> Create payable</button>
         <button type="submit" name="action" value="discard" class="btn btn-outline-secondary" data-confirm="Discard this invoice?">Discard</button>
         <button type="button" class="btn btn-link text-muted" data-skip>Skip for now</button>
     </div>

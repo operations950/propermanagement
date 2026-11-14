@@ -30,6 +30,8 @@ STUB_LEFT, STUB_RIGHT = 38.0, 574.0
 STUBS = ((262.0, 498.0), (514.0, 786.0))                               # the vendor stub and the records stub: top and bottom
 MICR_X, MICR_BASELINE = 26.0, 234.0                                    # the numbers line: 0.25 inch from the left of the face, its characters 0.25 inch above the bottom of the check
 MICR_SIZE = 12.0                                                       # E-13B: 9 points wide per character (8 to the inch), 8.4 points tall
+TOP_MARGIN = 14.2                                                      # 5 mm: the printer lays everything on the sheet a little high, so the whole page is drawn this far lower (the guides are not: they mark the stock)
+SIGNATURE_BOX = (418.0, 152.0, 570.0, 186.0)                           # left, top, right, bottom: where the signature image goes, sitting on the signature line, clear of the seal
 FONT_DIR = Path(settings.BASE_DIR) / 'static' / 'fonts' / 'gnumicr'
 _micr_state = {}
 
@@ -140,12 +142,13 @@ def check_data(payment):
         'bank_name': (bank.bank_name or '').strip(), 'bank_lines': _lines(bank.bank_address),
         'number': payment.number or '', 'date': date_text(payment.date), 'payee': payment.payee, 'amount': Decimal(payment.amount), 'memo': memo[:80],
         'micr': numbers_text(bank.routing_number, bank.account_number, payment.number), 'association': assoc.name, 'bank_label': bank.label,
-        'invoices': rows, 'approval': _approval_text(bills), 'test': False,
+        'invoices': rows, 'approval': _approval_text(bills), 'test': False, 'signature': signature_bytes(profile),
     }
 
 
 def sample_data(association=None):
     """A made-up check for lining the stock up: the real payer and bank names and addresses when the association has them, but obviously sample numbers and a sample payee."""
+    from . import ledger
     from .models import BankAccount
     bank = BankAccount.objects.filter(association=association, is_active=True, kind='operating').first() if association is not None else None
     amount = Decimal('1234.56')
@@ -157,6 +160,7 @@ def sample_data(association=None):
         'invoices': [{'number': '1001', 'date': '10/03/2026', 'description': 'Sample invoice', 'account': '6906 Pest Control', 'amount': Decimal('734.56')},
                      {'number': '1002', 'date': '10/17/2026', 'description': 'Sample invoice', 'account': '6906 Pest Control', 'amount': Decimal('500.00')}],
         'approval': 'Management approved: Sample Person 11/14/2026', 'test': True,
+        'signature': signature_bytes(ledger.profile_for(association)) if association is not None else None,
     }
 
 
@@ -192,6 +196,34 @@ def _money(amount):
 
 
 GREY = colors.HexColor('#555555')
+
+
+def signature_bytes(profile):
+    """The association's signature image as bytes, or None when there is none (or it cannot be read: a check then simply prints with the signature line empty)."""
+    try:
+        if profile is not None and profile.check_signature:
+            with profile.check_signature.open('rb') as f:
+                return f.read()
+    except Exception:
+        return None
+    return None
+
+
+def _draw_signature(c, data):
+    """The signature image, as large as fits the box and sitting on the signature line. A damaged or unreadable image leaves the line empty rather than failing the check."""
+    if not data:
+        return
+    try:
+        import io
+        from reportlab.lib.utils import ImageReader
+        reader = ImageReader(io.BytesIO(data))
+        iw, ih = reader.getSize()
+        left, top, right, bottom = SIGNATURE_BOX
+        scale = min((right - left) / iw, (bottom - top) / ih)
+        w, h = iw * scale, ih * scale
+        c.drawImage(reader, left + ((right - left) - w) / 2, H - bottom + 1.5, width=w, height=h, mask='auto')
+    except Exception:
+        return
 
 
 def _draw_face(c, d):
@@ -232,6 +264,7 @@ def _draw_face(c, d):
     _text(c, LEFT_X + 2, 186, d['memo'], 'Helvetica', 8.5, width=226)
     _rule(c, LEFT_X, 189, 270)
     _text(c, LEFT_X, 197, 'MEMO', 'Helvetica', 6, color=GREY)
+    _draw_signature(c, d.get('signature'))
     _rule(c, 410, 186, RIGHT_X)
     _text(c, 494, 195, 'AUTHORIZED SIGNATURE', 'Helvetica', 6, 'c', color=GREY)
     # the bank numbers, in the clear band at the bottom
@@ -321,10 +354,13 @@ def _draw_guides(c):
 
 def draw_check(c, data, guides=False):
     """One sheet: the check face, the vendor stub and the records stub, on a letter page that is already set up on the canvas."""
+    c.saveState()
+    c.translate(0, -TOP_MARGIN)                                                       # everything lower by 5 mm; the stock guides below stay where the stock is
     _draw_face(c, data)
     _draw_stub(c, data, STUBS[0][0], STUBS[0][1], records=False)
     _draw_stub(c, data, STUBS[1][0], STUBS[1][1], records=True)
-    if guides:
-        _draw_guides(c)
     if data.get('test'):
         _text(c, LEFT_X, 484, 'TEST PAGE: print it on plain paper and hold it over a blank check. Nothing was paid.', 'Helvetica', 7, color=GREY)
+    c.restoreState()
+    if guides:
+        _draw_guides(c)

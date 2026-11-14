@@ -69,6 +69,7 @@ class AssociationProfile(models.Model):
     check_stock = models.FileField(upload_to='check_stock/%Y/%m/', blank=True, storage=DocumentStorage())
     check_layout = models.JSONField(default=dict, blank=True)
     next_check_number = models.PositiveIntegerField(default=1001)
+    check_signature = models.FileField(upload_to='check_signature/%Y/%m/', blank=True, storage=DocumentStorage(), help_text='An image of the authorized signature, printed on every check from this association.')
 
     class Meta:
         ordering = ['property__name']
@@ -839,6 +840,9 @@ class Payment(models.Model):
     memo = models.CharField(max_length=200, blank=True)
     opening = models.BooleanField(default=False)
     printed_at = models.DateTimeField(null=True, blank=True)
+    envelope_state = models.CharField(max_length=8, blank=True, default='', choices=[('', 'No envelope'), ('waiting', 'Envelope waiting'), ('printed', 'Envelope printed'), ('skipped', 'Envelope skipped')],
+                                      help_text='A check printed from the check run waits for its envelope until the envelope is printed or skipped.')
+    envelope_at = models.DateTimeField(null=True, blank=True)
     entry = models.ForeignKey(JournalEntry, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     cash_entry = models.ForeignKey(JournalEntry, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')

@@ -3,58 +3,92 @@
 {% block acc_title %}Print envelopes{% endblock %}
 {% block acc_body %}
 <style>
-    .ev-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0 10px 4px; border-top: 1px solid var(--border-hairline); margin: 0; cursor: pointer; min-height: 56px; }
-    .ev-row .form-check-input { flex: none; width: 1.35rem; height: 1.35rem; margin: 2px 0 0; }
+    .ev-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border-hairline); margin: 0; min-height: 52px; }
+    .ev-row:first-child { border-top: 0; }
+    .ev-row .form-check-input { flex: none; width: 1.15rem; height: 1.15rem; margin: 0; }
     .ev-main { flex: 1 1 auto; min-width: 0; }
-    .ev-addr { font-size: .88rem; color: var(--ink-secondary, #444); white-space: pre-line; }
-    .ev-row.ev-none { background: color-mix(in srgb, var(--status-warning) 10%, white); cursor: default; }
-    .ev-bar { position: sticky; bottom: 0; z-index: 20; background: #fff; border: 1px solid var(--border-hairline); border-radius: 14px; box-shadow: 0 -2px 14px rgba(0, 0, 0, .08); padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-    @media (max-width: 768px) { .ev-bar > div, .ev-bar .btn { width: 100%; } .ev-bar .btn { min-height: 52px; } }
+    .ev-addr { font-size: .84rem; color: var(--ink-muted); }
+    .ev-row.ev-none { background: color-mix(in srgb, var(--status-warning) 9%, white); }
+    .ev-bar { position: sticky; bottom: 0; z-index: 20; background: #fff; border: 1px solid var(--border-hairline); border-radius: 10px; box-shadow: 0 -2px 12px rgba(0,0,0,.07); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    @media (max-width: 768px) { .ev-bar > div { width: 100%; } .ev-bar .btn { min-height: 46px; flex: 1 1 auto; } }
 </style>
-<div class="mb-3">
-    <a href="{% url 'accounting:payables_print_checks' %}" class="small text-decoration-none d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Print checks</a>
-    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="mail" class="icon-lg"></i> Print envelopes {% include '_tip.html' with text='One plain size-10 envelope for each check, in the same order as the checks, with the vendor\'s address printed on it and the return address in the corner. They are plain white envelopes, not window envelopes. Print one test page first to see where the address lands.' %}</h2>
-    <div class="small text-muted">Return address: {% for l in return_lines %}{{ l }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-5 mb-0 d-flex align-items-center gap-2"><i data-lucide="mail" class="icon"></i> Print envelopes {% include '_tip.html' with text='Every check you print gets an envelope on this list, and it stays here until you print it, mark it printed or skip it, however many check runs there have been. Plain #10 envelopes with the vendor address and the return address in the corner. Checks to Proper Realty start unticked because they are not mailed. Print one test envelope first to see where the address lands.' %}</h2>
+        <div class="small text-muted">{{ rows|length }} waiting{% if n_missing %} &middot; {{ n_missing }} without an address{% endif %} &middot; return address: {% for l in return_lines %}{{ l }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if rows %}<button type="button" class="btn btn-sm btn-outline-secondary" data-select="all">Select all</button><button type="button" class="btn btn-sm btn-outline-secondary" data-select="none">Select none</button>{% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:payables_print_checks' %}"><i data-lucide="printer" class="icon"></i> Checks</a>
+    </div>
 </div>
 
-{% if runs %}
-<form method="get" action="{% url 'accounting:payables_envelopes_pdf' %}" target="_blank" id="evForm">
-{% for r in runs %}
-<div class="card mb-3"><div class="card-body pb-1">
-    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
-        <div><strong>Printed {{ r.when|date:"M j, Y g:i A" }}</strong> <span class="text-muted small">&middot; {{ r.n }} check{{ r.n|pluralize }}</span></div>
-        {% if r.missing %}<span class="ac-chip warn">{{ r.missing }} without an address</span>{% endif %}
-    </div>
-    {% for row in r.rows %}
+{% if rows %}
+<form method="post" id="evForm" target="_blank">{% csrf_token %}
+<div class="card mb-3"><div class="card-body py-2">
+    {% for row in rows %}
     <label class="ev-row{% if not row.lines %} ev-none{% endif %}">
-        <input type="checkbox" class="form-check-input" name="id" value="{{ row.payment.pk }}"{% if r.ticked and row.lines %} checked{% endif %}{% if not row.lines %} disabled{% endif %} aria-label="Envelope for check {{ row.payment.number }} to {{ row.owner }}">
-        <span class="ev-main"><span class="fw-semibold">#{{ row.payment.number }} {{ row.owner }}</span> <span class="small text-muted">&middot; {{ row.payment.association.name }} &middot; {{ row.payment.amount|money }}</span>
-            {% if row.lines %}<div class="ev-addr">{% for l in row.lines %}{{ l }}{% if not forloop.last %}
-{% endif %}{% endfor %}</div>
+        <input type="checkbox" class="form-check-input" name="id" value="{{ row.payment.pk }}"{% if row.ticked %} checked{% endif %} aria-label="Envelope for check {{ row.payment.number }} to {{ row.owner }}">
+        <span class="ev-main"><span class="fw-semibold">{{ row.owner }}</span> <span class="small text-muted">&middot; check {{ row.payment.number }} &middot; {{ row.payment.association.name }} &middot; {{ row.payment.amount|money }} &middot; {{ row.payment.date|mdate }}</span>
+            {% if row.own %}<div class="ev-addr">Our own check: not mailed.</div>
+            {% elif row.lines %}<div class="ev-addr">{{ row.lines|join:", " }}</div>
             {% else %}<div class="small" style="color:#8a5a00;">No mailing address on file for this vendor. {% if row.edit_url %}<a href="{{ row.edit_url }}">Add one</a>{% endif %}</div>{% endif %}</span>
     </label>
     {% endfor %}
 </div></div>
-{% endfor %}
 <div class="ev-bar ac-noprint">
-    <div><strong data-count>0</strong> envelope<span data-plural>s</span> ticked <span class="small text-muted d-block d-md-inline">Vendors without an address are skipped.</span></div>
-    <div class="d-flex gap-2 flex-wrap"><button class="btn btn-outline-secondary" name="test" value="1" id="evTest">Test print (one envelope)</button><button class="btn btn-primary btn-lg" id="evPrint"><i data-lucide="mail" class="icon"></i> Print envelopes</button></div>
+    <div><strong data-count>0</strong> ticked</div>
+    <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-secondary" type="submit" name="action" value="skipped" formtarget="_self">Skip</button>
+        <button class="btn btn-outline-secondary" type="submit" name="action" value="printed" formtarget="_self" title="Already printed or mailed another way">Mark printed</button>
+        <a class="btn btn-outline-secondary" target="_blank" href="{% url 'accounting:payables_envelopes_pdf' %}?test=1&amp;id={{ rows.0.payment.pk }}" id="evTest">Test print</a>
+        <button class="btn btn-primary" type="submit" name="action" value="print" id="evPrint"><i data-lucide="mail" class="icon"></i> Print envelopes</button>
+    </div>
 </div>
 </form>
+{% else %}
+<div class="card mb-3"><div class="card-body text-muted">No envelopes are waiting. Each check you print adds one here.</div></div>
+{% endif %}
+
+{% if done %}
+<h6 class="mt-4 mb-2 d-flex align-items-center gap-2">Printed or skipped in the last two weeks {% include '_tip.html' with text='Put one back on the list if it was skipped by mistake, or reprint an envelope that jammed.' %}</h6>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="waiting">
+<div class="card mb-3"><div class="card-body py-1">
+    {% for row in done %}
+    <div class="ev-row">
+        <div class="ev-main"><span class="fw-semibold">{{ row.owner }}</span> <span class="small text-muted">&middot; check {{ row.payment.number }} &middot; {{ row.payment.association.name }} &middot; {{ row.payment.amount|money }}</span> <span class="ac-chip">{{ row.payment.get_envelope_state_display }}</span></div>
+        <div class="d-flex gap-2">
+            {% if row.payment.envelope_state == 'printed' and row.lines %}<a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:payables_envelopes_pdf' %}?id={{ row.payment.pk }}">Reprint</a>{% endif %}
+            <button class="btn btn-sm btn-outline-secondary" name="id" value="{{ row.payment.pk }}" type="submit">Put back</button>
+        </div>
+    </div>
+    {% endfor %}
+</div></div>
+</form>
+{% endif %}
+
 <script>
 (function () {
     var form = document.getElementById('evForm');
+    if (!form) return;
     function recount() {
         var n = form.querySelectorAll('input[name=id]:checked').length;
         form.querySelector('[data-count]').textContent = n;
-        form.querySelector('[data-plural]').textContent = n === 1 ? '' : 's';
-        document.getElementById('evPrint').disabled = n === 0;
+        form.querySelectorAll('button[name=action]').forEach(function (b) { b.disabled = n === 0; });
     }
     form.addEventListener('change', recount);
+    document.querySelectorAll('[data-select]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var on = btn.dataset.select === 'all';
+            form.querySelectorAll('input[name=id]').forEach(function (i) { i.checked = on; });
+            recount();
+        });
+    });
+    form.addEventListener('submit', function (e) {
+        var s = e.submitter;
+        if (s && s.value === 'print') setTimeout(function () { location.reload(); }, 2500);          // the PDF opens in its own tab; the printed ones then leave this list
+    });
     recount();
 })();
 </script>
-{% else %}
-<div class="card mb-3"><div class="card-body text-muted">No checks have been printed in the last two weeks, so there are no envelopes to print. Print checks first.</div></div>
-{% endif %}
 {% endblock %}

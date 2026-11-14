@@ -150,6 +150,16 @@
                     {% else %}<input class="form-control form-control-sm" name="account_number" inputmode="numeric" autocomplete="off" placeholder="Not entered yet">{% endif %}</div>
                 <div class="col-12"><button class="btn btn-sm btn-primary">Save</button></div></form></details>
     </div>{% empty %}<div class="text-muted small">No bank account yet.</div>{% endfor %}
+    <div class="mt-2 pt-2 border-top" id="signature">
+        <div class="small fw-semibold d-flex align-items-center gap-2 mb-1">Signature on checks {% include '_tip.html' with text='An image of the authorized signature, printed on the signature line of every check from this association, so checks do not have to be signed by hand. Use a PNG with a clear background, or a JPEG on white. Print a test check to see how it sits.' %}</div>
+        <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}
+            {% if profile.check_signature %}<img src="{% url 'accounting:check_signature' assoc.pk %}" alt="Signature on file" style="height: 38px; max-width: 170px; object-fit: contain; border: 1px solid var(--border-hairline); border-radius: 6px; padding: 2px; background: #fff;">{% endif %}
+            <input type="file" name="signature" accept="image/png,image/jpeg" class="form-control form-control-sm w-auto" aria-label="Signature image" required>
+            <label class="small mb-0"><input type="checkbox" class="form-check-input me-1" name="all_associations" value="1"> Every association</label>
+            <button class="btn btn-sm btn-outline-primary" name="action" value="signature">{% if profile.check_signature %}Replace{% else %}Add the signature{% endif %}</button>
+            {% if profile.check_signature %}<button class="btn btn-sm btn-outline-secondary" name="action" value="signature_remove" formnovalidate onclick="return confirm('Take the signature off this association\'s checks?')">Remove</button><a class="small" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ assoc.pk }}">Test print</a>{% endif %}
+        </form>
+    </div>
     <details class="mt-2 pt-2 border-top"><summary class="small" style="cursor: pointer;">Add a bank account</summary>
         <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="bank">
             <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Name, e.g. Operating" required></div><div class="col-md-3"><input class="form-control form-control-sm" name="bank_name" placeholder="Bank"></div>

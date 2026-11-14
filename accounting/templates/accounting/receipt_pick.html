@@ -1,0 +1,13 @@
+{% extends 'accounting/base_acc.html' %}
+{% block acc_title %}Record owner payments{% endblock %}
+{% block acc_body %}
+<div class="mb-3">
+    <h2 class="page-title fs-5 mb-0 d-flex align-items-center gap-2"><i data-lucide="hand-coins" class="icon"></i> Record owner payments {% include '_tip.html' with text='Pick the association the payment is for, then the unit and the amount. A payment you type in waits on the deposit screen until it is matched to the bank deposit.' %}</h2>
+    <div class="small text-muted">Which association is the payment for?</div>
+</div>
+<div class="card mb-3"><div class="card-body py-1">
+    {% for p in profiles %}
+    <a class="d-flex justify-content-between align-items-center py-2 text-decoration-none{% if not forloop.first %} border-top{% endif %}" href="{% url 'accounting:receipt_new' p.property_id %}"><span class="fw-semibold">{{ p.property.name }}</span><i data-lucide="chevron-right" class="icon text-muted"></i></a>
+    {% empty %}<div class="text-muted py-2">No association has its books kept here yet.</div>{% endfor %}
+</div></div>
+{% endblock %}

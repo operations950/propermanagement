@@ -520,7 +520,10 @@ def create_vendor(upload, prop=None, is_1099=False):
     profile, _ = VendorProfile.objects.get_or_create(contact=vendor)
     for field, key in (('street', 'vendor_street'), ('city', 'vendor_city'), ('state', 'vendor_state'), ('zip_code', 'vendor_zip'), ('tax_id', 'vendor_tax_id'), ('website', 'vendor_website')):
         if not getattr(profile, field) and card_read.get(key):
-            setattr(profile, field, card_read[key])
+            value = str(card_read[key]).strip()
+            if field == 'street':
+                value = ', '.join(p.strip() for p in value.replace('|', ',').split(',') if p.strip())              # "1330 West Industrial Avenue | #107" is one street line: "1330 West Industrial Avenue, #107"
+            setattr(profile, field, value)
     profile.is_1099 = profile.is_1099 or bool(is_1099)
     profile.save()
     if prop is not None:

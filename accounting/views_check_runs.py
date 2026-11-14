@@ -7,8 +7,10 @@ from django.utils import timezone
 
 from . import check_runs as cr
 from . import ledger, payables
-from .models import Payment
+from .models import Bill, Payment
 from .web import admin_only, association_or_404, parse_date
+
+CHECKS_URL, ENVELOPES_URL = 'accounting:payables_print_checks', 'accounting:payables_print_envelopes'
 
 
 def _pdf(data, name):
@@ -37,10 +39,20 @@ def print_checks(request):
             if action == 'void':
                 payment = get_object_or_404(Payment, pk=request.POST.get('payment'), method=Payment.Method.CHECK)
                 payables.void_payment(payment, request.user)
+                Payment.objects.filter(pk=payment.pk, envelope_state='waiting').update(envelope_state='')            # a voided check needs no envelope
                 messages.success(request, f'Check {payment.number} to {payment.payee} is void. Its payables are ready to pay again.')
+            elif action == 'void_bill':
+                bill = get_object_or_404(Bill, pk=request.POST.get('bill'))
+                payables.void_bill(bill, request.user)
+                messages.success(request, f'The payable to {bill.payee} is void.')
+            elif action == 'mark_paid':
+                bill = get_object_or_404(Bill, pk=request.POST.get('bill'), status=Bill.Status.APPROVED)
+                day = parse_date(request.POST.get('date'), timezone.localdate())
+                cr.mark_paid(bill, day, request.user)
+                messages.success(request, f'{bill.payee}, {bill.balance or bill.amount:,.2f}: recorded as paid by the bank on {day:%b} {day.day}.')
         except (payables.PayableError, ledger.LedgerError) as e:
             messages.error(request, str(e))
-        return redirect('accounting:payables_print_checks')
+        return redirect(CHECKS_URL)
     result = cr.plan()
     return render(request, 'accounting/check_run.html', {**result, 'today': timezone.localdate(), 'runs': cr.recent_runs(), 'Void': Payment.Status.VOID})
 
@@ -64,30 +76,47 @@ def checks_pdf(request):
     return _pdf(cr.checks_pdf(payments), name)
 
 
+def _envelope_pdf_for(ids):
+    payments = list(Payment.objects.filter(pk__in=ids, method=Payment.Method.CHECK).exclude(status=Payment.Status.VOID).select_related('association', 'vendor'))
+    order = {pk: i for i, pk in enumerate(ids)}
+    payments.sort(key=lambda p: order[p.pk])
+    return payments, cr.envelope_rows(payments)
+
+
 @admin_only
 def print_envelopes(request):
-    """The checks printed lately, with the envelope each one goes in. Tick the ones to print."""
-    runs = cr.recent_runs()
-    only = request.GET.get('run')
-    for r in runs:
-        r['rows'] = cr.envelope_rows([p for p in r['payments'] if p.status != Payment.Status.VOID])
-        for row in r['rows']:
-            row['edit_url'] = reverse('contact_edit', args=[row['vendor'].pk]) if row['vendor'] is not None else ''
-        r['ticked'] = (r['key'] == only) if only else (r is runs[0])
-        r['missing'] = sum(1 for row in r['rows'] if not row['lines'])
-    return render(request, 'accounting/envelopes.html', {'runs': runs, 'return_lines': cr.return_lines()})
+    """The envelopes still to deal with, from every check run: print the ticked ones, skip the ones that are not mailed. Printed and skipped ones leave the list."""
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        ids = _ints(request.POST.getlist('id'))
+        if action == 'print':
+            payments, rows = _envelope_pdf_for(ids)
+            if not any(r['lines'] for r in rows):
+                messages.error(request, 'None of the ticked checks has a vendor address to print.')
+                return redirect(ENVELOPES_URL)
+            cr.set_envelope_state([r['payment'].pk for r in rows if r['lines']], 'printed')
+            return _pdf(cr.envelopes_pdf([r for r in rows if r['lines']]), 'Envelopes.pdf')
+        if not ids:
+            messages.error(request, 'Tick at least one envelope first.')
+        elif action in ('printed', 'skipped', 'waiting'):
+            n = cr.set_envelope_state(ids, action)
+            messages.success(request, {'printed': f'{n} marked as printed.', 'skipped': f'{n} skipped.', 'waiting': f'{n} back on the list.'}[action])
+        return redirect(ENVELOPES_URL)
+    rows = cr.envelope_rows(cr.waiting_envelopes())
+    for row in rows:
+        row['edit_url'] = reverse('contact_edit', args=[row['vendor'].pk]) if row['vendor'] is not None else ''
+        row['ticked'] = bool(row['lines']) and not row['own']
+    done = cr.envelope_rows(cr.finished_envelopes())
+    return render(request, 'accounting/envelopes.html', {'rows': rows, 'done': done, 'return_lines': cr.return_lines(), 'n_missing': sum(1 for r in rows if not r['lines'])})
 
 
 @admin_only
 def envelopes_pdf(request):
-    """One #10 envelope per ticked check, in check order (?id=<payment>, repeated). ?test=1 makes a single sample to try the printer."""
+    """Envelopes as a PDF again, or ?test=1 for a single sample to try the printer: nothing is marked printed here (printing from the list does that)."""
     ids = _ints(request.GET.getlist('id'))
-    payments = list(Payment.objects.filter(pk__in=ids, method=Payment.Method.CHECK).exclude(status=Payment.Status.VOID).select_related('association', 'vendor'))
-    order = {pk: i for i, pk in enumerate(ids)}
-    payments.sort(key=lambda p: order[p.pk])
-    rows = cr.envelope_rows(payments)
+    payments, rows = _envelope_pdf_for(ids)
     test = bool(request.GET.get('test'))
     if not test and not any(r['lines'] for r in rows):
         messages.error(request, 'None of the ticked checks has a vendor address to print.')
-        return redirect('accounting:payables_print_envelopes')
+        return redirect(ENVELOPES_URL)
     return _pdf(cr.envelopes_pdf(rows, test), 'Envelopes - test.pdf' if test else 'Envelopes.pdf')

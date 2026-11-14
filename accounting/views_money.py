@@ -338,7 +338,25 @@ def bill_detail(request, pk, bill_pk):
     if redirect_to:
         return redirect_to
     bill = get_object_or_404(Bill, pk=bill_pk, association=prop)
-    return render(request, 'accounting/bill_detail.html', {'assoc': prop, 'bill': bill, 'need': payables.requirement(prop, bill), 'profile': ledger.profile_for(prop), 'acc_back': _go('bills', prop.pk), 'acc_back_label': 'Bills'})
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'void':
+                payables.void_bill(bill, request.user)
+                messages.success(request, f'The payable to {bill.payee} is void.')
+                return redirect('accounting:payables_home')
+            if action == 'mark_paid':
+                from . import check_runs
+                if bill.status != Bill.Status.APPROVED:
+                    raise payables.PayableError('Only an approved payable can be recorded as paid.')
+                day = parse_date(request.POST.get('date')) or timezone.localdate()
+                check_runs.mark_paid(bill, day, request.user)
+                messages.success(request, f'Recorded as paid by the bank on {day:%b} {day.day}.')
+        except (payables.PayableError, ledger.LedgerError) as e:
+            messages.error(request, str(e))
+        return redirect('accounting:bill', pk=prop.pk, bill_pk=bill.pk)
+    return render(request, 'accounting/bill_detail.html', {'assoc': prop, 'bill': bill, 'need': payables.requirement(prop, bill), 'profile': ledger.profile_for(prop), 'today': timezone.localdate(),
+                                                           'can_void': not bill.payments.exists() and bill.source != Bill.Source.OPENING and bill.status != Bill.Status.VOID, 'acc_back': _go('bills', prop.pk), 'acc_back_label': 'Bills'})
 
 
 @admin_only

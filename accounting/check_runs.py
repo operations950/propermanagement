@@ -21,7 +21,7 @@ from legalforms import config as lf_config
 
 from . import budget_project as bp
 from . import checkface, checkprint, ledger, payables
-from .models import ZERO, BankAccount, Bill, Payment
+from .models import ZERO, BankAccount, Bill, Payment, VendorTerms
 
 FONT, FONT_SIZE = 'Helvetica', 11
 ASTERISKS = '*' * 33
@@ -50,10 +50,14 @@ def bank_for_bill(bill, active_operating=None):
 
 
 def vendor_address_lines(vendor):
-    """The vendor's mailing address as lines for an envelope. A contact has no address of its own: it is kept in the contact's profile (the same place an owner's mailing address is);
-    a `mailing_address` on the contact itself would be used first. Empty when there is none."""
+    """The vendor's mailing address as lines for an envelope: the address kept on the vendor's profile (what the Payables page saves when a vendor is made from an invoice), else a mailing address
+    on the contact or its owner profile. Empty when there is none."""
     if vendor is None:
         return []
+    from .payables_hub import vendor_address_lines as profile_lines
+    lines = profile_lines(vendor)
+    if lines:
+        return lines
     for text in (getattr(vendor, 'mailing_address', ''), getattr(getattr(vendor, 'owner_profile', None), 'mailing_address', '')):
         lines = bp.address_lines(text or '')
         if lines:
@@ -94,9 +98,13 @@ def plan(selected=None):
     active_count = defaultdict(int)
     for assoc_id in BankAccount.objects.filter(is_active=True).values_list('association_id', flat=True):
         active_count[assoc_id] += 1
-    groups, blocked, profiles = OrderedDict(), [], {}
+    not_by_check = set(VendorTerms.objects.exclude(pay_method=VendorTerms.Pay.CHECK).values_list('association_id', 'vendor_id'))
+    groups, blocked, profiles, autopay = OrderedDict(), [], {}, []
     for b in bills:
         b.ticked = selected is None or b.pk in selected
+        if b.vendor_id and (b.association_id, b.vendor_id) in not_by_check:             # taken from the bank by the vendor: no check is written for it
+            autopay.append(b)
+            continue
         bank = bank_for_bill(b, operating[b.association_id])
         settings_url = reverse('accounting:settings', args=[b.association_id]) + '#banks'
         if bank is None:
@@ -154,7 +162,16 @@ def plan(selected=None):
             warnings.append({'text': f'{g["association"].name} has more than one bank account: its checks share one number sequence.', 'url': '', 'label': ''})
         g['warnings'] = warnings
     n_checks = sum(g['n_checks'] for g in ordered)
-    return {'groups': ordered, 'blocked': blocked, 'n_checks': n_checks, 'total': sum((g['total'] for g in ordered), ZERO), 'n_bills': sum(1 for g in ordered for c in g['checks'] for x in c['bills'])}
+    return {'groups': ordered, 'blocked': blocked, 'autopay': autopay, 'n_checks': n_checks, 'total': sum((g['total'] for g in ordered), ZERO), 'n_bills': sum(1 for g in ordered for c in g['checks'] for x in c['bills'])}
+
+
+def mark_paid(bill, day, user=None):
+    """An approved payable that the bank paid by itself (an automatic payment): record it as paid by ACH on `day` from the bank account it is paid from."""
+    operating = list(BankAccount.objects.filter(association_id=bill.association_id, is_active=True, kind=BankAccount.Kind.OPERATING))
+    bank = bank_for_bill(bill, operating)
+    if bank is None:
+        raise payables.PayableError(f'{bill.association.name} has no single operating bank account to record this against. Choose one on the payable first.')
+    return payables.pay_bills(bill.association, bank, [(bill, bill.balance)], day, method=Payment.Method.ACH, user=user, memo='Paid by the bank (automatic payment)')
 
 
 # ---------------------------------------------------------------- printing
@@ -172,7 +189,7 @@ def print_run(selected, day, user=None):
                 continue
             made.append(payables.pay_bills(g['association'], g['bank'], [(b, b.balance) for b in ticked], day, method=Payment.Method.CHECK, user=user, memo=check_memo(ticked)))
     if made:
-        Payment.objects.filter(pk__in=[p.pk for p in made]).update(printed_at=timezone.now())
+        Payment.objects.filter(pk__in=[p.pk for p in made]).update(printed_at=timezone.now(), envelope_state='waiting')          # each check now has an envelope waiting
     return made
 
 
@@ -292,12 +309,39 @@ def return_lines():
     return [co['company_name'], co['company_address1'], co['company_city']]
 
 
+def is_own_check(payee):
+    """A check to ourselves (the management fee): it is not mailed, so its envelope starts unticked."""
+    return 'proper realty' in (payee or '').lower()
+
+
 def envelope_rows(payments):
     rows = []
     for p in payments:
         lines = vendor_address_lines(p.vendor)
-        rows.append({'owner': p.payee, 'lines': lines, 'source': 'mailing' if lines else 'none', 'payment': p, 'vendor': p.vendor, 'note': '' if lines else 'No mailing address on file'})
+        rows.append({'owner': p.payee, 'lines': lines, 'source': 'mailing' if lines else 'none', 'payment': p, 'vendor': p.vendor, 'note': '' if lines else 'No mailing address on file', 'own': is_own_check(p.payee)})
     return rows
+
+
+def _envelope_checks():
+    return Payment.objects.filter(method=Payment.Method.CHECK, opening=False).exclude(status=Payment.Status.VOID).select_related('association', 'vendor', 'bank_account')
+
+
+def waiting_envelopes():
+    """The checks whose envelope has not been printed or skipped yet, from every check run, in the order the checks were printed. They stay until dealt with."""
+    return sorted(_envelope_checks().filter(envelope_state='waiting'), key=lambda p: ((p.printed_at or p.created_at), _number_key(p)))
+
+
+def finished_envelopes(days=14, now=None):
+    """The envelopes printed or skipped lately, newest first, so a mistake can be put back."""
+    since = (now or timezone.now()) - timedelta(days=days)
+    return list(_envelope_checks().filter(envelope_state__in=('printed', 'skipped'), envelope_at__gte=since).order_by('-envelope_at', 'pk'))
+
+
+def set_envelope_state(ids, state):
+    """Mark these checks' envelopes printed, skipped, or waiting again. Returns how many changed."""
+    if state not in ('waiting', 'printed', 'skipped'):
+        raise ValueError(state)
+    return _envelope_checks().filter(pk__in=list(ids)).update(envelope_state=state, envelope_at=None if state == 'waiting' else timezone.now())
 
 
 def envelopes_pdf(rows, test=False):
