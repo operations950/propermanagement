@@ -6,8 +6,8 @@ from datetime import date
 
 from django.urls import reverse
 
-from . import bankrec, charges, delinquency, ledger, payables, scheduled
-from .models import AssociationProfile, Bill, ChargeRule, JournalRule, MonthLock
+from . import bankrec, charges, ledger, owner_collections, payables, scheduled
+from .models import AssociationProfile, ChargeRule, JournalRule, MonthLock
 
 
 def associations():
@@ -20,101 +20,107 @@ def _item(key, title, icon, status, detail, url, blocks=True):
 
 
 def close_sheet(association, month_first, today=None):
+    """The steps of the month, in the order they are done: look at what posts by itself (owner charges, recurring bills, recurring journal entries), then the bank reconciliations (where the
+    owner payments are matched to cash), then the checks that follow it, the late fees and interest, and the owner collections. Only the bank reconciliations stop the month from closing."""
     from django.utils import timezone
     today = today or timezone.localdate()
     pk, month_param = association.pk, f'{month_first:%Y-%m}'
-    items, bank_items = [], []
+    profile = ledger.profile_for(association)
+    month_end = ledger.month_end(month_first)
+    recurring_url = reverse('accounting:recurring', args=[pk])
+    auto_off = ' Automatic posting is off for this association: switch it on there.' if not profile.auto_post else ''
+    items = []
 
+    # 1. This month's owner charges: they post by themselves a few days early; this step only checks, and posts any that did not.
+    rules = list(ChargeRule.objects.filter(association=association, is_active=True))
+    due_rows, pending = [], 0
+    for r in rules:
+        for d in charges.rule_due_dates(r, month_end):
+            if month_first <= d <= month_end:
+                st = charges.rule_status(r, month_end)
+                due_rows.append((r, d, st))
+                pending += 1 if st['pending'] else 0
+    charges_url = recurring_url + f'?tab=charges&month={month_param}'
+    if pending:
+        items.append(_item('charges', 'Owner charges posted', 'receipt', 'attention', f'{pending} charge{"s" if pending != 1 else ""} not posted yet: post {"them" if pending != 1 else "it"} there.' + auto_off, charges_url, blocks=False))
+    else:
+        items.append(_item('charges', 'Owner charges posted', 'receipt', 'done', ('Posted to every unit.' if due_rows else 'Nothing was due this month.' if rules else 'No recurring charges are set up.') + auto_off, charges_url, blocks=False))
+
+    # 2. Recurring bills: the fixed ones are checked; the ones whose amount changes are settled in the bank reconciliation and are kept apart.
+    rec = [r for r in payables.recurring_status(association, month_first) if r['due']]
+    fixed, variable = [r for r in rec if r['fixed']], [r for r in rec if not r['fixed']]
+    fixed_missing = [r for r in fixed if not r['posted']]
+    bills_url = recurring_url + f'?tab=bills&month={month_param}'
+    variable_note = f' {len(variable)} variable bill{"s" if len(variable) != 1 else ""} (the amount changes) will be settled in the bank reconciliation.' if variable else ''
+    if fixed_missing:
+        items.append(_item('recurring', 'Recurring bills', 'repeat', 'attention', f'{len(fixed) - len(fixed_missing)} of {len(fixed)} fixed bills posted; not posted yet: ' + ', '.join(r['rec'].description for r in fixed_missing) + '.' + variable_note + auto_off,
+                           bills_url, blocks=False))
+    else:
+        items.append(_item('recurring', 'Recurring bills', 'repeat', 'done', ('All fixed bills posted.' if fixed else 'No fixed recurring bills this month.') + variable_note, bills_url, blocks=False))
+
+    # 3. Recurring journal entries (the reserve contribution is one of them).
+    entries_url = recurring_url + f'?tab=entries&month={month_param}'
+    entry_bits, entry_open = [], 0
+    for rule in JournalRule.objects.filter(association=association, is_active=True):
+        st = scheduled.status(association, rule, month_first, today)
+        if st['state'] == 'posted':
+            entry_bits.append(f'{rule.name}: posted {st["entry"].date:%b} {st["entry"].date.day}, J-{st["entry"].number}.')
+            continue
+        entry_open += 1
+        if st['state'] == 'no_budget':
+            entry_bits.append(f'{rule.name}: no {st["split"]["year"]} budget with reserve lines yet: approve the budget first.')
+        else:
+            how = 'It posts itself on its day.' if (rule.auto_post and profile.auto_post) else 'Automatic posting is off for it.'
+            entry_bits.append(f'{rule.name}: not posted yet, ${st["split"]["total"]:,.2f} dated {st["day"]:%b} {st["day"].day}. {how}')
+    items.append(_item('entries', 'Recurring journal entries', 'piggy-bank', 'attention' if entry_open else 'done', ' '.join(entry_bits) if entry_bits else 'No recurring journal entries are set up.', entries_url, blocks=False))
+
+    # 4. The bank reconciliations: owner payments are matched to cash here.
     for bank in association.bank_accounts.filter(is_active=True):
         s = bankrec.summary(bank, month_first)
         detail = {'done': 'Reconciled and closed.', 'ready': 'Everything matches. Close the reconciliation.', 'not_started': 'Upload the bank statement.',
                   'attention': f'{s["need_count"]} thing{"s" if s["need_count"] != 1 else ""} to settle.'}[s['status']]
         status = {'done': 'done', 'ready': 'attention', 'not_started': 'not_started', 'attention': 'attention'}[s['status']]
-        bank_items.append(_item(f'bank{bank.pk}', f'{bank.name} bank reconciliation', 'landmark', status, detail, reverse('accounting:bank', args=[pk, bank.pk, month_param])))
+        items.append(_item(f'bank{bank.pk}', f'{bank.label} bank reconciliation', 'landmark', status, detail, reverse('accounting:bank', args=[pk, bank.pk, month_param])))
 
-    rules = list(ChargeRule.objects.filter(association=association, is_active=True))
-    due_rows, pending = [], 0
-    for r in rules:
-        for d in charges.rule_due_dates(r, ledger.month_end(month_first)):
-            if month_first <= d <= ledger.month_end(month_first):
-                st = charges.rule_status(r, ledger.month_end(month_first))
-                due_rows.append((r, d, st))
-                pending += 1 if st['pending'] else 0
-    if due_rows:
-        items.append(_item('charges', 'Owner charges posted', 'receipt', 'attention' if pending else 'done',
-                           f'{pending} charge{"s" if pending != 1 else ""} not posted yet: they are scheduled, or post them from the Recurring screen.' if pending else 'Posted to every unit.',
-                           reverse('accounting:recurring', args=[pk]) + '?tab=charges', blocks=False))
-    else:
-        items.append(_item('charges', 'Owner charges posted', 'receipt', 'done', 'Nothing was due this month.' if rules else 'No recurring charges are set up.', reverse('accounting:recurring', args=[pk]) + '?tab=charges', blocks=False))
-
-    rec = [r for r in payables.recurring_status(association, month_first) if r['due']]
-    missing = [r for r in rec if not r['posted']]
-    if rec:
-        waiting_statement = [r for r in missing if not r['fixed']]
-        fixed_missing = [r for r in missing if r['fixed']]
-        status = 'done' if not missing else 'attention'
-        if not missing:
-            detail = 'All posted.'
-        else:
-            bits = []
-            if fixed_missing:
-                bits.append('not posted yet: ' + ', '.join(r['rec'].description for r in fixed_missing))
-            if waiting_statement:
-                bits.append('waiting on the bank statement: ' + ', '.join(r['rec'].description for r in waiting_statement))
-            detail = f'{len(rec) - len(missing)} of {len(rec)} posted; ' + '; '.join(bits) + '.'
-        items.append(_item('recurring', 'Recurring bills', 'repeat', status, detail, reverse('accounting:recurring', args=[pk]), blocks=False))
-    else:
-        items.append(_item('recurring', 'Recurring bills', 'repeat', 'done', 'None due this month.', reverse('accounting:recurring', args=[pk]), blocks=False))
-
-    month_end = ledger.month_end(month_first)
-    for rule in JournalRule.objects.filter(association=association, is_active=True):
-        st = scheduled.status(association, rule, month_first, today)
-        link = reverse('accounting:recurring', args=[pk]) + '?tab=entries'
-        if st['state'] == 'posted':
-            items.append(_item(f'journal{rule.pk}', rule.name, 'piggy-bank', 'done', f'Posted: {st["entry"].date:%b} {st["entry"].date.day}, J-{st["entry"].number}.', link, blocks=False))
-        elif st['state'] == 'no_budget':
-            items.append(_item(f'journal{rule.pk}', rule.name, 'piggy-bank', 'attention', f'No {st["split"]["year"]} budget with reserve lines yet: approve the budget first.', link, blocks=False))
-        else:
-            items.append(_item(f'journal{rule.pk}', rule.name, 'piggy-bank', 'attention', f'Not posted yet: ${st["split"]["total"]:,.2f}, dated {st["day"]:%b} {st["day"].day}. It posts itself when its day comes, or post it from the Recurring screen.', link, blocks=False))
+    # 5. Reserve funds equal reserve cash.
     tie = scheduled.reserve_tie(association, month_end)
     if tie['has_reserve_bank']:
+        bs_url = reverse('accounting:report_bs', args=[pk]) + f'?end={month_end:%Y-%m-%d}'
         if tie['diff'] == 0:
-            items.append(_item('reserve_tie', 'Reserve funds equal reserve cash', 'scale', 'done', f'Both are ${tie["cash"]:,.2f}.', reverse('accounting:report_bs', args=[pk]) + f'?end={month_end:%Y-%m-%d}', blocks=False))
+            items.append(_item('reserve_tie', 'Reserve funds equal reserve cash', 'scale', 'done', f'Both are ${tie["cash"]:,.2f}.', bs_url, blocks=False))
         else:
             side = 'more' if tie['diff'] > 0 else 'less'
             items.append(_item('reserve_tie', 'Reserve funds equal reserve cash', 'scale', 'attention', f'The reserve cash (${tie["cash"]:,.2f}) is ${abs(tie["diff"]):,.2f} {side} than the reserve funds (${tie["funds"]:,.2f}). A reserve project paid from operating, or a transfer not yet booked, is the usual reason.',
-                               reverse('accounting:report_bs', args=[pk]) + f'?end={month_end:%Y-%m-%d}', blocks=False))
+                               bs_url, blocks=False))
 
-    drafts = Bill.objects.filter(association=association, status__in=[Bill.Status.DRAFT, Bill.Status.AWAITING_BOARD]).count()
-    unpaid = len(payables.bills_to_pay(association))
-    items.append(_item('bills', 'Bills waiting', 'file-text', 'attention' if drafts else 'done',
-                       (f'{drafts} to review or waiting for the board. ' if drafts else '') + (f'{unpaid} ready to pay.' if unpaid else 'Nothing to pay.' if not drafts else ''),
-                       reverse('accounting:bills', args=[pk]), blocks=False))
+    # 6. The variable recurring bills got settled in the reconciliation.
+    if variable:
+        unsettled = [r for r in variable if not r['posted']]
+        items.append(_item('variable_bills', 'Variable recurring bills settled', 'repeat', 'attention' if unsettled else 'done',
+                           ('Not settled yet: ' + ', '.join(r['rec'].description for r in unsettled) + '. Each is made from its line on the bank statement during the reconciliation.') if unsettled else f'All {len(variable)} were settled in the bank reconciliation.',
+                           bills_url, blocks=False))
 
-    profile = ledger.profile_for(association)
-    link = reverse('accounting:delinquencies', args=[pk])
+    # 7. Charge the late fees and interest.
+    late_url = reverse('accounting:late_fees', args=[pk])
     if profile.late_fee_is_set() or profile.interest_is_set():
-        rows = delinquency.delinquent_rows(association, today, profile.delinquency_threshold)
-        cases = delinquency.open_cases(association, today)
-        fees, letters, review = sum(1 for r in rows if r['fee_due'] or r['interest_due']), sum(1 for r in rows if r['needs_letter']), sum(1 for c in cases if c['review_due'])
-        bits = []
-        if rows:
-            bits.append(f'{len(rows)} owner{"s" if len(rows) != 1 else ""} behind by more than ${profile.delinquency_threshold:,.0f}')
-        if fees:
-            bits.append(f'{fees} with late fees or interest to charge')
-        if letters:
-            bits.append(f'{letters} need a late letter')
-        if review:
-            bits.append(f'{review} case{"s" if review != 1 else ""} to review')
-        items.append(_item('delinquency', 'Delinquencies', 'alarm-clock', 'attention' if (fees or letters or review) else 'done', ('; '.join(bits) + '.') if bits else 'Nobody is behind.', link, blocks=False))
+        fee_units = {c.unit_id for c, fee, due in charges._late_fee_rows(association, today)}
+        interest_units = {c.unit_id for c, mf, me, amount in charges._interest_rows(association, today)}
+        ready = len(fee_units | interest_units)
+        items.append(_item('late_fees', 'Charge late fees and interest', 'alarm-clock', 'attention' if ready else 'done',
+                           f'{ready} owner{"s" if ready != 1 else ""} with late fees or interest ready to charge.' if ready else 'Nothing to charge.', late_url, blocks=False))
     else:
-        items.append(_item('delinquency', 'Delinquencies', 'alarm-clock', 'attention', 'The late fee and interest rules are not set up yet.', reverse('accounting:settings', args=[pk]) + '#late', blocks=False))
+        items.append(_item('late_fees', 'Charge late fees and interest', 'alarm-clock', 'attention', 'The late fee and interest rules are not set up yet.', reverse('accounting:settings', args=[pk]) + '#late', blocks=False))
+
+    # 8. Owner collections: right after the late fees is the best time to write the late letters.
+    look = owner_collections.attention(association, today)
+    items.append(_item('collections', 'Owner collections', 'scale', 'attention' if look['count'] else 'done',
+                       (f'{look["count"]} owner{"s" if look["count"] != 1 else ""} need attention: ' + '; '.join(look['bits']) + '.') if look['count'] else ('Nobody needs attention.' if look['open'] else 'Nobody is behind.'),
+                       reverse('accounting:collections', args=[pk]), blocks=False))
 
     if profile.sunbiz_alerts:
         more = len(profile.sunbiz_alerts) - 1
         items.append(_item('state', 'Official record', 'building', 'attention', profile.sunbiz_alerts[0] + (f' (and {more} more)' if more else ''), reverse('accounting:settings', args=[pk]) + '#official', blocks=False))
 
-    items.extend(bank_items)           # the bank reconciliation is last: everything else is posted first, and the statement catches what is left
     locked = MonthLock.objects.filter(association=association, month=month_first).exists()
     blocking = [i for i in items if i['blocks'] and i['status'] != 'done']
     items.append(_item('lock', 'Review and close the month', 'lock', 'done' if locked else ('attention' if not blocking else 'not_started'),

@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .mp-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
     .mp-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
@@ -68,8 +69,8 @@
             <div class="btn-group btn-group-sm"><button type="button" class="btn btn-outline-secondary" data-select-all>Select all</button><button type="button" class="btn btn-outline-secondary" data-clear>Clear</button></div>
             <div><div class="small text-muted">Ticked: this is the amount for the bank</div><div class="mp-total" data-total>$0.00</div><div class="small text-muted"><span data-count>0</span> rental<span data-plural>s</span></div></div>
             <div class="ms-auto d-flex align-items-end flex-wrap gap-2">
-                <label class="small text-muted">Date sent<input type="date" name="paid_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" required></label>
-                <label class="small text-muted">Reference (optional)<input type="text" name="reference" class="form-control form-control-sm" maxlength="60" placeholder="Check no., ACH batch&hellip;" style="width: 12rem;"></label>
+                <label class="small text-muted">Date sent<input aria-label="Date paid" type="date" name="paid_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" required></label>
+                <label class="small text-muted">Reference (optional)<input aria-label="Check number or ACH batch" type="text" name="reference" class="form-control form-control-sm" maxlength="60" placeholder="Check no., ACH batch&hellip;" style="width: 12rem;"></label>
                 <button class="btn btn-primary btn-sm" type="submit" data-record disabled><i data-lucide="check" class="icon"></i> Record payment</button>
             </div>
         </div>

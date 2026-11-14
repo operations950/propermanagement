@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ property.name }} — {{ month|date:"F Y" }} consolidated{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .cl-ov { font-size: 0.84rem; }
     .cl-ov thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); background: var(--surface-card, #fff); }

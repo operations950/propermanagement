@@ -4,7 +4,9 @@
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="refresh-cw" class="icon-lg"></i> Recurring {% include '_tip.html' with text="Everything that happens on a schedule. Bills and charges post by themselves on their dates when automatic posting is on. A bill whose amount changes waits for the bank statement. The close sheet only asks you to check that all of it worked." %}</h2>
-        <div class="small text-muted">{{ assoc.name }}{% if not profile.auto_post %} &middot; <span style="color: #8a5a00;">Automatic posting is off for this association.</span> <a href="{% url 'accounting:settings' assoc.pk %}#terms">Switch it on</a>{% endif %}</div></div>
+        <div class="small text-muted">{{ assoc.name }} &middot; Automatic posting is {% if profile.auto_post %}<strong>on</strong>{% else %}<strong style="color: #8a5a00;">off</strong>{% endif %}
+            <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="auto_post"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="auto" value="{% if profile.auto_post %}off{% else %}on{% endif %}"><button class="btn btn-link btn-sm p-0 align-baseline">{% if profile.auto_post %}Turn it off{% else %}Turn it on{% endif %}</button></form>
+            {% include '_tip.html' with text="Automatic posting posts the owner charges (a few days early) and the fixed recurring bills by themselves on their dates. Each recurring journal entry has its own switch as well. Turn it off to post everything by hand." %}</div></div>
     <div class="btn-group btn-group-sm ac-noprint">
         <a href="?tab={{ tab }}&month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
         <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
@@ -21,19 +23,13 @@
 
 {% if tab == 'bills' %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-    <div class="small text-muted">What we pay on a schedule. A fixed bill posts itself on its date and waits to be paid. A bill whose amount changes (a utility) is made from the bank statement line, for the amount the bank paid. Both are paid and matched when the statement is read.</div>
+    <div class="small text-muted">What we pay on a schedule. {% include '_tip.html' with text='A fixed bill posts itself on its date and waits to be paid. A bill whose amount changes (a utility) is made from the bank statement line, for the amount the bank paid. Both are paid and matched when the statement is read.' %}</div>
     <form method="post" class="ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="post_due">Post what is due now</button></form>
 </div>
-{% if needs %}<div class="ac-strip small mb-2">{{ month|date:"F" }}: {% for r in needs %}<strong>{{ r.description }}</strong> {% if r.this_month == 'waiting' %}is waiting on the bank statement{% else %}has not posted{% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}.</div>{% endif %}
-<div class="card mb-3"><div class="card-body p-2">
-<table class="table table-sm ac-table mb-0"><thead><tr><th>Bill</th><th>Vendor</th><th>How often</th><th>Next</th><th>Paid by</th><th class="ac-num">Amount</th><th>{{ month|date:"F" }}</th><th></th></tr></thead><tbody>
-{% for r in rows %}<tr class="{% if not r.is_active %}text-muted{% endif %}"><td><a class="text-decoration-none fw-semibold" href="?tab=bills&edit={{ r.pk }}">{{ r.description }}</a>{% if not r.is_active %} <span class="ac-chip">Stopped</span>{% endif %}</td><td>{{ r.vendor.name }}</td><td>{{ r.get_frequency_display }}</td>
-    <td>{{ r.next_date|mdate }}{% if r.post_on_month_end %} <span class="ac-chip" title="Billed in arrears: dated the last day of the month it covers">month end</span>{% endif %}</td>
-    <td>{% if r.pay_method == 'ach' %}Automatic{% else %}Check{% endif %}</td><td class="ac-num">{% if r.amount is not None %}{{ r.amount|money }}{% else %}<span class="text-muted">varies</span>{% endif %}</td>
-    <td>{% if r.this_month == 'posted' %}<span class="ac-chip good">Posted</span>{% elif r.this_month == 'waiting' %}<span class="ac-chip warn">Waiting on the statement</span>{% elif r.this_month == 'missing' %}<span class="ac-chip warn">Not posted</span>{% endif %}</td>
-    <td class="text-end ac-noprint"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="rec" value="{{ r.pk }}">{% if r.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="stop">Stop</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="resume">Resume</button>{% endif %}</form></td></tr>
-{% empty %}<tr><td colspan="8" class="text-muted p-3">No recurring bills yet. Add the ones that come every month: the same landscaping bill, the pool service, the power bill.</td></tr>{% endfor %}</tbody></table>
-</div></div>
+{% if needs %}<div class="ac-strip small mb-2">{{ month|date:"F" }}: {% for r in needs %}<strong>{{ r.description }}</strong> has not posted{% if not forloop.last %}; {% endif %}{% endfor %}.</div>{% endif %}
+{% include 'accounting/_recurring_rows.html' with rows=fixed_rows variable=False empty="No fixed recurring bills yet. Add the ones that come every month for the same amount: the landscaping bill, the pool service, the management fee." %}
+<h6 class="mt-3 mb-1 d-flex align-items-center gap-2">Variable bills: settled during the bank reconciliation {% include '_tip.html' with text="A bill whose amount changes each time (a utility) cannot be posted ahead. It is made from its line on the bank statement, for the amount the bank paid, when you do the bank reconciliation. They are not flagged here as missing." %}</h6>
+{% include 'accounting/_recurring_rows.html' with rows=variable_rows variable=True empty="None. A bill with no amount set is a variable bill: it is made from the bank statement line." %}
 <div class="card"><div class="card-body">
     <h6 class="card-title">{% if edit %}Edit {{ edit.description }}{% else %}Add a recurring bill{% endif %}</h6>
     <datalist id="vendors">{% for v in vendors %}<option value="{{ v }}">{% endfor %}</datalist>
@@ -53,7 +49,7 @@
 
 {% elif tab == 'charges' %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-    <div class="small text-muted">What owners are charged on a schedule: the monthly assessment, special assessments. Each posts a few days before it is due, dated the due date, so owners can see their balance.</div>
+    <div class="small text-muted">What owners are charged on a schedule: the monthly assessment, special assessments. {% include '_tip.html' with text='Each posts a few days before it is due, dated the due date, so owners can see their balance.' %}</div>
     <div class="d-flex gap-2 ac-noprint"><form method="post">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="charges_due">Post what is due now</button></form><a class="btn btn-sm btn-primary" href="{% url 'accounting:charge_new' assoc.pk %}">Add a charge</a></div>
 </div>
 <div class="card"><div class="card-body p-2">
@@ -85,7 +81,7 @@
 </div></div>
 
 {% else %}
-<div class="small text-muted mb-2">Entries that post themselves on a day of the month and do not touch cash: the cash is already on the bank statement, and the reconciliation catches it. The first is the reserve contribution.</div>
+<div class="small text-muted mb-2">Entries that post themselves on a day of the month and do not touch cash. {% include '_tip.html' with text='The cash is already on the bank statement, and the reconciliation catches it. The first is the reserve contribution.' %}</div>
 {% for jr in jrules %}
 <div class="card mb-3 {% if not jr.is_active %}text-muted{% endif %}"><div class="card-body">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -100,6 +96,7 @@
     <div class="d-flex flex-wrap gap-2 align-items-center ac-noprint">
         <form method="post" class="d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="jr_save"><input type="hidden" name="rule" value="{{ jr.pk }}"><label class="small text-muted mb-0">Transfer day</label><input class="form-control form-control-sm" type="number" min="1" max="31" name="day_of_month" value="{{ jr.day_of_month }}" style="width: 80px;"><button class="btn btn-sm btn-outline-secondary">Save</button></form>
         {% if jr.is_active and jr.st.state == 'due' or jr.is_active and jr.st.state == 'scheduled' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="jr_post"><input type="hidden" name="rule" value="{{ jr.pk }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><button class="btn btn-sm btn-primary">Post {{ month|date:"F" }} now</button></form>{% endif %}
+        <form method="post" class="d-flex align-items-center gap-2">{% csrf_token %}<input type="hidden" name="action" value="jr_auto"><input type="hidden" name="tab" value="entries"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="rule" value="{{ jr.pk }}"><input type="hidden" name="auto" value="{% if jr.auto_post %}off{% else %}on{% endif %}"><span class="small text-muted">Automatic posting: <strong>{% if jr.auto_post %}on{% else %}off{% endif %}</strong></span><button class="btn btn-sm btn-outline-secondary">{% if jr.auto_post %}Turn it off{% else %}Turn it on{% endif %}</button></form>
         <form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="rule" value="{{ jr.pk }}">{% if jr.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="jr_stop">Stop</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="jr_resume">Resume</button>{% endif %}</form>
     </div>
 </div></div>

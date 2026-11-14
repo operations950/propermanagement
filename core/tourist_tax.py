@@ -157,6 +157,7 @@ def attach_filings(rep):
         r['filing'] = f
         r['state'] = 'open' if f is None else ('filed' if f.amount == r['due'] else 'changed')
     rep['filed'] = sum(1 for r in rep['rows'] if r['state'] == 'filed')
+    rep['unfiled'] = len(rep['rows']) - rep['filed']
     rep['changed'] = sum(1 for r in rep['rows'] if r['state'] == 'changed')
     return rep
 
@@ -212,6 +213,68 @@ def report(month):
         'due': sum((r['due'] for r in rows), ZERO), 'days': sum(r['days'] for r in rows), 'flags': flags, 'due_on': due_on, 'late_after': due_on + timedelta(days=19),
         'in_progress': today < due_on, 'late': today > due_on + timedelta(days=19), 'rate': RATE,
     })
+
+
+def split_rows(rep):
+    """The county takes one payment for every property's return; the books need it split by property. One row per property with a return this month:
+    its tourist tax account number, the tax, the collection allowance and the amount due (its share of the payment). The shares add up to the payment."""
+    out = []
+    for r in rep['rows']:
+        f = r.get('filing')
+        out.append({'property': r['property'], 'tdt': r['property'].tdt_account_number, 'taxable': r['taxable'], 'tax': r['tax'], 'allowance': r['allowance'], 'due': r['due'],
+                    'state': r.get('state', 'open'), 'confirmation': f.confirmation if f else ''})
+    return out
+
+
+SPLIT_HEADER = ['Property', 'Tourist tax account', 'Taxable receipts', 'Tax (6%)', 'Collection allowance', 'Amount due (its share of the county payment)', 'Marked filed', 'Confirmation']
+
+
+def _split_table(rep):
+    rows = [[s['property'].name, s['tdt'], f'{s["taxable"]:.2f}', f'{s["tax"]:.2f}', f'{s["allowance"]:.2f}', f'{s["due"]:.2f}', 'yes' if s['state'] == 'filed' else 'no', s['confirmation']]
+            for s in split_rows(rep)]
+    rows.append(['TOTAL: the county payment', '', f'{rep["taxable"]:.2f}', f'{rep["tax"]:.2f}', f'{rep["allowance"]:.2f}', f'{rep["due"]:.2f}', '', ''])
+    return rows
+
+
+def split_csv_text(rep):
+    import csv
+    import io
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow([f'Tourist tax for {rep["month"]:%B %Y}: split of the county payment by property'])
+    w.writerow(SPLIT_HEADER)
+    for row in _split_table(rep):
+        w.writerow(row)
+    return out.getvalue()
+
+
+def split_xlsx_bytes(rep):
+    import io
+
+    import openpyxl
+    from openpyxl.styles import Font
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f'{rep["month"]:%b %Y}'[:31]
+    ws.append([f'Tourist tax for {rep["month"]:%B %Y}: split of the county payment by property'])
+    ws['A1'].font = Font(bold=True)
+    ws.append(SPLIT_HEADER)
+    for c in ws[2]:
+        c.font = Font(bold=True)
+    table = _split_table(rep)
+    for i, row in enumerate(table):
+        ws.append([row[0], row[1], *[Decimal(x) for x in row[2:6]], row[6], row[7]])
+        if i == len(table) - 1:
+            for c in ws[ws.max_row]:
+                c.font = Font(bold=True)
+    for row in ws.iter_rows(min_row=3, min_col=3, max_col=6):
+        for c in row:
+            c.number_format = '#,##0.00'
+    for col, width in zip('ABCDEFGH', (34, 20, 17, 12, 20, 40, 12, 18)):
+        ws.column_dimensions[col].width = width
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def csv_text(rep):

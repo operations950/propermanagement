@@ -46,4 +46,19 @@
 .ws-verdict.v-warning { background: color-mix(in srgb, var(--status-warning, #b7791f) 14%, white); }
 .ws-verdict.v-critical { background: color-mix(in srgb, var(--priority-urgent, #c53030) 12%, white); }
 @media (max-width: 640px) { .ws-row { grid-template-columns: minmax(0, 1fr) 3.4rem 0.8rem !important; } .ws-row .where, .ws-row .ws-pb { display: none; } }
+.ws-up { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--ink-muted); text-decoration: none; font-size: 0.9rem; }
+@media (max-width: 768px) {
+    /* a thumb can hit it: tabs, "up" links and little (i) buttons get a real tap area, and small fields stop being tiny */
+    .ws-up { min-height: 44px; padding-right: 0.8rem; font-size: 1rem; }
+    .ws-sub a { min-height: 44px; display: inline-flex; align-items: center; font-size: 1.05rem; }
+    .ws-sub2 a { font-size: 0.95rem; }
+    .ws-filter input, .ws-filter select { height: 2.75rem; font-size: 16px; max-width: 100%; }
+    .ws-note, .ws-empty { font-size: 0.95rem; }
+    .ws-rule { padding: 0.8rem 0.9rem; font-size: 1rem; }
+    .ws-rule small { font-size: 0.9rem; }
+    .ws-tile { min-height: 64px; padding: 1rem; font-size: 1.02rem; }
+    .ws-tile small { font-size: 0.92rem; }
+    .ws-label { font-size: 0.85rem; }
+    .info-tip { padding: 0.7rem; margin: -0.7rem -0.5rem; }
+}
 </style>

@@ -1,0 +1,119 @@
+/* Phone screens for Properties and Contacts: big type, big targets, one tap per thing, a clear way back up.
+   Everything here is either inside a block that only shows on phones (Bootstrap d-md-none) or scoped to phone widths, so the desktop screens are not touched. */
+
+.ml-scope { --ml-radius: 16px; --ml-gap: 0.75rem; }
+
+/* ---------- phone blocks: back link, title, tags ---------- */
+.ml-back { display: inline-flex; align-items: center; gap: .5rem; min-height: 48px; padding: 0 .25rem; margin: .25rem 0 .25rem -.25rem; font-size: 1.0625rem; font-weight: 500; color: var(--brand-slate); text-decoration: none; }
+.ml-back .icon { width: 1.35em; height: 1.35em; }
+.ml-title { font-size: 1.75rem; line-height: 1.2; font-weight: 700; margin: .25rem 0 .5rem; color: var(--ink-primary); overflow-wrap: anywhere; }
+.ml-sub { font-size: 1rem; line-height: 1.35; color: var(--ink-muted); overflow-wrap: anywhere; }
+.ml-ink { color: var(--ink-primary); }
+.ml-tags { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .5rem; }
+.ml-tag { display: inline-flex; align-items: center; min-height: 30px; padding: 0 .7rem; font-size: .9375rem; border: 1px solid var(--border-hairline); border-radius: 999px; background: #fff; color: var(--ink-primary); }
+.ml-tag-warn { background: color-mix(in srgb, var(--status-warning) 22%, white); border-color: var(--status-warning); color: #7a5200; }
+
+/* ---------- list rows ---------- */
+.ml-list { margin: 0; padding: 0; }
+.ml-row, .ml-card { display: block; background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: var(--ml-radius); margin-bottom: .7rem; color: var(--ink-primary); text-decoration: none; }
+.ml-row { display: flex; align-items: center; gap: .85rem; min-height: 72px; padding: .8rem .9rem; }
+.ml-row:active, .ml-card-main:active, .ml-act:active, .ml-btn:active { background: color-mix(in srgb, var(--brand-primary) 14%, white); }
+.ml-ico { flex: 0 0 44px; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: color-mix(in srgb, var(--brand-primary) 18%, white); color: var(--brand-slate); }
+.ml-ico .icon { width: 1.4rem; height: 1.4rem; }
+.ml-main { flex: 1 1 auto; min-width: 0; }
+.ml-name { font-size: 1.1875rem; line-height: 1.25; font-weight: 600; color: var(--ink-primary); overflow-wrap: anywhere; }
+.ml-line { font-size: 1rem; line-height: 1.3; color: var(--ink-muted); margin-top: .1rem; overflow-wrap: anywhere; }
+.ml-chev { flex: 0 0 auto; color: var(--ink-muted); }
+.ml-chev .icon { width: 1.5rem; height: 1.5rem; }
+.ml-badge { display: inline-flex; align-items: center; min-height: 28px; padding: 0 .65rem; font-size: .9375rem; font-weight: 600; border-radius: 999px; background: color-mix(in srgb, var(--brand-primary) 18%, white); color: #2c4a61; }
+.ml-badge-warn { background: color-mix(in srgb, var(--status-warning) 26%, white); color: #7a5200; }
+.ml-empty { text-align: center; padding: 2.5rem 1rem; font-size: 1.0625rem; color: var(--ink-muted); }
+
+/* a contact: the row opens the contact, the buttons under it dial / email (separate big targets) */
+.ml-card-main { display: flex; align-items: center; gap: .85rem; min-height: 72px; padding: .8rem .9rem; color: inherit; text-decoration: none; border-radius: var(--ml-radius) var(--ml-radius) 0 0; }
+.ml-acts { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; border-top: 1px solid var(--border-hairline); }
+.ml-act { display: flex; align-items: center; justify-content: center; gap: .5rem; min-height: 52px; font-size: 1.0625rem; font-weight: 600; color: var(--brand-slate); text-decoration: none; }
+.ml-act + .ml-act { border-left: 1px solid var(--border-hairline); }
+.ml-act .icon { width: 1.25rem; height: 1.25rem; }
+.ml-card:not(:has(.ml-acts)) .ml-card-main { border-radius: var(--ml-radius); }
+
+/* ---------- big buttons ---------- */
+.ml-btns { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; margin: .75rem 0 1rem; }
+.ml-btns-one { grid-template-columns: 1fr; }
+.ml-btn { display: flex; align-items: center; justify-content: center; gap: .55rem; min-height: 56px; padding: .4rem .75rem; font-size: 1.0625rem; font-weight: 600; text-align: center; line-height: 1.2; color: var(--ink-primary); background: #fff; border: 1px solid var(--border-hairline); border-radius: var(--ml-radius); text-decoration: none; }
+.ml-btn .icon { width: 1.35rem; height: 1.35rem; flex: 0 0 auto; }
+.ml-btn-primary { background: var(--brand-slate); border-color: var(--brand-slate); color: #fff; grid-column: 1 / -1; min-height: 60px; font-size: 1.125rem; }
+.ml-btn-quiet { font-weight: 500; color: var(--brand-slate); min-height: 52px; }
+.ml-btn-wide { grid-column: 1 / -1; }
+.ml-btn small { font-weight: 400; opacity: .85; }
+.ml-btn-primary:active { background: #4f6073; }
+
+/* ---------- details as big accordions (contact page) ---------- */
+.ml-acc { background: #fff; border: 1px solid var(--border-hairline); border-radius: var(--ml-radius); margin-bottom: .7rem; overflow: hidden; }
+.ml-acc > summary { display: flex; align-items: center; gap: .6rem; min-height: 60px; padding: .6rem 1rem; font-size: 1.1875rem; font-weight: 600; cursor: pointer; list-style: none; color: var(--ink-primary); }
+.ml-acc > summary::-webkit-details-marker { display: none; }
+.ml-acc > summary::after { content: ''; margin-left: auto; width: 12px; height: 12px; border-right: 2.5px solid var(--ink-muted); border-bottom: 2.5px solid var(--ink-muted); transform: rotate(45deg); transition: transform .15s; }
+.ml-acc[open] > summary::after { transform: rotate(-135deg); }
+.ml-acc > summary .icon { width: 1.35rem; height: 1.35rem; color: var(--brand-slate); }
+.ml-acc-body { padding: 0 1rem 1rem; font-size: 1.0625rem; }
+.ml-acc-body .ml-row { margin-bottom: .55rem; }
+.ml-acc-body p { margin-bottom: .6rem; overflow-wrap: anywhere; }
+.ml-note { white-space: pre-wrap; font-size: 1.0625rem; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* ---------- the property page's own cards as accordions on phones (set up by static/js/mobile-accordion.js) ---------- */
+.m-acc-on .m-acc:not(.m-open) .m-acc-wrap > :not(.m-acc-head) { display: none !important; }
+.m-acc-on .m-acc:not(.m-open) > :not(.m-acc-wrap):not(.m-acc-head) { display: none !important; }
+.m-acc-on .m-acc-head { position: relative; display: flex !important; align-items: center; flex-wrap: wrap; gap: .5rem; min-height: 56px; padding-right: 2.25rem; margin-bottom: 0 !important; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.m-acc-on .m-acc-head, .m-acc-on .m-acc-head h5, .m-acc-on .m-acc-head h6 { font-size: 1.1875rem; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.m-acc-on .m-acc-head::after { content: ''; position: absolute; right: .35rem; top: 50%; width: 12px; height: 12px; border-right: 2.5px solid var(--ink-muted); border-bottom: 2.5px solid var(--ink-muted); transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+.m-acc-on .m-acc.m-open .m-acc-head::after { transform: translateY(-30%) rotate(-135deg); }
+.m-acc-on .m-acc.m-open .m-acc-head { margin-bottom: .75rem !important; }
+.m-acc-on .m-acc.card > .card-body, .m-acc-on .m-acc.card .m-acc-wrap { padding-top: .35rem; padding-bottom: .35rem; }
+.m-acc-on .m-acc.m-open.card > .card-body, .m-acc-on .m-acc.m-open.card .m-acc-wrap { padding-bottom: 1rem; }
+.m-acc-on section.m-acc { background: #fff; border: 1px solid var(--border-hairline); border-radius: var(--ml-radius); padding: .35rem 1rem; }
+.m-acc-on section.m-acc.m-open { padding-bottom: 1rem; }
+.m-acc-on .m-acc.card { border-radius: var(--ml-radius); }
+
+/* the property page's own Contacts and Tickets cards on a phone: one thing per line, nothing running off the edge, bigger targets */
+.m-acc-on #contacts .d-flex.justify-content-between.border-top { flex-direction: column; align-items: flex-start !important; gap: .3rem; padding-top: .65rem !important; padding-bottom: .65rem !important; }
+.m-acc-on #contacts .d-flex.justify-content-between.border-top > div { max-width: 100%; }
+.m-acc-on #contacts .d-flex.justify-content-between.border-top a { font-size: 1.125rem; overflow-wrap: anywhere; }
+.m-acc-on #contacts .text-muted.small { display: block; font-size: 1rem !important; margin: .2rem 0 0 0 !important; overflow-wrap: anywhere; }
+.m-acc-on #contacts [data-thread-toggle], .m-acc-on #contacts [data-start-conversation] { min-height: 48px; display: inline-flex; align-items: center; gap: .4rem; font-size: 1.0625rem; padding: 0 !important; }
+.m-acc-on #tickets a.d-flex { min-height: 64px; align-items: center !important; }
+.m-acc-on #tickets .fw-medium { white-space: normal !important; font-size: 1.0625rem; }
+
+/* ---------- the pages' own search box, filter chips and forms, bigger on phones ---------- */
+@media (max-width: 767.98px) {
+    .ml-scope { font-size: 1.0625rem; }
+    .ml-scope .ml-title-row { gap: .6rem !important; }
+    .ml-scope .ml-title-row .page-title { font-size: 1.75rem; }
+    .ml-scope .ml-title-row .page-title .icon-lg { display: none; }                  /* the title and the New button share one line on a phone */
+    .ml-scope .ml-title-row:has(> .btn) { flex-wrap: nowrap !important; }
+    .ml-scope .ml-title-row > .btn { width: auto; flex: 0 0 auto; padding-left: 1rem; padding-right: 1rem; }
+    .ml-scope .ml-title-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+    .ml-scope .ml-title-actions .btn { flex: 1 1 45%; }
+    .ml-scope .ml-title-row .btn, .ml-scope .ml-title-actions .btn { min-height: 52px; font-size: 1.0625rem; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: var(--ml-radius); }
+    .ml-scope .ml-title-actions { width: 100%; }
+    .ml-scope .ml-title-actions .btn { flex: 1 1 auto; }
+    .ml-scope .ml-search-form .col-auto { width: 100%; flex: 0 0 100%; }
+    .ml-scope .ml-search-form input[type=text] { width: 100%; min-height: 56px; font-size: 1.125rem; border-radius: var(--ml-radius); padding-left: 3.1rem !important; }
+    .ml-scope .ml-search-form .position-relative > .icon { left: 1.05rem !important; width: 22px; height: 22px; }
+    .ml-scope .ml-search-form .form-check { display: flex; align-items: center; gap: .65rem; min-height: 48px; padding-left: 0; }
+    .ml-scope .ml-search-form .form-check-input { float: none; margin: 0; width: 1.6rem; height: 1.6rem; }
+    .ml-scope .ml-search-form .form-check-label { font-size: 1.0625rem; }
+    .ml-scope .ml-chips { gap: .55rem !important; margin-bottom: 1rem !important; }
+    .ml-scope .ml-chips .bubble { display: inline-flex; align-items: center; min-height: 48px; padding: 0 1.1rem; font-size: 1.0625rem; border-radius: 999px; }
+    .ml-scope .ml-chips .ml-chip-minor:not(.bubble-locked) { display: none; }
+    .ml-scope .ml-banner { font-size: 1rem; }
+    .ml-scope .ml-banner .btn { min-height: 48px; font-size: 1.0625rem; display: inline-flex; align-items: center; }
+
+    /* the contact edit form: same form, bigger inputs and spacing */
+    .ml-form .form-control, .ml-form .form-select { min-height: 52px; font-size: 1.0625rem; }
+    .ml-form textarea.form-control { min-height: 120px; }
+    .ml-form .form-label { font-size: 1.0625rem; }
+    .ml-form .mb-4 { margin-bottom: 1.4rem !important; }
+    .ml-form .btn { min-height: 52px; font-size: 1.0625rem; }
+    .ml-form .bubble { min-height: 44px; display: inline-flex; align-items: center; padding: 0 1rem; font-size: 1.0625rem; }
+    .ml-form .card-body { padding: 1rem !important; }
+}

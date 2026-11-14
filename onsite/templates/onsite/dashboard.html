@@ -1,8 +1,10 @@
 {% extends 'base.html' %}
-{% load alerts %}
+{% load alerts static %}
 
 {% block title %}On-Site Visits{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
+<div class="mo-page">
 {% if new_face %}{% include 'workspace/_onsite_tabs.html' %}{% endif %}
 {% page_alerts 'onsite' %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -23,24 +25,26 @@
         <a href="{% url 'onsite_visit_rule_list' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> {% if new_face %}Scheduled visits{% else %}Recurring visits{% endif %}</a>
         <a href="{% url 'onsite_visit_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New visit</a>
     </div>
-    <div class="d-flex d-md-none gap-2 w-100">
-        <a href="{% url 'onsite_visit_create' %}" class="btn btn-primary btn-sm flex-fill"><i data-lucide="plus" class="icon"></i> New visit</a>
-        <a href="{% url 'onsite_str_today' %}" class="btn btn-outline-primary btn-sm flex-fill"><i data-lucide="sun" class="icon"></i> Rentals today</a>
-        <div class="dropdown">
-            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
-            <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'onsite_rentals_calendar' %}">Rentals calendar</a></li>
-                <li><a class="dropdown-item" href="{% url 'onsite_reservation_list' %}">Reservations</a></li>
-                <li><a class="dropdown-item" href="{% url 'onsite_performance' %}">Performance</a></li>
-                <li><a class="dropdown-item" href="{% url 'onsite_checklist_templates' %}">Checklist templates</a></li>
-                {% if is_admin %}
-                <li><a class="dropdown-item" href="{% url 'onsite_checklist_custom_items' %}">Custom checklist items</a></li>
-                <li><a class="dropdown-item" href="{% url 'onsite_cleaning_payments' %}">Cleaning payments</a></li>
-                <li><a class="dropdown-item" href="{% url 'onsite_booking_feeds' %}">Booking calendars</a></li>
-                {% endif %}
-                <li><a class="dropdown-item" href="{% url 'onsite_visit_rule_list' %}">{% if new_face %}Scheduled visits{% else %}Recurring visits{% endif %}</a></li>
-            </ul>
+    <div class="d-md-none w-100">
+        <div class="mo-actions">
+            <a href="{% url 'onsite_visit_create' %}" class="mo-btn primary"><i data-lucide="plus" class="icon"></i> New visit</a>
+            <a href="{% url 'onsite_str_today' %}" class="mo-btn"><i data-lucide="sun" class="icon"></i> Rentals today</a>
         </div>
+        <details class="mo-more">
+            <summary class="mo-btn">More</summary>
+            <div class="mo-links">
+                <a class="mo-btn" href="{% url 'onsite_rentals_calendar' %}">Rentals calendar</a>
+                <a class="mo-btn" href="{% url 'onsite_reservation_list' %}">Reservations</a>
+                <a class="mo-btn" href="{% url 'onsite_performance' %}">Performance</a>
+                <a class="mo-btn" href="{% url 'onsite_checklist_templates' %}">Checklist templates</a>
+                {% if is_admin %}
+                <a class="mo-btn" href="{% url 'onsite_checklist_custom_items' %}">Custom checklist items</a>
+                <a class="mo-btn" href="{% url 'onsite_cleaning_payments' %}">Cleaning payments</a>
+                <a class="mo-btn" href="{% url 'onsite_booking_feeds' %}">Booking calendars</a>
+                {% endif %}
+                <a class="mo-btn" href="{% url 'onsite_visit_rule_list' %}">{% if new_face %}Scheduled visits{% else %}Recurring visits{% endif %}</a>
+            </div>
+        </details>
     </div>
 </div>
 
@@ -89,7 +93,20 @@
 </div>
 {% endif %}
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<div class="d-md-none">
+    {% if drilled_in_date %}
+    <a href="{% url 'onsite_dashboard' %}" data-no-back class="mo-back"><i data-lucide="arrow-left" class="icon"></i> Today + Tomorrow</a>
+    {% else %}
+    <div class="mo-seg">
+        <a href="{% url 'onsite_dashboard' %}?range=yesterday" class="mo-btn{% if range_key == 'yesterday' %} on{% endif %}">Yesterday</a>
+        <a href="{% url 'onsite_dashboard' %}" class="mo-btn{% if range_key == 'default' %} on{% endif %}">Today + Tomorrow</a>
+        <a href="{% url 'onsite_dashboard' %}?range=week" class="mo-btn{% if range_key == 'week' %} on{% endif %}">This week</a>
+        <a href="{% url 'onsite_dashboard' %}?range=month" class="mo-btn{% if range_key == 'month' %} on{% endif %}">Next 30 days</a>
+    </div>
+    {% endif %}
+    <a href="{% url 'onsite_calendar' %}" class="mo-btn mb-3"><i data-lucide="calendar" class="icon"></i> Calendar view</a>
+</div>
+<div class="d-none d-md-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     {% if drilled_in_date %}
     <a href="{% url 'onsite_dashboard' %}" data-no-back class="text-decoration-none small d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Today + Tomorrow</a>
     {% else %}
@@ -110,13 +127,19 @@
 {% endif %}
 
 {% for day in board_days %}
-<div class="card mb-3">
+<div class="card mb-3 daywrap">
     <div class="card-body">
-        <h6 class="card-title mb-3 d-flex align-items-center gap-2">
+        <h6 class="card-title mb-3 d-none d-md-flex align-items-center gap-2">
             {{ day.date|date:"l, M j" }}
             {% if day.is_today %}<span class="badge rounded-pill bg-light text-muted border">Today</span>{% endif %}
             {% if day.is_yesterday %}<span class="badge rounded-pill bg-light text-muted border">Yesterday</span>{% endif %}
         </h6>
+        <div class="mo-dayhead d-md-none">
+            {{ day.date|date:"l, M j" }}
+            {% if day.is_today %}<span class="mo-chip">Today</span>{% endif %}
+            {% if day.is_yesterday %}<span class="mo-chip">Yesterday</span>{% endif %}
+            <span class="mo-count ms-auto">{{ day.visits|length }} visit{{ day.visits|length|pluralize }}</span>
+        </div>
         {% if day.visits %}
         <div class="d-none d-md-block table-responsive">
             <table class="table table-sm align-middle">
@@ -156,29 +179,22 @@
         {% endcomment %}
         <div class="d-md-none">
         {% for visit in day.visits %}
-            <div class="card mb-2">
-                <div class="card-body p-3">
-                    <div class="d-flex justify-content-between align-items-start gap-2">
-                        <div>
-                            <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none fw-semibold">{{ visit.property.name }}</a>
-                            <div class="small text-muted">{{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.6rem;">+ Deep clean</span>{% endif %}</div>
-                        </div>
-                        {% include 'onsite/_visit_status_badge.html' with visit=visit %}
-                    </div>
-                    {% if visit.is_same_day_checkin %}
-                    <span class="badge rounded-pill mt-2" style="background: color-mix(in srgb, var(--priority-urgent) 15%, white); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, white); font-size: 0.6rem;" title="Next guest checks in the same day">
-                        <i data-lucide="log-in" class="icon" style="width: 10px; height: 10px;"></i> Same-day check-in
-                    </span>
-                    {% elif visit.vacancy_days %}
-                    <span class="badge rounded-pill bg-light text-muted border mt-2" style="font-size: 0.6rem;" title="Days until the next guest checks in">
-                        <i data-lucide="calendar-x" class="icon" style="width: 10px; height: 10px;"></i> {{ visit.vacancy_days }}{% if visit.vacancy_days == 30 %}+{% endif %} day{{ visit.vacancy_days|pluralize }} vacant
-                    </span>
-                    {% endif %}
-                    {% if visit.booking.listing_name %}<div class="small mt-1" style="color: var(--ink-muted);">{{ visit.booking.listing_name }}</div>{% endif %}
-                    <div class="small text-muted mt-2">
-                        {{ visit.assignee_label }}{% if visit.ready_by %} &middot; Ready by {{ visit.ready_by|time:"g:i A" }}{% endif %}
-                    </div>
+            <div class="mo-card">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <a href="{% url 'onsite_visit_detail' visit.pk %}" class="mo-title stretched-link">{{ visit.property.name }}{% if visit.unit %} &middot; {{ visit.unit.label }}{% endif %}</a>
+                    {% include 'onsite/_visit_status_badge.html' with visit=visit %}
                 </div>
+                <div class="mo-meta">{{ visit.visit_type }}</div>
+                <div class="mo-chips">
+                    {% if visit.is_deep_clean %}<span class="mo-chip">+ Deep clean</span>{% endif %}
+                    {% if visit.ready_by %}<span class="mo-chip"><i data-lucide="clock" class="icon"></i> Ready by {{ visit.ready_by|time:"g:i A" }}</span>{% endif %}
+                    {% if visit.is_same_day_checkin %}<span class="mo-chip urgent"><i data-lucide="log-in" class="icon"></i> Same-day check-in</span>
+                    {% elif visit.vacancy_days %}<span class="mo-chip"><i data-lucide="calendar-x" class="icon"></i> {{ visit.vacancy_days }}{% if visit.vacancy_days == 30 %}+{% endif %} day{{ visit.vacancy_days|pluralize }} vacant</span>{% endif %}
+                </div>
+                {% if visit.booking.listing_name %}<div class="mo-addr">{{ visit.booking.listing_name }}</div>{% endif %}
+                {% if visit.property.address %}<div class="mo-addr"><i data-lucide="map-pin" class="icon" style="width: 1rem; height: 1rem;"></i> {{ visit.property.address }}</div>{% endif %}
+                <div class="mo-meta">{{ visit.assignee_label }}</div>
+                {% if visit.property.address %}<a href="https://www.google.com/maps/search/?api=1&amp;query={{ visit.property.address|urlencode }}" target="_blank" rel="noopener" class="mo-btn mo-dir"><i data-lucide="navigation" class="icon"></i> Directions</a>{% endif %}
             </div>
         {% endfor %}
         </div>
@@ -188,4 +204,5 @@
     </div>
 </div>
 {% endfor %}
+</div>
 {% endblock %}

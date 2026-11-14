@@ -18,6 +18,30 @@ OWNER_STEPS = (7, 13)          # the owner payments: due by the 5th
 PREFIX = 'Month-end close: '
 NOTE_KEY = 'close-month:'
 
+# The screen each step is done on: (the screen's name, whether it is opened for one month). The checklist (close_views.close_steps) gives the same addresses.
+SCREENS = {1: ('close_bank_tieout', True), 2: ('close_misc', True), 3: ('close_escrow', True), 4: ('close_payouts', False), 5: ('close_overview', True), 6: ('close_long_term', True),
+           7: ('close_pay_owners', True), 8: ('close_pay_proper', True), 9: ('tourist_tax', True), 10: ('close_sales_tax', True), 11: ('close_rent_collection', True),
+           12: ('accounting:home', True), 13: ('close_pay_ltr_owners', True)}
+
+
+def screen_url(session):
+    """For a month-end close item, the address of its step's own screen for the month it is for, so the item can open there instead of on a screen of its own.
+    None for any other item, or for one whose step or month cannot be read."""
+    from django.urls import reverse
+    name = session.template.name if session.template_id else ''
+    notes = session.notes or ''
+    if not name.startswith(PREFIX) or not notes.startswith(NOTE_KEY):
+        return None
+    month_text = notes[len(NOTE_KEY):len(NOTE_KEY) + 7]
+    try:
+        datetime.strptime(month_text, '%Y-%m')
+        screen = SCREENS.get(int(name[len(PREFIX):].split('.', 1)[0]))
+    except ValueError:
+        return None
+    if screen is None:
+        return None
+    return reverse(screen[0]) + (f'?month={month_text}' if screen[1] else '')
+
 
 def _template(step):
     from worksessions.models import Frequency, SessionTemplate

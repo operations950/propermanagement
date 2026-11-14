@@ -1,3 +1,4 @@
+<style>@media (max-width: 768px) { .info-tip { padding: 0.7rem; margin: -0.7rem -0.5rem; } }</style>
 <div class="d-flex gap-2 flex-wrap mb-3">
     <a href="{% url 'timeclock_manage' %}" class="btn btn-sm {% if tab == 'today' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Today</a>
     <a href="{% url 'timeclock_hours' %}" class="btn btn-sm {% if tab == 'hours' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Hours</a>

@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
-{% load core_extras ticket_extras %}
+{% load core_extras ticket_extras static %}
 {% block title %}{{ property.name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
 {% block content %}
-<div class="my-3">
+<div class="my-3 d-none d-md-block">
     <a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Properties</a>
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
@@ -27,6 +28,35 @@
     </div>
 </div>
 
+{# The phone version of the top of this page: big back link, name, one primary action, big buttons. The cards below become tap-to-open sections (static/js/mobile-accordion.js). #}
+<div class="ml-scope d-md-none" data-m-acc-root>
+    <a href="{{ back_url }}" class="ml-back"><i data-lucide="arrow-left" class="icon"></i> Properties</a>
+    <h1 class="ml-title">{{ property.name }}</h1>
+    <div class="ml-tags">
+        <span class="ml-tag">{{ property.get_property_type_display }}</span>
+        {% if property.is_general %}<span class="ml-tag">General</span>{% endif %}
+        {% if not property.is_active %}<span class="ml-tag ml-tag-warn">Inactive</span>{% endif %}
+        {% if property.address_verified %}<span class="ml-tag">USPS verified</span>{% endif %}
+    </div>
+    {% if property.address %}<div class="ml-sub">{{ property.address }}</div>{% endif %}
+    {% property_call_contact property as call_contact %}
+    <div class="ml-btns">
+        <a href="{% url 'ticket_create' %}?property={{ property.pk }}" class="ml-btn ml-btn-primary"><i data-lucide="plus" class="icon"></i> New ticket</a>
+        <a href="#tickets" data-m-acc-link class="ml-btn"><i data-lucide="ticket" class="icon"></i> Open tickets{% if open_tickets|length %} ({{ open_tickets|length }}){% endif %}</a>
+        {% if property.address %}<a href="{{ property.address|maps_href }}" target="_blank" rel="noopener" class="ml-btn"><i data-lucide="map-pin" class="icon"></i> Directions</a>{% endif %}
+        {% if call_contact %}<a href="tel:{{ call_contact.phone|tel_href }}" class="ml-btn ml-btn-wide"><i data-lucide="phone" class="icon"></i> Call {{ call_contact.name }}</a>{% endif %}
+    </div>
+    <div class="ml-btns">
+        {% if property.property_type == 'str' and property.is_active and not property.is_general %}
+        <a href="{% url 'onsite_performance_calendar' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="calendar-days" class="icon"></i> Calendar</a>
+        <a href="{% url 'onsite_performance_property' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="chart-column" class="icon"></i> Performance</a>
+        {% endif %}
+        {% if ap %}<a href="{% url 'accounting:hub' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="chart-column" class="icon"></i> Accounting</a>{% endif %}
+        <a href="{% url 'property_edit' property.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="pencil" class="icon"></i> Edit</a>
+        <button type="button" class="ml-btn ml-btn-quiet ml-btn-wide" data-m-acc-all>Open all sections</button>
+    </div>
+</div>
+
 {% if specs_summary %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
     <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>Size needed for cleaning estimates:</strong> {{ specs_summary }}.</span>
@@ -41,7 +71,7 @@
 </div>
 {% endif %}
 
-<nav class="d-flex flex-wrap gap-2 mb-3 small" aria-label="Sections of this property">
+<nav class="d-none d-md-flex flex-wrap gap-2 mb-3 small" aria-label="Sections of this property">
     {% if ap %}<a href="#official" class="btn btn-sm btn-outline-secondary">Official record</a><a href="#owners" class="btn btn-sm btn-outline-secondary">Units &amp; owners</a><a href="#settings" class="btn btn-sm btn-outline-secondary">Accounting settings</a><a href="#docs" class="btn btn-sm btn-outline-secondary">Documents</a>
     {% else %}<a href="#units" class="btn btn-sm btn-outline-secondary">{% if units %}Units{% else %}Details{% endif %}</a>{% endif %}
     <a href="#building" class="btn btn-sm btn-outline-secondary">{% if units %}Building{% else %}Property-wide{% endif %}</a>
@@ -680,6 +710,18 @@
             <p class="small text-muted mb-0 mt-1">Applies to months still open; closed months keep the rate they were closed with. {% include '_tip.html' with text='A percent of each month’s income deposits (or, on net income, deposits less that month’s expenses and Owner Baseline Expenses). The owner payment is what is left after commission, reimbursable expenses and what is paid from trust.' %}</p>
         </form>
 
+        {% if property.property_type == 'ltr' and not property.income_collected_by_owner %}
+        <form method="post" class="border rounded p-2 mb-3" id="monthly-rent">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_monthly_rent">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <label class="small fw-semibold mb-0" for="monthly-rent-in">Monthly rent {% include '_tip.html' with text='The rent we expect to come in each month. Long-term rent collection in the month-end close compares what QuickBooks shows with it. Change it here when the rent changes; leave it blank to clear it.' %}</label>
+                <div class="input-group input-group-sm" style="max-width: 170px;"><span class="input-group-text">$</span><input type="number" name="monthly_rent" id="monthly-rent-in" class="form-control" step="0.01" min="0" value="{{ property.monthly_rent|floatformat:'2u' }}" placeholder="Not set"></div>
+                <button class="btn btn-outline-secondary btn-sm">Save</button>
+                {% if property.monthly_rent is None %}<span class="small" style="color: #8a5a00;">Not set</span>{% endif %}
+            </div>
+        </form>
+        {% endif %}
+
         <form method="post" class="border rounded p-2 mb-3" id="owner-legal-name">
             {% csrf_token %}<input type="hidden" name="action" value="qb_set_owner_legal_name">
             <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -689,6 +731,26 @@
                 {% if not property.owner_legal_name %}<span class="small" style="color: #8a5a00;">Not set</span>{% endif %}
             </div>
         </form>
+
+        {% if property.property_type == 'str' %}
+        <form method="post" class="border rounded p-2 mb-3" id="tax-ids">
+            {% csrf_token %}<input type="hidden" name="action" value="qb_set_tax_ids">
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <label class="small fw-semibold mb-0" for="tax-tdt">Tourist tax account {% include '_tip.html' with text='The Palm Beach County Tourist Development Tax account number this rental files its return under. It is shown on the Tourist tax screen beside the rental’s return.' %}</label>
+                <input type="text" name="tdt_account_number" id="tax-tdt" class="form-control form-control-sm" style="max-width: 200px;" maxlength="40" value="{{ property.tdt_account_number }}" placeholder="Account number">
+                <label class="small fw-semibold mb-0 ms-2" for="tax-btr">Business tax receipt</label>
+                <input type="text" name="business_tax_receipt_number" id="tax-btr" class="form-control form-control-sm" style="max-width: 200px;" maxlength="40" value="{{ property.business_tax_receipt_number }}" placeholder="Receipt number">
+            </div>
+            <div class="d-flex gap-2 flex-wrap align-items-center mt-2">
+                <label class="small fw-semibold mb-0" for="tax-renews">Renew by {% include '_tip.html' with text='The date the business tax receipt must be renewed. A reminder only: it turns amber 60 days before and red once it has passed, and nothing is blocked.' %}</label>
+                <input type="date" name="business_tax_receipt_renews_on" id="tax-renews" class="form-control form-control-sm" style="max-width: 170px;" value="{{ property.business_tax_receipt_renews_on|date:'Y-m-d' }}">
+                <button class="btn btn-outline-secondary btn-sm">Save</button>
+                {% if btr_state == 'overdue' %}<span class="small fw-semibold" style="color: var(--status-critical, #b42318);">Renewal date passed {{ btr_days_over }} day{{ btr_days_over|pluralize }} ago</span>
+                {% elif btr_state == 'soon' %}<span class="small" style="color: #8a5a00;">Renew in {{ btr_days }} day{{ btr_days|pluralize }}</span>{% endif %}
+                {% if not property.tdt_account_number %}<span class="small" style="color: #8a5a00;">No tourist tax account number yet</span>{% endif %}
+            </div>
+        </form>
+        {% endif %}
 
         <form method="post" class="border rounded p-2 mb-3" id="owner-portal">
             {% csrf_token %}<input type="hidden" name="action" value="qb_set_owner_portal">
@@ -970,4 +1032,5 @@
     });
 })();
 </script>
+<script src="{% static 'js/mobile-accordion.js' %}"></script>
 {% endblock %}

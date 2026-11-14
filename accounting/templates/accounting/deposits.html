@@ -29,7 +29,7 @@
 
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> Deposits</h2>
-        <div class="small text-muted">{{ assoc.name }} &middot; {{ bank.name }} &middot; {{ month|date:"F Y" }}</div></div>
+        <div class="small text-muted">{{ assoc.name }} &middot; {{ bank.label }} &middot; {{ month|date:"F Y" }}</div></div>
     {% if stmt %}<div class="ac-noprint d-flex align-items-center gap-2"><button type="button" class="btn btn-sm btn-outline-secondary" id="aheadBtn">Record payments before the deposit arrives</button>
         {% include '_tip.html' with text='Use this when you have owner checks in hand and want them in the books now. They wait here, listed as already recorded, and you tie them to the bank deposit when it shows up.' %}</div>{% endif %}
 </div>

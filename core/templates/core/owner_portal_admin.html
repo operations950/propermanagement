@@ -18,7 +18,7 @@
 {% for r in rentals %}
 <div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3">
     <div class="fw-semibold">{{ r.property.name }} <span class="text-muted fw-normal small">· {{ r.released }} month{{ r.released|pluralize }} released</span></div>
-    <table class="table table-sm mb-0 small">
+    <div class="table-responsive"><table class="table table-sm mb-0 small">
         <thead><tr><th>Owner contact</th><th>Email</th><th>Login</th><th></th></tr></thead>
         <tbody>
         {% for o in r.owners %}<tr><td>{{ o.contact.name }}</td><td>{% if o.contact.email %}{{ o.contact.email }}{% else %}<span style="color: #9a6a00;">no email — they cannot sign up or be told</span>{% endif %}</td>
@@ -26,7 +26,7 @@
             <td class="text-end text-nowrap">{% if o.contact.email %}<form method="post" class="d-inline" onsubmit="return confirm('Give {{ o.contact.email }} a temporary password? Only do this once you are sure you are speaking to that person.');">{% csrf_token %}<input type="hidden" name="action" value="temp_password"><input type="hidden" name="email" value="{{ o.contact.email }}"><button class="btn btn-outline-secondary btn-sm py-0">Temporary password</button></form>{% endif %}</td></tr>
         {% empty %}<tr><td colspan="4" style="color: #9a6a00;">No owner contact is linked to this rental. Add one on its property page (type Owner).</td></tr>{% endfor %}
         </tbody>
-    </table>
+    </table></div>
 </div></div>
 {% empty %}<div class="alert alert-info small py-2">The portal isn't open for any rental yet. Open it on a property's page ("Owner portal open").</div>{% endfor %}
 

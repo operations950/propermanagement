@@ -2,6 +2,9 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 {% include 'workspace/_css.html' %}
+{% include 'timeclock/_clock_card.html' %}
+{% comment %}On a phone (static/css/mobile.css, .m-home): the day first as big rows, then a compact one-day-at-a-time calendar (_mobile_agenda.html) in place of the wide column. On a computer nothing changes.{% endcomment %}
+<div class="m-home">
 <div class="ws-tabs">{% for key, label in horizons %}<a href="?h={{ key }}{% if everyone %}&scope=all{% endif %}" class="{% if horizon == key %}on{% endif %}">{{ label }}</a>{% endfor %}</div>
 <div class="row g-4">
 <div class="{% if calendar_configured %}col-lg-8{% else %}col-12{% endif %}">
@@ -20,13 +23,15 @@
 {% endfor %}
 </div>
 {% if calendar_configured %}
-<div class="col-lg-4">
+<div class="col-lg-4 ws-cal-col">
 <div class="card ws-calendar" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
 <h6 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Your calendar</h6>
 {% include 'tickets/_dashboard_calendar.html' %}
 </div></div>
 </div>
 {% endif %}
+</div>
+{% if calendar_configured %}{% include 'workspace/_mobile_agenda.html' %}{% endif %}
 </div>
 <style>@media (min-width: 992px) { .ws-calendar { position: sticky; top: 0.75rem; max-height: calc(100vh - 1.5rem); overflow-y: auto; } }</style>
 {% endblock %}

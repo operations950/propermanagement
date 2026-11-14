@@ -14,9 +14,9 @@
     </div>
 </div>
 {% for r in rows %}
-<a class="ac-step" href="{% url 'accounting:budget_year' r.assoc.pk year %}">
+<a class="ac-step" href="{% url 'accounting:budget_project' r.assoc.pk year %}">
     <i data-lucide="building-2" class="icon ac-ico"></i>
-    <span class="fw-semibold flex-grow-1">{{ r.assoc.name }}<span class="d-block small text-muted fw-normal">{% if r.status == 'done' %}{{ year }} budget approved and locked{% elif r.status %}{{ r.detail }}{% else %}No budget in the system for {{ year }}.{% endif %} {% if r.status != 'done' %}<span class="d-none d-sm-inline">&middot; {{ r.closed }}</span>{% endif %}</span></span>
+    <span class="fw-semibold flex-grow-1">{{ r.assoc.name }}<span class="d-block small text-muted fw-normal">{% if r.status == 'done' %}{{ year }} budget loaded into the system{% elif r.status %}Next: {{ r.detail }}{% else %}No budget in the system for {{ year }}.{% endif %} {% if r.status != 'done' %}<span class="d-none d-sm-inline">&middot; {{ r.closed }}</span>{% endif %}</span></span>
     <span class="ac-chip {{ r.status }}">{% if r.status == 'done' %}<i data-lucide="check" class="icon" style="width: 13px; height: 13px;"></i> Complete{% else %}{{ r.label }}{% endif %}</span>
     <i data-lucide="chevron-right" class="icon text-muted"></i>
 </a>

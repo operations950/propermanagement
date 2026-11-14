@@ -22,6 +22,6 @@ class Command(BaseCommand):
             prop = profile.property
             done = charges.post_due(prop, today)
             made = payables.post_recurring(prop, today)
-            entries = scheduled.post_due(prop, today)
+            entries = scheduled.post_due(prop, today, automatic=True)         # each recurring entry also has its own switch
             if done or made or entries:
                 self.stdout.write(f'{prop.name}: {sum(n for _, _, n in done)} charges, {len(made)} bills, {len(entries)} scheduled entries')

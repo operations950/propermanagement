@@ -1,0 +1,10 @@
+{% load static %}{% comment %}The installable web app: the manifest (which carries the session cookie, so it knows where this person's app should open), the colours, the iPhone home screen settings and the icons.
+Include with  app='owner'  on the owner portal's pages, so that is where its app opens.{% endcomment %}
+    <link rel="manifest" href="{% url 'pwa_manifest' %}{% if app == 'owner' %}?app=owner{% endif %}" crossorigin="use-credentials">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="{% if app == 'owner' %}Owner{% else %}Proper{% endif %}">
+    <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">

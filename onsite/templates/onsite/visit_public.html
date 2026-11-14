@@ -2,6 +2,8 @@
 {% load static %}
 {% block title %}{{ visit.property.name }}{% if visit.unit %} — {{ visit.unit.label }}{% endif %} — {{ visit.visit_type }}{% endblock %}
 {% block content %}
+<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">
+<div class="mo-page">
 {% csrf_token %}
 <div class="card my-3">
     <div class="card-body p-4">
@@ -15,8 +17,11 @@
             {% for line in guest_time_lines %}<div><i data-lucide="clock" class="icon"></i> {{ line }}</div>{% endfor %}
         </div>
         {% endif %}
+        {% if visit.property.address %}
+        <a href="https://www.google.com/maps/search/?api=1&amp;query={{ visit.property.address|urlencode }}" target="_blank" rel="noopener" class="mo-btn mb-2"><i data-lucide="navigation" class="icon"></i> {{ visit.property.address }}</a>
+        {% endif %}
         {% if visit.property.gate_code or visit.property.door_code or visit.property.lockbox_code or visit.property.wifi_network or visit.property.access_notes %}
-        <div class="small mb-2">
+        <div class="small mb-2 access-codes">
             {% if visit.property.gate_code %}<div>Gate code: <strong>{{ visit.property.gate_code }}</strong></div>{% endif %}
             {% if visit.property.door_code %}<div>Door code: <strong>{{ visit.property.door_code }}</strong></div>{% endif %}
             {% if visit.property.lockbox_code %}<div>Lockbox code: <strong>{{ visit.property.lockbox_code }}</strong></div>{% endif %}
@@ -42,9 +47,9 @@
     {% csrf_token %}
     <input type="hidden" name="action" value="start">
     {% if visit.unit.access_code %}
-    <button class="btn btn-primary btn-lg px-5" type="submit"><i data-lucide="key" class="icon"></i> Get Code</button>
+    <button class="btn btn-primary btn-lg px-5 mo-start" type="submit"><i data-lucide="key" class="icon"></i> Get Code</button>
     {% else %}
-    <button class="btn btn-primary btn-lg px-5" type="submit"><i data-lucide="play" class="icon"></i> Start</button>
+    <button class="btn btn-primary btn-lg px-5 mo-start" type="submit"><i data-lucide="play" class="icon"></i> Start</button>
     {% endif %}
 </form>
 
@@ -247,6 +252,7 @@
     </div>
 </div>
 {% endif %}
+</div>
 <script src="{% static 'js/signature-pad.js' %}"></script>
 <script src="{% static 'js/checklist-actions.js' %}"></script>
 {% endblock %}

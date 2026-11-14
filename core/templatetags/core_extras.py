@@ -72,3 +72,35 @@ def unaccepted(items):
 @register.filter
 def accepted_any(items):
     return any(i.get('accepted') for i in items)
+
+
+@register.filter
+def tel_href(phone):
+    """A tel:/sms: friendly number from however it was typed: digits only, keeping a leading +."""
+    raw = str(phone or '').strip()
+    digits = ''.join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return ''
+    return ('+' if raw.startswith('+') else '') + digits
+
+
+@register.filter
+def maps_href(address):
+    """A link that opens an address in the phone's maps app (or Google Maps in a browser)."""
+    from urllib.parse import quote_plus
+    address = str(address or '').strip()
+    return f'https://www.google.com/maps/search/?api=1&query={quote_plus(address)}' if address else ''
+
+
+# who to offer first when a property page has a Call button: on-site people, then the board, then owners, then anyone else with a phone number
+CALL_ORDER = ['on_site_staff', 'board_member', 'association_member', 'owner', 'tenant', 'staff_adjacent', 'vendor', 'lead', 'guest', 'other']
+
+
+@register.simple_tag
+def property_call_contact(prop):
+    """The one contact of this property to offer as a Call button (the first with a phone number, by the order above), or None."""
+    rank = {k: i for i, k in enumerate(CALL_ORDER)}
+    people = [c for c in prop.contacts.all() if (c.phone or '').strip()]
+    if not people:
+        return None
+    return sorted(people, key=lambda c: (rank.get(c.contact_type, 99), c.name.lower()))[0]

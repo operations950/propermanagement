@@ -1,0 +1,165 @@
+/* The phone: a launcher menu, a top bar, and sizes a thumb can hit.
+ *
+ * How a person uses a phone drives this file: text you can read without zooming (16px and up), things to tap that are at least 48px tall with room between them, almost nothing to type,
+ * and one obvious way back UP to the six-tile menu (/m/) from anywhere. Everything that changes how an existing page looks is inside a phone-width media query (768px and under), so
+ * the desktop pages are exactly as they were. The utility classes at the top (.m-tile, .m-row, .m-chip, .m-btn-primary) are for any phone screen to use; they look fine on a big screen too.
+ * "Open the full site" (on the menu) adds html.m-full for the rest of the visit: the top bar steps aside and the usual menu comes back.
+ */
+:root { --m-bar-h: 56px; --m-radius: 18px; }
+
+/* ---------------------------------------------------------------- the pieces any phone screen can use */
+.m-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.m-tile {
+    display: flex; flex-direction: column; justify-content: space-between; gap: 10px; min-height: 124px; padding: 16px;
+    background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: var(--m-radius); box-shadow: var(--shadow-card);
+    color: var(--ink-primary); text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.m-tile:hover, .m-tile:focus-visible { color: var(--ink-primary); border-color: var(--brand-primary); }
+.m-tile:active { transform: scale(0.98); background: #f7f6fa; }
+.m-tile-icon { width: 34px; height: 34px; padding: 7px; box-sizing: content-box; border-radius: 14px; background: #eaf0f5; color: var(--brand-slate); stroke-width: 1.9; flex: none; }
+.m-tile-label { display: block; font-size: 1.3rem; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
+.m-tile-hint { display: block; margin-top: 2px; font-size: 0.98rem; line-height: 1.25; color: var(--ink-secondary); }
+.m-tile[data-state="in"] .m-tile-hint { color: var(--status-good); font-weight: 600; }
+.m-tile[data-state="out"] .m-tile-hint { color: #a86a00; font-weight: 600; }
+.m-tile[data-state="done"] .m-tile-hint { color: var(--ink-muted); }
+
+.m-row {
+    display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 10px 16px; margin-bottom: 8px; width: 100%;
+    background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: 14px; color: var(--ink-primary);
+    font-size: 1.05rem; font-weight: 500; text-decoration: none; text-align: left; -webkit-tap-highlight-color: transparent;
+}
+.m-row:hover, .m-row:focus-visible { color: var(--ink-primary); border-color: var(--brand-primary); }
+.m-row:active { background: #f7f6fa; }
+.m-row .icon, .m-row svg { width: 22px; height: 22px; color: var(--brand-slate); flex: none; }
+.m-row small { display: block; font-size: 0.92rem; font-weight: 400; color: var(--ink-secondary); }
+button.m-row { cursor: pointer; font-family: inherit; }
+
+.m-chip {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--border-hairline);
+    background: #fff; color: var(--ink-primary); font-size: 1rem; font-weight: 500; text-decoration: none; white-space: nowrap; cursor: pointer;
+}
+.m-chip.on, .m-chip[aria-pressed="true"] { background: var(--brand-slate); border-color: var(--brand-slate); color: #fff; }
+.m-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.m-btn-primary {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 54px; padding: 0 20px; border: 0; border-radius: 14px;
+    background: var(--brand-slate); color: #fff; font-size: 1.1rem; font-weight: 600; text-decoration: none; cursor: pointer;
+}
+.m-btn-primary:hover, .m-btn-primary:focus-visible { background: var(--role-property_manager, #2c4a61); color: #fff; }
+.m-btn-primary:active { transform: translateY(1px); }
+
+/* ---------------------------------------------------------------- the menu screen (/m/) */
+.m-launch { max-width: 640px; margin: 0 auto; padding-top: 0.5rem; }
+.m-greet { margin: 0.5rem 0.15rem 1rem; }
+.m-greet-hi { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+.m-greet-date { margin-top: 2px; font-size: 1.05rem; color: var(--ink-secondary); }
+.m-label { margin: 1.6rem 0.15rem 0.6rem; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-secondary); }
+.m-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.m-quick .m-row { flex-direction: column; justify-content: center; gap: 4px; min-height: 76px; margin: 0; padding: 10px 6px; text-align: center; font-size: 0.98rem; }
+.m-launch form { margin: 0; }
+
+/* ---------------------------------------------------------------- the top bar (built by templates/_mobile_bar.html; only ever shown on a phone) */
+.m-bar, .m-fullbar { display: none; }
+
+/* ---------------------------------------------------------------- phones */
+@media (max-width: 768px) {
+    html:not(.m-full) .brand-bar, html:not(.m-full) .ws-lines { display: none !important; }       /* the small hamburger menu: the Menu button replaces it */
+    html:not(.m-full) .m-bar {
+        position: sticky; top: 0; z-index: 1030; display: flex; align-items: center; gap: 2px; box-sizing: content-box; height: var(--m-bar-h);
+        padding: env(safe-area-inset-top, 0px) max(8px, env(safe-area-inset-right, 0px)) 0 max(8px, env(safe-area-inset-left, 0px));
+        background: #fff; border-bottom: 1px solid var(--border-hairline); box-shadow: 0 1px 6px rgba(43, 43, 46, 0.05);
+    }
+    html.m-full .m-fullbar { display: block; position: sticky; top: 0; z-index: 1030; background: var(--brand-slate); text-align: center; }
+    html.m-full .m-fullbar a { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 18px; color: #fff; font-size: 1.05rem; font-weight: 600; text-decoration: none; }
+    .m-bar-btn {
+        display: inline-flex; flex: none; white-space: nowrap; align-items: center; gap: 6px; min-width: 48px; min-height: 48px; padding: 0 12px; border-radius: 12px; color: var(--brand-slate);
+        font-size: 1.05rem; font-weight: 600; text-decoration: none; -webkit-tap-highlight-color: transparent;
+    }
+    .m-bar-btn:hover, .m-bar-btn:focus-visible { color: var(--brand-slate); background: var(--surface-page); }
+    .m-bar-btn:active { background: #e3e0ea; }
+    .m-bar-btn[hidden] { display: none; }
+    .m-bar-icon { width: 24px; height: 24px; stroke-width: 2; flex: none; }
+    .m-bar-title { flex: 1 1 auto; min-width: 0; padding: 0 8px; font-size: 1.12rem; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .m-bar.m-has-back .m-bar-back { order: -1; }
+    .m-bar.m-has-back .m-bar-menu { padding: 0 10px; }
+    .m-bar.m-has-back .m-bar-menu .m-bar-btn-text { display: none; }                      /* with Back showing, Menu is just its icon: the title keeps its room */
+    .m-bar-top { justify-content: center; }
+    .m-bar-brand { display: flex; align-items: center; justify-content: center; }
+    .m-bar-logo { height: 30px; width: auto; }
+
+    .page-content { padding-top: 1rem; padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)); padding-left: max(1rem, env(safe-area-inset-left, 0px)) !important; padding-right: max(1rem, env(safe-area-inset-right, 0px)) !important; }
+    html:not(.m-full) .sticky-top { top: var(--m-bar-h); }
+    html:not(.m-full) table.rp thead th, html:not(.m-full) .cl-table thead th { top: var(--m-bar-h); }
+
+    /* readable, tappable controls. 16px on a field is what stops iOS zooming in when it is tapped. */
+    html { -webkit-text-size-adjust: 100%; }
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea, .form-control, .form-select { font-size: 16px !important; }
+    .form-control:not(textarea), .form-select { min-height: 48px; }
+    textarea.form-control { min-height: 96px; }
+    .form-check-input { width: 1.4em; height: 1.4em; }
+    .form-check-label { padding-left: 0.2rem; }
+    .btn:not(.btn-link):not(.btn-close):not(.info-tip) { min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+    .btn-sm:not(.btn-link) { min-height: 42px; font-size: 1rem; padding-left: 0.85rem; padding-right: 0.85rem; }
+    .btn-link { min-height: 44px; display: inline-flex; align-items: center; }
+    .list-group-item-action, .dropdown-item, .nav-pills .nav-link, .nav-tabs .nav-link { min-height: 52px; display: flex; align-items: center; }
+    .badge { font-size: 0.85rem; }
+    .small, small { font-size: 0.9rem; }
+    .page-title { font-size: 1.6rem; }
+    .modal-dialog { margin: 0.75rem; }
+    .toast-stack { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+
+    /* a wide table scrolls sideways inside its own box instead of squeezing to unreadable; keep the text a size you can read (the squeeze rules in base.html stop at 575px) */
+    .table-responsive { -webkit-overflow-scrolling: touch; }
+    html .table-responsive .table { font-size: 0.95rem; }
+    html .table-responsive .table > :not(caption) > * > * { padding: 0.55rem 0.6rem; }
+}
+
+/* ---------------------------------------------------------------- Home on a phone: the day first, as big rows; then a compact calendar */
+.m-agenda { display: none; }
+@media (max-width: 768px) {
+    .m-home .ws-tabs { gap: 8px; margin: 0.25rem 0 1rem; }
+    .m-home .ws-tabs a { padding: 0; min-height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 14px; font-size: 1.05rem; }
+    .m-home .ws-head { gap: 0.6rem; margin-bottom: 0.4rem; }
+    .m-home .ws-head h2 { font-size: 1.5rem; }
+    .m-home .ws-head .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; font-size: 1rem; color: var(--ink-secondary); }
+    .m-home .ws-head .meta a { margin: 0; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: 999px; background: #e3e0ea; text-decoration: none; color: var(--brand-slate); }
+    .m-home .ws-head .meta a.on { background: #fff; color: var(--ink-primary); box-shadow: 0 1px 2px rgba(43, 43, 46, .12); text-decoration: none; }
+    .m-home .ws-head .meta .ms-3 { margin-left: auto !important; font-weight: 600; }
+    .m-home .ws-kind { margin: 1.3rem 0 0.45rem 0.2rem; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.07em; color: var(--ink-secondary); }
+    .m-home .ws-person { margin-top: 1.4rem; font-size: 1rem; }
+    .m-home .ws-row { grid-template-columns: minmax(0, 1fr) auto 1.1rem !important; column-gap: 12px; min-height: 64px; padding: 0.7rem 0.8rem 0.7rem 0.9rem; margin-bottom: 8px; border-left-width: 6px; border-radius: 0 14px 14px 0; }
+    .m-home .ws-row .where { display: none; }
+    .m-home .ws-row .main b { font-size: 1.08rem; font-weight: 600; line-height: 1.25; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .m-home .ws-row .main small { margin-top: 2px; font-size: 0.95rem; white-space: normal; display: block; overflow: hidden; text-overflow: ellipsis; }
+    .m-home .ws-row .main small .d-md-none { display: inline !important; }
+    .m-home .ws-row .due { align-self: center; min-width: 3.4rem; padding: 0.3rem 0.65rem; border-radius: 999px; background: rgba(43, 43, 46, 0.06); font-size: 0.98rem; font-weight: 600; text-align: center; }
+    .m-home .ws-row .due.late { background: color-mix(in srgb, var(--status-critical) 12%, white); }
+    .m-home .ws-row .go { font-size: 1.5rem; line-height: 1; }
+    .m-home .ws-empty { font-size: 1.05rem; padding: 1rem; }
+
+    /* the desktop calendar column steps aside; the day's agenda takes its place */
+    .m-home .ws-cal-col { display: none; }
+    .m-home.m-show-cal .ws-cal-col { display: block; }
+    .m-home .ws-calendar { position: static !important; max-height: none !important; }
+    .m-agenda { display: block; margin-top: 1.6rem; }
+    .m-agenda-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .m-agenda-step { flex: none; width: 56px; height: 56px; border: 1px solid var(--border-hairline); border-radius: 14px; background: #fff; color: var(--brand-slate); font-size: 2rem; line-height: 1; cursor: pointer; }
+    .m-agenda-step:active { background: #f1f0f5; }
+    .m-agenda-step:disabled { opacity: 0.35; }
+    .m-agenda-title { flex: 1; min-width: 0; text-align: center; }
+    .m-agenda-title b { display: block; font-size: 1.25rem; font-weight: 700; }
+    .m-agenda-title span { display: block; font-size: 1rem; color: var(--ink-secondary); }
+    .m-agenda-day, .m-agenda-all { background: #fff; border: 1px solid var(--border-hairline); border-radius: 16px; padding: 4px 0; box-shadow: var(--shadow-card); }
+    .m-agenda-day[hidden] { display: none; }
+    .m-ev { display: grid; grid-template-columns: 5.2rem minmax(0, 1fr); column-gap: 10px; align-items: start; padding: 12px 14px; border-top: 1px solid var(--border-hairline); }
+    .m-ev:first-child { border-top: 0; }
+    .m-ev-time { font-size: 1rem; font-weight: 600; color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+    .m-ev-what { min-width: 0; display: flex; align-items: flex-start; gap: 8px; font-size: 1.05rem; line-height: 1.3; }
+    .m-ev-what i { flex: none; width: 10px; height: 10px; margin-top: 0.45em; border-radius: 50%; }
+    .m-ev.past { opacity: 0.55; }
+    .m-agenda-empty { padding: 18px 16px; font-size: 1.05rem; color: var(--ink-secondary); }
+    .m-agenda-day h6, .m-agenda-all h6 { margin: 0; padding: 10px 14px 4px; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-secondary); }
+    .m-agenda-all[hidden] { display: none; }
+    .m-agenda-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .m-agenda-foot .m-chip { flex: 1 1 auto; }
+}

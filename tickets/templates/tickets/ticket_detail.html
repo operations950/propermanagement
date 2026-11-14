@@ -1,8 +1,32 @@
 {% extends 'base.html' %}
-{% load ticket_extras %}
+{% load static ticket_extras %}
 {% block title %}{{ ticket.title }}{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-tickets.css' %}" rel="stylesheet">{% endblock %}
+{% block mobile_back_url %}{{ back_url }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-start my-3">
+{# Phones: the essentials in big type, the common actions as big buttons, everything else in tap-to-open sections (static/js/mobile-tickets.js). Wide screens: the page below, unchanged. #}
+<div class="m-td d-md-none">
+    <a class="m-td-back" href="{{ back_url }}"><i data-lucide="arrow-left" class="icon"></i> Tickets</a>
+    <h1 class="m-td-title">{{ ticket.title }}</h1>
+    <div class="m-td-chips">
+        <span class="m-td-chip status">{{ ticket.get_status_display }}</span>
+        {% if ticket.priority == 'urgent' %}<span class="m-td-chip urgent">Urgent</span>{% elif ticket.priority == 'high' %}<span class="m-td-chip">High priority</span>{% endif %}
+        {% if ticket.get_assigned_role_display %}<span class="m-td-chip">{{ ticket.get_assigned_role_display }}</span>{% endif %}
+    </div>
+    <div class="m-td-facts">
+        <div><span>Property</span><strong>{{ ticket.property.name|default:'None yet' }}{% if ticket.unit %} &middot; {{ ticket.unit.label }}{% endif %}</strong></div>
+        <div><span>Due</span><strong class="{% if ticket|is_overdue:now %}late{% endif %}">{% if ticket.due_date %}{{ ticket.due_date|date:'D, M j' }}{% if ticket|is_overdue:now %} &middot; Late{% endif %}{% else %}No due date{% endif %}</strong></div>
+        <div><span>Assigned to</span><strong>{% if ticket.assigned_staff %}{{ ticket.assigned_staff }}{% elif ticket.assigned_contact %}{{ ticket.assigned_contact }}{% else %}Nobody yet{% endif %}</strong></div>
+    </div>
+    <div class="m-td-actions">
+        <button type="button" class="m-td-act primary" data-m-goto="note">Add an update</button>
+        <button type="button" class="m-td-act" data-m-goto="status">Change status</button>
+        <button type="button" class="m-td-act" data-m-goto="Internal Reassign">Reassign</button>
+        <button type="button" class="m-td-act" data-m-goto="Mark Complete">Mark done</button>
+        <button type="button" class="m-td-act wide" data-m-goto="Documents">Add a photo or file</button>
+    </div>
+</div>
+<div class="d-none d-md-flex justify-content-between align-items-start my-3">
     <div>
         <a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Tickets</a>
         <h2 class="page-title">{{ ticket.title }}</h2>
@@ -1318,4 +1342,5 @@
     </div>
   </div>
 </div>
+<script src="{% static 'js/mobile-tickets.js' %}"></script>
 {% endblock %}

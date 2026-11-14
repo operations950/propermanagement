@@ -466,9 +466,11 @@ def property_list(request):
         qs = qs.filter(is_active=True)
     qs = qs.annotate(unit_count=Count('units', distinct=True)).order_by('property_type', '-is_general', 'name').prefetch_related('units')
     properties = list(qs)
+    open_counts = dict(Ticket.objects.filter(property__in=[p.pk for p in properties], status__in=OPEN_STATUSES).values_list('property').annotate(n=Count('id')))
     for p in properties:
         p.missing_specs = property_specs.missing_specs(p)
         p.specs_summary = property_specs.summary(p.missing_specs)
+        p.open_ticket_count = open_counts.get(p.pk, 0)               # the phone list shows it under the name
     needs_details = request.GET.get('needs') == 'details'
     if needs_details:
         properties = [p for p in properties if p.missing_specs]
@@ -1007,6 +1009,22 @@ PROPERTY_SECTIONS = {
 }
 
 
+def _clean_tax_ids(tdt, receipt, renews):
+    """The three tax identifiers of a short-term rental, tidied: (TDT account number, business tax receipt number, renewal date or None). Raises ValueError with a plain message."""
+    return ' '.join((tdt or '').split())[:40], ' '.join((receipt or '').split())[:40], _clean_renewal_date(renews)
+
+
+def _clean_renewal_date(raw):
+    from django.utils.dateparse import parse_date
+    raw = (raw or '').strip()
+    if not raw:
+        return None
+    day = parse_date(raw)
+    if day is None:
+        raise ValueError('Type the renewal date as a date.')
+    return day
+
+
 def _property_qb_action(request, prop, action):
     """Admin: tie this rental to its two QuickBooks accounts, or refresh the list."""
     if not _is_admin(request.user):
@@ -1048,6 +1066,36 @@ def _property_qb_action(request, prop, action):
         prop.owner_legal_name = ' '.join((request.POST.get('owner_legal_name') or '').split())[:200]
         prop.save(update_fields=['owner_legal_name'])
         messages.success(request, f'{prop.name}: we pay the owner as {prop.owner_legal_name}.' if prop.owner_legal_name else f"{prop.name}: the owner's legal name is cleared.")
+    elif action == 'qb_set_tax_ids':
+        try:
+            if prop.property_type != Property.Type.SHORT_TERM_RENTAL:
+                raise ValueError('Only a short-term rental has a tourist tax account and a business tax receipt.')
+            tdt, receipt, renews = _clean_tax_ids(request.POST.get('tdt_account_number'), request.POST.get('business_tax_receipt_number'), request.POST.get('business_tax_receipt_renews_on'))
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        else:
+            prop.tdt_account_number, prop.business_tax_receipt_number, prop.business_tax_receipt_renews_on = tdt, receipt, renews
+            prop.save(update_fields=['tdt_account_number', 'business_tax_receipt_number', 'business_tax_receipt_renews_on'])
+            messages.success(request, f'{prop.name}: tax numbers saved.')
+    elif action == 'qb_set_monthly_rent':
+        raw = (request.POST.get('monthly_rent') or '').strip().lstrip('$').replace(',', '')
+        try:
+            if prop.property_type != Property.Type.LONG_TERM_RENTAL:
+                raise ValueError('Only a long-term rental has a monthly rent.')
+            amount = None
+            if raw:
+                try:
+                    amount = Decimal(raw).quantize(Decimal('0.01'))
+                except InvalidOperation:
+                    raise ValueError('Type the monthly rent as a dollar amount.')
+                if amount < 0 or amount > Decimal('99999999.99'):
+                    raise ValueError('Type the monthly rent as a dollar amount.')
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        else:
+            prop.monthly_rent = amount
+            prop.save(update_fields=['monthly_rent'])
+            messages.success(request, f'{prop.name}: the rent is ${amount:,.2f} a month. Rent collection compares each month with it.' if amount is not None else f"{prop.name}: the monthly rent is cleared. Rent collection will ask for it again.")
     elif action == 'qb_set_owner_portal':
         opened = request.POST.get('owner_portal_open') == 'on'
         prop.owner_portal_open = opened
@@ -1532,9 +1580,11 @@ def property_detail(request, pk):
 
     from legalforms.models import DocumentTemplate
     from legalforms.views import _allowed as _can_use_documents
+    btr_state, btr_days = prop.business_tax_receipt_state()
     return render(request, 'core/property_detail.html', {
         **_assoc_extra(request, prop),
         'property': prop,
+        'btr_state': btr_state, 'btr_days': btr_days, 'btr_days_over': -btr_days if btr_state == 'overdue' else None,
         'sections': PROPERTY_SECTIONS.get(prop.property_type, PROPERTY_SECTIONS_COMMON),
         'can_use_documents': _can_use_documents(request.user),
         'legal_templates': DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True) if prop.property_type == Property.Type.ASSOCIATION else [],
@@ -1848,6 +1898,25 @@ def contact_edit(request, pk):
         process_runs=contact.process_runs.select_related('process_template').prefetch_related('steps__attachments'),
         attachable_process_templates=ProcessTemplate.objects.filter(is_active=True),
     ))
+
+
+@login_required
+def contact_detail(request, pk):
+    """A contact at a glance: who they are, one tap to call / text / email, where they sit (properties and units), their open tickets, notes and documents.
+    Read-only: the phone list opens this, and its Edit button goes to the edit page."""
+    contact = get_object_or_404(Contact.objects.prefetch_related('properties', 'documents'), pk=pk)
+    tickets = (
+        Ticket.objects.filter(status__in=OPEN_STATUSES)
+        .filter(Q(assigned_contact=contact) | Q(ticket_contacts__contact=contact))
+        .select_related('property').distinct().order_by('due_date', 'pk')[:25]
+    )
+    return render(request, 'core/contact_detail.html', {
+        'contact': contact,
+        'properties': list(contact.properties.all()),
+        'units': list(contact.units.select_related('property').order_by('property__name', 'label')),
+        'open_tickets': list(tickets),
+        'documents': list(contact.documents.all()),
+    })
 
 
 @login_required

@@ -1,0 +1,98 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ year }} budget project - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<style>
+    .bp-step { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); margin-bottom: 8px; }
+    .bp-row { display: flex; gap: 12px; align-items: center; padding: 12px 16px; flex-wrap: wrap; }
+    .bp-step.off { opacity: .62; }
+    .bp-n { flex: none; width: 30px; height: 30px; border-radius: 50%; background: #e9edf3; color: #394456; display: grid; place-items: center; font-weight: 700; font-size: .9rem; }
+    .bp-step.done .bp-n { background: color-mix(in srgb, var(--status-good) 20%, white); color: #0b6a0b; }
+    .bp-step.doing { border-color: var(--brand-primary); }
+    .bp-step.doing .bp-n { background: var(--brand-primary); color: #fff; }
+    .bp-txt { flex: 1 1 220px; min-width: 0; }
+    .bp-act { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .bp-more { border-top: 1px solid var(--border-hairline); padding: 10px 16px 14px 58px; background: #fafbfc; border-radius: 0 0 12px 12px; }
+    .bp-more summary { cursor: pointer; font-weight: 600; color: var(--brand-primary); }
+    .bp-meet { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); padding: 10px 14px; margin-bottom: 12px; }
+    @media (max-width: 575px) { .bp-more { padding-left: 16px; } .bp-act { justify-content: flex-start; width: 100%; } }
+</style>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="list-checks" class="icon-lg"></i> {{ assoc.name }} &mdash; {{ year }} budget {% include '_tip.html' with text="The steps from the first draft to a budget the books use for the year. Each step has one button. Steps open in order; a step that is done stays open so you can go back and look. The detailed budget screens are behind steps 1, 2 and 5." %}</h2>
+        <div class="small text-muted">{{ units }} unit{{ units|pluralize }} &middot; {{ closed }}</div>
+    </div>
+</div>
+
+{% if project or have %}
+<form method="post" class="bp-meet">{% csrf_token %}<input type="hidden" name="action" value="details">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-auto fw-semibold d-flex align-items-center gap-1" style="min-width: 8rem;">The meeting {% include '_tip.html' with text="When and where the board meets to consider the budget. The notice is made from this, and the page tells you how many days before the meeting the notice went out." %}</div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-0">Date</label><input type="date" name="meeting_date" value="{{ project.meeting_date|date:'Y-m-d' }}" class="form-control form-control-sm"></div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-0">Time</label><input name="meeting_time" value="{{ project.meeting_time }}" placeholder="6:00 p.m." class="form-control form-control-sm" maxlength="40"></div>
+        <div class="col-12 col-md"><label class="form-label small text-muted mb-0">Place</label><input name="meeting_place" value="{{ project.meeting_place }}" placeholder="Clubhouse, 100 Main St" class="form-control form-control-sm" maxlength="200"></div>
+        <div class="col-12 col-md-auto"><button class="btn btn-sm btn-outline-secondary">Save</button></div>
+    </div>
+</form>
+{% endif %}
+
+{% for s in steps %}
+<div class="bp-step {{ s.status }}{% if not s.enabled %} off{% endif %}" id="step-{{ s.key }}">
+    <div class="bp-row">
+        <span class="bp-n">{% if s.status == 'done' %}<i data-lucide="check" class="icon" style="width: 16px; height: 16px;"></i>{% else %}{{ s.n }}{% endif %}</span>
+        <div class="bp-txt"><div class="fw-semibold">{{ s.title }}</div><div class="small text-muted">{{ s.detail }}</div></div>
+        <span class="ac-chip {{ s.chip }}">{{ s.chip_label }}</span>
+        {% if s.enabled %}
+        <div class="bp-act">
+            {% if s.key == 'draft' %}
+                {% if not have.draft %}
+                    {% if can_start %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="start"><button class="btn btn-primary btn-sm">Start the {{ year }} budget</button></form>
+                    {% else %}<span class="small text-muted">Close at least one month of {{ year|add:"-1" }} first.</span>{% endif %}
+                {% else %}
+                    <a class="btn btn-outline-secondary btn-sm" href="{{ draft_url }}">Open the draft</a>
+                    {% if not have.board %}<form method="post" onsubmit="return confirm('Start the Board draft? The draft stays exactly as it is, and the board&#39;s version starts from it.');">{% csrf_token %}<input type="hidden" name="action" value="to_board"><button class="btn btn-primary btn-sm">Start the Board draft</button></form>{% endif %}
+                {% endif %}
+            {% elif s.key == 'board' %}
+                {% if have.board %}<a class="btn btn-outline-secondary btn-sm" href="{{ board_url }}">Open the Board draft</a>
+                    {% if not project.final_at and not have.meeting and not have.approved %}<form method="post" onsubmit="return confirm('Mark the Board draft final for mailing? It is not locked: if you change it after you print the notice, the packet will tell you.');">{% csrf_token %}<input type="hidden" name="action" value="final"><button class="btn btn-primary btn-sm">Mark it final for mailing</button></form>
+                    {% elif project.final_at and not project.notice_doc_id and not have.meeting %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="unfinal"><button class="btn btn-link btn-sm text-muted">Not final yet</button></form>{% endif %}
+                {% endif %}
+            {% elif s.key == 'mailing' %}
+                <a class="btn {% if s.status == 'doing' %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm" href="{{ packet_url }}">{% if s.status == 'done' %}Open the packet{% else %}Make the packet{% endif %}</a>
+            {% elif s.key == 'mailed' %}
+                {% if project.affidavit_doc_id %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{% url 'accounting:budget_packet_file' assoc.pk year 'affidavit' %}">Affidavit</a>{% endif %}
+            {% elif s.key == 'meeting' %}
+                {% if have.board and not have.meeting %}<form method="post" onsubmit="return confirm('Prepare the meeting version? The Board draft that was mailed is frozen exactly as it is, and the meeting version starts from it.');">{% csrf_token %}<input type="hidden" name="action" value="to_meeting"><button class="btn btn-primary btn-sm">Prepare the meeting version</button></form>{% endif %}
+                {% if have.meeting %}<a class="btn {% if not project.held_on %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm" href="{{ meeting_url }}">Run the meeting</a>
+                    {% if not project.held_on and not have.approved %}<form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="action" value="held"><input type="date" name="held_on" value="{{ project.meeting_date|default:today|date:'Y-m-d' }}" class="form-control form-control-sm" style="width: 9.5rem;" aria-label="The day it was held"><button class="btn btn-outline-secondary btn-sm">It is over</button></form>{% endif %}
+                {% endif %}
+            {% elif s.key == 'locked' %}
+                {% if have.approved %}<a class="btn btn-outline-secondary btn-sm" href="{{ approved_url }}">See the approved budget</a>
+                    <form method="post" onsubmit="return confirm('Open the approved budget again? It goes back to the Meeting final and stops being the budget in the system until it is approved again. What was loaded for the year is not undone.');">{% csrf_token %}<input type="hidden" name="action" value="reopen"><button class="btn btn-link btn-sm text-muted">Open it again</button></form>
+                {% elif have.meeting %}<form method="post" onsubmit="return confirm('Lock this as the approved {{ year }} budget? It becomes the budget in the system. You can still open it again if you must.');">{% csrf_token %}<input type="hidden" name="action" value="lock"><button class="btn btn-primary btn-sm" {% if not project.held_on %}disabled title="Mark the meeting over first"{% endif %}>Approve and lock</button></form>{% endif %}
+            {% elif s.key == 'loaded' %}
+                {% if have.approved %}<a class="btn {% if s.status == 'doing' %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm" href="{{ load_url }}">{% if s.status == 'done' %}See what was loaded{% else %}Load it{% endif %}</a>{% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% if s.key == 'mailed' and s.enabled and project.notice_doc_id %}
+    <div class="bp-more">
+        <details {% if s.status == 'doing' %}open{% endif %}><summary>{% if project.mailed_on %}Change what was recorded{% else %}Record the mailing{% endif %}</summary>
+            <form method="post" class="row g-2 mt-1 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="mailed">
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Date it went out</label><input type="date" name="mailed_on" value="{{ project.mailed_on|default:today|date:'Y-m-d' }}" class="form-control form-control-sm" required></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">How</label><select name="method" class="form-select form-select-sm">{% for m in methods %}<option {% if m == project.mail_method %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Who sent it (signs the affidavit)</label><input name="by" value="{{ default_by }}" class="form-control form-control-sm" maxlength="120"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Their title</label><input name="title" value="{{ default_title }}" class="form-control form-control-sm" maxlength="120"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Owners it went to {% include '_tip.html' with text="Counted from the owners and their addresses as they stand. Change it only if you sent to a different number." %}</label><input type="number" min="1" name="count" value="{{ project.mailed_count|default:live_count }}" class="form-control form-control-sm"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Posted on the property (optional)</label><input type="date" name="posted_on" class="form-control form-control-sm"></div>
+                <div class="col-12 col-md-auto"><button class="btn btn-primary btn-sm">Record it and make the affidavit</button></div>
+            </form>
+            {% if days_before is not None and days_before < 14 %}<div class="small mt-2" style="color: #8a5a00;">Mailed {{ days_before }} day{{ days_before|pluralize }} before the meeting: the statute asks for not less than 14.</div>{% endif %}
+        </details>
+    </div>
+    {% endif %}
+    {% if s.key == 'mailing' and changed %}<div class="bp-more"><span class="ac-chip warn">The budget changed after the notice was made</span> <span class="small text-muted">Open the packet and make the notice again before you mail it.</span></div>{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

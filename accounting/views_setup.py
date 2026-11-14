@@ -1,4 +1,5 @@
 """Accounting settings, the official record, bank accounts and the documents (upload, ask, confirm)."""
+import re
 from decimal import Decimal
 
 from django.contrib import messages
@@ -11,12 +12,43 @@ from django.utils import timezone
 
 from . import charges, checkprint, closing, documents, invoice_inbox, ledger, owners
 from . import standard_chart as sc
-from .models import AssociationDocument, BankAccount, Budget, ChargeRule, SettingProposal
+from .models import AssociationDocument, BankAccount, Budget, ChargeRule, Payment, Receipt, SettingProposal
 from .web import admin_only, association_or_404, parse_date, parse_money
 
 
 def _go(name, *args):
     return reverse(f'accounting:{name}', args=args)
+
+
+def _clean_last4(raw):
+    raw = (raw or '').strip()
+    if not raw:
+        return ''
+    digits = re.sub(r'\D', '', raw)
+    if not digits:
+        raise ValueError('The last 4 are digits, like 9511.')
+    return digits[-4:]
+
+
+def _save_bank(prop, bank, post):
+    """Rename or change one of the association's bank accounts in place. The cash account in the books can only change while nothing is tied to it."""
+    name = (post.get('name') or '').strip()
+    if not name:
+        raise ValueError('Name the bank account.')
+    if BankAccount.objects.filter(association=prop, name__iexact=name).exclude(pk=bank.pk).exists():
+        raise ValueError(f'Another bank account is already called {name}.')
+    acct = prop.accounts.filter(pk=post.get('account'), code__lt='1200', kind='asset').first()
+    if acct is None:
+        raise ValueError('Choose the cash account in the books it is.')
+    if acct.pk != bank.account_id:
+        if BankAccount.objects.filter(association=prop, account=acct, is_active=True).exclude(pk=bank.pk).exists():
+            raise ValueError(f'{acct} is already another bank account\'s cash account.')
+        if bank.statements.exists() or Payment.objects.filter(bank_account=bank).exists() or Receipt.objects.filter(bank_account=bank).exists():
+            raise ValueError('This bank account already has statements or payments tied to its cash account, so that cannot change here. Rename it, or add a new bank account.')
+    bank.name, bank.bank_name, bank.last4 = name, (post.get('bank_name') or '').strip(), _clean_last4(post.get('last4'))
+    bank.kind = 'reserve' if post.get('kind') == 'reserve' else 'operating'
+    bank.account = acct
+    bank.save()
 
 
 def settings_rows(prop):
@@ -31,7 +63,7 @@ def settings_rows(prop):
         ('Fiscal year', f'{["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][profile.fiscal_year_start_month]} start', True, 'settings', 'terms'),
         ('Billing', (f'${rule.amount:,.2f} {"a unit" if rule.method == "flat" else "split by share"}, {rule.get_frequency_display().lower()}') if rule else 'No regular charge yet', bool(rule), 'charges', ''),
         ('Unit shares', shares_text, shares_ok, 'shares', ''),
-        ('Bank accounts', ', '.join(f'{b.name} ({b.bank_name})' if b.bank_name else b.name for b in prop.bank_accounts.filter(is_active=True)) or 'None yet', prop.bank_accounts.filter(is_active=True).exists(), 'settings', 'banks'),
+        ('Bank accounts', ', '.join(f'{b.label} ({b.bank_name})' if b.bank_name else b.label for b in prop.bank_accounts.filter(is_active=True)) or 'None yet', prop.bank_accounts.filter(is_active=True).exists(), 'settings', 'banks'),
         ('Reserve spending', 'Always needs board approval', True, None, ''),
         ('Late fee and interest', 'Read from the declaration', profile.late_fee_is_set(), 'settings', 'late'),
         ('Spending limit without the board', f'${profile.spending_limit:,.2f}' if profile.spending_limit is not None else 'Read from the management contract', profile.spending_limit is not None, 'settings', 'terms'),
@@ -169,11 +201,17 @@ def settings(request, pk):
                 acct = prop.accounts.filter(pk=code).first()
                 if acct is None:
                     raise ValueError('Choose the cash account in the books it is.')
-                BankAccount.objects.update_or_create(association=prop, name=name, defaults={'bank_name': (request.POST.get('bank_name') or '').strip(), 'last4': (request.POST.get('last4') or '').strip()[:4],
+                BankAccount.objects.update_or_create(association=prop, name=name, defaults={'bank_name': (request.POST.get('bank_name') or '').strip(), 'last4': _clean_last4(request.POST.get('last4')),
                                                                                              'kind': 'reserve' if request.POST.get('kind') == 'reserve' else 'operating', 'account': acct, 'is_active': True})
                 messages.success(request, 'Saved.')
+            elif action == 'bank_edit':
+                bank = get_object_or_404(BankAccount, pk=request.POST.get('bank'), association=prop)
+                _save_bank(prop, bank, request.POST)
+                messages.success(request, f'Saved: {bank.label}.')
             elif action == 'bank_off':
                 BankAccount.objects.filter(pk=request.POST.get('bank'), association=prop).update(is_active=False)
+            elif action == 'bank_on':
+                BankAccount.objects.filter(pk=request.POST.get('bank'), association=prop).update(is_active=True)
             elif action == 'upload':
                 f = request.FILES.get('file')
                 if f is None:

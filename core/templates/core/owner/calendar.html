@@ -1,0 +1,62 @@
+{% extends 'core/owner/base.html' %}
+{% block title %}Calendar — {{ prop.name }}{% endblock %}
+{% block content %}
+<style>
+    .oc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+    .oc-dow { text-align: center; font-size: 0.68rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 2px; }
+    .oc-day { min-height: 3.1rem; border: 1px solid var(--hair); border-radius: 8px; padding: 3px 4px; background: #fff; font-size: 0.78rem; line-height: 1.15; overflow: hidden; }
+    .oc-day .num { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .oc-day .tag { display: block; font-size: 0.6rem; font-weight: 600; margin-top: 2px; }
+    .oc-day.out { visibility: hidden; }
+    .oc-day.past { opacity: 0.55; }
+    .oc-day.today { box-shadow: inset 0 0 0 2px var(--slate); }
+    .oc-day.booked { background: #d8e6f0; border-color: #9fbdd3; color: #24465e; }
+    .oc-day.owner { background: #e7def0; border-color: #bba6d0; color: #4a2f6b; }
+    .oc-day.blocked { background: repeating-linear-gradient(45deg, #f1f1f3, #f1f1f3 5px, #e4e5e9 5px, #e4e5e9 10px); border-color: #c4c7ce; color: #4d5260; }
+    .oc-key { display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 4px; border: 1px solid var(--hair); vertical-align: -2px; margin-right: 0.3rem; }
+    .oc-key.booked { background: #d8e6f0; border-color: #9fbdd3; }
+    .oc-key.owner { background: #e7def0; border-color: #bba6d0; }
+    .oc-key.blocked { background: repeating-linear-gradient(45deg, #f1f1f3, #f1f1f3 3px, #e4e5e9 3px, #e4e5e9 6px); border-color: #c4c7ce; }
+    @media (max-width: 575.98px) { .oc-day { min-height: 2.7rem; padding: 2px 3px; font-size: 0.72rem; } .oc-day .tag { font-size: 0.55rem; } }
+</style>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <a href="{% url 'owner_home' %}?property={{ prop.pk }}" class="small text-decoration-none no-print">&larr; Financials</a>
+        <h1 class="fs-3 mb-0">{{ prop.name }}</h1>
+        <div class="muted small">Calendar{% if prop.address %} · {{ prop.address }}{% endif %}</div>
+    </div>
+    {% if props|length > 1 %}
+    <div class="d-flex flex-wrap gap-1 no-print" role="group" aria-label="Rental">{% for p in props %}<a class="btn btn-sm {% if p.pk == prop.pk %}btn-brand{% else %}btn-outline-secondary{% endif %}" href="{% url 'owner_calendar' p.pk %}">{{ p.name }}</a>{% endfor %}</div>
+    {% endif %}
+</div>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 no-print">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Month">
+        {% if cal.previous %}<a class="btn btn-outline-secondary" href="?month={{ cal.previous|date:'Y-m' }}" aria-label="Earlier month">&lsaquo;</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-hidden="true">&lsaquo;</span>{% endif %}
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink); background: #fff;">{{ cal.month|date:"F Y" }}</span>
+        {% if cal.next %}<a class="btn btn-outline-secondary" href="?month={{ cal.next|date:'Y-m' }}" aria-label="Later month">&rsaquo;</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-hidden="true">&rsaquo;</span>{% endif %}
+    </div>
+    <select class="form-select form-select-sm" style="max-width: 11rem;" aria-label="Jump to a month" onchange="location.href='?month=' + this.value">
+        {% for m in cal.months %}<option value="{{ m|date:'Y-m' }}" {% if m == cal.month %}selected{% endif %}>{{ m|date:"F Y" }}</option>{% endfor %}
+    </select>
+</div>
+<div class="small mb-3"><span class="me-3"><span class="oc-key booked"></span>Booked</span><span class="me-3"><span class="oc-key owner"></span>Owner stay</span><span><span class="oc-key blocked"></span>Blocked</span></div>
+
+{% for g in cal.grids %}
+<div class="op-card p-3 mb-3">
+    {% if cal.multi or g.label %}<h2 class="fs-6 mb-2">{% if g.label %}Unit {{ g.label }}{% else %}{{ prop.name }}{% endif %}</h2>{% endif %}
+    <div class="oc-grid mb-1">{% for d in cal.weekdays %}<div class="oc-dow">{{ d }}</div>{% endfor %}</div>
+    {% for week in g.weeks %}
+    <div class="oc-grid mb-1">{% for c in week %}
+        <div class="oc-day{% if not c.in_month %} out{% endif %}{% if c.past %} past{% endif %}{% if c.today %} today{% endif %}{% if c.status %} {{ c.status }}{% endif %}"{% if c.in_month %} aria-label="{{ c.date|date:'F j' }}{% if c.label %}: {{ c.label }}{% endif %}"{% endif %}>
+            <span class="num">{{ c.num }}</span>{% if c.label %}<span class="tag">{{ c.label }}</span>{% endif %}
+        </div>{% endfor %}
+    </div>
+    {% endfor %}
+    <div class="muted small mt-2">{{ g.counts.booked }} night{{ g.counts.booked|pluralize }} booked{% if g.counts.owner %}, {{ g.counts.owner }} owner stay{{ g.counts.owner|pluralize:",s" }}{% endif %}{% if g.counts.blocked %}, {{ g.counts.blocked }} blocked{% endif %}, {{ g.open }} open in {{ cal.month|date:"F" }}.</div>
+</div>
+{% empty %}
+<div class="op-card p-4 text-center"><p class="muted mb-0">No calendar to show for {{ prop.name }} yet.</p></div>
+{% endfor %}
+<p class="muted" style="font-size: 0.75rem;">Each box is a night. A grey box is a day that has passed. Blocked nights are unavailable on the booking calendar without a reservation behind them.</p>
+{% endblock %}

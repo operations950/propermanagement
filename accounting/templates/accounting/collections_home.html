@@ -1,0 +1,19 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Owner collections{% endblock %}
+{% block acc_body %}
+<div class="mb-3">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Owner collections {% include '_tip.html' with text="Owners who are behind, in each association we keep the books for: who has no late letter yet, who can go to the lawyer, who is due to move to the next step. Open an association to see the owners." %}</h2>
+    <div class="small text-muted">{{ total }} owner{{ total|pluralize }} need{{ total|pluralize:'s,' }} attention in all</div>
+</div>
+{% for r in rows %}
+<a class="ac-step" href="{% url 'accounting:collections' r.assoc.pk %}">
+    <i data-lucide="building-2" class="icon ac-ico"></i>
+    <span class="flex-grow-1"><span class="fw-semibold">{{ r.assoc.name }}</span><br><span class="small text-muted">{% if r.bits %}{% for b in r.bits %}{{ b }}{% if not forloop.last %}; {% endif %}{% endfor %}{% elif r.open %}{{ r.open }} open case{{ r.open|pluralize }}, none needing you{% else %}Nobody is behind{% endif %}</span></span>
+    <span class="ac-chip {% if r.count %}attention{% else %}done{% endif %}">{% if r.count %}{{ r.count }} need{{ r.count|pluralize:'s,' }} attention{% else %}Nothing to do{% endif %}</span>
+    <i data-lucide="chevron-right" class="icon text-muted"></i>
+</a>
+{% empty %}
+<div class="card"><div class="card-body text-muted">No association is set up for financials yet.</div></div>
+{% endfor %}
+{% endblock %}

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}FAQ answers to review{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <a href="{% url 'property_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Properties</a>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div>
@@ -71,8 +72,8 @@
             <div class="collapse mt-2" id="q-edit-{{ f.pk }}">
                 <form method="post" class="d-flex flex-column gap-2">
                     {% csrf_token %}<input type="hidden" name="action" value="edit"><input type="hidden" name="faq_id" value="{{ f.pk }}">
-                    <input type="text" name="question" class="form-control form-control-sm" maxlength="300" value="{{ f.question }}" required>
-                    <textarea name="answer" class="form-control form-control-sm" rows="3" maxlength="2000" required>{{ f.answer }}</textarea>
+                    <input aria-label="Question" type="text" name="question" class="form-control form-control-sm" maxlength="300" value="{{ f.question }}" required>
+                    <textarea aria-label="Answer" name="answer" class="form-control form-control-sm" rows="3" maxlength="2000" required>{{ f.answer }}</textarea>
                     {% if g.units %}
                     <select name="unit_id" class="form-select form-select-sm" style="max-width: 260px;" aria-label="Where this answer applies">
                         <option value="" {% if not f.unit_id %}selected{% endif %}>Whole property</option>

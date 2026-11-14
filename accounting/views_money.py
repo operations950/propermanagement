@@ -31,6 +31,34 @@ def _books(request, pk):
 
 # ---------------------------------------------------------------- bank reconciliation
 
+def _after_upload(request, prop, acct, result):
+    """Line up each statement just filed with the books, say what went where, and return the page to show: the bank account uploaded to if it got a statement, else the first that did."""
+    shown = None
+    for target, st, sec in result['filed']:
+        month = ledger.month_start(st.period_end)
+        report = {}
+        made = bankrec.auto_match(target, month, report)
+        read = report.get('recurring', 0)
+        tail = f', {read} of them recurring bills the statement paid.' if read else '.'
+        text = f'Read {st.lines.count()} lines from the statement and matched {made} group{"s" if made != 1 else ""}{tail}'
+        if result['multi']:
+            text = f'Filed on {target.label}: {text}'
+        elif result['moved']:
+            text = f'That statement is for the account ending {sec["last4"]}, so it was filed on {target.label}, not on {acct.label}. {text}'
+        elif sec.get('last4') and not target.last4:
+            text += f' Tip: it says account ending {sec["last4"]}. Put that last 4 on {target.label} in the settings and statements will find their own account.'
+        messages.success(request, text)
+        if shown is None or target.pk == acct.pk:
+            shown = (target, month)
+    for sec in result['skipped']:
+        messages.warning(request, f'Not filed: {_where_text(sec)} ({len(sec["lines"])} lines). No bank account of {prop.name} has that last 4. Put its last 4 on the right bank account in the settings, then upload the file again.')
+    return _go('bank', prop.pk, shown[0].pk, f'{shown[1]:%Y-%m}')
+
+
+def _where_text(sec):
+    return (sec.get('name') or 'An account') + (f' ending {sec["last4"]}' if sec.get('last4') else '')
+
+
 @admin_only
 def bank(request, pk, bank_pk, month):
     prop, redirect_to = _books(request, pk)
@@ -50,14 +78,8 @@ def bank(request, pk, bank_pk, month):
                 parsed, how = bankrec.read_statement(f.name, data)
                 typed = (request.POST.get('end_balance') or '').strip()
                 f.seek(0)
-                st = bankrec.import_statement(acct, parsed, file=f, read_by=how, end_balance=parse_money(typed) if typed else None)
-                first = ledger.month_start(st.period_end)
-                report = {}
-                made = bankrec.auto_match(acct, first, report)
-                read = report.get('recurring', 0)
-                messages.success(request, f'Read {st.lines.count()} lines from the statement and matched {made} group{"s" if made != 1 else ""}'
-                                 + (f', {read} of them recurring bills the statement paid.' if read else '.'))
-                here = _go('bank', prop.pk, acct.pk, f'{first:%Y-%m}')
+                result = bankrec.file_statement(acct, parsed, file=f, read_by=how, end_balance=parse_money(typed) if typed else None)
+                here = _after_upload(request, prop, acct, result)
             elif action == 'auto':
                 report = {}
                 messages.success(request, f'Matched {bankrec.auto_match(acct, first, report)} more.' + (f' {report["recurring"]} were recurring bills the statement paid.' if report.get('recurring') else ''))
@@ -104,7 +126,11 @@ def bank(request, pk, bank_pk, month):
     s['rows'] = sorted(s['rows'], key=lambda r: r['item'].date)
     deposits_open = [b for b in s['unmatched_bank'] if b.amount > 0]
     other_banks = prop.bank_accounts.filter(is_active=True)
-    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': prop.accounts.filter(is_active=True).order_by('code'), 'units': owners.active_units(prop),
+    accounts = list(prop.accounts.filter(is_active=True).order_by('code'))
+    guesses = bankrec.suggested_accounts(s['unmatched_bank'], accounts)
+    for b in s['unmatched_bank']:
+        b.suggested = guesses.get(b.pk)                      # what the same words were put to before: a suggestion, never posted by itself
+    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': accounts, 'units': owners.active_units(prop),
                                                     'acc_back': _go('close', prop.pk, f'{first:%Y-%m}'), 'acc_back_label': f'{prop.name} close', **month_context(first)})
 
 
@@ -443,8 +469,20 @@ def recurring(request, pk):
     here = _go('recurring', prop.pk)
     if request.method == 'POST':
         action = request.POST.get('action')
+        back = here + f'?tab={request.POST.get("tab") if request.POST.get("tab") in ("bills", "charges", "entries") else "bills"}&month={request.POST.get("month") or ""}'
         try:
-            if action == 'save':
+            if action == 'auto_post':
+                profile = ledger.profile_for(prop)
+                profile.auto_post = request.POST.get('auto') == 'on'
+                profile.save(update_fields=['auto_post'])
+                messages.success(request, 'Automatic posting is on: owner charges and recurring bills post by themselves on their dates.' if profile.auto_post
+                                 else 'Automatic posting is off: nothing posts by itself until you switch it on.')
+                return redirect(back)
+            elif action == 'jr_auto':
+                JournalRule.objects.filter(pk=request.POST.get('rule'), association=prop).update(auto_post=request.POST.get('auto') == 'on')
+                messages.success(request, 'Saved.')
+                return redirect(back)
+            elif action == 'save':
                 vendor = payables.vendor_for_name(request.POST.get('vendor'))
                 if vendor is None:
                     raise ValueError('Say who the bill is from.')
@@ -522,12 +560,14 @@ def recurring(request, pk):
     jrules = list(JournalRule.objects.filter(association=prop).order_by('name'))
     for jr in jrules:
         jr.st = scheduled.status(prop, jr, month, today)
-    needs = [r for r in rows if r.this_month in ('waiting', 'missing')]
+    needs = [r for r in rows if r.this_month == 'missing']                     # only a fixed bill that should have posted: one whose amount changes is settled in the bank reconciliation
+    fixed_rows = [r for r in rows if r.is_fixed]
+    variable_rows = [r for r in rows if not r.is_fixed]
     counts = {'bills': len(needs), 'charges': sum(1 for r in rules if r.is_active and r.st['pending']) + (1 if late_rows or interest_rows else 0), 'entries': sum(1 for jr in jrules if jr.is_active and jr.st['state'] in ('due', 'no_budget'))}
     return render(request, 'accounting/recurring.html', {'assoc': prop, 'rows': rows, 'edit': edit, 'vendors': _vendor_names(prop), 'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'),
                                                          'frequencies': RecurringBill.Frequency.choices, 'profile': ledger.profile_for(prop), 'today': today, 'tab': tab, 'rules': rules, 'jrules': jrules, 'counts': counts,
                                                          'late_rows': late_rows, 'interest_rows': interest_rows, 'late_total': sum((r['amount'] for r in late_rows), ZERO), 'interest_total': sum((r['amount'] for r in interest_rows), ZERO),
-                                                         'needs': needs, 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting', **month_context(month)})
+                                                         'needs': needs, 'fixed_rows': fixed_rows, 'variable_rows': variable_rows, 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting', **month_context(month)})
 
 
 # ---------------------------------------------------------------- journal

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_budget, views_chart, views_contracts, views_delinquency, views_money, views_setup
+from . import views, views_budget, views_chart, views_collections, views_contracts, views_delinquency, views_money, views_setup
 
 app_name = 'accounting'
 
@@ -10,8 +10,15 @@ urlpatterns = [
     path('<int:pk>/budget/<int:year>/', views_budget.budget_year, name='budget_year'),
     path('<int:pk>/budget/<int:year>/edit/', views_budget.budget_edit, name='budget_edit'),
     path('<int:pk>/budget/<int:year>/detail/', views_budget.budget_detail, name='budget_detail'),
+    path('<int:pk>/budget/<int:year>/project/', views_budget.budget_project, name='budget_project'),
+    path('<int:pk>/budget/<int:year>/packet/', views_budget.budget_packet, name='budget_packet'),
+    path('<int:pk>/budget/<int:year>/packet/<str:what>/', views_budget.budget_packet_file, name='budget_packet_file'),
+    path('<int:pk>/budget/<int:year>/load/', views_budget.budget_load, name='budget_load'),
     path('<int:pk>/contracts/', views_contracts.contract_list, name='contracts'),
     path('<int:pk>/contracts/print/', views_contracts.contract_print, name='contracts_print'),
+    path('collections/', views_collections.collections_home, name='collections_home'),
+    path('<int:pk>/collections/', views_collections.collections, name='collections'),
+    path('<int:pk>/late-fees/', views_collections.late_fees, name='late_fees'),
     path('<int:pk>/delinquencies/', views_delinquency.delinquencies, name='delinquencies'),
     path('<int:pk>/cases/<int:case_pk>/', views_delinquency.case_detail, name='case'),
     path('<int:pk>/', views.hub, name='hub'),

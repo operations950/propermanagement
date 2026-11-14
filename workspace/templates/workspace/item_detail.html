@@ -19,8 +19,20 @@
     .gcell.done { background: #6f9a78; color: #fff; border-color: #6f9a78; }
     .gcell.na { background: #ece9f4; color: var(--ink-secondary); border-color: #c9c6d0; }
     .gcell.link { border-style: dashed; }
+    @media (max-width: 768px) {
+        /* on a phone each line is a big row: the box, the whole name (it wraps instead of being cut off), and its buttons */
+        .it-row { grid-template-columns: 2.6rem minmax(0, 1fr) auto; padding: 0.6rem 0.7rem; min-height: 60px; column-gap: 0.7rem; }
+        .it-row > div:nth-child(3) { display: none; }
+        .it-row .nm { white-space: normal; overflow: visible; font-size: 1.05rem; line-height: 1.3; }
+        .it-row small { font-size: 0.92rem; }
+        .it-box { width: 2.2rem; height: 2.2rem; font-size: 1.2rem; border-radius: 8px; }
+        .it-row [data-notneeded] { min-height: 44px; padding: 0 0.5rem !important; font-size: 0.95rem; }
+        .it-head { padding: 0.85rem 1rem; }
+        .gcell { width: 2.4rem; height: 2.4rem; font-size: 0.8rem; }
+        .gridt { font-size: 0.95rem; }
+    }
 </style>
-<a href="{% url 'ws_compliance' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Compliance</a>
+<a href="{% url 'ws_compliance' %}" class="ws-up mt-3 mb-2"><i data-lucide="arrow-up" class="icon"></i> Compliance</a>
 <div class="it-head">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>

@@ -279,6 +279,107 @@ def compute_notice_affidavit(v):
     v['subject'] = f'{v["notice_kind"]} — {v["meeting_date_short"]}'
 
 
+# ----------------------------------------------------------------------- notice of the budget meeting (mailed)
+BUDGET_STATUTE = {CONDO: '§718.112(2)(e), Florida Statutes', HOA: '§720.303(6), Florida Statutes'}
+MAIL_METHODS = ['mailed by first class mail', 'mailed by certified mail', 'delivered by hand', 'transmitted by email']
+
+BUDGET_NOTICE_BODY = """<div class="lf-page">""" + LETTERHEAD + """<div>
+<p>{{ letter_date_long }}</p>
+<p><strong>NOTICE OF MEETING TO CONSIDER THE PROPOSED {{ budget_year }} ANNUAL BUDGET AND ASSESSMENTS (Pursuant to {{ statute_cite }})</strong></p>
+<p><strong>{{ association_name }}</strong></p>
+<p>To all {{ owner_word }} of {{ association_name }}:</p>
+<p>Notice is given that the Board of Directors will hold a meeting at which the proposed annual budget for {{ budget_year }} will be considered, as follows:</p>
+<table class="lf-kv lf-left">
+<tr><td>Date:</td><td>{{ meeting_date_long }}</td></tr>
+<tr><td>Time:</td><td>{{ meeting_time }}</td></tr>
+<tr><td>Place:</td><td>{{ meeting_place }}</td></tr>
+{% if video_link %}<tr><td>Join by video:</td><td>{{ video_link }}</td></tr>{% endif %}
+</table>
+<p>At this meeting the Board will consider the annual budget and the regular assessments against {{ owner_word }} that fund it. The proposed budget calls for total regular assessments of {{ total_assessments_fmt0 }} for {{ budget_year }}. {{ assessment_summary }}</p>
+<p>The assessments are for: {{ assessment_purpose }}</p>
+<p>A copy of the proposed annual budget is enclosed with this notice.</p>
+<p>{{ owner_word_cap }} may attend the meeting and speak, as Florida law provides. This notice is mailed, delivered or electronically transmitted to each {{ owner_one }}, and posted conspicuously on {{ posting_place }}, not less than 14 days before the meeting.</p>
+<p>If you have any questions, please contact us at {{ contact_phone }} or {{ contact_email }}.</p>
+<p>Sincerely,<br>The Board of Directors</p>
+</div></div>"""
+
+BUDGET_NOTICE_FIELDS = [
+    F('association_name', 'Association', prefill='association_name', required=True),
+    F('association_type', 'Kind of association', 'choice', choices=ASSOCIATION_TYPES, default=CONDO, remember=True, required=True, help='Decides which statute the notice cites.'),
+    F('letter_date', 'Date of the notice', 'date', default='today', required=True),
+    F('budget_year', 'The budget year', 'integer', required=True),
+    F('meeting_date', 'Date of the meeting', 'date', prefill='meeting_date', required=True),
+    F('meeting_time', 'Time of the meeting', prefill='meeting_time', required=True, help='For example 6:00 p.m.'),
+    F('meeting_place', 'Place of the meeting', prefill='meeting_place', required=True),
+    F('video_link', 'Video link (optional)', prefill='video_link'),
+    F('total_assessments', 'Total regular assessments for the year', 'money', required=True, help='What the proposed budget needs the assessments to bring in.'),
+    F('assessment_summary', 'What that means for each unit', 'textarea', help='For example "The regular assessment per unit is $615 a month, up from $590."'),
+    F('assessment_purpose', 'What the assessments are for', 'textarea', default='the operating expenses of the association and contributions to its reserves, as itemized in the enclosed proposed budget.', required=True),
+    F('contact_phone', 'Phone to call', prefill='company_phone_display'),
+    F('contact_email', 'Email to write', prefill='company_email'),
+]
+
+
+def compute_budget_notice(v):
+    _common(v)
+    condo = (v.get('association_type') or CONDO) == CONDO
+    v['statute_cite'] = BUDGET_STATUTE[v['association_type']]
+    v['owner_word'] = 'unit owners' if condo else 'members'
+    v['owner_word_cap'] = 'Unit owners' if condo else 'Members'
+    v['owner_one'] = 'unit owner' if condo else 'member'
+    v['subject'] = f'{v["budget_year"]} budget meeting — {short_date(v["meeting_date"])}'
+
+
+BUDGET_AFFIDAVIT_BODY = """<div class="lf-page">
+<p class="lf-center">AFFIDAVIT OF MAILING<br>NOTICE OF MEETING TO CONSIDER THE {{ budget_year }} ANNUAL BUDGET</p>
+<table class="lf-plain"><tr><td>STATE OF FLORIDA</td><td>)</td></tr><tr><td>COUNTY OF {{ county|upper }}</td><td>)</td></tr></table>
+<p>I, {{ affiant_name }}, the {{ affiant_title }} of {{ association_name }} (the "Association"), hereby state and affirm as follows. In accordance with {{ statute_cite }}, I caused the Notice of the meeting to be held on {{ meeting_date_short }}, at which the proposed {{ budget_year }} annual budget will be considered, together with a copy of the proposed annual budget, to be {{ mail_method }} to each of the {{ notice_count }} {{ owner_word }} of the Association on {{ date_mailed_short }}, at the address shown for each in the Association's official records{% if date_posted %}, and caused the notice to be posted conspicuously on {{ posting_place }} on {{ date_posted_short }}{% endif %}.</p>
+<div class="lf-sig"><div class="lf-line"></div><div>{{ affiant_name }}, as {{ affiant_title }}</div></div>
+<p>Sworn to (or affirmed) and subscribed before me by means of physical presence notarization this <span class="lf-blank"></span> day of <span class="lf-line-inline"></span>, by {{ affiant_name }} as {{ affiant_title }} of {{ association_name }}.</p>
+<div class="lf-notary">
+<div class="lf-left">[Notary Seal]</div>
+<div class="lf-right">
+<div class="lf-line"></div>
+{% if notary_name %}<div>{{ notary_name }}</div>{% endif %}
+{% if notary_commission_expires %}<div>My Commission Expires: {{ notary_commission_expires }}</div>{% endif %}
+<div class="lf-tick"><span class="lf-blank"></span> Personally Known, OR</div>
+<div class="lf-tick"><span class="lf-blank"></span> Produced Identification</div>
+<div class="lf-idrow">Type of Identification Produced: <span class="lf-line-inline"></span></div>
+<div class="lf-idrow">Driver's License No.: <span class="lf-line-inline"></span></div>
+</div>
+</div>
+</div>"""
+
+BUDGET_AFFIDAVIT_FIELDS = [
+    F('association_name', 'Association', parent='association_name', prefill='association_name', required=True),
+    F('association_type', 'Kind of association', 'choice', choices=ASSOCIATION_TYPES, default=CONDO, parent='association_type', remember=True, required=True),
+    F('county', 'County', prefill='county', required=True),
+    F('budget_year', 'The budget year', 'integer', parent='budget_year', required=True),
+    F('meeting_date', 'Date of the meeting', 'date', parent='meeting_date', prefill='meeting_date', required=True),
+    F('date_mailed', 'Date it was mailed or delivered', 'date', parent='mailed_on', required=True, help='Swear only to the day it really went out.'),
+    F('mail_method', 'How', 'choice', choices=MAIL_METHODS, default=MAIL_METHODS[0], required=True),
+    F('notice_count', 'How many owners it went to', 'integer', required=True),
+    F('date_posted', 'Date it was posted on the property (optional)', 'date'),
+    F('affiant_name', 'Person swearing (who sent it)', default='Justin Browne', required=True),
+    F('affiant_title', 'Their title', default='Property Manager', required=True),
+    F('notary_name', 'Notary (optional — prints under the signature line)', remember=True),
+    F('notary_commission_expires', 'Notary commission expires (optional)', remember=True),
+]
+
+
+def compute_budget_affidavit(v):
+    _common(v)
+    v['statute_cite'] = BUDGET_STATUTE[v['association_type']]
+    v['owner_word'] = 'unit owners' if v['association_type'] == CONDO else 'members'
+    v['meeting_date_short'] = short_date(v['meeting_date'])
+    v['date_mailed_short'] = short_date(v['date_mailed'])
+    v['date_posted_short'] = short_date(v['date_posted']) if v.get('date_posted') else ''
+    d = v['date_mailed']
+    v['notary_day'] = d.day
+    v['notary_month_year'] = f'{d:%B}, {d.year}'
+    v['subject'] = f'{v["budget_year"]} budget notice mailed {v["date_mailed_short"]}'
+
+
 # ----------------------------------------------------------------------------------------------- sign-in sheet
 SIGN_IN_BODY = """<div class="lf-page">""" + LETTERHEAD + """<div>
 <p><strong>SIGN-IN SHEET</strong><br>{{ meeting_title }}<br>{{ meeting_date_long }}</p>
@@ -426,6 +527,8 @@ COMPUTE_MEETINGS = {
     'first-election-notice': compute_first_election,
     'annual-meeting-notice': compute_annual_notice,
     'notice-affidavit': compute_notice_affidavit,
+    'budget-meeting-notice': compute_budget_notice,
+    'budget-mailing-affidavit': compute_budget_affidavit,
     'sign-in-sheet': compute_sign_in,
     'decision-letter': compute_decision_letter,
     'welcome-letter-owner': compute_welcome,
@@ -448,6 +551,14 @@ TEMPLATES_MEETINGS = [
     {'slug': 'annual-meeting-notice', 'name': 'Notice of Annual Meeting and Agenda', 'category': 'Meetings', 'order': 44, 'statute': '§718.112(2)(d) / §720.306, Florida Statutes',
      'description': 'Notice and agenda of the annual meeting and election of directors. Ballots and proxies are prepared outside the system.',
      'body': ANNUAL_NOTICE_BODY, 'fields': ANNUAL_NOTICE_FIELDS, 'reviewed_note': ''},
+    {'slug': 'budget-meeting-notice', 'name': 'Notice of Budget Meeting', 'category': 'Meetings', 'order': 46, 'statute': '§718.112(2)(e) / §720.303(6), Florida Statutes',
+     'description': 'The notice mailed to every owner, with the proposed budget, not less than 14 days before the meeting at which the annual budget and assessments will be considered. Made from the budget project.',
+     'body': BUDGET_NOTICE_BODY, 'fields': BUDGET_NOTICE_FIELDS,
+     'reviewed_note': 'New wording written for this system. It states the date, time and place, that the annual budget and the assessments will be considered, the total assessed and what it is for, and that a copy of the proposed budget is enclosed. Have the association\'s attorney confirm it matches the statute and the governing documents (including any rule about a budget that raises assessments more than 115 percent).'},
+    {'slug': 'budget-mailing-affidavit', 'name': 'Affidavit of Mailing — Notice of Budget Meeting', 'category': 'Meetings', 'order': 47, 'companion_of': 'budget-meeting-notice', 'statute': '§718.112(2)(e) / §720.303(6), Florida Statutes',
+     'description': 'Sworn statement, signed before a notary, that the notice of the budget meeting and the proposed budget went to every owner on a stated date. It is filed among the official records.',
+     'body': BUDGET_AFFIDAVIT_BODY, 'fields': BUDGET_AFFIDAVIT_FIELDS,
+     'reviewed_note': 'Signed under oath: the date and method must be what really happened, and the count the number of owners it really went to.'},
     {'slug': 'sign-in-sheet', 'name': 'Sign-in Sheet', 'category': 'Meetings', 'order': 45, 'statute': '',
      'description': 'The attendance sheet for a meeting of the members, listing every unit and owner from the association records.',
      'body': SIGN_IN_BODY, 'fields': SIGN_IN_FIELDS, 'reviewed_note': ''},

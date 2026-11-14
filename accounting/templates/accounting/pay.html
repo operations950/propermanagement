@@ -10,7 +10,7 @@
     <table class="table table-sm ac-table"><thead><tr><th></th><th>Vendor</th><th>Invoice</th><th>Due</th><th class="ac-num">Amount</th></tr></thead>
         <tbody>{% for b in ready %}<tr><td><input type="checkbox" name="bill" value="{{ b.pk }}" checked></td><td>{{ b.payee }}</td><td>{{ b.number }} <span class="text-muted small">{{ b.date|mdate:'short' }}</span></td><td>{{ b.due_date|mdate }}</td><td class="ac-num">{{ b.balance|money }}</td></tr>{% endfor %}</tbody></table>
     <div class="row g-2 align-items-end">
-        <div class="col-md-4"><label class="form-label small text-muted mb-1">Pay from</label><select class="form-select form-select-sm" name="bank">{% for b in banks %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Pay from</label><select class="form-select form-select-sm" name="bank">{% for b in banks %}<option value="{{ b.pk }}">{{ b.label }}</option>{% endfor %}</select></div>
         <div class="col-md-3"><label class="form-label small text-muted mb-1">Date</label><input class="form-control form-control-sm" type="date" name="date" value="{{ today|date:'Y-m-d' }}"></div>
         <div class="col-md-3"><div class="ac-pills"><span><input type="radio" id="pm1" name="method" value="check" checked><label for="pm1">Check</label></span><span><input type="radio" id="pm2" name="method" value="ach"><label for="pm2">Automatic payment</label></span></div></div>
         <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Record and print</button></div>

@@ -1,0 +1,30 @@
+{% comment %}Home's calendar on a phone: one day at a time with big previous/next buttons (static/js/mobile.js, data-m-agenda), the next two weeks at once on request, and the full calendar
+(add or edit an event) behind "Add or edit events". It reads the same Google Calendar days the desktop column does (calendar_days_all). Hidden on a computer (static/css/mobile.css).{% endcomment %}
+<section class="m-agenda" data-m-agenda aria-label="Your calendar">
+{% if calendar_token %}
+    <div class="m-agenda-head">
+        <button type="button" class="m-agenda-step" data-prev aria-label="Previous day">&lsaquo;</button>
+        <div class="m-agenda-title"><b data-label>Today</b><span data-when></span></div>
+        <button type="button" class="m-agenda-step" data-next aria-label="Next day">&rsaquo;</button>
+    </div>
+    {% for day in calendar_days_all %}
+    <div class="m-agenda-day" data-day data-label="{{ day.label }}" data-when="{{ day.date|date:'l, F j' }}"{% if not forloop.first %} hidden{% endif %}>
+        {% include 'workspace/_agenda_events.html' %}
+    </div>
+    {% endfor %}
+    <div class="m-agenda-all" data-all hidden>
+        {% for day in calendar_days_all %}{% if day.all_day or day.timed %}
+        <h6>{{ day.label }} &middot; {{ day.date_label }}</h6>
+        {% include 'workspace/_agenda_events.html' %}
+        {% endif %}{% endfor %}
+        <div class="m-agenda-empty">Days that are not listed have nothing on them.</div>
+    </div>
+    <div class="m-agenda-foot">
+        <button type="button" class="m-chip" data-toggle-all aria-pressed="false">Next 2 weeks</button>
+        <button type="button" class="m-chip" data-toggle-cal aria-pressed="false">Add or edit events</button>
+    </div>
+{% else %}
+    <div class="m-agenda-day"><div class="m-agenda-empty">Connect your Google Calendar to see your day here, next to your list.</div></div>
+    <a class="m-btn-primary mt-3" href="{% url 'calendar_connect' %}?next={{ request.path|urlencode }}"><i data-lucide="calendar-days" class="icon"></i> Connect Google Calendar</a>
+{% endif %}
+</section>

@@ -178,6 +178,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.pwa.PwaFilesMiddleware',          # the app manifest, service worker and offline page: open to everyone, ahead of the walls below
     'core.middleware.OwnerWallMiddleware',
     'timeclock.middleware.PolicyWallMiddleware',
     'core.middleware.TimezoneMiddleware',

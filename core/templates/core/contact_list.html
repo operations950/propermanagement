@@ -1,11 +1,14 @@
 {% extends 'base.html' %}
 {% load alerts %}
+{% load static %}
 {% block title %}Contacts{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
 {% block content %}
+<div class="ml-scope">
 {% page_alerts 'contacts' %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+<div class="ml-title-row d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="contact" class="icon-lg"></i> Contacts</h2>
-    <div class="d-flex flex-wrap gap-2">
+    <div class="ml-title-actions d-flex flex-wrap gap-2">
         {% if pending_review_count %}
         <a href="{% url 'contact_review' %}" class="btn btn-outline-warning d-flex align-items-center gap-1">
             <i data-lucide="circle-alert" class="icon"></i> {{ pending_review_count }} to review
@@ -23,7 +26,7 @@
     </div>
 </div>
 
-<div class="row g-2 mb-3 align-items-center">
+<div class="ml-search-form row g-2 mb-3 align-items-center">
     <div class="col-auto position-relative">
         <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
         <input type="text" id="contact-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);"
@@ -31,10 +34,10 @@
     </div>
 </div>
 
-<div class="d-flex flex-wrap gap-2 mb-3">
+<div class="ml-chips d-flex flex-wrap gap-2 mb-3">
     <a href="?{% if q %}q={{ q|urlencode }}{% endif %}" class="bubble{% if not selected_type %} bubble-locked{% endif %}">All types</a>
     {% for value, label in type_choices %}
-        <a href="?type={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="bubble{% if value == selected_type %} bubble-locked{% endif %}">{{ label }}</a>
+        <a href="?type={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="bubble{% if value == 'guest' or value == 'lead' or value == 'association_member' or value == 'on_site_staff' %} ml-chip-minor{% endif %}{% if value == selected_type %} bubble-locked{% endif %}">{{ label }}</a>
     {% endfor %}
 </div>
 
@@ -126,5 +129,6 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}

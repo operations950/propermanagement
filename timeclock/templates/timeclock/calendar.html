@@ -37,7 +37,7 @@
         {% for week in weeks %}{% for c in week %}
         <div class="tc-cell {% if not c.in_month %}out{% endif %} {% if c.today %}today{% endif %} {% if c.holiday %}closed{% endif %}">
             <div class="n">{{ c.date|date:"j" }}</div>
-            {% if c.holiday %}<div class="tc-hol">Closed · {{ c.holiday }}</div>{% else %}{% for chip in c.chips %}<span class="tc-chip {{ chip.kind }}">{{ chip.text }}</span>{% endfor %}{% endif %}
+            {% if c.holiday %}<div class="tc-hol" title="{{ c.holiday }}">Closed<span class="d-none d-md-inline"> · {{ c.holiday }}</span></div>{% else %}{% for chip in c.chips %}<span class="tc-chip {{ chip.kind }}">{{ chip.text }}</span>{% endfor %}{% endif %}
         </div>
         {% endfor %}{% endfor %}
     </div>

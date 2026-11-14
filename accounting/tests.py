@@ -749,7 +749,8 @@ class RecurringScreenAndCloseSheetTests(TestCase):
         html = self.client.get(self.url + '?tab=bills&month=2026-10').content.decode()
         self.assertIn('Charges to owners', html)
         self.assertIn('Journal entries', html)
-        self.assertIn('Waiting on the statement', html)                       # the variable bill has no value yet
+        self.assertIn('Variable bills: settled during the bank reconciliation', html)       # the variable bill has no amount: it is kept apart
+        self.assertIn('Waits for the bank reconciliation', html)
 
     def test_scheduling_and_posting_the_reserve_contribution_from_the_screen(self):
         budget_with_reserves(self.prop)
@@ -760,18 +761,20 @@ class RecurringScreenAndCloseSheetTests(TestCase):
         self.assertContains(r, 'Posted J-')
         self.assertEqual(scheduled.status(self.prop, rule, date(2026, 10, 1), date(2026, 11, 1))['state'], 'posted')
 
-    def test_close_sheet_puts_the_bank_reconciliation_last_and_does_not_block_on_recurring_items(self):
+    def test_close_sheet_looks_at_what_posts_itself_first_then_the_bank_reconciliation_and_does_not_block_on_recurring_items(self):
         budget_with_reserves(self.prop)
         JournalRule.objects.create(association=self.prop, day_of_month=27)
         sheet = closing.close_sheet(self.prop, date(2026, 10, 1), today=date(2026, 11, 10))
         keys = [i['key'] for i in sheet['items']]
         self.assertEqual(keys[-1], 'lock')
-        self.assertTrue(keys[-2].startswith('bank'))
+        self.assertEqual(keys[:3], ['charges', 'recurring', 'entries'])
+        self.assertLess(keys.index('entries'), keys.index('bank%d' % self.bank.pk))
         by = {i['key']: i for i in sheet['items']}
         self.assertFalse(by['recurring']['blocks'])
         self.assertFalse(by['charges']['blocks'])
-        self.assertEqual(by[f'journal{JournalRule.objects.get().pk}']['status'], 'attention')       # due, not posted yet
-        self.assertIn('Electricity', by['recurring']['detail'])
+        self.assertEqual(by['entries']['status'], 'attention')                                     # due, not posted yet
+        self.assertNotIn('Electricity', by['recurring']['detail'])                                  # a variable bill is not flagged on the recurring bills step
+        self.assertIn('variable bill', by['recurring']['detail'])
         self.assertIn('reserve_tie', by)
         self.assertTrue(by['bank%d' % self.bank.pk]['blocks'])
 
@@ -1154,7 +1157,7 @@ class LateLetterOpensTheCaseTests(DelinquencyBase):
     def test_the_attorney_step_shows_the_scales_and_resolving_ends_the_reminders(self):
         self.make_letter()
         case = DelinquencyCase.objects.get()
-        delinquency.set_stage(case, 'attorney', self.staff.user, attorney='Smith & Jones')
+        delinquency.set_stage(case, 'notice1', self.staff.user, attorney='Smith & Jones')
         case.refresh_from_db()
         self.assertTrue(delinquency.case_icons(case)['attorney'])
         self.assertEqual(case.attorney_name, 'Smith & Jones')
@@ -1194,20 +1197,23 @@ class DelinquencyScreenTests(DelinquencyBase):
         case = DelinquencyCase.objects.get()
         url = reverse('accounting:case', args=[self.prop.pk, case.pk])
         self.client.post(url, {'action': 'call', 'note': 'Spoke with the owner', 'date': '2026-11-12'})
-        self.client.post(url, {'action': 'stage', 'stage': 'plan', 'note': 'Three payments'})
+        self.client.post(url, {'action': 'stage', 'stage': 'notice1', 'note': 'Sent to the lawyer'})
         case.refresh_from_db()
-        self.assertEqual(case.stage, 'plan')
+        self.assertEqual(case.stage, 'notice1')
         self.assertTrue(case.events.filter(kind='call').exists())
         self.client.post(url, {'action': 'resolve', 'note': 'Paid'})
         case.refresh_from_db()
         self.assertIsNotNone(case.resolved_on)
 
-    def test_the_close_sheet_has_a_delinquencies_step_that_links_here(self):
+    def test_the_close_sheet_has_a_late_fees_step_and_an_owner_collections_step(self):
         sheet = closing.close_sheet(self.prop, date(2026, 10, 1), today=self.today)
-        item = next(i for i in sheet['items'] if i['key'] == 'delinquency')
-        self.assertEqual(item['url'], self.url)
-        self.assertIn('need a late letter', item['detail'])
-        self.assertFalse(item['blocks'])
+        by = {i['key']: i for i in sheet['items']}
+        self.assertNotIn('delinquency', by)
+        self.assertEqual(by['late_fees']['url'], reverse('accounting:late_fees', args=[self.prop.pk]))
+        self.assertIn('late fees or interest ready', by['late_fees']['detail'])
+        self.assertEqual(by['collections']['url'], reverse('accounting:collections', args=[self.prop.pk]))
+        self.assertIn('need a late letter', by['collections']['detail'])
+        self.assertFalse(by['late_fees']['blocks'] or by['collections']['blocks'])
 
 
 from . import contracts

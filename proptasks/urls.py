@@ -7,9 +7,14 @@ from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 from django.views.static import serve as serve_static
 
+from core import mobile, pwa
 from core.views import StaffLoginView, google_login_callback, google_login_start
 
 urlpatterns = [
+    path('manifest.webmanifest', pwa.manifest, name='pwa_manifest'),
+    path('sw.js', pwa.service_worker, name='pwa_service_worker'),
+    path('offline/', pwa.offline, name='pwa_offline'),
+    path('m/', mobile.menu, name='mobile_menu'),
     path('admin/', admin.site.urls),
     path('login/', StaffLoginView.as_view(), name='login'),
     path('login/google/', google_login_start, name='google_login_start'),

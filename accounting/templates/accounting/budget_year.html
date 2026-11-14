@@ -93,9 +93,10 @@
     @media print { .bd-sheet { border: none; box-shadow: none; padding: 0; } }
 </style>
 
+{% if focus %}<style>.brand-bar, .ws-lines { display: none !important; } .container-xxl.page-content { max-width: 100% !important; } body { padding-top: 8px; }</style>{% endif %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2 ac-noprint">
     <div>
-        <h2 class="page-title fs-4 mb-0">{{ assoc.name }} &mdash; {{ year }} budget</h2>
+        <h2 class="page-title fs-4 mb-0">{{ assoc.name }} &mdash; {{ year }} budget{% if focus %} <span class="ac-chip warn align-middle">The meeting</span>{% endif %}</h2>
         <div class="small text-muted">{{ units }} unit{{ units|pluralize }} &middot; {{ closed }}{% if info.n and info.remaining %} &middot; {{ info.rest_label }} projected{% endif %}</div>
     </div>
     {% if stages %}
@@ -107,7 +108,11 @@
     {% if stage and stage != 'compare' %}<div class="d-flex gap-2 ac-noprint" title="The board sheet, as a file to send">
         <a class="btn btn-outline-secondary btn-sm" href="?stage={{ stage }}&export=pdf"><i data-lucide="file-text" class="icon"></i> Download PDF</a>
         <a class="btn btn-outline-secondary btn-sm" href="?stage={{ stage }}&export=xlsx"><i data-lucide="table" class="icon"></i> Download Excel</a>
-    </div>{% endif %}
+    </div>
+    <form method="post" class="d-flex align-items-center gap-1 ac-noprint" id="bd-round">{% csrf_token %}<input type="hidden" name="action" value="rounding"><input type="hidden" name="stage" value="{{ stage }}">{% if sheet_on %}<input type="hidden" name="sheet" value="1">{% endif %}
+        <span class="small text-muted">Sheet amounts</span>
+        <button class="btn btn-sm {% if not cents %}btn-secondary{% else %}btn-outline-secondary{% endif %}" name="mode" value="dollars">Whole dollars</button><button class="btn btn-sm {% if cents %}btn-secondary{% else %}btn-outline-secondary{% endif %}" name="mode" value="cents">Cents</button>
+        {% include '_tip.html' with text="How the board sheet, its PDF and its Excel show amounts. Whole dollars: every line is rounded to the dollar and every total is the sum of the lines above it, so the page always adds up (a line of $1 or less in both budgets is left off). Cents: every figure to the cent. The budget itself is never rounded." %}</form>{% endif %}
     {% endif %}
 </div>
 
@@ -282,6 +287,148 @@
 })();
 </script>
 
+{% elif view == 'meeting' %}
+<div class="card"><div style="overflow-x: auto;">
+<table class="bd-table bd-fit" id="mt" style="min-width: 900px;">
+<colgroup><col style="width: 28%"><col style="width: 12%"><col style="width: 13%"><col style="width: 11%"><col style="width: 9%"><col style="width: 14%"><col style="width: 13%"></colgroup>
+<thead>
+<tr class="grp"><th></th><th class="g-bud"><span class="bar">Last year</span></th><th colspan="3" class="g-land sep"><span class="bar">{{ year }} Board draft vs {{ year|add:"-1" }} budget</span></th><th class="g-chg sep"><span class="bar">At this meeting</span></th><th class="g-new sep"><span class="bar">Final</span></th></tr>
+<tr><th>Line</th><th>{{ year|add:"-1" }} budget</th><th class="sep">{{ year }} Board draft</th><th>$ change</th><th>% change</th>
+    <th class="sep">Change at this meeting {% include '_tip.html' with text="Type the final number for a line you want to change, not the difference. Leave it blank to keep the Board draft's number. Clear the box to put the Board draft's number back. Everything below adds up from the Final column." %}</th>
+    <th class="sep">{{ year }} Final</th></tr>
+</thead><tbody id="mbody"></tbody></table>
+</div></div>
+<div class="small text-muted mt-2">{% if not state_json.editable %}This version is frozen because the budget was approved from it. {% endif %}Amounts are shown in {% if cents %}dollars and cents{% else %}whole dollars; every total is the sum of the lines above it{% endif %}.
+    <span class="ac-noprint">Board sheet: <a href="?stage={{ stage }}&sheet=1">see it</a> &middot; <a href="?stage={{ stage }}&export=pdf">PDF</a> &middot; <a href="?stage={{ stage }}&export=xlsx">Excel</a> &middot; {% if focus %}<a href="?stage=meeting">Show the menus</a>{% else %}<a href="?stage=meeting&focus=1">Full screen</a>{% endif %}</span></div>
+{{ state_json|json_script:"bd-state" }}
+<script>
+(function () {
+    var S = JSON.parse(document.getElementById('bd-state').textContent);
+    var URL_ = '{{ edit_url|escapejs }}';
+    var CSRF = '{{ csrf_token }}';
+    var CENTS = {{ cents|yesno:"true,false" }};
+    var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+    var rd = function (n) { var k = CENTS ? 100 : 1; return (n < 0 ? -1 : 1) * Math.round(Math.abs(n) * k + 1e-9) / k; };
+    var $ = function (n) { var d = CENTS ? 2 : 0; return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d}); };
+    var $2 = function (n) { return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); };
+    var chg = function (n) { var r = rd(n); return r === 0 ? '—' : (r > 0 ? $(r) : '(' + $(Math.abs(r)) + ')'); };
+    var pct = function (a, b) { if (!b) return a ? 'new' : '—'; var v = (a / b - 1) * 100; return Math.abs(v) < 0.05 ? '—' : (v > 0 ? v.toFixed(1) + '%' : '(' + Math.abs(v).toFixed(1) + '%)'); };
+    var tone = function (n, income) { if (Math.abs(n) < 0.5 && !CENTS) return ''; if (Math.abs(n) < 0.005) return ''; return ((n > 0) === !!income) ? 't-good' : 't-bad'; };
+    var fin = function (l) { return l.typed !== null && l.typed !== undefined ? l.typed : l.proposed; };
+    var ed = S.editable;
+    var cols = 7;
+
+    function sectionLines(sec) { return S.rows.filter(function (r) { return r.section === sec; }); }
+    function sum(lines, f) { return lines.reduce(function (a, l) { return a + rd(f(l)); }, 0); }
+    function figures() {
+        var out = {sections: {}};
+        var exp = {p: 0, b: 0, f: 0}, ex = {f: 0};
+        S.sections.forEach(function (sec) {
+            var ls = sectionLines(sec);
+            var t = {p: sum(ls, function (l) { return l.prior; }), b: sum(ls, function (l) { return l.board; }), f: sum(ls, fin)};
+            out.sections[sec] = t;
+            if (sec !== 'Income') { exp.p += t.p; exp.b += t.b; exp.f += t.f; ex.f += ls.reduce(function (a, l) { return a + fin(l); }, 0); }
+        });
+        var oi = out.sections['Income'] || {p: 0, b: 0, f: 0};
+        out.exp = exp;
+        out.reg = {p: rd(S.assess.prior), b: exp.b - oi.b, f: exp.f - oi.f};                    // the assessments: the expenses and reserves shown, less the other income shown
+        var oiExact = sectionLines('Income').reduce(function (a, l) { return a + fin(l); }, 0);
+        out.needed = ex.f - oiExact;                                                              // exact, for the per-unit figures
+        return out;
+    }
+    function cell(key, txt, cls) { return '<td data-k="' + key + '"' + (cls ? ' class="' + cls + '"' : '') + '>' + txt + '</td>'; }
+    function totalRow(key, label, cls, p, b, f, income) {
+        return '<tr class="' + cls + '"><td>' + label + '</td>' + cell(key + 'p', $(p), 'bud') + cell(key + 'b', $(b), 'sep') + cell(key + 'd', chg(b - p), tone(b - p, income)) + cell(key + 'c', pct(b, p)) + '<td class="sep"></td>' + cell(key + 'f', $(f), 'new sep') + '</tr>';
+    }
+    function build() {
+        var F = figures(), html = '';
+        S.sections.forEach(function (sec) {
+            var ls = sectionLines(sec), isInc = sec === 'Income', label = sec === 'Reserves' ? 'Reserve contributions' : sec;
+            if (!ls.length && !isInc) return;
+            html += '<tr class="sec"><td colspan="' + cols + '">' + label + '</td></tr>';
+            if (isInc) {
+                html += '<tr><td>Regular assessments <span class="bd-mut small">what the budget must collect</span></td>' + cell('rp', '', 'bud') + cell('rb', '', 'sep') + cell('rd', '') + cell('rc', '') + '<td class="sep"></td>' + cell('rf', '', 'new sep') + '</tr>';
+            }
+            ls.forEach(function (l) {
+                html += '<tr data-line="' + l.id + '"><td title="' + esc(l.name) + '">' + esc(l.name) + ' <span class="bd-mut small">' + l.code + '</span></td>' +
+                    cell(l.id + 'p', '', 'bud') + cell(l.id + 'b', '', 'sep') + cell(l.id + 'd', '') + cell(l.id + 'c', '') +
+                    '<td class="sep"><input class="bd-i" data-id="' + l.id + '" ' + (ed ? '' : 'disabled') + ' inputmode="decimal" autocomplete="off" placeholder="type final number" aria-label="Final number for ' + esc(l.name) + '"></td>' +
+                    cell(l.id + 'f', '', 'new sep') + '</tr>';
+            });
+            html += '<tr class="tot"><td>Total ' + label.toLowerCase() + '</td>' + cell(sec + 'p', '', 'bud') + cell(sec + 'b', '', 'sep') + cell(sec + 'd', '') + cell(sec + 'c', '') + '<td class="sep"></td>' + cell(sec + 'f', '', 'new sep') + '</tr>';
+        });
+        html += '<tr class="grand"><td>Total expenses with reserves</td>' + cell('Xp', '', 'bud') + cell('Xb', '', 'sep') + cell('Xd', '') + cell('Xc', '') + '<td class="sep"></td>' + cell('Xf', '', 'new sep') + '</tr>';
+        html += '<tr class="tot"><td>Total assessments needed, a year</td>' + cell('Np', '', 'bud') + cell('Nb', '', 'sep') + cell('Nd', '') + cell('Nc', '') + '<td class="sep"></td>' + cell('Nf', '', 'new sep') + '</tr>';
+        html += '<tr class="tot"><td>Per unit, per month ({{ units }} unit{{ units|pluralize }})</td>' + cell('Up', '', 'bud') + cell('Ub', '', 'sep') + cell('Ud', '') + cell('Uc', '') + '<td class="sep"></td>' + cell('Uf', '', 'new sep') + '</tr>';
+        document.getElementById('mbody').innerHTML = html;
+        S.rows.forEach(function (l) { var el = document.querySelector('input[data-id="' + l.id + '"]'); if (el && l.typed !== null && l.typed !== undefined) el.value = String(l.typed); });
+        paint();
+    }
+    function put(key, txt, klass) {
+        var el = document.querySelector('[data-k="' + key + '"]');
+        if (!el) return;
+        el.textContent = txt;
+        el.classList.remove('t-good', 't-bad');
+        if (klass) el.classList.add(klass);
+    }
+    function paint() {
+        var F = figures(), U = S.units || 1;
+        S.rows.forEach(function (l) {
+            var p = rd(l.prior), b = rd(l.board), f = rd(fin(l)), isInc = l.section === 'Income';
+            put(l.id + 'p', $(p)); put(l.id + 'b', $(b)); put(l.id + 'd', chg(b - p), tone(b - p, isInc)); put(l.id + 'c', pct(b, p), tone(b - p, isInc));
+            var changed = Math.abs(fin(l) - l.board) >= 0.005;
+            var fc = document.querySelector('[data-k="' + l.id + 'f"]');
+            if (fc) fc.innerHTML = $(f) + (changed ? '<span class="bd-since">board draft ' + $(b) + '</span>' : '');
+            var tr = document.querySelector('tr[data-line="' + l.id + '"]');
+            if (tr) tr.classList.toggle('chg', changed);
+            var inp = tr && tr.querySelector('input');
+            if (inp && document.activeElement !== inp) inp.value = (l.typed !== null && l.typed !== undefined) ? String(l.typed) : '';
+        });
+        S.sections.forEach(function (sec) {
+            var t = F.sections[sec]; if (!t) return;
+            var add = sec === 'Income' ? F.reg : {p: 0, b: 0, f: 0}, isInc = sec === 'Income';
+            var P = t.p + add.p, B = t.b + add.b, Fi = t.f + add.f;
+            put(sec + 'p', $(P)); put(sec + 'b', $(B)); put(sec + 'd', chg(B - P), tone(B - P, isInc)); put(sec + 'c', pct(B, P), tone(B - P, isInc)); put(sec + 'f', $(Fi));
+        });
+        put('rp', $(F.reg.p)); put('rb', $(F.reg.b)); put('rd', chg(F.reg.b - F.reg.p), tone(F.reg.b - F.reg.p, true)); put('rc', pct(F.reg.b, F.reg.p), tone(F.reg.b - F.reg.p, true)); put('rf', $(F.reg.f));
+        put('Xp', $(F.exp.p)); put('Xb', $(F.exp.b)); put('Xd', chg(F.exp.b - F.exp.p), tone(F.exp.b - F.exp.p)); put('Xc', pct(F.exp.b, F.exp.p), tone(F.exp.b - F.exp.p)); put('Xf', $(F.exp.f));
+        var needP = F.exp.p - (F.sections['Income'] ? F.sections['Income'].p : 0);                  // last year's assessments needed: its expenses and reserves less its other income
+        put('Np', $(needP)); put('Nb', $(F.reg.b)); put('Nd', chg(F.reg.b - needP), tone(F.reg.b - needP)); put('Nc', pct(F.reg.b, needP), tone(F.reg.b - needP)); put('Nf', $(F.reg.f));
+        var upP = S.totals.unit_month_prior, upB = F.reg.b / U / 12, upF = F.needed / U / 12;
+        var c2 = function (n) { return Math.abs(n) < 0.005 ? '—' : (n > 0 ? $2(n) : '(' + $2(Math.abs(n)) + ')'); };
+        var tone2 = function (n) { return Math.abs(n) < 0.005 ? '' : (n > 0 ? 't-bad' : 't-good'); };
+        put('Up', $2(upP)); put('Ub', $2(upB)); put('Ud', c2(upB - upP), tone2(upB - upP)); put('Uc', pct(upB, upP), tone2(upB - upP)); put('Uf', $2(upF));
+    }
+    function send(body) {
+        return fetch(URL_, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify(body)})
+            .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+            .then(function (x) { if (!x.ok) { alert(x.j.error || 'That did not save.'); build(); } else { S = x.j; paint(); } })
+            .catch(function () { alert('That did not save. Check the connection and try again.'); build(); });
+    }
+    var body = document.getElementById('mbody');
+    body.addEventListener('input', function (e) {         // the totals follow every keystroke; nothing is saved until the box is left
+        var el = e.target; if (!el.matches('input[data-id]')) return;
+        var l = S.rows.find(function (r) { return String(r.id) === el.dataset.id; });
+        var txt = el.value.replace(/[$,\s]/g, '');
+        if (txt === '') { l.typed = null; }
+        else if (/^-?\d*\.?\d*$/.test(txt) && txt !== '-' && txt !== '.') { l.typed = parseFloat(txt); }
+        else return;
+        paint();
+    });
+    body.addEventListener('change', function (e) {
+        var el = e.target; if (!el.matches('input[data-id]')) return;
+        send({op: 'set', line: parseInt(el.dataset.id, 10), field: 'final', value: el.value});
+    });
+    body.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || !e.target.matches('input[data-id]')) return;
+        e.preventDefault();
+        var all = Array.prototype.slice.call(body.querySelectorAll('input[data-id]:not([disabled])'));
+        var next = all[all.indexOf(e.target) + 1]; e.target.blur(); if (next) next.focus();
+    });
+    build();
+})();
+</script>
+
 {% elif view == 'compare' %}
 <div class="form-check mb-2"><input type="checkbox" class="form-check-input" id="onlyChg" checked onchange="document.querySelectorAll('#cmp tr.quiet').forEach(function (r) { r.style.display = this.checked ? 'none' : ''; }.bind(this))"><label class="form-check-label small text-muted" for="onlyChg">Show only lines that changed along the way</label></div>
 <div class="card"><div style="overflow-x: auto;">
@@ -315,12 +462,12 @@
     {% for sec in sheet.sections %}
     {% if sec.lines %}
     <tr class="sec"><td>{{ sec.name }}</td><td></td><td></td><td class="c27"></td><td></td><td></td></tr>
-    {% for l in sec.lines %}<tr><td>{{ l.name }}</td><td>{{ l.prior|dollars }}</td><td>{{ l.projected|dollars }}</td><td class="c27">{{ l.proposed|dollars }}</td><td class="t-{{ l.tone }}">{{ l.d|dparen }}</td><td class="t-{{ l.ptone }}">{{ l.p|pparen }}</td></tr>{% endfor %}
-    <tr class="tot"><td>Total {{ sec.name|lower }}</td><td>{{ sec.prior|dollars }}</td><td>{{ sec.projected|dollars }}</td><td class="c27">{{ sec.proposed|dollars }}</td><td class="t-{{ sec.tone }}">{{ sec.d|dparen }}</td><td class="t-{{ sec.ptone }}">{{ sec.p|pparen }}</td></tr>
+    {% for l in sec.lines %}<tr><td>{{ l.name }}</td><td>{{ l.prior|bdm:sheet.cents }}</td><td>{{ l.projected|bdm:sheet.cents }}</td><td class="c27">{{ l.proposed|bdm:sheet.cents }}</td><td class="t-{{ l.tone }}">{{ l.d|bdc:sheet.cents }}</td><td class="t-{{ l.ptone }}">{{ l.p|pparen }}</td></tr>{% endfor %}
+    <tr class="tot"><td>Total {{ sec.name|lower }}</td><td>{{ sec.prior|bdm:sheet.cents }}</td><td>{{ sec.projected|bdm:sheet.cents }}</td><td class="c27">{{ sec.proposed|bdm:sheet.cents }}</td><td class="t-{{ sec.tone }}">{{ sec.d|bdc:sheet.cents }}</td><td class="t-{{ sec.ptone }}">{{ sec.p|pparen }}</td></tr>
     {% endif %}
-    {% if sec.key == 'Operating' %}<tr class="tot"><td>Total expenses without reserves</td><td>{{ sheet.op.prior|dollars }}</td><td>{{ sheet.op.projected|dollars }}</td><td class="c27">{{ sheet.op.proposed|dollars }}</td><td class="t-{{ sheet.op.tone }}">{{ sheet.op.d|dparen }}</td><td class="t-{{ sheet.op.ptone }}">{{ sheet.op.p|pparen }}</td></tr>{% endif %}
+    {% if sec.key == 'Operating' %}<tr class="tot"><td>Total expenses without reserves</td><td>{{ sheet.op.prior|bdm:sheet.cents }}</td><td>{{ sheet.op.projected|bdm:sheet.cents }}</td><td class="c27">{{ sheet.op.proposed|bdm:sheet.cents }}</td><td class="t-{{ sheet.op.tone }}">{{ sheet.op.d|bdc:sheet.cents }}</td><td class="t-{{ sheet.op.ptone }}">{{ sheet.op.p|pparen }}</td></tr>{% endif %}
     {% endfor %}
-    <tr class="grand last"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|dollars }}</td><td>{{ sheet.total.projected|dollars }}</td><td class="c27">{{ sheet.total.proposed|dollars }}</td><td class="t-{{ sheet.total.tone }}">{{ sheet.total.d|dparen }}</td><td class="t-{{ sheet.total.ptone }}">{{ sheet.total.p|pparen }}</td></tr>
+    <tr class="grand last"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|bdm:sheet.cents }}</td><td>{{ sheet.total.projected|bdm:sheet.cents }}</td><td class="c27">{{ sheet.total.proposed|bdm:sheet.cents }}</td><td class="t-{{ sheet.total.tone }}">{{ sheet.total.d|bdc:sheet.cents }}</td><td class="t-{{ sheet.total.ptone }}">{{ sheet.total.p|pparen }}</td></tr>
     </tbody></table>
     <div class="bd-unitbox"><div class="t">By unit calculation</div>
     <table class="bd-table"><thead><tr class="grp"><th colspan="2"></th><th class="c27"></th><th colspan="2" class="bd-grp">{{ year }} vs {{ year|add:"-1" }}</th></tr><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th class="c27">{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>

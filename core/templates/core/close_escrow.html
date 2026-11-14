@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{{ cfg.title }}{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 {% load core_extras %}
 <a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
@@ -21,7 +22,7 @@
     <h6 class="card-title">Which account is {{ cfg.account_phrase }}?</h6>
     <p class="small text-muted">Choose it as it appears in QuickBooks (once).</p>
     <form method="post" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="set_account"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
-        <select name="account" class="form-select form-select-sm" style="max-width: 420px;" required>
+        <select aria-label="QuickBooks account" name="account" class="form-select form-select-sm" style="max-width: 420px;" required>
             <option value="">Choose…</option>
             {% for a in account_choices %}<option value="{{ a.pk }}">{{ a.fully_qualified_name }}</option>{% endfor %}
         </select>
@@ -42,7 +43,7 @@
             {% else %}<span class="badge rounded-pill text-bg-light border">Not checked yet</span>{% endif %}
         </span>
     </div>
-    <table class="table table-sm mb-2 mt-2" style="max-width: 560px; font-variant-numeric: tabular-nums;">
+    <div class="table-responsive"><table class="table table-sm mb-2 mt-2" style="max-width: 560px; font-variant-numeric: tabular-nums;">
         <tr><td>{{ cfg.total_label }}</td><td class="text-end fw-semibold">{{ s.total|money }}</td></tr>
         <tr><td>QuickBooks {{ cfg.short }} at {{ month_end|date:"M j" }}
             {% if s.qb_balance is None %}<span class="text-muted small">— not pulled yet</span>{% elif s.em.qb_pulled_at %}<span class="text-muted small">— pulled {{ s.em.qb_pulled_at|date:"M j, g:i a" }}</span>{% endif %}</td>
@@ -51,12 +52,12 @@
         {% if kind == 'escrow' %}<tr><td>Escrow bank statement ending balance <span class="text-muted small">(optional)</span></td>
             <td class="text-end">{% if s.bank_balance is not None %}<strong>{{ s.bank_balance|money }}</strong>{% else %}—{% endif %}</td></tr>
         {% if s.bank_gap is not None %}<tr><td>Difference from the bank</td><td class="text-end fw-semibold" style="{% if s.bank_gap %}color: #9a6a00;{% endif %}">{{ s.bank_gap|money }}</td></tr>{% endif %}{% endif %}
-    </table>
+    </table></div>
     <div class="d-flex gap-2 flex-wrap align-items-center">
         <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="pull"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
             <button class="btn btn-outline-primary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> {% if s.qb_balance is None %}Pull the balance from QuickBooks{% else %}Pull it again{% endif %}</button></form>
         {% if kind == 'escrow' %}<form method="post" class="d-inline-flex gap-1 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="set_bank"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
-            <input type="text" name="bank_balance" class="form-control form-control-sm" style="width: 9rem;" placeholder="Bank ending balance" value="{% if s.bank_balance is not None %}{{ s.bank_balance }}{% endif %}">
+            <input aria-label="Bank ending balance" type="text" name="bank_balance" class="form-control form-control-sm" style="width: 9rem;" placeholder="Bank ending balance" value="{% if s.bank_balance is not None %}{{ s.bank_balance }}{% endif %}">
             <button class="btn btn-outline-secondary btn-sm">Save</button></form>{% endif %}
     </div>
     {% if kind == 'misc' and s.status != 'not_started' and s.qb_balance %}<div class="alert alert-warning small py-2 mt-3 mb-0"><strong>This account should be zero.</strong> It is carrying {{ s.qb_balance|money }}. Each line below is something to correct in QuickBooks next month; delete its line once it has been.</div>{% endif %}
@@ -77,18 +78,18 @@
         <tbody>
         {% for l in s.lines %}
         <tr><form method="post" id="el-{{ l.pk }}">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="line" value="{{ l.pk }}"></form>
-            <td><input form="el-{{ l.pk }}" type="text" name="name" class="form-control form-control-sm" value="{{ l.name }}" maxlength="200" required></td>
-            <td><select form="el-{{ l.pk }}" name="property" class="form-select form-select-sm"><option value="">—</option>{% for p in properties %}<option value="{{ p.pk }}" {% if l.property_id == p.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></td>
-            <td><input form="el-{{ l.pk }}" type="text" name="amount" class="form-control form-control-sm text-end" value="{{ l.amount }}" required></td>
-            <td><input form="el-{{ l.pk }}" type="text" name="note" class="form-control form-control-sm" value="{{ l.note }}" maxlength="500"></td>
+            <td><input aria-label="Name" form="el-{{ l.pk }}" type="text" name="name" class="form-control form-control-sm" value="{{ l.name }}" maxlength="200" required></td>
+            <td><select aria-label="Property" form="el-{{ l.pk }}" name="property" class="form-select form-select-sm"><option value="">—</option>{% for p in properties %}<option value="{{ p.pk }}" {% if l.property_id == p.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></td>
+            <td><input aria-label="Amount" form="el-{{ l.pk }}" type="text" name="amount" class="form-control form-control-sm text-end" value="{{ l.amount }}" required></td>
+            <td><input aria-label="Note" form="el-{{ l.pk }}" type="text" name="note" class="form-control form-control-sm" value="{{ l.note }}" maxlength="500"></td>
             <td class="text-end text-nowrap"><button form="el-{{ l.pk }}" name="action" value="edit_line" class="btn btn-outline-secondary btn-sm">Save</button>
                 <button form="el-{{ l.pk }}" name="action" value="delete_line" class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove {{ l.name|escapejs }} from this month?');">Delete</button></td></tr>
         {% empty %}<tr><td colspan="5" class="text-muted small">Nothing listed yet. Add the first line below.</td></tr>{% endfor %}
         <tr class="table-light"><form method="post" id="el-new">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="add_line"></form>
-            <td><input form="el-new" type="text" name="name" class="form-control form-control-sm" placeholder="{{ cfg.placeholder }}" maxlength="200" required></td>
-            <td><select form="el-new" name="property" class="form-select form-select-sm"><option value="">—</option>{% for p in properties %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}</select></td>
-            <td><input form="el-new" type="text" name="amount" class="form-control form-control-sm text-end" placeholder="0.00" required></td>
-            <td><input form="el-new" type="text" name="note" class="form-control form-control-sm" placeholder="Note (optional)" maxlength="500"></td>
+            <td><input aria-label="Name" form="el-new" type="text" name="name" class="form-control form-control-sm" placeholder="{{ cfg.placeholder }}" maxlength="200" required></td>
+            <td><select aria-label="Property" form="el-new" name="property" class="form-select form-select-sm"><option value="">—</option>{% for p in properties %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}</select></td>
+            <td><input aria-label="Amount" form="el-new" type="text" name="amount" class="form-control form-control-sm text-end" placeholder="0.00" required></td>
+            <td><input aria-label="Note" form="el-new" type="text" name="note" class="form-control form-control-sm" placeholder="Note (optional)" maxlength="500"></td>
             <td class="text-end"><button form="el-new" class="btn btn-primary btn-sm">Add line</button></td></tr>
         </tbody>
         <tfoot><tr><td colspan="2" class="fw-semibold">Total</td><td class="text-end fw-semibold">{{ s.total|money }}</td><td colspan="2"></td></tr></tfoot>

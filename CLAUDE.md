@@ -283,6 +283,7 @@ dead.
 | No-login external access pattern | `vendorportal/models.py::AccessAttempt`, `Ticket.completion_token*`, `onsite.Visit.access_token*` |
 | Media/file storage config | `proptasks/settings.py` `STORAGES`/`CLOUDINARY_*` — read the comment before changing |
 | Deploy-time setup | `Procfile` (the one `web:` line — read it top to bottom) |
+| The installable web app (home-screen icon, full screen) | `core/pwa.py` (manifest with the per-person start page, service worker, offline page, `PwaFilesMiddleware` that answers them ahead of the owner and policy walls), `templates/_pwa_head.html` / `_pwa_body.html`, `static/js/pwa.js`, icons from `manage.py make_pwa_icons`. The worker caches only `/static/` files and the offline page, never a page or a POST |
 
 ## When designing a new module
 

@@ -10,6 +10,7 @@
     <div>
         <h1 class="fs-3 mb-0">{{ prop.name }}</h1>
         <div class="muted small">{% if prop.address %}{{ prop.address }} · {% endif %}Financials, released month by month</div>
+        <a href="{% url 'owner_calendar' prop.pk %}" class="btn btn-brand btn-sm mt-2 no-print">Open the calendar</a>
     </div>
     <form method="get" class="d-flex gap-2 no-print">
         {% if props|length > 1 %}<select name="property" class="form-select form-select-sm" onchange="this.form.submit()">{% for p in props %}<option value="{{ p.pk }}" {% if p.pk == prop.pk %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>{% endif %}

@@ -39,6 +39,7 @@
                     {% elif kind == 'vacation' %}You are on vacation today
                     {% elif kind == 'off' %}You are off today
                     {% elif kind == 'closed' %}Office closed today
+                    {% elif profile.variable_hours %}No set schedule: clock in when you start
                     {% else %}Not scheduled today{% endif %}
                 </div>
                 {% if punch and punch.clock_out %}
@@ -109,7 +110,7 @@
             <div class="tc-label">This pay period</div>
             <div class="tc-big mt-1">{{ report.worked_min|mins }}</div>
             <div class="tc-sub">{% span period_start period_end %}{% if profile.is_hourly and report.paid != report.worked_hours %} · {{ report.paid|hrs }} h paid{% endif %}</div>
-            {% if attendance %}<div class="tc-sub mt-1">30 days: {{ attendance.worked }} of {{ attendance.scheduled }} days{% if attendance.remote %} · {{ attendance.remote }} remote{% endif %}{% if attendance.missed %} · {{ attendance.missed }} missed{% endif %}</div>{% endif %}
+            {% if attendance %}<div class="tc-sub mt-1">30 days: {% if attendance.variable %}{{ attendance.worked }} day{{ attendance.worked|pluralize }} worked{% else %}{{ attendance.worked }} of {{ attendance.scheduled }} days{% endif %}{% if attendance.remote %} · {{ attendance.remote }} remote{% endif %}{% if attendance.missed %} · {{ attendance.missed }} missed{% endif %}</div>{% endif %}
         </div></div>
     </div>
     <div class="col-12 col-md-4">
@@ -120,7 +121,7 @@
                 <div class="tc-row py-1">
                     <span>{{ row.profile.first_name }}{% if row.profile.id == profile.id %} <span class="tc-sub">(you)</span>{% endif %}</span>
                     <span class="tc-sub">
-                        {% if row.state == 'in' %}<i data-lucide="check" class="icon" style="color: var(--status-good);"></i> in{% elif row.state == 'done' %}done{% elif row.state == 'not_in' %}scheduled{% elif row.state == 'vacation' %}vacation{% elif row.state == 'off' %}off{% elif row.state == 'closed' %}closed{% else %}off today{% endif %}
+                        {% if row.state == 'in' %}<i data-lucide="check" class="icon" style="color: var(--status-good);"></i> in{% elif row.state == 'done' %}done{% elif row.state == 'not_in' %}scheduled{% elif row.state == 'flex' %}not in yet{% elif row.state == 'vacation' %}vacation{% elif row.state == 'off' %}off{% elif row.state == 'closed' %}closed{% else %}off today{% endif %}
                     </span>
                 </div>
                 {% endfor %}
@@ -134,7 +135,7 @@
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
     <div class="d-flex justify-content-between align-items-center mb-2">
         <span class="tc-label">This week</span>
-        <a href="{% url 'timeclock_change' %}" class="btn btn-outline-secondary btn-sm">Change a day</a>
+        {% if not profile.variable_hours %}<a href="{% url 'timeclock_change' %}" class="btn btn-outline-secondary btn-sm">Change a day</a>{% endif %}
     </div>
     <div class="tc-week">
         {% for d in week %}
@@ -150,6 +151,7 @@
 </div></div>
 
 {# ---------------- late arrivals ---------------- #}
+{% if not profile.variable_hours %}
 <div class="card mb-3" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
     <div class="tc-label">Late arrivals</div>
     <div class="row g-2 mt-1">
@@ -159,6 +161,7 @@
     </div>
     <div class="tc-sub mt-2">Late means more than 10 minutes after your start time.</div>
 </div></div>
+{% endif %}
 
 {# ---------------- requests ---------------- #}
 {% if mine.off or mine.change or mine.fix or decided %}

@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block title %}Long-term rent collection{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Long-term rent collection {% include '_tip.html' with text="Rent comes in the first days of the month. For each long-term rental, the rent we expect is compared with what QuickBooks shows came in this month. Confirm each one. An owner who is paid the month it is collected is paid for it only once its rent is confirmed here." %}</h2>
@@ -12,15 +13,16 @@
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
+<style>.rc-gone td:not(:last-child) { text-decoration: line-through; color: var(--ink-muted); } .rc-tx > summary { cursor: pointer; list-style: none; } .rc-tx > summary::-webkit-details-marker { display: none; }</style>
 <div class="card" style="border-radius: 12px;"><div class="card-body p-2"><div class="table-responsive">
-<table class="table table-sm align-middle mb-0" style="font-size: 0.9rem;">
+<table class="table table-sm align-middle mb-0 rent-tbl" style="font-size: 0.9rem;">
     <thead><tr><th>Rental</th><th>Owner is paid</th><th style="text-align: right;">Expected rent</th><th style="text-align: right;">QuickBooks shows</th><th style="text-align: right;">Difference</th><th>Confirm</th></tr></thead>
     <tbody>
     {% for r in rows %}<tr>
-        <td class="fw-semibold">{{ r.property.name }}</td>
+        <td class="fw-semibold"><a href="{% url 'property_detail' r.property.pk %}" class="text-decoration-none" style="color: inherit;">{{ r.property.name }}</a></td>
         <td class="small">{{ r.timing }}</td>
-        <td style="text-align: right;">{% if r.expected is not None %}{{ r.expected|money }}{% else %}
-            <form method="post" class="d-inline-flex gap-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_rent"><input type="hidden" name="property" value="{{ r.property.pk }}"><input class="form-control form-control-sm text-end" style="width: 7rem;" name="monthly_rent" placeholder="Monthly rent"><button class="btn btn-sm btn-outline-secondary">Set</button></form>{% endif %}</td>
+        <td style="text-align: right;">{% if r.expected is not None %}{{ r.expected|money }} <a href="{% url 'property_detail' r.property.pk %}#monthly-rent" class="small text-decoration-none ms-1" title="Change this rental's monthly rent on its property page">Change</a>{% else %}
+            <form method="post" class="d-inline-flex gap-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_rent"><input type="hidden" name="property" value="{{ r.property.pk }}"><input aria-label="Monthly rent" class="form-control form-control-sm text-end" style="width: 7rem;" name="monthly_rent" placeholder="Monthly rent"><button class="btn btn-sm btn-outline-secondary">Set</button></form>{% endif %}</td>
         <td style="text-align: right;">{{ r.seen|money }}</td>
         <td style="text-align: right;">{% if r.diff is None %}&mdash;{% elif r.kind == 'matches' %}<span style="color: var(--status-good);">&#10003; 0.00</span>{% else %}<span style="color: #9a6a00;">{{ r.diff|money }}</span>{% endif %}</td>
         <td>
@@ -29,13 +31,32 @@
                 <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="unconfirm"><input type="hidden" name="property" value="{{ r.property.pk }}"><button class="btn btn-link btn-sm text-muted p-0">Undo</button></form>
             {% else %}
             <form method="post" class="d-flex flex-wrap gap-1 align-items-center">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="confirm"><input type="hidden" name="property" value="{{ r.property.pk }}">
-                <input class="form-control form-control-sm" style="width: 11rem;" name="note" placeholder="{% if r.kind == 'matches' or r.kind == 'no_rent' %}Note (optional){% else %}Why the difference{% endif %}">
+                <input aria-label="Note" class="form-control form-control-sm" style="width: 11rem;" name="note" placeholder="{% if r.kind == 'matches' or r.kind == 'no_rent' %}Note (optional){% else %}Why the difference{% endif %}">
                 <button class="btn btn-sm btn-primary" name="status" value="received">{% if r.kind == 'matches' %}Rent received{% else %}Confirm received{% endif %}</button>
                 <button class="btn btn-sm btn-outline-secondary" name="status" value="partial">Partly</button>
                 <button class="btn btn-sm btn-outline-secondary" name="status" value="not_received">Not received</button></form>
             {% endif %}
         </td></tr>
+    <tr><td colspan="6" class="pt-0" style="border-top: 0;">
+        <details class="rc-tx small">
+            <summary class="text-muted"><i data-lucide="list" class="icon"></i> All transactions in {{ rent_month|date:"F" }} ({{ r.transactions.count }}){% if r.transactions.count %} &middot; in {{ r.transactions.money_in|money }}, out {{ r.transactions.money_out|money }}{% endif %}{% if r.transactions.removed %} &middot; {{ r.transactions.removed }} gone from QuickBooks{% endif %}
+                {% include '_tip.html' with text="Every transaction QuickBooks shows in this rental's accounts for the month, not only the deposits that make up the rent: deposits, reversals, money paid out, and anything since removed from QuickBooks (struck through). Trust account first, then the expense account. Only the lines marked counted as rent are added into What QuickBooks shows." %}</summary>
+            {% if r.transactions.lines %}
+            <table class="table table-sm mb-1 mt-2" style="font-size: 0.85rem;">
+                <thead><tr><th style="width: 5rem;">Date</th><th>What</th><th>Coded as</th><th style="text-align: right;">Amount</th></tr></thead>
+                <tbody>
+                {% for t in r.transactions.lines %}<tr{% if t.removed %} class="rc-gone"{% endif %}>
+                    <td>{{ t.date|date:"M j" }}</td>
+                    <td>{{ t.type }}{% if t.doc %} #{{ t.doc }}{% endif %}{% if t.what %} &middot; {{ t.what }}{% endif %}{% if t.unit %} ({{ t.unit }}){% endif %}{% if not t.trust %} <span class="badge text-bg-light border fw-normal">expense account</span>{% endif %}{% if t.removed %} <span class="badge text-bg-light border fw-normal">gone from QuickBooks</span>{% endif %}</td>
+                    <td>{{ t.category }}{% if t.counts %} <span style="color: var(--status-good);">&#10003; counted as rent</span>{% endif %}</td>
+                    <td style="text-align: right;">{{ t.amount|money }}</td></tr>
+                {% endfor %}
+                </tbody>
+                <tfoot><tr><td colspan="3" class="text-muted">Trust account for the month: in {{ r.transactions.money_in|money }}, out {{ r.transactions.money_out|money }}</td><td style="text-align: right;" class="fw-semibold">{{ r.transactions.net|money }}</td></tr></tfoot>
+            </table>
+            {% else %}<div class="text-muted mt-2 mb-1">Nothing in QuickBooks for {{ rent_month|date:"F Y" }} yet. If the books are not synced, do that first and look again.</div>{% endif %}
+        </details></td></tr>
     {% empty %}<tr><td colspan="6" class="text-muted p-3">No long-term rentals are set up for the close.</td></tr>{% endfor %}
     </tbody></table></div></div></div>
-<p class="small text-muted mt-2">The rent shown is the deposits coded in QuickBooks this month for the rental. Set a rental's monthly rent once; it is kept. If the books are not right yet, do the bookkeeping first and look again.</p>
+<div class="small text-muted mt-2">How to read this {% include '_tip.html' with text="What QuickBooks shows is the deposits coded in QuickBooks this month for the rental; open All transactions under a rental to see everything else that moved, reversals included. A rental's monthly rent is kept once set: change it with Change beside it. If the books are not right yet, do the bookkeeping first and look again." %}</div>
 {% endblock %}

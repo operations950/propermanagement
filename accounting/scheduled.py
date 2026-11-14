@@ -73,10 +73,14 @@ def post_contribution(prop, rule, month_first, user=None, day=None):
     return ledger.post_entry(prop, day, lines, memo=f'Reserve contribution, {month_first:%B}', source=JournalEntry.Source.MANUAL, source_ref=f'jrule:{rule.pk}:{month_first:%Y-%m}', user=user)
 
 
-def post_due(prop, today, user=None):
-    """Post what has come due, for this month and last (older months are left alone: they are closed or done by hand). Returns the entries made."""
+def post_due(prop, today, user=None, automatic=False):
+    """Post what has come due, for this month and last (older months are left alone: they are closed or done by hand). Returns the entries made.
+    With `automatic` (the scheduled job), only the entries whose own automatic posting is switched on."""
     made = []
-    for rule in JournalRule.objects.filter(association=prop, is_active=True, kind=JournalRule.Kind.RESERVE):
+    rules = JournalRule.objects.filter(association=prop, is_active=True, kind=JournalRule.Kind.RESERVE)
+    if automatic:
+        rules = rules.filter(auto_post=True)
+    for rule in rules:
         for month_first in (ledger.previous_month(today), ledger.month_start(today)):
             st = status(prop, rule, month_first, today)
             if st['state'] != 'due':

@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block title %}Bank tie-out{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .bt { font-size: 0.86rem; }
     .bt .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -34,7 +35,7 @@
 {% if not month_over %}<div class="alert alert-info small py-2">{{ month|date:"F Y" }} isn't over yet, so these balances aren't final.</div>{% endif %}
 
 {# ---- the statement ---- #}
-<div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-3">
+<div class="card mb-3" style="border-radius: 12px;" data-statement-drop><div class="card-body py-3">
     <div class="fw-semibold mb-2">The bank statement</div>
     {% if s.statement %}
     <div class="d-flex align-items-baseline gap-3 flex-wrap">
@@ -47,12 +48,12 @@
         <input type="text" name="ending_balance" class="form-control form-control-sm" style="max-width: 160px;" placeholder="{% if s.has_balance %}Correct the balance{% else %}Ending balance{% endif %}" aria-label="Ending balance" {% if not s.has_balance %}required{% endif %}>
         <button class="btn {% if s.has_balance %}btn-outline-secondary{% else %}btn-primary{% endif %} btn-sm py-0">{% if s.has_balance %}Correct it{% else %}Save the balance{% endif %}</button>
     </form>
-    <details class="mt-2"><summary class="small text-muted" style="cursor: pointer;">Replace the statement file</summary>
+    <details class="mt-2"><summary class="small text-muted" style="cursor: pointer;">Replace the statement file <span class="text-muted">(or drag the file onto this page)</span></summary>
     {% else %}
-    <div class="small text-muted mb-2">Upload the statement for {{ month|date:"F Y" }} (PDF or CSV). The ending balance is read from it when possible; you confirm it.</div>
+    <div class="small text-muted mb-2">Upload the statement for {{ month|date:"F Y" }} (PDF or CSV), or drag the file onto this page. The ending balance is read from it when possible; you confirm it.</div>
     {% endif %}
     <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="upload_statement">
-        <input type="file" name="file" accept=".pdf,.csv" class="form-control form-control-sm" style="max-width: 280px;" required aria-label="Statement file">
+        <input type="file" name="file" accept=".pdf,.csv" class="form-control form-control-sm" style="max-width: 280px;" required aria-label="Statement file"><span class="small text-muted" data-statement-name></span>
         <input type="text" name="ending_balance" class="form-control form-control-sm" style="max-width: 190px;" placeholder="Ending balance (if it can't be read)" aria-label="Ending balance">
         <button class="btn btn-primary btn-sm">{% if s.statement %}Replace{% else %}Upload{% endif %}</button>
     </form>
@@ -73,9 +74,9 @@
     <details class="mt-2" {% if not bank or not trust_parent %}open{% endif %}><summary class="small text-muted" style="cursor: pointer;">{% if accounts_saved %}Change the accounts{% else %}Choose the accounts{% endif %}</summary>
         <form method="post" class="row g-2 align-items-end mt-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_accounts">
             <div class="col-md-5"><label class="form-label small mb-0">Property management bank account</label>
-                <select name="bank_account" class="form-select form-select-sm">{% for a in account_choices %}<option value="{{ a.pk }}" {% if bank and a.pk == bank.pk %}selected{% endif %}>{{ a.fully_qualified_name }} ({{ a.account_type }})</option>{% endfor %}</select></div>
+                <select aria-label="Bank account" name="bank_account" class="form-select form-select-sm">{% for a in account_choices %}<option value="{{ a.pk }}" {% if bank and a.pk == bank.pk %}selected{% endif %}>{{ a.fully_qualified_name }} ({{ a.account_type }})</option>{% endfor %}</select></div>
             <div class="col-md-5"><label class="form-label small mb-0">Trust parent account (its sub-accounts are the properties)</label>
-                <select name="trust_parent_account" class="form-select form-select-sm">{% for a in account_choices %}<option value="{{ a.pk }}" {% if trust_parent and a.pk == trust_parent.pk %}selected{% endif %}>{{ a.fully_qualified_name }} ({{ a.account_type }})</option>{% endfor %}</select></div>
+                <select aria-label="Trust account in QuickBooks" name="trust_parent_account" class="form-select form-select-sm">{% for a in account_choices %}<option value="{{ a.pk }}" {% if trust_parent and a.pk == trust_parent.pk %}selected{% endif %}>{{ a.fully_qualified_name }} ({{ a.account_type }})</option>{% endfor %}</select></div>
             <div class="col-md-2"><button class="btn btn-outline-secondary btn-sm w-100">Save</button></div>
         </form>
     </details>
@@ -97,15 +98,15 @@
     {% if not s.has_balance %}<div class="small text-muted">{% if s.statement %}Type the statement's ending balance above to compare it.{% else %}Upload the statement above to compare it.{% endif %}</div>{% else %}
     <div class="small text-muted mb-2">Statement {{ s.statement.ending_balance|money }} − QuickBooks bank {{ s.tieout.qb_bank|money }} = <strong>{{ s.statement_gap|money }}</strong>. Explain it with timing items: an outstanding check makes the statement higher than QuickBooks (enter it as a positive amount); a deposit in transit makes it lower (negative).</div>
     {% if s.statement_items %}
-    <table class="table table-sm mb-2"><tbody>
+    <div class="table-responsive"><table class="table table-sm mb-2"><tbody>
         {% for i in s.statement_items %}<tr><td>{{ i.description }}{% if i.note %} <span class="text-muted">— {{ i.note }}</span>{% endif %}</td><td class="num">{{ i.amount|money }}</td>
             <td class="text-end"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="remove_item"><input type="hidden" name="item_id" value="{{ i.pk }}"><button class="btn btn-link btn-sm py-0 text-danger" aria-label="Remove">Remove</button></form></td></tr>{% endfor %}
         <tr><td class="text-muted">Explained so far</td><td class="num">{{ s.statement_explained|money }}</td><td></td></tr>
-    </tbody></table>
+    </tbody></table></div>
     {% endif %}
     <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="add_item"><input type="hidden" name="side" value="statement">
-        <div class="col-md-6"><input type="text" name="description" class="form-control form-control-sm" placeholder="e.g. Check 142 not yet cashed" required></div>
-        <div class="col-md-3"><input type="text" name="amount" class="form-control form-control-sm" placeholder="Amount (+ / −)" required></div>
+        <div class="col-md-6"><input aria-label="What it is" type="text" name="description" class="form-control form-control-sm" placeholder="e.g. Check 142 not yet cashed" required></div>
+        <div class="col-md-3"><input aria-label="Amount" type="text" name="amount" class="form-control form-control-sm" placeholder="Amount (+ / −)" required></div>
         <div class="col-md-3"><button class="btn btn-outline-secondary btn-sm w-100">Add timing item</button></div>
     </form>
     {% endif %}
@@ -131,22 +132,22 @@
             <td class="num">{{ d.bank|money }}</td><td class="num">{{ d.trust|money }}</td><td class="num"><strong>{{ d.diff|money }}</strong></td>
             <td style="min-width: 250px;">{% if d.accepted %}<span class="bt-chip bt-ok">Explained</span>
                 {% else %}<form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="accept"><input type="hidden" name="key" value="{{ d.key }}">
-                    <input type="text" name="note" class="form-control form-control-sm" placeholder="Why this is fine" required><button class="btn btn-outline-secondary btn-sm py-0">Accept</button></form>{% endif %}</td>
+                    <input aria-label="Why this is fine" type="text" name="note" class="form-control form-control-sm" placeholder="Why this is fine" required><button class="btn btn-outline-secondary btn-sm py-0">Accept</button></form>{% endif %}</td>
         </tr>{% endfor %}
         </tbody>
     </table></div>
     {% else %}<div class="small mb-2">No transaction this month moved the bank and the trust accounts by different amounts.</div>{% endif %}
     {% if s.trust_items %}
-    <table class="table table-sm mb-2"><tbody>
+    <div class="table-responsive"><table class="table table-sm mb-2"><tbody>
         {% for i in s.trust_items %}<tr><td class="text-nowrap text-muted">{{ i.month|date:"M Y" }}</td><td>{{ i.description }}{% if i.note %} <span class="text-muted">— {{ i.note }}</span>{% endif %}</td><td class="num">{{ i.amount|money }}</td>
             <td class="text-end"><form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="remove_item"><input type="hidden" name="item_id" value="{{ i.pk }}"><button class="btn btn-link btn-sm py-0 text-danger">Remove</button></form></td></tr>{% endfor %}
         <tr><td></td><td class="text-muted">Explained so far (this and earlier months)</td><td class="num">{{ s.trust_explained|money }}</td><td></td></tr>
-    </tbody></table>
+    </tbody></table></div>
     {% endif %}
     <details><summary class="small text-muted" style="cursor: pointer;">Explain something that is not in the list</summary>
     <form method="post" class="row g-2 align-items-end mt-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="add_item"><input type="hidden" name="side" value="trust">
-        <div class="col-md-6"><input type="text" name="description" class="form-control form-control-sm" placeholder="What it is" required></div>
-        <div class="col-md-3"><input type="text" name="amount" class="form-control form-control-sm" placeholder="Bank − trust effect" required></div>
+        <div class="col-md-6"><input aria-label="What it is" type="text" name="description" class="form-control form-control-sm" placeholder="What it is" required></div>
+        <div class="col-md-3"><input aria-label="Amount" type="text" name="amount" class="form-control form-control-sm" placeholder="Bank − trust effect" required></div>
         <div class="col-md-3"><button class="btn btn-outline-secondary btn-sm w-100">Add</button></div>
     </form></details>
 </div></div>

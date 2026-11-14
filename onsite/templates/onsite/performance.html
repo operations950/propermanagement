@@ -1,7 +1,10 @@
 {% extends 'base.html' %}
+{% load static %}
 {% load perf_visuals %}
 {% block title %}Rental performance{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
+<div class="mo-page">
 <style>
     .kpi-card { background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); border-radius: 14px; padding: 12px 14px; height: 100%; }
     .kpi-card .lbl { font-size: 0.78rem; color: var(--ink-muted); }
@@ -131,5 +134,6 @@
         </div>
         {% empty %}<p class="text-muted small mb-0">No gaps between reservations in the next 90 days.</p>{% endfor %}
     </div>
+</div>
 </div>
 {% endblock %}

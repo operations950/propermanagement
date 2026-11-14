@@ -28,12 +28,17 @@ def file_name(assoc_name, year, stage_label, ext):
     return f'{base}.{ext}'
 
 
-def _d(v):
+def _d(v, cents=False):
+    """An amount: $1,234, or $1,234.56 when the sheet shows cents."""
+    if cents:
+        return f'-${abs(v):,.2f}' if round(v, 2) < 0 else f'${v:,.2f}'
     return f'-${abs(round(v)):,}' if round(v) < 0 else f'${round(v):,}'
 
 
-def _chg(v):
-    """A change in dollars: $1,234, ($1,234), or a dash."""
+def _chg(v, cents=False):
+    """A change in dollars: $1,234, ($1,234), or a dash (with cents when the sheet shows cents)."""
+    if cents:
+        return _c2chg(v)
     r = round(v)
     return '—' if r == 0 else f'${r:,}' if r > 0 else f'(${abs(r):,})'
 
@@ -122,8 +127,10 @@ def pdf(sheet):
         if _hex(ptone):
             style.append(('TEXTCOLOR', (5, i), (5, i), colors.HexColor(_hex(ptone))))
 
+    cents = bool(sheet.get('cents'))
+
     def line(label, x, kind='line'):
-        add([label, _d(x['prior']), _d(x['projected']), _d(x['proposed']), _chg(x['d']), _pc(x['p'])], kind, x['tone'], x['ptone'])
+        add([label, _d(x['prior'], cents), _d(x['projected'], cents), _d(x['proposed'], cents), _chg(x['d'], cents), _pc(x['p'])], kind, x['tone'], x['ptone'])
 
     for sec in sheet['sections']:
         if not sec['lines']:
@@ -195,6 +202,8 @@ def xlsx(sheet):
     tint = PatternFill('solid', fgColor=TINT.lstrip('#'))
     money, money2 = '$#,##0;[Red]-$#,##0', '$#,##0.00;($#,##0.00);"—"'
     chg_fmt, pct = '$#,##0;($#,##0);"—"', '0.0%;(0.0%);"—"'
+    if sheet.get('cents'):                    # the sheet is shown in cents: every figure carries them
+        money, chg_fmt = '$#,##0.00;[Red]-$#,##0.00', money2
     ws['A1'] = sheet['assoc']
     ws['A1'].font = Font(bold=True, size=15)
     ws['A2'] = f'{sheet["year"]} proposed budget · {sheet["stage_label"]} · {sheet["units"]} unit{"s" if sheet["units"] != 1 else ""}'
@@ -219,7 +228,7 @@ def xlsx(sheet):
         nonlocal r
         for c, v in enumerate([label, x['prior'], x['projected'], x['proposed'], x['d'], None if x['p'] is None else x['p'] / 100], 1):
             if c == 6 and v is None:
-                v = 'new' if round(x['d']) else '—'
+                v = 'new' if abs(x['d']) >= 0.005 else '—'
             cell = ws.cell(row=r, column=c, value=v)
             cell.number_format = pct if c == 6 else chg_fmt if c == 5 else money
             cell.alignment = Alignment(horizontal='left', wrap_text=True, vertical='top') if c == 1 else Alignment(horizontal='right', vertical='top')

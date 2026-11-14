@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Tourist tax split {{ rep.month|date:"F Y" }}{% endblock %}
+{% block content %}
+<style>
+    @media print { nav, .navbar, .no-print, footer { display: none !important; } body { background: #fff; } }
+    .ts-table th, .ts-table td { padding: 0.35rem 0.6rem; }
+    .ts-table .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+</style>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 no-print">
+    <a href="{% url 'tourist_tax' %}?month={{ rep.month|date:'Y-m' }}#payment-split" class="text-decoration-none small d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Tourist tax</a>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print / save as PDF</button>
+</div>
+<h2 class="page-title fs-4 mb-1">Tourist tax: split of the county payment</h2>
+<div class="text-muted mb-3">{{ rep.month|date:"F Y" }} &middot; Palm Beach County Tourist Development Tax &middot; return due {{ rep.due_on|date:"M j, Y" }}</div>
+<div class="table-responsive"><table class="table table-sm ts-table align-middle">
+    <thead><tr><th>Property</th><th>Tourist tax account</th><th class="n">Taxable receipts</th><th class="n">Tax (6%)</th><th class="n">Allowance</th><th class="n">Its share of the payment</th></tr></thead>
+    <tbody>{% for s in splits %}
+    <tr><td>{{ s.property.name }}</td><td>{{ s.tdt|default:"&mdash;" }}</td><td class="n">${{ s.taxable|floatformat:"2g" }}</td><td class="n">${{ s.tax|floatformat:"2g" }}</td><td class="n">&minus;${{ s.allowance|floatformat:"2g" }}</td><td class="n fw-semibold">${{ s.due|floatformat:"2g" }}</td></tr>
+    {% empty %}<tr><td colspan="6" class="text-muted">No property has a return this month.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr class="fw-bold"><td colspan="2">The county payment</td><td class="n">${{ rep.taxable|floatformat:"2g" }}</td><td class="n">${{ rep.tax|floatformat:"2g" }}</td><td class="n">&minus;${{ rep.allowance|floatformat:"2g" }}</td><td class="n">${{ rep.due|floatformat:"2g" }}</td></tr></tfoot>
+</table></div>
+<p class="small text-muted">Each property's share is the amount due on its own return; the shares add up to the one payment to the county.</p>
+{% endblock %}

@@ -1,11 +1,14 @@
 {% extends 'base.html' %}
-{% load ticket_extras %}
+{% load static ticket_extras %}
 {% block title %}New ticket{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-tickets.css' %}" rel="stylesheet">{% endblock %}
+{% block mobile_back_url %}{% url 'ticket_list' %}{% endblock %}
 {% block content %}
-<a href="{% url 'ticket_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> All tickets</a>
+<a href="{% url 'ticket_list' %}" class="m-back d-md-none mt-2"><i data-lucide="arrow-left" class="icon"></i>&nbsp;Tickets</a>
+<a href="{% url 'ticket_list' %}" class="text-decoration-none small d-none d-md-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> All tickets</a>
 <h2 class="page-title mb-3">New ticket</h2>
 
-<form method="post" class="card" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
+<form method="post" class="card m-tk-form" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">
     {% csrf_token %}
     <div class="card-body p-4">
 
@@ -32,6 +35,7 @@
 
         <div class="mb-4">
             <label class="form-label fw-medium d-block">Property <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            {% if recent_properties %}<div class="m-recent d-md-none"><span class="m-recent-label">Recent</span>{% for p in recent_properties %}<button type="button" class="bubble" data-m-pick-property="{{ p.id }}">{{ p.name }}</button>{% endfor %}</div>{% endif %}
             <div class="bubble-picker" data-bubble-picker data-mode="drilldown" data-name="property">
                 <input type="hidden" name="property" data-bubble-input value="{{ form.property.value|default:'' }}">
                 <div class="bubble-slot" data-bubble-slot data-empty-text="No property — leave blank if this isn't about one specific address"></div>
@@ -128,6 +132,7 @@
 
         <div class="mb-4">
             <label class="form-label fw-medium d-block">Staff <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
+            {% if my_staff_id %}<button type="button" class="bubble m-me-chip d-md-none" data-m-me="{{ my_staff_id }}">Assign to me</button>{% endif %}
             <div class="bubble-picker" data-bubble-picker data-mode="single" data-name="assigned_staff" id="staff-picker">
                 <input type="hidden" name="assigned_staff" data-bubble-input value="{{ form.assigned_staff.value|default:'' }}">
                 <div class="bubble-slot" data-bubble-slot data-empty-text="Unassigned"></div>
@@ -140,6 +145,8 @@
             <div class="form-text">A ticket can go to Staff or a Contractor below, not both.</div>
         </div>
 
+        <button type="button" class="m-more-toggle d-md-none" data-m-more data-label="More options: contractor and reporter">More options: contractor and reporter</button>
+        <div class="m-more-fields" id="m-more-fields">
         <div class="mb-4">
             <label class="form-label fw-medium d-block">Assigned Contractor <span class="fw-normal" style="color: var(--ink-muted);">(optional)</span></label>
             <div class="contact-filter" data-contact-filter id="contractor-filter">
@@ -171,8 +178,9 @@
             </div>
             <div class="form-text">{{ form.reporter_contact.help_text }}</div>
         </div>
+        </div>
 
-        <button class="btn btn-primary" type="submit"><i data-lucide="plus" class="icon"></i> Create ticket</button>
+        <div class="m-submitbar"><button class="btn btn-primary" type="submit"><i data-lucide="plus" class="icon"></i> Create ticket</button></div>
     </div>
 </form>
 {% if new_face %}
@@ -339,4 +347,5 @@
     }
 })();
 </script>
+<script src="{% static 'js/mobile-tickets.js' %}"></script>
 {% endblock %}

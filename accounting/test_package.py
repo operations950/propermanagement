@@ -77,6 +77,14 @@ class MonthlyPackageTests(TestCase):
         for head in ('Over /', 'Annual', 'Remaining'):
             self.assertIn(head, bva)
 
+    def test_the_budget_sheet_is_set_off_in_three_sections_the_month_the_year_to_date_and_the_annual_budget(self):
+        reader = self.build()
+        bva = next(t for i, t in enumerate(reader.pages) if i > 0 and 'Budget vs actual' in text_of(t))
+        text = text_of(bva)
+        for heading in ('October 2026', 'Year to date', 'Annual budget 2026', 'Remaining'):
+            self.assertIn(heading, text)
+        self.assertEqual(text.count('Over /'), 2)                    # once for the month, once for the year to date
+
     def test_no_reconciliation_pages_and_the_cover_lists_what_is_in(self):
         self.statement(self.operating, date(2026, 10, 30), 'OPERATINGSTMT', 1)
         cover = text_of(self.build().pages[0])

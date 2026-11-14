@@ -1,0 +1,6 @@
+{# the buttons on one owner's row: move them on, open the case. `r` is the row, `tab` the tab, `assoc` the association #}
+{% if r.can_move %}<details class="oc-move d-inline-block"><summary><span class="btn btn-sm {% if r.alert %}btn-primary{% else %}btn-outline-secondary{% endif %} py-0">{{ r.move_label }}</span></summary>
+    <form method="post" class="oc-pop">{% csrf_token %}<input type="hidden" name="action" value="advance"><input type="hidden" name="case" value="{{ r.case.pk }}"><input type="hidden" name="tab" value="{{ tab.key }}">
+        {% if tab.key == 'letter' %}<input class="form-control form-control-sm mb-1" name="attorney" placeholder="The lawyer's name" value="{{ r.case.attorney_name }}">{% endif %}
+        <input class="form-control form-control-sm mb-1" name="note" placeholder="Note (optional)"><button class="btn btn-sm btn-primary">{{ r.move_label }}</button></form></details>{% endif %}
+<a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'accounting:case' assoc.pk r.case.pk %}">Open case</a>

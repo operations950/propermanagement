@@ -1,0 +1,24 @@
+{# Phone-only text sizes for the dense accounting screens (month-end close, payouts, tourist tax, Admin Tools). On a phone nothing may be set smaller than about 12px: these screens use small #}
+{# print-style sizes that are fine on a desktop and unreadable on a phone. Desktop is untouched: every rule is inside the phone media query. #}
+<style>
+@media (max-width: 768px) {
+    .page-content [style*="font-size: 0.6"], .page-content [style*="font-size: 0.7"] { font-size: 0.85rem !important; }
+    .page-content thead th, .cl-sum th, .rc-t th, .bt table th, .st-table thead th, .st-table tr.section td, .st-table tr.check td, .st-table td:first-child .text-muted,
+    .rc-title, .rc-tag, .rc-prior, .rc-diff, .rc-cols, .cl-grid span, .cl-tag, .bt-box .lbl, .tt-label, .tt-cols, .tt-return span, .tt-id-row label span, .ad-label { font-size: 0.8rem !important; }
+    .cl-chip, .bt-chip, .po-chip, .mb-chip, .mp-chip, .tt-chip, .ck-chip, .st-open, .st-closed, .rc-t, .rc-sel, .st-sub, .st-table, .ad-status { font-size: 0.88rem !important; }
+    /* a wide table keeps its natural width and scrolls sideways inside its box, instead of squeezing every column (a rental's name was wrapping one letter to a line) */
+    .cl-ov { min-width: 860px; }
+    .cl-ov td:first-child, .cl-ov th:first-child { min-width: 9.5rem; }
+    .cl-table { min-width: 760px; }
+    .po { min-width: 680px; }
+    .mp-table { min-width: 560px; }
+    .cl-sum { min-width: 520px; }
+    .rent-tbl { min-width: 880px; }
+    .rent-tbl td:first-child, .rent-tbl th:first-child { min-width: 9rem; }
+    .po-stat { min-height: 44px; display: inline-flex; align-items: center; }
+    /* the month-end checklist: the icon steps aside so the step's name and its one-line detail have room beside the status chip */
+    .ck-step { padding: 12px 14px; gap: 10px; }
+    .ck-step .ck-ico { display: none; }
+    .ck-step .ck-title { min-width: 0; font-size: 1.05rem; }
+}
+</style>

@@ -16,7 +16,7 @@ from django.views.decorators.http import require_POST
 
 from vendorportal.models import AccessAttempt
 
-from . import ledger, owner_portal
+from . import ledger, owner_calendar as owner_calendar_service, owner_portal
 from .auth_backends import _client_ip
 from .models import MonthRelease, OwnerAccount, OwnerCode
 
@@ -207,6 +207,15 @@ def owner_home(request):
     table = owner_portal.year_table([r for r in all_releases if r.month.year == year], unit) if year else None
     return render(request, 'core/owner/home.html', {'props': props, 'prop': prop, 'years': years, 'year': year, 'table': table, 'account': request.owner_account,
                                                     'units': units, 'unit': unit})
+
+
+@owner_required
+def owner_calendar(request, pk):
+    """The rental's calendar for the current month and the eleven after it: which nights are booked, an owner stay or blocked. No guest names, no money."""
+    prop = _property_for(request, pk)
+    month = owner_calendar_service.clamp_month(request.GET.get('month', ''))
+    return render(request, 'core/owner/calendar.html', {'prop': prop, 'cal': owner_calendar_service.build_month(prop, month), 'account': request.owner_account,
+                                                        'props': owner_portal.visible_properties(request.owner_account.email)})
 
 
 @owner_required

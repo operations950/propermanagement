@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% load core_extras ticket_extras static %}
+{% block title %}{{ contact.name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
+{% block content %}
+<div class="ml-scope ml-page mx-auto" style="max-width: 640px;">
+    <a href="{% url 'contact_list' %}" class="ml-back"><i data-lucide="arrow-left" class="icon"></i> Contacts</a>
+    <h1 class="ml-title">{{ contact.name }}</h1>
+    <div class="ml-tags">
+        <span class="ml-tag">{{ contact.get_contact_type_display }}</span>
+        {% for label in contact.secondary_type_labels %}<span class="ml-tag">{{ label }}</span>{% endfor %}
+        {% if contact.trade %}<span class="ml-tag">{{ contact.trade }}</span>{% endif %}
+    </div>
+    {% if contact.phone or contact.email %}
+    <div class="ml-sub ml-ink">{{ contact.phone }}{% if contact.phone and contact.email %}<br>{% endif %}{{ contact.email }}</div>
+    {% endif %}
+
+    <div class="ml-btns">
+        {% if contact.phone %}<a href="tel:{{ contact.phone|tel_href }}" class="ml-btn ml-btn-primary"><i data-lucide="phone" class="icon"></i> Call {{ contact.phone }}</a>{% endif %}
+        {% if contact.phone %}<a href="sms:{{ contact.phone|tel_href }}" class="ml-btn"><i data-lucide="message-circle" class="icon"></i> Text</a>{% endif %}
+        {% if contact.email %}<a href="mailto:{{ contact.email }}" class="ml-btn"><i data-lucide="mail" class="icon"></i> Email</a>{% endif %}
+        <a href="{% url 'ticket_create' %}?contact={{ contact.pk }}" class="ml-btn{% if not contact.phone %} ml-btn-primary{% endif %}"><i data-lucide="plus" class="icon"></i> New ticket</a>
+        <a href="{% url 'contact_edit' contact.pk %}" class="ml-btn ml-btn-quiet"><i data-lucide="pencil" class="icon"></i> Edit</a>
+    </div>
+
+    <details class="ml-acc" open>
+        <summary><i data-lucide="building-2" class="icon"></i> Properties &amp; units</summary>
+        <div class="ml-acc-body">
+            {% for p in properties %}
+            <a href="{% url 'property_detail' p.pk %}" class="ml-row">
+                <span class="ml-ico"><i data-lucide="{{ p.property_type|property_type_icon }}" class="icon"></i></span>
+                <span class="ml-main"><span class="ml-name d-block">{{ p.name }}</span><span class="ml-line d-block">{{ p.get_property_type_display }}</span></span>
+                <span class="ml-chev"><i data-lucide="chevron-right" class="icon"></i></span>
+            </a>
+            {% endfor %}
+            {% if units %}
+            <p class="ml-sub mt-2 mb-1">Units</p>
+            <div class="ml-tags">{% for u in units %}<a href="{% url 'property_detail' u.property_id %}#unit-{{ u.pk }}" class="ml-tag text-decoration-none">{{ u.property.name }} &middot; {{ u.label }}</a>{% endfor %}</div>
+            {% endif %}
+            {% if not properties and not units %}<p class="ml-sub mb-0">Not linked to a property yet.</p>{% endif %}
+        </div>
+    </details>
+
+    <details class="ml-acc">
+        <summary><i data-lucide="ticket" class="icon"></i> Open tickets{% if open_tickets %} ({{ open_tickets|length }}){% endif %}</summary>
+        <div class="ml-acc-body">
+            {% for t in open_tickets %}
+            <a href="{% url 'ticket_detail' t.pk %}" class="ml-row">
+                <span class="ml-main">
+                    <span class="ml-name d-block">{{ t.title }}</span>
+                    <span class="ml-line d-block">{{ t.get_status_display }}{% if t.property %} &middot; {{ t.property.name }}{% endif %}{% if t.due_date %} &middot; due {{ t.due_date|date:"M j" }}{% endif %}</span>
+                </span>
+                <span class="ml-chev"><i data-lucide="chevron-right" class="icon"></i></span>
+            </a>
+            {% empty %}<p class="ml-sub mb-0">No open tickets.</p>{% endfor %}
+        </div>
+    </details>
+
+    <details class="ml-acc">
+        <summary><i data-lucide="sticky-note" class="icon"></i> Notes</summary>
+        <div class="ml-acc-body">{% if contact.notes %}<div class="ml-note">{{ contact.notes }}</div>{% else %}<p class="ml-sub mb-0">No notes.</p>{% endif %}</div>
+    </details>
+
+    <details class="ml-acc">
+        <summary><i data-lucide="folder" class="icon"></i> Documents{% if documents %} ({{ documents|length }}){% endif %}</summary>
+        <div class="ml-acc-body">
+            {% for d in documents %}
+            <a href="{{ d.file.url }}" target="_blank" rel="noopener" class="ml-row">
+                <span class="ml-ico"><i data-lucide="file-text" class="icon"></i></span>
+                <span class="ml-main"><span class="ml-name d-block">{{ d.name }}</span><span class="ml-line d-block">{{ d.created_at|date:"M j, Y" }}</span></span>
+            </a>
+            {% empty %}<p class="ml-sub mb-0">No documents.</p>{% endfor %}
+        </div>
+    </details>
+</div>
+{% endblock %}

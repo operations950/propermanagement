@@ -72,17 +72,26 @@
 </div>
 
 {% else %}
-<div class="mb-2"><a href="?tab=rules" class="small text-decoration-none" style="color: var(--ink-muted);">&lsaquo; All rules</a></div>
+<div class="mb-2"><a href="?tab=rules" class="ws-up">&lsaquo; All rules</a></div>
 <div class="row g-2 mb-3 align-items-center">
     <div class="col-auto"><form method="get" class="d-flex gap-2"><input type="hidden" name="tab" value="rules"><input type="hidden" name="frequency" value="{{ sel.frequency }}">
-        <input type="text" name="q" class="form-control" style="min-width: min(280px, 100%);" placeholder="Search rules…" value="{{ sel.q }}"></form></div>
-    <div class="col-auto d-flex gap-2 align-items-center small">
-        <a href="{% querystring state='on' %}" class="{% if sel.state == 'on' %}fw-semibold{% else %}text-muted{% endif %}">On</a>
-        <a href="{% querystring state='off' %}" class="{% if sel.state == 'off' %}fw-semibold{% else %}text-muted{% endif %}">Switched off</a>
-        <a href="{% querystring state='all' %}" class="{% if sel.state == 'all' %}fw-semibold{% else %}text-muted{% endif %}">All</a>
+        <input type="text" name="q" class="form-control" style="min-width: min(280px, 100%);" placeholder="Search rules…" aria-label="Search rules" value="{{ sel.q }}"></form></div>
+    <div class="col-auto d-flex gap-2 align-items-center" role="group" aria-label="Which rules to show">
+        <a href="{% querystring state='on' %}" class="btn btn-sm {% if sel.state == 'on' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">On</a>
+        <a href="{% querystring state='off' %}" class="btn btn-sm {% if sel.state == 'off' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">Switched off</a>
+        <a href="{% querystring state='all' %}" class="btn btn-sm {% if sel.state == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">All</a>
     </div>
 </div>
-<div class="card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
+<div class="d-md-none">
+{% for r in rows %}
+<a href="{{ r.url }}" class="card mb-2 text-decoration-none" style="color: inherit; background: #eef4ee; border-color: #d3e0d3;{% if not r.active %} opacity: 0.6;{% endif %}"><div class="card-body py-3 px-3">
+    <div class="fw-medium">{{ r.t.name }}{% if not r.active %} <span class="small text-muted fw-normal">&middot; Switched off</span>{% endif %}</div>
+    <div class="small text-muted">{{ r.how }} &middot; {{ r.where }}</div>
+    <div class="small">Next opens {{ r.next|date:'M j, Y'|default:'—' }}{% if r.who %} &middot; {{ r.who }}{% endif %}</div>
+</div></a>
+{% empty %}<div class="text-muted text-center py-4">No rules here.</div>{% endfor %}
+</div>
+<div class="card p-0 d-none d-md-block" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
 <div class="table-responsive"><table class="table ws-green-rows align-middle mb-0" style="table-layout: fixed;">{% include 'workspace/_rules_rows.html' %}</table></div>
 </div>
 {% endif %}

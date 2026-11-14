@@ -24,11 +24,12 @@
     <div class="tc-label mb-1">{{ now|date:"l, F j" }}</div>
     {% for row in board %}
     <div class="tc-row py-2">
-        <span class="fw-semibold">{{ row.profile.name }}{% if row.kind == 'working' or row.punch %} <span class="tc-sub fw-normal">{{ row.profile.day_start|time:"g:i" }}–{{ row.profile.day_end|time:"g:i" }}</span>{% endif %}</span>
+        <span class="fw-semibold">{{ row.profile.name }}{% if row.profile.variable_hours %} <span class="tc-sub fw-normal">variable hours</span>{% elif row.kind == 'working' or row.punch %} <span class="tc-sub fw-normal">{{ row.profile.day_start|time:"g:i" }}–{{ row.profile.day_end|time:"g:i" }}</span>{% endif %}</span>
         <span>
             {% if row.state == 'in' %}<span class="badge text-bg-success">In</span> <span class="tc-sub">since {{ row.punch.clock_in|time:"g:i A" }}{% if row.punch.in_remote %} · remote{% endif %}</span>{% if row.late_in %} <span class="badge text-bg-warning">{{ row.late_in }} min late</span>{% endif %}
             {% elif row.state == 'done' %}<span class="badge text-bg-secondary">Done</span> <span class="tc-sub">{{ row.punch.minutes|mins }}</span>{% if row.late_in %} <span class="badge text-bg-warning">{{ row.late_in }} min late</span>{% endif %}
             {% elif row.state == 'not_in' %}{% if row.late %}<span class="badge text-bg-danger">Not in · {{ row.late }} min late</span>{% else %}<span class="badge text-bg-light">Not in yet</span>{% endif %}
+            {% elif row.state == 'flex' %}<span class="badge text-bg-light">Not in yet</span> <span class="tc-sub">no set schedule</span>
             {% elif row.state == 'vacation' %}<span class="badge" style="background: var(--accent-contrast);">Vacation</span>
             {% elif row.state == 'off' %}<span class="badge text-bg-secondary">Off</span>
             {% elif row.state == 'closed' %}<span class="badge text-bg-warning">Office closed</span>

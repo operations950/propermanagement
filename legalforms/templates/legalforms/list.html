@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Documents{% endblock %}
 {% block content %}
-{% if property %}<a href="{% url 'property_detail' property.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ property.name }}</a>{% endif %}
+{% if property %}<a href="{% url 'property_detail' property.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ property.name }}</a>{% endif %}
 <h2 class="page-title mb-1">Legal documents{% if property %} <span class="text-muted fw-normal fs-6">· {{ property.name }}</span>{% endif %}</h2>
 <p class="text-muted small mb-3">Standard forms with legal or statutory wording, filled from the system's records plus what you type. Every document is kept exactly as it was made.</p>
 
@@ -16,7 +16,17 @@
     {% endfor %}
 </div>
 
-<div class="card" style="border-radius: 12px;"><div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+<div class="d-md-none">
+    {% for d in docs %}
+    <a href="{% url 'legalforms:detail' d.pk %}" class="card mb-2 text-decoration-none" style="border-radius: 12px; color: var(--ink-primary);"><div class="card-body py-3">
+        <div class="d-flex justify-content-between align-items-start gap-2"><span class="fw-semibold">{{ d.template.name }}</span>
+            <span class="badge rounded-pill {% if d.status == 'final' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ d.get_status_display }}</span></div>
+        <div class="small text-muted">{{ d.property.name }}{% if d.unit %} — {{ d.unit.label }}{% endif %}{% if d.subject %} · {{ d.subject }}{% endif %}</div>
+        <div class="small text-muted">{{ d.created_at|date:"M j, Y" }}{% if d.mailed_on %} · mailed {{ d.mailed_on|date:"M j" }}{% endif %}</div>
+    </div></a>
+    {% empty %}<div class="card"><div class="card-body text-muted small">Nothing made yet.</div></div>{% endfor %}
+</div>
+<div class="card d-none d-md-block" style="border-radius: 12px;"><div class="table-responsive"><table class="table table-sm mb-0 align-middle">
     <thead><tr class="small text-muted text-uppercase"><th>Made</th><th>Document</th><th>About</th><th>Association</th><th>Status</th><th>By</th></tr></thead>
     <tbody>
     {% for d in docs %}

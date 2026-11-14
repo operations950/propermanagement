@@ -27,6 +27,8 @@ class TimeProfile(models.Model):
     work_days = models.CharField(max_length=13, default='0,1,2,3,4', help_text='Comma-separated weekday numbers, Monday = 0.')
     day_start = models.TimeField(default=time(9, 0))
     day_end = models.TimeField(default=time(17, 0))
+    variable_hours = models.BooleanField(default=False, help_text='No set schedule (a cleaner, say): no work days or start time, never late, never a missed day. They still clock in and out, record lunch, '
+                                                                    'earn vacation from the hours they work and sign the policy.')
 
     def __str__(self):
         return str(self.staff)

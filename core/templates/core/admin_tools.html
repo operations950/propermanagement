@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Admin Tools{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .ad-tile { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 0.95rem; border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius); background: var(--surface-card); color: var(--ink-primary); text-decoration: none; font-weight: 600; box-shadow: var(--shadow-card); }
     .ad-tile:hover { border-color: var(--brand-primary); color: var(--ink-primary); }
@@ -47,7 +48,7 @@
                     <label class="form-label small fw-medium mb-1" for="secret-{{ s.key }}">{{ s.label }}</label>
                     <div class="d-flex align-items-center gap-2 form-control form-control-sm bg-light" data-secret-display>
                         <span class="text-muted text-truncate">{% if s.is_set %}{{ s.masked }}{% else %}not set{% endif %}</span>
-                        <button type="button" class="btn btn-link btn-sm p-0 ms-auto flex-shrink-0" data-secret-toggle title="Unlock to change">
+                        <button type="button" class="btn btn-link btn-sm py-0 px-2 ms-auto flex-shrink-0" data-secret-toggle title="Unlock to change" aria-label="Unlock to change">
                             <i data-lucide="pencil" class="icon" style="width: 0.8rem; height: 0.8rem;"></i>
                         </button>
                     </div>

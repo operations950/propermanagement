@@ -1,31 +1,22 @@
+{% load core_extras %}
+<div class="ml-list">
 {% for c in contacts %}
-    <div class="card mb-2">
-        <div class="card-body p-3">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <div>
-                    <div class="fw-semibold">
-                        <a href="{% url 'contact_edit' c.pk %}" class="text-decoration-none">{{ c.name }}</a>
-                    </div>
-                    <div class="small text-muted">
-                        {{ c.phone|default:'' }}{% if c.phone and c.email %} &middot; {% endif %}{{ c.email|default:'' }}
-                        {% if not c.phone and not c.email %}&mdash;{% endif %}
-                    </div>
-                </div>
-            </div>
-            <div class="d-flex flex-wrap gap-2 mb-2">
-                <span class="badge rounded-pill bg-light text-dark border">{{ c.get_contact_type_display }}</span>
-                {% for label in c.secondary_type_labels %}<span class="badge rounded-pill bg-light text-dark border">{{ label }}</span>{% endfor %}
-                {% if c.trade %}<span class="badge rounded-pill bg-light text-dark border">{{ c.trade }}</span>{% endif %}
-            </div>
-            {% if c.properties.all %}
-            <div class="small text-muted mb-2">
-                {% for p in c.properties.all %}<a href="{% url 'property_edit' p.pk %}" class="text-decoration-none">{{ p.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
-            </div>
-            {% endif %}
-            <div class="d-flex flex-wrap gap-2">
-                <a href="{% url 'ticket_create' %}?contact={{ c.pk }}" class="btn btn-outline-primary btn-sm"><i data-lucide="plus" class="icon"></i> New ticket</a>
-                <a href="{% url 'contact_edit' c.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
-            </div>
-        </div>
+<div class="ml-card">
+    <a href="{% url 'contact_detail' c.pk %}" class="ml-card-main">
+        <span class="ml-ico"><i data-lucide="user" class="icon"></i></span>
+        <span class="ml-main">
+            <span class="ml-name d-block">{{ c.name }}</span>
+            <span class="ml-line d-block">{{ c.get_contact_type_display }}{% if c.trade %} &middot; {{ c.trade }}{% endif %}</span>
+            {% if c.properties.all %}<span class="ml-line d-block">{% for p in c.properties.all|slice:":2" %}{{ p.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if c.properties.all|length > 2 %} +{{ c.properties.all|length|add:"-2" }} more{% endif %}</span>{% endif %}
+        </span>
+        <span class="ml-chev"><i data-lucide="chevron-right" class="icon"></i></span>
+    </a>
+    {% if c.phone or c.email %}
+    <div class="ml-acts">
+        {% if c.phone %}<a href="tel:{{ c.phone|tel_href }}" class="ml-act"><i data-lucide="phone" class="icon"></i> Call</a>{% endif %}
+        {% if c.email %}<a href="mailto:{{ c.email }}" class="ml-act"><i data-lucide="mail" class="icon"></i> Email</a>{% endif %}
     </div>
-{% empty %}<p class="text-muted text-center py-4"><i data-lucide="contact" class="icon-lg d-block mx-auto mb-1"></i>No contacts match.</p>{% endfor %}
+    {% endif %}
+</div>
+{% empty %}<p class="ml-empty"><i data-lucide="contact" class="icon-lg d-block mx-auto mb-2"></i>No contacts match.</p>{% endfor %}
+</div>

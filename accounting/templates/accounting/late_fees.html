@@ -1,0 +1,39 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Post late fees - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="mb-2">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="alarm-clock" class="icon-lg"></i> Post late fees and interest {% include '_tip.html' with text="The late fees and interest that are owed now, from the rules in the declaration. Nothing is charged until you press a button, so you can look first. Tick owners to charge only those; with none ticked a button charges everyone listed. This is part of the month-end close." %}</h2>
+    <div class="small text-muted">{{ assoc.name }}</div>
+</div>
+{% if not is_set %}
+<div class="card"><div class="card-body">The late fee and interest rules are not set up yet. <a href="{% url 'accounting:settings' assoc.pk %}#late">Set them from the declaration</a>.</div></div>
+{% else %}
+<div class="small text-muted mb-2">{% for t in terms|slice:":2" %}{{ t }} {% endfor %}<a href="{% url 'accounting:settings' assoc.pk %}#late">Change</a></div>
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Owners</div><div class="ac-big">{{ rows|length }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Late fees ready</div><div class="ac-big">{{ fees|money }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Interest ready</div><div class="ac-big">{{ interest|money }}</div></div></div>
+</div>
+<form method="post">{% csrf_token %}
+<div class="rp-wrap mb-2"><table class="rp">
+    <thead><tr><th style="width: 28px;"><input type="checkbox" id="lf-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Late fee</th><th>Interest</th><th>What for</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td><input type="checkbox" class="lf-pick" name="unit" value="{{ r.unit.pk }}"></td>
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}</td>
+        <td class="num">{% if r.fee %}{{ r.fee|money }}{% endif %}</td><td class="num">{% if r.interest %}{{ r.interest|money }}{% endif %}</td>
+        <td style="white-space: normal;" class="small text-muted">{% for w in r.what %}{{ w }}{% if not forloop.last %}; {% endif %}{% endfor %}</td></tr>
+    {% empty %}<tr><td colspan="5" class="text-muted p-3">No late fees or interest are owed right now.</td></tr>{% endfor %}
+    </tbody></table></div>
+{% if rows %}<div class="d-flex flex-wrap gap-2 ac-noprint">
+    {% if profile.late_fee_is_set %}<button class="btn btn-sm btn-primary" name="action" value="charge_late">Charge late fees</button>{% endif %}
+    {% if profile.interest_is_set %}<button class="btn btn-sm btn-primary" name="action" value="charge_interest">Charge interest</button>{% endif %}
+    <span class="small text-muted align-self-center">The ticked owners, or everyone listed when none are ticked.</span></div>{% endif %}
+</form>
+<script>(function () { var all = document.getElementById('lf-all'); if (all) all.addEventListener('change', function () { document.querySelectorAll('.lf-pick').forEach(function (c) { c.checked = all.checked; }); }); })();</script>
+<a class="ac-step mt-3" href="{% url 'accounting:collections' assoc.pk %}">
+    <i data-lucide="scale" class="icon ac-ico"></i>
+    <span class="flex-grow-1"><span class="fw-semibold">Next: Owner collections</span><br><span class="small text-muted">The best time to write the late letters is right after the late fees and interest are charged.{% if look.count %} {{ look.count }} owner{{ look.count|pluralize }} need{{ look.count|pluralize:'s,' }} attention.{% endif %}</span></span>
+    <i data-lucide="chevron-right" class="icon text-muted"></i>
+</a>
+{% endif %}
+{% endblock %}

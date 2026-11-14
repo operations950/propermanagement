@@ -758,6 +758,31 @@ def _list_back_url(request):
     return reverse('ticket_list') + (f'?{saved}' if saved else '')
 
 
+def _phone_filter_links(request, status, due, assigned_staff_id, priority, profile):
+    """The phone list's one-tap filter chips: [{'label', 'url', 'on'}]. Each one is a filter the full list already has (status, due date, assigned staff)
+    or the priority filter; a chip that is on links to the list without it, so tapping it again clears it."""
+    def link(set_=None, drop=()):
+        params = request.GET.copy()
+        for key in ('page',) + tuple(drop):
+            params.pop(key, None)
+        for key, value in (set_ or {}).items():
+            params[key] = value
+        query = params.urlencode()
+        return '?' + query if query else '?'
+
+    chips = []
+    if profile:
+        on = str(assigned_staff_id or '') == str(profile.pk)
+        chips.append({'label': 'Mine', 'on': on, 'url': link(drop=('assigned_staff',)) if on else link({'assigned_staff': profile.pk})})
+    chips.append({'label': 'Open', 'on': status == 'active', 'url': link(drop=('status',))})
+    chips.append({'label': 'Urgent', 'on': priority == 'urgent', 'url': link(drop=('priority',)) if priority == 'urgent' else link({'priority': 'urgent'})})
+    chips.append({'label': 'Due today', 'on': due == 'today', 'url': link(drop=('due', 'due_on')) if due == 'today' else link({'due': 'today'}, drop=('due_on',))})
+    chips.append({'label': 'Late', 'on': due == 'overdue', 'url': link(drop=('due', 'due_on')) if due == 'overdue' else link({'due': 'overdue'}, drop=('due_on',))})
+    chips.append({'label': 'In progress', 'on': status == 'in_progress', 'url': link(drop=('status',)) if status == 'in_progress' else link({'status': 'in_progress'})})
+    chips.append({'label': 'Done', 'on': status == 'complete', 'url': link(drop=('status',)) if status == 'complete' else link({'status': 'complete'})})
+    return chips
+
+
 @login_required
 def ticket_list(request):
     """Defaults to the active bucket (open/assigned/in_progress/blocked) —
@@ -819,6 +844,12 @@ def ticket_list(request):
 
     if request.GET.get('delayed'):
         qs = qs.filter(delayed=True)
+
+    priority = request.GET.get('priority', '')            # the phone list's "Urgent" chip; the full list has no control for it
+    if priority in Priority.values:
+        qs = qs.filter(priority=priority)
+    else:
+        priority = ''
 
     completed_since = request.GET.get('completed_since')
     if completed_since and completed_since.isdigit():
@@ -919,6 +950,12 @@ def ticket_list(request):
         ),
         'properties_by_type': properties_by_type(),
         'sort_columns': _ticket_sort_columns(request.GET.get('sort', '')),
+        'selected_priority': priority,
+        'phone_chips': _phone_filter_links(request, status, due, assigned_staff_id, priority, profile),
+        # how many filters the phone's "More filters" sheet holds that are switched on (the chips show the others)
+        'phone_more_count': sum([bool(role), bool(property_id), bool(assigned_contact_id),
+                                 bool(assigned_staff_id and not (profile and str(assigned_staff_id) == str(profile.pk))),
+                                 bool(due and due not in ('today', 'overdue')), status not in ('active', 'in_progress', 'complete')]),
     }
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -1486,8 +1523,17 @@ def ticket_create(request):
         except (Contact.DoesNotExist, ValueError, TypeError):
             return ''
 
+    # the phone form's "Recent" row: the properties this person put on their last tickets, the ones used most first
+    used = {}
+    for pid in Ticket.objects.filter(created_by=request.user, property__isnull=False).order_by('-created_at').values_list('property_id', flat=True)[:40]:
+        used[pid] = used.get(pid, 0) + 1
+    top = sorted(used, key=lambda pid: -used[pid])[:6]
+    named = {p.pk: p.name for p in Property.objects.filter(pk__in=top)}
+    recent_properties = [{'id': pid, 'name': named[pid]} for pid in top if pid in named]
+
     return render(request, 'tickets/ticket_form.html', {
         'form': form,
+        'recent_properties': recent_properties,
         'today': today.isoformat(),
         'due_date_presets': _due_date_presets(today),
         'properties_by_type': properties_by_type(),
@@ -1496,6 +1542,7 @@ def ticket_create(request):
         'selected_contractor_label': contact_label('assigned_contact'),
         'selected_reporter_label': contact_label('reporter_contact'),
         'units_by_property_json': _units_by_property_json(),
+        'my_staff_id': getattr(getattr(request.user, 'staff_profile', None), 'pk', None),      # the phone form's "Me" chip
     })
 
 

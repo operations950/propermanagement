@@ -110,25 +110,74 @@ def read_csv_statement(data):
     return {'lines': lines, 'end_balance': last_balance, 'begin_balance': None, 'period_end': max(l['date'] for l in lines)}
 
 
+_LINE_TOOL = {'type': 'object', 'properties': {
+    'date': {'type': 'string', 'description': 'YYYY-MM-DD; use the statement period for the year.'},
+    'description': {'type': 'string'},
+    'amount': {'type': 'number', 'description': 'Positive for money in (deposits, credits, interest); negative for money out (checks, withdrawals, debits, fees).'},
+    'check_number': {'type': 'string', 'description': 'For a check, its number; otherwise empty.'},
+}, 'required': ['date', 'description', 'amount']}
+
 STATEMENT_TOOL = {
     'name': 'report_statement',
-    'description': 'Report every transaction on a bank statement, and its balances.',
+    'description': 'Report every account on a bank statement, each with its own balances and the transactions printed in its own section.',
     'input_schema': {
         'type': 'object',
         'properties': {
             'period_end': {'type': 'string', 'description': 'The last day of the statement period, YYYY-MM-DD.'},
-            'begin_balance': {'type': ['number', 'null'], 'description': 'The balance at the start of the period.'},
-            'end_balance': {'type': 'number', 'description': 'The balance at the end of the period.'},
-            'lines': {'type': 'array', 'items': {'type': 'object', 'properties': {
-                'date': {'type': 'string', 'description': 'YYYY-MM-DD; use the statement period for the year.'},
-                'description': {'type': 'string'},
-                'amount': {'type': 'number', 'description': 'Positive for money in (deposits, credits, interest); negative for money out (checks, withdrawals, debits, fees).'},
-                'check_number': {'type': 'string', 'description': 'For a check, its number; otherwise empty.'},
-            }, 'required': ['date', 'description', 'amount']}},
+            'accounts': {
+                'type': 'array',
+                'description': ('One entry for EACH account on the statement. An ordinary statement has one entry. A combined statement (for example a checking account and a money market '
+                                'savings account in one PDF) has one entry per account: never merge two accounts into one. A summary page that only adds the accounts together is not an account.'),
+                'items': {'type': 'object', 'properties': {
+                    'account_name': {'type': 'string', 'description': 'The account as the statement names it, e.g. ASSOC SVCS INTEREST CHECKING.'},
+                    'last4': {'type': 'string', 'description': "The last four digits of this account's number as printed, e.g. 9511. Empty only if no account number is printed."},
+                    'begin_balance': {'type': ['number', 'null'], 'description': 'The balance of this account at the start of the period.'},
+                    'end_balance': {'type': 'number', 'description': 'The balance of this account at the end of the period.'},
+                    'lines': {'type': 'array', 'items': _LINE_TOOL},
+                }, 'required': ['last4', 'end_balance', 'lines']},
+            },
         },
-        'required': ['period_end', 'end_balance', 'lines'],
+        'required': ['period_end', 'accounts'],
     },
 }
+
+
+def _section(found, period):
+    """One account of a statement, as the reader reported it."""
+    lines = []
+    for l in found.get('lines') or []:
+        day, amount = _date(l.get('date')), _money(l.get('amount'))
+        if day is None or amount is None:
+            continue
+        number = str(l.get('check_number') or '').strip()
+        lines.append({'date': day, 'description': (l.get('description') or 'Bank line').strip(), 'amount': amount, 'kind': kind_for(l.get('description'), amount, number), 'check_number': number})
+    end = _money(found.get('end_balance')) if found.get('end_balance') is not None else None
+    begin = _money(found.get('begin_balance')) if found.get('begin_balance') is not None else None
+    last4 = re.sub(r'\D', '', str(found.get('last4') or ''))[-4:]
+    return {'name': (found.get('account_name') or '').strip(), 'last4': last4, 'lines': lines, 'end_balance': end, 'begin_balance': begin,
+            'period_end': period or (max(l['date'] for l in lines) if lines else None)}
+
+
+def parse_statement_found(found):
+    """What the reader reported, as {'accounts': [one section per account], 'period_end'}; a statement with one account also carries that account's lines and balances at the top,
+    which is what a CSV gives, so one-account statements go through `import_statement` as they always did."""
+    accounts = found.get('accounts')
+    if accounts is None and 'lines' in found:                      # an answer in the older one-account shape
+        accounts = [found]
+    period = _date(found.get('period_end'))
+    sections = [_section(a, period) for a in (accounts or [])]
+    sections = [s for s in sections if s['lines'] or s['end_balance'] is not None]
+    if not sections:
+        raise StatementError('Nothing could be read from that statement.')
+    if not any(s['lines'] for s in sections):
+        raise StatementError('No transactions were found on that statement.')
+    period = period or max(l['date'] for s in sections for l in s['lines'])
+    for s in sections:
+        s['period_end'] = period
+    parsed = {'accounts': sections, 'period_end': period}
+    if len(sections) == 1:
+        parsed.update({k: sections[0][k] for k in ('lines', 'end_balance', 'begin_balance')})
+    return parsed
 
 
 def read_pdf_statement(data):
@@ -139,30 +188,21 @@ def read_pdf_statement(data):
     client = anthropic.Anthropic(api_key=sanitized_setting('ANTHROPIC_API_KEY'))
     try:
         message = client.messages.create(
-            model=STATEMENT_MODEL, max_tokens=8000, tools=[STATEMENT_TOOL], tool_choice={'type': 'tool', 'name': 'report_statement'},
+            model=STATEMENT_MODEL, max_tokens=16000, tools=[STATEMENT_TOOL], tool_choice={'type': 'tool', 'name': 'report_statement'},
             messages=[{'role': 'user', 'content': [
                 {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': base64.b64encode(data).decode()}},
-                {'type': 'text', 'text': 'This is a bank statement. List EVERY transaction (each check, each debit, each deposit and credit, interest, fees) exactly as printed, one line each, '
-                                         'with the check number for checks. Do not combine lines. Money out is negative, money in is positive.'}]}])
+                {'type': 'text', 'text': 'This is a bank statement. It may hold more than one account (for example a checking account and a money market savings account in one combined PDF): '
+                                         'report each account separately, with the last four digits of its account number, its own beginning and ending balance, and only the transactions printed in '
+                                         "that account's own section. A page that only adds the accounts together is not an account. For each account list EVERY transaction (each check, each debit, "
+                                         'each deposit and credit, interest, fees) exactly as printed, one line each, with the check number for checks. Do not combine lines. '
+                                         'Money out is negative, money in is positive.'}]}])
     except Exception:
         logger.exception('Claude could not read the bank statement')
         raise StatementError('The statement could not be read right now. Upload the bank\'s CSV download, or try again.')
     block = next((b for b in message.content if b.type == 'tool_use'), None)
     if block is None:
         raise StatementError('Nothing could be read from that statement.')
-    found = block.input
-    lines = []
-    for l in found.get('lines') or []:
-        day, amount = _date(l.get('date')), _money(l.get('amount'))
-        if day is None or amount is None:
-            continue
-        number = str(l.get('check_number') or '').strip()
-        lines.append({'date': day, 'description': (l.get('description') or 'Bank line').strip(), 'amount': amount, 'kind': kind_for(l.get('description'), amount, number), 'check_number': number})
-    if not lines:
-        raise StatementError('No transactions were found on that statement.')
-    end = _money(found.get('end_balance'))
-    begin = _money(found.get('begin_balance')) if found.get('begin_balance') is not None else None
-    return {'lines': lines, 'end_balance': end, 'begin_balance': begin, 'period_end': _date(found.get('period_end')) or max(l['date'] for l in lines)}
+    return parse_statement_found(block.input)
 
 
 def read_statement(name, data):
@@ -176,7 +216,9 @@ def read_statement(name, data):
 
 @transaction.atomic
 def import_statement(bank_account, parsed, file=None, read_by='csv', end_balance=None):
-    """Save a read statement. A statement already saved for that period is replaced, unless some of its lines have been matched."""
+    """Save a read statement of ONE account. A statement already saved for that period is replaced, unless some of its lines have been matched."""
+    if len(parsed.get('accounts') or []) > 1:
+        raise StatementError('That statement holds several accounts. File it with file_statement, which puts each on its own bank account.')
     end = ledger.money(end_balance) if end_balance not in (None, '') else parsed.get('end_balance')
     if end is None:
         raise StatementError("The statement's ending balance could not be read: type it in.")
@@ -192,6 +234,77 @@ def import_statement(bank_account, parsed, file=None, read_by='csv', end_balance
     BankLine.objects.bulk_create([BankLine(statement=st, date=l['date'], description=l['description'][:300], amount=ledger.money(l['amount']), kind=l['kind'], check_number=l.get('check_number', '')[:20])
                                   for l in parsed['lines']])
     return st
+
+
+def _where(section):
+    return (section.get('name') or 'an account') + (f' ending {section["last4"]}' if section.get('last4') else '')
+
+
+@transaction.atomic
+def file_statement(bank_account, parsed, file=None, read_by='csv', end_balance=None):
+    """Put each account on a statement on the bank account it belongs to, matching by the last 4 digits of the account number, among the bank accounts of the same association.
+    One account that is not the one the user uploaded to but whose last 4 belong to another bank account of the association goes to that one. Several accounts in one file (a checking
+    and a savings account on one PDF) each get their own statement, their own lines and balances, all pointing at the one file; an account that no bank account claims is left out and
+    reported, never guessed. Returns {'filed': [(bank account, statement, section)], 'skipped': [section], 'moved': bool, 'multi': bool}."""
+    sections = parsed.get('accounts') or [parsed]
+    banks = list(BankAccount.objects.filter(association_id=bank_account.association_id, is_active=True))
+    if bank_account.pk not in {b.pk for b in banks}:
+        banks.append(bank_account)
+    plan, skipped, moved, claimed = [], [], False, set()
+    if len(sections) == 1:
+        sec = sections[0]
+        target = bank_account
+        last4 = sec.get('last4') or ''
+        if last4 and bank_account.last4 != last4:
+            others = [b for b in banks if b.pk != bank_account.pk and b.last4 == last4]
+            if len(others) == 1:
+                target, moved = others[0], True
+        plan.append((target, sec))
+    else:
+        if end_balance not in (None, ''):
+            raise StatementError('Type the ending balance only for a statement with one account. This one holds several.')
+        for sec in sections:
+            last4 = sec.get('last4') or ''
+            mine = [b for b in banks if last4 and b.last4 == last4]
+            if len(mine) == 1 and mine[0].pk not in claimed:
+                claimed.add(mine[0].pk)
+                plan.append((mine[0], sec))
+            else:
+                skipped.append(sec)
+        if not plan:
+            raise StatementError(f'That statement holds {len(sections)} accounts ({"; ".join(_where(s) for s in sections)}) and none matches a bank account of this association by its last 4 digits. '
+                                 'Put each bank account\'s last 4 in the settings, then upload the statement again.')
+    filed, stored = [], None
+    for target, sec in plan:
+        if file is not None and hasattr(file, 'seek'):
+            file.seek(0)
+        try:
+            st = import_statement(target, sec, file=file if stored is None else None, read_by=read_by, end_balance=end_balance if len(sections) == 1 else None)
+        except StatementError as e:
+            raise StatementError(f'{target.label}: {e}' if len(sections) > 1 else str(e))
+        if stored is None and st.file:
+            stored = st.file.name
+        elif stored is not None:
+            st.file.name = stored                                   # the one stored file is behind every statement filed from it
+            st.save(update_fields=['file'])
+        filed.append((target, st, sec))
+    return {'filed': filed, 'skipped': skipped, 'moved': moved, 'multi': len(sections) > 1}
+
+
+def split_combined_statement(statement):
+    """Read again the file stored on a statement that was read as ONE account though it holds several, and file each account on its own bank account (each replaces the wrong
+    statement for the period, unless some of its lines are already matched). The bank accounts need their last 4 set first. Meant to be run by hand, once, for La Pensee's two
+    October Truist statements; nothing calls it."""
+    from django.core.files.base import ContentFile
+    if not statement.file:
+        raise StatementError('That statement has no stored file to read again.')
+    statement.file.open('rb')
+    try:
+        data = statement.file.read()
+    finally:
+        statement.file.close()
+    parsed = read_pdf_statement(data)
+    return file_statement(statement.bank_account, parsed, file=ContentFile(data, name=statement.file.name.rsplit('/', 1)[-1] or 'statement.pdf'), read_by='claude')
 
 
 def statement_for(bank_account, month_first):
@@ -544,6 +657,38 @@ def unaccept(bank_account, month_first, item_key):
     kind, pk = item_key[0], int(item_key[1:])
     field = {'L': 'line_id', 'P': 'payment_id', 'O': 'opening_item_id'}[kind]
     ReconAcceptance.objects.filter(bank_account=bank_account, month=month_first, **{field: pk}).delete()
+
+
+def _words(text):
+    """What a statement description says, without its numbers and punctuation, so 'ACH 1234 Interest Paid' and 'ACH 5678 Interest Paid' read alike."""
+    return ' '.join(re.sub(r'[^a-z]+', ' ', (text or '').lower()).split())
+
+
+def suggested_accounts(bank_lines, accounts):
+    """{bank line id: the account it most likely goes to}, for the lines that have a good guess; the others are left out. Only ever a suggestion: a person still presses the button.
+    The guess is what the same words on an earlier line were put to (the most recent time, in this association), else Bank Fees for a bank fee."""
+    bank_lines = list(bank_lines)
+    if not bank_lines:
+        return {}
+    bank = bank_lines[0].statement.bank_account
+    pool = {a.pk: a for a in accounts if a.pk != bank.account_id and a.kind in ('expense', 'income', 'equity')}
+    past = {}
+    for entry in JournalEntry.objects.filter(association=bank.association, source=JournalEntry.Source.BANK, reverses__isnull=True).order_by('-date', '-id')[:500].prefetch_related('lines', 'reversed_by'):
+        if entry.reversed_by.all():
+            continue
+        words = _words(entry.memo)
+        for line in entry.lines.all():
+            if words and line.account_id in pool:
+                past.setdefault((words, line.credit > 0), pool[line.account_id])    # credit on the other side: money came in
+    fees = [a for a in pool.values() if a.kind == 'expense' and a.name.lower() in ('bank fees', 'bank charges', 'bank service charges')]
+    out = {}
+    for b in bank_lines:
+        guess = past.get((_words(b.description), b.amount > 0))
+        if guess is None and b.kind == BankLine.Kind.FEE and b.amount < 0 and len(fees) == 1:
+            guess = fees[0]
+        if guess is not None:
+            out[b.pk] = guess
+    return out
 
 
 @transaction.atomic

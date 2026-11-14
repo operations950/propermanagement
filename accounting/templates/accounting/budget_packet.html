@@ -1,0 +1,82 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Mailing packet - {{ assoc.name }} {{ year }}{% endblock %}
+{% block acc_body %}
+<style>
+    .pk-item { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); padding: 12px 16px; margin-bottom: 8px; }
+    .pk-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .pk-head .ico { color: var(--brand-slate); flex: none; }
+    .pk-act { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+    .pk-size label { border: 1px solid var(--border-hairline); border-radius: 999px; padding: 4px 14px; cursor: pointer; background: var(--surface-card, #fff); font-size: .88rem; }
+    .pk-size input { position: absolute; opacity: 0; pointer-events: none; }
+    .pk-size input:checked + label { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; font-weight: 600; }
+</style>
+<div class="mb-3">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> {{ assoc.name }} &mdash; final draft for mailing {% include '_tip.html' with text="Everything that goes to the owners and everything that proves it went out, made from the Board draft. Each piece opens as a PDF in your browser: print it from there." %}</h2>
+    <div class="small text-muted">
+        {% if meeting_ready %}Meeting {{ project.meeting_date|date:"l, F j, Y" }}, {{ project.meeting_time }}, {{ project.meeting_place }}.
+        {% else %}<a href="{% url 'accounting:budget_project' assoc.pk year %}">Enter the date, time and place of the meeting</a> first: the notice needs them.{% endif %}
+        &middot; The {{ year }} budget needs {{ needed|money }} in assessments ({{ unit_month|money }} per unit per month).
+    </div>
+</div>
+
+<div class="pk-item">
+    <div class="pk-head"><i data-lucide="file-text" class="icon ico"></i><span class="fw-semibold">Notice of the budget meeting {% include '_tip.html' with text="The notice that goes to every owner: when and where the board meets, that the budget and the assessments will be considered, what the assessments are for, and that the proposed budget is enclosed. Not less than 14 days before the meeting. Made from the meeting details and the Board draft; the wording is saved as it was made." %}</span>
+        <span class="ms-auto">{% if notice %}<span class="ac-chip done">Made {{ notice.created_at|date:"M j" }}</span>{% else %}<span class="ac-chip">Not made</span>{% endif %}</span></div>
+    {% if changed %}<div class="small mt-1" style="color: #8a5a00;"><i data-lucide="triangle-alert" class="icon"></i> The budget changed after this notice was made. Make a new one before you mail it.</div>{% endif %}
+    <div class="pk-act">
+        {% if notice %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.notice }}"><i data-lucide="eye" class="icon"></i> View and print</a>{% endif %}
+        {% if meeting_ready %}
+        <form method="post" class="d-flex gap-2 align-items-center flex-wrap" {% if notice %}onsubmit="return confirm('Make a new notice? The one on file is kept in the legal forms list, and this one becomes the notice for the packet.');"{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="notice">
+            <select name="association_type" class="form-select form-select-sm" style="width: auto;" aria-label="Kind of association"><option {% if association_type == 'Condominium' %}selected{% endif %}>Condominium</option><option {% if association_type != 'Condominium' %}selected{% endif %}>Homeowners association</option></select>
+            <button class="btn btn-sm {% if notice and not changed %}btn-outline-secondary{% else %}btn-primary{% endif %}">{% if notice %}Make a new notice{% else %}Make the notice{% endif %}</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="pk-item">
+    <div class="pk-head"><i data-lucide="calculator" class="icon ico"></i><span class="fw-semibold">The proposed budget {% include '_tip.html' with text="The Board draft as a board sheet: last year, this year's landing, the proposed budget and the changes, with the amount each unit pays. It goes in every envelope with the notice." %}</span></div>
+    <div class="pk-act"><a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.budget }}"><i data-lucide="eye" class="icon"></i> View and print</a>
+        <a class="btn btn-link btn-sm" href="{% url 'accounting:budget_year' assoc.pk year %}?stage=board">Open the Board draft</a></div>
+</div>
+
+<div class="pk-item">
+    <div class="pk-head"><i data-lucide="users" class="icon ico"></i><span class="fw-semibold">Mailing list {% include '_tip.html' with text="Every unit's billed owner, with the name as on the deed and the address to send to: the seasonal address while it is in season, otherwise the mailing address, otherwise the unit itself (flagged, because nothing was on file). Once the mailing is recorded this is the list exactly as it went out." %}</span>
+        <span class="ms-auto"><span class="ac-chip {% if flags %}warn{% else %}done{% endif %}">{{ sent }} of {{ owner_total }} unit{{ owner_total|pluralize }}</span></span></div>
+    {% if from_list %}<div class="small text-muted mt-1">As it went out on {{ project.mailed_on|date:"M j, Y" }}.</div>{% endif %}
+    {% if flags %}
+    <div class="small mt-2"><div class="fw-semibold mb-1" style="color: #8a5a00;">{{ flags|length }} to look at</div>
+        {% for r in flags|slice:":10" %}<div class="mb-1"><span class="fw-semibold">{{ r.unit }}</span> &nbsp;{{ r.owner|default:"&mdash;" }}<span class="text-muted d-block d-sm-inline ms-sm-2">{{ r.note }}</span></div>{% endfor %}
+        {% if flags|length > 10 %}<div class="text-muted">and {{ flags|length|add:"-10" }} more in the list.</div>{% endif %}</div>
+    {% endif %}
+    <div class="pk-act"><a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.mailing_list }}"><i data-lucide="eye" class="icon"></i> View and print</a><a class="btn btn-outline-secondary btn-sm" href="{{ files.mailing_csv }}"><i data-lucide="table" class="icon"></i> CSV</a></div>
+</div>
+
+<div class="pk-item">
+    <div class="pk-head"><i data-lucide="mail" class="icon ico"></i><span class="fw-semibold">Envelopes {% include '_tip.html' with text="One envelope per owner on the mailing list, owner name and address, with the return address in the corner. Size 10: the sheet is the envelope itself (9.5 by 4.125 inches). Full page: a letter-size sheet with the address in the middle, for a large envelope. Print one test page first to see where the address lands." %}</span>
+        <span class="ms-auto"><span class="ac-chip">{{ sent }} envelope{{ sent|pluralize }}</span></span></div>
+    <form method="post" class="row g-2 mt-1 align-items-start">{% csrf_token %}<input type="hidden" name="action" value="return">
+        <div class="col-12 col-md-5"><div class="pk-size d-flex gap-2 mb-2">
+            <span><input type="radio" name="envelope_size" id="sz10" value="no10" {% if envelope_size != 'full' %}checked{% endif %}><label for="sz10">Size 10</label></span>
+            <span><input type="radio" name="envelope_size" id="szfull" value="full" {% if envelope_size == 'full' %}checked{% endif %}><label for="szfull">Full page</label></span></div>
+            <button class="btn btn-outline-secondary btn-sm">Save</button></div>
+        <div class="col-12 col-md-7"><label class="form-label small text-muted mb-0" for="ret">Return address (top left corner)</label><textarea id="ret" name="return_address" rows="4" class="form-control form-control-sm" maxlength="600">{{ return_text }}</textarea></div>
+    </form>
+    <div class="pk-act"><a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.envelopes }}?test=1"><i data-lucide="file-check" class="icon"></i> Print one test page</a>
+        <a class="btn btn-primary btn-sm" target="_blank" href="{{ files.envelopes }}"><i data-lucide="printer" class="icon"></i> Print all {{ sent }}</a></div>
+</div>
+
+<div class="pk-item">
+    <div class="pk-head"><i data-lucide="shield-check" class="icon ico"></i><span class="fw-semibold">Affidavit of mailing {% include '_tip.html' with text="The sworn statement that the notice and the budget went to every owner on a stated date. It is made when you record the mailing (step 4). Print it, sign it before a notary, and file it with the official records of the association." %}</span>
+        <span class="ms-auto">{% if affidavit %}<span class="ac-chip done">Made {{ affidavit.created_at|date:"M j" }}</span>{% else %}<span class="ac-chip">Not made</span>{% endif %}</span></div>
+    <div class="pk-act">{% if affidavit %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.affidavit }}"><i data-lucide="eye" class="icon"></i> View and print</a>
+        {% else %}<span class="small text-muted">It is made when you record the mailing.</span> <a class="btn btn-link btn-sm" href="{% url 'accounting:budget_project' assoc.pk year %}#step-mailed">Go to the mailing step</a>{% endif %}</div>
+</div>
+
+<div class="pk-item" style="border-color: var(--brand-primary);">
+    <div class="pk-head"><i data-lucide="files" class="icon ico"></i><span class="fw-semibold">Print everything {% include '_tip.html' with text="The notice, the budget, the mailing list and (once it is made) the affidavit, in one PDF. The envelopes stay separate because they print on different paper." %}</span></div>
+    <div class="pk-act">{% if notice %}<a class="btn btn-primary btn-sm" target="_blank" href="{{ files.everything }}"><i data-lucide="printer" class="icon"></i> Notice, budget, list{% if affidavit %}, affidavit{% endif %}</a>
+        {% else %}<span class="small text-muted">Make the notice first.</span>{% endif %}</div>
+</div>
+{% endblock %}

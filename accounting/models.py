@@ -299,6 +299,7 @@ class MonthLock(models.Model):
 class Budget(models.Model):
     association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='budgets')
     year = models.PositiveSmallIntegerField(help_text='The year the fiscal year starts in.')
+    show_cents = models.BooleanField(default=False, help_text='The board sheet, its PDF and Excel show cents. Off: whole dollars, every total the sum of the lines above it.')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['association', 'year'], name='uniq_budget_year')]
@@ -311,6 +312,34 @@ class BudgetLine(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['budget', 'account'], name='uniq_budget_account')]
+
+
+class BudgetProject(models.Model):
+    """Everything around one year's budget that is not the numbers: when and where the meeting is, the notice that was made and how it was mailed (with the exact mailing list as it went
+    out), when the meeting was held, and when the approved budget was loaded for the new year. The numbers stay on the Budget and its versions; this is the step tracker."""
+    class Envelope(models.TextChoices):
+        NO10 = 'no10', 'Size 10 envelope'
+        FULL = 'full', 'Full page'
+
+    budget = models.OneToOneField(Budget, on_delete=models.CASCADE, related_name='project')
+    final_at = models.DateTimeField(null=True, blank=True, help_text='The Board draft was marked final for mailing.')
+    meeting_date = models.DateField(null=True, blank=True)
+    meeting_time = models.CharField(max_length=40, blank=True)
+    meeting_place = models.CharField(max_length=200, blank=True)
+    return_address = models.TextField(blank=True, help_text='Printed in the corner of every envelope. Blank: the association, care of the management company.')
+    envelope_size = models.CharField(max_length=6, choices=Envelope.choices, default=Envelope.NO10)
+    notice_doc = models.ForeignKey('legalforms.GeneratedDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    affidavit_doc = models.ForeignKey('legalforms.GeneratedDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    packet_total = models.DecimalField(null=True, blank=True, help_text='The assessments the budget needed when the notice was made, to tell if it changed since.', **MONEY)
+    mailed_on = models.DateField(null=True, blank=True)
+    mailed_by = models.CharField(max_length=120, blank=True)
+    mail_method = models.CharField(max_length=60, blank=True)
+    mailed_count = models.PositiveIntegerField(null=True, blank=True)
+    mailing_snapshot = models.JSONField(default=list, blank=True, help_text='The mailing list exactly as it went out.')
+    held_on = models.DateField(null=True, blank=True, help_text='The day the meeting was held.')
+    loaded_at = models.DateTimeField(null=True, blank=True)
+    loaded_note = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class PriorYearToDate(models.Model):
@@ -356,6 +385,7 @@ class BudgetVersionLine(models.Model):
     custom = models.DecimalField(default=ZERO, **MONEY)
     adjust = models.CharField(max_length=20, blank=True, help_text='A dollar amount or a percent, added on top of the projected year.')
     note = models.CharField(max_length=200, blank=True)
+    meeting_amount = models.DecimalField(null=True, blank=True, help_text='The final number typed at the meeting. Blank: the line stays as the board draft had it.', **MONEY)
     proposed = models.DecimalField(default=ZERO, **MONEY)
 
     class Meta:
@@ -627,6 +657,7 @@ class JournalRule(models.Model):
     name = models.CharField(max_length=120, default='Reserve contribution')
     kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.RESERVE)
     day_of_month = models.PositiveSmallIntegerField(default=27, help_text='The day the transfer to the reserve account happens; 31 means the last day of the month.')
+    auto_post = models.BooleanField(default=True, help_text='Post this entry by itself on its day (the association\'s own automatic posting must be on too).')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -715,6 +746,11 @@ class BankAccount(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.bank_name} {self.last4})'.strip()
+
+    @property
+    def label(self):
+        """What to call this bank account where one is picked: its name, with the last 4 digits unless the name already carries them."""
+        return self.name + (f' (ending {self.last4})' if self.last4 and self.last4 not in self.name else '')
 
 
 class Payment(models.Model):
@@ -888,15 +924,16 @@ class DelinquencyCase(models.Model):
     """One owner who is behind, from the day their first late letter is made until the balance is paid. It is reviewed every 30 days: each review is a compliance item."""
     class Stage(models.TextChoices):
         LETTER = 'letter', 'Letter sent'
-        FINAL = 'final', 'Final notice'
-        ATTORNEY = 'attorney', 'With the attorney'
-        PLAN = 'plan', 'Payment plan'
+        NOTICE1 = 'notice1', 'Lawyer: notice 1 (intent to lien)'
+        NOTICE2 = 'notice2', 'Lawyer: notice 2 (intent to foreclose)'
+        LIEN = 'lien', 'Lien or foreclosure'
         RESOLVED = 'resolved', 'Resolved'
 
     association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='delinquency_cases')
     unit = models.ForeignKey(Unit, on_delete=models.CASCADE, related_name='delinquency_cases')
     owner = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name='delinquency_cases')
     stage = models.CharField(max_length=10, choices=Stage.choices, default=Stage.LETTER)
+    stage_since = models.DateField(null=True, blank=True, help_text='The day the owner entered the step they are on: the 30 and 45 day alerts count from here.')
     opened_on = models.DateField()
     next_review = models.DateField(null=True, blank=True)
     resolved_on = models.DateField(null=True, blank=True)

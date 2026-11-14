@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Please try again{% endblock %}
+{% block content %}
+<div class="mx-auto text-center" style="max-width: 460px; padding: 3rem 0.5rem;">
+    <h1 class="h4 page-title mb-2">That page timed out</h1>
+    <p class="text-muted mb-4">It was open for a while, or you were signed out in between, so what you sent was not saved. Go back, reload the page and try again.</p>
+    <div class="d-grid gap-2">
+        <button type="button" class="btn btn-primary btn-lg" onclick="if (history.length > 1) { history.back(); } else { location.href = '/'; }">Go back</button>
+        <a class="btn btn-outline-secondary btn-lg" href="/">Go to the home screen</a>
+    </div>
+</div>
+{% endblock %}

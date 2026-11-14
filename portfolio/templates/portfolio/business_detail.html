@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 my-3">
     <div>
-        <a href="{% url 'portfolio_dashboard' %}" class="small text-decoration-none d-inline-block mb-1" style="color: var(--ink-muted);">&larr; My Businesses</a>
+        <a href="{% url 'portfolio_dashboard' %}" class="small text-decoration-none d-inline-block py-3 py-md-0 mb-1" style="color: var(--ink-muted);">&larr; My Businesses</a>
         <h2 class="page-title mb-0 d-flex align-items-center gap-2">
             <i data-lucide="{{ business.icon|default:'briefcase' }}" class="icon-lg" style="color: {{ business.color }};"></i>
             {{ business.name }}
@@ -30,9 +30,9 @@
                     <div class="list-group-item d-flex align-items-start gap-2 px-0">
                         {% if t.status == 'done' %}
                         <form method="post" class="mt-1">{% csrf_token %}<input type="hidden" name="action" value="toggle_task"><input type="hidden" name="task_id" value="{{ t.pk }}">
-                            <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent" title="Reopen"><i data-lucide="check-circle-2" class="icon" style="color: var(--status-good, #2e7d32);"></i></button></form>
+                            <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent d-inline-flex align-items-center justify-content-center" style="min-width: 44px; min-height: 44px; margin: -8px 0 -8px -8px;" title="Reopen" aria-label="Reopen {{ t.title }}"><i data-lucide="check-circle-2" class="icon" style="color: var(--status-good, #2e7d32);"></i></button></form>
                         {% else %}
-                        <button type="button" class="btn btn-sm p-0 border-0 bg-transparent mt-1" title="Mark done" data-close-task="{{ t.pk }}" data-close-title="{{ t.title }}"><i data-lucide="circle" class="icon" style="color: var(--ink-muted);"></i></button>
+                        <button type="button" class="btn btn-sm p-0 border-0 bg-transparent d-inline-flex align-items-center justify-content-center" style="min-width: 44px; min-height: 44px; margin: -8px 0 -8px -8px;" title="Mark done" aria-label="Mark {{ t.title }} done" data-close-task="{{ t.pk }}" data-close-title="{{ t.title }}"><i data-lucide="circle" class="icon" style="color: var(--ink-muted);"></i></button>
                         {% endif %}
                         <div style="min-width: 0; flex: 1;">
                             <div class="d-flex justify-content-between gap-3">
@@ -58,18 +58,18 @@
                         <input type="text" name="title" class="form-control form-control-sm" placeholder="Title" required>
                     </div>
                     <div class="col-6 col-md-3">
-                        <select name="category" class="form-select form-select-sm">
+                        <select name="category" aria-label="Category" class="form-select form-select-sm">
                             <option value="">No category</option>
                             {% for c in categories %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
                         </select>
                     </div>
                     <div class="col-6 col-md-3">
-                        <select name="priority" class="form-select form-select-sm">
+                        <select name="priority" aria-label="Priority" class="form-select form-select-sm">
                             {% for value, label in priority_choices %}<option value="{{ value }}" {% if value == 'medium' %}selected{% endif %}>{{ label }}</option>{% endfor %}
                         </select>
                     </div>
                     <div class="col-6 col-md-3">
-                        <input type="date" name="due_date" class="form-control form-control-sm">
+                        <input type="date" name="due_date" aria-label="Due date" class="form-control form-control-sm">
                     </div>
                     <div class="col-6 col-md-3">
                         <input type="number" step="0.01" name="amount" class="form-control form-control-sm" placeholder="Amount $">
@@ -154,18 +154,18 @@
                         <input type="text" name="rule_title" class="form-control form-control-sm" placeholder="Title (e.g. Pay rent)" required>
                     </div>
                     <div class="col-6">
-                        <select name="rule_category" class="form-select form-select-sm">
+                        <select name="rule_category" aria-label="Category" class="form-select form-select-sm">
                             <option value="">No category</option>
                             {% for c in categories %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
                         </select>
                     </div>
                     <div class="col-6">
-                        <select name="rule_priority" class="form-select form-select-sm">
+                        <select name="rule_priority" aria-label="Priority" class="form-select form-select-sm">
                             {% for value, label in priority_choices %}<option value="{{ value }}" {% if value == 'medium' %}selected{% endif %}>{{ label }}</option>{% endfor %}
                         </select>
                     </div>
                     <div class="col-6">
-                        <select name="frequency" id="rule-frequency" class="form-select form-select-sm">
+                        <select name="frequency" id="rule-frequency" aria-label="How often" class="form-select form-select-sm">
                             {% for value, label in frequency_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
                         </select>
                     </div>
@@ -185,7 +185,7 @@
                     {% endif %}
                     <div class="col-12">
                         <label class="form-label small mb-1">First occurrence</label>
-                        <input type="date" name="next_due_date" class="form-control form-control-sm" required>
+                        <input type="date" name="next_due_date" aria-label="First due date" class="form-control form-control-sm" required>
                     </div>
                     <div class="col-12">
                         <button type="submit" class="btn btn-primary btn-sm w-100">Add recurring rule</button>

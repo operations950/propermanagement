@@ -1,0 +1,48 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Load the {{ year }} budget - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="mb-3">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="database" class="icon-lg"></i> {{ assoc.name }} &mdash; load the {{ year }} budget {% include '_tip.html' with text="The approved budget is already the one the books are compared against. Loading also puts it to work: what each unit is charged from the first day of the year, and the monthly move to the reserves. Nothing happens until you tick the box and press Load, and each part can be left out." %}</h2>
+    {% if project.loaded_at %}<div class="small text-muted">{{ project.loaded_note }}</div>{% endif %}
+</div>
+{% if plan.problems %}
+<div class="card"><div class="card-body">{% for p in plan.problems %}<div class="text-muted">{{ p }}</div>{% endfor %}</div></div>
+{% else %}
+<form method="post">{% csrf_token %}
+<div class="card mb-3"><div class="card-body">
+    <div class="ac-lab mb-1">The budget</div>
+    <div>{{ plan.lines }} budget line{{ plan.lines|pluralize }}, {{ plan.needed|money }} to be assessed for {{ year }} ({{ plan.prior|money }} last year). It is already the {{ year }} budget in the books; loading it again changes nothing there.</div>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <div class="ac-lab mb-2">What each unit pays {% include '_tip.html' with text="From the approved budget: the assessments needed, divided the way this association divides them (the same for every unit, or by each unit's share)." %}</div>
+    <table class="table table-sm ac-table mb-2"><thead><tr><th>Units</th><th class="ac-num">{{ year|add:"-1" }} a month</th><th class="ac-num">{{ year }} a month</th><th class="ac-num">{{ year }} a year</th></tr></thead>
+        <tbody>{% for g in plan.groups %}<tr><td>{{ g.label }}</td><td class="ac-num">{{ g.old_monthly|money }}</td><td class="ac-num fw-semibold">{{ g.monthly|money }}</td><td class="ac-num">{{ g.annual|money }}</td></tr>{% endfor %}</tbody></table>
+    {% if plan.already %}
+        <div class="ac-chip done">Already set</div> <span class="small text-muted">A regular assessment already starts on {{ plan.first_due|date:"M j, Y" }}: {{ plan.rule.existing.name }}.</span>
+    {% elif plan.rule %}
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="do_assessment" id="doa" checked>
+            <label class="form-check-label" for="doa">Set the {{ year }} assessment: from <strong>{{ plan.first_due|date:"M j, Y" }}</strong>, {% if plan.rule.method == 'flat' %}<strong>{{ plan.rule.amount|money }}</strong> for every unit{% else %}<strong>{{ plan.rule.amount|money }}</strong> split by share{% endif %}, {{ plan.rule.frequency_label }}.
+                {% if plan.rule.ends_old %}The current assessment ({{ plan.old_rule.name }}) ends on {{ plan.ends_on|date:"M j, Y" }}.{% endif %}</label></div>
+        {% if plan.rule.difference %}<div class="small text-muted mt-1">Rounded to the cent, this collects {{ plan.rule.collected|money }} over the year: {{ plan.rule.difference|money }} {% if plan.rule.difference > 0 %}over{% else %}under{% endif %} the budget.</div>{% endif %}
+    {% endif %}
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <div class="ac-lab mb-2">The move to the reserves {% include '_tip.html' with text="Each reserve fund's yearly amount from the approved budget, divided by 12. The transfer itself shows on the bank statement; this is the entry that says which fund it belongs to." %}</div>
+    {% if plan.reserve.has_budget %}
+        <table class="table table-sm ac-table mb-2" style="max-width: 520px;"><tbody>{% for acct, amt in plan.reserve.lines %}<tr><td>{{ acct }}</td><td class="ac-num">{{ amt|money }}</td></tr>{% endfor %}
+            <tr class="fw-bold"><td>A month, on the 27th</td><td class="ac-num">{{ plan.reserve.total|money }}</td></tr></tbody></table>
+        {% if plan.reserve.has_rule %}<div class="ac-chip done">Already scheduled</div> <span class="small text-muted">The monthly contribution already reads the {{ year }} budget from {{ plan.first_due|date:"M j" }}.</span>
+        {% elif plan.reserve.will_create %}<div class="form-check"><input class="form-check-input" type="checkbox" name="do_reserve" id="dor" checked><label class="form-check-label" for="dor">Schedule the monthly reserve contribution, on the 27th.</label></div>{% endif %}
+    {% else %}<div class="text-muted">This budget has no reserve lines.</div>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body d-flex align-items-center gap-3 flex-wrap">
+    <div class="form-check mb-0"><input class="form-check-input" type="checkbox" name="confirm" id="cf"><label class="form-check-label" for="cf">This is what I mean to load.</label></div>
+    <button class="btn btn-primary ms-md-auto">Load the {{ year }} budget</button>
+</div></div>
+</form>
+{% endif %}
+{% endblock %}

@@ -50,8 +50,36 @@
     .ac-drop { outline: 2px dashed var(--brand-primary); outline-offset: -6px; background: color-mix(in srgb, var(--brand-primary) 6%, white); }
     .ac-clearbar { position: sticky; bottom: 1rem; z-index: 30; background: #fff; border: 1px solid var(--brand-primary); border-radius: 12px; box-shadow: 0 8px 24px rgba(20,30,50,.16); padding: 10px 14px; margin-bottom: 1rem; }
     @media print { .brand-bar, .ac-noprint, .btn, .alert { display: none !important; } body { background: #fff; } }
+    /* On a phone: readable type, targets a thumb can hit (about 44px), and no iOS zoom on typing. Desktop is untouched. */
+    @media (max-width: 768px) {
+        .ac-chip { font-size: 0.8rem; padding: 3px 11px; }
+        .ac-lab, .ac-table th { font-size: 0.78rem; }
+        table.rp { font-size: 0.88rem; }
+        table.rp th, table.rp td { padding: 5px 10px; }
+        table.rp thead th, table.rp tr.rp-h1 td, table.rp .code { font-size: 0.78rem; }
+        .rp-bar label { font-size: 0.78rem; }
+        .ac-back { min-height: 44px; font-size: 0.95rem !important; }
+        .btn-sm, .btn-group-sm > .btn { min-height: 40px; padding: 0.4rem 0.85rem; font-size: 0.95rem; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; }
+        .form-control-sm, .form-select-sm { min-height: 44px; font-size: 16px; }
+        /* a row of small inline controls (a name box beside a date and a button) stacks: each box takes the full width instead of being cut off */
+        form.d-flex .form-control-sm[style*="max-width"], form.d-flex .form-select-sm[style*="max-width"] { max-width: none !important; flex: 1 1 100%; }
+        input[type=checkbox]:not(.ac-optin), input[type=radio]:not(.ac-optin) { width: 1.5rem; height: 1.5rem; }
+        .ac-pills input { width: auto; height: auto; }
+        /* the report tables sit in a box that scrolls sideways: their sticky heading belongs at the top of that box, not below the phone's top bar (that pushed it over the first rows) */
+        .rp-wrap table.rp thead th { top: 0 !important; }
+        input.clr { width: 1.75rem; height: 1.75rem; }
+        .ac-pills label { padding: 13px 18px; }
+        a > span.n, a > span.a { font-size: 0.8rem; }
+        .ac-clearbar { bottom: 0.5rem; }
+        .info-tip { min-width: 36px; min-height: 36px; margin: -6px -4px; display: inline-flex; align-items: center; justify-content: center; }
+        a.small:not(.btn):not(.ac-back), .small > a:not(.btn), .ac-table td a:not(.btn), table.rp td a { display: inline-block; padding: 0.55rem 0; }
+        /* a step of the close sheet: the status goes under the words, so the words get the whole width */
+        .ac-step:has(> .ac-chip) { flex-wrap: wrap; row-gap: 6px; }
+        .ac-step:has(> .ac-chip) > .flex-grow-1 { flex: 1 1 calc(100% - 90px); min-width: 0; }
+        .ac-step:has(> .ac-chip) > .ac-chip { order: 4; margin-left: 2.1rem; }
+    }
 </style>
-{% if acc_back %}<a href="{{ acc_back }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 ac-noprint" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ acc_back_label }}</a>{% endif %}
+{% if acc_back %}<a href="{{ acc_back }}" class="ac-back text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 ac-noprint" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ acc_back_label }}</a>{% endif %}
 {% block acc_body %}{% endblock %}
 {% include 'accounting/_acpick.html' %}
 {% endblock %}

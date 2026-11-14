@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Platform payouts{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .po { font-size: 0.84rem; }
     .po thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); }
@@ -34,7 +35,7 @@
     {% if plan %}
     {% for e in plan.errors %}<div class="alert alert-danger small py-1 mt-2 mb-0">{{ e }}</div>{% endfor %}
     {% if plan.items %}
-    <table class="table table-sm po mt-2 mb-0">
+    <div class="table-responsive"><table class="table table-sm po mt-2 mb-0">
         <thead><tr><th>Deposit</th><th class="num">Amount</th><th>Payout</th><th>What would happen</th></tr></thead>
         <tbody>
         {% for i in plan.items %}
@@ -51,7 +52,7 @@
         </tr>
         {% endfor %}
         </tbody>
-    </table>
+    </table></div>
     {% elif not plan.errors %}<div class="small text-muted mt-2">Nothing is waiting in the uncategorized accounts.</div>{% endif %}
     {% endif %}
 </div></div>

@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block title %}Book in QuickBooks{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .mb-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
     .mb-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
@@ -28,10 +29,10 @@
     </div>
     {% if t.reason %}<p class="small {% if t.status == 'booked' %}text-muted{% else %}mb-2{% endif %}">{{ t.reason }}</p>{% endif %}
     {% if t.lines %}
-    <table class="table table-sm mb-0 mb-table"><thead><tr><th>Goes to</th><th>QuickBooks account</th><th class="num">Amount</th></tr></thead><tbody>
+    <div class="table-responsive"><table class="table table-sm mb-0 mb-table"><thead><tr><th>Goes to</th><th>QuickBooks account</th><th class="num">Amount</th></tr></thead><tbody>
         {% for l in t.lines %}<tr><td>{{ l.where }}</td><td class="small text-muted">{{ l.account_name }}</td><td class="num">{{ l.amount|money }}</td></tr>{% endfor %}
         <tr class="fw-semibold"><td colspan="2">Total</td><td class="num">{{ t.amount|money }}</td></tr>
-    </tbody></table>
+    </tbody></table></div>
     {% endif %}
 </div></div>
 {% endfor %}

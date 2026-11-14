@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}{% if booking %}Edit reservation{% else %}New in-house reservation{% endif %}{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
+<div class="mo-page">
 <a href="{% url 'onsite_reservation_list' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Reservations</a>
 
 <h2 class="page-title mb-1">{% if booking %}Edit in-house reservation{% else %}New in-house reservation{% endif %}</h2>
@@ -65,4 +68,5 @@
     })();
 </script>
 {% endif %}
+</div>
 {% endblock %}

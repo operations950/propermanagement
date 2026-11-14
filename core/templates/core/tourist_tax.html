@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block title %}Tourist tax{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .tt-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; }
     .tt-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); }
@@ -26,6 +27,9 @@
     .tt-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
     .tt-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
     .tt-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+    .tt-id-row { display: grid; grid-template-columns: minmax(9rem, 1.2fr) repeat(3, minmax(0, 1fr)); gap: 0.5rem 0.75rem; align-items: end; padding: 0.6rem 0; border-top: 1px solid var(--border-hairline); }
+    .tt-id-row label span { display: block; font-size: 0.7rem; color: var(--ink-secondary); }
+    @media (max-width: 767.98px) { .tt-id-row { grid-template-columns: 1fr 1fr; } .tt-id-row > .fw-semibold { grid-column: 1 / -1; } }
     @media (max-width: 575.98px) { .tt-hero { grid-template-columns: 1fr; } .tt-big { font-size: 1.6rem; } .tt-cols, .tt-sum { grid-template-columns: 1fr 2.6rem 5.2rem 4.2rem 1.2rem; } }
 </style>
 <a href="{% url 'close_home' %}?month={{ rep.month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
@@ -61,9 +65,10 @@
 <div class="tt-cols"><span>Property</span><span>Days</span><span>Taxable</span><span>Due</span><span></span></div>
 {% for r in rep.rows %}
 <details class="tt-prop">
-    <summary><div class="tt-sum"><span class="fw-semibold">{{ r.property.name }}{% if r.unmatched or r.missing_fee %} <i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i>{% endif %} {% if r.state == 'filed' %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Filed</span>{% elif r.state == 'changed' %}<span class="tt-chip attention">Changed</span>{% endif %}</span><span class="n">{{ r.days }}</span><span class="n">${{ r.taxable|floatformat:"2g" }}</span><span class="n fw-semibold">${{ r.due|floatformat:"2g" }}</span><i data-lucide="chevron-right" class="icon tt-chev"></i></div></summary>
+    <summary><div class="tt-sum"><span class="fw-semibold">{{ r.property.name }}{% if r.property.tdt_account_number %} <span class="text-muted fw-normal small">TDT {{ r.property.tdt_account_number }}</span>{% endif %}{% if r.unmatched or r.missing_fee %} <i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i>{% endif %} {% if r.state == 'filed' %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Filed</span>{% elif r.state == 'changed' %}<span class="tt-chip attention">Changed</span>{% endif %}</span><span class="n">{{ r.days }}</span><span class="n">${{ r.taxable|floatformat:"2g" }}</span><span class="n fw-semibold">${{ r.due|floatformat:"2g" }}</span><i data-lucide="chevron-right" class="icon tt-chev"></i></div></summary>
     <div class="px-3 pb-3 pt-2 border-top">
         <div class="tt-return mb-3">
+            <div><span>Tourist tax account</span><b>{% if r.property.tdt_account_number %}{{ r.property.tdt_account_number }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#tax-ids" class="small fw-normal" style="color: #8a5a00;">Not entered</a>{% endif %}</b></div>
             <div><span>Number of nights</span><b>{{ r.days }}</b></div>
             <div><span>Gross rental receipts</span><b>${{ r.taxable|floatformat:"2g" }}</b></div>
             <div><span>Tax collected, 6%</span><b>${{ r.tax|floatformat:"2g" }}</b></div>
@@ -77,7 +82,7 @@
             {% else %}
             {% if r.state == 'changed' %}<span class="tt-chip attention">Changed since it was filed for ${{ r.filing.amount|floatformat:"2g" }}</span>{% endif %}
             <form method="post" class="d-flex align-items-center gap-2 flex-wrap ms-auto">{% csrf_token %}<input type="hidden" name="property" value="{{ r.property.pk }}">
-                <input type="text" name="confirmation" class="form-control form-control-sm" style="width: 12rem;" placeholder="Confirmation number (optional)" maxlength="60" value="{{ r.filing.confirmation|default:'' }}">
+                <input aria-label="Confirmation number (optional)" type="text" name="confirmation" class="form-control form-control-sm" style="width: 12rem;" placeholder="Confirmation number (optional)" maxlength="60" value="{{ r.filing.confirmation|default:'' }}">
                 <button class="btn btn-primary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> Mark as filed</button>
             </form>
             {% endif %}
@@ -93,8 +98,46 @@
 </details>
 {% endfor %}
 <div class="tt-total tt-sum"><span>Total</span><span class="n">{{ rep.days }}</span><span class="n">${{ rep.taxable|floatformat:"2g" }}</span><span class="n">${{ rep.due|floatformat:"2g" }}</span><span></span></div>
+
+<div class="card mt-4" id="payment-split" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="split" class="icon"></i> Split of the county payment {% include '_tip.html' with text='The county takes one payment for all the returns. This splits it by property so it can be entered in QuickBooks: each property’s share is the amount due on its own return, and the shares add up to the payment. Nothing is sent to QuickBooks from here.' %}</h6>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="?month={{ rep.month|date:'Y-m' }}&split=print" class="btn btn-outline-secondary btn-sm" target="_blank"><i data-lucide="printer" class="icon"></i> Printable</a>
+            <a href="?month={{ rep.month|date:'Y-m' }}&split=csv" class="btn btn-outline-secondary btn-sm"><i data-lucide="download" class="icon"></i> CSV</a>
+            <a href="?month={{ rep.month|date:'Y-m' }}&split=xlsx" class="btn btn-outline-secondary btn-sm"><i data-lucide="download" class="icon"></i> Excel</a>
+        </div>
+    </div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0 tabular-nums">
+        <thead><tr><th>Property</th><th>Account</th><th class="text-end">Tax</th><th class="text-end">Allowance</th><th class="text-end">Its share</th></tr></thead>
+        <tbody>{% for s in splits %}
+        <tr><td>{{ s.property.name }}{% if s.state == 'filed' %} <span class="tt-chip good">Filed</span>{% endif %}</td><td>{{ s.tdt|default:"—" }}</td><td class="text-end">${{ s.tax|floatformat:"2g" }}</td><td class="text-end">&minus;${{ s.allowance|floatformat:"2g" }}</td><td class="text-end fw-semibold">${{ s.due|floatformat:"2g" }}</td></tr>
+        {% endfor %}</tbody>
+        <tfoot><tr class="fw-bold"><td colspan="2">The county payment</td><td class="text-end">${{ rep.tax|floatformat:"2g" }}</td><td class="text-end">&minus;${{ rep.allowance|floatformat:"2g" }}</td><td class="text-end">${{ rep.due|floatformat:"2g" }}</td></tr></tfoot>
+    </table></div>
+    {% if rep.unfiled %}<p class="small text-muted mb-0 mt-2">{{ rep.unfiled }} of the {{ rep.rows|length }} return{{ rep.rows|length|pluralize }} {{ rep.unfiled|pluralize:"is,are" }} not marked as filed yet; the payment above includes {{ rep.unfiled|pluralize:"it,them" }}.</p>{% endif %}
+</div></div>
 {% else %}
 <div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body text-muted">No rental days and no deposits in {{ rep.month|date:"F Y" }}. File a $0.00 return.</div></div>
+{% endif %}
+
+{% if tax_rentals %}
+<details class="card mt-4" id="tax-numbers" style="border-radius: var(--bs-border-radius-lg);"{% if missing_ids %} open{% endif %}>
+    <summary class="card-body d-flex align-items-center gap-2" style="cursor: pointer; list-style: none;"><i data-lucide="hash" class="icon"></i> <strong>Tax numbers</strong> <span class="text-muted small">{{ tax_rentals|length }} short-term rental{{ tax_rentals|length|pluralize }}</span> {% include '_tip.html' with text='The tourist tax account number and business tax receipt number of each short-term rental, all in one place. Paste them in and press Save. Each rental’s own page has the same boxes.' %}</summary>
+    <form method="post" class="px-3 pb-3">{% csrf_token %}<input type="hidden" name="action" value="save_tax_ids">
+        <div class="tt-ids mb-2">
+            {% for p in tax_rentals %}
+            <div class="tt-id-row">
+                <div class="fw-semibold">{{ p.name }}</div>
+                <label><span>Tourist tax account</span><input type="text" name="tdt_{{ p.pk }}" class="form-control form-control-sm" maxlength="40" value="{{ p.tdt_account_number }}"></label>
+                <label><span>Business tax receipt</span><input type="text" name="btr_{{ p.pk }}" class="form-control form-control-sm" maxlength="40" value="{{ p.business_tax_receipt_number }}"></label>
+                <label><span>Renew by</span><input type="date" name="renews_{{ p.pk }}" class="form-control form-control-sm" value="{{ p.business_tax_receipt_renews_on|date:'Y-m-d' }}"></label>
+            </div>
+            {% endfor %}
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Save the tax numbers</button>
+    </form>
+</details>
 {% endif %}
 
 <p class="small text-muted mt-3">Counted when it reaches the trust account {% include '_tip.html' with text='Each deposit counts in the month it reaches the trust account, not the platform payout date, so a payout dated the 31st that lands on the 2nd belongs to next month. Taxable is the reservation payout plus the host service fee the platform kept, so cleaning and other fees are included. The collection allowance is 2.5% of the tax, up to $30 a return, for a return filed and paid on time. Days rented are counted from the reservations&#39; own dates, not from the payouts.' %}</p>

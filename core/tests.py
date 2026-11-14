@@ -250,6 +250,51 @@ class MonthCloseProjectTests(TestCase):
         self.assertIn('Day 4', html)
         self.assertIn('Pay long-term owners', html)
 
+    def test_opening_a_close_item_goes_straight_to_the_steps_own_screen(self):
+        from worksessions.models import Session
+        from .close_views import close_steps
+        month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
+        sessions = {s.template.name: s for s in Session.objects.select_related('template')}
+        steps = close_steps(date(2026, 10, 1), date(2026, 11, 3))
+        self.assertEqual(len(steps), 13)
+        for step in steps:
+            session = sessions[f'{month_close_project.PREFIX}{step["n"]}. {step["title"]}']
+            response = self.client.get(reverse('session_detail', args=[session.pk]))
+            self.assertEqual(response.status_code, 302, step['title'])
+            self.assertEqual(response['Location'], step['url'], step['title'])
+        tie = sessions['Month-end close: 1. Bank tie-out']
+        self.assertEqual(self.client.get(reverse('session_detail', args=[tie.pk]))['Location'], reverse('close_bank_tieout') + '?month=2026-10')
+        payouts = sessions['Month-end close: 4. Platform payouts']
+        self.assertEqual(self.client.get(reverse('session_detail', args=[payouts.pk]))['Location'], reverse('close_payouts'))         # that screen has no month
+        assoc = sessions['Month-end close: 12. Close associations']
+        self.assertEqual(self.client.get(reverse('session_detail', args=[assoc.pk]))['Location'], reverse('accounting:home') + '?month=2026-10')
+
+    def test_a_finished_close_item_opens_the_screen_too_and_a_post_is_not_redirected_there(self):
+        from worksessions.models import Session
+        month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
+        session = Session.objects.get(template__name='Month-end close: 9. Tourist tax')
+        session.status = Session.Status.SUBMITTED
+        session.save()
+        url = reverse('session_detail', args=[session.pk])
+        self.assertEqual(self.client.get(url)['Location'], reverse('tourist_tax') + '?month=2026-10')
+        response = self.client.post(url, {'action': 'nothing'})
+        self.assertNotIn('/close/', response.get('Location', ''))
+
+    def test_other_items_keep_their_own_screen(self):
+        from worksessions.models import Frequency, Session, SessionLine, SessionTemplate
+        staff = StaffProfile.objects.get()
+        rule = SessionTemplate.objects.create(name='Daily Admin', owner=staff, department=StaffProfile.Role.ACCOUNTING, frequency=Frequency.DAILY, next_open_date=date(2026, 11, 3))
+        session = Session.objects.create(template=rule, owner=staff, department=staff.role, period_label='Nov 3', period_key=date(2026, 11, 3), opens_at=date(2026, 11, 3), due_at=date(2026, 11, 3))
+        SessionLine.objects.create(session=session, label='Check the mail')
+        self.assertEqual(self.client.get(reverse('session_detail', args=[session.pk])).status_code, 200)
+        # a close item whose month can no longer be read (its notes were changed) also stays put rather than breaking
+        month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
+        odd = Session.objects.get(template__name='Month-end close: 2. Misc trust account')
+        odd.notes = 'close-month:soon'
+        odd.save()
+        self.assertEqual(self.client.get(reverse('session_detail', args=[odd.pk])).status_code, 200)
+        self.assertIsNone(month_close_project.screen_url(odd))
+
     def test_the_rent_and_sales_tax_screens_work(self):
         prop = make_ltr()
         url = reverse('close_rent_collection') + '?month=2026-10'
@@ -264,6 +309,102 @@ class MonthCloseProjectTests(TestCase):
         ret = SalesTaxReturn.objects.get()
         self.client.post(tax, {'action': 'file', 'ret': ret.pk, 'filed_on': '2026-11-18', 'confirmation': 'C-123'})
         self.assertEqual(SalesTaxFiling.objects.get().confirmation, 'C-123')
+
+
+def ledger_line(prop, month, flow, role='trust', category='expense', type_='Journal Entry', n='x', day=4, status='active', **kw):
+    return LedgerLine.objects.create(property=prop, role=role, txn_type=type_, txn_id=f'{prop.pk}{month:%m}{n}', txn_date=month.replace(day=day), month=month, flow=D(flow), category=category,
+                                     status=status, **kw)
+
+
+@override_settings(STORAGES=NO_MANIFEST)
+class RentCollectionShowsEverythingTests(TestCase):
+    """The screen lists every transaction of the month for a rental, so a reversed deposit is seen, not only the one line that counts as rent."""
+
+    def setUp(self):
+        make_staff()
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.prop = make_ltr()
+        self.nov, self.oct = date(2026, 11, 1), date(2026, 10, 1)
+        deposit(self.prop, self.nov, '3600')
+        ledger_line(self.prop, self.nov, '-3600', n='rev', day=6, payee='Tenant Tom', memo='Returned: NSF')
+        ledger_line(self.prop, self.nov, '500', category='deposit', type_='Deposit', n='gone', day=7, status='removed', memo='Deposited twice')
+        ledger_line(self.prop, self.nov, '80', role='expense', n='bill', day=8, type_='Bill', payee='Plumber')
+        ledger_line(self.prop, self.oct, '999', n='oct', day=9, memo='An October line')                                          # another month
+        other = make_ltr('2 Ross')
+        ledger_line(other, self.nov, '123', n='other', memo='Another rental')
+
+    def test_every_line_of_the_month_is_there_reversal_and_removed_ones_included(self):
+        t = close_ltr_tax.transactions(self.prop, self.oct)
+        self.assertEqual(t['count'], 4)
+        self.assertEqual([l['amount'] for l in t['lines'] if l['trust']], [D('3600'), D('-3600'), D('500')])                      # trust account first, by date
+        self.assertFalse(t['lines'][3]['trust'])                                                                                  # then the expense account
+        self.assertEqual((t['money_in'], t['money_out'], t['net'], t['removed']), (D('3600'), D('3600'), D('0'), 1))              # the removed line is not counted in the totals
+        self.assertEqual([l['counts'] for l in t['lines']], [True, False, False, False])                                          # only the live deposit is counted as rent
+        self.assertNotIn('An October line', ' '.join(l['what'] for l in t['lines']))
+        self.assertNotIn('Another rental', ' '.join(l['what'] for l in t['lines']))
+        self.assertEqual(close_ltr_tax.rent_rows(self.oct)[0]['seen'], D('3600'))                                                  # what QuickBooks shows is unchanged
+
+    def test_a_rental_with_nothing_in_the_month_says_so(self):
+        quiet = make_ltr('Quiet Rental')
+        t = close_ltr_tax.transactions(quiet, self.oct)
+        self.assertEqual((t['count'], t['net']), (0, D('0')))
+
+    def test_the_screen_shows_them_and_links_to_where_the_rent_is_changed(self):
+        html = self.client.get(reverse('close_rent_collection') + '?month=2026-10').content.decode()
+        self.assertIn('All transactions in November (4)', html)
+        self.assertIn('Returned: NSF', html)
+        self.assertIn('Deposited twice', html)
+        self.assertIn('gone from QuickBooks', html)
+        self.assertIn('counted as rent', html)
+        self.assertIn('Plumber', html)
+        self.assertNotIn('An October line', html)
+        page = reverse('property_detail', args=[self.prop.pk])
+        self.assertIn(f'href="{page}#monthly-rent"', html)                                                                       # Change, beside the rent
+        self.assertIn(f'href="{page}"', html)                                                                                    # the rental's name opens its page
+
+
+@override_settings(STORAGES=NO_MANIFEST)
+class MonthlyRentEditTests(TestCase):
+    """The expected rent of a long-term rental is changed on its property page (it could only be set once, on the collection screen)."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.prop = make_ltr(rent='3600')
+        self.url = reverse('property_detail', args=[self.prop.pk])
+
+    def rent(self):
+        self.prop.refresh_from_db()
+        return self.prop.monthly_rent
+
+    def test_the_rent_is_changed_from_the_property_page(self):
+        self.assertContains(self.client.get(self.url), 'id="monthly-rent"')
+        self.assertContains(self.client.get(self.url), 'value="3600.00"')
+        response = self.client.post(self.url, {'action': 'qb_set_monthly_rent', 'monthly_rent': ' $3,950.5 '})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response['Location'].endswith('#quickbooks'))
+        self.assertEqual(self.rent(), D('3950.50'))
+        self.assertEqual(close_ltr_tax.rent_rows(date(2026, 10, 1))[0]['expected'], D('3950.50'))                                 # the collection screen compares with it
+
+    def test_a_blank_clears_it_and_something_that_is_not_an_amount_is_refused(self):
+        self.client.post(self.url, {'action': 'qb_set_monthly_rent', 'monthly_rent': 'lots'})
+        self.assertEqual(self.rent(), D('3600.00'))
+        self.client.post(self.url, {'action': 'qb_set_monthly_rent', 'monthly_rent': '-5'})
+        self.assertEqual(self.rent(), D('3600.00'))
+        self.client.post(self.url, {'action': 'qb_set_monthly_rent', 'monthly_rent': ''})
+        self.assertIsNone(self.rent())
+        self.assertContains(self.client.get(self.url), 'Not set')
+        self.assertEqual(close_ltr_tax.rent_rows(date(2026, 10, 1))[0]['kind'], 'no_rent')
+
+    def test_only_a_long_term_rental_has_one_and_only_an_administrator_changes_it(self):
+        short = Property.objects.create(name='800 Tropic', property_type=Property.Type.SHORT_TERM_RENTAL, financials_managed=True)
+        self.client.post(reverse('property_detail', args=[short.pk]), {'action': 'qb_set_monthly_rent', 'monthly_rent': '1000'})
+        short.refresh_from_db()
+        self.assertIsNone(short.monthly_rent)
+        self.assertNotContains(self.client.get(reverse('property_detail', args=[short.pk])), 'id="monthly-rent"')
+        self.client.logout()
+        self.client.force_login(get_user_model().objects.create_user('staffer', password='pw12345678'))
+        self.client.post(self.url, {'action': 'qb_set_monthly_rent', 'monthly_rent': '1'})
+        self.assertEqual(self.rent(), D('3600.00'))
 
 
 # ---------------------------------------------------------------- the owner dashboard and where the reminders went

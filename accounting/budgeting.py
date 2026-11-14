@@ -246,7 +246,16 @@ def compute(line, info):
     nd = estimate(line, line.method, info)
     projected = line.actual + nd
     adj = adjustment(line, projected)
-    return {'nd': nd, 'projected': projected, 'adj': adj, 'proposed': projected + adj}
+    proposed = projected + adj
+    if line.meeting_amount is not None:         # a number typed at the meeting is the final number, whatever the method and adjustment say
+        proposed = line.meeting_amount
+    return {'nd': nd, 'projected': projected, 'adj': adj, 'proposed': proposed}
+
+
+def worked_out(line, info):
+    """What the line comes to from its method and adjustment alone, ignoring a number typed at the meeting."""
+    c = compute(line, info)
+    return c['projected'] + c['adj']
 
 
 def recompute(line, info):
@@ -438,7 +447,7 @@ def advance(budget, user):
     src = have[cur]
     ver = BudgetVersion.objects.create(budget=budget, stage=nxt, through_month=src.through_month, months_actual=src.months_actual, created_by=user)
     BudgetVersionLine.objects.bulk_create([BudgetVersionLine(version=ver, account_id=l.account_id, prior_budget=l.prior_budget, actual=l.actual, recent=l.recent, method=l.method, custom=l.custom,
-                                                              adjust=l.adjust, note=l.note, proposed=l.proposed) for l in src.lines.all()])
+                                                              adjust=l.adjust, note=l.note, meeting_amount=l.meeting_amount, proposed=l.proposed) for l in src.lines.all()])
     if nxt == 'approved':
         write_budget_lines(budget, ver)
     return ver
@@ -486,6 +495,8 @@ def line_rows(version, info, prev_version=None):
             'prior': float(l.prior_budget), 'actual': float(l.actual), 'method': l.method, 'method_label': method_label(l.method, info) if l.method != 'custom' else f'Custom ${l.custom:,.0f}',
             'custom': float(l.custom), 'nd': float(c['nd']), 'projected': float(c['projected']), 'adjust': l.adjust, 'adj': float(c['adj']), 'note': l.note, 'proposed': float(c['proposed']),
             'since': (float(c['proposed'] - prev.get(l.account_id, ZERO)) if prev is not None else 0.0), 'options': options,
+            'board': float(prev[l.account_id] if prev is not None and l.account_id in prev else worked_out(l, info)),      # the number going into the meeting: what the board draft had
+            'typed': None if l.meeting_amount is None else float(l.meeting_amount),
             'removable': not l.prior_budget and not l.actual, 'unbudgeted': not l.prior_budget and bool(l.actual),
         })
     rows.sort(key=lambda r: (SECTIONS.index(r['section']), r['code']))
@@ -563,7 +574,7 @@ def editor_state(version, have):
     for a in Account.objects.filter(association=version.budget.association, is_active=True).order_by('code'):
         if is_budgetable(a) and a.pk not in used:
             addable.setdefault(section_of(a), []).append({'id': a.pk, 'label': f'{a.code} {a.name}'})
-    return {'sections': SECTIONS, 'rows': rows, 'totals': t, 'assess': assess, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'], 'actual_label': info['actual_label'], 'rest_label': info['rest_label'], 'recent_n': info['recent_n'], 'n': info['n'],
+    return {'sections': SECTIONS, 'units': units, 'rows': rows, 'totals': t, 'assess': assess, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'], 'actual_label': info['actual_label'], 'rest_label': info['rest_label'], 'recent_n': info['recent_n'], 'n': info['n'],
             'stale': is_stale(version) and is_editable(version, have), 'prev_label': STAGE_LABEL[STAGE_KEYS[idx - 1]] if idx else '', 'methods': [(m, method_label(m, info) if m != 'custom' else 'Custom amount') for m in METHODS]}
 
 

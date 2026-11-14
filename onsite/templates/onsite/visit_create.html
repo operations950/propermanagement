@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}New visit{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
+<div class="mo-page">
 <a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
 
 <h2 class="page-title mb-1">New visit</h2>
@@ -187,4 +190,5 @@
     });
 })();
 </script>
+</div>
 {% endblock %}

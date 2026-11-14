@@ -1,0 +1,75 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Owner collections - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<style>
+    .oc-tabs { display: flex; gap: 6px; margin: 10px 0 12px; flex-wrap: wrap; }
+    .oc-tab { padding: 7px 14px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, #fff); color: inherit; text-decoration: none; font-weight: 600; font-size: 0.92rem; white-space: nowrap; }
+    .oc-tab:hover { color: inherit; border-color: var(--brand-primary); }
+    .oc-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+    .oc-tab .n { display: inline-block; min-width: 1.4em; text-align: center; border-radius: 999px; background: rgba(0,0,0,.1); font-size: .74rem; margin-left: 6px; padding: 0 6px; }
+    .oc-tab.on .n { background: rgba(255,255,255,.25); }
+    .oc-tab .a { display: inline-block; min-width: 1.4em; text-align: center; border-radius: 999px; background: #b45309; color: #fff; font-size: .72rem; margin-left: 4px; padding: 0 6px; }
+    tr.oc-alert td { background: color-mix(in srgb, var(--status-warning) 12%, white); }
+    .oc-move summary { list-style: none; cursor: pointer; }
+    .oc-move summary::-webkit-details-marker { display: none; }
+    .oc-move[open] { position: relative; }
+    .oc-move .oc-pop { margin-top: 6px; padding: 8px; border: 1px solid var(--border-hairline); border-radius: 10px; background: #fff; min-width: 15rem; text-align: left; }
+</style>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Owner collections {% include '_tip.html' with text="Every owner who is behind, and where they are in the process: no letter yet, a late letter sent, the lawyer's first 45-day notice, the second, then a lien or foreclosure. A tab's orange number is how many on it need you: write a letter, send them to the lawyer, or move them on. Posting the late fees and interest is a different job: the Post late fees screen and the month-end close." %}</h2>
+        <div class="small text-muted">{{ assoc.name }}</div></div>
+    <div class="d-flex gap-2 align-items-end flex-wrap ac-noprint">
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:late_fees' assoc.pk %}"><i data-lucide="alarm-clock" class="icon"></i> Post late fees</a>
+    </div>
+</div>
+<div class="small text-muted mb-1">Owners owing more than ${{ threshold }} are listed <button type="button" class="info-tip" data-tip="Owners are listed once they owe more than ${{ threshold }}. {% for t in terms|slice:":2" %}{{ t }} {% endfor %}" aria-label="More information"><i data-lucide="info" class="icon"></i></button> &middot; <a href="{% url 'accounting:delinquencies' assoc.pk %}?threshold={{ threshold }}">Change the amount</a> &middot; <a href="{% url 'accounting:settings' assoc.pk %}#late">Late fee rules</a></div>
+
+<div class="oc-tabs ac-noprint">
+    {% for t in tabs %}<a class="oc-tab {% if t.key == tab.key %}on{% endif %}" href="?tab={{ t.key }}">{{ t.label }}<span class="n">{{ t.count }}</span>{% if t.alerts and t.key != 'resolved' %}<span class="a" title="{{ t.alerts }} need{{ t.alerts|pluralize:'s,' }} you">{{ t.alerts }}</span>{% endif %}</a>{% endfor %}
+</div>
+<div class="small text-muted mb-2">{{ tab.help }}</div>
+
+{% if tab.key == 'none' %}
+<form method="post">{% csrf_token %}<input type="hidden" name="tab" value="none">
+<div class="rp-wrap mb-2"><table class="rp">
+    <thead><tr><th style="width: 28px;"><input type="checkbox" id="oc-all" checked aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Owes</th><th>Behind</th><th class="d-none d-md-table-cell"></th></tr></thead><tbody>
+    {% for r in tab.rows %}<tr class="oc-alert"><td><input type="checkbox" class="oc-pick" name="unit" value="{{ r.unit.pk }}" checked></td>
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}
+            <div class="d-md-none mt-1 ac-noprint" style="white-space: nowrap;"><a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'legalforms:new' 'nola' %}?property={{ assoc.pk }}&unit={{ r.unit.pk }}">Write the late letter</a></div></td>
+        <td class="num" title="Assessments {{ r.b.assessments|money }}, late fees {{ r.b.late_fees|money }}, interest {{ r.b.interest|money }}{% if r.b.other %}, other {{ r.b.other|money }}{% endif %}"><strong>{{ r.b.total|money }}</strong></td>
+        <td>{{ r.months }} month{{ r.months|pluralize }}{% if r.b.oldest_due %} <span class="small text-muted">since {{ r.b.oldest_due|mdate:'short' }}, {{ r.days_late }} days</span>{% endif %}</td>
+        <td class="text-end d-none d-md-table-cell"><a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'legalforms:new' 'nola' %}?property={{ assoc.pk }}&unit={{ r.unit.pk }}">Write the late letter</a></td></tr>
+    {% empty %}<tr><td colspan="5" class="text-muted p-3">Nobody who is behind is without a case.</td></tr>{% endfor %}
+    </tbody></table></div>
+{% if tab.rows %}<div class="d-flex flex-wrap gap-2 align-items-center ac-noprint"><button class="btn btn-sm btn-primary" name="action" value="make_letters">Make late letters for the ticked</button>
+    <span class="small text-muted">They are made as drafts and each opens the owner's case. Read each one through, make it final and mail it.</span></div>{% endif %}
+</form>
+<script>(function () { var all = document.getElementById('oc-all'); if (all) all.addEventListener('change', function () { document.querySelectorAll('.oc-pick').forEach(function (c) { c.checked = all.checked; }); }); })();</script>
+
+{% elif tab.key == 'resolved' %}
+<div class="rp-wrap"><table class="rp">
+    <thead><tr><th>Unit and owner</th><th>Resolved</th><th></th></tr></thead><tbody>
+    {% for r in tab.rows %}<tr><td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}</td><td>{{ r.resolved_on|mdate:'short' }}</td>
+        <td class="text-end"><a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'accounting:case' assoc.pk r.case.pk %}">Open</a></td></tr>
+    {% empty %}<tr><td colspan="3" class="text-muted p-3">No case ended in the last six months.</td></tr>{% endfor %}</tbody></table></div>
+
+{% else %}
+<div class="rp-wrap"><table class="rp">
+    <thead><tr><th>Unit and owner</th><th>Owes</th><th>Behind</th>{% if tab.key == 'letter' %}<th>Last letter</th>{% endif %}<th>In this step</th><th>Next review</th><th class="d-none d-md-table-cell"></th></tr></thead><tbody>
+    {% for r in tab.rows %}<tr class="{% if r.alert %}oc-alert{% endif %}">
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }} {% include 'accounting/_case_icons.html' with icons=r.icons %}
+            {% if r.alert %}<div class="small" style="color: #8a5a00; font-weight: 600;">{{ r.alert }}</div>{% endif %}
+            {% if r.paid %}<div class="small"><span class="ac-chip good">Paid in full</span> open the case to resolve it</div>{% endif %}
+            <div class="d-md-none mt-1 ac-noprint" style="white-space: nowrap;">{% include 'accounting/_collections_actions.html' %}</div></td>
+        <td class="num"><strong>{{ r.b.total|money }}</strong></td>
+        <td>{{ r.months }} month{{ r.months|pluralize }}{% if r.b.oldest_due %} <span class="small text-muted">since {{ r.b.oldest_due|mdate:'short' }}, {{ r.days_late }} days</span>{% endif %}</td>
+        {% if tab.key == 'letter' %}<td>{% if r.sent_on %}{{ r.sent_on|mdate:'short' }} <span class="small text-muted">{{ r.days_since_letter }} days ago</span>{% else %}<span class="text-muted">not mailed</span>{% endif %}</td>{% endif %}
+        <td>{{ r.days_in }} day{{ r.days_in|pluralize }} <span class="small text-muted">since {{ r.since|mdate:'short' }}</span></td>
+        <td>{{ r.case.next_review|mdate:'short' }}{% if r.review_due %} <span class="ac-chip warn">Due</span>{% endif %}</td>
+        <td class="text-end ac-noprint d-none d-md-table-cell" style="white-space: nowrap;">{% include 'accounting/_collections_actions.html' %}</td></tr>
+    {% empty %}<tr><td colspan="7" class="text-muted p-3">Nobody is on this step.</td></tr>{% endfor %}</tbody></table></div>
+{% if tab.key == 'letter' %}<div class="small text-muted mt-2">A letter that has been made but not mailed yet is a draft. The 30 days count from the day it was mailed.</div>
+{% elif tab.key == 'notice1' or tab.key == 'notice2' %}<div class="small text-muted mt-2">The days count from the day the owner was moved to this step. After {{ notice_days }} days it is time to move them on.</div>{% endif %}
+{% endif %}
+{% endblock %}

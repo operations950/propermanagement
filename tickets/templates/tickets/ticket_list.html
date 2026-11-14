@@ -1,8 +1,25 @@
 {% extends 'base.html' %}
-{% load ticket_extras %}
+{% load static ticket_extras %}
 {% block title %}{% if selected_source == 'recurring' %}Earlier recurring tasks{% else %}Tickets{% endif %}{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-tickets.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+{# Phones: a big New ticket button, one-tap filter chips, a search box and a More filters button, then big cards. Wide screens: everything below as it always was. #}
+<div class="m-tk d-md-none">
+    <div class="m-tk-sticky">
+        <div class="m-tk-heading"><h1 class="m-tk-h1">{% if selected_status == 'complete' %}Done{% else %}Tickets{% endif %}</h1><span class="m-tk-count">{{ page_obj.paginator.count }}</span></div>
+        <a class="m-tk-new" href="{% url 'ticket_create' %}"><i data-lucide="plus" class="icon-lg"></i> New ticket</a>
+        <div class="m-tk-chips" role="group" aria-label="Quick filters">
+            {% for c in phone_chips %}<a class="m-tk-chip{% if c.on %} on{% endif %}" href="{{ c.url }}"{% if c.on %} aria-pressed="true"{% endif %}>{{ c.label }}</a>{% endfor %}
+        </div>
+    </div>
+    <form method="get" class="m-tk-searchrow" role="search">
+        {% for key, values in request.GET.lists %}{% if key != 'q' and key != 'page' %}{% for v in values %}<input type="hidden" name="{{ key }}" value="{{ v }}">{% endfor %}{% endif %}{% endfor %}
+        <input type="search" name="q" class="m-tk-search" placeholder="Search tickets" value="{{ q }}" enterkeyhint="search" autocomplete="off" aria-label="Search tickets">
+        <button type="submit" class="m-tk-go">Search</button>
+    </form>
+    <button type="button" class="m-tk-more" data-m-filters-open><i data-lucide="sliders-horizontal" class="icon"></i> More filters{% if phone_more_count %} <span class="m-tk-badge">{{ phone_more_count }}</span>{% endif %}</button>
+</div>
+<div class="d-none d-md-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2">
         <i data-lucide="clipboard-list" class="icon-lg"></i>
         {% if selected_source == 'recurring' %}Earlier recurring tasks{% elif selected_status == 'complete' %}Completed & cancelled{% else %}Tickets{% endif %}
@@ -19,7 +36,7 @@
 <a href="{% querystring horizon='now' due=None %}" class="{% if ws_horizon == 'now' %}on{% endif %}">Now</a>
 <a href="{% querystring horizon='later' due=None %}" class="{% if ws_horizon == 'later' %}on{% endif %}">Later</a>
 </div>
-<div class="ws-note">Tickets are one-off requests. Due within {{ ws_now_days }} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket you turn into a project moves to <a href="{% url 'ws_projects' %}">Projects</a>; one with just a process attached stays here.</div>
+<div class="ws-note d-none d-md-block">Tickets are one-off requests. Due within {{ ws_now_days }} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket you turn into a project moves to <a href="{% url 'ws_projects' %}">Projects</a>; one with just a process attached stays here.</div>
 {% endif %}
 
 {% if selected_property %}
@@ -30,7 +47,7 @@
 </div>
 {% endif %}
 
-<div class="row g-2 mb-3 align-items-center">
+<div class="row g-2 mb-3 align-items-center d-none d-md-flex">
     <div class="col-auto position-relative">
         <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
         <input type="text" id="ticket-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);"
@@ -100,6 +117,7 @@
 
 {% include 'tickets/_filter_box_style.html' %}
 <div class="tf-box" id="tf-box">
+    <div class="m-tf-sheethead d-md-none"><span>Filters</span><button type="button" class="m-tf-close" data-m-filters-close>Show tickets</button></div>
     <div class="tf-head">
         <i data-lucide="sliders-horizontal" class="icon"></i> Filters
         {% if selected_role or selected_property or selected_due or selected_assigned_staff_id or selected_assigned_contact %}
@@ -212,4 +230,5 @@ just laid out top-to-bottom rather than in cells.
 {% include 'tickets/_ticket_mobile_cards.html' %}
 </div>
 <div id="ticket-pager">{% include 'core/_pager.html' %}</div>
+<script src="{% static 'js/mobile-tickets.js' %}"></script>
 {% endblock %}

@@ -19,6 +19,8 @@ from .services import lifecycle as lifecycle_service
 from .services import rules as rules_service
 from django.views.decorators.http import require_POST
 
+from core import month_close_project
+
 
 @login_required
 def my_sessions(request):
@@ -59,6 +61,11 @@ def session_detail(request, pk):
     session = get_object_or_404(
         Session.objects.select_related('template', 'owner__user').prefetch_related('lines'), pk=pk,
     )
+    # A month-end close item is only a pointer to its step: opening it goes straight to that step's own screen (the item finishes itself when the step is done).
+    if request.method == 'GET':
+        screen = month_close_project.screen_url(session)
+        if screen:
+            return redirect(screen)
     # Line-level actions (set_line_state/promote) are fired from a per-line
     # form and, on a session with a lot of lines, happen many times in a
     # row — a plain redirect reloads the whole page and resets scroll to

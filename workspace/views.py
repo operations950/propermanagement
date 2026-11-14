@@ -42,6 +42,9 @@ def _is_boss(request):
     return bool(p and (p.is_company_admin or menu.role_for(p) in ('owner', 'manager'))) or request.user.is_superuser
 
 
+PHONE_DAYS_AHEAD = 13          # the phone's calendar agenda: today and the next two weeks
+
+
 def _calendar(request, horizon):
     """Your Google Calendar for the range on screen, built the way the owner dashboard builds it."""
     from tickets.views import _calendar_color, _format_calendar_events
@@ -50,13 +53,15 @@ def _calendar(request, horizon):
     if not staff:
         return {}
     token = getattr(staff, 'google_calendar_token', None)
-    ctx = {'calendar_configured': is_configured(), 'calendar_token': token, 'calendar_days': [], 'available_calendars': [], 'enabled_calendar_ids': '',
+    ctx = {'calendar_configured': is_configured(), 'calendar_token': token, 'calendar_days': [], 'calendar_days_all': [], 'available_calendars': [], 'enabled_calendar_ids': '',
            'current_timezone': getattr(staff, 'timezone', ''), 'timezone_choices': StaffProfile.Timezone.choices}
     if token:
         try:
             days_ahead = {'today': 0, 'week': 6, 'month': 13}[horizon]
-            raw, available = get_upcoming_events(token, days_ahead=days_ahead)
-            ctx['calendar_days'] = _format_calendar_events(raw, days_ahead=days_ahead)
+            # One read of Google covers the phone's two-week agenda too (calendar_days_all); the desktop column still gets exactly the days the screen's range asks for.
+            raw, available = get_upcoming_events(token, days_ahead=max(days_ahead, PHONE_DAYS_AHEAD))
+            ctx['calendar_days_all'] = _format_calendar_events(raw, days_ahead=max(days_ahead, PHONE_DAYS_AHEAD))
+            ctx['calendar_days'] = ctx['calendar_days_all'][:days_ahead + 1]
             primary = next((c['id'] for c in available if c['is_primary']), 'primary')
             for c in available:
                 c['color'] = _calendar_color(c['id'])

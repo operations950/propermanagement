@@ -2,7 +2,7 @@
 {% load tc %}
 {% block title %}Fix a day — Proper Management{% endblock %}
 {% block content %}
-<div class="my-3"><a href="{{ back }}" class="text-decoration-none small d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Hours</a></div>
+<div class="my-3"><a href="{{ back }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Hours</a></div>
 <div class="card mx-auto" style="max-width: 520px; border-radius: var(--bs-border-radius-lg);"><div class="card-body">
     <h4 class="page-title mb-1">{{ profile.name }}</h4>
     <div class="text-muted mb-3">{{ day|short_date }}{% if not punch %} · no punch yet{% endif %}</div>
@@ -17,6 +17,19 @@
         <div><label class="form-label small mb-1">Why <span class="text-muted">(kept with the punch)</span></label><input type="text" name="reason" class="form-control" maxlength="300" value="{{ post.reason }}" required></div>
         <button class="btn btn-primary" type="submit">Save</button>
     </form>
+    {% if profile.variable_hours and not punch %}
+    <hr>
+    <form method="post" class="d-flex flex-column gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="pid" value="{{ profile.pk }}"><input type="hidden" name="day" value="{{ day|date:'Y-m-d' }}"><input type="hidden" name="action" value="day_off">
+        <div class="small text-muted">{{ profile.first_name }} has no set schedule, so a day she did not work is not a missed day. If it was time off, record it here.</div>
+        <div class="row g-2">
+            <div class="col-5"><select name="kind" class="form-select form-select-sm" aria-label="What was it"><option value="vacation">Vacation</option><option value="sick">Sick</option><option value="other">Other (nothing taken)</option></select></div>
+            <div class="col-7"><input type="text" name="note" class="form-control form-control-sm" maxlength="300" placeholder="Note (optional)"></div>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm align-self-start" type="submit">Record {{ day|short_date }} as time off</button>
+    </form>
+    {% endif %}
     {% if punch.changes.all %}
     <hr>
     <div class="small text-muted mb-1">History</div>

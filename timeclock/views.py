@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from core.auth_backends import _client_ip
@@ -39,6 +40,12 @@ def _date(text):
         return date.fromisoformat((text or '').strip())
     except ValueError:
         return None
+
+
+def _back(request, default='timeclock_home'):
+    """Where to go after clocking in or out: the page the button was on (a clock card sits at the top of a few home screens), never another site."""
+    nxt = request.POST.get('next') or ''
+    return nxt if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}) else default
 
 
 # ------------------------------------------------------------------ the employee's pages
@@ -80,14 +87,14 @@ def clock_in(request, profile):
     try:
         punch = services.clock_in(profile, _client_ip(request), request.POST.get('reason', ''))
         minutes = services.late_minutes(punch, profile)
-        if minutes > policy.LATE_GRACE_MINUTES:
+        if minutes > policy.LATE_GRACE_MINUTES and not profile.variable_hours:
             at = timezone.localtime(punch.clock_in)
             messages.success(request, f'Clocked in at {at:%I:%M %p}'.replace(' 0', ' ', 1) + f'. That is {minutes} minutes after your {policy.clock_label(profile.day_start)} start.')
         else:
             messages.success(request, 'Clocked in.')
     except ClockError as e:
         messages.error(request, str(e))
-    return redirect(request.POST.get('next') or 'timeclock_home')
+    return redirect(_back(request))
 
 
 @employee_required
@@ -98,14 +105,22 @@ def clock_out(request, profile):
         messages.success(request, f'Clocked out. You worked {policy.minutes_label(punch.minutes)} today.')
     except ClockError as e:
         messages.error(request, str(e))
-    return redirect(request.POST.get('next') or 'timeclock_home')
+    return redirect(_back(request))
 
 
 @employee_required
 def request_time_off(request, profile):
     today = timezone.localdate()
-    form = {'start': request.POST.get('start', ''), 'end': request.POST.get('end', ''), 'note': request.POST.get('note', '')}
-    if request.method == 'POST':
+    form = {'start': request.POST.get('start', ''), 'end': request.POST.get('end', ''), 'note': request.POST.get('note', ''), 'dates': request.POST.getlist('dates')}
+    if request.method == 'POST' and profile.variable_hours:
+        days, error = services.picked_days(profile, form['dates'], today)
+        if error:
+            messages.error(request, error)
+        else:
+            TimeOff.objects.create(profile=profile, kind=TimeOff.Kind.VACATION, days=[d.isoformat() for d in days], start_date=days[0], end_date=days[-1], note=form['note'].strip()[:300])
+            messages.success(request, f'Asked for {len(days)} day{"s" if len(days) != 1 else ""} off. A manager will decide.')
+            return redirect('timeclock_home')
+    elif request.method == 'POST':
         start, end = _date(form['start']), _date(form['end']) or _date(form['start'])
         error = None
         if not start:
@@ -136,6 +151,9 @@ def request_time_off(request, profile):
 @employee_required
 def request_change(request, profile):
     today = timezone.localdate()
+    if profile.variable_hours:
+        messages.info(request, 'You have no set schedule, so there is no day to change. To take a day off, ask for time off.')
+        return redirect('timeclock_home')
     form = {'drop': request.POST.get('drop', ''), 'add': request.POST.get('add', ''), 'note': request.POST.get('note', '')}
     if request.method == 'POST':
         drop, add = _date(form['drop']), _date(form['add'])
@@ -210,7 +228,7 @@ def needs_signature(profile):
 def policy_page(request):
     profile = services.profile_for(request.user)
     if profile:
-        pay_type, days_text = profile.pay_type, policy.days_label(profile.days)
+        pay_type, days_text = profile.pay_type, ('Your days vary' if profile.variable_hours else policy.days_label(profile.days))
     elif _is_admin(request.user):
         pay_type = request.GET.get('as') if request.GET.get('as') in ('salaried', 'hourly') else 'salaried'
         days_text = 'Monday to Friday' if pay_type == 'salaried' else 'Monday, Tuesday, Thursday, Friday and Saturday'
@@ -281,7 +299,7 @@ def manage_home(request):
     last_blockers = sum(len(services.PeriodReport(p, last_start, now.date()).blockers) for p in profiles)
     return render(request, 'timeclock/manage.html', {
         'board': services.today_board(profiles, now), 'items': items, 'now': now, 'profiles': profiles,
-        'late_rows': [{'profile': p, 'r': services.late_report(p, now.date())} for p in profiles],
+        'late_rows': [{'profile': p, 'r': services.late_report(p, now.date())} for p in profiles if not p.variable_hours],
         'last_start': last_start, 'last_end': last_start + timedelta(days=13), 'last_locked': PayPeriodLock.objects.filter(start=last_start).exists(),
         'last_blockers': last_blockers, 'office_set': services.office_configured(),
     })
@@ -357,7 +375,14 @@ def manage_punch(request):
     day = _date(request.GET.get('day') or request.POST.get('day')) or timezone.localdate()
     punch = Punch.objects.filter(profile=profile, day=day).prefetch_related('changes').first()
     back = f"{reverse('timeclock_hours')}?start={policy.pay_period(day)[0].isoformat()}"
-    if request.method == 'POST':
+    if request.method == 'POST' and request.POST.get('action') == 'day_off' and profile.variable_hours:
+        try:
+            services.record_day_off(profile, day, request.POST.get('kind'), request.user, request.POST.get('note'))
+            messages.success(request, f'Saved: {day:%A %b} {day.day} is time off for {profile.first_name}.')
+            return redirect(back)
+        except ClockError as e:
+            messages.error(request, str(e))
+    elif request.method == 'POST':
         try:
             if services.period_locked(day):
                 raise ClockError('That pay period is marked as entered in payroll. Reopen it on the hours page first.')
@@ -407,11 +432,13 @@ def manage_setup_save(request, pk):
     if pay in TimeProfile.PayType.values:
         tp.pay_type = pay
     tp.hire_date = _date(request.POST.get('hire_date'))
-    days = sorted({int(x) for x in request.POST.getlist('days') if x.isdigit() and 0 <= int(x) <= 6})
-    tp.work_days = ','.join(str(d) for d in days)
-    start, end = services.parse_time(request.POST.get('day_start')), services.parse_time(request.POST.get('day_end'))
-    if start and end and end > start:
-        tp.day_start, tp.day_end = start, end
+    tp.variable_hours = bool(request.POST.get('variable_hours'))
+    if not tp.variable_hours:                # with no set schedule the work days and start time mean nothing, so they are left as they were
+        days = sorted({int(x) for x in request.POST.getlist('days') if x.isdigit() and 0 <= int(x) <= 6})
+        tp.work_days = ','.join(str(d) for d in days)
+        start, end = services.parse_time(request.POST.get('day_start')), services.parse_time(request.POST.get('day_end'))
+        if start and end and end > start:
+            tp.day_start, tp.day_end = start, end
     tp.save()
     messages.success(request, f'Saved {tp.name}.' + ('' if tp.hire_date or not tp.applies else ' Add a hire date so vacation starts building.'))
     return redirect('timeclock_setup')

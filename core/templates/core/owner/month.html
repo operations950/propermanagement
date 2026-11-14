@@ -2,7 +2,7 @@
 {% load core_extras %}
 {% block title %}{{ prop.name }} — {{ month|date:"F Y" }}{% endblock %}
 {% block content %}
-<a href="{% url 'owner_home' %}?property={{ prop.pk }}&year={{ month.year }}{% if unit %}&unit={{ unit|urlencode }}{% endif %}" class="small text-decoration-none d-inline-block mb-2 no-print">↑ All months</a>
+<a href="{% url 'owner_home' %}?property={{ prop.pk }}&year={{ month.year }}{% if unit %}&unit={{ unit|urlencode }}{% endif %}" class="small text-decoration-none d-inline-block py-3 py-md-0 mb-2 no-print">↑ All months</a>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
         <h1 class="fs-3 mb-0">{{ month|date:"F Y" }}</h1>

@@ -196,6 +196,28 @@ class Property(models.Model):
         max_digits=10, decimal_places=2, default=Decimal('0.00'),
         help_text='A flat amount of commission charged, in addition to the percent, in every month that has income deposits.',
     )
+    tdt_account_number = models.CharField(
+        max_length=40, blank=True,
+        help_text="A short-term rental's Palm Beach County Tourist Development Tax account number: each rental files its own return under it.",
+    )
+    business_tax_receipt_number = models.CharField(
+        max_length=40, blank=True,
+        help_text="A short-term rental's local business tax receipt (formerly the occupational license) number.",
+    )
+    business_tax_receipt_renews_on = models.DateField(
+        null=True, blank=True,
+        help_text='The date the business tax receipt must be renewed by. A reminder only: nothing is blocked when it passes.',
+    )
+
+    BTR_WARNING_DAYS = 60
+
+    def business_tax_receipt_state(self, today=None):
+        """('', None) when no renewal date is set; else ('ok' | 'soon' | 'overdue', days until the renewal date; negative once it has passed)."""
+        if self.business_tax_receipt_renews_on is None:
+            return '', None
+        from django.utils import timezone
+        days = (self.business_tax_receipt_renews_on - (today or timezone.localdate())).days
+        return ('overdue' if days < 0 else 'soon' if days <= self.BTR_WARNING_DAYS else 'ok'), days
 
     @property
     def is_long_term(self):

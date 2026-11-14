@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block title %}{{ property.name }} — statement{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .st-wrap { overflow-x: auto; }
     .st-table { font-variant-numeric: tabular-nums; font-size: 0.82rem; white-space: nowrap; }

@@ -1,0 +1,15 @@
+{% load static %}{% comment %}
+The phone top bar: one big Menu button (back up to the six-tile menu at /m/), the page's name, and on any page below a main screen a big Back button. It only shows on phones (static/css/mobile.css, widths up to 768px) and replaces the small
+hamburger menu there; the desktop menu is untouched. "Open the full site" (on the menu) turns the bar off for the rest of that visit and shows a slim "App menu" strip instead (static/js/mobile.js).
+Included by base.html. A page that is a main screen (the menu itself) sets mobile_top_level; every other page works out for itself whether to offer Back.
+{% endcomment %}
+<header class="m-bar{% if mobile_top_level %} m-bar-top{% endif %}" id="mBar" role="banner" data-m-bar>
+    {% if mobile_top_level %}
+    <div class="m-bar-brand"><img src="{% static 'img/proper-realty-logo.png' %}" alt="Proper Realty" class="m-bar-logo"></div>
+    {% else %}
+    <a href="{% url 'mobile_menu' %}" class="m-bar-btn m-bar-menu" data-m-menu aria-label="Menu"><i data-lucide="layout-grid" class="m-bar-icon"></i><span class="m-bar-btn-text">Menu</span></a>
+    <a href="{% url 'mobile_menu' %}" class="m-bar-btn m-bar-back" data-m-back aria-label="Back" hidden><i data-lucide="chevron-left" class="m-bar-icon"></i><span class="m-bar-btn-text">Back</span></a>
+    <div class="m-bar-title" data-m-title></div>
+    {% endif %}
+</header>
+<div class="m-fullbar" data-m-fullbar><a href="{% url 'mobile_menu' %}" data-m-app><i data-lucide="layout-grid" class="icon"></i> App menu</a></div>

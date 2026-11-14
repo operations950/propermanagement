@@ -408,3 +408,31 @@ summary.chip-btn::-webkit-details-marker {
   box-shadow: var(--shadow-card);
   padding: 1.25rem;
 }
+
+/* Phones: the cleaner works this page with one thumb, often with wet or gloved hands, so everything she taps is bigger. These only apply at phone width; the
+   rules above are the original sizes. */
+@media (max-width: 767.98px) {
+  .checklist-progress-bar { height: 12px; border-radius: 6px; }
+  .checklist-progress-fill { border-radius: 6px; }
+  .checklist-progress-label { font-size: 1.05rem; }
+  .checklist-section > summary { min-height: 56px; font-size: 1.15rem; padding: 0.9rem 0.25rem; }
+  .checklist-section-count { font-size: 1rem; }
+  .checklist-item { padding: 1rem 0.25rem 1.25rem; }
+  .checklist-item-text { font-size: 1.15rem; line-height: 1.4; }
+  .chip-row { gap: 0.75rem; }
+  .chip-btn { min-height: 56px; font-size: 1.05rem; }
+  .chip-btn-solid-done, .chip-btn-solid-skip { min-height: 56px; font-size: 1rem; }
+  .checklist-inline-disclosure > summary { min-height: 48px; font-size: 1rem; }
+  .checklist-photo-row { align-items: stretch; flex-wrap: nowrap; gap: 0.75rem; }
+  .checklist-photo-row .btn { min-height: 52px; padding: 0.5rem 0.6rem; font-size: 1rem; flex: 1 1 0; min-width: 0; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+  .checklist-photo-thumb { width: 76px; height: 76px; }
+  .skip-panel-label { font-size: 1.05rem; }
+  .skip-panel-actions .btn { min-height: 52px; font-size: 1rem; }
+  .mo-start { width: 100%; min-height: 64px; font-size: 1.25rem; }
+  .mo-page .access-codes { font-size: 1.15rem; line-height: 1.6; }
+  .signature-overlay-card .btn { min-height: 52px; font-size: 1.05rem; }
+  .signature-overlay-card .form-control { min-height: 52px; font-size: 1.05rem; }
+  #open-signature-btn { min-height: 64px; font-size: 1.25rem; }
+  #issue-form .btn { width: 100%; min-height: 52px; }
+  #issue-form input[type=file] { min-height: 56px; padding-top: 0.75rem; }
+}

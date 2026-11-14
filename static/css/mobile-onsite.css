@@ -1,0 +1,123 @@
+/*
+ * Phone presentation of the On-Site screens (visits list, visit detail, the 7-day properties board).
+ *
+ * The rule behind every number here: a phone is used with one thumb. Text is 16px or more, anything you tap is at least 48px tall with space
+ * around it, nothing hides behind hover, nothing needs sideways scrolling, and the one thing you most likely want to do is the biggest thing on the screen.
+ *
+ * Everything that changes the look of an existing element sits inside the phone media query (767.98px, Bootstrap's md breakpoint), so desktop is untouched.
+ * The .mo-* classes are only ever used inside blocks that are themselves phone-only (d-md-none) or inside the media query.
+ */
+
+/* ---- the building blocks (used only inside phone-only markup) ---- */
+.mo-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem; }
+.mo-btn {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 52px; padding: 0.6rem 1rem; border-radius: 0.9rem;
+  border: 1.5px solid var(--border-hairline); background: #fff; color: var(--ink-primary);
+  font-size: 1.05rem; font-weight: 600; line-height: 1.2; text-align: center; text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.mo-btn:active { filter: brightness(0.95); }
+.mo-btn.primary { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+.mo-btn.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+.mo-btn .icon { width: 1.25rem; height: 1.25rem; flex: none; }
+.mo-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.9rem; }
+.mo-more { margin-bottom: 0.9rem; }
+.mo-more > summary { list-style: none; cursor: pointer; }
+.mo-more > summary::-webkit-details-marker { display: none; }
+.mo-more > summary::after { content: '\25BE'; margin-left: 0.4rem; }
+.mo-more[open] > summary::after { content: '\25B4'; }
+.mo-more .mo-links { display: grid; gap: 0.5rem; margin-top: 0.6rem; }
+.mo-dayhead { display: flex; align-items: center; gap: 0.6rem; margin: 1.1rem 0 0.6rem; font-size: 1.2rem; font-weight: 700; color: var(--ink-primary); }
+.mo-dayhead .mo-count { font-size: 0.95rem; font-weight: 600; color: var(--ink-muted); }
+.mo-card {
+  position: relative; display: block; background: #fff; border: 1px solid var(--border-hairline); border-radius: 1rem;
+  padding: 1rem 1rem 1rem; margin-bottom: 0.75rem; box-shadow: 0 1px 2px rgba(43, 43, 46, 0.06);
+}
+.mo-card .mo-title { font-size: 1.2rem; font-weight: 700; line-height: 1.25; color: var(--ink-primary); text-decoration: none; }
+.mo-card .mo-meta { font-size: 1rem; color: var(--ink-secondary); margin-top: 0.2rem; }
+.mo-card .mo-addr { font-size: 1rem; color: var(--ink-muted); margin-top: 0.35rem; }
+.mo-card .mo-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; }
+.mo-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.7rem; border-radius: 1rem; font-size: 0.92rem; font-weight: 500; background: #f4f3f8; border: 1px solid var(--border-hairline); color: var(--ink-secondary); }
+.mo-chip .icon { width: 1rem; height: 1rem; }
+.mo-chip.urgent { background: color-mix(in srgb, var(--priority-urgent) 12%, white); border-color: color-mix(in srgb, var(--priority-urgent) 35%, white); color: var(--priority-urgent); }
+.mo-card .mo-dir { position: relative; z-index: 2; margin-top: 0.8rem; min-height: 48px; font-size: 1rem; }
+.mo-card .badge { font-size: 0.9rem; padding: 0.4em 0.75em; }
+.mo-back {
+  display: flex; align-items: center; gap: 0.5rem; min-height: 52px; padding: 0.5rem 1rem; margin-bottom: 0.9rem; border-radius: 0.9rem;
+  background: #fff; border: 1.5px solid var(--border-hairline); color: var(--ink-primary); font-size: 1.05rem; font-weight: 600; text-decoration: none;
+}
+.mo-back .icon { width: 1.25rem; height: 1.25rem; }
+.mo-empty { padding: 1.2rem; text-align: center; color: var(--ink-muted); font-size: 1.05rem; background: #fff; border: 1px solid var(--border-hairline); border-radius: 1rem; }
+
+/* ---- the properties board on a phone: one card per property, a row for each day that has something ---- */
+.pg-phone .city { font-size: 1.2rem; font-weight: 700; margin: 1.2rem 0 0.5rem; }
+.pg-phone .pcard { background: #fff; border: 1px solid var(--border-hairline); border-radius: 1rem; padding: 0.9rem; margin-bottom: 0.75rem; box-shadow: 0 1px 2px rgba(43, 43, 46, 0.06); }
+.pg-phone .pname { display: block; font-size: 1.15rem; font-weight: 700; color: var(--ink-primary); text-decoration: none; line-height: 1.25; margin-bottom: 0.5rem; }
+.pg-phone .pname small { display: block; font-size: 0.95rem; font-weight: 500; color: var(--ink-muted); }
+.pg-phone .dayrow { border-top: 1px solid var(--border-hairline); padding: 0.6rem 0; }
+.pg-phone .dayrow:first-of-type { border-top: 0; }
+.pg-phone .dlabel { font-size: 1rem; font-weight: 600; color: var(--ink-secondary); margin-bottom: 0.4rem; }
+.pg-phone .dlabel.today { color: var(--ink-primary); }
+.pg-phone .dlabel .tag { margin-left: 0.4rem; padding: 0.1rem 0.55rem; border-radius: 1rem; background: #f4f3f8; border: 1px solid var(--border-hairline); font-size: 0.85rem; font-weight: 600; }
+.pg-phone .evs { display: grid; gap: 0.5rem; }
+.pg-phone .evbtn {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; width: 100%; min-height: 52px; padding: 0.6rem 0.9rem;
+  border: 0; border-radius: 0.8rem; font-size: 1.05rem; font-weight: 600; text-align: left; cursor: pointer;
+}
+.pg-phone .evbtn.out { background: var(--out-bg, #efe6d3); color: var(--out-ink, #6b4f10); }
+.pg-phone .evbtn.in { background: var(--in-bg, #dfeaf3); color: var(--in-ink, #3d6178); }
+.pg-phone .evbtn.both { background: var(--bad-bg, #f7dcdc); color: var(--bad-ink, #8a2a2a); }
+.pg-phone .evbtn.pending { outline: 2px dashed var(--warn-bar, #d98e04); }
+.pg-phone .evbtn .hint { font-size: 0.9rem; font-weight: 500; }
+.pg-phone .cleanbtn {
+  display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 48px; padding: 0.5rem 0.9rem; border-radius: 0.8rem; border: 1.5px solid var(--border-hairline);
+  background: #fff; color: var(--ink-primary); font-size: 1rem; font-weight: 500; text-align: left; cursor: pointer;
+}
+.pg-phone .cleanbtn .dot { width: 0.9rem; height: 0.9rem; border-radius: 50%; flex: none; background: var(--good-bar, #4f8f66); }
+.pg-phone .cleanbtn.open .dot { background: var(--warn-bar, #d98e04); }
+.pg-phone .cleanbtn.none .dot { background: #fff; border: 2px solid var(--bad-bar, #c0392b); }
+.pg-phone .staybar { background: var(--stay, #e4edf4); color: var(--ink-secondary); border-radius: 0.8rem; padding: 0.55rem 0.9rem; font-size: 1rem; }
+.pg-phone .nothing { color: var(--ink-muted); font-size: 1rem; padding: 0.3rem 0; }
+
+/* ---- everything below changes how existing markup looks, on a phone only ---- */
+@media (max-width: 767.98px) {
+  /* the section tabs (Visits, Properties, Requests, ...): big two-column buttons instead of a ragged line of small links */
+  body .ws-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; border-bottom: 0; margin: 0.25rem 0 1rem; align-items: stretch; }
+  body .ws-sub .sp { display: none; }
+  body .ws-sub a { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0.4rem 0.6rem; margin: 0; border: 1.5px solid var(--border-hairline); border-radius: 0.8rem; background: #fff; font-size: 1.02rem; text-align: center; color: var(--ink-secondary); }
+  body .ws-sub a.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; font-weight: 600; }
+  body .ws-sub a[style] { font-size: 1rem !important; }
+
+  /* a page wrapped in .mo-page: forms and buttons sized for a thumb, text never below 16px (which also stops iPhone zooming into fields) */
+  .mo-page h2.page-title { font-size: 1.55rem; line-height: 1.25; }
+  .mo-page .btn, .mo-page .btn-sm { min-height: 48px; padding: 0.55rem 1rem; font-size: 1rem; border-radius: 0.8rem; }
+  .mo-page .btn-link { min-height: 48px; display: inline-flex; align-items: center; }
+  .mo-page .form-control, .mo-page .form-select, .mo-page .form-control-sm, .mo-page .form-select-sm { min-height: 48px; font-size: 1rem; }
+  .mo-page textarea.form-control { min-height: 5.5rem; }
+  .mo-page .form-label, .mo-page label { font-size: 1rem; }
+  .mo-page .small, .mo-page small { font-size: 1rem; }
+  .mo-page .card-title { font-size: 1.1rem; }
+  .mo-page .badge { font-size: 0.9rem; }
+  .mo-page .daywrap { background: transparent; border: 0; box-shadow: none; }
+  .mo-page .daywrap > .card-body { padding: 0; }
+  .mo-page .list-group-item { padding-top: 0.85rem !important; padding-bottom: 0.85rem !important; font-size: 1.05rem; }
+  .mo-page .list-group-item .btn { min-width: 6.5rem; }
+
+  /* the properties board: the wide grid steps aside for the cards (the markup is the same data) */
+  .pgw .pgscroll { display: none; }
+  .pgw .top { font-size: 1rem; gap: 0.5rem; }
+  .pgw .top a.nv { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; min-height: 48px; padding: 0 0.9rem; font-size: 1.05rem; }
+  .pgw .wn { font-size: 1rem; padding: 0.7rem 0.9rem; }
+  .pgw .lg { font-size: 0.95rem; }
+  .pgw .chips button { min-height: 48px; min-width: 56px; font-size: 1rem; padding: 0.3rem 0.9rem; border-radius: 1.5rem; }
+  .pgw .vd { font-size: 1rem; }
+  #wkModal .btn, #wkClean .btn { min-height: 48px; font-size: 1rem; }
+  #wkModal .form-control, #wkClean .form-control { min-height: 48px; font-size: 1rem; }
+
+  /* Rentals today / the requests screen and calendars: the big buttons they already have, a little bigger */
+  .mo-wide { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (min-width: 768px) {
+  .pg-phone { display: none; }
+}

@@ -131,5 +131,5 @@ def case_detail(request, pk, case_pk):
     events = list(case.events.select_related('document', 'by'))
     ctx = {'assoc': prop, 'case': case, 'b': b, 'open_charges': open_charges, 'events': events, 'icons': delinquency.case_icons(case), 'stages': [s for s in DelinquencyCase.Stage if s != DelinquencyCase.Stage.RESOLVED],
            'letters': GeneratedDocument.objects.filter(property=prop, unit=case.unit, template__slug='nola').order_by('-created_at'), 'today': timezone.localdate(),
-           'acc_back': reverse('accounting:delinquencies', args=[pk]), 'acc_back_label': 'Delinquencies'}
+           'acc_back': reverse('accounting:collections', args=[pk]) + f'?tab={case.stage}', 'acc_back_label': 'Owner collections'}
     return render(request, 'accounting/delinquency_case.html', ctx)

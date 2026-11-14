@@ -73,6 +73,8 @@ class Roster:
 
     def scheduled(self, p, d):
         """True when p is meant to work on d: the regular days, moved by approved changes (the office holiday is separate)."""
+        if p.variable_hours:                    # no set schedule: there is no day they are "meant" to work
+            return False
         works = d.weekday() in p.days
         for c in self.changes[p.id]:
             if c.status != Status.APPROVED:
@@ -92,6 +94,9 @@ class Roster:
         off = self.approved_off[p.id].get(d)
         if off:
             return ('vacation' if off.kind == TimeOff.Kind.VACATION else 'off'), off
+        if p.variable_hours:                    # nothing is scheduled, so the only thing that can be waiting is a time-off request
+            pending = self.pending_off[p.id].get(d)
+            return ('pending_off', pending) if pending else ('', None)
         if self.scheduled(p, d):
             pending = self.pending_off[p.id].get(d)
             if pending:
@@ -207,6 +212,51 @@ def period_locked(d):
 
 # ------------------------------------------------------------------ hours for a pay period
 
+def picked_days(profile, texts, today):
+    """For someone with no set schedule, time off is a list of the days they pick. Checks them; returns (sorted days, None) or ([], what is wrong)."""
+    days = set()
+    for text in texts:
+        text = (text or '').strip()
+        if not text:
+            continue
+        try:
+            days.add(date.fromisoformat(text))
+        except ValueError:
+            return [], 'One of the dates is not a date.'
+    if not days:
+        return [], 'Pick at least one day.'
+    days = sorted(days)
+    if days[0] < today:
+        return [], 'Time off has to be today or later. For a day that has passed, a manager records it.'
+    if (days[-1] - today).days > 120:
+        return [], 'That is too far ahead. Ask again closer to the time.'
+    if len(days) > 31:
+        return [], 'That is more than 31 days. Ask for a shorter stretch.'
+    for d in days:
+        if policy.holiday_name(d):
+            return [], f'The office is closed on {policy.short_day(d)} ({policy.holiday_name(d)}), so there is nothing to ask for.'
+        if profile.hire_date and d < profile.hire_date:
+            return [], 'One of those days is before your hire date.'
+    taken = {d for t in TimeOff.objects.filter(profile=profile, status__in=[Status.APPROVED, Status.PENDING], end_date__gte=days[0], start_date__lte=days[-1]) for d in t.dates}
+    if taken & set(days):
+        return [], 'You already asked for one of those days.'
+    return days, None
+
+
+def record_day_off(profile, day, kind, by, note=''):
+    """A manager records one day as vacation, sick or other for someone with no set schedule (there is no "missed day" to classify for them)."""
+    if kind not in (TimeOff.Kind.VACATION, TimeOff.Kind.SICK, TimeOff.Kind.OTHER):
+        raise ClockError('Pick what the day was.')
+    if period_locked(day):
+        raise ClockError('That pay period is marked as entered in payroll. Reopen it on the hours page first.')
+    if Punch.objects.filter(profile=profile, day=day).exists():
+        raise ClockError('That day has a clock-in. Fix the punch instead.')
+    if any(day in t.dates for t in TimeOff.objects.filter(profile=profile, status__in=[Status.APPROVED, Status.PENDING], start_date__lte=day, end_date__gte=day)):
+        raise ClockError('That day is already time off.')
+    return TimeOff.objects.create(profile=profile, kind=kind, days=[day.isoformat()], start_date=day, end_date=day, status=Status.APPROVED, asked_by_employee=False,
+                                  decided_by=by, decided_at=timezone.now(), note='', decision_note=(note or '')[:300])
+
+
 def week_totals(profile, start, end, today):
     """The hours in a stretch of days: punched minutes, approved vacation/sick hours, approved holiday hours."""
     worked = sum(p.minutes or 0 for p in Punch.objects.filter(profile=profile, day__range=(start, end), clock_out__isnull=False))
@@ -233,7 +283,12 @@ def _holiday_dates(profile, start, end):
     found = []
     for year in range(start.year, end.year + 1):
         for d, name in policy.holidays(year).items():
-            if start <= d <= end and d.weekday() in profile.days and not (profile.hire_date and d < profile.hire_date):
+            if not (start <= d <= end) or (profile.hire_date and d < profile.hire_date):
+                continue
+            if profile.variable_hours:          # no regular days: a weekday holiday counts when they were working in the two weeks before it
+                if d.weekday() < 5 and Punch.objects.filter(profile=profile, day__range=(d - timedelta(days=14), d)).exists():
+                    found.append((d, name))
+            elif d.weekday() in profile.days:
                 found.append((d, name))
     return sorted(found)
 
@@ -430,7 +485,7 @@ def today_board(profiles, now=None):
         if punch:
             row['state'] = 'in' if not punch.clock_out else 'done'
             minutes = late_minutes(punch, p)
-            row['late_in'] = minutes if minutes > policy.LATE_GRACE_MINUTES else 0
+            row['late_in'] = minutes if minutes > policy.LATE_GRACE_MINUTES and not p.variable_hours else 0
         elif kind == 'working':
             start = local_dt(today, p.day_start)
             row['state'] = 'not_in'
@@ -443,7 +498,7 @@ def today_board(profiles, now=None):
         elif kind == 'closed':
             row['state'] = 'closed'
         else:
-            row['state'] = 'free'
+            row['state'] = 'flex' if p.variable_hours else 'free'     # flex: no set schedule, so "not in yet" is not a problem
         board.append(row)
     return board
 
@@ -455,7 +510,9 @@ def late_minutes(punch, profile):
 
 
 def is_late(punch, profile):
-    """Late means more than LATE_GRACE_MINUTES after the scheduled start: 9:10 is fine for a 9:00 start, 9:11 is late."""
+    """Late means more than LATE_GRACE_MINUTES after the scheduled start: 9:10 is fine for a 9:00 start, 9:11 is late. Someone with no set schedule is never late."""
+    if profile.variable_hours:
+        return False
     return late_minutes(punch, profile) > policy.LATE_GRACE_MINUTES
 
 
@@ -465,7 +522,7 @@ def late_report(profile, today=None):
     today = today or timezone.localdate()
     start = tracking_from(profile)
     out = {'period': 0, 'd30': 0, 'all': 0, 'items': []}
-    if start > today:
+    if start > today or profile.variable_hours:
         return out
     roster = Roster([profile], start, today)
     period_start = policy.pay_period(today)[0]
@@ -559,7 +616,7 @@ def attendance(profile, today, days=30):
                 missed += 1
         elif punch:
             scheduled += 1
-    return {'scheduled': scheduled, 'worked': worked, 'late': late, 'remote': remote, 'missed': missed}
+    return {'scheduled': scheduled, 'worked': worked, 'late': late, 'remote': remote, 'missed': missed, 'variable': profile.variable_hours}
 
 
 # ------------------------------------------------------------------ what is waiting for a manager
@@ -605,7 +662,7 @@ def collect_items(today=None):
             before = week_context(p, d)
             items.append({'kind': 'holiday', 'profile': p, 'day': d, 'name': name, 'week_before': before, 'week_after': before + policy.DAY_HOURS})
     for t in TimeOff.objects.filter(status=Status.PENDING, profile__applies=True).select_related('profile__staff__user'):
-        gaps = [d for d in t.dates if not covered_by_others(t.profile, d, roster)]
+        gaps = [] if t.profile.variable_hours else [d for d in t.dates if not covered_by_others(t.profile, d, roster)]
         s = pto(t.profile, today)
         items.append({'kind': 'off', 'profile': t.profile, 'day': t.start_date, 'obj': t, 'left': s['available'] - (t.hours if t.takes_balance else 0),
                       'gaps': gaps, 'balance': s['available']})

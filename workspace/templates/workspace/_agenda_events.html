@@ -1,0 +1,3 @@
+{% for a in day.all_day %}<div class="m-ev"><span class="m-ev-time">All day</span><span class="m-ev-what"><i style="background: {{ a.color }};"></i>{{ a.title }}</span></div>{% endfor %}
+{% for e in day.timed %}<div class="m-ev{% if e.past %} past{% endif %}"><span class="m-ev-time">{{ e.start_label }}</span><span class="m-ev-what"><i style="background: {{ e.color }};"></i>{{ e.title }}</span></div>{% endfor %}
+{% if not day.all_day and not day.timed %}<div class="m-agenda-empty">{% if day.is_today %}Nothing on your calendar today.{% else %}Nothing scheduled.{% endif %}</div>{% endif %}

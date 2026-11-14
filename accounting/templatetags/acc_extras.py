@@ -132,3 +132,15 @@ def cents_change(value):
     except (TypeError, ValueError):
         return ''
     return '—' if abs(v) < 0.005 else (f'+${v:,.2f}' if v > 0 else f'-${abs(v):,.2f}')
+
+
+@register.filter
+def bdm(value, cents=False):
+    """An amount on the board sheet: $1,750, or $1,750.00 when the sheet shows cents."""
+    return money(value) if cents else dollars(value)
+
+
+@register.filter
+def bdc(value, cents=False):
+    """A change on the board sheet: $1,750 / ($1,750) / a dash, or with cents when the sheet shows cents."""
+    return cparen(value) if cents else dparen(value)

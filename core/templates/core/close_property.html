@@ -2,6 +2,7 @@
 {% load core_extras %}
 {% block title %}{{ title }} — {{ month|date:"F Y" }} close{% endblock %}
 {% block content %}
+{% include 'core/_phone_review.html' %}
 <style>
     .cl-sum th { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 4px 8px; background: var(--bs-light, #f8f9fa); }
     .cl-sum td { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; padding: 5px 8px; }

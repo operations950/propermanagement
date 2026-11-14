@@ -1,29 +1,32 @@
 {% extends 'base.html' %}
 {% load alerts %}
 {% load core_extras %}
+{% load static %}
 {% block title %}Properties{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
 {% block content %}
+<div class="ml-scope">
 {% page_alerts 'properties' %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
+<div class="ml-title-row d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
     <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon-lg"></i> Properties</h2>
     <a href="{% url 'property_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New property</a>
 </div>
 
 {% if faq_waiting.count %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) {% if faq_waiting.oldest_days >= 7 %}14{% else %}6{% endif %}%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
+<div class="ml-banner d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) {% if faq_waiting.oldest_days >= 7 %}14{% else %}6{% endif %}%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
     <span class="small"><i data-lucide="messages-square" class="icon"></i> <strong>{{ faq_waiting.count }} assistant FAQ answer{{ faq_waiting.count|pluralize }}</strong> to review across {{ faq_waiting.properties }} propert{{ faq_waiting.properties|pluralize:"y,ies" }}{% if faq_waiting.oldest_days >= 7 %} — the oldest has waited {{ faq_waiting.oldest_days }} days{% endif %}. The assistant already uses them; reviewing makes them permanent.</span>
     <a href="{% url 'faq_review_queue' %}" class="btn btn-outline-secondary btn-sm">Review them</a>
 </div>
 {% endif %}
 
 {% if incomplete_specs %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
+<div class="ml-banner d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
     <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>{{ incomplete_specs }} short-term rental{{ incomplete_specs|pluralize }}</strong> {{ incomplete_specs|pluralize:"is,are" }} missing size details (bedrooms, beds, baths, square feet).</span>
     {% if needs_details %}<a href="?{% if selected_type %}type={{ selected_type }}{% endif %}" class="btn btn-outline-secondary btn-sm">Show all</a>{% else %}<a href="?needs=details" class="btn btn-outline-secondary btn-sm">Show only these</a>{% endif %}
 </div>
 {% endif %}
 
-<form method="get" class="row g-2 mb-3 align-items-center">
+<form method="get" class="ml-search-form row g-2 mb-3 align-items-center">
     <div class="col-auto position-relative">
         <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
         <input type="text" name="q" id="property-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);"
@@ -39,10 +42,10 @@
     </div>
 </form>
 
-<div class="d-flex flex-wrap gap-2 mb-3">
+<div class="ml-chips d-flex flex-wrap gap-2 mb-3">
     <a href="?{% if q %}q={{ q|urlencode }}&{% endif %}{% if show_inactive %}show_inactive=1{% endif %}" class="bubble{% if not selected_type %} bubble-locked{% endif %}">All types</a>
     {% for value, label in type_choices %}
-        <a href="?type={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if show_inactive %}&show_inactive=1{% endif %}" class="bubble{% if value == selected_type %} bubble-locked{% endif %}">{{ label }}</a>
+        <a href="?type={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if show_inactive %}&show_inactive=1{% endif %}" class="bubble{% if value == 'snowbird' or value == 'general' %} ml-chip-minor{% endif %}{% if value == selected_type %} bubble-locked{% endif %}">{{ label }}</a>
     {% endfor %}
 </div>
 
@@ -103,4 +106,5 @@
     });
 })();
 </script>
+</div>
 {% endblock %}

@@ -18,7 +18,7 @@
 {% block content %}
 <div class="tc-policy">
 <div class="my-3">
-    {% if signature %}<a href="{% url 'timeclock_home' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> My time</a>{% endif %}
+    {% if signature %}<a href="{% url 'timeclock_home' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> My time</a>{% endif %}
     <h2 class="page-title mb-0 mt-1">{{ doc.title }}</h2>
     <p class="mb-0" style="color: var(--ink-muted);">{{ doc.effective }}{% if not signature and not preview %} · Read it, then sign at the bottom.{% endif %}</p>
 </div>

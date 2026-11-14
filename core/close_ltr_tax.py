@@ -6,7 +6,7 @@ Sales tax is a list kept by hand: the returns we are responsible for, ticked off
 from decimal import Decimal
 
 from . import ledger
-from .models import Property, RentCheck, SalesTaxFiling, SalesTaxReturn
+from .models import LedgerLine, Property, RentCheck, SalesTaxFiling, SalesTaxReturn
 
 ZERO = Decimal('0.00')
 CENT = Decimal('0.01')
@@ -45,6 +45,34 @@ def rent_rows(close_month):
         rows.append({'property': prop, 'expected': expected, 'seen': seen, 'diff': (seen - expected) if expected is not None else None, 'kind': kind, 'check': check,
                      'timing': 'Same month' if prop.owner_paid_in == Property.OwnerPaidIn.SAME_MONTH else 'In arrears'})
     return rows
+
+
+CATEGORY_LABELS = {LedgerLine.Category.DEPOSIT: 'Deposit', LedgerLine.Category.OWNER_PAYMENT: 'Owner payment', LedgerLine.Category.COMMISSION: 'Commission',
+                   LedgerLine.Category.REIMBURSEMENT: 'Reimbursement', LedgerLine.Category.EXPENSE: 'Expense'}
+
+
+def transactions(prop, close_month):
+    """Everything QuickBooks shows in the rental's accounts for the rent month, nothing left out: deposits, reversals, money paid out, and lines that have since gone from QuickBooks.
+    The trust account comes first (money in is positive, money out negative), then the expense account. `counts` marks the lines that make up "QuickBooks shows" on the screen:
+    trust-account lines coded as a deposit. Returns {'lines', 'count', 'money_in', 'money_out', 'net', 'removed'}; the totals are of the trust account's lines still in QuickBooks."""
+    month = rent_month(close_month)
+    found = []
+    for book in ledger.books_for(prop, month):
+        found += list(ledger.month_lines(book, month, include_removed=True).select_related('unit'))
+    found.sort(key=lambda l: (0 if l.role == LedgerLine.Role.TRUST else 1, l.txn_date, l.txn_type, l.txn_id))
+    lines, money_in, money_out = [], ZERO, ZERO
+    for l in found:
+        active = l.status == LedgerLine.Status.ACTIVE
+        trust = l.role == LedgerLine.Role.TRUST
+        if trust and active:
+            if l.flow >= 0:
+                money_in += l.flow
+            else:
+                money_out += -l.flow
+        what = ' '.join(x for x in (l.payee, l.shown_memo) if x)
+        lines.append({'date': l.txn_date, 'type': l.txn_type, 'doc': l.doc_num, 'what': what, 'unit': l.unit.label if l.unit_id else '', 'trust': trust, 'amount': l.flow,
+                      'category': CATEGORY_LABELS.get(l.category, l.category), 'removed': not active, 'counts': trust and active and l.category == LedgerLine.Category.DEPOSIT})
+    return {'lines': lines, 'count': len(lines), 'money_in': money_in, 'money_out': money_out, 'net': money_in - money_out, 'removed': sum(1 for x in lines if x['removed'])}
 
 
 def confirm_rent(prop, close_month, status, note, user):

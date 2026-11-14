@@ -18,7 +18,7 @@ from . import bank_tieout, escrow, ledger, month_end_booking, month_end_payments
 from . import close_ltr_tax, month_close_project, workdays
 from .models import SalesTaxFiling, SalesTaxReturn
 from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, MonthEndPayment, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
-from .views import _is_admin
+from .views import _clean_tax_ids, _is_admin
 
 CATEGORY_LABELS = dict(LedgerLine.Category.choices)
 
@@ -790,6 +790,24 @@ def tourist_tax(request):
     """Palm Beach County tourist development tax for a month: the short-term rental receipts that reached the trust accounts, by property."""
     today = timezone.localdate()
     month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
+    if request.method == 'POST' and request.POST.get('action') == 'save_tax_ids':
+        saved, bad = 0, []
+        for prop in _tax_id_rentals():
+            if f'tdt_{prop.pk}' not in request.POST:
+                continue
+            try:
+                tdt, receipt, renews = _clean_tax_ids(request.POST.get(f'tdt_{prop.pk}'), request.POST.get(f'btr_{prop.pk}'), request.POST.get(f'renews_{prop.pk}'))
+            except ValueError:
+                bad.append(prop.name)
+                continue
+            if (tdt, receipt, renews) != (prop.tdt_account_number, prop.business_tax_receipt_number, prop.business_tax_receipt_renews_on):
+                prop.tdt_account_number, prop.business_tax_receipt_number, prop.business_tax_receipt_renews_on = tdt, receipt, renews
+                prop.save(update_fields=['tdt_account_number', 'business_tax_receipt_number', 'business_tax_receipt_renews_on'])
+                saved += 1
+        if bad:
+            messages.error(request, f'The renewal date is not a date for: {", ".join(bad)}. Those were left as they were.')
+        messages.success(request, f'Saved the tax numbers of {saved} rental{"" if saved == 1 else "s"}.' if saved else 'Nothing changed.')
+        return redirect(reverse('tourist_tax') + f'?month={month:%Y-%m}#tax-numbers')
     if request.method == 'POST':
         from .models import TouristTaxFiling
         prop = get_object_or_404(Property, pk=request.POST.get('property'))
@@ -811,7 +829,26 @@ def tourist_tax(request):
         response = HttpResponse(tourist_tax_service.csv_text(rep), content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="tourist-tax-{month:%Y-%m}.csv"'
         return response
-    return render(request, 'core/tourist_tax.html', {'rep': rep, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month)})
+    split = request.GET.get('split')
+    if split in ('csv', 'xlsx'):
+        from django.http import HttpResponse
+        if split == 'csv':
+            response = HttpResponse(tourist_tax_service.split_csv_text(rep), content_type='text/csv')
+        else:
+            response = HttpResponse(tourist_tax_service.split_xlsx_bytes(rep), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename="tourist-tax-split-{month:%Y-%m}.{split}"'
+        return response
+    splits = tourist_tax_service.split_rows(rep)
+    if split == 'print':
+        return render(request, 'core/tourist_tax_split.html', {'rep': rep, 'splits': splits})
+    rentals = _tax_id_rentals()
+    return render(request, 'core/tourist_tax.html', {'rep': rep, 'splits': splits, 'tax_rentals': rentals, 'missing_ids': any(not p.tdt_account_number for p in rentals),
+                                                     'previous': ledger.previous_month(month), 'next': ledger.next_month(month)})
+
+
+def _tax_id_rentals():
+    """The active short-term rentals we do the financials for: each has a tourist tax account and a business tax receipt."""
+    return list(Property.objects.filter(is_active=True, is_general=False, financials_managed=True, property_type=Property.Type.SHORT_TERM_RENTAL).order_by('name'))
 
 
 STATEMENT_EXTENSIONS = ('.pdf', '.csv')
@@ -1064,6 +1101,8 @@ def rent_collection(request):
             messages.error(request, str(exc))
         return redirect(here)
     rows = close_ltr_tax.rent_rows(month)
+    for r in rows:
+        r['transactions'] = close_ltr_tax.transactions(r['property'], month)
     return render(request, 'core/rent_collection.html', {'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'rent_month': close_ltr_tax.rent_month(month),
                                                          'rows': rows, 'summary': close_ltr_tax.rent_summary(month), 'today': today})
 

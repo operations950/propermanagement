@@ -14,6 +14,11 @@ from .models import ZERO, CaseEvent, Charge, DelinquencyCase
 
 logger = logging.getLogger(__name__)
 REVIEW_DAYS = 30
+LETTER_DAYS = 30           # a late letter sent more than this many days ago: the owner can go to the lawyer
+NOTICE_DAYS = 45           # the lawyer's notices are 45 days each: that long in the step, and it is time to move the owner on
+Stage = DelinquencyCase.Stage
+ATTORNEY_STAGES = (Stage.NOTICE1, Stage.NOTICE2, Stage.LIEN)
+NEXT_STAGE = {Stage.LETTER: Stage.NOTICE1, Stage.NOTICE1: Stage.NOTICE2, Stage.NOTICE2: Stage.LIEN}      # where "send on" takes an owner
 Kind = Charge.Kind
 ASSESSMENTS = (Kind.ASSESSMENT, Kind.SPECIAL, Kind.OPENING)
 
@@ -45,12 +50,12 @@ def open_case_for(association, unit):
 
 
 def case_icons(case):
-    """What to draw beside the owner's name: a letter (how many), a call, the scales (the attorney), a payment plan, resolved."""
+    """What to draw beside the owner's name: a letter (how many), a call, the scales (the attorney), resolved."""
     if case is None:
         return {}
     kinds = [e.kind for e in case.events.all()]
-    return {'letters': kinds.count('letter'), 'calls': kinds.count('call'), 'attorney': case.stage == DelinquencyCase.Stage.ATTORNEY or 'attorney' in kinds,
-            'plan': case.stage == DelinquencyCase.Stage.PLAN, 'resolved': case.resolved_on is not None}
+    return {'letters': kinds.count('letter'), 'calls': kinds.count('call'), 'attorney': case.stage in ATTORNEY_STAGES or 'attorney' in kinds,
+            'plan': False, 'resolved': case.resolved_on is not None}
 
 
 # ---------------------------------------------------------------- the list
@@ -99,7 +104,7 @@ def open_case(prop, unit, owner, user=None, on=None):
     if case:
         return case
     today = on or timezone.localdate()
-    case = DelinquencyCase.objects.create(association=prop, unit=unit, owner=owner, opened_on=today, next_review=today + timedelta(days=REVIEW_DAYS))
+    case = DelinquencyCase.objects.create(association=prop, unit=unit, owner=owner, opened_on=today, stage_since=today, next_review=today + timedelta(days=REVIEW_DAYS))
     add_event(case, CaseEvent.Kind.STAGE, 'Case opened with the first late letter.', user, on=today)
     ensure_review_line(case)
     return case
@@ -124,16 +129,27 @@ def letter_made(doc, user=None):
 
 
 def set_stage(case, stage, user=None, note='', attorney=''):
+    """Put the owner on a step. The day they enter it is kept (`stage_since`): the 30 and 45 day alerts count from it. Moving to the step they are already on changes nothing."""
     if stage not in DelinquencyCase.Stage.values or stage == DelinquencyCase.Stage.RESOLVED:
         raise ValueError('Choose a step.')
-    case.stage = stage
     if attorney:
         case.attorney_name = attorney.strip()[:120]
-    case.save(update_fields=['stage', 'attorney_name'])
+    if stage != case.stage or case.stage_since is None:
+        case.stage, case.stage_since = stage, timezone.localdate()
+    case.save(update_fields=['stage', 'stage_since', 'attorney_name'])
     label = DelinquencyCase.Stage(stage).label
-    kind = CaseEvent.Kind.ATTORNEY if stage == DelinquencyCase.Stage.ATTORNEY else CaseEvent.Kind.PLAN if stage == DelinquencyCase.Stage.PLAN else CaseEvent.Kind.STAGE
+    kind = CaseEvent.Kind.ATTORNEY if stage in ATTORNEY_STAGES else CaseEvent.Kind.STAGE
     add_event(case, kind, f'Now: {label}.' + (f' {attorney.strip()}.' if attorney.strip() else '') + (f' {note.strip()}' if note.strip() else ''), user)
     review(case, user, note='', quiet=True)
+
+
+def advance(case, user=None, note='', attorney=''):
+    """Send the owner on to the next step: letter to the lawyer's first notice, then the second, then lien or foreclosure. Returns the new step."""
+    nxt = NEXT_STAGE.get(case.stage)
+    if nxt is None:
+        raise ValueError('There is no step after this one.')
+    set_stage(case, nxt, user, note=note, attorney=attorney)
+    return nxt
 
 
 def review(case, user=None, note='', quiet=False):

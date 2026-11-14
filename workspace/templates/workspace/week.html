@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Properties this week{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
 {% include 'workspace/_onsite_tabs.html' %}
 <style>
@@ -47,6 +49,8 @@
 .pgw .vd.a { background: var(--warn-bg); color: var(--warn-ink); }
 .pgw .vd.r { background: var(--bad-bg); color: var(--bad-ink); }
 .pgw .pgscroll { overflow-x: auto; }
+.pg-phone .nothing { display: none; }
+.pg-phone .days:empty + .nothing { display: block; }
 .pgw .pgin { min-width: 980px; }
 @media (max-width: 640px) { .pg { grid-template-columns: 9rem repeat(7, minmax(0, 1fr)); } .pg .t { font-size: 0.68rem; padding: 1px 2px; } }
 </style>
@@ -59,6 +63,30 @@
   <a class="nv" href="?start={{ w.next|date:'Y-m-d' }}" aria-label="Next week">&rsaquo;</a>
   <span>{{ w.start|date:"M j" }} &ndash; {{ w.end|date:"M j" }}{% if w.pending %} &middot; <b style="color:var(--warn-bar)">! {{ w.pending }} waiting for a yes</b>{% endif %}</span>
   <a class="ms-auto text-decoration-none" href="{% url 'onsite_rentals_calendar' %}" style="color:var(--ink-muted)">30-day calendar</a>
+</div>
+<div class="pg-phone">
+{% for city, rows in w.by_city %}
+<div class="city">{{ city }}</div>
+{% for r in rows %}
+<div class="pcard">
+  <a class="pname" href="{% url 'property_detail' r.property.pk %}">{{ r.property.name }}{% if r.unit %}<small>{{ r.unit }}</small>{% endif %}</a>
+  <div class="days">{% for c in r.cells %}{% if c.kind %}<div class="dayrow"><div class="dlabel{% if c.today %} today{% endif %}">{{ c.date|date:"l, M j" }}{% if c.today %}<span class="tag">Today</span>{% endif %}</div>
+    <div class="evs">
+      {% for e in c.outs %}
+      <button type="button" class="evbtn {% if c.kind == 'both' %}both{% else %}out{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkout" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }} &middot; {{ e.guest }}"><span>Check-out {{ e.time }}</span><span class="hint">{% if e.state == 'pending' %}Waiting for a yes{% elif e.state == 'approved' %}Agreed &#10003;{% else %}Tap to change{% endif %}</span></button>
+      <button type="button" class="cleanbtn {{ e.cleaning.mark }}" data-wk-clean data-booking="{{ e.booking.pk }}" data-state="{{ e.cleaning.code }}" data-text="{{ e.cleaning.text }}" data-visit="{{ e.cleaning.visit }}" data-who="{{ e.cleaning.who }}" data-label="{{ r.label }} &middot; {{ e.guest }}" data-out="{{ e.normal }}"><span class="dot"></span><span>{{ e.cleaning.label }}{% if e.cleaning.who %}: {{ e.cleaning.who }}{% endif %}</span></button>
+      {% endfor %}
+      {% for e in c.ins %}
+      <button type="button" class="evbtn {% if c.kind == 'both' %}both{% else %}in{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkin" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }} &middot; {{ e.guest }}"><span>Check-in {{ e.time }}</span><span class="hint">{% if e.state == 'pending' %}Waiting for a yes{% elif e.state == 'approved' %}Agreed &#10003;{% else %}Tap to change{% endif %}</span></button>
+      {% endfor %}
+      {% if c.kind == 'stay' %}<div class="staybar">Guest in house</div>{% endif %}
+    </div></div>{% endif %}{% endfor %}</div>
+  <div class="nothing">Nothing this week.</div>
+</div>
+{% endfor %}
+{% empty %}
+<div class="text-muted p-3">No short-term rentals yet.</div>
+{% endfor %}
 </div>
 <div class="pgscroll"><div class="pgin">
 {% for city, rows in w.by_city %}

@@ -87,33 +87,68 @@ def _heading(prop, title, line2, st):
     return [Paragraph(title, st['title']), Paragraph(f'{prop.name} &middot; {line2}', st['sub']), Spacer(1, 10)]
 
 
-def _statement_table(stmt, width, font=8.5):
-    """One reporting.py statement (columns, blocks, finals) as a table: parentheses for negatives, a single line above totals and a double line under the last one."""
+def _statement_table(stmt, width, font=8.5, groups=None):
+    """One reporting.py statement (columns, blocks, finals) as a table: parentheses for negatives, a single line above totals and a double line under the last one.
+    `groups` [(title, first value column, last value column)] sets the columns off in sections: a heading over each, a thin line under it, and a small gap between sections."""
     cols = stmt['columns']
     n = len(cols)
     n_rows = 1 + sum(1 + sum((1 if b['show_group_titles'] else 0) + len(g['lines']) + (1 if g['show_total'] else 0) for g in b['groups']) + (1 if b['show_total'] else 0) for b in stmt['blocks']) + len(stmt['finals'])
     pad = 2.2 if n_rows <= 36 else 1.2        # a long statement is tightened so it stays on one page
     if n_rows > 36 and font > 8:
         font = 8
+    groups = groups or []
+    breaks = {last for _, first, last in groups[:-1]}                 # a small spacer column follows each of these value columns
+    gap = 0.16 * inch if groups else 0
+
+    def expand(vals):
+        out = []
+        for j, v in enumerate(vals):
+            out.append(v)
+            if j in breaks:
+                out.append('')
+        return out
+
+    def at(j):                                                       # the table column a value column sits in
+        return 1 + j + sum(1 for b in breaks if b < j)
+
+    segs = [(at(first), at(last)) for _, first, last in groups] or [(1, -1)]
     label_w = width * (0.30 if n > 5 else 0.46)
-    val_w = (width - label_w) / n
-    hs = ParagraphStyle('hd', fontName='Helvetica-Bold', fontSize=font - 0.6, leading=font + 1.4, alignment=2, textColor=colors.HexColor(INK))
-    head = [''] + [Paragraph(c['label'] + (f'<br/>{c["sub"]}' if c.get('sub') else ''), hs) for c in cols]
-    rows, style = [head], [('FONTNAME', (0, 0), (-1, -1), 'Helvetica'), ('FONTSIZE', (0, 0), (-1, -1), font), ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor(INK)),
-                           ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('TOPPADDING', (0, 0), (-1, -1), pad), ('BOTTOMPADDING', (0, 0), (-1, -1), pad),
-                           ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('LINEBELOW', (0, 0), (-1, 0), 0.8, colors.HexColor(INK))]
+    val_w = (width - label_w - gap * len(breaks)) / n
+    colw = [label_w] + [w for j in range(n) for w in ([val_w, gap] if j in breaks else [val_w])]
+    ink, h = colors.HexColor(INK), (1 if groups else 0)
+    hs = ParagraphStyle('hd', fontName='Helvetica-Bold', fontSize=font - 0.6, leading=font + 1.4, alignment=2, textColor=ink)
+    head = [''] + expand([Paragraph(c['label'] + (f'<br/>{c["sub"]}' if c.get('sub') else ''), hs) for c in cols])
+    rows = [head]
+    style = [('FONTNAME', (0, 0), (-1, -1), 'Helvetica'), ('FONTSIZE', (0, 0), (-1, -1), font), ('TEXTCOLOR', (0, 0), (-1, -1), ink),
+             ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('TOPPADDING', (0, 0), (-1, -1), pad), ('BOTTOMPADDING', (0, 0), (-1, -1), pad),
+             ('FONTNAME', (0, h), (-1, h), 'Helvetica-Bold')]
+    if groups:
+        top = [''] * len(head)
+        for title, first, last in groups:
+            top[at(first)] = title
+        rows.insert(0, top)
+        for _, first, last in groups:
+            style.extend([('SPAN', (at(first), 0), (at(last), 0)), ('ALIGN', (at(first), 0), (at(last), 0), 'CENTER'), ('LINEBELOW', (at(first), 0), (at(last), 0), 0.5, ink)])
+        style.append(('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'))
+        style.append(('BOTTOMPADDING', (0, 0), (-1, 0), 2))
+        for a, b in segs:
+            style.append(('LINEBELOW', (a, h), (b, h), 0.8, ink))
+    else:
+        style.append(('LINEBELOW', (0, 0), (-1, 0), 0.8, ink))
+    ncols = len(colw) - 1
 
     def add(label, values, bold=False, indent=0, top=False, double=False, color=None, tint=False):
         i = len(rows)
-        rows.append([label] + [v['t'] for v in values])
+        rows.append([label] + expand([v['t'] for v in values]))
         if bold:
             style.append(('FONTNAME', (0, i), (-1, i), 'Helvetica-Bold'))
         if indent:
             style.append(('LEFTPADDING', (0, i), (0, i), 6 + indent))
-        if top:
-            style.append(('LINEABOVE', (1, i), (-1, i), 0.6, colors.HexColor(INK)))
-        if double:
-            style.append(('LINEBELOW', (1, i), (-1, i), 1.6, colors.HexColor(INK)))     # a heavier closing line; the grand totals read as the last number on the page
+        for a, b in segs:
+            if top:
+                style.append(('LINEABOVE', (a, i), (b, i), 0.6, ink))
+            if double:
+                style.append(('LINEBELOW', (a, i), (b, i), 1.6, ink))       # a heavier closing line; the grand totals read as the last number on the page
         if color:
             style.append(('TEXTCOLOR', (0, i), (-1, i), colors.HexColor(color)))
         if tint:
@@ -121,12 +156,12 @@ def _statement_table(stmt, width, font=8.5):
 
     def section(title):
         i = len(rows)
-        rows.append([title] + [''] * n)
+        rows.append([title] + [''] * ncols)
         style.extend([('FONTNAME', (0, i), (-1, i), 'Helvetica-Bold'), ('SPAN', (0, i), (-1, i)), ('TOPPADDING', (0, i), (-1, i), 8)])
 
     def subsection(title):
         i = len(rows)
-        rows.append([title] + [''] * n)
+        rows.append([title] + [''] * ncols)
         style.extend([('FONTNAME', (0, i), (-1, i), 'Helvetica-Bold'), ('SPAN', (0, i), (-1, i)), ('TEXTCOLOR', (0, i), (-1, i), colors.HexColor(MUTED)), ('LEFTPADDING', (0, i), (0, i), 6)])
 
     for b in stmt['blocks']:
@@ -142,7 +177,7 @@ def _statement_table(stmt, width, font=8.5):
             add(b['total_label'], b['values'], bold=True, top=True)
     for f in stmt['finals']:
         add(f['label'], f['values'], bold=True, top=True, double=f['style'] != 'warn', color='#a5524c' if f['style'] == 'warn' else None)
-    t = Table(rows, colWidths=[label_w] + [val_w] * n, repeatRows=1)
+    t = Table(rows, colWidths=colw, repeatRows=2 if groups else 1)
     t.setStyle(TableStyle(style))
     return t
 
@@ -157,11 +192,24 @@ def _without_column(stmt, i):
     return dict(stmt, columns=cut(stmt['columns']), blocks=blocks, finals=[dict(f, values=cut(f['values'])) for f in stmt['finals']])
 
 
-def _statement_pdf(prop, title, line2, stmt, size, font=8.5):
+def _budget_vs_actual(prop, end, basis):
+    """The budget-vs-actual statement for the package, set off in three sections: the month, the year to date, and the full year (annual budget and what remains).
+    The screen's "% of budget" column is left out. Returns (statement, groups)."""
+    raw = reporting.budget_vs_actual(prop, end, basis)
+    if len(raw['columns']) != 9:                                       # not the layout this expects: print it as it is
+        return _without_column(raw, 6), None
+    year = raw['columns'][7]['sub']
+    stmt = _without_column(raw, 6)                                     # column 6 is "% of budget"
+    labels = ['Actual', 'Budget', 'Over / (under)'] * 2 + ['Budget', 'Remaining']
+    stmt = dict(stmt, columns=[{'label': l, 'sub': ''} for l in labels])
+    return stmt, [(f'{end:%B %Y}', 0, 2), ('Year to date', 3, 5), (f'Annual budget {year}', 6, 7)]
+
+
+def _statement_pdf(prop, title, line2, stmt, size, font=8.5, groups=None):
     st = _styles()
     buf = io.BytesIO()
     doc, on_page = _doc(buf, size, f'{prop.name}  |  {title}')
-    story = _heading(prop, title, line2, st) + [_statement_table(stmt, size[0] - 1.2 * inch, font)]
+    story = _heading(prop, title, line2, st) + [_statement_table(stmt, size[0] - 1.2 * inch, font, groups)]
     for note in stmt.get('notes', []):
         story += [Spacer(1, 6), Paragraph(note, st['note'])]
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
@@ -216,10 +264,10 @@ def build(prop, month, basis='accrual'):
     month = ledger.month_start(month)
     end = ledger.month_end(month)
     asof = f'as of {end:%B} {end.day}, {end.year} &middot; {BASIS_LABEL[basis]}'
-    bva = _without_column(reporting.budget_vs_actual(prop, end, basis), 6)                 # column 6 is "% of budget"
+    bva, bva_groups = _budget_vs_actual(prop, end, basis)
     parts = [('Profit and loss', _statement_pdf(prop, 'Profit and loss', f'{month:%B %Y} &middot; {BASIS_LABEL[basis]}', reporting.profit_and_loss(prop, end, basis, 'month_ytd'), letter)),
              ('Balance sheet', _statement_pdf(prop, 'Balance sheet', asof, reporting.balance_sheet(prop, end, basis, 'compare'), letter)),
-             ('Budget vs actual', _statement_pdf(prop, 'Budget vs actual', f'through {end:%B} {end.day}, {end.year} &middot; {BASIS_LABEL[basis]}', bva, landscape(letter), 7.8)),
+             ('Budget vs actual', _statement_pdf(prop, 'Budget vs actual', f'through {end:%B} {end.day}, {end.year} &middot; {BASIS_LABEL[basis]}', bva, landscape(letter), 7.8, bva_groups)),
              ('Owner aging', _aging_pdf(prop, end, charges.aging(prop, end)))]
     contents, statement_pages = [], []
     for name, data in parts:

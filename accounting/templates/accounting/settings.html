@@ -125,15 +125,27 @@
 </div></div>
 
 <div class="card mb-3" id="banks"><div class="card-body">
-    <h6 class="card-title">Bank accounts</h6>
-    <table class="table table-sm mb-2"><tbody>{% for b in banks %}<tr class="{% if not b.is_active %}text-muted{% endif %}"><td>{{ b.name }}</td><td>{{ b.bank_name }}{% if b.last4 %} ending {{ b.last4 }}{% endif %}</td><td>{{ b.get_kind_display }}</td><td>{{ b.account }}</td>
-        <td class="text-end">{% if b.is_active %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="bank" value="{{ b.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="bank_off">Stop using</button></form>{% else %}<span class="ac-chip">Not in use</span>{% endif %}</td></tr>{% empty %}<tr><td class="text-muted">No bank account yet.</td></tr>{% endfor %}</tbody></table>
-    <form method="post" class="row g-2">{% csrf_token %}<input type="hidden" name="action" value="bank">
-        <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Name, e.g. Operating" required></div><div class="col-md-3"><input class="form-control form-control-sm" name="bank_name" placeholder="Bank"></div>
-        <div class="col-md-2"><input class="form-control form-control-sm" name="last4" maxlength="4" placeholder="Last 4"></div>
-        <div class="col-md-2"><select class="form-select form-select-sm" name="kind"><option value="operating">Operating</option><option value="reserve">Reserves</option></select></div>
-        <div class="col-md-2"><select class="form-select form-select-sm" name="account" title="The cash account in the books">{% for a in cash_accounts %}<option value="{{ a.pk }}">{{ a }}</option>{% endfor %}</select></div>
-        <div class="col-12"><button class="btn btn-sm btn-outline-secondary">Add or update</button></div></form>
+    <h6 class="card-title d-flex align-items-center gap-2">Bank accounts {% include '_tip.html' with text='Name each bank account the way you want to see it. The last 4 digits are how a statement finds its account: a PDF that holds two accounts is split by them, and each part goes to the bank account with those last 4.' %}</h6>
+    {% for b in banks %}<div class="py-2 {% if not forloop.first %}border-top{% endif %} {% if not b.is_active %}text-muted{% endif %}">
+        <div class="d-flex align-items-center flex-wrap gap-2"><strong>{{ b.name }}</strong><span class="small">{{ b.bank_name }}{% if b.last4 %} ending {{ b.last4 }}{% else %} <span class="ac-chip warn">No last 4</span>{% endif %}</span><span class="small">{{ b.get_kind_display }}</span><span class="small text-muted">{{ b.account }}</span>
+            <div class="ms-auto d-flex gap-2 align-items-center">{% if not b.is_active %}<span class="ac-chip">Not in use</span>{% endif %}
+                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="bank" value="{{ b.pk }}">{% if b.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="bank_off">Stop using</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="bank_on">Use again</button>{% endif %}</form></div></div>
+        <details class="mt-1"><summary class="small" style="cursor: pointer;">Edit</summary>
+            <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="bank_edit"><input type="hidden" name="bank" value="{{ b.pk }}">
+                <div class="col-md-3"><label class="form-label small text-muted mb-1">Name</label><input class="form-control form-control-sm" name="name" value="{{ b.name }}" required></div>
+                <div class="col-md-3"><label class="form-label small text-muted mb-1">Bank</label><input class="form-control form-control-sm" name="bank_name" value="{{ b.bank_name }}"></div>
+                <div class="col-md-2"><label class="form-label small text-muted mb-1">Last 4</label><input class="form-control form-control-sm" name="last4" maxlength="4" value="{{ b.last4 }}"></div>
+                <div class="col-md-2"><label class="form-label small text-muted mb-1">Type</label><select class="form-select form-select-sm" name="kind"><option value="operating" {% if b.kind == 'operating' %}selected{% endif %}>Operating</option><option value="reserve" {% if b.kind == 'reserve' %}selected{% endif %}>Reserves</option></select></div>
+                <div class="col-md-2"><label class="form-label small text-muted mb-1">Cash account in the books</label><select class="form-select form-select-sm" name="account">{% for a in cash_accounts %}<option value="{{ a.pk }}" {% if a.pk == b.account_id %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+                <div class="col-12"><button class="btn btn-sm btn-primary">Save</button></div></form></details>
+    </div>{% empty %}<div class="text-muted small">No bank account yet.</div>{% endfor %}
+    <details class="mt-2 pt-2 border-top"><summary class="small" style="cursor: pointer;">Add a bank account</summary>
+        <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="bank">
+            <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Name, e.g. Operating" required></div><div class="col-md-3"><input class="form-control form-control-sm" name="bank_name" placeholder="Bank"></div>
+            <div class="col-md-2"><input class="form-control form-control-sm" name="last4" maxlength="4" placeholder="Last 4"></div>
+            <div class="col-md-2"><select class="form-select form-select-sm" name="kind"><option value="operating">Operating</option><option value="reserve">Reserves</option></select></div>
+            <div class="col-md-2"><select class="form-select form-select-sm" name="account" title="The cash account in the books">{% for a in cash_accounts %}<option value="{{ a.pk }}">{{ a }}</option>{% endfor %}</select></div>
+            <div class="col-12"><button class="btn btn-sm btn-outline-secondary">Add</button></div></form></details>
 </div></div>
 
 <form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="official">

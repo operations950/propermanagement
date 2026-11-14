@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% include '_pwa_head.html' with app='owner' %}
     <title>{% block title %}Owner portal{% endblock %} — Proper Realty</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +22,14 @@
         a { color: #3d6178; }
         .amt { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .muted { color: var(--muted); }
+        @media (max-width: 768px) {
+            body { font-size: 16px; }
+            .form-control, .form-select { min-height: 48px; font-size: 16px; }
+            .btn { min-height: 46px; display: inline-flex; align-items: center; justify-content: center; }
+            .btn-sm { min-height: 42px; font-size: 1rem; }
+            .small, small { font-size: 0.92rem; }
+            .op-link-row a { display: inline-flex; align-items: center; min-height: 44px; }
+        }
         @media print { .op-top, .no-print { display: none !important; } body { background: #fff; } .op-card { border: 0; box-shadow: none; } }
     </style>
 </head>
@@ -30,7 +39,7 @@
         <a href="{% url 'owner_home' %}" class="d-flex align-items-center gap-2 text-decoration-none"><img src="{% static 'img/proper-realty-logo.png' %}" alt="Proper Realty"><span class="muted small d-none d-sm-inline">Owner portal</span></a>
         {% if account %}
         <form method="post" action="{% url 'owner_logout' %}" class="d-flex align-items-center gap-2">{% csrf_token %}
-            <span class="small muted">{{ account.email }}</span><button class="btn btn-outline-secondary btn-sm">Sign out</button>
+            <a href="#" class="small" data-pwa-install hidden>Install the app</a><span class="small muted">{{ account.email }}</span><button class="btn btn-outline-secondary btn-sm">Sign out</button>
         </form>
         {% endif %}
     </div>
@@ -41,5 +50,6 @@
     {% endfor %}
     {% block content %}{% endblock %}
 </main>
+{% include '_pwa_body.html' %}
 </body>
 </html>
