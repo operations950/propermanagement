@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_budget, views_chart, views_collections, views_contracts, views_delinquency, views_money, views_setup
+from . import views, views_budget, views_chart, views_check_runs, views_collections, views_contracts, views_delinquency, views_money, views_payables_hub, views_setup
 
 app_name = 'accounting'
 
@@ -16,6 +16,13 @@ urlpatterns = [
     path('<int:pk>/budget/<int:year>/load/', views_budget.budget_load, name='budget_load'),
     path('<int:pk>/contracts/', views_contracts.contract_list, name='contracts'),
     path('<int:pk>/contracts/print/', views_contracts.contract_print, name='contracts_print'),
+    path('payables/', views_payables_hub.payables_home, name='payables_home'),
+    path('payables/upload/', views_payables_hub.payables_upload, name='payables_upload'),
+    path('payables/upload/<int:pk>/', views_payables_hub.payables_card, name='payables_card'),
+    path('payables/print-checks/', views_check_runs.print_checks, name='payables_print_checks'),
+    path('payables/print-checks/pdf/', views_check_runs.checks_pdf, name='payables_checks_pdf'),
+    path('payables/print-envelopes/', views_check_runs.print_envelopes, name='payables_print_envelopes'),
+    path('payables/print-envelopes/pdf/', views_check_runs.envelopes_pdf, name='payables_envelopes_pdf'),
     path('collections/', views_collections.collections_home, name='collections_home'),
     path('<int:pk>/collections/', views_collections.collections, name='collections'),
     path('<int:pk>/late-fees/', views_collections.late_fees, name='late_fees'),

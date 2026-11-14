@@ -697,6 +697,11 @@ class Bill(models.Model):
     recurring = models.ForeignKey(RecurringBill, null=True, blank=True, on_delete=models.SET_NULL, related_name='bills')
     file = models.FileField(upload_to='bills/%Y/%m/', blank=True, storage=DocumentStorage())
     email_message_id = models.CharField(max_length=120, blank=True, db_index=True)
+    bank_account = models.ForeignKey('BankAccount', null=True, blank=True, on_delete=models.SET_NULL, related_name='+', help_text='The bank account the check is written from.')
+    approval_channel = models.CharField(max_length=10, blank=True, default='', choices=[('management', 'Management approved'), ('board', 'Board approval')],
+                                        help_text='Who approves it. Blank: the old rule decides (at or under the spending limit staff may approve, otherwise the board).')
+    invoice_read = models.JSONField(default=dict, blank=True, help_text='What was read off the invoice, kept for the record.')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     memo = models.CharField(max_length=300, blank=True)
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -740,12 +745,63 @@ class BankAccount(models.Model):
     kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.OPERATING)
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='+', help_text='The cash account in the books this bank account is.')
     is_active = models.BooleanField(default=True)
+    # what a check needs (printed on it; none of it is shown anywhere else except to an administrator in the bank account's settings)
+    bank_address = models.TextField(blank=True, help_text="The bank's address, as printed on the check.")
+    routing_number = models.CharField(max_length=9, blank=True, help_text='The 9-digit routing (ABA) number.')
+    account_number_enc = models.TextField(blank=True, help_text='The full account number, encrypted. Read it through account_number; see accounting/fieldcrypt.py.')
+    payer_name = models.CharField(max_length=120, blank=True, help_text='The name printed at the top left of the check, e.g. the legal name of the association.')
+    payer_address = models.TextField(blank=True, help_text='The address printed under the payer name.')
 
     class Meta:
         ordering = ['kind', 'name']
 
     def __str__(self):
         return f'{self.name} ({self.bank_name} {self.last4})'.strip()
+
+    # ---- the account number: stored encrypted, shown masked, printed only on a check
+    @property
+    def account_number(self):
+        """The full account number, decrypted ('' when none; '' also when it cannot be read: see account_number_unreadable). Only the check PDF and the administrator's edit form use this."""
+        from . import fieldcrypt
+        return fieldcrypt.decrypt(self.account_number_enc) or ''
+
+    @account_number.setter
+    def account_number(self, value):
+        from . import fieldcrypt
+        digits = ''.join(ch for ch in str(value or '') if ch.isalnum())
+        self.account_number_enc = fieldcrypt.encrypt(digits)
+
+    @property
+    def has_account_number(self):
+        return bool(self.account_number_enc)
+
+    @property
+    def account_number_unreadable(self):
+        from . import fieldcrypt
+        return bool(self.account_number_enc) and fieldcrypt.decrypt(self.account_number_enc) is None
+
+    @property
+    def masked_account_number(self):
+        """'•••• ••••• 4465': the last four digits and nothing else; '' when there is no account number."""
+        number = self.account_number
+        if not number:
+            return ''
+        return '•••• ••••• ' + number[-4:]
+
+    def print_gaps(self):
+        """What this bank account still needs before a check can be printed from it (empty when it is ready)."""
+        gaps = []
+        if not self.routing_number:
+            gaps.append('routing number')
+        if not self.has_account_number or self.account_number_unreadable:
+            gaps.append('account number')
+        if not (self.payer_name or '').strip():
+            gaps.append('payer name')
+        if not (self.payer_address or '').strip():
+            gaps.append('payer address')
+        if not (self.bank_name or '').strip():
+            gaps.append('bank name')
+        return gaps
 
     @property
     def label(self):
@@ -916,6 +972,54 @@ class SeenEmail(models.Model):
     outcome = models.CharField(max_length=200, blank=True)
     needs_home = models.BooleanField(default=False, help_text='An invoice was found but not which association it is for.')
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+# ---------------------------------------------------------------- the payables intake: invoices dropped on the Payables page
+
+class VendorProfile(models.Model):
+    """What we know about a vendor beyond its contact row: where to mail the check and its tax id. One per vendor contact; made when a vendor is created from an invoice."""
+    contact = models.OneToOneField(Contact, on_delete=models.CASCADE, related_name='vendor_profile')
+    street = models.CharField(max_length=200, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=2, blank=True)
+    zip_code = models.CharField(max_length=10, blank=True)
+    tax_id = models.CharField(max_length=20, blank=True)
+    website = models.CharField(max_length=200, blank=True)
+    is_1099 = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def address_lines(self):
+        """The mailing address as lines for an envelope: ['123 Main St', 'Boca Raton, FL 33432']."""
+        last = ', '.join(x for x in (self.city, ' '.join(x for x in (self.state, self.zip_code) if x)) if x)
+        return [x for x in (self.street, last) if x]
+
+
+class PayableUpload(models.Model):
+    """An invoice file waiting on the Payables page to become a payable: what was read off it, the person's working choices so far, and what became of it."""
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'To review'
+        CREATED = 'created', 'Made into a payable'
+        DISCARDED = 'discarded', 'Discarded'
+
+    class Source(models.TextChoices):
+        UPLOAD = 'upload', 'Dropped on the page'
+        INBOX = 'inbox', 'From the invoice inbox'
+
+    file = models.FileField(upload_to='payable_uploads/%Y/%m/', storage=DocumentStorage(), blank=True)
+    filename = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.UPLOAD)
+    read = models.JSONField(default=dict, blank=True, help_text='What the invoice reader found.')
+    read_error = models.CharField(max_length=200, blank=True, help_text='Why the invoice could not be read, if it could not.')
+    draft = models.JSONField(default=dict, blank=True, help_text='The choices made so far on the review card (property, vendor, account, bank account, approval).')
+    bill = models.ForeignKey(Bill, null=True, blank=True, on_delete=models.SET_NULL, related_name='uploads', help_text='The payable made from it (or the inbox draft it stands for).')
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['uploaded_at', 'id']
 
 
 # ---------------------------------------------------------------- collections: owners who are behind

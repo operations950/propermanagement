@@ -128,11 +128,31 @@ class TheStepsTests(BudgetProjectBase):
         self.to_board()
         by = {s['key']: s for s in self.client.get(self.project_url).context['steps']}
         self.assertTrue(by['draft']['enabled'] and by['board']['enabled'])          # one done, one in progress
-        self.assertFalse(by['mailing']['enabled'] or by['meeting']['enabled'])      # the next ones wait for the board draft to be final
+        self.assertTrue(by['mailing']['enabled'])                                    # the packet opens as soon as the Board draft exists: no separate "mark it final" first
+        self.assertFalse(by['mailed']['enabled'] or by['meeting']['enabled'])       # the ones after it wait for the notice and the mailing
         self.act('final')
         by = {s['key']: s for s in self.client.get(self.project_url).context['steps']}
         self.assertTrue(by['mailing']['enabled'])
         self.assertTrue(by['draft']['enabled'])                                      # and the first is still open to go back to
+
+    def test_the_packet_can_be_made_without_marking_the_board_draft_final_and_making_it_is_what_makes_it_final(self):
+        self.to_board()
+        packet = self.client.get(self.project_url)
+        self.assertContains(packet, 'Make the packet')                              # the button is there with the Board draft not yet marked final
+        self.details()
+        self.make_notice()
+        by = {s['key']: s for s in self.client.get(self.project_url).context['steps']}
+        self.assertEqual((by['board']['status'], by['mailing']['status']), ('done', 'done'))
+        self.assertIsNotNone(BudgetProject.objects.get(budget__association_id=self.pk, budget__year=2027).final_at)
+
+    def test_the_meeting_details_can_be_entered_on_the_packet_page_itself(self):
+        self.to_board()
+        r = self.client.get(self.packet_url)
+        self.assertContains(r, 'name="meeting_place"')
+        self.client.post(self.packet_url, {'action': 'details', 'meeting_date': '2027-02-10', 'meeting_time': '6:00 p.m.', 'meeting_place': 'Clubhouse'})
+        project = BudgetProject.objects.get(budget__association_id=self.pk, budget__year=2027)
+        self.assertEqual((str(project.meeting_date), project.meeting_time, project.meeting_place), ('2027-02-10', '6:00 p.m.', 'Clubhouse'))
+        self.assertContains(self.client.get(self.packet_url), 'value="Clubhouse"')
 
     def test_the_budgets_list_opens_the_project_and_names_the_next_step(self):
         self.to_board()

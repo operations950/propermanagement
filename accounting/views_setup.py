@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from . import charges, checkprint, closing, documents, invoice_inbox, ledger, owners
 from . import standard_chart as sc
+from . import checkface
 from .models import AssociationDocument, BankAccount, Budget, ChargeRule, Payment, Receipt, SettingProposal
 from .web import admin_only, association_or_404, parse_date, parse_money
 
@@ -45,10 +46,46 @@ def _save_bank(prop, bank, post):
             raise ValueError(f'{acct} is already another bank account\'s cash account.')
         if bank.statements.exists() or Payment.objects.filter(bank_account=bank).exists() or Receipt.objects.filter(bank_account=bank).exists():
             raise ValueError('This bank account already has statements or payments tied to its cash account, so that cannot change here. Rename it, or add a new bank account.')
-    bank.name, bank.bank_name, bank.last4 = name, (post.get('bank_name') or '').strip(), _clean_last4(post.get('last4'))
+    last4 = _clean_last4(post.get('last4'))
+    routing = checkface.clean_routing(post.get('routing_number'))
+    new_number = re.sub(r'[\s-]', '', post.get('account_number') or '')
+    if new_number:                                              # a blank keeps the number on file; only a typed one replaces it
+        if not new_number.isdigit() or not 4 <= len(new_number) <= 17:
+            raise ValueError('An account number is 4 to 17 digits (spaces and dashes are fine).')
+        bank.account_number = new_number
+        last4 = new_number[-4:]                                 # the last 4 always follow the number, so statements keep matching
+    elif bank.has_account_number and not bank.account_number_unreadable and last4 and last4 != bank.account_number[-4:]:
+        raise ValueError(f'The last 4 ({last4}) do not match the account number on file. Fix the last 4, or Change the account number.')
+    bank.name, bank.bank_name, bank.last4 = name, (post.get('bank_name') or '').strip(), last4
+    bank.bank_address = (post.get('bank_address') or '').strip()
+    bank.routing_number = routing
+    bank.payer_name = (post.get('payer_name') or '').strip()[:120]
+    bank.payer_address = (post.get('payer_address') or '').strip()
     bank.kind = 'reserve' if post.get('kind') == 'reserve' else 'operating'
     bank.account = acct
     bank.save()
+
+
+def _print_banks(prop):
+    return list(prop.bank_accounts.filter(is_active=True, kind='operating'))
+
+
+def check_printing_ok(prop, profile):
+    if profile.check_layout.get('learned'):
+        return True
+    banks = _print_banks(prop)
+    return bool(banks) and all(not b.print_gaps() for b in banks)
+
+
+def check_printing_text(prop, profile):
+    """The 'Check printing' line of the settings list: ready with the standard check face, or what the bank account still needs."""
+    if profile.check_layout.get('learned'):
+        return 'Layout learned from your check stock'
+    banks = _print_banks(prop)
+    if not banks:
+        return 'Add a bank account to write checks from'
+    gaps = [f'{b.label}: {", ".join(b.print_gaps())}' for b in banks if b.print_gaps()]
+    return 'Ready: standard 3-part check face' if not gaps else 'Missing for ' + '; '.join(gaps)
 
 
 def settings_rows(prop):
@@ -68,7 +105,7 @@ def settings_rows(prop):
         ('Late fee and interest', 'Read from the declaration', profile.late_fee_is_set(), 'settings', 'late'),
         ('Spending limit without the board', f'${profile.spending_limit:,.2f}' if profile.spending_limit is not None else 'Read from the management contract', profile.spending_limit is not None, 'settings', 'terms'),
         ('Management fee', f'${profile.management_fee:,.2f} a month' if profile.management_fee is not None else 'Read from the management contract', profile.management_fee is not None, 'settings', 'terms'),
-        ('Check printing', 'Layout learned from your check stock' if profile.check_layout.get('learned') else ('Standard layout' if profile.check_stock else 'Upload a copy of the blank check stock'), bool(profile.check_layout.get('learned')), 'check_setup', ''),
+        ('Check printing', check_printing_text(prop, profile), check_printing_ok(prop, profile), 'settings', 'banks'),
     ]
     out = []
     for label, value, ok, url, anchor in rows:

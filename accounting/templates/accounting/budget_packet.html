@@ -15,10 +15,20 @@
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> {{ assoc.name }} &mdash; final draft for mailing {% include '_tip.html' with text="Everything that goes to the owners and everything that proves it went out, made from the Board draft. Each piece opens as a PDF in your browser: print it from there." %}</h2>
     <div class="small text-muted">
         {% if meeting_ready %}Meeting {{ project.meeting_date|date:"l, F j, Y" }}, {{ project.meeting_time }}, {{ project.meeting_place }}.
-        {% else %}<a href="{% url 'accounting:budget_project' assoc.pk year %}">Enter the date, time and place of the meeting</a> first: the notice needs them.{% endif %}
+        {% else %}Enter the date, time and place of the meeting first: the notice needs them.{% endif %}
         &middot; The {{ year }} budget needs {{ needed|money }} in assessments ({{ unit_month|money }} per unit per month).
     </div>
 </div>
+
+<form method="post" class="pk-item">{% csrf_token %}<input type="hidden" name="action" value="details">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-auto fw-semibold d-flex align-items-center gap-1" style="min-width: 8rem;">The meeting {% include '_tip.html' with text="When and where the board meets to consider the budget. The notice is made from this, and the project page tells you how many days before the meeting the notice went out." %}</div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-0">Date</label><input type="date" name="meeting_date" value="{{ project.meeting_date|date:'Y-m-d' }}" class="form-control form-control-sm"></div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-0">Time</label><input name="meeting_time" value="{{ project.meeting_time }}" placeholder="6:00 p.m." class="form-control form-control-sm" maxlength="40"></div>
+        <div class="col-12 col-md"><label class="form-label small text-muted mb-0">Place</label><input name="meeting_place" value="{{ project.meeting_place }}" placeholder="Clubhouse, 100 Main St" class="form-control form-control-sm" maxlength="200"></div>
+        <div class="col-12 col-md-auto"><button class="btn btn-sm {% if meeting_ready %}btn-outline-secondary{% else %}btn-primary{% endif %}">Save</button></div>
+    </div>
+</form>
 
 <div class="pk-item">
     <div class="pk-head"><i data-lucide="file-text" class="icon ico"></i><span class="fw-semibold">Notice of the budget meeting {% include '_tip.html' with text="The notice that goes to every owner: when and where the board meets, that the budget and the assessments will be considered, what the assessments are for, and that the proposed budget is enclosed. Not less than 14 days before the meeting. Made from the meeting details and the Board draft; the wording is saved as it was made." %}</span>

@@ -387,6 +387,8 @@ RECURRING_TICKET_INTERVAL_MINUTES = int(os.environ.get('RECURRING_TICKET_INTERVA
 # Gmail auth is OAuth-based (intake/gmail_auth.py, GmailInboxToken), not a
 # static credentials file — see GOOGLE_OAUTH_CLIENT_ID/SECRET below.
 QUO_API_KEY = os.environ.get('QUO_API_KEY', '')
+# The key that locks the secrets the books keep in the database (a bank account's full number): see accounting/fieldcrypt.py. Set it once in production and never change it.
+FIELD_ENCRYPTION_KEY = os.environ.get('FIELD_ENCRYPTION_KEY', '')
 # How often sync_quo_contacts checks Quo's saved contact list for brand-new
 # contacts and edits to already-approved ones — a person's own info changes
 # far less often than conversation content, so this defaults to once a day

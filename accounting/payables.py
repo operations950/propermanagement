@@ -39,12 +39,16 @@ def vendor_for_name(name, create=True):
 # ---------------------------------------------------------------- approval rules
 
 def requirement(association, bill):
-    """'none' (routine), 'staff' (a one-off under the limit) or 'board'."""
+    """'none' (routine), 'staff' (a one-off under the limit, or one a person sent to management on the Payables page) or 'board'."""
     profile = ledger.profile_for(association)
     if bill.reserve or bill.kind == Bill.Kind.RESERVE:
         return 'board'
     if bill.kind == Bill.Kind.ROUTINE:
         return 'none'
+    if bill.approval_channel == 'board':                  # chosen on the Payables page: the board, whatever the amount
+        return 'board'
+    if bill.approval_channel == 'management':             # chosen on the Payables page: management approves, whatever the amount
+        return 'staff'
     if profile.spending_limit is not None and bill.amount <= profile.spending_limit:
         return 'staff'
     return 'board'

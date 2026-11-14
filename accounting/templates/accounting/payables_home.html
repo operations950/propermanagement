@@ -1,0 +1,130 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras static %}
+{% block acc_title %}Payables{% endblock %}
+{% block acc_body %}
+<style>
+    .pay-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; -webkit-overflow-scrolling: touch; }
+    .pay-tab { flex: none; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, #fff); color: inherit; text-decoration: none; font-weight: 600; min-height: 44px; }
+    .pay-tab:hover { border-color: var(--brand-primary); color: inherit; }
+    .pay-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+    .pay-tab .n { font-size: 0.78rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(0,0,0,.08); }
+    .pay-tab.on .n { background: rgba(255,255,255,.25); }
+    .pay-drop { border: 2px dashed var(--border-hairline); background: color-mix(in srgb, var(--brand-primary) 4%, white); }
+    .pay-drop.over { border-color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 12%, white); }
+    .pay-file { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 0.92rem; }
+    .pay-card .form-control-lg, .pay-card .form-select-lg { font-size: 1rem; }
+    .min-w-0 { min-width: 0; }
+    @media (max-width: 768px) { .pay-card .btn-lg { width: 100%; } }
+</style>
+<div class="mb-3">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-input" class="icon-lg"></i> Payables {% include '_tip.html' with text="Every vendor invoice for every association we keep the books for. Drop the invoice in, check what was read, and create the payable. Management approved ones go straight to Ready to pay; board ones wait for the board. Then print the checks." %}</h2>
+    <div class="small text-muted">Drop an invoice to start. It is read, matched to a property and a vendor, and waits here for you to refine it.</div>
+</div>
+
+<nav class="pay-tabs" aria-label="Payables">
+    <a class="pay-tab {% if tab == 'review' %}on{% endif %}" href="?tab=review"><i data-lucide="inbox" class="icon"></i> To review <span class="n">{{ counts.review }}</span></a>
+    <a class="pay-tab {% if tab == 'board' %}on{% endif %}" href="?tab=board"><i data-lucide="users" class="icon"></i> Waiting for approval <span class="n">{{ counts.board }}</span></a>
+    <a class="pay-tab {% if tab == 'ready' %}on{% endif %}" href="?tab=ready"><i data-lucide="circle-dollar-sign" class="icon"></i> Ready to pay <span class="n">{{ counts.ready }}</span></a>
+    <a class="pay-tab {% if tab == 'checks' %}on{% endif %}" href="?tab=checks"><i data-lucide="printer" class="icon"></i> Print checks</a>
+    <a class="pay-tab {% if tab == 'envelopes' %}on{% endif %}" href="?tab=envelopes"><i data-lucide="mail" class="icon"></i> Print envelopes</a>
+    <a class="pay-tab {% if tab == 'paid' %}on{% endif %}" href="?tab=paid"><i data-lucide="circle-check" class="icon"></i> Paid</a>
+</nav>
+
+<div class="card pay-drop mb-3" id="payDrop" data-upload-url="{% url 'accounting:payables_upload' %}" data-review-url="{% url 'accounting:payables_home' %}?tab=review" data-tab="{{ tab }}">
+    <div class="card-body text-center py-4">
+        <i data-lucide="upload-cloud" class="icon-lg"></i>
+        <div class="fw-semibold fs-5 mt-1">Drop invoices here</div>
+        <div class="small text-muted mb-2">PDF, PNG or JPG, one or many. Each one is read and becomes a card to check.</div>
+        <form method="post" action="{% url 'accounting:payables_upload' %}" enctype="multipart/form-data" id="payDropForm">{% csrf_token %}
+            <input type="file" id="payFiles" name="files" multiple accept=".pdf,.png,.jpg,.jpeg" class="form-control d-none" aria-label="Invoice files">
+            <button type="button" class="btn btn-primary btn-lg" id="payPick"><i data-lucide="plus" class="icon"></i> Choose invoices</button>
+            <noscript><div class="mt-2"><input type="file" name="files" multiple accept=".pdf,.png,.jpg,.jpeg" class="form-control" aria-label="Invoice files"><button class="btn btn-primary mt-2">Add them</button></div></noscript>
+        </form>
+        <div id="payProgress" class="text-start mt-2"></div>
+    </div>
+</div>
+
+{% if tab == 'review' %}
+<datalist id="payVendors">{% for v in vendors %}<option value="{{ v }}">{% endfor %}</datalist>
+<div id="pcards">
+    {% for c in cards %}{% include 'accounting/_payables_card.html' %}{% endfor %}
+</div>
+<p class="text-muted small {% if cards %}d-none{% endif %}" id="payEmpty">Nothing waiting. Drop an invoice above to start a payable. Invoices the invoice inbox picks up land here too.</p>
+{% if needs_home %}<div class="card mb-3"><div class="card-body"><h6 class="card-title">Emails from the invoice inbox that could not be placed <span class="ac-chip warn">{{ needs_home|length }}</span></h6>
+    {% for s in needs_home %}<div class="small py-1 {% if not forloop.first %}border-top{% endif %}">{{ s.subject|default:"(no subject)" }} <span class="text-muted">from {{ s.sender }}</span></div>{% endfor %}
+    <div class="small text-muted mt-1">The invoice did not say which association it is for. Download it and drop it here.</div></div></div>{% endif %}
+
+{% elif tab == 'board' %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="users" class="icon"></i> Waiting for the board <span class="ac-chip {% if waiting %}warn{% endif %}">{{ waiting|length }}</span>{% if counts.board_total %} <span class="text-muted small fw-normal">{{ counts.board_total|money }} in all</span>{% endif %}</h6>
+    {% for b in waiting %}
+    <div class="py-3 {% if not forloop.first %}border-top{% endif %}">
+        <div class="d-flex justify-content-between flex-wrap gap-2">
+            <div><a class="fw-semibold text-decoration-none" href="{% url 'accounting:bill' b.association_id b.pk %}">{{ b.payee }}</a> <span class="text-muted small">{{ b.number }} &middot; {{ b.date|mdate }}{% if b.due_date %} &middot; due {{ b.due_date|mdate }}{% endif %}</span><br>
+                <span class="small text-muted">{{ b.association.name }}{% for l in b.lines.all %} &middot; {{ l.account.name }}{% endfor %}</span>{% if b.reserve %} <span class="ac-chip warn">Reserve spending</span>{% endif %}</div>
+            <div class="fw-semibold ac-num">{{ b.amount|money }}</div>
+        </div>
+        <form method="post" class="d-flex gap-2 flex-wrap mt-2 align-items-center">{% csrf_token %}<input type="hidden" name="tab" value="board"><input type="hidden" name="bill" value="{{ b.pk }}">
+            {% if not b.bank_account_id %}{% if b.bank_options|length == 1 %}<input type="hidden" name="bank" value="{{ b.bank_options.0.pk }}"><span class="small text-muted">Pays from {{ b.bank_options.0.label }}</span>
+            {% elif b.bank_options %}<select name="bank" class="form-select" style="max-width: 240px;" required aria-label="Bank account"><option value="">Pay from which account?</option>{% for o in b.bank_options %}<option value="{{ o.pk }}">{{ o.label }}</option>{% endfor %}</select>
+            {% else %}<span class="small text-danger">No bank account for this: <a href="{% url 'accounting:settings' b.association_id %}#banks">set one up</a></span>{% endif %}
+            {% else %}<span class="small text-muted">Pays from {{ b.bank_account.label }}</span>{% endif %}
+            <input class="form-control" style="max-width: 290px;" name="by" placeholder="Board member who approved" required aria-label="Board member who approved">
+            <input class="form-control" style="max-width: 160px;" type="date" name="on" value="{{ today|date:'Y-m-d' }}" aria-label="Date approved">
+            <button class="btn btn-primary" name="action" value="board_ok"><i data-lucide="check" class="icon"></i> Board approved</button>
+            <button class="btn btn-outline-secondary" name="action" value="void" onclick="return confirm('Void this payable?')">Void</button>
+        </form>
+    </div>
+    {% empty %}<p class="text-muted small mb-0">Nothing is waiting for the board. A payable you send to the board appears here until you record who approved it.</p>{% endfor %}
+</div></div>
+
+{% elif tab == 'ready' %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div><strong class="ac-num">{{ counts.ready_total|money }}</strong> <span class="text-muted small">approved and waiting to be paid, {{ counts.ready }} payable{{ counts.ready|pluralize }}</span></div>
+    {% url 'accounting:payables_print_checks' as checks_url %}{% if checks_url and counts.ready %}<a class="btn btn-primary" href="{{ checks_url }}"><i data-lucide="printer" class="icon"></i> Print checks</a>{% endif %}
+</div>
+{% for g in groups %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex justify-content-between align-items-center gap-2"><span><i data-lucide="building-2" class="icon"></i> {{ g.assoc.name }}</span><span class="ac-num">{{ g.total|money }}</span></h6>
+    {% for bk in g.banks %}
+    <div class="mb-3">
+        <div class="small fw-semibold mb-1">{% if bk.bank %}Pays from {{ bk.bank.label }}{% else %}<span class="text-danger">No bank account chosen</span>{% endif %} <span class="text-muted fw-normal">&middot; {{ bk.total|money }}</span></div>
+        {% for b in bk.bills %}
+        <div class="d-flex justify-content-between flex-wrap gap-2 py-2 border-top">
+            <div><a class="text-decoration-none fw-semibold" href="{% url 'accounting:bill' b.association_id b.pk %}">{{ b.payee }}</a> <span class="text-muted small">{{ b.number }} &middot; {{ b.date|mdate }}{% if b.due_date %} &middot; due {{ b.due_date|mdate }}{% endif %}</span></div>
+            <div class="d-flex gap-2 align-items-center flex-wrap"><span class="fw-semibold ac-num">{{ b.balance|money }}</span>
+                {% if not bk.bank %}<form method="post" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="tab" value="ready"><input type="hidden" name="bill" value="{{ b.pk }}">
+                    <select name="bank" class="form-select form-select-sm" required aria-label="Bank account"><option value="">Pay from...</option>{% for o in bk.options %}<option value="{{ o.pk }}">{{ o.label }}</option>{% endfor %}</select><button class="btn btn-sm btn-outline-primary" name="action" value="set_bank">Set</button></form>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div></div>
+{% empty %}<div class="card"><div class="card-body text-muted">Nothing is ready to pay. Approved payables appear here, grouped by association and bank account.</div></div>{% endfor %}
+
+{% elif tab == 'checks' %}
+{% url 'accounting:payables_print_checks' as checks_url %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="printer" class="icon"></i> Print checks</h6>
+    <p class="mb-2">{{ counts.ready }} approved payable{{ counts.ready|pluralize }} ({{ counts.ready_total|money }}) are ready. One check pays all of a vendor's invoices from the same bank account. Printing a check records the payment.</p>
+    {% if checks_url %}<a class="btn btn-primary btn-lg" href="{{ checks_url }}">Open the check run</a>{% else %}<span class="text-muted">The check run is not available yet.</span>{% endif %}
+</div></div>
+
+{% elif tab == 'envelopes' %}
+{% url 'accounting:payables_print_envelopes' as env_url %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="mail" class="icon"></i> Print envelopes</h6>
+    <p class="mb-2">One plain #10 envelope for each check, with the vendor's address and Proper Realty as the return address, in the same order as the checks.</p>
+    {% if env_url %}<a class="btn btn-primary btn-lg" href="{{ env_url }}">Open the envelopes</a>{% else %}<span class="text-muted">Envelopes are not available yet.</span>{% endif %}
+</div></div>
+
+{% elif tab == 'paid' %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-check" class="icon"></i> Recently paid <span class="ac-chip">{{ paid|length }}</span></h6>
+    {% for b in paid %}<div class="d-flex justify-content-between flex-wrap gap-2 py-2 {% if not forloop.first %}border-top{% endif %}"><div><a class="text-decoration-none fw-semibold" href="{% url 'accounting:bill' b.association_id b.pk %}">{{ b.payee }}</a> <span class="text-muted small">{{ b.number }} &middot; {{ b.date|mdate }} &middot; {{ b.association.name }}{% if b.bank_account %} &middot; {{ b.bank_account.label }}{% endif %}</span></div><div class="fw-semibold ac-num">{{ b.amount|money }}</div></div>
+    {% empty %}<p class="text-muted small mb-0">Nothing has been paid through here yet.</p>{% endfor %}
+</div></div>
+{% endif %}
+<script src="{% static 'js/payables.js' %}" defer></script>
+{% endblock %}

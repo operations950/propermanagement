@@ -298,7 +298,7 @@
     <th class="sep">{{ year }} Final</th></tr>
 </thead><tbody id="mbody"></tbody></table>
 </div></div>
-<div class="small text-muted mt-2">{% if not state_json.editable %}This version is frozen because the budget was approved from it. {% endif %}Amounts are shown in {% if cents %}dollars and cents{% else %}whole dollars; every total is the sum of the lines above it{% endif %}.
+<div class="small text-muted mt-2">{% if not state_json.editable %}This version is frozen because the budget was approved from it. {% else %}Lines with nothing in {{ year }} are left off; use Add a line at the bottom of a section to bring one back or add a new one and type its number. {% endif %}Amounts are shown in {% if cents %}dollars and cents{% else %}whole dollars; every total is the sum of the lines above it{% endif %}.
     <span class="ac-noprint">Board sheet: <a href="?stage={{ stage }}&sheet=1">see it</a> &middot; <a href="?stage={{ stage }}&export=pdf">PDF</a> &middot; <a href="?stage={{ stage }}&export=xlsx">Excel</a> &middot; {% if focus %}<a href="?stage=meeting">Show the menus</a>{% else %}<a href="?stage=meeting&focus=1">Full screen</a>{% endif %}</span></div>
 {{ state_json|json_script:"bd-state" }}
 <script>
@@ -317,8 +317,10 @@
     var fin = function (l) { return l.typed !== null && l.typed !== undefined ? l.typed : l.proposed; };
     var ed = S.editable;
     var cols = 7;
+    var shown = {};                       // lines with nothing in the new year that were brought back to type a number on
 
     function sectionLines(sec) { return S.rows.filter(function (r) { return r.section === sec; }); }
+    function visible(l) { return Math.abs(l.board) >= 0.005 || Math.abs(fin(l)) >= 0.005 || !!shown[l.id]; }       // a line with nothing in the new year stays off the screen
     function sum(lines, f) { return lines.reduce(function (a, l) { return a + rd(f(l)); }, 0); }
     function figures() {
         var out = {sections: {}};
@@ -343,8 +345,9 @@
     function build() {
         var F = figures(), html = '';
         S.sections.forEach(function (sec) {
-            var ls = sectionLines(sec), isInc = sec === 'Income', label = sec === 'Reserves' ? 'Reserve contributions' : sec;
-            if (!ls.length && !isInc) return;
+            var all = sectionLines(sec), ls = all.filter(visible), hid = all.filter(function (l) { return !visible(l); }), isInc = sec === 'Income', label = sec === 'Reserves' ? 'Reserve contributions' : sec;
+            var more = (S.addable && S.addable[sec]) || [];
+            if (!ls.length && !isInc && !(ed && (hid.length || more.length))) return;
             html += '<tr class="sec"><td colspan="' + cols + '">' + label + '</td></tr>';
             if (isInc) {
                 html += '<tr><td>Regular assessments <span class="bd-mut small">what the budget must collect</span></td>' + cell('rp', '', 'bud') + cell('rb', '', 'sep') + cell('rd', '') + cell('rc', '') + '<td class="sep"></td>' + cell('rf', '', 'new sep') + '</tr>';
@@ -355,6 +358,16 @@
                     '<td class="sep"><input class="bd-i" data-id="' + l.id + '" ' + (ed ? '' : 'disabled') + ' inputmode="decimal" autocomplete="off" placeholder="type final number" aria-label="Final number for ' + esc(l.name) + '"></td>' +
                     cell(l.id + 'f', '', 'new sep') + '</tr>';
             });
+            var gone = hid.filter(function (l) { return Math.abs(l.prior) >= 0.005; });
+            if (gone.length) {
+                html += '<tr><td colspan="' + cols + '" class="bd-mut small">Not in the {{ year }} budget: ' + gone.map(function (l) { return esc(l.name) + ' (' + $(rd(l.prior)) + ' last year)'; }).join(', ') + '. They are in the totals above.</td></tr>';
+            }
+            if (ed && (hid.length || more.length)) {
+                html += '<tr class="bd-addrow"><td colspan="' + cols + '"><select id="add-' + sec + '" class="form-select form-select-sm d-inline-block" style="width: auto; max-width: 360px;" aria-label="Add a line to ' + label + '"><option value="">Add a line…</option>' +
+                    hid.map(function (l) { return '<option value="L' + l.id + '">' + esc(l.name) + ' (' + l.code + ')</option>'; }).join('') +
+                    more.map(function (a) { return '<option value="A' + a.id + '">' + esc(a.label) + '</option>'; }).join('') +
+                    '</select> <button type="button" class="btn btn-sm btn-outline-secondary" data-add="' + sec + '">Add</button></td></tr>';
+            }
             html += '<tr class="tot"><td>Total ' + label.toLowerCase() + '</td>' + cell(sec + 'p', '', 'bud') + cell(sec + 'b', '', 'sep') + cell(sec + 'd', '') + cell(sec + 'c', '') + '<td class="sep"></td>' + cell(sec + 'f', '', 'new sep') + '</tr>';
         });
         html += '<tr class="grand"><td>Total expenses with reserves</td>' + cell('Xp', '', 'bud') + cell('Xb', '', 'sep') + cell('Xd', '') + cell('Xc', '') + '<td class="sep"></td>' + cell('Xf', '', 'new sep') + '</tr>';
@@ -418,6 +431,22 @@
     body.addEventListener('change', function (e) {
         var el = e.target; if (!el.matches('input[data-id]')) return;
         send({op: 'set', line: parseInt(el.dataset.id, 10), field: 'final', value: el.value});
+    });
+    function focusLine(id) { var el = document.querySelector('input[data-id="' + id + '"]'); if (el) { el.scrollIntoView({block: 'center'}); el.focus(); } }
+    body.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('button[data-add]'); if (!btn) return;
+        var sec = btn.getAttribute('data-add'), sel = document.getElementById('add-' + sec), v = sel && sel.value;
+        if (!v) return;
+        if (v.charAt(0) === 'L') { var id = parseInt(v.slice(1), 10); shown[id] = true; build(); focusLine(id); return; }           // a line that was already there, with nothing in the new year
+        var had = {}; S.rows.forEach(function (r) { had[r.id] = true; });
+        fetch(URL_, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: JSON.stringify({op: 'add', account: parseInt(v.slice(1), 10)})})
+            .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+            .then(function (x) {
+                if (!x.ok) { alert(x.j.error || 'That line could not be added.'); return; }
+                S = x.j; var fresh = null; S.rows.forEach(function (r) { if (!had[r.id]) { shown[r.id] = true; fresh = r.id; } });
+                build(); if (fresh) focusLine(fresh);
+            })
+            .catch(function () { alert('That did not save. Check the connection and try again.'); });
     });
     body.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter' || !e.target.matches('input[data-id]')) return;

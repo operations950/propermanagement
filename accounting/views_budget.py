@@ -351,6 +351,8 @@ def budget_edit(request, pk, year):
         prior = bg.prior_budget(prop, year).get(acct.pk, ZERO)
         act = bg.actuals_for(prop, info, [acct])[0].get(acct.pk, ZERO)
         line = BudgetVersionLine(version=ver, account=acct, prior_budget=prior, actual=act, recent=ZERO, method='none' if bg.is_reserve(acct) else bg.default_method(acct))
+        if ver.stage == 'meeting':            # a line added at the meeting starts at nothing: the number is whatever is typed for it
+            line.method, line.custom = 'custom', ZERO
         bg.recompute(line, info)
         line.save()
     elif op == 'remove':
@@ -517,6 +519,14 @@ def budget_packet(request, pk, year):
                 project.envelope_size = 'full' if request.POST.get('envelope_size') == 'full' else 'no10'
                 project.save(update_fields=['return_address', 'envelope_size'])
                 messages.success(request, 'Saved.')
+            elif action == 'details':                # the date, time and place of the meeting, right here (the notice needs them)
+                project.meeting_date = parse_date(request.POST.get('meeting_date'))
+                project.meeting_time = (request.POST.get('meeting_time') or '').strip()[:40]
+                project.meeting_place = (request.POST.get('meeting_place') or '').strip()[:200]
+                project.save(update_fields=['meeting_date', 'meeting_time', 'meeting_place'])
+                messages.success(request, 'The meeting details are saved.')
+                if project.notice_doc_id:
+                    messages.warning(request, 'The notice was made with the old details. Make a new one before you mail it.')
             elif action == 'notice':
                 atype = request.POST.get('association_type')
                 bp.make_notice(prop, bud, project, request.user, have, atype if atype in ('Condominium', 'Homeowners association') else None)

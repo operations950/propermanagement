@@ -63,7 +63,7 @@ def step_list(prop, year, bud, have, project):
     legacy = f['approved'] and p is None          # approved on the budget screens before the steps were tracked: nothing here to load or to chase
     done = {
         'draft': anyafter,
-        'board': final or f['meeting'] or f['approved'],
+        'board': final or notice or f['meeting'] or f['approved'],
         'mailing': notice or f['approved'],
         'mailed': mailed or f['approved'],
         'meeting': held or f['approved'],
@@ -73,7 +73,7 @@ def step_list(prop, year, bud, have, project):
     started = {
         'draft': f['draft'],
         'board': f['board'],
-        'mailing': final,
+        'mailing': final or f['board'],
         'mailed': notice,
         'meeting': mailed or f['meeting'],
         'locked': f['meeting'],
@@ -81,7 +81,7 @@ def step_list(prop, year, bud, have, project):
     }
     notes = {}
     notes['draft'] = {'todo': 'Not started.', 'doing': 'Made from the closed months. Change it until it is ready for the board.', 'done': 'Sent to the board.'}
-    notes['board'] = {'todo': 'After the draft is sent to the board.', 'doing': "Put the board's changes in, then mark it final for mailing.",
+    notes['board'] = {'todo': 'After the draft is sent to the board.', 'doing': "Put the board's changes in. When it is right, go straight on to the packet.",
                       'done': (f'Final for mailing {_d(p.final_at.date())}.' if final else 'Went on to the meeting.')}
     notes['mailing'] = {'todo': 'After the Board draft is final.', 'doing': 'Make the notice, then print the packet.',
                         'done': ('Notice made ' + _d(p.notice_doc.created_at.date()) + '.') if notice else 'Not recorded here.'}
@@ -338,7 +338,9 @@ def make_notice(prop, bud, project, user, have, association_type=None):
         raise ProjectError(' '.join(f'{k}: {v}' for k, v in errors.items()))
     doc.finalize()
     project.notice_doc, project.packet_total = doc, needed
-    project.save(update_fields=['notice_doc', 'packet_total'])
+    if project.final_at is None:                  # making the notice is the Board draft going final for mailing
+        project.final_at = timezone.now()
+    project.save(update_fields=['notice_doc', 'packet_total', 'final_at'])
     return doc
 
 

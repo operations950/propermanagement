@@ -21,10 +21,19 @@
 </div>
 <div class="ws-label">Associations</div>
 <div class="row g-2">
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:home' %}"><i data-lucide="building" class="icon"></i><span>Association books<small>Ledgers, bank reconciliations, bills, owner accounts</small></span></a></div>
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:collections_home' %}"><i data-lucide="scale" class="icon"></i><span>Owner collections<small>Late owners and where each case stands</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:home' %}"><i data-lucide="building" class="icon"></i><span>Association books<small>Ledgers, bank reconciliations, owner accounts</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:budgets' %}"><i data-lucide="calculator" class="icon"></i><span>Budgets<small>Next year's budget for each association</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:master_chart' %}"><i data-lucide="list-tree" class="icon"></i><span>Chart of accounts<small>The master list every association starts from</small></span></a></div>
+</div>
+<div class="ws-label">Accounts payable</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_home' %}"><i data-lucide="file-input" class="icon"></i><span>Payables<small>Drop invoices, review, approve</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_print_checks' %}"><i data-lucide="printer" class="icon"></i><span>Print checks<small>This week's run for every association</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_print_envelopes' %}"><i data-lucide="mail" class="icon"></i><span>Print envelopes<small>One for each check</small></span></a></div>
+</div>
+<div class="ws-label">Accounts receivable</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:collections_home' %}"><i data-lucide="scale" class="icon"></i><span>Owner collections<small>Late owners and where each case stands</small></span></a></div>
 </div>
 <div class="ws-label">Connections</div>
 <div class="row g-2">

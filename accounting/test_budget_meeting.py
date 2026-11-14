@@ -174,6 +174,30 @@ class MeetingScreenTests(TestCase):
         row = self.row(state)
         self.assertEqual((row['prior'], row['board'], row['typed'], row['proposed']), (0.0, 7200.0, None, 7200.0))
 
+    def test_the_meeting_screen_leaves_lines_with_nothing_off_and_offers_to_add_one(self):
+        r = self.client.get(self.url + '?stage=meeting')
+        html = r.content.decode()
+        for word in ('function visible(l)', 'Add a line…', 'data-add', 'Not in the 2027 budget', 'Lines with nothing in 2027 are left off'):
+            self.assertIn(word, html)
+        state = r.context['state_json']
+        self.assertTrue(state['editable'])
+        self.assertTrue(any(state['addable'].values()))                       # accounts with no line yet can be added right here
+
+    def test_a_line_added_at_the_meeting_starts_at_nothing_until_its_number_is_typed(self):
+        state = self.client.get(self.url + '?stage=meeting').context['state_json']
+        sec, options = next((k, v) for k, v in state['addable'].items() if v)
+        account = options[0]['id']
+        added = post_json(self.client, self.edit + '?stage=meeting', {'op': 'add', 'account': account})
+        self.assertEqual(added.status_code, 200)
+        row = next(x for x in added.json()['rows'] if x['code'] == options[0]['label'].split(' ')[0])
+        self.assertEqual((row['board'], row['proposed'], row['typed']), (0.0, 0.0, None))      # nothing in it until a number is typed
+        line = bg.versions(self.bud())['meeting'].lines.get(pk=row['id'])
+        typed = post_json(self.client, self.edit + '?stage=meeting', {'op': 'set', 'line': line.pk, 'field': 'final', 'value': '1,250'})
+        row = next(x for x in typed.json()['rows'] if x['id'] == line.pk)
+        self.assertEqual((row['board'], row['typed'], row['proposed']), (0.0, 1250.0, 1250.0))
+        board = bg.versions(self.bud())['board']
+        self.assertFalse(board.lines.filter(account_id=account).exists())                        # the board draft is left exactly as it was mailed
+
     def test_the_draft_and_board_screens_are_unchanged(self):
         for stage in ('draft', 'board'):
             r = self.client.get(self.url + f'?stage={stage}')
