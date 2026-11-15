@@ -14,6 +14,11 @@
     {% if contact.phone or contact.email %}
     <div class="ml-sub ml-ink">{{ contact.phone }}{% if contact.phone and contact.email %}<br>{% endif %}{{ contact.email }}</div>
     {% endif %}
+    {% if address_lines %}
+    <div class="ml-sub ml-ink">{% for line in address_lines %}{{ line }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>
+    {% elif contact.contact_type == 'vendor' %}
+    <div class="ml-sub"><a href="{% url 'contact_edit' contact.pk %}">Add a mailing address</a> (needed to print envelopes)</div>
+    {% endif %}
 
     <div class="ml-btns">
         {% if contact.phone %}<a href="tel:{{ contact.phone|tel_href }}"{% with q=contact.phone|quo_dial_url %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="ml-btn ml-btn-primary"><i data-lucide="phone" class="icon"></i> Call {{ contact.phone }}</a>{% endif %}
@@ -61,16 +66,5 @@
         <div class="ml-acc-body">{% if contact.notes %}<div class="ml-note">{{ contact.notes }}</div>{% else %}<p class="ml-sub mb-0">No notes.</p>{% endif %}</div>
     </details>
 
-    <details class="ml-acc">
-        <summary><i data-lucide="folder" class="icon"></i> Documents{% if documents %} ({{ documents|length }}){% endif %}</summary>
-        <div class="ml-acc-body">
-            {% for d in documents %}
-            <a href="{{ d.file.url }}" target="_blank" rel="noopener" class="ml-row">
-                <span class="ml-ico"><i data-lucide="file-text" class="icon"></i></span>
-                <span class="ml-main"><span class="ml-name d-block">{{ d.name }}</span><span class="ml-line d-block">{{ d.created_at|date:"M j, Y" }}</span></span>
-            </a>
-            {% empty %}<p class="ml-sub mb-0">No documents.</p>{% endfor %}
-        </div>
-    </details>
 </div>
 {% endblock %}

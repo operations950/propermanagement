@@ -155,8 +155,9 @@ class CheckFaceTests(TestCase):
             self.assertIn(needle, text)
         self.assertEqual(text.count('Check No. 237'), 2)                                        # on both stubs
         self.assertEqual(text.count('A-101'), 5)                                                # the memo on the check, then the memo line and the invoice row on each of the two stubs
-        self.assertIn('6906', text)                                                             # the books account, on the records stub
-        self.assertIn('Approved', text)                                                         # the approval line on the records stub (auto-approved here, so no name)
+        self.assertNotIn('6906', text)                                                          # no books account on the printed check or either stub
+        self.assertNotIn('BOOKS ACCOUNT', text)
+        self.assertNotIn('approved', text.lower())                                              # and no "Management approved: name" line
 
     def test_the_bank_numbers_line_is_the_micr_string_and_the_full_number_appears_only_there(self):
         text = pdf_text(self.print_checks())[0]

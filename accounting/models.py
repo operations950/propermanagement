@@ -69,6 +69,7 @@ class AssociationProfile(models.Model):
     check_stock = models.FileField(upload_to='check_stock/%Y/%m/', blank=True, storage=DocumentStorage())
     check_layout = models.JSONField(default=dict, blank=True)
     next_check_number = models.PositiveIntegerField(default=1001)
+    check_down_mm = models.DecimalField(max_digits=4, decimal_places=1, default=8, help_text='How far, in millimetres, everything on a printed check sheet is moved down, because the printer lays it on the stock a little high.')
     check_signature = models.FileField(upload_to='check_signature/%Y/%m/', blank=True, storage=DocumentStorage(), help_text='An image of the authorized signature, printed on every check from this association.')
 
     class Meta:

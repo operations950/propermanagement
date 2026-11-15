@@ -2,6 +2,7 @@
 month, a coding + reconciliation screen for one set of books' month, and — for a
 property kept unit by unit — a consolidated page that adds its units up. The rules
 live in core/ledger.py and core/recon.py."""
+import logging
 import os
 import re
 from datetime import datetime
@@ -20,6 +21,7 @@ from .models import SalesTaxFiling, SalesTaxReturn
 from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, MonthEndPayment, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
 from .views import _clean_tax_ids, _is_admin
 
+logger = logging.getLogger(__name__)
 CATEGORY_LABELS = dict(LedgerLine.Category.choices)
 
 
@@ -769,6 +771,10 @@ def close_home(request):
     today = timezone.localdate()
     month = _parse_month(request.GET.get('month'), ledger.previous_month(today))
     steps = close_steps(month, today)
+    try:
+        month_close_project.finish_done_items(month, steps)          # a step that shows done here is no longer an item on the home screen
+    except Exception:
+        logger.exception('Could not finish the month-end close items for %s', month)
     days = []
     for step in steps:
         if not days or days[-1]['day'] != step['day']:
@@ -1001,6 +1007,16 @@ def _money(raw):
         return None
 
 
+def _finish_pay_item(section, month):
+    """The payment steps are cheap to read, so the moment one is done its item on the home screen closes, without waiting for the background check."""
+    n = {'owners': 7, 'proper': 8, 'ltr_owners': 13}[section]
+    try:
+        status = month_end_payments.summary(month, month_end_payments.SECTIONS[section], 'ltr' if section == 'ltr_owners' else 'str')['status']
+        month_close_project.finish_step(n, month, status)
+    except Exception:
+        logger.exception('Could not finish the month-end close item for step %s', n)
+
+
 def _pay_page(request, section, page_title):
     """The owner payments, or the payments to Proper Realty: every rental with what is due, tick the ones being paid, and the ticked amounts add up to the one transfer in the bank."""
     today = timezone.localdate()
@@ -1046,7 +1062,9 @@ def _pay_page(request, section, page_title):
                 messages.success(request, 'Marked as booked in QuickBooks.')
         except (month_end_payments.PaymentError, ValueError) as exc:
             messages.error(request, str(exc) or 'Check the form and try again.')
+        _finish_pay_item(section, month)
         return redirect(here)
+    _finish_pay_item(section, month)
     blocks = []
     for kind in kinds:
         rws = month_end_payments.rows(month, kind, group)

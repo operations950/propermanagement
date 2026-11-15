@@ -81,10 +81,33 @@ def ensure_items(close_month, today=None):
     return made
 
 
+def finish_session(session):
+    """Mark an item's lines done and close it. True if it closed."""
+    from worksessions.models import SessionLine
+    from worksessions.services import lifecycle
+    SessionLine.objects.filter(session=session, state=SessionLine.State.PENDING).update(state=SessionLine.State.DONE, completed_at=timezone.now())
+    return lifecycle.close_if_resolved(session)
+
+
+def finish_step(n, close_month, status):
+    """The moment a step shows done on its own screen, close its item for that month, so the home screen does not keep it as work to do until the slow background check comes round.
+    Takes the step's number and the status the screen just worked out; anything but 'done' does nothing. Returns how many items it closed."""
+    from worksessions.models import Session
+    if status != 'done':
+        return 0
+    close_month = ledger.month_of(close_month)
+    sessions = Session.objects.filter(template__name__startswith=f'{PREFIX}{n}. ', status=Session.Status.OPEN, notes=f'{NOTE_KEY}{close_month:%Y-%m}').select_related('template')
+    return sum(1 for session in sessions if finish_session(session))
+
+
+def finish_done_items(close_month, steps):
+    """For the checklist, which has just worked out every step: close the item of each step that is done."""
+    return sum(finish_step(step['n'], close_month, step['status']) for step in steps)
+
+
 def sync(today=None):
     """Make the items for this month's close once its first working day has come, and finish the ones whose steps are done. Returns (made, finished)."""
-    from worksessions.models import Session, SessionLine
-    from worksessions.services import lifecycle
+    from worksessions.models import Session
     from .close_views import close_steps
     today = today or timezone.localdate()
     made = 0
@@ -108,8 +131,6 @@ def sync(today=None):
             continue
         for session in sessions:
             step = steps.get(session.template.name)
-            if step is not None and step['status'] == 'done':
-                SessionLine.objects.filter(session=session, state=SessionLine.State.PENDING).update(state=SessionLine.State.DONE, completed_at=timezone.now())
-                if lifecycle.close_if_resolved(session):
-                    finished += 1
+            if step is not None and step['status'] == 'done' and finish_session(session):
+                finished += 1
     return made, finished

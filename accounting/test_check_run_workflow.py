@@ -217,17 +217,22 @@ class EnvelopeQueueTests(Base):
 
 
 class CheckFaceTests(Base):
-    def test_the_whole_page_is_drawn_5_mm_lower_but_the_guides_stay_with_the_stock(self):
+    def test_the_whole_page_is_drawn_lower_by_the_associations_setting_but_the_guides_stay_with_the_stock(self):
         c = mock.MagicMock()
         data = checkface.sample_data(self.alpha)
+        self.assertEqual(data['down_mm'], 8)                                                 # 8 mm unless it is set otherwise
         with mock.patch.object(checkface, '_draw_face'), mock.patch.object(checkface, '_draw_stub'), mock.patch.object(checkface, '_draw_guides') as guides:
             order = []
             c.translate.side_effect = lambda *a: order.append(('translate', a))
             c.restoreState.side_effect = lambda: order.append(('restore', ()))
             guides.side_effect = lambda cc: order.append(('guides', ()))
             checkface.draw_check(c, data, guides=True)
-        self.assertEqual(order[0], ('translate', (0, -checkface.TOP_MARGIN)))
-        self.assertAlmostEqual(checkface.TOP_MARGIN, 14.17, delta=0.1)                      # 5 mm
+        self.assertEqual(order[0], ('translate', (0, -checkface.down_points(data))))
+        self.assertAlmostEqual(checkface.down_points(data), 22.68, delta=0.01)              # 8 mm
+        self.assertAlmostEqual(checkface.down_points({'down_mm': 5}), 14.17, delta=0.01)
+        self.assertEqual(checkface.down_points({'down_mm': -3}), 0)                          # never up, never more than 30 mm
+        self.assertAlmostEqual(checkface.down_points({'down_mm': 99}), 85.04, delta=0.01)
+        self.assertAlmostEqual(checkface.down_points({'down_mm': 'x'}), 22.68, delta=0.01)
         self.assertEqual([name for name, _ in order], ['translate', 'restore', 'guides'])   # the guides are drawn after the shift is undone
 
     def test_a_signature_on_file_is_drawn_on_the_check_and_none_leaves_the_line_empty(self):
@@ -291,6 +296,26 @@ class SignatureSettingsTests(Base):
         self.client.post(self.settings_url, {'action': 'signature_remove'})
         self.assertFalse(ledger.profile_for(self.alpha).check_signature)
         self.assertTrue(ledger.profile_for(self.beta).check_signature)
+
+    def position(self, mm, **extra):
+        return self.client.post(self.settings_url, {'action': 'check_position', 'down_mm': mm, **extra}, follow=True)
+
+    def test_the_check_position_is_saved_for_this_association_and_used_on_its_checks(self):
+        self.assertContains(self.client.get(self.settings_url), 'name="down_mm"')
+        r = self.position('11.5')
+        self.assertContains(r, 'print 11.5 mm lower')
+        self.assertEqual(checkface.sample_data(self.alpha)['down_mm'], D('11.5'))
+        self.assertEqual(ledger.profile_for(self.beta).check_down_mm, 8)                    # the other association is untouched
+        self.assertAlmostEqual(checkface.down_points({'down_mm': D('11.5')}), 32.6, delta=0.05)
+
+    def test_one_position_can_cover_every_association(self):
+        self.position('6', all_associations='1')
+        self.assertEqual(ledger.profile_for(self.beta).check_down_mm, 6)
+
+    def test_a_position_that_is_not_a_sensible_number_is_refused(self):
+        for bad in ('abc', '-2', '45', ''):
+            self.assertContains(self.position(bad), 'alert')
+        self.assertEqual(ledger.profile_for(self.alpha).check_down_mm, 8)
 
     def test_only_an_administrator_can_see_the_signature(self):
         self.upload()

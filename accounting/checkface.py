@@ -30,7 +30,8 @@ STUB_LEFT, STUB_RIGHT = 38.0, 574.0
 STUBS = ((262.0, 498.0), (514.0, 786.0))                               # the vendor stub and the records stub: top and bottom
 MICR_X, MICR_BASELINE = 26.0, 234.0                                    # the numbers line: 0.25 inch from the left of the face, its characters 0.25 inch above the bottom of the check
 MICR_SIZE = 12.0                                                       # E-13B: 9 points wide per character (8 to the inch), 8.4 points tall
-TOP_MARGIN = 14.2                                                      # 5 mm: the printer lays everything on the sheet a little high, so the whole page is drawn this far lower (the guides are not: they mark the stock)
+DEFAULT_DOWN_MM = 8.0                                                  # the printer lays everything on the sheet a little high, so the whole page is drawn this far lower (the guides are not: they mark the stock); each association can set its own
+MAX_DOWN_MM = 30.0
 SIGNATURE_BOX = (418.0, 152.0, 570.0, 186.0)                           # left, top, right, bottom: where the signature image goes, sitting on the signature line, clear of the seal
 FONT_DIR = Path(settings.BASE_DIR) / 'static' / 'fonts' / 'gnumicr'
 _micr_state = {}
@@ -96,24 +97,17 @@ def date_text(day):
     return f'{day:%m/%d/%Y}'
 
 
+def down_points(data):
+    """How far the whole page is drawn below where it would be, in points, from the association's setting in millimetres (never negative, never more than 30 mm)."""
+    try:
+        mm = float(data.get('down_mm', DEFAULT_DOWN_MM))
+    except (TypeError, ValueError):
+        mm = DEFAULT_DOWN_MM
+    return max(0.0, min(mm, MAX_DOWN_MM)) * 72.0 / 25.4
+
+
 def _lines(text):
     return bp.address_lines(text or '')[:3]
-
-
-def _approval_text(bills):
-    parts = []
-    for b in bills:
-        if b.approval_channel == 'board' or (b.board_approved_by and not b.approved_by_id):
-            who = f'{b.board_approved_by}' + (f' {date_text(b.board_approved_on)}' if b.board_approved_on else '')
-            text = f'Board approved: {who}'.strip().rstrip(':')
-        elif b.approved_by_id:
-            name = b.approved_by.get_full_name() or b.approved_by.get_username()
-            text = f'Management approved: {name}' + (f' {date_text(b.approved_at.date())}' if b.approved_at else '')
-        else:
-            text = 'Approved'
-        if text not in parts:
-            parts.append(text)
-    return ' | '.join(parts)
 
 
 def invoice_rows(payment):
@@ -135,14 +129,13 @@ def check_data(payment):
     bank = payment.bank_account or SimpleNamespace(payer_name='', payer_address='', bank_name='', bank_address='', routing_number='', account_number='', label='')
     profile = ledger.profile_for(assoc)
     rows = invoice_rows(payment)
-    bills = [r['bill'] for r in rows]
     memo = payment.memo or ', '.join(r['number'] for r in rows if r['number'] != '(no number)')
     return {
         'payer_name': (bank.payer_name or profile.legal_name or assoc.name).strip(), 'payer_lines': _lines(bank.payer_address),
         'bank_name': (bank.bank_name or '').strip(), 'bank_lines': _lines(bank.bank_address),
         'number': payment.number or '', 'date': date_text(payment.date), 'payee': payment.payee, 'amount': Decimal(payment.amount), 'memo': memo[:80],
         'micr': numbers_text(bank.routing_number, bank.account_number, payment.number), 'association': assoc.name, 'bank_label': bank.label,
-        'invoices': rows, 'approval': _approval_text(bills), 'test': False, 'signature': signature_bytes(profile),
+        'invoices': rows, 'test': False, 'signature': signature_bytes(profile), 'down_mm': profile.check_down_mm,
     }
 
 
@@ -159,8 +152,8 @@ def sample_data(association=None):
         'micr': numbers_text('000000000', '0000000000', '123'), 'association': association.name if association else 'Sample Association', 'bank_label': bank.label if bank else 'Operating',
         'invoices': [{'number': '1001', 'date': '10/03/2026', 'description': 'Sample invoice', 'account': '6906 Pest Control', 'amount': Decimal('734.56')},
                      {'number': '1002', 'date': '10/17/2026', 'description': 'Sample invoice', 'account': '6906 Pest Control', 'amount': Decimal('500.00')}],
-        'approval': 'Management approved: Sample Person 11/14/2026', 'test': True,
-        'signature': signature_bytes(ledger.profile_for(association)) if association is not None else None,
+        'test': True, 'signature': signature_bytes(ledger.profile_for(association)) if association is not None else None,
+        'down_mm': ledger.profile_for(association).check_down_mm if association is not None else DEFAULT_DOWN_MM,
     }
 
 
@@ -286,22 +279,20 @@ def _draw_stub(c, d, top, bottom, records):
     _text(c, right, top + 54, f'Total  ${_money(d["amount"])}', 'Helvetica-Bold', 10, 'r')
     _rule(c, left, top + 60, right, 0.6)
     head_y, first_y, step = top + 72, top + 84, 11.0
-    limit = bottom - (28 if records else 14)
+    limit = bottom - 14
     capacity = max(int((limit - first_y) // step) + 1, 1)
     rows = d['invoices']
     two_columns = len(rows) > capacity
-    heads = ((left, 'INVOICE'), (left + 90, 'DATE'), (left + 150, 'DESCRIPTION'), (345, 'BOOKS ACCOUNT')) if records else ((left, 'INVOICE'), (left + 100, 'DATE'), (left + 170, 'DESCRIPTION'))
+    heads = ((left, 'INVOICE'), (left + 100, 'DATE'), (left + 170, 'DESCRIPTION'))
     if not two_columns:
         for x, label in heads:
             _text(c, x, head_y, label, 'Helvetica-Bold', 6, color=GREY)
         _text(c, right, head_y, 'AMOUNT', 'Helvetica-Bold', 6, 'r', color=GREY)
         for i, r in enumerate(rows):
             y = first_y + i * step
-            _text(c, left, y, r['number'], 'Helvetica', 8, width=84 if records else 94)
-            _text(c, left + (90 if records else 100), y, r['date'], 'Helvetica', 8)
-            _text(c, left + (150 if records else 170), y, r['description'], 'Helvetica', 8, width=(190 if records else 330) - 8)
-            if records:
-                _text(c, 345, y, r['account'], 'Helvetica', 8, width=right - 345 - 70)
+            _text(c, left, y, r['number'], 'Helvetica', 8, width=94)
+            _text(c, left + 100, y, r['date'], 'Helvetica', 8)
+            _text(c, left + 170, y, r['description'], 'Helvetica', 8, width=330 - 8)
             _text(c, right, y, _money(r['amount']), 'Helvetica', 8, 'r')
     else:                                                      # more invoices than one column holds: two compact columns (number, date, amount)
         per_column = capacity * 2
@@ -322,9 +313,6 @@ def _draw_stub(c, d, top, bottom, records):
             col, row = divmod(per_column - 1, capacity)
             x0 = left + col * (col_w + 16)
             _text(c, x0, first_y + row * step, f'and {len(rows) - len(shown)} more invoices (see the payables list)', 'Helvetica-Oblique', 8, width=col_w)
-    if records and d['approval']:
-        _rule(c, left, bottom - 22, right, 0.4)
-        _text(c, left, bottom - 11, d['approval'], 'Helvetica', 8, width=right - left)
 
 
 def _draw_guides(c):
@@ -355,7 +343,7 @@ def _draw_guides(c):
 def draw_check(c, data, guides=False):
     """One sheet: the check face, the vendor stub and the records stub, on a letter page that is already set up on the canvas."""
     c.saveState()
-    c.translate(0, -TOP_MARGIN)                                                       # everything lower by 5 mm; the stock guides below stay where the stock is
+    c.translate(0, -down_points(data))                                                # everything lower by the association's setting; the stock guides below stay where the stock is
     _draw_face(c, data)
     _draw_stub(c, data, STUBS[0][0], STUBS[0][1], records=False)
     _draw_stub(c, data, STUBS[1][0], STUBS[1][1], records=True)

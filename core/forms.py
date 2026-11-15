@@ -67,6 +67,14 @@ class ContactForm(forms.ModelForm):
         choices=SECONDARY_TYPE_CHOICES, required=False, label='Also (optional)',
     )
 
+    # A vendor's mailing address (where its check is mailed, and what an envelope prints) lives on accounting's VendorProfile, one per vendor contact. These are plain form fields,
+    # not model fields: they are read from that profile when the form opens and written back to it on save, for a Vendor only.
+    street = forms.CharField(max_length=200, required=False, label='Street')
+    city = forms.CharField(max_length=100, required=False, label='City')
+    state = forms.CharField(max_length=2, required=False, label='State')
+    zip_code = forms.CharField(max_length=10, required=False, label='ZIP')
+    ADDRESS_FIELDS = ('street', 'city', 'state', 'zip_code')
+
     class Meta:
         model = Contact
         fields = ['name', 'contact_type', 'trade', 'phone', 'email', 'properties', 'units', 'notes']
@@ -83,6 +91,11 @@ class ContactForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance and self.instance.pk:
             self.fields['secondary_types'].initial = self.instance.secondary_types
+            from accounting.models import VendorProfile
+            profile = VendorProfile.objects.filter(contact=self.instance).first()
+            if profile is not None:
+                for name in self.ADDRESS_FIELDS:
+                    self.fields[name].initial = getattr(profile, name)
         # 'Staff' is admin-only (see core/views.py::staff_create) — this form
         # never offers it for a contact that isn't already that type, but an
         # existing Staff contact still needs to render correctly (and stay
@@ -124,13 +137,32 @@ class ContactForm(forms.ModelForm):
                 )
         return cleaned
 
+    def clean_state(self):
+        return (self.cleaned_data.get('state') or '').strip().upper()
+
     def save(self, commit=True):
         contact = super().save(commit=False)
         contact.secondary_types = self.cleaned_data.get('secondary_types') or []
         if commit:
             contact.save()
             self.save_m2m()
+            self._save_address(contact)
         return contact
+
+    def _save_address(self, contact):
+        """A vendor's address goes to its VendorProfile (made if there is something to keep). Other kinds of contact leave any profile as it was."""
+        if contact.contact_type != Contact.ContactType.VENDOR:
+            return
+        from accounting.models import VendorProfile
+        values = {name: (self.cleaned_data.get(name) or '').strip() for name in self.ADDRESS_FIELDS}
+        profile = VendorProfile.objects.filter(contact=contact).first()
+        if profile is None:
+            if any(values.values()):
+                VendorProfile.objects.create(contact=contact, **values)
+            return
+        for name, value in values.items():
+            setattr(profile, name, value)
+        profile.save(update_fields=list(values))
 
 
 class StaffCreateForm(forms.Form):

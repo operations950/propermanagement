@@ -287,6 +287,22 @@ def settings(request, pk):
                     messages.success(request, 'The signature is saved and will print on the checks of every association.')
                 else:
                     messages.success(request, 'The signature is saved and will print on this association\'s checks.')
+            elif action == 'check_position':
+                try:
+                    mm = Decimal((request.POST.get('down_mm') or '').strip())
+                except ArithmeticError:
+                    raise ValueError('Type how many millimetres, for example 8.')
+                if not 0 <= mm <= Decimal(str(checkface.MAX_DOWN_MM)):
+                    raise ValueError(f'Between 0 and {checkface.MAX_DOWN_MM:g} millimetres.')
+                mm = mm.quantize(Decimal('0.1'))
+                from .models import AssociationProfile
+                if request.POST.get('all_associations'):
+                    AssociationProfile.objects.update(check_down_mm=mm)
+                    messages.success(request, f'Checks of every association will print {mm:g} mm lower.')
+                else:
+                    profile.check_down_mm = mm
+                    profile.save(update_fields=['check_down_mm'])
+                    messages.success(request, f'This association\'s checks will print {mm:g} mm lower.')
             elif action == 'signature_remove':
                 profile.check_signature = ''
                 profile.save(update_fields=['check_signature'])

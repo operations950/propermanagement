@@ -73,6 +73,17 @@
                 {% if form.email.errors %}<div class="invalid-feedback d-block">{{ form.email.errors|join:', ' }}</div>{% endif %}
             </div>
 
+            <div class="mb-4" id="address-field" hidden>
+                <label class="form-label fw-medium" for="id_street">Mailing address <span class="fw-normal" style="color: var(--ink-muted);">(where we mail their checks)</span></label>
+                <input type="text" name="street" id="id_street" class="form-control mb-2 {% if form.street.errors %}is-invalid{% endif %}" placeholder="Street" autocomplete="street-address" value="{{ form.street.value|default:'' }}">
+                <div class="row g-2">
+                    <div class="col-6"><input type="text" name="city" id="id_city" class="form-control" placeholder="City" value="{{ form.city.value|default:'' }}"></div>
+                    <div class="col-2"><input type="text" name="state" id="id_state" class="form-control text-uppercase" placeholder="FL" maxlength="2" value="{{ form.state.value|default:'' }}"></div>
+                    <div class="col-4"><input type="text" name="zip_code" id="id_zip_code" class="form-control" placeholder="ZIP" maxlength="10" inputmode="numeric" value="{{ form.zip_code.value|default:'' }}"></div>
+                </div>
+                {% if form.street.errors or form.city.errors or form.state.errors or form.zip_code.errors %}<div class="text-danger small mt-1">{{ form.street.errors|join:', ' }} {{ form.city.errors|join:', ' }} {{ form.state.errors|join:', ' }} {{ form.zip_code.errors|join:', ' }}</div>{% endif %}
+            </div>
+
             <div class="mb-4">
                 <label class="form-label fw-medium d-block">Properties <span class="fw-normal" style="color: var(--ink-muted);">(optional — a contact can be on more than one, e.g. a board member)</span></label>
                 <div class="bubble-picker" data-bubble-picker data-mode="drilldown-multi" data-name="properties" data-initial-values="{{ selected_property_ids }}">
@@ -177,52 +188,6 @@
     </div>
 </div>
 
-{% if not is_new %}
-<div class="card mb-3" style="max-width: 640px; border-radius: var(--bs-border-radius-lg);">
-    <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> Documents</h6>
-        {% for doc in documents %}
-        <div class="d-flex justify-content-between align-items-start py-1 border-top">
-            <a href="{{ doc.file.url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ doc.name }}</a>
-            <form method="post" onsubmit="return confirm('Remove &quot;{{ doc.name|escapejs }}&quot;?');">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="delete_document">
-                <input type="hidden" name="document_id" value="{{ doc.pk }}">
-                <button class="btn btn-link btn-sm text-danger p-0 flex-shrink-0" type="submit"><i data-lucide="x" class="icon"></i></button>
-            </form>
-        </div>
-        {% empty %}
-        <p class="text-muted small mb-2">No documents uploaded yet.</p>
-        {% endfor %}
-        <form method="post" enctype="multipart/form-data" class="row g-2 mt-1 align-items-end">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="add_document">
-            <div class="col-12 col-sm-5">
-                <input type="text" name="name" class="form-control form-control-sm" placeholder="Document name" required>
-            </div>
-            <div class="col-12 col-sm-6">
-                <input type="file" name="file" class="form-control form-control-sm" required>
-            </div>
-            <div class="col-12 col-sm-1">
-                <button class="btn btn-outline-secondary btn-sm w-100" type="submit"><i data-lucide="plus" class="icon"></i></button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div class="card mb-3" style="max-width: 640px; border-radius: var(--bs-border-radius-lg);">
-    <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clipboard-check" class="icon"></i> Processes</h6>
-
-        {% for run in process_runs %}
-        {% include "processes/_run_card.html" with run=run %}
-        {% endfor %}
-
-        {% include "processes/_attach_form.html" with target_type="contact" target_id=contact.pk has_runs=process_runs %}
-    </div>
-</div>
-{% endif %}
-
 <script>
 (function () {
     var typePicker = document.querySelector('.bubble-picker[data-name="contact_type"]');
@@ -231,10 +196,13 @@
     var tradeHidden = document.getElementById('id_trade');
     var otherInput = document.getElementById('trade-other-input');
     var secondaryTypesField = document.getElementById('secondary-types-field');
+    var addressField = document.getElementById('address-field');
 
     function applyType(value) {
         var wasVendor = !tradeField.hidden;
         tradeField.hidden = value !== 'vendor';
+        // The mailing address is a vendor's: it is where their checks and envelopes go.
+        addressField.hidden = value !== 'vendor';
         // Vendor/Contractor stays single-type — see ContactForm.clean().
         secondaryTypesField.hidden = value === 'vendor';
         // Clear a previously-picked trade the moment Type moves away from

@@ -160,6 +160,16 @@
             {% if profile.check_signature %}<button class="btn btn-sm btn-outline-secondary" name="action" value="signature_remove" formnovalidate onclick="return confirm('Take the signature off this association\'s checks?')">Remove</button><a class="small" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ assoc.pk }}">Test print</a>{% endif %}
         </form>
     </div>
+    <div class="mt-2 pt-2 border-top" id="check-position">
+        <div class="small fw-semibold d-flex align-items-center gap-2 mb-1">Check position {% include '_tip.html' with text='Everything on the sheet is printed this far lower, because the printer lays it on the stock a little high. Print a test check on the blank stock and raise or lower this until it sits right. The alignment guides do not move.' %}</div>
+        <form method="post" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}
+            <label class="small mb-0" for="down-mm">Move down</label>
+            <input type="number" id="down-mm" name="down_mm" value="{{ profile.check_down_mm|floatformat:'-1' }}" min="0" max="30" step="0.5" class="form-control form-control-sm" style="width: 5.5rem;" aria-label="Millimetres down"> <span class="small">mm</span>
+            <label class="small mb-0"><input type="checkbox" class="form-check-input me-1" name="all_associations" value="1"> Every association</label>
+            <button class="btn btn-sm btn-outline-primary" name="action" value="check_position">Save</button>
+            <a class="small" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ assoc.pk }}">Test print</a>
+        </form>
+    </div>
     <details class="mt-2 pt-2 border-top"><summary class="small" style="cursor: pointer;">Add a bank account</summary>
         <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="bank">
             <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Name, e.g. Operating" required></div><div class="col-md-3"><input class="form-control form-control-sm" name="bank_name" placeholder="Bank"></div>

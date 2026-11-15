@@ -1866,26 +1866,6 @@ def contact_create(request):
 def contact_edit(request, pk):
     contact = get_object_or_404(Contact, pk=pk)
     if request.method == 'POST':
-        action = request.POST.get('action')
-        if action == 'add_document':
-            name = request.POST.get('name', '').strip()
-            file = request.FILES.get('file')
-            if not (name and file):
-                messages.error(request, 'A name and a file are both required.')
-            elif file.content_type not in django_settings.PROCESS_ATTACHMENT_ALLOWED_CONTENT_TYPES:
-                messages.error(request, 'That file type isn\'t allowed — photos, PDFs, Word, or Excel files only.')
-            elif file.size > django_settings.PROCESS_ATTACHMENT_MAX_BYTES:
-                max_mb = django_settings.PROCESS_ATTACHMENT_MAX_BYTES // (1024 * 1024)
-                messages.error(request, f'File is too large (max {max_mb}MB).')
-            else:
-                ContactDocument.objects.create(contact=contact, name=name, file=file, uploaded_by=request.user)
-                messages.success(request, 'Document added.')
-            return redirect('contact_edit', pk=contact.pk)
-        elif action == 'delete_document':
-            ContactDocument.objects.filter(pk=request.POST.get('document_id'), contact=contact).delete()
-            messages.success(request, 'Removed.')
-            return redirect('contact_edit', pk=contact.pk)
-
         form = ContactForm(request.POST, instance=contact)
         if form.is_valid():
             form.save()
@@ -1893,18 +1873,19 @@ def contact_edit(request, pk):
             return redirect('contact_list')
     else:
         form = ContactForm(instance=contact)
+    # The documents and process runs are no longer shown on this screen, but deleting the contact deletes them, so the Delete button's warning still counts them.
     return render(request, 'core/contact_form.html', _contact_form_context(
-        form, is_new=False, contact=contact, documents=contact.documents.all(),
-        process_runs=contact.process_runs.select_related('process_template').prefetch_related('steps__attachments'),
-        attachable_process_templates=ProcessTemplate.objects.filter(is_active=True),
+        form, is_new=False, contact=contact, documents=contact.documents.all(), process_runs=contact.process_runs.all(),
     ))
 
 
 @login_required
 def contact_detail(request, pk):
-    """A contact at a glance: who they are, one tap to call / text / email, where they sit (properties and units), their open tickets, notes and documents.
+    """A contact at a glance: who they are, one tap to call / text / email, a vendor's mailing address, where they sit (properties and units), their open tickets and notes.
     Read-only: the phone list opens this, and its Edit button goes to the edit page."""
-    contact = get_object_or_404(Contact.objects.prefetch_related('properties', 'documents'), pk=pk)
+    contact = get_object_or_404(Contact.objects.prefetch_related('properties'), pk=pk)
+    from accounting.models import VendorProfile
+    profile = VendorProfile.objects.filter(contact=contact).first()
     tickets = (
         Ticket.objects.filter(status__in=OPEN_STATUSES)
         .filter(Q(assigned_contact=contact) | Q(ticket_contacts__contact=contact))
@@ -1915,7 +1896,7 @@ def contact_detail(request, pk):
         'properties': list(contact.properties.all()),
         'units': list(contact.units.select_related('property').order_by('property__name', 'label')),
         'open_tickets': list(tickets),
-        'documents': list(contact.documents.all()),
+        'address_lines': profile.address_lines if profile else [],
     })
 
 

@@ -242,6 +242,41 @@ class MonthCloseProjectTests(TestCase):
         done = set(Session.objects.filter(status='submitted').values_list('template__name', flat=True))
         self.assertEqual(done, {'Month-end close: 1. Bank tie-out', 'Month-end close: 2. Misc trust account'})
 
+    def open_items(self):
+        from worksessions.models import Session
+        return set(Session.objects.filter(status='open', template__name__startswith=month_close_project.PREFIX).values_list('template__name', flat=True))
+
+    def test_opening_the_checklist_closes_the_items_of_the_steps_it_shows_done(self):
+        from . import close_views
+        month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
+        real = close_views.close_steps
+
+        def fake(month, today=None):
+            steps = real(month, today)
+            for s in steps:
+                s['status'] = 'done' if s['n'] == 13 else 'not_started'
+            return steps
+        with mock.patch.object(close_views, 'close_steps', fake):
+            self.assertEqual(self.client.get(reverse('close_home') + '?month=2026-10').status_code, 200)
+        self.assertNotIn('Month-end close: 13. Pay long-term owners', self.open_items())
+        self.assertEqual(len(self.open_items()), 12)
+
+    def test_a_payment_step_that_is_done_closes_its_item_the_moment_its_page_is_opened(self):
+        from . import close_views
+        month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
+        with mock.patch.object(close_views.month_end_payments, 'summary', return_value={'status': 'done', 'detail': '3 of 3 paid or held.', 'open': 0}):
+            self.client.get(reverse('close_pay_ltr_owners') + '?month=2026-10')
+        self.assertNotIn('Month-end close: 13. Pay long-term owners', self.open_items())
+        self.assertIn('Month-end close: 7. Pay owners', self.open_items())                       # only its own step
+
+    def test_a_step_that_is_not_done_leaves_its_item_open_and_other_months_are_left_alone(self):
+        month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
+        self.assertEqual(month_close_project.finish_step(13, date(2026, 10, 1), 'attention'), 0)
+        self.assertEqual(month_close_project.finish_step(13, date(2026, 9, 1), 'done'), 0)
+        self.assertIn('Month-end close: 13. Pay long-term owners', self.open_items())
+        self.assertEqual(month_close_project.finish_step(13, date(2026, 10, 1), 'done'), 1)
+        self.assertEqual(month_close_project.finish_step(13, date(2026, 10, 1), 'done'), 0)       # once
+
     def test_the_pages_open(self):
         for name in ('close_home', 'close_rent_collection', 'close_sales_tax', 'close_pay_ltr_owners', 'close_pay_owners'):
             self.assertEqual(self.client.get(reverse(name) + '?month=2026-10').status_code, 200, name)
