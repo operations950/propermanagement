@@ -17,6 +17,7 @@ import csv
 import io
 import logging
 import re
+from collections import Counter
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from itertools import combinations
@@ -180,7 +181,22 @@ def parse_statement_found(found):
     return parsed
 
 
-def read_pdf_statement(data):
+def _printed_account_tails(data, wanted):
+    """Which of the wanted last 4s the file itself prints as the end of an account number ("Account Number: 000004406333635"). Read from the PDF's own text, not by the reader, so it is
+    an independent check on what the reader reports. A scan with no text, or a bank that prints no such label, says nothing (an empty set)."""
+    if not wanted:
+        return set()
+    try:
+        from pypdf import PdfReader
+        text = ' '.join((p.extract_text() or '') for p in PdfReader(io.BytesIO(data)).pages)
+    except Exception:
+        return set()
+    tails = {m[-4:] for m in re.findall(r'(?:account|acct)[^\d\n]{0,40}(\d{6,})', text, flags=re.IGNORECASE)}
+    return {w for w in wanted if w in tails}
+
+
+def _ask_reader(data, hint=''):
+    """One reading of a PDF statement by Claude, as the raw {'period_end', 'accounts'} answer."""
     if not settings.ANTHROPIC_API_KEY:
         raise StatementError('Reading a PDF statement needs the Claude connection, which is not set up. Upload the bank\'s CSV download instead.')
     import anthropic
@@ -193,24 +209,43 @@ def read_pdf_statement(data):
                 {'type': 'document', 'source': {'type': 'base64', 'media_type': 'application/pdf', 'data': base64.b64encode(data).decode()}},
                 {'type': 'text', 'text': 'This is a bank statement. It may hold more than one account (for example a checking account and a money market savings account in one combined PDF): '
                                          'report each account separately, with the last four digits of its account number, its own beginning and ending balance, and only the transactions printed in '
-                                         "that account's own section. A page that only adds the accounts together is not an account. For each account list EVERY transaction (each check, each debit, "
+                                         "that account's own section. A page that only adds the accounts together (a consolidated or combined balance summary with a Total line) is not an account: "
+                                         'never report it, and never put one account\'s transactions under another. For each account list EVERY transaction (each check, each debit, '
                                          'each deposit and credit, interest, fees) exactly as printed, one line each, with the check number for checks. Do not combine lines. '
-                                         'Money out is negative, money in is positive.'}]}])
+                                         'Money out is negative, money in is positive.' + hint}]}])
     except Exception:
         logger.exception('Claude could not read the bank statement')
         raise StatementError('The statement could not be read right now. Upload the bank\'s CSV download, or try again.')
     block = next((b for b in message.content if b.type == 'tool_use'), None)
     if block is None:
         raise StatementError('Nothing could be read from that statement.')
-    return parse_statement_found(block.input)
+    return block.input
 
 
-def read_statement(name, data):
+def read_pdf_statement(data, known=None):
+    """Read a PDF statement. `known` is the association's bank accounts as [(last4, name)]: they are told to the reader, and the file's own printed account numbers are used to check the
+    answer, so a combined statement read as one account is read again, and refused if it still is, instead of being filed on the wrong account."""
+    known = [(l4, n) for l4, n in (known or []) if l4]
+    hint = (' The association has these bank accounts: ' + '; '.join(f'{n} (ending {l4})' for l4, n in known) + '. A statement may hold several of them.') if known else ''
+    printed = _printed_account_tails(data, [l4 for l4, _ in known])
+    parsed = parse_statement_found(_ask_reader(data, hint))
+    missing = sorted(printed - {s['last4'] for s in parsed['accounts']})
+    if missing:
+        again = ' The file prints account numbers ending ' + ', '.join(sorted(printed)) + ': report a separate account for each, each with its own beginning and ending balance and only its own transactions.'
+        parsed = parse_statement_found(_ask_reader(data, hint + again))
+        missing = sorted(printed - {s['last4'] for s in parsed['accounts']})
+        if missing:
+            raise StatementError('That file prints the account ending ' + ' and '.join(missing) + ' but it could not be read as its own account, so nothing was filed (a combined statement must not be filed as one '
+                                 'account). Try again, or upload the bank\'s CSV download.')
+    return parsed
+
+
+def read_statement(name, data, known=None):
     ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
     if ext == 'csv':
         return read_csv_statement(data), 'csv'
     if ext == 'pdf':
-        return read_pdf_statement(data), 'claude'
+        return read_pdf_statement(data, known), 'claude'
     raise StatementError('Upload the statement as a PDF or a CSV.')
 
 
@@ -236,6 +271,11 @@ def import_statement(bank_account, parsed, file=None, read_by='csv', end_balance
     return st
 
 
+def known_accounts(association):
+    """[(last 4, name)] of the association's bank accounts that have a last 4: what the reader is told, and what it is checked against."""
+    return [(b.last4, b.name) for b in BankAccount.objects.filter(association=association, is_active=True) if b.last4]
+
+
 def _where(section):
     return (section.get('name') or 'an account') + (f' ending {section["last4"]}' if section.get('last4') else '')
 
@@ -255,10 +295,12 @@ def file_statement(bank_account, parsed, file=None, read_by='csv', end_balance=N
         sec = sections[0]
         target = bank_account
         last4 = sec.get('last4') or ''
-        if last4 and bank_account.last4 != last4:
+        if last4 and bank_account.last4 and bank_account.last4 != last4:
             others = [b for b in banks if b.pk != bank_account.pk and b.last4 == last4]
-            if len(others) == 1:
-                target, moved = others[0], True
+            if len(others) != 1:
+                raise StatementError(f'That statement is for the account ending {last4}, not {bank_account.label} (ending {bank_account.last4}), and no other bank account of this association ends in '
+                                     f'{last4}. Nothing was filed. Upload it from the right bank account, or put the right last 4 on the bank account in the settings.')
+            target, moved = others[0], True
         plan.append((target, sec))
     else:
         if end_balance not in (None, ''):
@@ -274,6 +316,15 @@ def file_statement(bank_account, parsed, file=None, read_by='csv', end_balance=N
         if not plan:
             raise StatementError(f'That statement holds {len(sections)} accounts ({"; ".join(_where(s) for s in sections)}) and none matches a bank account of this association by its last 4 digits. '
                                  'Put each bank account\'s last 4 in the settings, then upload the statement again.')
+    warnings = []
+    replaced = {t.pk for t, _ in plan}
+    for target, sec in plan:
+        twin = _filed_on_another_account(target, sec, replaced)
+        if twin is not None:
+            other, common = twin
+            raise StatementError(f'This looks like the statement already filed on {other.bank_account.label} for {other.period_end:%B %Y}: the same ' + (f'{common} lines' if common else 'balances') +
+                                 f' came up for {target.label}. Nothing was filed. A statement that holds several accounts has to be read one account at a time; try the upload again, or upload the bank\'s CSV.')
+        warnings += _balance_notes(target, sec)
     filed, stored = [], None
     for target, sec in plan:
         if file is not None and hasattr(file, 'seek'):
@@ -288,7 +339,42 @@ def file_statement(bank_account, parsed, file=None, read_by='csv', end_balance=N
             st.file.name = stored                                   # the one stored file is behind every statement filed from it
             st.save(update_fields=['file'])
         filed.append((target, st, sec))
-    return {'filed': filed, 'skipped': skipped, 'moved': moved, 'multi': len(sections) > 1}
+    return {'filed': filed, 'skipped': skipped, 'moved': moved, 'multi': len(sections) > 1, 'warnings': warnings}
+
+
+def _filed_on_another_account(target, sec, replaced):
+    """(statement, number of lines in common) if what was read for `target` is the same statement as one already filed on a DIFFERENT bank account of the association for about the same
+    period: mostly the same dated lines, or the same beginning and ending balance. Accounts about to be replaced by this same upload are left out. A real account never has another account's
+    lines; this is what a combined statement read as one account looks like."""
+    day = sec['period_end']
+    lines = sec.get('lines') or []
+    mine = Counter((l['date'], ledger.money(l['amount'])) for l in lines)
+    begin, end = sec.get('begin_balance'), sec.get('end_balance')
+    others = (BankStatement.objects.filter(bank_account__association_id=target.association_id, period_end__gte=day - timedelta(days=5), period_end__lte=day + timedelta(days=5))
+              .exclude(bank_account_id__in=replaced).select_related('bank_account').prefetch_related('lines'))
+    for st in others:
+        common = sum((mine & Counter((l.date, l.amount) for l in st.lines.all())).values())
+        same_lines = len(lines) >= 3 and common >= 0.8 * len(lines)
+        same_balances = begin is not None and end and st.begin_balance is not None and begin == st.begin_balance and end == st.end_balance
+        if same_lines or same_balances:
+            return st, common
+    return None
+
+
+def _balance_notes(target, sec):
+    """Things worth a person's look, never a refusal: the statement does not begin where the last one on file ended, or its lines do not add up to its own balances."""
+    notes = []
+    begin, end, day = sec.get('begin_balance'), sec.get('end_balance'), sec['period_end']
+    if begin is not None:
+        prev = (BankStatement.objects.filter(bank_account=target, period_end__lt=day - timedelta(days=15), period_end__gte=day - timedelta(days=50)).order_by('-period_end').first())
+        if prev is not None and ledger.money(prev.end_balance) != ledger.money(begin):
+            notes.append(f'{target.label}: this statement begins at ${ledger.money(begin):,.2f} but the last one on file ended at ${prev.end_balance:,.2f}. Make sure it is the right account.')
+    lines = sec.get('lines') or []
+    if begin is not None and end is not None and lines:
+        total = sum((ledger.money(l['amount']) for l in lines), ZERO)
+        if ledger.money(begin) + total != ledger.money(end):
+            notes.append(f'{target.label}: the {len(lines)} lines add up to ${total:,.2f}, but the statement\'s balances move by ${ledger.money(end) - ledger.money(begin):,.2f}. A line may have been missed or misread.')
+    return notes
 
 
 def split_combined_statement(statement):
@@ -303,7 +389,7 @@ def split_combined_statement(statement):
         data = statement.file.read()
     finally:
         statement.file.close()
-    parsed = read_pdf_statement(data)
+    parsed = read_pdf_statement(data, known_accounts(statement.bank_account.association))
     return file_statement(statement.bank_account, parsed, file=ContentFile(data, name=statement.file.name.rsplit('/', 1)[-1] or 'statement.pdf'), read_by='claude')
 
 

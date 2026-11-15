@@ -50,6 +50,8 @@ def _after_upload(request, prop, acct, result):
         messages.success(request, text)
         if shown is None or target.pk == acct.pk:
             shown = (target, month)
+    for note in result.get('warnings', []):
+        messages.warning(request, note)
     for sec in result['skipped']:
         messages.warning(request, f'Not filed: {_where_text(sec)} ({len(sec["lines"])} lines). No bank account of {prop.name} has that last 4. Put its last 4 on the right bank account in the settings, then upload the file again.')
     return _go('bank', prop.pk, shown[0].pk, f'{shown[1]:%Y-%m}')
@@ -75,7 +77,7 @@ def bank(request, pk, bank_pk, month):
                 if f is None:
                     raise bankrec.StatementError('Choose the statement file.')
                 data = f.read()
-                parsed, how = bankrec.read_statement(f.name, data)
+                parsed, how = bankrec.read_statement(f.name, data, bankrec.known_accounts(prop))
                 typed = (request.POST.get('end_balance') or '').strip()
                 f.seek(0)
                 result = bankrec.file_statement(acct, parsed, file=f, read_by=how, end_balance=parse_money(typed) if typed else None)

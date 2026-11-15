@@ -1,3 +1,4 @@
+import io
 import shutil
 import tempfile
 from datetime import date
@@ -77,6 +78,71 @@ class ReadingEveryAccountTests(TestCase):
             bankrec.import_statement(None, parsed)
 
 
+def pdf_printing(*lines):
+    """A tiny real PDF whose text layer holds the given lines, the way a bank's statement prints its account numbers."""
+    from reportlab.pdfgen import canvas
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf)
+    for i, text in enumerate(lines):
+        c.drawString(72, 750 - 16 * i, text)
+    c.save()
+    return buf.getvalue()
+
+
+CHASE = pdf_printing('Primary Account: 000008311564418', 'Chase Business Complete Checking 000008311564418 $24,176.66', 'Chase Business Total Savings 000004406333635 42,114.48',
+                     'Account Number: 000004406333635')
+CHECKING_SECTION = {'account_name': 'Complete Checking', 'last4': '4418', 'begin_balance': 24176.66, 'end_balance': 23238.19, 'lines': [{'date': '2026-10-05', 'description': 'Deposit', 'amount': 1788.98}]}
+SAVINGS_SECTION = {'account_name': 'Total Savings', 'last4': '3635', 'begin_balance': 42114.48, 'end_balance': 44082.83, 'lines': [{'date': '2026-10-30', 'description': 'Interest Payment', 'amount': 0.35}]}
+KNOWN = [('4418', 'Operating'), ('3635', 'Reserve')]
+
+
+class ReadingChecksAgainstTheFileTests(TestCase):
+    """A combined statement read as one account is caught by the account numbers the file itself prints, and read again."""
+
+    def read(self, answers, data=CHASE, known=KNOWN):
+        with mock.patch.object(bankrec, '_ask_reader', side_effect=answers) as ask:
+            return bankrec.read_pdf_statement(data, known), ask
+
+    def test_the_file_prints_which_of_our_accounts_it_holds(self):
+        self.assertEqual(bankrec._printed_account_tails(CHASE, ['4418', '3635', '1111']), {'4418', '3635'})
+        self.assertEqual(bankrec._printed_account_tails(b'%PDF-not really', ['4418']), set())            # an unreadable file says nothing
+        self.assertEqual(bankrec._printed_account_tails(pdf_printing('Trace# 111924687247431'), ['7431']), set())   # a stray number is not an account number
+
+    def test_the_reader_is_told_the_associations_accounts(self):
+        _, ask = self.read([{'period_end': '2026-10-30', 'accounts': [CHECKING_SECTION, SAVINGS_SECTION]}])
+        self.assertIn('Operating (ending 4418)', ask.call_args.args[1])
+        self.assertIn('Reserve (ending 3635)', ask.call_args.args[1])
+
+    def test_a_correct_reading_is_used_after_one_ask(self):
+        parsed, ask = self.read([{'period_end': '2026-10-30', 'accounts': [CHECKING_SECTION, SAVINGS_SECTION]}])
+        self.assertEqual(ask.call_count, 1)
+        self.assertEqual([s['last4'] for s in parsed['accounts']], ['4418', '3635'])
+
+    def test_a_combined_statement_read_as_one_account_is_read_again(self):
+        merged = {'period_end': '2026-10-30', 'accounts': [dict(CHECKING_SECTION, begin_balance=66291.14, end_balance=67321.02)]}
+        parsed, ask = self.read([merged, {'period_end': '2026-10-30', 'accounts': [CHECKING_SECTION, SAVINGS_SECTION]}])
+        self.assertEqual(ask.call_count, 2)
+        self.assertIn('prints account numbers ending 3635, 4418', ask.call_args.args[1])
+        self.assertEqual([s['last4'] for s in parsed['accounts']], ['4418', '3635'])
+
+    def test_if_it_is_still_read_as_one_account_nothing_is_filed(self):
+        merged = {'period_end': '2026-10-30', 'accounts': [CHECKING_SECTION]}
+        with self.assertRaises(bankrec.StatementError) as ctx:
+            self.read([merged, merged])
+        self.assertIn('3635', str(ctx.exception))
+
+    def test_a_file_that_prints_no_account_number_is_read_once_as_before(self):
+        parsed, ask = self.read([{'period_end': '2026-10-30', 'accounts': [CHECKING_SECTION]}], data=pdf_printing('Statement of activity'))
+        self.assertEqual(ask.call_count, 1)
+
+    def test_only_accounts_with_a_last_4_are_told_to_the_reader(self):
+        a = BankAccount.objects.none()
+        prop = make_assoc('Lakeside Point 8')
+        BankAccount.objects.create(association=prop, name='Operating', last4='4418', account=ledger.account(prop, '1110'))
+        BankAccount.objects.create(association=prop, name='No digits yet', account=ledger.account(prop, '1120'))
+        self.assertEqual(bankrec.known_accounts(prop), [('4418', 'Operating')])
+
+
 class FilingEachAccountTests(TestCase):
     def setUp(self):
         self.media = tempfile.mkdtemp()
@@ -139,10 +205,75 @@ class FilingEachAccountTests(TestCase):
         self.assertEqual(result['filed'][0][0].pk, self.savings.pk)
         self.assertEqual(BankStatement.objects.filter(bank_account=self.checking).count(), 0)
 
-    def test_one_account_with_no_matching_last_4_stays_where_it_was_uploaded(self):
+    def test_one_account_with_a_last_4_no_bank_account_has_is_refused_not_filed_by_guessing(self):
         odd = bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [dict(COMBINED['accounts'][0], last4='1234')]})
-        result = bankrec.file_statement(self.checking, odd, file=upload(), read_by='claude')
+        with self.assertRaises(bankrec.StatementError) as ctx:
+            bankrec.file_statement(self.checking, odd, file=upload(), read_by='claude')
+        self.assertIn('account ending 1234', str(ctx.exception))
+        self.assertEqual(BankStatement.objects.count(), 0)
+
+    def test_one_account_with_no_last_4_printed_stays_where_it_was_uploaded(self):
+        blank = bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [dict(COMBINED['accounts'][0], last4='')]})
+        result = bankrec.file_statement(self.checking, blank, file=upload(), read_by='claude')
         self.assertEqual((result['moved'], result['filed'][0][0].pk), (False, self.checking.pk))
+
+    def test_a_bank_account_with_no_last_4_set_takes_what_it_is_given(self):
+        self.checking.last4 = ''
+        self.checking.save()
+        one = bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [COMBINED['accounts'][0]]})
+        result = bankrec.file_statement(self.checking, one, file=upload(), read_by='claude')
+        self.assertEqual(result['filed'][0][0].pk, self.checking.pk)
+
+    def test_the_same_lines_read_for_a_second_account_are_refused_as_a_duplicate(self):
+        """Lakeside 8: a combined statement was read as one account and filed on both bank accounts with the same lines."""
+        lines = COMBINED['accounts'][0]['lines'] + [{'date': '2026-10-20', 'description': 'DEPOSIT', 'amount': 5}, {'date': '2026-10-21', 'description': 'DEPOSIT', 'amount': 6}]
+        first = dict(COMBINED['accounts'][0], lines=lines)
+        bankrec.file_statement(self.checking, bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [first]}), file=upload(), read_by='claude')
+        busy = {'account_name': 'SAVINGS', 'last4': '9538', 'begin_balance': 1, 'end_balance': 2, 'lines': lines + [{'date': '2026-10-30', 'description': 'INTEREST', 'amount': 0.35}]}
+        with self.assertRaises(bankrec.StatementError) as ctx:
+            bankrec.file_statement(self.savings, bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [busy]}), file=upload(), read_by='claude')
+        self.assertIn('already filed on LAP 9511', str(ctx.exception))
+        self.assertIn('Nothing was filed', str(ctx.exception))
+        self.assertEqual(BankStatement.objects.filter(bank_account=self.savings).count(), 0)
+
+    def test_the_same_beginning_and_ending_balance_alone_is_a_duplicate_too(self):
+        bankrec.file_statement(self.checking, bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [COMBINED['accounts'][0]]}), file=upload(), read_by='claude')
+        other = dict(COMBINED['accounts'][1], last4='9538', begin_balance=5173.90, end_balance=64854.99)
+        with self.assertRaises(bankrec.StatementError) as ctx:
+            bankrec.file_statement(self.savings, bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [other]}), file=upload(), read_by='claude')
+        self.assertIn('balances', str(ctx.exception))
+
+    def test_two_quiet_accounts_with_one_interest_line_each_are_not_duplicates(self):
+        interest = {'date': '2026-10-30', 'description': 'INTEREST PAID', 'amount': 0.35}
+        a = {'account_name': 'A', 'last4': '9511', 'begin_balance': 100, 'end_balance': 100.35, 'lines': [interest]}
+        b = {'account_name': 'B', 'last4': '9538', 'begin_balance': 200, 'end_balance': 200.35, 'lines': [interest]}
+        bankrec.file_statement(self.checking, bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [a]}), file=upload(), read_by='claude')
+        bankrec.file_statement(self.savings, bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [b]}), file=upload(), read_by='claude')
+        self.assertEqual(BankStatement.objects.count(), 2)
+
+    def test_the_right_file_replaces_two_statements_that_were_wrongly_filed_with_the_same_lines(self):
+        wrong = {'lines': [{'date': date(2026, 10, 5), 'description': 'DEPOSIT', 'amount': D('1'), 'kind': 'deposit', 'check_number': ''}] * 3, 'end_balance': D('142055.00'),
+                 'begin_balance': D('65879.19'), 'period_end': date(2026, 10, 30)}
+        bankrec.import_statement(self.checking, wrong, file=upload(), read_by='claude')
+        bankrec.import_statement(self.savings, wrong, file=upload(), read_by='claude')
+        result = bankrec.file_statement(self.checking, self.parsed, file=upload(), read_by='claude')
+        self.assertEqual(len(result['filed']), 2)
+        self.assertEqual(BankStatement.objects.get(bank_account=self.savings).end_balance, D('77200.01'))
+
+    def test_a_statement_that_does_not_begin_where_the_last_one_ended_is_filed_with_a_warning(self):
+        BankStatement.objects.create(bank_account=self.checking, period_end=date(2026, 9, 30), end_balance=D('4000.00'), read_by='yardi')
+        one = bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [COMBINED['accounts'][0]]})
+        result = bankrec.file_statement(self.checking, one, file=upload(), read_by='claude')
+        text = ' '.join(result['warnings'])
+        self.assertIn('begins at $5,173.90 but the last one on file ended at $4,000.00', text)
+        self.assertEqual(BankStatement.objects.filter(bank_account=self.checking).count(), 2)
+
+    def test_lines_that_do_not_add_up_to_the_balances_are_warned_about(self):
+        result = bankrec.file_statement(self.checking, self.parsed, file=upload(), read_by='claude')
+        self.assertTrue(any('lines add up to' in w for w in result['warnings']))
+        good = {'account_name': 'X', 'last4': '9511', 'begin_balance': 100, 'end_balance': 150, 'lines': [{'date': '2026-11-02', 'description': 'DEPOSIT', 'amount': 50}]}
+        result = bankrec.file_statement(self.checking, bankrec.parse_statement_found({'period_end': '2026-11-30', 'accounts': [good]}), file=upload(), read_by='claude')
+        self.assertFalse(any('add up' in w for w in result['warnings']))
 
     def test_a_csv_is_filed_exactly_as_before(self):
         csv_result = {'lines': [{'date': date(2026, 10, 2), 'description': 'DEPOSIT', 'amount': D('100'), 'kind': 'deposit', 'check_number': ''}], 'end_balance': D('100'), 'begin_balance': None,
@@ -229,6 +360,23 @@ class TheUploadOnTheBankScreenTests(TestCase):
         self.assertEqual(BankStatement.objects.get().bank_account_id, self.savings.pk)
         self.assertIn(f'/bank/{self.savings.pk}/', response.request['PATH_INFO'])
         self.assertIn('filed on Escrow Cash (ending 9538), not on LAP 9511', ' '.join(str(m) for m in response.context['messages']))
+
+    def test_a_duplicate_upload_says_so_on_the_page_and_files_nothing_more(self):
+        self.post(bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [COMBINED['accounts'][0]]}))
+        twin = dict(COMBINED['accounts'][0], last4='9538')
+        response = self.post(bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [twin]}))
+        self.assertIn('already filed on LAP 9511', ' '.join(str(m) for m in response.context['messages']))
+        self.assertEqual(BankStatement.objects.count(), 1)
+
+    def test_a_balance_warning_shows_on_the_page(self):
+        BankStatement.objects.create(bank_account=self.checking, period_end=date(2026, 9, 30), end_balance=D('4000.00'), read_by='yardi')
+        response = self.post(bankrec.parse_statement_found({'period_end': '2026-10-30', 'accounts': [COMBINED['accounts'][0]]}))
+        self.assertIn('but the last one on file ended at $4,000.00', ' '.join(str(m) for m in response.context['messages']))
+
+    def test_the_bank_accounts_last_4s_go_to_the_reader(self):
+        with mock.patch.object(bankrec, 'read_statement', return_value=(bankrec.parse_statement_found(COMBINED), 'claude')) as read:
+            self.client.post(self.url, {'action': 'upload', 'file': upload()})
+        self.assertEqual(read.call_args.args[2], [('9511', 'LAP 9511'), ('9538', 'Escrow Cash')])
 
     def test_a_typed_balance_with_a_combined_file_is_an_error_and_nothing_is_filed(self):
         response = self.post(bankrec.parse_statement_found(COMBINED), end_balance='100')
