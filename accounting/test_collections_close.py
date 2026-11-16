@@ -189,6 +189,12 @@ class CollectionsBase(DelinquencyBase):
         values = services.initial_values(template, self.prop, self.late_unit, self.staff.user)
         doc, errors = services.save_document(template, self.prop, self.late_unit, self.staff.user, {k: '' if v is None else str(v) for k, v in values.items()})
         self.assertFalse(errors)
+        case = DelinquencyCase.objects.filter(association=self.prop, unit=self.late_unit, resolved_on__isnull=True).first()
+        if case is not None and case.stage == 'preparing':           # a new case waits on the preparing step: these tests are about the steps after a letter went out
+            delinquency.set_stage(case, 'letter', self.staff.user)
+            case.stage_since = case.opened_on
+            case.save(update_fields=['stage_since'])
+            delinquency.add_event(case, CaseEvent.Kind.LETTER, 'Late letter made (draft).', self.staff.user, document=doc)
         if mailed:
             doc.mailed_on = mailed
             doc.save(update_fields=['mailed_on'])
@@ -299,7 +305,7 @@ class MovingAnOwnerOnTests(CollectionsBase):
 
     def test_there_is_no_payment_plan_step(self):
         self.assertNotIn('plan', DelinquencyCase.Stage.values)
-        self.assertEqual(DelinquencyCase.Stage.values, ['letter', 'notice1', 'notice2', 'lien', 'resolved'])
+        self.assertEqual(DelinquencyCase.Stage.values, ['preparing', 'letter', 'notice1', 'notice2', 'lien', 'resolved'])
         self.make_letter()
         with self.assertRaises(ValueError):
             delinquency.set_stage(DelinquencyCase.objects.get(), 'plan')
@@ -349,10 +355,12 @@ class TheOwnerCollectionsScreenTests(CollectionsBase):
         self.assertEqual(r.status_code, 404)
 
     def test_making_late_letters_for_the_ticked_owners_opens_their_cases(self):
-        r = self.client.post(self.url, {'action': 'make_letters', 'unit': [self.late_unit.pk], 'tab': 'none'}, follow=True)
-        self.assertContains(r, 'Made 1 late letter')
-        self.assertEqual(DelinquencyCase.objects.get().stage, 'letter')
-        self.assertTrue(r.redirect_chain[-1][0].endswith('?tab=letter'))
+        r = self.client.post(self.url, {'action': 'open_cases', 'unit': [self.late_unit.pk], 'tab': 'none'}, follow=True)
+        self.assertContains(r, 'Opened 1 case')
+        case = DelinquencyCase.objects.get()
+        self.assertEqual(case.stage, 'preparing')                                     # nothing is sent: the owner is preparing the letter
+        self.assertFalse(case.events.filter(kind='letter').exists())
+        self.assertTrue(r.redirect_chain[-1][0].endswith('?tab=preparing'))
 
     def test_the_case_page_goes_back_to_owner_collections_and_offers_only_the_new_steps(self):
         self.make_letter()
@@ -540,7 +548,7 @@ class TheAsOfDateAndTheAmountOnTheScreenTests(CollectionsBase):
 
     def test_the_letters_made_from_the_screen_are_for_the_date_chosen(self):
         from legalforms.models import GeneratedDocument
-        self.client.post(self.url, {'action': 'make_letters', 'unit': [self.late_unit.pk], 'tab': 'none', 'asof': '2026-10-20'})
+        self.client.post(self.url, {'action': 'open_cases', 'unit': [self.late_unit.pk], 'tab': 'none', 'asof': '2026-10-20'})
         doc = GeneratedDocument.objects.get()
         self.assertIn('2026-10-20', str(doc.values.get('balance_as_of')))
 

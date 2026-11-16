@@ -35,8 +35,8 @@
 {% if rows %}<div class="d-flex flex-wrap gap-2 ac-noprint">
     <button class="btn btn-sm btn-primary" name="action" value="charge_late">Charge late fees to the ticked</button>
     <button class="btn btn-sm btn-primary" name="action" value="charge_interest">Charge interest to the ticked</button>
-    <button class="btn btn-sm btn-outline-secondary" name="action" value="make_letters">Make late letters for the ticked</button>
-    <span class="small text-muted align-self-center">Only owners over ${{ threshold }} are listed. Making a late letter opens the owner's case.</span></div>{% endif %}
+    <button class="btn btn-sm btn-outline-secondary" name="action" value="open_cases">Open a case for the ticked</button>
+    <span class="small text-muted align-self-center">Only owners over ${{ threshold }} are listed. Opening a case drafts the owner's late letter and moves them to Preparing the letter on Owner collections.</span></div>{% endif %}
 </form>
 <form method="post" class="mt-2 ac-noprint d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="threshold"><input type="hidden" name="threshold" value="{{ threshold }}"><button class="btn btn-sm btn-link p-0">Make ${{ threshold }} the usual amount</button></form>
 

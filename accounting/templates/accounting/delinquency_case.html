@@ -28,20 +28,27 @@
     </div>
     <div class="col-lg-5">
         {% if not case.resolved_on %}
+        {% if prep_row %}<div class="card mb-3"><div class="card-body">
+            <h6 class="card-title">Preparing the letter {% include '_tip.html' with text="Nothing is sent from here. Read the draft letter through and make it final, prepare the mailing affidavit, print the letter, the affidavit and the envelope and mark each one printed, then confirm the day it was mailed. Only then does the case move to Letter sent, and the 30 days count from that day." %}</h6>
+            <div class="mb-2"><div class="small text-muted">Letter</div>{% include 'accounting/_prep_letter.html' with r=prep_row next_url=request.get_full_path %}</div>
+            <div class="mb-2"><div class="small text-muted">Mailing affidavit</div>{% include 'accounting/_prep_affidavit.html' with r=prep_row next_url=request.get_full_path %}</div>
+            <div class="mb-2"><div class="small text-muted">Printed</div>{% for l in prep_row.prep.print_lines %}{% include 'accounting/_prep_print_line.html' with l=l r=prep_row next_url=request.get_full_path %}{% endfor %}</div>
+            <div><div class="small text-muted">Mailed</div>{% include 'accounting/_prep_mail.html' with r=prep_row next_url=request.get_full_path %}</div>
+        </div></div>{% endif %}
         <div class="card mb-3"><div class="card-body">
-            <h6 class="card-title">Review {% include '_tip.html' with text="Every open case is looked at every 30 days. Add what you did, or just mark it reviewed. It then comes back in 30 days as a compliance item." %}</h6>
+            <h6 class="card-title">Review{% include '_tip.html' with text="Every open case is looked at every 30 days. Add what you did, or just mark it reviewed. It then comes back in 30 days as a compliance item." %}</h6>
             <div class="small mb-2">Next review: <strong>{{ case.next_review|mdate }}</strong>{% if case.next_review and case.next_review <= today %} <span class="ac-chip warn">Due</span>{% endif %}</div>
             <form method="post" class="d-flex gap-2 mb-2">{% csrf_token %}<input type="hidden" name="action" value="review"><input class="form-control form-control-sm" name="note" placeholder="Note (optional)"><button class="btn btn-sm btn-primary text-nowrap">Mark reviewed</button></form>
             <form method="post" class="d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="review_date"><label class="small text-muted mb-0">or set the next review for</label><input type="date" class="form-control form-control-sm" style="width: 150px;" name="review_date" value="{{ case.next_review|date:'Y-m-d' }}"><button class="btn btn-sm btn-outline-secondary">Set</button></form>
         </div></div>
-        <div class="card mb-3"><div class="card-body">
+        {% if not prep_row %}<div class="card mb-3"><div class="card-body">
             <h6 class="card-title">Next step</h6>
             <form method="post" class="row g-2">{% csrf_token %}<input type="hidden" name="action" value="stage">
                 <div class="col-12"><div class="ac-pills">{% for s in stages %}<span><input type="radio" id="st{{ s.value }}" name="stage" value="{{ s.value }}" {% if case.stage == s.value %}checked{% endif %}><label for="st{{ s.value }}">{{ s.label }}</label></span>{% endfor %}</div></div>
                 <div class="col-md-6"><input class="form-control form-control-sm" name="attorney" placeholder="Attorney (if with the attorney)" value="{{ case.attorney_name }}"></div>
                 <div class="col-md-6"><input class="form-control form-control-sm" name="note" placeholder="Note"></div>
                 <div class="col-12"><button class="btn btn-sm btn-outline-secondary">Move it</button></div></form>
-        </div></div>
+        </div></div>{% endif %}
         <div class="card mb-3"><div class="card-body">
             <h6 class="card-title">Late letters</h6>
             <a class="btn btn-sm btn-primary mb-2" href="{% url 'legalforms:new' 'nola' %}?property={{ assoc.pk }}&unit={{ case.unit.pk }}">Make another late letter</a>

@@ -48,12 +48,12 @@ def delinquencies(request, pk):
                     case = delinquency.open_case_for(prop, c.unit)
                     if case:
                         delinquency.add_event(case, CaseEvent.Kind.FEE, f'{c.description}: ${c.amount:,.2f}.', request.user)
-            elif action == 'make_letters':
+            elif action in ('open_cases', 'make_letters'):
                 if not units:
                     raise ValueError('Tick the owners first.')
                 made, problems = _make_letters(prop, units, request.user)
                 if made:
-                    messages.success(request, f'Made {len(made)} late letter{"s" if len(made) != 1 else ""} as drafts and opened their cases. Open each one to read it through and make it final.')
+                    messages.success(request, f'Opened {len(made)} case{"s" if len(made) != 1 else ""} and drafted the late letter{"s" if len(made) != 1 else ""}. Finish them on Owner collections, under Preparing the letter.')
                 for p in problems:
                     messages.error(request, p)
         except (ValueError, ledger.LedgerError, charges.ChargeError) as e:
@@ -71,22 +71,20 @@ def delinquencies(request, pk):
 
 
 def _make_letters(prop, unit_ids, user, asof=None):
-    """A draft Notice of Late Assessment for each unit, filled from the books. Making one opens the owner's case. `asof`: the date the owner was behind as of (the letter's "balance as of")."""
+    """Open a case for each unit: its draft Notice of Late Assessment is made from the books and the owner goes on the *Preparing the letter* step (nothing is sent). A unit that already has an
+    open case is skipped. Returns ([draft documents], [problems and notes]). `asof`: the date the owner was behind as of (the letter's "balance as of")."""
     from core.models import Unit
-    from legalforms import services
-    from legalforms.models import DocumentTemplate
-    template = DocumentTemplate.objects.filter(slug='nola', is_active=True).first()
-    if template is None:
-        return [], ['The Notice of Late Assessment form is not set up.']
+    from . import letter_prep
     made, problems = [], []
     for unit in Unit.objects.filter(property=prop, pk__in=unit_ids):
-        values = services.initial_values(template, prop, unit, user, overrides={'balance_as_of': asof.isoformat()} if asof else None)
-        raw = {k: ('' if v is None else str(v)) for k, v in values.items()}
-        doc, errors = services.save_document(template, prop, unit, user, raw)
+        if delinquency.open_case_for(prop, unit):
+            problems.append(f'Unit {unit.label} already has an open case: it was left as it is.')
+            continue
+        doc, problem = letter_prep.make_draft(prop, unit, user, asof)
         if doc:
             made.append(doc)
         else:
-            problems.append(f'Unit {unit.label}: ' + '; '.join(str(e) for e in (errors.values() if isinstance(errors, dict) else [errors])))
+            problems.append(problem)
     return made, problems
 
 
@@ -110,6 +108,8 @@ def case_detail(request, pk, case_pk):
                 delinquency.add_event(case, kind, note, request.user, on=parse_date(request.POST.get('date')))
                 messages.success(request, 'Added.')
             elif action == 'stage':
+                if case.stage == DelinquencyCase.Stage.PREPARING:
+                    raise ValueError('Finish preparing the letter first: it moves to Letter sent when the mailing date is confirmed.')
                 delinquency.set_stage(case, request.POST.get('stage'), request.user, note=note, attorney=request.POST.get('attorney') or '')
                 messages.success(request, 'Moved on. The next review is in 30 days.')
             elif action == 'review':
@@ -131,7 +131,12 @@ def case_detail(request, pk, case_pk):
     b = delinquency.breakdown(case.unit, case.owner)
     open_charges = charges.open_charges(case.unit, case.owner)
     events = list(case.events.select_related('document', 'by'))
-    ctx = {'assoc': prop, 'case': case, 'b': b, 'open_charges': open_charges, 'events': events, 'icons': delinquency.case_icons(case), 'stages': [s for s in DelinquencyCase.Stage if s != DelinquencyCase.Stage.RESOLVED],
+    prep_row = None
+    if case.stage == DelinquencyCase.Stage.PREPARING and not case.resolved_on:
+        from . import letter_prep
+        prep_row = {'case': case, 'prep': letter_prep.status(case)}
+    ctx = {'assoc': prop, 'case': case, 'b': b, 'open_charges': open_charges, 'events': events, 'icons': delinquency.case_icons(case), 'prep_row': prep_row,
+           'stages': [s for s in DelinquencyCase.Stage if s not in (DelinquencyCase.Stage.RESOLVED, DelinquencyCase.Stage.PREPARING)],
            'letters': GeneratedDocument.objects.filter(property=prop, unit=case.unit, template__slug='nola').order_by('-created_at'), 'today': timezone.localdate(),
            **acc_up(request, prop, ['accounting:collections', 'accounting:delinquencies'], reverse('accounting:collections', args=[pk]) + f'?tab={case.stage}', 'Owner collections')}
     return render(request, 'accounting/delinquency_case.html', ctx)

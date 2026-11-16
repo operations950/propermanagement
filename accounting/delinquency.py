@@ -117,20 +117,22 @@ def add_event(case, kind, summary, user=None, document=None, on=None):
     return CaseEvent.objects.create(case=case, kind=kind, date=on or timezone.localdate(), summary=summary[:500], document=document, by=user)
 
 
-def open_case(prop, unit, owner, user=None, on=None):
-    """The unit's open case, or a new one (the first late letter opens it): reviewed in 30 days."""
+def open_case(prop, unit, owner, user=None, on=None, stage=None):
+    """The unit's open case, or a new one: reviewed in 30 days. A case opens on the *Preparing the letter* step (the first late letter is being drafted, nothing has been sent) unless another step is given."""
     case = open_case_for(prop, unit)
     if case:
         return case
     today = on or timezone.localdate()
-    case = DelinquencyCase.objects.create(association=prop, unit=unit, owner=owner, opened_on=today, stage_since=today, next_review=today + timedelta(days=REVIEW_DAYS))
-    add_event(case, CaseEvent.Kind.STAGE, 'Case opened with the first late letter.', user, on=today)
+    stage = stage or Stage.PREPARING
+    case = DelinquencyCase.objects.create(association=prop, unit=unit, owner=owner, stage=stage, opened_on=today, stage_since=today, next_review=today + timedelta(days=REVIEW_DAYS))
+    add_event(case, CaseEvent.Kind.STAGE, 'Case opened: the first late letter is being prepared.' if stage == Stage.PREPARING else 'Case opened with the first late letter.', user, on=today)
     ensure_review_line(case)
     return case
 
 
 def letter_made(doc, user=None):
-    """A Notice of Late Assessment was made for a unit: that opens its case (or adds the letter to the case it has)."""
+    """A Notice of Late Assessment was made for a unit: that opens its case on the preparing step with the draft attached (nothing has been sent). A unit whose case is already further along gets
+    the letter noted on it."""
     unit = doc.unit
     if unit is None:
         return None
@@ -141,7 +143,10 @@ def letter_made(doc, user=None):
     if owner is None:
         return None
     case = open_case(doc.property, unit, owner, user)
-    if not CaseEvent.objects.filter(case=case, document=doc).exists():
+    if case.stage == Stage.PREPARING:
+        from . import letter_prep
+        letter_prep.attach_letter(case, doc, user)
+    elif not CaseEvent.objects.filter(case=case, document=doc).exists():
         b = breakdown(unit, owner)
         add_event(case, CaseEvent.Kind.LETTER, f'Late letter made (draft). The account owes ${b["total"]:,.2f}.', user, document=doc)
     return case

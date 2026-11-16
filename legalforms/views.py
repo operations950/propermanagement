@@ -139,7 +139,7 @@ def document_detail(request, pk):
     _guard(request)
     doc = get_object_or_404(GeneratedDocument.objects.select_related('template', 'property', 'unit', 'parent', 'created_by'), pk=pk)
     label = f'{doc.property.name} documents'
-    up = nav.up(request, {'legalforms:list': label}, default=(reverse('legalforms:list') + f'?property={doc.property_id}', label))
+    up = nav.up(request, {'legalforms:list': label, 'accounting:collections': 'Owner collections'}, default=(reverse('legalforms:list') + f'?property={doc.property_id}', label))
     return render(request, 'legalforms/detail.html', {
         'doc': doc, 'up': up, 'html': show_html(doc), 'companions': doc.template.companions.filter(is_active=True),
         'children': doc.companions.select_related('template'), 'email_to': services.suggested_email(doc),

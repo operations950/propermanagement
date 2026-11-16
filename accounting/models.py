@@ -513,6 +513,20 @@ class ReserveAcknowledgement(models.Model):
         constraints = [models.UniqueConstraint(fields=['association', 'month'], name='uniq_reserve_ack_month')]
 
 
+class CloseStepDone(models.Model):
+    """A person's word that a month-end close step is finished for a month, for a step that cannot know by itself (the late fees and interest: some owners are passed over on purpose).
+    Marking it done charges nothing; undoing it reopens the step."""
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='close_steps_done')
+    month = models.DateField(help_text='First day of the month the step was done for.')
+    key = models.CharField(max_length=30, help_text="The close-sheet step, e.g. 'late_fees'.")
+    marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    marked_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['association', 'month', 'key'], name='uniq_close_step_done')]
+
+
 class BoardPackageSend(models.Model):
     """The month's financial package, sent to the board: who it went to, the email as sent, and when. Its existence is what completes the month-end close."""
     association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='board_package_sends')
@@ -1072,6 +1086,7 @@ class PayableUpload(models.Model):
 class DelinquencyCase(models.Model):
     """One owner who is behind, from the day their first late letter is made until the balance is paid. It is reviewed every 30 days: each review is a compliance item."""
     class Stage(models.TextChoices):
+        PREPARING = 'preparing', 'Preparing the letter'
         LETTER = 'letter', 'Letter sent'
         NOTICE1 = 'notice1', 'Lawyer: notice 1 (intent to lien)'
         NOTICE2 = 'notice2', 'Lawyer: notice 2 (intent to foreclose)'
@@ -1096,6 +1111,22 @@ class DelinquencyCase(models.Model):
     @property
     def is_open(self):
         return self.resolved_on is None
+
+
+class CasePrep(models.Model):
+    """The compliance work behind a case's first late letter, kept while the case is on the 'Preparing the letter' step: the draft letter and its mailing affidavit, who made the letter final,
+    and when the letter, the affidavit and the envelope were printed. The case moves to 'Letter sent' only when all of it is done and the mailing date is confirmed."""
+    case = models.OneToOneField(DelinquencyCase, on_delete=models.CASCADE, related_name='prep')
+    letter_doc = models.ForeignKey('legalforms.GeneratedDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    affidavit_doc = models.ForeignKey('legalforms.GeneratedDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    letter_final_at = models.DateTimeField(null=True, blank=True)
+    letter_final_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    letter_printed_at = models.DateTimeField(null=True, blank=True)
+    letter_printed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    affidavit_printed_at = models.DateTimeField(null=True, blank=True)
+    affidavit_printed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    envelope_printed_at = models.DateTimeField(null=True, blank=True)
+    envelope_printed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 
 
 class CaseEvent(models.Model):

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_budget, views_chart, views_check_runs, views_closing, views_collections, views_contracts, views_delinquency, views_money, views_payables_hub, views_setup
+from . import views, views_budget, views_chart, views_check_runs, views_closing, views_collections, views_contracts, views_delinquency, views_money, views_payables_hub, views_prep, views_setup
 
 app_name = 'accounting'
 
@@ -28,6 +28,9 @@ urlpatterns = [
     path('<int:pk>/late-fees/', views_collections.late_fees, name='late_fees'),
     path('<int:pk>/delinquencies/', views_delinquency.delinquencies, name='delinquencies'),
     path('<int:pk>/cases/<int:case_pk>/', views_delinquency.case_detail, name='case'),
+    path('<int:pk>/cases/<int:case_pk>/prep/', views_prep.prep_act, name='prep_act'),
+    path('<int:pk>/prep/draft-missing/', views_prep.prep_bulk, name='prep_bulk'),
+    path('<int:pk>/prep/<str:kind>.pdf', views_prep.prep_pdf, name='prep_pdf'),
     path('<int:pk>/', views.hub, name='hub'),
     path('<int:pk>/close/<str:month>/', views.close_sheet, name='close'),
     path('<int:pk>/close/<str:month>/reserve/', views_closing.reserve, name='reserve_check'),

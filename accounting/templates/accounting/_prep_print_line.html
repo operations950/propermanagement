@@ -1,0 +1,9 @@
+{# one thing to print on a case being prepared: `l` the line (what, label, at, can_print, can_mark, why), `r` the row, `assoc`, `next_url` #}
+<div class="d-flex flex-wrap align-items-center gap-1 mb-1">
+    <span class="small fw-semibold" style="min-width: 4.6rem;">{{ l.label }}</span>
+    {% if l.can_print %}<a class="btn btn-sm btn-outline-secondary py-0" target="_blank" rel="noopener" href="{% url 'accounting:prep_pdf' assoc.pk l.what %}?case={{ r.case.pk }}">Print</a>{% endif %}
+    {% if l.at %}<span class="ac-chip done">Printed {{ l.at|date:'M j' }}</span>
+        <form method="post" action="{% url 'accounting:prep_act' assoc.pk r.case.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="unprinted"><input type="hidden" name="what" value="{{ l.what }}"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn-sm btn-link py-0 px-1">Undo</button></form>
+    {% elif l.can_mark %}<form method="post" action="{% url 'accounting:prep_act' assoc.pk r.case.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="printed"><input type="hidden" name="what" value="{{ l.what }}"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn-sm btn-outline-primary py-0">Mark printed</button></form>
+    {% else %}<span class="small text-muted">{{ l.why }}</span>{% endif %}
+</div>

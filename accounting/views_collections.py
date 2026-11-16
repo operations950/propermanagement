@@ -1,5 +1,5 @@
 """Owner collections (the board of late owners and where each case stands) and the Post late fees screen."""
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import charges, closing, delinquency, ledger, owner_collections
-from .models import ZERO, CaseEvent, Charge, DelinquencyCase
+from .models import ZERO, CaseEvent, Charge, CloseStepDone, DelinquencyCase
 from .views_delinquency import _ids, _make_letters
 from .web import admin_only, association_only_or_404, association_or_404, books_or_redirect, parse_date, parse_money, acc_up
 
@@ -66,14 +66,14 @@ def collections(request, pk):
                 stage = delinquency.advance(case, request.user, note=request.POST.get('note') or '', attorney=request.POST.get('attorney') or '')
                 messages.success(request, f'{case.owner.name}, unit {case.unit.label}: now at "{DelinquencyCase.Stage(stage).label}". The next review is in 30 days.')
                 tab = str(stage)
-            elif action == 'make_letters':
+            elif action in ('open_cases', 'make_letters'):
                 units = _ids(request)
                 if not units:
                     raise ValueError('Tick the owners first.')
                 made, problems = _make_letters(prop, units, request.user, asof=asof if given else None)
                 if made:
-                    messages.success(request, f'Made {len(made)} late letter{"s" if len(made) != 1 else ""} as drafts and opened their cases. Open each one to read it through, make it final and mail it.')
-                    tab = 'letter'
+                    messages.success(request, f'Opened {len(made)} case{"s" if len(made) != 1 else ""} and drafted the late letter{"s" if len(made) != 1 else ""}. Read each one through, make it final, print it and mail it.')
+                    tab = 'preparing'
                 for p in problems:
                     messages.error(request, p)
         except (ValueError, ledger.LedgerError) as e:
@@ -107,6 +107,17 @@ def late_fee_rows(prop, today):
 ASSESSMENT_KINDS = (Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL)
 
 
+def _charged_text(done):
+    """'Late fee $30.75 on Oct 31, interest $12.30 on Oct 31': what was already charged on an owner's late assessments (one line for each kind, the latest day)."""
+    bits = []
+    for kind, label in ((Charge.Kind.LATE_FEE, 'Late fee'), (Charge.Kind.INTEREST, 'Interest')):
+        mine = [(a, d) for k, a, d in done if k == kind]
+        if mine:
+            day = max(d for a, d in mine)
+            bits.append(f'{label} ${sum((a for a, d in mine), ZERO):,.2f} on {day:%b} {day.day}')
+    return ', '.join(bits)
+
+
 def _late_as_of(params, today):
     """(the day the screen judges lateness for, a note when the day asked for could not be used). No day is today; so is one that is not a date or is in the future."""
     raw = (params.get('as_of') or params.get('asof') or '').strip()
@@ -127,6 +138,16 @@ def _min_balance(params):
         return ZERO
 
 
+def _done_month(month, as_of):
+    """The first day of the month the 'mark done' applies to: the month the close sheet passed, else the month of the as-of day."""
+    if month:
+        try:
+            return date(int(month[:4]), int(month[5:]), 1)
+        except ValueError:
+            pass
+    return as_of.replace(day=1)
+
+
 def _late_qs(as_of, min_balance, show_all, month):
     bits = [f'as_of={as_of:%Y-%m-%d}']
     if min_balance > 0:
@@ -139,9 +160,10 @@ def _late_qs(as_of, min_balance, show_all, month):
 
 
 def late_fee_data(prop, as_of, min_balance=ZERO, show_all=False):
-    """The Post late fees screen for one day. One row for each unit that is late on `as_of` (it has a late fee or interest ready, or, with `show_all`, any assessment unpaid past its
-    grace period that day) and owes at least `min_balance` in all: total owed (principal, late fees and interest still open that day), when it was last charged a late fee or interest, and
-    the late fee and interest ready to charge, with the charges that make the numbers up. Everything is as the account stood on `as_of`."""
+    """The Post late fees screen for one day. One row for each unit that is late on `as_of` (an assessment unpaid past its grace period that day), whether or not its late fee and
+    interest were already charged, and that owes at least `min_balance` in all: total owed (principal, late fees and interest still open that day), when it was last charged a late fee
+    or interest, the late fee and interest READY to charge, and what was ALREADY charged (so an owner does not drop off the list once charged), with the charges that make the numbers up.
+    With `show_all`, units that are not late but owe something are listed too. Everything is as the account stood on `as_of`."""
     profile = ledger.profile_for(prop)
     grace = profile.late_fee_grace_days or 0
     fee_for = {c.pk: fee for c, fee, due in charges._late_fee_rows(prop, as_of, as_of=as_of)}
@@ -149,6 +171,10 @@ def late_fee_data(prop, as_of, min_balance=ZERO, show_all=False):
     for c, month_first, end, amount in charges._interest_rows(prop, as_of, as_of=as_of):
         interest_for.setdefault(c.pk, []).append((month_first, end, amount))
     last_charged = dict(Charge.objects.filter(association=prop, is_void=False, kind__in=[Charge.Kind.LATE_FEE, Charge.Kind.INTEREST]).values_list('unit_id').annotate(d=Max('due_date')))
+    # what was already charged on each assessment: its late fee and its interest, so an owner charged already still shows what was charged and when
+    already = {}
+    for child in Charge.objects.filter(association=prop, is_void=False, kind__in=[Charge.Kind.LATE_FEE, Charge.Kind.INTEREST], parent__isnull=False):
+        already.setdefault(child.parent_id, []).append(child)
     units = {}
     qs = Charge.objects.filter(association=prop, is_void=False, due_date__lte=as_of).select_related('unit', 'owner').prefetch_related('applications').order_by('due_date', 'id')
     for c in qs:
@@ -156,7 +182,7 @@ def late_fee_data(prop, as_of, min_balance=ZERO, show_all=False):
         if open_ <= 0:
             continue
         row = units.setdefault(c.unit_id, {'unit': c.unit, 'owner': c.owner, 'principal': ZERO, 'late_fees': ZERO, 'interest': ZERO, 'total': ZERO, 'fee_ready': ZERO, 'interest_ready': ZERO,
-                                           'late': False, 'lines': [], 'last_charged': last_charged.get(c.unit_id)})
+                                           'late': False, 'lines': [], 'last_charged': last_charged.get(c.unit_id), 'charged': []})
         row['owner'] = c.owner
         if c.kind == Charge.Kind.LATE_FEE:
             row['late_fees'] += open_
@@ -171,11 +197,15 @@ def late_fee_data(prop, as_of, min_balance=ZERO, show_all=False):
         months = interest_for.get(c.pk, [])
         row['fee_ready'] += fee
         row['interest_ready'] += sum((a for mf, end, a in months), ZERO)
-        row['lines'].append({'charge': c, 'balance': open_, 'late': is_late, 'fee': fee, 'months': months})
+        done = [(k, a, d) for k, a, d in ((ch.kind, ch.amount, ch.due_date) for ch in already.get(c.pk, []))]
+        row['lines'].append({'charge': c, 'balance': open_, 'late': is_late, 'fee': fee, 'months': months, 'charged': done})
+        row['charged'].extend(done)
     rows = []
     for row in units.values():
         ready = row['fee_ready'] + row['interest_ready']
-        if not (ready > 0 or (show_all and row['late'])):
+        row['charged_text'] = _charged_text(row['charged'])
+        row['ready'] = ready > 0
+        if not (ready > 0 or row['late'] or show_all):
             continue
         if row['total'] < min_balance:
             continue
@@ -202,16 +232,19 @@ def late_fees(request, pk):
     month = params.get('month') or ''
     month = month if len(month) == 7 and month[:4].isdigit() and month[4] == '-' and month[5:].isdigit() else ''
     back = here + '?' + _late_qs(as_of, min_balance, show_all, month)
+    done_month = _done_month(month, as_of)
     if request.method == 'POST':
         action = request.POST.get('action')
         post_day = parse_date(request.POST.get('post_on') or '', as_of)
         try:
             if action in ('charge_late', 'charge_interest'):
-                listed = {r['unit'].pk for r in late_fee_data(prop, as_of, min_balance, show_all)}
+                rows_now = late_fee_data(prop, as_of, min_balance, show_all)
+                listed = {r['unit'].pk for r in rows_now}
+                ready = {r['unit'].pk for r in rows_now if r['fee_ready'] > 0 or r['interest_ready'] > 0}
                 ticked = _ids(request)
-                units = [u for u in ticked if u in listed] if ticked else sorted(listed)             # never an owner who is not on the list
+                units = [u for u in ticked if u in listed] if ticked else sorted(ready)          # never an owner who is not on the list; with none ticked, those with something ready
                 if not units:
-                    raise ValueError('Nobody is listed, so nothing was charged.')
+                    raise ValueError('Nobody listed has anything ready to charge, so nothing was charged.')
                 if ledger.is_locked(prop, post_day):
                     raise ledger.LedgerError(f'{post_day:%B %Y} is closed. Open the month again to post into it, or choose another day to post on.')
                 if action == 'charge_late':
@@ -224,12 +257,23 @@ def late_fees(request, pk):
                     case = delinquency.open_case_for(prop, c.unit)
                     if case:
                         delinquency.add_event(case, CaseEvent.Kind.FEE, f'{c.description}: ${c.amount:,.2f}.', request.user)
+            elif action == 'mark_done':
+                if request.POST.get('confirm') != '1':
+                    raise ValueError('Tick the box to say you have charged everyone you wish to charge.')
+                CloseStepDone.objects.get_or_create(association=prop, month=done_month, key='late_fees', defaults={'marked_by': request.user})
+                messages.success(request, f'Late fees and interest are marked done for {done_month:%B %Y}.')
+            elif action == 'undo_done':
+                CloseStepDone.objects.filter(association=prop, month=done_month, key='late_fees').delete()
+                messages.success(request, f'Late fees and interest are open again for {done_month:%B %Y}.')
         except (ValueError, ledger.LedgerError, charges.ChargeError) as e:
             messages.error(request, str(e))
         return redirect(back)
     rows = late_fee_data(prop, as_of, min_balance, show_all)
+    # Up: the close sheet when this screen was opened from it (its link always carries ?month=), else Accounting; the trail still wins when it knows where the person came from
+    up_default = (reverse('accounting:close', args=[pk, month]), 'Month-end close') if month and _done_month(month, as_of).strftime('%Y-%m') == month else (reverse('accounting:hub', args=[pk]), 'Accounting')
     ctx = {'assoc': prop, 'profile': profile, 'rows': rows, 'fees': sum((r['fee_ready'] for r in rows), ZERO), 'interest': sum((r['interest_ready'] for r in rows), ZERO), 'owed': sum((r['total'] for r in rows), ZERO),
+           'ready_n': sum(1 for r in rows if r['ready']), 'done_month': done_month, 'done': CloseStepDone.objects.filter(association=prop, month=done_month, key='late_fees').select_related('marked_by').first(),
            'today': today, 'as_of': as_of, 'as_of_note': as_of_note, 'min_balance': min_balance, 'show_all': show_all, 'month': month, 'post_on': as_of,
            'is_set': profile.late_fee_is_set() or profile.interest_is_set(), 'terms': charges.terms_sentences(profile), 'look': owner_collections.attention(prop, today),
-           **acc_up(request, prop, ['accounting:close', 'accounting:hub', 'accounting:collections'], reverse('accounting:hub', args=[pk]), 'Accounting')}
+           **acc_up(request, prop, ['accounting:close', 'accounting:hub', 'accounting:collections'], *up_default)}
     return render(request, 'accounting/late_fees.html', ctx)

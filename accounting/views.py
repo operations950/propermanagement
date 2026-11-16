@@ -35,7 +35,7 @@ def home(request):
         status, detail = closing.association_status(prof.property, month)
         rows.append({'assoc': prof.property, 'status': status, 'detail': detail})
     kept = {r['assoc'].pk for r in rows}
-    others = [p for p in Property.objects.filter(property_type__in=labels.BOOKS_TYPES, is_active=True, is_general=False).order_by('name') if p.pk not in kept]
+    others = [p for p in Property.objects.filter(property_type__in=labels.BOOKS_TYPES, is_active=True, is_general=False).exclude(name__icontains='(general)').order_by('name') if p.pk not in kept]
     assoc_rows = [r for r in rows if not labels.is_commercial(r['assoc'])]
     commercial_rows = [r for r in rows if labels.is_commercial(r['assoc'])]
     return render(request, 'accounting/home.html', {'rows': rows, 'assoc_rows': assoc_rows, 'commercial_rows': commercial_rows, 'others': others, 'has_commercial': bool(commercial_rows),
@@ -399,7 +399,7 @@ def charge_one(request, pk):
 def receipt_pick(request):
     """Record an owner's payment: first choose the association (only the ones whose books we keep), then the usual payment form opens."""
     from .models import AssociationProfile
-    profiles = AssociationProfile.objects.filter(we_do_financials=True).select_related('property').order_by('property__name')
+    profiles = AssociationProfile.objects.filter(we_do_financials=True).exclude(property__is_general=True).exclude(property__name__icontains='(general)').select_related('property').order_by('property__name')
     if profiles.count() == 1:
         return redirect('accounting:receipt_new', pk=profiles[0].property_id)
     return render(request, 'accounting/receipt_pick.html', {'profiles': profiles})

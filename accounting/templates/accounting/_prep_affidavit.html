@@ -1,0 +1,11 @@
+{# the mailing affidavit on a case being prepared: `r` the row (case, prep), `assoc`, `today`, `next_url` #}
+{% with p=r.prep %}
+{% if p.affidavit_doc %}<span class="ac-chip done">Prepared</span> <span class="small text-muted">sworn to {{ p.affidavit_date|date:'M j' }}</span>
+    <a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'legalforms:detail' p.affidavit_doc.pk %}">Open</a>
+    <details class="d-inline-block"><summary class="small" style="cursor: pointer;">Another day</summary>
+        <form method="post" action="{% url 'accounting:prep_act' assoc.pk r.case.pk %}" class="mt-1">{% csrf_token %}<input type="hidden" name="action" value="affidavit"><input type="hidden" name="replace" value="1"><input type="hidden" name="next" value="{{ next_url }}">
+            <input type="date" class="form-control form-control-sm mb-1" name="mailing_date" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" aria-label="The day it will be mailed"><button class="btn btn-sm btn-outline-primary py-0">Prepare again</button></form></details>
+{% elif p.letter_doc %}<form method="post" action="{% url 'accounting:prep_act' assoc.pk r.case.pk %}" class="d-flex flex-wrap gap-1 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="affidavit"><input type="hidden" name="next" value="{{ next_url }}">
+        <input type="date" class="form-control form-control-sm" style="width: auto;" name="mailing_date" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" aria-label="The day it will be mailed"><button class="btn btn-sm btn-outline-primary py-0">Prepare affidavit</button></form>
+{% else %}<span class="small text-muted">draft the letter first</span>{% endif %}
+{% endwith %}

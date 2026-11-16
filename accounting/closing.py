@@ -9,12 +9,13 @@ from django.urls import reverse
 from core.models import Property
 
 from . import bankrec, board_send, charges, labels, ledger, owner_collections, payables, reserve_check, scheduled
-from .models import AssociationProfile, ChargeRule, JournalRule, MonthLock
+from .models import AssociationProfile, ChargeRule, CloseStepDone, JournalRule, MonthLock
 
 
 def associations(commercial=True):
     """The properties whose books we keep, by name: the associations and (unless `commercial` is False) the commercial buildings."""
-    qs = AssociationProfile.objects.filter(we_do_financials=True, property__is_active=True)
+    qs = (AssociationProfile.objects.filter(we_do_financials=True, property__is_active=True)
+          .exclude(property__is_general=True).exclude(property__name__icontains='(general)'))     # a placeholder ('Commercial (general)', 'Short-Term Rentals (general)') is not a property with books
     if not commercial:
         qs = qs.filter(property__property_type=Property.Type.ASSOCIATION)
     return list(qs.select_related('property').order_by('property__name'))
@@ -118,11 +119,24 @@ def close_sheet(association, month_first, today=None):
     if commercial and not (profile.late_fee_is_set() or profile.interest_is_set()):
         pass                                    # no late fee terms set for this property: nothing to charge
     elif profile.late_fee_is_set() or profile.interest_is_set():
-        fee_units = {c.unit_id for c, fee, due in charges._late_fee_rows(association, late_as_of, as_of=late_as_of)}
-        interest_units = {c.unit_id for c, mf, me, amount in charges._interest_rows(association, late_as_of, as_of=late_as_of)}
-        ready = len(fee_units | interest_units)
-        items.append(_item('late_fees', 'Charge late fees and interest', 'alarm-clock', 'attention' if ready else 'done',
-                           f'{ready} {lab["holder_lower"]}{"s" if ready != 1 else ""} with late fees or interest ready to charge as of {late_as_of:%b} {late_as_of.day}.' if ready else 'Nothing to charge.', late_url, blocks=False))
+        # Done when a person marked the step done for this month (some owners are passed over on purpose), or when nobody is late and nothing is ready.
+        from .views_collections import late_fee_data
+        rows = late_fee_data(association, late_as_of)
+        ready = sum(1 for r in rows if r['ready'])
+        marked = CloseStepDone.objects.filter(association=association, month=month_first, key='late_fees').select_related('marked_by').first()
+        who = lab['holder_lower']
+        if marked:
+            detail = f'Marked done on {marked.marked_at:%b} {marked.marked_at.day}.'
+            status = 'done'
+        elif ready:
+            detail = f'{ready} {who}{"s" if ready != 1 else ""} with late fees or interest ready to charge as of {late_as_of:%b} {late_as_of.day}.'
+            status = 'attention'
+        elif rows:
+            detail = f'{len(rows)} {who}{"s" if len(rows) != 1 else ""} late as of {late_as_of:%b} {late_as_of.day}, all charged. Mark the step done when you have looked.'
+            status = 'attention'
+        else:
+            detail, status = 'Nobody is late. Nothing to charge.', 'done'
+        items.append(_item('late_fees', 'Charge late fees and interest', 'alarm-clock', status, detail, late_url, blocks=False))
     else:
         items.append(_item('late_fees', 'Charge late fees and interest', 'alarm-clock', 'attention', 'The late fee and interest rules are not set up yet.', reverse('accounting:settings', args=[pk]) + '#late', blocks=False))
 

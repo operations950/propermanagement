@@ -1,0 +1,13 @@
+{# the letter on a case being prepared: `r` the row (case, prep), `assoc`, `next_url` #}
+{% with p=r.prep %}
+{% if p.letter_state == 'none' %}<span class="ac-chip warn">No letter yet</span>
+    <form method="post" action="{% url 'accounting:prep_act' assoc.pk r.case.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="draft"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn-sm btn-outline-primary py-0">Draft the letter</button></form>
+{% elif p.letter_state == 'draft' %}<span class="ac-chip warn">Draft</span>
+    <a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'legalforms:detail' p.letter_doc.pk %}">Open draft</a>
+    <form method="post" action="{% url 'accounting:prep_act' assoc.pk r.case.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="finalize"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn-sm btn-primary py-0">Make final</button></form>
+{% else %}<span class="ac-chip done">Final</span>
+    <a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'legalforms:detail' p.letter_doc.pk %}">View</a>
+    <form method="post" action="{% url 'accounting:prep_act' assoc.pk r.case.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="reopen"><input type="hidden" name="next" value="{{ next_url }}"><button class="btn btn-sm btn-link py-0 px-1">Reopen</button></form>
+    {% if p.letter_final_at %}<div class="small text-muted">Made final {{ p.letter_final_at|date:'M j' }}{% if p.letter_final_by %} by {{ p.letter_final_by }}{% endif %}</div>{% endif %}
+{% endif %}
+{% endwith %}

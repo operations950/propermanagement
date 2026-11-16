@@ -167,11 +167,13 @@ class PostingTests(AsOfBase):
         self.assertEqual({c.due_date for c in made}, {OCT31})
         self.assertEqual(charges.assess_interest(self.prop, OCT31, units=[self.anna_u.pk], as_of=OCT31, post_day=OCT31), [])
 
-    def test_the_default_list_is_what_is_ready_and_the_checkbox_adds_owners_with_nothing_to_charge(self):
+    def test_owners_charged_stay_on_the_list_with_nothing_ready_and_the_checkbox_adds_owners_who_are_not_late(self):
         self.post({'action': 'charge_late', 'as_of': '2026-10-31', 'post_on': '2026-10-31'})
         self.post({'action': 'charge_interest', 'as_of': '2026-10-31', 'post_on': '2026-10-31'})
-        self.assertEqual(late_fee_data(self.prop, OCT31), [])
-        self.assertEqual(self.names(late_fee_data(self.prop, OCT31, show_all=True)), ['Anna', 'Cora', 'Dan'])
+        rows = late_fee_data(self.prop, OCT31)
+        self.assertEqual(self.names(rows), ['Anna', 'Cora', 'Dan'])                    # charged, and still listed
+        self.assertTrue(all(r['fee_ready'] == 0 and r['interest_ready'] == 0 and not r['ready'] and r['charged_text'] for r in rows))
+        self.assertEqual(self.names(late_fee_data(self.prop, OCT31, show_all=True)), ['Anna', 'Cora', 'Dan'])      # Ben paid before the 31st: he owes nothing, so there is nobody more to add
 
 
 @override_settings(STORAGES=STORAGES)

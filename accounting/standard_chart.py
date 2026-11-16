@@ -56,6 +56,7 @@ CHART = [
     ('3817', 'Reserve Lighting Fixtures/ Lamp Post', EQUITY), ('3818', 'Reserve Patio Enclosures', EQUITY), ('3819', 'Reserve Tree Trimming', EQUITY),
     ('3820', 'Reserve Pool', EQUITY), ('3821', 'Reserve Seawall/Docks', EQUITY), ('3823', 'Reserve Electrical', EQUITY), ('3825', 'Reserve Fund Elevator', EQUITY),
     ('3826', 'Reserve Fund Painting', EQUITY), ('3827', 'Pooled Reserves', EQUITY), ('3828', 'Reserves Fund Plate Glass', EQUITY),
+    ('3829', 'SIRS Pooled Reserves', EQUITY),
     ('3831', 'Reserve Fund Interest', EQUITY), ('3832', 'Reserve Fund Asphalt Replacement', EQUITY), ('3833', 'Reserve Insurance Deductible', EQUITY),
     ('3834', 'Reserve Fund Roof Replacement', EQUITY),
     ('3835', 'Reserve Insurance', EQUITY), ('3836', 'Reserve Perimeter Fence', EQUITY),

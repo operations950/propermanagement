@@ -1,7 +1,8 @@
 """Owner collections: every owner who is behind and where they stand, as a board of steps.
 
-An owner is first *not in a case* (behind by more than the association's amount, no late letter yet). The first late letter opens the case: *Letter sent*. A letter that went out more than
-30 days ago means the owner can go to the lawyer, who sends one 45-day notice (of intent to lien) and then another (of intent to foreclose); 45 days after an owner enters one of those steps
+An owner is first *not in a case* (behind by more than the association's amount, no late letter yet). Opening a case moves them to *Preparing the letter*: the letter is drafted, read through
+and made final, the mailing affidavit is prepared, the letter, affidavit and envelope are printed, and the mailing date is confirmed (see letter_prep.py). Only then is the case *Letter sent*.
+A letter that went out more than 30 days ago means the owner can go to the lawyer, who sends one 45-day notice (of intent to lien) and then another (of intent to foreclose); 45 days after an owner enters one of those steps
 it is time to move them on. After that the case is a lien or foreclosure with the lawyer, and then resolved. The screen shows who is on each step, who needs moving on, and moves them.
 
 Posting the late fees and interest is a different job (the month-end close, and the Post late fees screen): this module only reads what is owed.
@@ -19,8 +20,9 @@ RESOLVED_SHOWN_DAYS = 180
 
 # the tabs, in the order an owner moves through them: key, label, what the step is
 TABS = [
-    ('none', 'Not in a case', 'Behind by more than the amount set for this association and no late letter yet. Write the first late letter: it opens their case.'),
-    (Stage.LETTER, 'Letter sent', 'A late letter has been made. Once it went out more than 30 days ago, the owner can go to the lawyer.'),
+    ('none', 'Not in a case', 'Behind by more than the amount set for this association and no case yet. Open a case: the late letter is drafted and the owner moves to Preparing the letter.'),
+    (Stage.PREPARING, 'Preparing the letter', 'The late letter is drafted. Read it through and make it final, prepare the mailing affidavit, print the letter, the affidavit and the envelope, then confirm the day it was mailed: only then is it sent.'),
+    (Stage.LETTER, 'Letter sent', 'A late letter has been mailed. Once it went out more than 30 days ago, the owner can go to the lawyer.'),
     (Stage.NOTICE1, 'Lawyer: notice 1', "The lawyer's first 45-day notice (of intent to lien). After 45 days, move the owner on."),
     (Stage.NOTICE2, 'Lawyer: notice 2', "The lawyer's second 45-day notice (of intent to foreclose). After 45 days, move the owner on."),
     (Stage.LIEN, 'Lien or foreclosure', 'With the lawyer: the lien or the foreclosure.'),
@@ -66,7 +68,13 @@ def case_row(case, today):
     sent = letter_sent_on(case) if case.stage == Stage.LETTER else None
     has_letter = case.events.filter(kind='letter').exists() if case.stage == Stage.LETTER else False
     alert = ''
-    if case.stage == Stage.LETTER:
+    prep = None
+    if case.stage == Stage.PREPARING:
+        from . import letter_prep
+        prep = letter_prep.status(case)
+        if days_in > letter_prep.WAITING_DAYS:
+            alert = f'Waiting to be mailed for {days_in} days'
+    elif case.stage == Stage.LETTER:
         if sent is not None and (today - sent).days > LETTER_DAYS:
             alert = f'Letter sent {(today - sent).days} days ago: can go to the lawyer'
         elif sent is None and has_letter:
@@ -76,7 +84,7 @@ def case_row(case, today):
     review_due = bool(case.next_review and case.next_review <= today)
     return {'case': case, 'unit': case.unit, 'owner': case.owner, 'b': b, 'months': months_behind(b, today), 'days_late': (today - b['oldest_due']).days if b['oldest_due'] else 0, 'since': since, 'days_in': days_in, 'sent_on': sent,
             'days_since_letter': (today - sent).days if sent else None, 'alert': alert, 'review_due': review_due, 'paid': b['total'] <= 0, 'can_move': case.stage in MOVE_LABEL,
-            'move_label': MOVE_LABEL.get(case.stage, ''), 'icons': delinquency.case_icons(case), 'needs': bool(alert) or review_due or b['total'] <= 0}
+            'move_label': MOVE_LABEL.get(case.stage, ''), 'icons': delinquency.case_icons(case), 'needs': bool(alert) or review_due or b['total'] <= 0, 'prep': prep}
 
 
 def board(prop, today=None, asof=None):
@@ -107,7 +115,7 @@ def board(prop, today=None, asof=None):
         elif key != Stage.RESOLVED:
             help_text += ' The amounts owed here are as of today.'
         tabs.append({'key': str(key), 'label': label, 'help': help_text, 'rows': rows[key], 'count': len(rows[key]), 'alerts': alerts})
-    attention = len(rows['none']) + sum(1 for k in (Stage.LETTER, Stage.NOTICE1, Stage.NOTICE2, Stage.LIEN) for r in rows[k] if r['needs'])
+    attention = len(rows['none']) + sum(1 for k in (Stage.PREPARING, Stage.LETTER, Stage.NOTICE1, Stage.NOTICE2, Stage.LIEN) for r in rows[k] if r['needs'])
     return {'tabs': tabs, 'attention': attention, 'threshold': threshold, 'today': today, 'asof': asof, 'default_asof': default}
 
 
@@ -119,17 +127,20 @@ def attention(prop, today=None, asof=None):
     bits = []
     if by['none']['count']:
         bits.append(f'{by["none"]["count"]} need a late letter')
+    n = sum(1 for r in by['preparing']['rows'] if r['alert'])
+    if n:
+        bits.append(f'{n} late letter{"s" if n != 1 else ""} waiting to be mailed')
     n = sum(1 for r in by['letter']['rows'] if r['alert'])
     if n:
         bits.append(f'{n} can go to the lawyer')
     n = sum(1 for k in ('notice1', 'notice2') for r in by[k]['rows'] if r['alert'])
     if n:
         bits.append(f'{n} lawyer notice{"s" if n != 1 else ""} to move on')
-    n = sum(1 for k in ('letter', 'notice1', 'notice2', 'lien') for r in by[k]['rows'] if r['review_due'])
+    n = sum(1 for k in ('preparing', 'letter', 'notice1', 'notice2', 'lien') for r in by[k]['rows'] if r['review_due'])
     if n:
         bits.append(f'{n} case{"s" if n != 1 else ""} to review')
-    n = sum(1 for k in ('letter', 'notice1', 'notice2', 'lien') for r in by[k]['rows'] if r['paid'])
+    n = sum(1 for k in ('preparing', 'letter', 'notice1', 'notice2', 'lien') for r in by[k]['rows'] if r['paid'])
     if n:
         bits.append(f'{n} paid in full: resolve')
-    open_n = sum(by[k]['count'] for k in ('letter', 'notice1', 'notice2', 'lien'))
+    open_n = sum(by[k]['count'] for k in ('preparing', 'letter', 'notice1', 'notice2', 'lien'))
     return {'count': data['attention'], 'bits': bits, 'open': open_n}

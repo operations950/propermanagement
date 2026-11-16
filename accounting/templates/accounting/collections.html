@@ -26,7 +26,7 @@
     @media (max-width: 768px) { .oc-bar { padding: 10px 12px; gap: 12px; } .oc-q { padding: 10px 14px; font-size: 1rem; } .oc-bar .btn { min-height: 44px; } .oc-bar input { min-height: 44px; font-size: 16px; } }
 </style>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Owner collections {% include '_tip.html' with text="Every owner who is behind, and where they are in the process: no letter yet, a late letter sent, the lawyer's first 45-day notice, the second, then a lien or foreclosure. A tab's orange number is how many on it need you: write a letter, send them to the lawyer, or move them on. Posting the late fees and interest is a different job: the Post late fees screen and the month-end close." %}</h2>
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Owner collections {% include '_tip.html' with text="Every owner who is behind, and where they are in the process: not in a case yet, preparing the late letter (draft it, make it final, print the letter, affidavit and envelope), the late letter sent, the lawyer's first 45-day notice, the second, then a lien or foreclosure. A tab's orange number is how many on it need you: write a letter, send them to the lawyer, or move them on. Posting the late fees and interest is a different job: the Post late fees screen and the month-end close." %}</h2>
         <div class="small text-muted">{{ assoc.name }}</div></div>
     <div class="d-flex gap-2 align-items-end flex-wrap ac-noprint">
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:late_fees' assoc.pk %}"><i data-lucide="alarm-clock" class="icon"></i> Post late fees</a>
@@ -62,10 +62,45 @@
         <td class="text-end d-none d-md-table-cell"><a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'legalforms:new' 'nola' %}?property={{ assoc.pk }}&unit={{ r.unit.pk }}&balance_as_of={{ asof|date:'Y-m-d' }}">Write the late letter</a></td></tr>
     {% empty %}<tr><td colspan="5" class="text-muted p-3">Nobody who owed more than ${{ threshold }} on {{ asof|date:'M j, Y' }} is without a case.</td></tr>{% endfor %}
     </tbody></table></div>
-{% if tab.rows %}<div class="d-flex flex-wrap gap-2 align-items-center ac-noprint"><button class="btn btn-sm btn-primary" name="action" value="make_letters">Make late letters for the ticked</button>
-    <span class="small text-muted">They are made as drafts and each opens the owner's case. Read each one through, make it final and mail it.</span></div>{% endif %}
+{% if tab.rows %}<div class="d-flex flex-wrap gap-2 align-items-center ac-noprint"><button class="btn btn-sm btn-primary" name="action" value="open_cases">Open a case for the selected owners</button>
+    <span class="small text-muted">Each owner moves to Preparing the letter and their late letter is drafted. Nothing is sent: you read it through, make it final, print it and confirm the day it was mailed.</span></div>{% endif %}
 </form>
 <script>(function () { var all = document.getElementById('oc-all'); if (all) all.addEventListener('change', function () { document.querySelectorAll('.oc-pick').forEach(function (c) { c.checked = all.checked; }); }); })();</script>
+
+{% elif tab.key == 'preparing' %}
+<div class="d-flex flex-wrap gap-2 align-items-center mb-2 ac-noprint">
+    <form method="post" action="{% url 'accounting:prep_bulk' assoc.pk %}" id="prep-draft-form" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Draft the missing letters</button></form>
+    <button type="button" class="btn btn-sm btn-outline-secondary prep-print" data-url="{% url 'accounting:prep_pdf' assoc.pk 'letter' %}">Print all letters</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary prep-print" data-url="{% url 'accounting:prep_pdf' assoc.pk 'affidavit' %}">Print all affidavits</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary prep-print" data-url="{% url 'accounting:prep_pdf' assoc.pk 'envelope' %}">Print all envelopes</button>
+    <span class="small text-muted">The ticked owners, or everyone here when none are ticked. Printing does not mark anything printed: you mark each one yourself.</span>
+</div>
+<div class="rp-wrap"><table class="rp ac-stack">
+    <thead><tr><th style="width: 28px;"><input type="checkbox" id="prep-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th style="text-align: left;">Letter</th><th style="text-align: left;">Mailing affidavit</th><th style="text-align: left;">Print</th><th style="text-align: left;">Mailed</th></tr></thead><tbody>
+    {% for r in tab.rows %}<tr class="{% if r.alert %}oc-alert{% endif %}">
+        <td><input type="checkbox" class="prep-pick" value="{{ r.case.pk }}" aria-label="Tick {{ r.owner.name }}"></td>
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}
+            <div class="small text-muted">Owes {{ r.b.total|money }} &middot; {{ r.days_in }} day{{ r.days_in|pluralize }} on this step</div>
+            {% if r.alert %}<div class="small" style="color: #8a5a00; font-weight: 600;">{{ r.alert }}</div>{% endif %}
+            {% if r.paid %}<div class="small"><span class="ac-chip good">Paid in full</span> open the case to resolve it</div>{% endif %}
+            <div class="small"><a href="{% url 'accounting:case' assoc.pk r.case.pk %}">Open case</a></div></td>
+        <td style="white-space: normal;">{% include 'accounting/_prep_letter.html' with r=r next_url=request.get_full_path %}</td>
+        <td style="white-space: normal;">{% include 'accounting/_prep_affidavit.html' with r=r next_url=request.get_full_path %}</td>
+        <td style="white-space: normal;">{% for l in r.prep.print_lines %}{% include 'accounting/_prep_print_line.html' with l=l r=r next_url=request.get_full_path %}{% endfor %}</td>
+        <td style="white-space: normal;">{% include 'accounting/_prep_mail.html' with r=r next_url=request.get_full_path %}</td></tr>
+    {% empty %}<tr><td colspan="6" class="text-muted p-3">Nobody is preparing a letter. Open a case from Not in a case.</td></tr>{% endfor %}</tbody></table></div>
+<div class="small text-muted mt-2">A case moves to Letter sent only when the letter is final, the letter, the affidavit and the envelope are marked printed, and the mailing date is confirmed. The 30 days count from that date.</div>
+<script>(function () {
+    var all = document.getElementById('prep-all');
+    function ids() { return Array.prototype.map.call(document.querySelectorAll('.prep-pick:checked'), function (c) { return c.value; }); }
+    if (all) all.addEventListener('change', function () { document.querySelectorAll('.prep-pick').forEach(function (c) { c.checked = all.checked; }); });
+    document.querySelectorAll('.prep-print').forEach(function (b) { b.addEventListener('click', function () {
+        var q = ids().map(function (i) { return 'case=' + i; }).join('&');
+        window.open(b.getAttribute('data-url') + (q ? '?' + q : ''), '_blank');
+    }); });
+    var form = document.getElementById('prep-draft-form');
+    if (form) form.addEventListener('submit', function () { ids().forEach(function (i) { var h = document.createElement('input'); h.type = 'hidden'; h.name = 'case'; h.value = i; form.appendChild(h); }); });
+})();</script>
 
 {% elif tab.key == 'resolved' %}
 <div class="rp-wrap"><table class="rp ac-stack">

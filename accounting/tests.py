@@ -1109,18 +1109,28 @@ class LateLetterOpensTheCaseTests(DelinquencyBase):
         doc, errors = self.make_letter()
         self.assertFalse(errors)
         case = DelinquencyCase.objects.get()
-        self.assertEqual((case.unit, case.owner, case.stage), (self.late_unit, self.owner, 'letter'))
+        self.assertEqual((case.unit, case.owner, case.stage), (self.late_unit, self.owner, 'preparing'))       # a draft is not a letter sent: the case waits on the preparing step
         self.assertEqual(case.next_review, case.opened_on + _td(days=30))
         kinds = list(case.events.values_list('kind', flat=True))
-        self.assertIn('letter', kinds)
-        self.assertEqual(case.events.get(kind='letter').document_id, doc.pk)
-        self.assertEqual(delinquency.case_icons(case)['letters'], 1)
+        self.assertNotIn('letter', kinds)
+        self.assertEqual(case.prep.letter_doc_id, doc.pk)
+        self.assertEqual(delinquency.case_icons(case)['letters'], 0)
 
-    def test_a_second_letter_goes_on_the_same_case(self):
+    def test_a_second_draft_replaces_the_unfinished_one_on_the_same_case(self):
+        first, _ = self.make_letter()
+        second, _ = self.make_letter()
+        self.assertEqual(DelinquencyCase.objects.count(), 1)
+        self.assertEqual(DelinquencyCase.objects.get().prep.letter_doc_id, second.pk)
+        from legalforms.models import GeneratedDocument
+        self.assertFalse(GeneratedDocument.objects.filter(pk=first.pk).exists())
+
+    def test_a_further_letter_on_a_case_already_sent_is_noted_on_it(self):
         self.make_letter()
+        case = DelinquencyCase.objects.get()
+        delinquency.set_stage(case, 'letter', self.staff.user)
         self.make_letter()
         self.assertEqual(DelinquencyCase.objects.count(), 1)
-        self.assertEqual(DelinquencyCase.objects.get().events.filter(kind='letter').count(), 2)
+        self.assertEqual(case.events.filter(kind='letter').count(), 1)
 
     def test_the_review_is_a_line_on_the_compliance_screen(self):
         from worksessions.models import Session, SessionLine
@@ -1184,8 +1194,8 @@ class DelinquencyScreenTests(DelinquencyBase):
         self.assertIn('Needs a letter', html)
 
     def test_making_letters_from_the_screen_opens_cases(self):
-        r = self.client.post(self.url, {'action': 'make_letters', 'unit': [self.late_unit.pk]}, follow=True)
-        self.assertContains(r, 'Made 1 late letter')
+        r = self.client.post(self.url, {'action': 'open_cases', 'unit': [self.late_unit.pk]}, follow=True)
+        self.assertContains(r, 'Opened 1 case')
         self.assertEqual(DelinquencyCase.objects.count(), 1)
         case = DelinquencyCase.objects.get()
         page = self.client.get(reverse('accounting:case', args=[self.prop.pk, case.pk]))
@@ -1193,8 +1203,9 @@ class DelinquencyScreenTests(DelinquencyBase):
         self.assertContains(page, 'Mark reviewed')
 
     def test_case_actions(self):
-        self.client.post(self.url, {'action': 'make_letters', 'unit': [self.late_unit.pk]})
+        self.client.post(self.url, {'action': 'open_cases', 'unit': [self.late_unit.pk]})
         case = DelinquencyCase.objects.get()
+        delinquency.set_stage(case, 'letter', self.staff.user)           # the letter went out
         url = reverse('accounting:case', args=[self.prop.pk, case.pk])
         self.client.post(url, {'action': 'call', 'note': 'Spoke with the owner', 'date': '2026-11-12'})
         self.client.post(url, {'action': 'stage', 'stage': 'notice1', 'note': 'Sent to the lawyer'})
