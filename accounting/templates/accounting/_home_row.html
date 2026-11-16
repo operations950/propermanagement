@@ -1,0 +1,7 @@
+<a class="ac-step" href="{% url 'accounting:close' r.assoc.pk month|date:'Y-m' %}">
+    <i data-lucide="building-2" class="icon ac-ico"></i>
+    <span class="fw-semibold flex-grow-1">{{ r.assoc.name }}</span>
+    <span class="small text-muted d-none d-sm-inline">{{ r.detail }}</span>
+    <span class="ac-chip {{ r.status }}">{% if r.status == 'done' %}Closed{% elif r.status == 'attention' %}Needs attention{% else %}Not started{% endif %}</span>
+    <i data-lucide="chevron-right" class="icon text-muted"></i>
+</a>

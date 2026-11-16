@@ -89,6 +89,11 @@ class AssociationProfile(models.Model):
         from . import sunbiz
         return sunbiz.search_link(self.legal_name) or self.sunbiz_url
 
+    def sunbiz_needs_check(self):
+        """True when nobody has looked at the official record on SunBiz for more than 90 days (or ever). SunBiz cannot be read by a program, so a person checks by hand."""
+        from . import sunbiz
+        return sunbiz.needs_check(self)
+
     def registered_agent_is_us(self):
         return 'proper realty' in (self.registered_agent or '').lower()
 
@@ -414,6 +419,7 @@ class ShareKind(models.Model):
 class UnitProfile(models.Model):
     unit = models.OneToOneField(Unit, on_delete=models.CASCADE, related_name='assoc_profile')
     building = models.CharField(max_length=40, blank=True)
+    webvault_bill_pay = models.CharField(max_length=20, blank=True, db_index=True, help_text="The unit's bill pay number in Truist's Web Vault (the regular assessment one, which ends in 1): how a Web Vault payment finds its unit.")
 
 
 class UnitShare(models.Model):
@@ -492,6 +498,35 @@ class BoardTerm(models.Model):
     @property
     def is_current(self):
         return self.end_date is None
+
+
+class ReserveAcknowledgement(models.Model):
+    """A person's note that the reserve cash and the reserve funds differ at a month end, and why. It counts only while the difference is still the one acknowledged."""
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='reserve_acknowledgements')
+    month = models.DateField(help_text='First day of the month the reserve check was done for.')
+    difference = models.DecimalField(help_text='Reserve cash less reserve funds when it was acknowledged.', **MONEY)
+    reason = models.CharField(max_length=500)
+    acknowledged_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    acknowledged_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['association', 'month'], name='uniq_reserve_ack_month')]
+
+
+class BoardPackageSend(models.Model):
+    """The month's financial package, sent to the board: who it went to, the email as sent, and when. Its existence is what completes the month-end close."""
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='board_package_sends')
+    month = models.DateField(help_text='First day of the month the package is for.')
+    sent_at = models.DateTimeField(auto_now_add=True)
+    sent_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    recipients = models.JSONField(default=list, blank=True, help_text='[{name, position, email}] the email was sent to.')
+    cc = models.JSONField(default=list, blank=True, help_text='The addresses copied.')
+    subject = models.CharField(max_length=200, blank=True)
+    body = models.TextField(blank=True)
+    filename = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['-sent_at', '-id']
 
 
 # ---------------------------------------------------------------- charges and what owners pay

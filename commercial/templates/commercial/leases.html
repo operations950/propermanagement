@@ -1,0 +1,35 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Leases - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-signature" class="icon-lg"></i> Units &amp; tenants {% include '_tip.html' with text="Each unit has a tenant on a lease. The lease holds the rent, the rent increases and seasonal rents, the CAM estimate, the deposit and a copy of the lease itself. The rent posts to the books by itself about 10 days before it is due." %}</h2>
+        <div class="small text-muted">{{ assoc.name }}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-primary" href="{% url 'commercial:lease_new' assoc.pk %}"><i data-lucide="plus" class="icon"></i> New lease</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:invoices' assoc.pk %}"><i data-lucide="file-text" class="icon"></i> Tenant invoices</a>
+        {% if books_on %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:hub' assoc.pk %}"><i data-lucide="chart-column" class="icon"></i> Accounting</a>{% endif %}
+    </div>
+</div>
+{% if ending_soon %}<div class="ac-strip mb-3 small">{% for r in ending_soon %}<div><strong>{{ r.lease.tenant.name }}</strong> ({{ r.lease.unit.label }}): the lease ends {{ r.lease.end_date|mdate }}.</div>{% endfor %}</div>{% endif %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Current</h6>
+    <table class="table table-sm ac-table mb-0 ac-stack">
+        <thead><tr><th>Unit</th><th>Tenant</th><th>Term</th><th class="ac-num">Rent now</th><th class="ac-num">Balance</th></tr></thead>
+        <tbody>{% for r in current %}<tr><td><a href="{% url 'commercial:lease' assoc.pk r.lease.pk %}">{{ r.lease.unit.label }}</a>{% if r.lease.unit.square_footage %}<div class="small text-muted">{{ r.lease.unit.square_footage }} sq ft</div>{% endif %}</td>
+            <td>{{ r.lease.tenant.name }}</td>
+            <td class="small">{% if r.lease.start_date %}{{ r.lease.start_date|mdate }}{% else %}no start date{% endif %} to {% if r.lease.end_date %}{{ r.lease.end_date|mdate }}{% else %}open{% endif %}
+                {% if r.ends_soon %}<span class="ac-chip warn">Ends soon</span>{% endif %}{% if r.expired %}<span class="ac-chip warn">Past its end date</span>{% endif %}</td>
+            <td class="ac-num">{{ r.rent|money }}</td><td class="ac-num">{% if r.balance > 0 %}<span class="ac-owe">{{ r.balance|money }}</span>{% elif r.balance < 0 %}<span class="ac-ahead">{{ r.balance|money }}</span>{% else %}0.00{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="5" class="text-muted">No current lease yet.</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+{% if upcoming %}<div class="card mb-3"><div class="card-body"><h6 class="card-title">Signed, not started</h6>
+    {% for r in upcoming %}<div class="py-1"><a href="{% url 'commercial:lease' assoc.pk r.lease.pk %}">{{ r.lease.unit.label }}: {{ r.lease.tenant.name }}</a> <span class="small text-muted">starts {{ r.lease.start_date|mdate }}</span></div>{% endfor %}</div></div>{% endif %}
+{% if vacant %}<div class="card mb-3"><div class="card-body"><h6 class="card-title">No tenant</h6>
+    <div class="d-flex flex-wrap gap-2">{% for u in vacant %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:lease_new' assoc.pk %}?unit={{ u.pk }}">{{ u.label }} <i data-lucide="plus" class="icon"></i></a>{% endfor %}</div></div></div>{% endif %}
+{% if ended %}<details class="mb-3"><summary class="small text-muted" style="cursor: pointer;">Ended leases ({{ ended|length }})</summary>
+    {% for r in ended %}<div class="py-1 small"><a href="{% url 'commercial:lease' assoc.pk r.lease.pk %}">{{ r.lease.unit.label }}: {{ r.lease.tenant.name }}</a> <span class="text-muted">ended {{ r.lease.end_date|mdate }}</span></div>{% endfor %}</details>{% endif %}
+{% endblock %}

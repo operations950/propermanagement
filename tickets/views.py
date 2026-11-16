@@ -18,7 +18,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
-from core import nudges
+from core import nav, nudges
+from core.nav_map import TICKET_FROM
 from core.json_utils import dumps_for_script
 from core.models import (
     Contact, Property, StaffProfile, Unit, group_vendors_by_trade, is_valid_phone,
@@ -1369,12 +1370,15 @@ def ticket_detail(request, pk):
         if elapsed < timedelta(hours=24):
             vendor_link_cooldown_hours_left = max(1, round(24 - elapsed.total_seconds() / 3600))
 
-    back_url = _list_back_url(request)       # up one level: the ticket list, with the filters it had when this ticket was opened
+    # Up: the wide screen the ticket was opened from (the filtered ticket list, a dashboard, Home); with no trail, the ticket list with the filters it last had
+    up = nav.up(request, TICKET_FROM, default=(_list_back_url(request), 'Tickets'))
+    back_url = up.url
     all_attachments = list(ticket.attachments.all().order_by('-created_at'))
 
     return render(request, 'tickets/ticket_detail.html', {
         'ticket': ticket,
         'back_url': back_url,
+        'up': up,
         'reassign_form': reassign_form,
         'assign_contractor_form': assign_contractor_form,
         'assignment_logs': ticket.assignment_logs.select_related(

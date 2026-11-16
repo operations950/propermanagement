@@ -353,7 +353,7 @@ class PeriodReport:
             hol = sum((r['holiday_hours'] for r in rows), Decimal(0))
             worked_h = round(Decimal(worked) / 60, 2)
             paid = worked_h + off + hol
-            self.weeks.append({'rows': rows, 'worked_min': worked, 'worked_h': worked_h, 'off_hours': off, 'holiday_hours': hol, 'paid': paid, 'over': paid > 40,
+            self.weeks.append({'rows': rows, 'rows_newest': rows[::-1], 'worked_min': worked, 'worked_h': worked_h, 'off_hours': off, 'holiday_hours': hol, 'paid': paid, 'over': paid > 40,
                                'start': rows[0]['date'], 'end': rows[-1]['date'], 'current': rows[0]['date'] <= self.today <= rows[-1]['date']})
         self.late_count = sum(1 for r in self.rows if r['late'])
         self.worked_min = sum(w['worked_min'] for w in self.weeks)
@@ -365,8 +365,14 @@ class PeriodReport:
 
     @property
     def weeks_to_show(self):
-        """The weeks in the order the hours page lists them: the week in progress first, otherwise in date order."""
-        return self.weeks[::-1] if self.weeks[1]['current'] else self.weeks
+        """The weeks in the order every list shows them: the latest week first, the oldest last (and `rows_newest` puts each week's days the same way,
+        so today, or the last day of a finished period, is at the top and the first day of the period at the bottom)."""
+        return self.weeks[::-1]
+
+    @property
+    def rows_newest(self):
+        """Every day of the period, the latest first."""
+        return self.rows[::-1]
 
     @property
     def worked_hours(self):
@@ -381,7 +387,7 @@ def hours_csv(reports):
     w.writerow(['Name', 'Pay', 'Date', 'Clock in', 'Clock out', 'Lunch (min)', 'Hours worked', 'Vacation/sick hours', 'Holiday hours', 'Paid hours', 'Note'])
     for rep in reports:
         p = rep.profile
-        for r in rep.rows:
+        for r in rep.rows_newest:
             punch = r['punch']
             if not (punch or r['off_hours'] or r['holiday_hours'] or r['kind'] in ('other',)):
                 continue

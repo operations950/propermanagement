@@ -194,7 +194,7 @@
         <table class="table table-sm align-middle mb-0 tabular-nums">
             <thead><tr><th>Day</th><th>In</th><th>Out</th><th>Lunch</th><th class="text-end">Hours</th><th></th></tr></thead>
             <tbody>
-            {% for r in report.rows %}{% if r.punch or r.kind != 'none' %}
+            {% for r in report.rows_newest %}{% if r.punch or r.kind != 'none' %}
             <tr>
                 <td>{{ r.date|short_date }}</td>
                 {% if r.punch %}

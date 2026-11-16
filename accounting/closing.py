@@ -6,13 +6,18 @@ from datetime import date
 
 from django.urls import reverse
 
-from . import bankrec, charges, ledger, owner_collections, payables, scheduled
+from core.models import Property
+
+from . import bankrec, board_send, charges, labels, ledger, owner_collections, payables, reserve_check, scheduled
 from .models import AssociationProfile, ChargeRule, JournalRule, MonthLock
 
 
-def associations():
-    """The associations whose books we keep, by name."""
-    return list(AssociationProfile.objects.filter(we_do_financials=True, property__is_active=True).select_related('property').order_by('property__name'))
+def associations(commercial=True):
+    """The properties whose books we keep, by name: the associations and (unless `commercial` is False) the commercial buildings."""
+    qs = AssociationProfile.objects.filter(we_do_financials=True, property__is_active=True)
+    if not commercial:
+        qs = qs.filter(property__property_type=Property.Type.ASSOCIATION)
+    return list(qs.select_related('property').order_by('property__name'))
 
 
 def _item(key, title, icon, status, detail, url, blocks=True):
@@ -21,7 +26,7 @@ def _item(key, title, icon, status, detail, url, blocks=True):
 
 def close_sheet(association, month_first, today=None):
     """The steps of the month, in the order they are done: look at what posts by itself (owner charges, recurring bills, recurring journal entries), then the bank reconciliations (where the
-    owner payments are matched to cash), then the checks that follow it, the late fees and interest, and the owner collections. Only the bank reconciliations stop the month from closing."""
+    owner payments are matched to cash), then the checks that follow it, the late fees and interest, and the owner collections. Only the bank reconciliations stop the month from closing. After the month is closed the last step is sending the financials to the board."""
     from django.utils import timezone
     today = today or timezone.localdate()
     pk, month_param = association.pk, f'{month_first:%Y-%m}'
@@ -31,6 +36,8 @@ def close_sheet(association, month_first, today=None):
     auto_off = ' Automatic posting is off for this association: switch it on there.' if not profile.auto_post else ''
     items = []
 
+    lab = labels.labels_for(association)
+    commercial = labels.is_commercial(association)
     # 1. This month's owner charges: they post by themselves a few days early; this step only checks, and posts any that did not.
     rules = list(ChargeRule.objects.filter(association=association, is_active=True))
     due_rows, pending = [], 0
@@ -41,10 +48,19 @@ def close_sheet(association, month_first, today=None):
                 due_rows.append((r, d, st))
                 pending += 1 if st['pending'] else 0
     charges_url = recurring_url + f'?tab=charges&month={month_param}'
+    rent_note = ''
+    if commercial:
+        # the rent is posted from the leases (commercial/rent.py), ahead of the first of the month; this step only checks that every lease has its charge
+        from commercial import rent as commercial_rent
+        rs = commercial_rent.month_status(association, month_first)
+        pending += rs['missing']
+        if rs['leases']:
+            rent_note = f'Rent posted for {rs["posted"]} of {rs["leases"]} lease{"s" if rs["leases"] != 1 else ""}. '
+        due_rows = due_rows or ([None] * rs['leases'])
     if pending:
-        items.append(_item('charges', 'Owner charges posted', 'receipt', 'attention', f'{pending} charge{"s" if pending != 1 else ""} not posted yet: post {"them" if pending != 1 else "it"} there.' + auto_off, charges_url, blocks=False))
+        items.append(_item('charges', lab['charges_step'], 'receipt', 'attention', rent_note + f'{pending} charge{"s" if pending != 1 else ""} not posted yet: post {"them" if pending != 1 else "it"} there.' + auto_off, charges_url, blocks=False))
     else:
-        items.append(_item('charges', 'Owner charges posted', 'receipt', 'done', ('Posted to every unit.' if due_rows else 'Nothing was due this month.' if rules else 'No recurring charges are set up.') + auto_off, charges_url, blocks=False))
+        items.append(_item('charges', lab['charges_step'], 'receipt', 'done', (rent_note or ('Posted to every unit.' if due_rows else 'Nothing was due this month.' if rules else 'No recurring charges are set up.')) + auto_off, charges_url, blocks=False))
 
     # 2. Recurring bills: the fixed ones are checked; the ones whose amount changes are settled in the bank reconciliation and are kept apart.
     rec = [r for r in payables.recurring_status(association, month_first) if r['due']]
@@ -82,16 +98,12 @@ def close_sheet(association, month_first, today=None):
         status = {'done': 'done', 'ready': 'attention', 'not_started': 'not_started', 'attention': 'attention'}[s['status']]
         items.append(_item(f'bank{bank.pk}', f'{bank.label} bank reconciliation', 'landmark', status, detail, reverse('accounting:bank', args=[pk, bank.pk, month_param])))
 
-    # 5. Reserve funds equal reserve cash.
-    tie = scheduled.reserve_tie(association, month_end)
-    if tie['has_reserve_bank']:
-        bs_url = reverse('accounting:report_bs', args=[pk]) + f'?end={month_end:%Y-%m-%d}'
-        if tie['diff'] == 0:
-            items.append(_item('reserve_tie', 'Reserve funds equal reserve cash', 'scale', 'done', f'Both are ${tie["cash"]:,.2f}.', bs_url, blocks=False))
-        else:
-            side = 'more' if tie['diff'] > 0 else 'less'
-            items.append(_item('reserve_tie', 'Reserve funds equal reserve cash', 'scale', 'attention', f'The reserve cash (${tie["cash"]:,.2f}) is ${abs(tie["diff"]):,.2f} {side} than the reserve funds (${tie["funds"]:,.2f}). A reserve project paid from operating, or a transfer not yet booked, is the usual reason.',
-                               bs_url, blocks=False))
+    # 5. Reserve funds equal reserve cash. The card only says where it stands; the numbers are on its own screen.
+    reserve = reserve_check.check(association, month_first)
+    if reserve['has_reserve_bank']:
+        reserve_url = reverse('accounting:reserve_check', args=[pk, month_param])
+        note = 'Matches.' if reserve['diff'] == 0 else ('Difference acknowledged.' if reserve['acknowledged'] else 'Differs: look at it.')
+        items.append(_item('reserve_tie', 'Reserve funds equal reserve cash', 'scale', reserve['status'], note, reserve_url, blocks=False))
 
     # 6. The variable recurring bills got settled in the reconciliation.
     if variable:
@@ -101,31 +113,52 @@ def close_sheet(association, month_first, today=None):
                            bills_url, blocks=False))
 
     # 7. Charge the late fees and interest.
-    late_url = reverse('accounting:late_fees', args=[pk])
-    if profile.late_fee_is_set() or profile.interest_is_set():
-        fee_units = {c.unit_id for c, fee, due in charges._late_fee_rows(association, today)}
-        interest_units = {c.unit_id for c, mf, me, amount in charges._interest_rows(association, today)}
+    late_as_of = min(month_end, today)             # the screen judges who was late on the last day of the month being closed
+    late_url = reverse('accounting:late_fees', args=[pk]) + f'?as_of={late_as_of:%Y-%m-%d}&month={month_param}'
+    if commercial and not (profile.late_fee_is_set() or profile.interest_is_set()):
+        pass                                    # no late fee terms set for this property: nothing to charge
+    elif profile.late_fee_is_set() or profile.interest_is_set():
+        fee_units = {c.unit_id for c, fee, due in charges._late_fee_rows(association, late_as_of, as_of=late_as_of)}
+        interest_units = {c.unit_id for c, mf, me, amount in charges._interest_rows(association, late_as_of, as_of=late_as_of)}
         ready = len(fee_units | interest_units)
         items.append(_item('late_fees', 'Charge late fees and interest', 'alarm-clock', 'attention' if ready else 'done',
-                           f'{ready} owner{"s" if ready != 1 else ""} with late fees or interest ready to charge.' if ready else 'Nothing to charge.', late_url, blocks=False))
+                           f'{ready} {lab["holder_lower"]}{"s" if ready != 1 else ""} with late fees or interest ready to charge as of {late_as_of:%b} {late_as_of.day}.' if ready else 'Nothing to charge.', late_url, blocks=False))
     else:
         items.append(_item('late_fees', 'Charge late fees and interest', 'alarm-clock', 'attention', 'The late fee and interest rules are not set up yet.', reverse('accounting:settings', args=[pk]) + '#late', blocks=False))
 
-    # 8. Owner collections: right after the late fees is the best time to write the late letters.
-    look = owner_collections.attention(association, today)
-    items.append(_item('collections', 'Owner collections', 'scale', 'attention' if look['count'] else 'done',
-                       (f'{look["count"]} owner{"s" if look["count"] != 1 else ""} need attention: ' + '; '.join(look['bits']) + '.') if look['count'] else ('Nobody needs attention.' if look['open'] else 'Nobody is behind.'),
-                       reverse('accounting:collections', args=[pk]), blocks=False))
+    # 7b. A commercial building: last year's CAM reconciliation, in the first months of the year, until it is approved.
+    if commercial:
+        from commercial import cam as commercial_cam
+        cam_note = commercial_cam.close_note(association, month_first)
+        if cam_note:
+            items.append(_item('cam', 'CAM reconciliation', 'calculator', 'attention', cam_note, reverse('commercial:cam_reconcile', args=[pk]) + f'?year={month_first.year - 1}', blocks=False))
 
+    # 8. Owner collections: right after the late fees is the best time to write the late letters.
+    if not commercial:                           # a commercial property has no owner collections for now
+        look = owner_collections.attention(association, today)
+        items.append(_item('collections', 'Owner collections', 'scale', 'attention' if look['count'] else 'done',
+                           (f'{look["count"]} owner{"s" if look["count"] != 1 else ""} need attention: ' + '; '.join(look['bits']) + '.') if look['count'] else ('Nobody needs attention.' if look['open'] else 'Nobody is behind.'),
+                           reverse('accounting:collections', args=[pk]), blocks=False))
+
+    # The official record: SunBiz cannot be read by a program, so a person checks it by hand (the settings card has the Open on SunBiz button and I checked it).
+    official_url = reverse('accounting:settings', args=[pk]) + '#official'
     if profile.sunbiz_alerts:
         more = len(profile.sunbiz_alerts) - 1
-        items.append(_item('state', 'Official record', 'building', 'attention', profile.sunbiz_alerts[0] + (f' (and {more} more)' if more else ''), reverse('accounting:settings', args=[pk]) + '#official', blocks=False))
+        items.append(_item('state', 'Official record', 'building', 'attention', profile.sunbiz_alerts[0] + (f' (and {more} more)' if more else ''), official_url, blocks=False))
+    elif profile.legal_name or profile.state_doc_number:
+        if profile.sunbiz_needs_check():
+            items.append(_item('state', 'Official record', 'building', 'attention', 'Check it by hand: open SunBiz, look at the record and press I checked it.' + (f' Last checked {profile.sunbiz_checked_on:%b} {profile.sunbiz_checked_on.day}.' if profile.sunbiz_checked_on else ' It has not been checked yet.'), official_url, blocks=False))
+        else:
+            items.append(_item('state', 'Official record', 'building', 'done', f'Checked {profile.sunbiz_checked_on:%b} {profile.sunbiz_checked_on.day}.', official_url, blocks=False))
 
     locked = MonthLock.objects.filter(association=association, month=month_first).exists()
     blocking = [i for i in items if i['blocks'] and i['status'] != 'done']
     items.append(_item('lock', 'Review and close the month', 'lock', 'done' if locked else ('attention' if not blocking else 'not_started'),
                        'The month is closed.' if locked else ('Finish the items above first.' if blocking else 'Everything is done. Close the month.'), reverse('accounting:reports', args=[pk])))
-    return {'items': items, 'locked': locked, 'can_lock': not blocking and not locked, 'blocking': len(blocking)}
+    # The last step: the financials go to the board. It comes after the lock, so it can never stop the month from closing.
+    sent_status, sent_detail = board_send.status(association, month_first)
+    items.append(_item('send_board', lab['package_step'], 'send', sent_status, sent_detail, reverse('accounting:send_board', args=[pk, month_param]), blocks=False))
+    return {'items': items, 'locked': locked, 'sent': sent_status == 'done', 'can_lock': not blocking and not locked, 'blocking': len(blocking)}
 
 
 def _late_fee_candidates(association, as_of):
@@ -141,10 +174,10 @@ def _late_fee_candidates(association, as_of):
 
 
 def association_status(association, month_first):
-    """One chip for the list of associations: done (month closed), not_started (nothing yet) or attention, with a short note."""
+    """One chip for the list of associations: done (month closed and the financials sent to the board), not_started (nothing yet) or attention, with a short note."""
     sheet = close_sheet(association, month_first)
     if sheet['locked']:
-        return 'done', 'Closed'
+        return ('done', 'Closed and sent to the owners' if labels.is_commercial(association) else 'Closed and sent to the board') if sheet['sent'] else ('attention', 'Closed, financials not sent')
     items = [i for i in sheet['items'] if i['blocks']]
     done = sum(1 for i in items if i['status'] == 'done')
     if done == 0 and all(i['status'] == 'not_started' for i in items):
@@ -158,8 +191,9 @@ def checklist_step(month_first):
     if not rows:
         return 'not_started', 'No association is set up for financials yet.'
     closed = sum(1 for a in rows if association_status(a.property, month_first)[0] == 'done')
+    noun = 'associations' if all(a.property.property_type == Property.Type.ASSOCIATION for a in rows) else 'properties'
     if closed == len(rows):
-        return 'done', f'All {len(rows)} associations are closed.'
+        return 'done', f'All {len(rows)} {noun} are closed.'
     if closed == 0 and all(association_status(a.property, month_first)[0] == 'not_started' for a in rows):
-        return 'not_started', f'{len(rows)} associations to close.'
+        return 'not_started', f'{len(rows)} {noun} to close.'
     return 'attention', f'{closed} of {len(rows)} closed'

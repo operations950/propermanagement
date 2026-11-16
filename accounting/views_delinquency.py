@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from . import charges, delinquency, ledger
 from .models import ZERO, CaseEvent, DelinquencyCase
-from .web import admin_only, association_or_404, books_or_redirect, parse_date
+from .web import admin_only, association_only_or_404, books_or_redirect, parse_date, acc_up
 
 
 def _ids(request, name='unit'):
@@ -17,7 +17,8 @@ def _ids(request, name='unit'):
 
 @admin_only
 def delinquencies(request, pk):
-    prop = association_or_404(pk)
+    prop = association_only_or_404(pk)
+    ledger.profile_for(prop)
     redirect_to = books_or_redirect(request, prop)
     if redirect_to:
         return redirect_to
@@ -65,7 +66,7 @@ def delinquencies(request, pk):
            'summary': {'count': len(rows), 'owed': sum((r['b']['total'] for r in rows), ZERO), 'fees': sum((r['fee_due'] for r in rows), ZERO), 'interest': sum((r['interest_due'] for r in rows), ZERO),
                        'review': sum(1 for c in cases if c['review_due']), 'letters': sum(1 for r in rows if r['needs_letter'])},
            'other_cases': [c for c in cases if c['case'].unit_id not in shown_units], 'terms': charges.terms_sentences(profile),
-           'acc_back': reverse('accounting:hub', args=[pk]), 'acc_back_label': 'Accounting'}
+           **acc_up(request, prop, ['accounting:hub', 'accounting:close'], reverse('accounting:hub', args=[pk]), 'Accounting')}
     return render(request, 'accounting/delinquencies.html', ctx)
 
 
@@ -91,7 +92,8 @@ def _make_letters(prop, unit_ids, user, asof=None):
 
 @admin_only
 def case_detail(request, pk, case_pk):
-    prop = association_or_404(pk)
+    prop = association_only_or_404(pk)
+    ledger.profile_for(prop)
     redirect_to = books_or_redirect(request, prop)
     if redirect_to:
         return redirect_to
@@ -131,5 +133,5 @@ def case_detail(request, pk, case_pk):
     events = list(case.events.select_related('document', 'by'))
     ctx = {'assoc': prop, 'case': case, 'b': b, 'open_charges': open_charges, 'events': events, 'icons': delinquency.case_icons(case), 'stages': [s for s in DelinquencyCase.Stage if s != DelinquencyCase.Stage.RESOLVED],
            'letters': GeneratedDocument.objects.filter(property=prop, unit=case.unit, template__slug='nola').order_by('-created_at'), 'today': timezone.localdate(),
-           'acc_back': reverse('accounting:collections', args=[pk]) + f'?tab={case.stage}', 'acc_back_label': 'Owner collections'}
+           **acc_up(request, prop, ['accounting:collections', 'accounting:delinquencies'], reverse('accounting:collections', args=[pk]) + f'?tab={case.stage}', 'Owner collections')}
     return render(request, 'accounting/delinquency_case.html', ctx)

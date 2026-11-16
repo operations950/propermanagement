@@ -19,7 +19,7 @@
 </div>
 
 <form method="post" id="dq-form">{% csrf_token %}<input type="hidden" name="threshold" value="{{ threshold }}">
-<div class="rp-wrap mb-2"><table class="rp">
+<div class="rp-wrap mb-2"><table class="rp ac-stack">
     <thead><tr><th style="width: 28px;"><input type="checkbox" id="dq-all" checked aria-label="Tick all"></th><th>Unit and owner</th><th>Where it stands</th><th>Owes</th><th>Oldest unpaid</th><th>Ready to charge</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}<tr>
@@ -41,7 +41,7 @@
 <form method="post" class="mt-2 ac-noprint d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="threshold"><input type="hidden" name="threshold" value="{{ threshold }}"><button class="btn btn-sm btn-link p-0">Make ${{ threshold }} the usual amount</button></form>
 
 <h6 class="mt-4">Open cases</h6>
-<div class="rp-wrap"><table class="rp">
+<div class="rp-wrap"><table class="rp ac-stack">
     <thead><tr><th>Unit and owner</th><th>Where it stands</th><th>Owes</th><th>Next review</th><th></th></tr></thead><tbody>
     {% for c in cases %}<tr><td style="white-space: normal;"><span class="fw-semibold">{{ c.case.unit.label }}</span> {{ c.case.owner.name }}</td>
         <td>{% include 'accounting/_case_icons.html' with icons=c.icons %} <span class="ac-chip">{{ c.case.get_stage_display }}</span>{% if c.paid %} <span class="ac-chip good">Paid in full</span>{% endif %}</td>

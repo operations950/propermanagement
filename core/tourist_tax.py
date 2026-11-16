@@ -19,7 +19,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from django.utils import timezone
 
 from . import ledger, recon
-from .models import LedgerLine, Property, TouristTaxFiling
+from .models import LedgerLine, Property, TouristTaxFiling, TouristTaxPayment
 
 ZERO = Decimal('0.00')
 RATE = Decimal('0.06')
@@ -162,6 +162,35 @@ def attach_filings(rep):
     return rep
 
 
+def attach_payment(rep):
+    """Put the county payment on the report and say where the month stands (the last step of the process):
+    'none'       nothing is marked filed yet (or there is nothing to file);
+    'partial'    some returns are filed, not all;
+    'changed'    a filed return's amount changed since it was filed (file it again first);
+    'unpaid'     every return is filed and tax is due, but the payment is not recorded: the one that is easy to forget;
+    'nothing'    every return is filed and nothing is due, so there is nothing to pay;
+    'paid'       the payment is recorded for the amount due now;
+    'paid_changed'  the payment is recorded, but the amount due is no longer what it was when it was recorded."""
+    pay = TouristTaxPayment.objects.filter(month=rep['month'], cleared_at__isnull=True).first()
+    total = len(rep['rows'])
+    if total == 0 or (rep['filed'] == 0 and not rep['changed']):
+        state = 'none'
+    elif rep['changed']:
+        state = 'changed'
+    elif rep['filed'] < total:
+        state = 'partial'
+    elif pay is not None:
+        state = 'paid' if pay.amount_due == rep['due'] else 'paid_changed'
+    elif rep['due'] <= ZERO:
+        state = 'nothing'
+    else:
+        state = 'unpaid'
+    rep['payment'] = pay
+    rep['pay_state'] = state
+    rep['can_pay'] = state in ('unpaid', 'paid_changed')
+    return rep
+
+
 def report(month):
     """The month's tourist tax: a row per property (its units added up) with the reservation payouts behind it, the total and the tax due."""
     month = ledger.month_of(month)
@@ -207,12 +236,12 @@ def report(month):
         flags.append(f'{missing_n} reservation{"" if missing_n == 1 else "s"} with no host fee on file (counted without it)')
     if unmapped:
         flags.append(f'{len(unmapped)} rental{"" if len(unmapped) == 1 else "s"} without QuickBooks accounts: {", ".join(sorted(set(unmapped))[:4])}{"…" if len(set(unmapped)) > 4 else ""}')
-    return attach_filings({
+    return attach_payment(attach_filings({
         'month': month, 'rows': rows, 'deposited': sum((r['deposited'] for r in rows), ZERO), 'fees': sum((r['fees'] for r in rows), ZERO),
         'taxable': taxable_total, 'tax': sum((r['tax'] for r in rows), ZERO), 'allowance': sum((r['allowance'] for r in rows), ZERO),
         'due': sum((r['due'] for r in rows), ZERO), 'days': sum(r['days'] for r in rows), 'flags': flags, 'due_on': due_on, 'late_after': due_on + timedelta(days=19),
         'in_progress': today < due_on, 'late': today > due_on + timedelta(days=19), 'rate': RATE,
-    })
+    }))
 
 
 def split_rows(rep):

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load core_extras %}
 {% block title %}{{ property.name }} — statement{% endblock %}
 {% block content %}
@@ -34,7 +35,7 @@
         @page { size: landscape; margin: 0.5in; }
     }
 </style>
-<a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 no-print" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ back_label }}</a>
+{% up_link css="mb-1 no-print" %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0">{{ property.name }} <span class="text-muted fw-normal fs-6">· {{ year }} statement</span></h2>

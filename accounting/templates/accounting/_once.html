@@ -1,0 +1,30 @@
+{# One click, one post: a form that has been sent cannot be sent again, and its button says it is working. Used on the bank reconciliation and the deposits screens. #}
+<script>
+(function () {
+    if (window.acSubmit) return;
+    function lock(form) {
+        if (form.dataset.sent) return false;
+        form.dataset.sent = '1';
+        setTimeout(function () {                                  // after the browser has collected the form, so the button's own value still goes along
+            Array.prototype.forEach.call(form.querySelectorAll('button:not([type=button]), input[type=submit]'), function (b) {
+                if (b.tagName === 'BUTTON' && !b.dataset.was) { b.dataset.was = b.innerHTML; b.textContent = 'Working…'; }
+                b.disabled = true;
+            });
+        }, 0);
+        return true;
+    }
+    function unlock() {
+        Array.prototype.forEach.call(document.querySelectorAll('form[data-sent]'), function (f) {
+            delete f.dataset.sent;
+            Array.prototype.forEach.call(f.querySelectorAll('button, input[type=submit]'), function (b) { b.disabled = false; if (b.dataset.was) { b.innerHTML = b.dataset.was; delete b.dataset.was; } });
+        });
+    }
+    document.addEventListener('submit', function (e) {            // bubbling: any check on the page that stops the send has already run
+        var f = e.target;
+        if (!f || f.tagName !== 'FORM' || e.defaultPrevented || (f.method || '').toLowerCase() !== 'post') return;
+        if (!lock(f)) e.preventDefault();
+    });
+    window.acSubmit = function (f) { if (lock(f)) f.submit(); };  // for the forms a script sends itself
+    window.addEventListener('pageshow', function (e) { if (e.persisted) unlock(); });
+})();
+</script>

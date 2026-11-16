@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}QuickBooks accounts for each rental{% endblock %}
 {% block content %}
-<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Admin Tools</a>
+{% up_link css="mb-2" %}
 <h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="landmark" class="icon-lg"></i> QuickBooks accounts for each rental</h2>
 <p class="text-muted small mb-3">Two accounts per rental: income statement (reimbursable expenses) and balance sheet (owner trust). One rental per account. {% include '_tip.html' with text="Every short-term rental runs through two QuickBooks accounts. The income-statement account is its reimbursable-expense account (expenses we pay are coded to it; the monthly reimbursement comes back into it). The balance-sheet account is the owner's trust account (deposits in; direct expenses, reimbursements to us, commission and owner payments out). Choose both for each rental; an account can belong to one rental only." %}</p>
 

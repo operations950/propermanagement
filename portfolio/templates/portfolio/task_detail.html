@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}{{ task.title }} — {{ business.name }}{% endblock %}
 {% block content %}
 <style>
@@ -6,7 +7,7 @@
     .pt-upd { padding: 0.7rem 0; border-top: 1px solid var(--border-hairline); }
     .pt-when { font-size: 0.78rem; color: var(--ink-muted); }
 </style>
-<a href="{% url 'portfolio_business_detail' business.slug %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1 mt-3 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ business.name }}</a>
+{% up_link css="mb-1 mt-3 py-3 py-md-0" label=business.name %}
 <h2 class="page-title mb-2">{{ task.title }}</h2>
 <div class="row"><div class="col-lg-8">
 

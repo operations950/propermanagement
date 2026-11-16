@@ -34,6 +34,26 @@
         {% include '_tip.html' with text='Use this when you have owner checks in hand and want them in the books now. They wait here, listed as already recorded, and you tie them to the bank deposit when it shows up.' %}</div>{% endif %}
 </div>
 
+<div class="small text-muted mb-2 ac-noprint" id="wv-status">Unit lookup saved for {{ wv_status.0 }} of {{ wv_status.1 }} unit{{ wv_status.1|pluralize }}.</div>
+<details class="mb-3 ac-noprint" id="wv-lookup" {% if wvl %}open{% endif %}><summary class="small" style="cursor: pointer;">Update the unit lookup</summary>
+    <form method="post" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-end mt-2">{% csrf_token %}<input type="hidden" name="action" value="wv_lookup">
+        <div><label class="small text-muted d-block">Web Vault unit lookup (CSV). It is saved on our units, so you will not need it again.</label><input type="file" name="csv" class="form-control form-control-sm" style="max-width: 300px;" accept=".csv" required></div>
+        <button class="btn btn-sm btn-outline-secondary">Save the unit lookup</button>
+    </form>
+</details>
+{% if wvl %}{% include 'accounting/_webvault_lookup.html' %}{% endif %}
+{% if stmt %}
+<div class="card mb-3 ac-noprint" id="wv-card"><div class="card-body py-2">
+    <details {% if wv %}open{% endif %}><summary class="fw-semibold" style="cursor: pointer;"><i data-lucide="file-up" class="icon"></i> Import a Web Vault report {% include '_tip.html' with text='Truist Web Vault lists each owner payment made by bill pay, ACH, e-check, card or coupon, with the date it posted. The bank statement shows them as a few lump deposits. This ties each lump to its payments and records the ones the books do not have yet, dated as Web Vault dates them. You see everything first; nothing is saved until you press the button.' %}</summary>
+        <form method="post" enctype="multipart/form-data" class="d-flex flex-wrap gap-3 align-items-end mt-2">{% csrf_token %}<input type="hidden" name="action" value="wv_preview">
+            <div><label class="small text-muted d-block">Payment report (PDF)</label><input type="file" name="report" class="form-control form-control-sm" style="max-width: 280px;" accept=".pdf" required></div>
+            {% if not wv_status.0 %}<div><label class="small text-muted d-block">Unit lookup (CSV), saved for next time</label><input type="file" name="lookup" class="form-control form-control-sm" style="max-width: 280px;" accept=".csv"></div>{% endif %}
+            <button class="btn btn-sm btn-outline-secondary">Read the report</button>
+        </form>
+    </details>
+    {% if wv %}{% include 'accounting/_webvault_preview.html' %}{% endif %}
+</div></div>
+{% endif %}
 {% if not stmt %}
 <div class="card"><div class="card-body text-muted">There is no statement for {{ month|date:"F Y" }} yet. <a href="{{ acc_back }}">Upload it on the reconciliation</a>, then come back to sort the deposits.</div></div>
 {% elif not deposits %}
@@ -209,7 +229,7 @@
         return amt || 0;
     };
     function addOwner(s, id) { var u = unitOf(id); if (u && !s.rows.some(function (r) { return r.kind !== 'other' && r.unit === id; })) s.rows.push({kind: 'owner', unit: id, amt: defaultAmount(s, u), ref: ''}); }
-    var form = function (f) { f.submit(); };
+    var form = function (f) { if (window.acSubmit) window.acSubmit(f); else f.submit(); };
     function ownersPayload(s) { return s.rows.filter(function (r) { return r.kind !== 'other'; }).map(function (r) { return {unit: r.unit, amount: plain(r.amt), ref: r.ref}; }); }
     document.addEventListener('click', function (e) {
         var t = e.target.closest('[data-act]'); if (!t) return;
@@ -260,4 +280,5 @@
 })();
 </script>
 {% endif %}
+{% include 'accounting/_once.html' %}
 {% endblock %}

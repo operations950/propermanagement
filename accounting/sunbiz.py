@@ -32,13 +32,23 @@ class SunbizError(Exception):
     pass
 
 
+class SunbizRefused(SunbizError):
+    """SunBiz answered 403 or 429: it does not let a program look things up. Nothing is worked around; a person checks by hand."""
+
+
+REFUSED_NOTE = 'SunBiz does not allow automatic lookups: check by hand.'
+STALE_DAYS = 90
+
+
 def fetch(url):
     req = urllib.request.Request(url, headers=HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=25) as resp:
             return resp.read().decode('utf-8', errors='replace')
     except urllib.error.HTTPError as e:
-        raise SunbizError(f'SunBiz refused the lookup (HTTP {e.code}).' if e.code in (403, 429) else f'SunBiz answered with an error (HTTP {e.code}).')
+        if e.code in (403, 429):
+            raise SunbizRefused(f'SunBiz refused the lookup (HTTP {e.code}).')
+        raise SunbizError(f'SunBiz answered with an error (HTTP {e.code}).')
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise SunbizError(f'Could not reach SunBiz ({e}).')
 
@@ -158,8 +168,38 @@ def check(profile, fetcher=None):
     """Look one association up and update it. Returns (ok, message). Never raises for a lookup problem."""
     try:
         rec = (fetcher or lookup)(profile.state_doc_number, profile.legal_name)
+    except SunbizRefused as e:
+        logger.info('SunBiz refused the lookup for %s (%s); nothing was changed.', profile.property.name, e)
+        return False, REFUSED_NOTE                   # records nothing: no alert, no date, a hand check stays as it was
     except SunbizError as e:
         logger.warning('SunBiz lookup for %s failed: %s', profile.property.name, e)
         return False, str(e)
     alerts = apply_record(profile, rec)
     return True, ('Checked. ' + ' '.join(alerts)) if alerts else 'Checked: nothing needs a look.'
+
+
+def hand_check(profile, today=None, status=None, agent_ok=None, annual_report_filed=None):
+    """A person looked the association up on SunBiz and says so. Records today as the check date ('hand') and works the alerts out again from what they say. All of it is optional:
+    the status the state shows, whether the registered agent is still us (True/False; None means they did not say), the last annual report date. Anything left out stays as it was,
+    and an unknown agent, status or report date never raises an alert. Returns the alerts."""
+    today = today or timezone.localdate()
+    if (status or '').strip():
+        profile.state_status = status.strip()[:30]
+    if annual_report_filed:
+        profile.annual_report_filed = annual_report_filed
+    if agent_ok is True and not profile.registered_agent_is_us():
+        profile.registered_agent = 'Proper Realty Co.'
+    elif agent_ok is False and (profile.registered_agent_is_us() or not (profile.registered_agent or '').strip()):
+        profile.registered_agent = 'Someone else: see SunBiz'
+    agent_name = (profile.registered_agent or '').split(',')[0].strip()
+    rec = {'agent_name': agent_name or OUR_NAME, 'status': profile.state_status or 'Active', 'annual': profile.annual_report_filed or today, 'officers': []}
+    alerts = alerts_for(profile, rec, today, previous_officers=None)
+    profile.sunbiz_alerts, profile.sunbiz_checked_on, profile.sunbiz_checked_by = alerts, today, 'hand'
+    profile.save()
+    return alerts
+
+
+def needs_check(profile, today=None, days=STALE_DAYS):
+    """True when nobody has looked at the official record for more than `days` days (or never)."""
+    today = today or timezone.localdate()
+    return profile.sunbiz_checked_on is None or (today - profile.sunbiz_checked_on).days > days

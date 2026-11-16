@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load core_extras %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
@@ -13,7 +14,7 @@
     .mp-table td, .mp-table th { vertical-align: middle; }
     .mp-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>
-<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+{% up_link css="mb-1" %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{% if section == 'owners' %}users{% else %}arrow-right-left{% endif %}" class="icon-lg"></i> {{ title }}
         {% include '_tip.html' with text='Tick the rentals you are paying. The ticked amounts add up to the one transfer in the bank, so type nothing different there: that total is what will be found in QuickBooks later and split across the rentals.' %}</h2>

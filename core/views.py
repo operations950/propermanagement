@@ -1249,6 +1249,14 @@ def _assoc_extra(request, prop):
     return assoc_context(prop)
 
 
+def _commercial_extra(request, prop):
+    """For a commercial property's page: a small card for the administrator with the books, the tenants and the invoices."""
+    if prop.property_type != Property.Type.COMMERCIAL or not _is_admin(request.user):
+        return {}
+    from commercial.views import property_card
+    return {'cm': property_card(prop)}
+
+
 @login_required
 def property_detail(request, pk):
     """Everything-about-this-property dashboard: facts, access/system info,
@@ -1258,7 +1266,6 @@ def property_detail(request, pk):
     send_followup_bulk/_group_followups machinery the ticket detail screen's
     Follow-Up card uses, and this property's open tickets/tasks."""
     prop = get_object_or_404(Property, pk=pk)
-    back_url = reverse('property_list')         # up one level: the property list (not wherever the browser came from)
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -1583,6 +1590,7 @@ def property_detail(request, pk):
     btr_state, btr_days = prop.business_tax_receipt_state()
     return render(request, 'core/property_detail.html', {
         **_assoc_extra(request, prop),
+        **_commercial_extra(request, prop),
         'property': prop,
         'btr_state': btr_state, 'btr_days': btr_days, 'btr_days_over': -btr_days if btr_state == 'overdue' else None,
         'sections': PROPERTY_SECTIONS.get(prop.property_type, PROPERTY_SECTIONS_COMMON),
@@ -1593,7 +1601,6 @@ def property_detail(request, pk):
         'qb': _property_qb_context(prop) if (_is_admin(request.user) and qb_accounts.applies_to(prop)) else None,
         'faq_archived_count': prop.faqs.filter(status=PropertyFAQ.Status.ARCHIVED).count(),
         'faq_unreviewed_count': prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE, reviewed=False).count(),
-        'back_url': back_url,
         'contact_groups': contact_groups,
         'contacts_with_thread_ids': contacts_with_thread_ids,
         'text_contacts': [c for c in contacts if c.phone],

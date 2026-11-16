@@ -15,7 +15,7 @@
 </div>
 
 <div class="card mb-3"><div class="card-body">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="users" class="icon"></i> Owners</h6>
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="users" class="icon"></i> {{ assoc|lab:"holders" }}{% if assoc|is_commercial %} <a class="small fw-normal ms-2" href="{% url 'commercial:leases' assoc.pk %}">Leases</a>{% endif %}</h6>
     {% for o in current %}
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 py-2 {% if not forloop.first %}border-top{% endif %}">
         <div>
@@ -31,6 +31,7 @@
         </form>
     </div>
     {% empty %}<p class="text-muted mb-1">No current owner.</p>{% endfor %}
+    {% if assoc|is_commercial %}{% for l in leases %}<div class="small mt-2"><a href="{% url 'commercial:lease' assoc.pk l.pk %}">Lease: {{ l.tenant.name }}{% if l.start_date %}, from {{ l.start_date|mdate }}{% endif %}</a></div>{% empty %}<div class="small mt-2"><a href="{% url 'commercial:lease_new' assoc.pk %}?unit={{ unit.pk }}">Add a lease for this unit</a></div>{% endfor %}{% else %}
     <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Add an owner</summary>
         <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="add_owner">
             <div class="col-md-4"><input class="form-control form-control-sm" name="name" placeholder="Owner's name" required></div>
@@ -46,13 +47,13 @@
             <div class="col-md-2"><label class="small text-muted">&nbsp;</label><select class="form-select form-select-sm" name="occupancy"><option value="occupant">Lives there</option><option value="absentee">Not living there</option></select></div>
             <div class="col-md-2"><label class="small text-muted">&nbsp;</label><button class="btn btn-sm btn-primary w-100">Record the sale</button></div>
             <div class="col-12 small text-muted">Everything charged before the sale stays with the former owners, and what they owe stays on the books until paid. Charges from the sale date on go to the first new owner.</div>
-        </form></details>
+        </form></details>{% endif %}
 </div></div>
 
 <div class="card mb-3"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="book-open" class="icon"></i> Ledger <span class="small fw-normal text-muted ms-auto">Newest first{% if open_tickets %} &middot; {{ open_tickets }} open ticket{{ open_tickets|pluralize }}{% endif %}</span></h6>
     <table class="table table-sm ac-table mb-0">
-        <thead><tr><th>Date</th><th>What</th><th>Owner</th><th class="ac-num">Charge</th><th class="ac-num">Payment</th><th class="ac-num">Balance</th></tr></thead>
+        <thead><tr><th>Date</th><th>What</th><th>{{ assoc|lab:"holder" }}</th><th class="ac-num">Charge</th><th class="ac-num">Payment</th><th class="ac-num">Balance</th></tr></thead>
         <tbody>{% for r in rows %}<tr><td>{{ r.date|mdate }}</td><td>{{ r.what }}</td><td class="small text-muted">{{ r.owner.name }}</td><td class="ac-num">{{ r.charge|plain_blank }}</td><td class="ac-num">{{ r.payment|plain_blank }}</td><td class="ac-num">{{ r.balance|plain }}</td></tr>
         {% empty %}<tr><td colspan="6" class="text-muted">Nothing has been charged or paid yet.</td></tr>{% endfor %}</tbody>
     </table>

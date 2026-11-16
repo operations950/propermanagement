@@ -74,6 +74,9 @@ def ensure_chart(association):
         elif a.name != name or a.is_active != active or a.budget_section != section:
             a.name, a.is_active, a.budget_section = name, active, section
             a.save(update_fields=['name', 'is_active', 'budget_section'])
+    if getattr(association, 'property_type', None) == 'commercial':
+        have = set(mine) | {a.code for a in new}
+        new += [Account(association=association, code=code, name=name, kind=kind, is_active=True, budget_section='') for code, name, kind in sc.COMMERCIAL_CHART if code not in have]
     Account.objects.bulk_create(new)
     return len(new)
 

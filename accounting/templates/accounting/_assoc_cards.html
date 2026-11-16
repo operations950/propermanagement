@@ -9,7 +9,8 @@
 
 <section id="official" class="card mb-3"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2 flex-wrap"><i data-lucide="building" class="icon"></i> Official record
-        <span class="ms-auto small fw-normal text-muted">{% if ap.sunbiz_checked_on %}{% if ap.sunbiz_checked_by == 'auto' %}Looked up on SunBiz {{ ap.sunbiz_checked_on|mdate }}{% else %}Typed in {{ ap.sunbiz_checked_on|mdate }}, not looked up{% endif %}{% endif %}{% if ap.sunbiz_link %} &middot; <a href="{{ ap.sunbiz_link }}" target="_blank">Open on SunBiz</a>{% endif %}{% if ap.state_doc_number %} &middot; <form method="post" action="{% url 'accounting:settings' property.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="sunbiz_check"><button class="btn btn-link btn-sm p-0 align-baseline">Check now</button></form>{% endif %} &middot; <a href="{% url 'accounting:settings' property.pk %}#official">Edit</a></span></h6>
+        <span class="ms-auto small fw-normal text-muted"><a href="{% url 'accounting:settings' property.pk %}#official">Edit</a></span></h6>
+    {% url 'property_detail' property.pk as sb_back %}{% include 'accounting/_sunbiz_check.html' with sb=ap sb_prop=property sb_next=sb_back %}
     {% if ap.legal_name or ap.state_doc_number %}
     <dl class="row mb-0 small">
         <dt class="col-sm-3 text-muted fw-normal">Legal name</dt><dd class="col-sm-9">{{ ap.legal_name }}</dd>
@@ -20,7 +21,7 @@
         <dt class="col-sm-3 text-muted fw-normal">Management contract</dt><dd class="col-sm-9">{% if ap_has_contract %}<span class="ac-chip good">On file</span>{% else %}<span class="ac-chip warn">Not uploaded</span> <a class="btn btn-sm btn-primary py-0" href="{% url 'accounting:settings' property.pk %}#documents">Upload it</a> <span class="text-muted">Required: the spending limit and the fee are read from it.</span>{% endif %}</dd>
     </dl>
     {% for a in ap.sunbiz_alerts %}<div class="small mt-2"><span class="ac-chip warn">Needs a look</span> {{ a }}</div>{% endfor %}
-    {% else %}<p class="text-muted small mb-0">The official record is not filled in yet. <a href="{% url 'accounting:settings' property.pk %}#official">Add it</a>: legal name, state document number, EIN, registered agent and officers, from the state's corporation search.</p>{% endif %}
+    {% else %}<p class="text-muted small mb-0">The official record is not filled in yet: the legal name is what the SunBiz button searches for. <a href="{% url 'accounting:settings' property.pk %}#official">Add it</a>: legal name, state document number, EIN, registered agent and officers, from the state's corporation search.</p>{% endif %}
 </div></section>
 
 <span id="units"></span>

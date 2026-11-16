@@ -15,10 +15,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         profiles = AssociationProfile.objects.filter(property__is_active=True).exclude(state_doc_number='').select_related('property').order_by('property__name')
-        refused = 0
+        refused = looked = 0
         for p in profiles:
             ok, message = sunbiz.check(p)
+            if message == sunbiz.REFUSED_NOTE:
+                # SunBiz does not let a program look things up. Say it once, change nothing (a check a person made by hand stays), and stop asking.
+                self.stdout.write(sunbiz.REFUSED_NOTE)
+                refused = 1
+                break
             self.stdout.write(f'{p.property.name}: {message}')
-            refused += 0 if ok else 1
+            looked += 1 if ok else 0
             time.sleep(2)     # be gentle with the state's site
-        self.stdout.write(f'{profiles.count()} looked up, {refused} could not be checked.')
+        if not refused:
+            self.stdout.write(f'{looked} of {profiles.count()} looked up.')

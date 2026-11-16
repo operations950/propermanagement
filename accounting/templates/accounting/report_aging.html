@@ -1,12 +1,12 @@
 {% extends 'accounting/base_acc.html' %}
 {% load acc_extras %}
-{% block acc_title %}Owner aging - {{ assoc.name }}{% endblock %}
+{% block acc_title %}{{ assoc|lab:"aging" }} - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
-<h2 class="page-title fs-4 mb-0">Owner aging</h2>
+<h2 class="page-title fs-4 mb-0">{{ assoc|lab:"aging" }}</h2>
 <div class="text-muted mb-2">{{ assoc.name }} &middot; as of {{ end|mdate }}</div>
 {% include 'accounting/_report_filter.html' %}
 <div class="rp-wrap"><div class="p-0"><table class="table table-sm ac-table rp mb-0">
-    <thead><tr><th>Unit</th><th>Owner</th>{% for b in ag.buckets %}<th class="ac-num">{{ b }}</th>{% endfor %}<th class="ac-num">Owed</th></tr></thead>
+    <thead><tr><th>Unit</th><th>{{ assoc|lab:"holder" }}</th>{% for b in ag.buckets %}<th class="ac-num">{{ b }}</th>{% endfor %}<th class="ac-num">Owed</th></tr></thead>
     <tbody>{% for r in ag.rows %}<tr><td>{{ r.unit.label }}</td><td>{{ r.owner.name }}</td>{% for v in r.buckets %}<td class="ac-num">{{ v|plain_blank }}</td>{% endfor %}<td class="ac-num fw-semibold">{{ r.total|plain }}</td></tr>
     {% empty %}<tr><td colspan="7" class="text-muted p-3">Nobody owes anything.</td></tr>{% endfor %}</tbody>
     <tfoot><tr class="fw-bold"><td colspan="2">Total</td>{% for v in ag.totals %}<td class="ac-num">{{ v|plain }}</td>{% endfor %}<td class="ac-num">{{ ag.total|plain }}</td></tr></tfoot></table></div></div>

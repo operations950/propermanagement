@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load core_extras ticket_extras static property_phone %}
 {% block title %}{{ property.name }}{% endblock %}
-{% block mobile_back_url %}{{ back_url }}{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}"><link rel="stylesheet" href="{% static 'css/mobile-property.css' %}"><script src="{% static 'js/quo-links.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="my-3 d-none d-md-block">
-    <a href="{{ back_url }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Properties</a>
+    {% up_link css="mb-1" %}
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
             <h2 class="page-title mb-1 d-flex align-items-center gap-2">
@@ -24,6 +24,7 @@
             <a href="{% url 'onsite_performance_property' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-column" class="icon"></i> Performance</a>
             {% endif %}
             {% if ap %}<a href="{% url 'accounting:hub' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-column" class="icon"></i> Accounting</a>{% endif %}
+            {% if cm and cm.books_on %}<a href="{% url 'accounting:hub' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-column" class="icon"></i> Accounting</a>{% endif %}
             <a href="{% url 'property_edit' property.pk %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="pencil" class="icon"></i> Edit</a>
         </div>
     </div>
@@ -71,6 +72,7 @@
     {% if qb and 'quickbooks' in sections %}<a href="#quickbooks" class="btn btn-sm btn-outline-secondary">QuickBooks</a>{% endif %}
 </nav>
 
+{% if cm %}{% include 'commercial/_property_card.html' %}{% endif %}
 {% if ap %}{% include 'accounting/_assoc_cards.html' %}{% else %}<section id="units" class="mb-3">
     <div id="property-size"></div>
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">

@@ -51,9 +51,9 @@ def read(path):
 
 def association_for(name):
     target = ALIASES.get(name, name)
-    prop = Property.objects.filter(property_type=Property.Type.ASSOCIATION, name__iexact=target).first()
+    prop = Property.objects.filter(property_type__in=(Property.Type.ASSOCIATION, Property.Type.COMMERCIAL), name__iexact=target).first()
     if prop is None:
-        raise GLError(f'No association is called "{name}" here. Add it to ALIASES in accounting/gl_detail.py.')
+        raise GLError(f'No association or commercial property is called "{name}" here. Add it to ALIASES in accounting/gl_detail.py.')
     return prop
 
 

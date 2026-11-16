@@ -160,7 +160,10 @@ def void_charge(charge, user=None, day=None):
     if charge.applications.exists():
         raise ChargeError('That charge has a payment on it. Reverse the payment first.')
     day = day or date.today()
-    ledger.post_entry(charge.association, day, [{'account': charge.income_account or sc.INCOME_ASSESSMENT, 'debit': charge.amount, 'memo': f'Void: {charge.description}'},
+    # An opening charge (a balance carried from the old system) never went through income: its receivable came in with the opening balances, against the fund balance.
+    # Taking it back takes it out of the fund balance, not out of this period's income.
+    back_to = sc.FUND_BALANCE if charge.kind == Charge.Kind.OPENING else (charge.income_account or sc.INCOME_ASSESSMENT)
+    ledger.post_entry(charge.association, day, [{'account': back_to, 'debit': charge.amount, 'memo': f'Void: {charge.description}'},
                                                {'account': sc.AR, 'credit': charge.amount, 'unit': charge.unit, 'owner': charge.owner, 'memo': f'Void: {charge.description}'}],
                       memo=f'Void: {charge.description}', basis=JournalEntry.Basis.ACCRUAL, source=JournalEntry.Source.REVERSAL, source_ref=f'charge:{charge.pk}', user=user)
     charge.is_void = True
@@ -262,7 +265,26 @@ def void_receipt(receipt, user=None, day=None):
 
 # ---------------------------------------------------------------- late fees
 
+def _lease_late_fee(charge):
+    """A commercial lease may set its own late fee (a flat amount, a percent, or both: the greater): (flat or None, percent or None), else None."""
+    unit_id = getattr(charge, 'unit_id', None)
+    if unit_id is None:
+        return None
+    try:
+        from commercial.models import Lease
+    except ImportError:
+        return None
+    lease = Lease.objects.filter(unit_id=unit_id).exclude(late_fee_flat__isnull=True, late_fee_percent__isnull=True).order_by('-start_date', '-id').first()
+    return (lease.late_fee_flat, lease.late_fee_percent) if lease else None
+
+
 def late_fee_amount(profile, charge):
+    own = _lease_late_fee(charge)
+    if own is not None:
+        flat, pct = own[0], own[1]
+        fee_flat = ledger.money(flat) if flat is not None else None
+        fee_pct = ledger.money((pct or ZERO) / Decimal('100') * charge.amount) if pct is not None else None
+        return max(x for x in (fee_flat, fee_pct) if x is not None)
     kind = profile.late_fee_kind
     flat = profile.late_fee_flat or ZERO
     pct = (profile.late_fee_percent or ZERO) / Decimal('100') * charge.amount
@@ -275,18 +297,27 @@ def late_fee_amount(profile, charge):
     return ZERO
 
 
-def _late_fee_rows(association, today, units=None):
-    """[(charge, fee, due)]: the late fees that are owed today (past the grace period, still unpaid, none charged yet for that installment)."""
+def balance_as_of(charge, as_of):
+    """What was still unpaid of a charge on `as_of`: the amount less the payments applied on or before that day (a payment made later does not count)."""
+    return charge.amount - sum((a.amount for a in charge.applications.all() if a.date <= as_of), ZERO)
+
+
+def _late_fee_rows(association, today, units=None, as_of=None):
+    """[(charge, fee, due)]: the late fees that are owed (past the grace period, still unpaid, none charged yet for that installment).
+    Without `as_of` it is worked out for today and the balance is what is unpaid now. With `as_of` it is worked out for that day: a charge counts only if it was unpaid on that day
+    (a payment made before it settles the charge, one made after does not), so choosing the 31st of a month with a 10-day grace period is a 31-day grace period."""
     profile = ledger.profile_for(association)
     if not profile.late_fee_is_set():
         return []
     grace = profile.late_fee_grace_days or 0
+    day = as_of or today
     rows = []
-    qs = Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL], due_date__lt=today - timedelta(days=grace))
+    qs = Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL], due_date__lt=day - timedelta(days=grace))
     if units is not None:
         qs = qs.filter(unit_id__in=units)
     for charge in qs.select_related('unit', 'owner').prefetch_related('applications'):
-        if charge.balance <= 0 or Charge.objects.filter(parent=charge, kind=Charge.Kind.LATE_FEE).exists():
+        open_ = balance_as_of(charge, as_of) if as_of is not None else charge.balance
+        if open_ <= 0 or Charge.objects.filter(parent=charge, kind=Charge.Kind.LATE_FEE).exists():
             continue
         fee = late_fee_amount(profile, charge)
         if fee > 0:
@@ -294,12 +325,13 @@ def _late_fee_rows(association, today, units=None):
     return rows
 
 
-def assess_late_fees(association, today, user=None, units=None):
-    """Charge a late fee on every assessment that is past its grace period and still unpaid, once each. Returns the late-fee charges made."""
+def assess_late_fees(association, today, user=None, units=None, as_of=None, post_day=None):
+    """Charge a late fee on every assessment that is past its grace period and still unpaid, once each. Returns the late-fee charges made.
+    `as_of` judges who is late on that day (see _late_fee_rows); `post_day` dates the charges (their ledger entries too) instead of the day each fee fell due."""
     made = []
-    for charge, fee, due in _late_fee_rows(association, today, units):
+    for charge, fee, due in _late_fee_rows(association, today, units, as_of=as_of):
         try:
-            made.append(post_charge(association, charge.unit, charge.owner, Charge.Kind.LATE_FEE, f'Late fee on {charge.description}', max(due, today if due > today else due), fee, user=user, parent=charge))
+            made.append(post_charge(association, charge.unit, charge.owner, Charge.Kind.LATE_FEE, f'Late fee on {charge.description}', post_day or max(due, today if due > today else due), fee, user=user, parent=charge))
         except ledger.LedgerError:
             continue
     return made
@@ -322,23 +354,46 @@ def interest_for_period(charge, start, end, rate, grace_days=0):
     return ledger.money(total)
 
 
-def _interest_rows(association, today, units=None):
-    """[(charge, month_first, month_end, amount)]: interest owed for the last three completed months that has not been charged yet."""
+def _interest_description(charge, month_first):
+    return f'Interest on {charge.description}, {month_first:%B %Y}'[:200]
+
+
+def _interest_charged(charge, month_first, end):
+    """Whether interest for this charge and month is already on the books (dated the month's end, or dated another day when a person chose the posting date)."""
+    return Charge.objects.filter(parent=charge, kind=Charge.Kind.INTEREST, is_void=False).filter(Q(due_date=end) | Q(description=_interest_description(charge, month_first))).exists()
+
+
+def _interest_months(today, as_of=None):
+    """The months interest can be charged for: the last three completed months. For `as_of`, a month counts once it has ended on or before that day."""
+    if as_of is None:
+        cur = ledger.previous_month(ledger.month_start(today))
+    else:
+        cur = ledger.month_start(as_of)
+        if as_of < ledger.month_end(cur):
+            cur = ledger.previous_month(cur)
+    months = [cur]
+    for _ in range(2):
+        months.append(ledger.previous_month(months[-1]))
+    return months
+
+
+def _interest_rows(association, today, units=None, as_of=None):
+    """[(charge, month_first, month_end, amount)]: interest owed for the last three completed months that has not been charged yet.
+    With `as_of`, as that day stood: only a charge that was still unpaid on that day carries interest (one paid before it does not), and the months are those over by that day."""
     profile = ledger.profile_for(association)
     if not profile.interest_is_set():
         return []
-    months, cur = [], ledger.month_start(today)
-    for _ in range(3):
-        cur = ledger.previous_month(cur)
-        months.append(cur)
+    months = _interest_months(today, as_of)
     rows = []
     qs = Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL])
     if units is not None:
         qs = qs.filter(unit_id__in=units)
     for charge in qs.select_related('unit', 'owner').prefetch_related('applications'):
+        if as_of is not None and (charge.due_date > as_of or balance_as_of(charge, as_of) <= 0):
+            continue
         for month_first in sorted(months):
             end = ledger.month_end(month_first)
-            if charge.due_date > end or Charge.objects.filter(parent=charge, kind=Charge.Kind.INTEREST, due_date=end).exists():
+            if charge.due_date > end or _interest_charged(charge, month_first, end):
                 continue
             amount = interest_for_period(charge, month_first, end, profile.interest_rate, profile.interest_grace_days)
             if amount >= Decimal('0.01'):
@@ -346,12 +401,12 @@ def _interest_rows(association, today, units=None):
     return rows
 
 
-def assess_interest(association, today, user=None, units=None):
-    """Charge the interest that has built up on unpaid assessments, one charge a month for each, dated the last day of the month. Months already closed are left alone."""
+def assess_interest(association, today, user=None, units=None, as_of=None, post_day=None):
+    """Charge the interest that has built up on unpaid assessments, one charge a month for each, dated the last day of the month (or `post_day`). Months already closed are left alone."""
     made = []
-    for charge, month_first, end, amount in _interest_rows(association, today, units):
+    for charge, month_first, end, amount in _interest_rows(association, today, units, as_of=as_of):
         try:
-            made.append(post_charge(association, charge.unit, charge.owner, Charge.Kind.INTEREST, f'Interest on {charge.description}, {month_first:%B %Y}', end, amount, user=user, parent=charge))
+            made.append(post_charge(association, charge.unit, charge.owner, Charge.Kind.INTEREST, f'Interest on {charge.description}, {month_first:%B %Y}', post_day or end, amount, user=user, parent=charge))
         except ledger.LedgerError:
             continue
     return made

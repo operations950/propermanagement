@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}Message assistant access{% endblock %}
 {% block content %}
-<a href="{% url 'admin_tools' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Admin Tools</a>
+{% up_link css="mb-2" %}
 <h2 class="page-title mb-1 d-flex align-items-center gap-2"><i data-lucide="bot" class="icon-lg"></i> AI assistant keys</h2>
 <p class="text-muted small mb-3">Keys the AI that answers messages uses to read property details and keep the FAQ. {% include '_tip.html' with text='Each key is limited to what you tick. The key itself is shown once and never stored (only a fingerprint is), and you can revoke it any time. Without the extra boxes ticked, the assistant still reads the everyday facts: bedrooms, beds, bathrooms, square footage, address, check-in and check-out times, amenities, shutoff locations, the wifi network name and the FAQ.' %}</p>
 

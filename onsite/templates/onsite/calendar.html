@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load static %}
 
 {% block title %}On-Site Visits — Calendar{% endblock %}
 {% block extra_head %}<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="mo-page">
-<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
+{% up_link css="mb-2" %}
 
 {# Phones: a strip of the week's seven days and the chosen day's visits below it (a month grid does not fit a phone). Wide screens: the month grid, as it always was. #}
 <div class="d-md-none">

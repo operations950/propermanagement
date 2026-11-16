@@ -2,38 +2,78 @@
 {% load acc_extras %}
 {% block acc_title %}Post late fees - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
+<style>
+    .lf-chev { border: 0; background: none; padding: 0 4px 0 0; color: var(--ink-muted); line-height: 1; vertical-align: -3px; }
+    .lf-chev .icon { transition: transform .15s ease; }
+    .lf-chev[aria-expanded="true"] .icon { transform: rotate(90deg); }
+    tr.lf-detail td { background: #f8fafc; white-space: normal; padding: 6px 10px 10px 34px; }
+    table.lf-sub { font-size: 0.78rem; width: 100%; max-width: 760px; }
+    table.lf-sub th { color: var(--ink-muted); font-weight: 700; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .04em; padding: 2px 10px 2px 0; }
+    table.lf-sub td { padding: 2px 10px 2px 0; white-space: nowrap; }
+</style>
 <div class="mb-2">
-    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="alarm-clock" class="icon-lg"></i> Post late fees and interest {% include '_tip.html' with text="The late fees and interest that are owed now, from the rules in the declaration. Nothing is charged until you press a button, so you can look first. Tick owners to charge only those; with none ticked a button charges everyone listed. This is part of the month-end close." %}</h2>
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="alarm-clock" class="icon-lg"></i> Post late fees and interest {% include '_tip.html' with text="Who is late on the day you choose, from the rules in the declaration. Each owner is judged by what they owed that day: someone who had paid by then is not late, and someone who had not is, even if they paid later. Choosing the 31st with a 10-day grace period is the same as giving 31 days. Nothing is charged until you press a button, so you can look first." %}</h2>
     <div class="small text-muted">{{ assoc.name }}</div>
 </div>
 {% if not is_set %}
 <div class="card"><div class="card-body">The late fee and interest rules are not set up yet. <a href="{% url 'accounting:settings' assoc.pk %}#late">Set them from the declaration</a>.</div></div>
 {% else %}
 <div class="small text-muted mb-2">{% for t in terms|slice:":2" %}{{ t }} {% endfor %}<a href="{% url 'accounting:settings' assoc.pk %}#late">Change</a></div>
+<form method="get" class="rp-bar ac-noprint">
+    {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
+    <div><label>As of {% include '_tip.html' with text="The day lateness is judged for. A payment made after it does not count." %}</label><input class="form-control form-control-sm" type="date" name="as_of" id="lf-asof" value="{{ as_of|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}"></div>
+    <div><label>Owes at least {% include '_tip.html' with text="Only owners whose total owed that day (assessments, late fees and interest) is this much or more are listed and charged. Leave blank for everyone." %}</label><input class="form-control form-control-sm" type="text" inputmode="decimal" name="min" placeholder="$0.00" value="{% if min_balance %}{{ min_balance }}{% endif %}" style="width: 8rem;"></div>
+    <div class="form-check align-self-end mb-1"><input class="form-check-input" type="checkbox" name="all" value="1" id="lf-showall"{% if show_all %} checked{% endif %}><label class="form-check-label small" for="lf-showall" style="display: inline;">Also owners with nothing to charge</label></div>
+    <div><button class="btn btn-sm btn-outline-primary" type="submit">Show</button></div>
+</form>
+{% if as_of_note %}<div class="small text-muted mb-2">{{ as_of_note }}</div>{% endif %}
 <div class="row g-2 mb-3">
-    <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Owners</div><div class="ac-big">{{ rows|length }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Owners listed</div><div class="ac-big">{{ rows|length }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">They owe</div><div class="ac-big">{{ owed|money }}</div></div></div>
     <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Late fees ready</div><div class="ac-big">{{ fees|money }}</div></div></div>
     <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Interest ready</div><div class="ac-big">{{ interest|money }}</div></div></div>
 </div>
 <form method="post">{% csrf_token %}
-<div class="rp-wrap mb-2"><table class="rp">
-    <thead><tr><th style="width: 28px;"><input type="checkbox" id="lf-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Late fee</th><th>Interest</th><th>What for</th></tr></thead><tbody>
+<input type="hidden" name="as_of" value="{{ as_of|date:'Y-m-d' }}">
+<input type="hidden" name="min" value="{% if min_balance %}{{ min_balance }}{% endif %}">
+{% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
+{% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
+<div class="rp-wrap mb-2"><table class="rp ac-stack">
+    <thead><tr><th style="width: 28px;"><input type="checkbox" id="lf-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Total owed</th><th>Principal</th><th>Late fees open</th><th>Interest open</th><th>Last charged</th><th>Late fee ready</th><th>Interest ready</th></tr></thead><tbody>
     {% for r in rows %}<tr><td><input type="checkbox" class="lf-pick" name="unit" value="{{ r.unit.pk }}"></td>
-        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}</td>
-        <td class="num">{% if r.fee %}{{ r.fee|money }}{% endif %}</td><td class="num">{% if r.interest %}{{ r.interest|money }}{% endif %}</td>
-        <td style="white-space: normal;" class="small text-muted">{% for w in r.what %}{{ w }}{% if not forloop.last %}; {% endif %}{% endfor %}</td></tr>
-    {% empty %}<tr><td colspan="5" class="text-muted p-3">No late fees or interest are owed right now.</td></tr>{% endfor %}
+        <td style="white-space: normal;"><button type="button" class="lf-chev" data-lf-toggle="lf-d{{ r.unit.pk }}" aria-expanded="false" aria-label="Show what makes this up"><i data-lucide="chevron-right" class="icon"></i></button><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}</td>
+        <td class="num fw-semibold">{{ r.total|money }}</td><td class="num">{{ r.principal|money:True }}</td><td class="num">{{ r.late_fees|money:True }}</td><td class="num">{{ r.interest|money:True }}</td>
+        <td class="num">{{ r.last_charged|mdate:'short' }}</td><td class="num">{{ r.fee_ready|money:True }}</td><td class="num">{{ r.interest_ready|money:True }}</td></tr>
+    <tr class="lf-detail" id="lf-d{{ r.unit.pk }}" hidden><td></td><td colspan="8">
+        <table class="lf-sub"><thead><tr><th style="text-align: left;">Charge</th><th style="text-align: left;">Due</th><th style="text-align: right;">Owed that day</th><th style="text-align: right;">Late fee ready</th><th style="text-align: left;">Interest ready</th></tr></thead><tbody>
+        {% for l in r.lines %}<tr><td style="white-space: normal;">{{ l.charge.description }}</td><td>{{ l.charge.due_date|mdate:'short' }}</td><td class="num">{{ l.balance|money }}</td><td class="num">{{ l.fee|money:True }}</td>
+            <td>{% for mf, end, amt in l.months %}{{ mf|date:"M Y" }} {{ amt|money }}{% if not forloop.last %}, {% endif %}{% endfor %}</td></tr>
+        {% endfor %}</tbody></table>
+    </td></tr>
+    {% empty %}<tr><td colspan="9" class="text-muted p-3">Nobody is listed for {{ as_of|mdate }}{% if min_balance %} owing {{ min_balance|money }} or more{% endif %}.</td></tr>{% endfor %}
     </tbody></table></div>
-{% if rows %}<div class="d-flex flex-wrap gap-2 ac-noprint">
+{% if rows %}<div class="d-flex flex-wrap gap-2 align-items-end ac-noprint">
+    <div><label class="small text-muted d-block mb-0">Post on {% include '_tip.html' with text="The date the charges carry in the books. It starts as the as-of day. Pick a day in a month that is still open." %}</label><input class="form-control form-control-sm" type="date" name="post_on" value="{{ post_on|date:'Y-m-d' }}"></div>
     {% if profile.late_fee_is_set %}<button class="btn btn-sm btn-primary" name="action" value="charge_late">Charge late fees</button>{% endif %}
     {% if profile.interest_is_set %}<button class="btn btn-sm btn-primary" name="action" value="charge_interest">Charge interest</button>{% endif %}
     <span class="small text-muted align-self-center">The ticked owners, or everyone listed when none are ticked.</span></div>{% endif %}
 </form>
-<script>(function () { var all = document.getElementById('lf-all'); if (all) all.addEventListener('change', function () { document.querySelectorAll('.lf-pick').forEach(function (c) { c.checked = all.checked; }); }); })();</script>
-<a class="ac-step mt-3" href="{% url 'accounting:collections' assoc.pk %}">
+<script>(function () {
+    var all = document.getElementById('lf-all');
+    if (all) all.addEventListener('change', function () { document.querySelectorAll('.lf-pick').forEach(function (c) { c.checked = all.checked; }); });
+    document.querySelectorAll('[data-lf-toggle]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var row = document.getElementById(b.getAttribute('data-lf-toggle'));
+            var open = row.hidden;
+            row.hidden = !open;
+            b.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+    });
+})();</script>
+{% if not assoc|is_commercial %}<a class="ac-step mt-3" href="{% url 'accounting:collections' assoc.pk %}">
     <i data-lucide="scale" class="icon ac-ico"></i>
     <span class="flex-grow-1"><span class="fw-semibold">Next: Owner collections</span><br><span class="small text-muted">The best time to write the late letters is right after the late fees and interest are charged.{% if look.count %} {{ look.count }} owner{{ look.count|pluralize }} need{{ look.count|pluralize:'s,' }} attention.{% endif %}</span></span>
     <i data-lucide="chevron-right" class="icon text-muted"></i>
-</a>
+</a>{% endif %}
 {% endif %}
 {% endblock %}

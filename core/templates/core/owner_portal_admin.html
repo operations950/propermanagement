@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}Owner portal{% endblock %}
 {% block content %}
-<a href="{% url 'close_overview' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Rentals</a>
+{% up_link css="mb-1" %}
 <div class="mb-3">
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Owner portal</h2>
     <div class="small text-muted">Owner sign-in address: <strong>{{ portal_url }}</strong> {% include '_tip.html' with text="Owners choose Create your login, use the email address on their owner contact, and type the 6-digit code we email them. If the email never reaches them, give them a temporary password (button on their row below). Turn a rental on with Owner portal open on its property page." %}</div>

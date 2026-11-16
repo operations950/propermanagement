@@ -2,8 +2,8 @@
 {% load acc_extras %}
 {% block acc_title %}Record a payment - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
-<h2 class="page-title fs-4 mb-1">Record an owner's payment</h2>
-<p class="text-muted">{{ assoc.name }}. It pays the owner's oldest charges first; anything left over is kept as a credit.</p>
+<h2 class="page-title fs-4 mb-1">Record a {{ assoc|lab:"holder_lower" }}'s payment</h2>
+<p class="text-muted">{{ assoc.name }}. It pays the {{ assoc|lab:'holder_lower' }}'s oldest charges first; anything left over is kept as a credit.</p>
 <form method="post" class="card"><div class="card-body">{% csrf_token %}
     <div class="row g-3">
         <div class="col-md-4"><label class="form-label small text-muted mb-1">Unit</label>

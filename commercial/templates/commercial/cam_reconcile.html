@@ -1,0 +1,83 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}CAM reconciliation {{ year }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> CAM reconciliation {{ year }}
+            {% include '_tip.html' with text="Each tenant's share of the year's real shared costs, less the monthly CAM estimates it was billed. A positive result is billed to the tenant, a negative result is a credit held for the tenant and used on its next charges. Nothing is posted until you approve." %}
+            {% if approved %}<span class="ac-chip good">Approved {{ recon.approval_date|mdate }}</span>{% else %}<span class="ac-chip warn">Draft</span>{% endif %}</h2>
+        <div class="small text-muted">{{ assoc.name }}</div>
+    </div>
+</div>
+
+{% if not approved %}
+{% for w in plan.warnings %}<div class="ac-strip small mb-2">{{ w }}</div>{% endfor %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">The pools</h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Pool</th><th class="ac-num">Cost in the books</th><th class="ac-num">Gross-up</th><th class="ac-num">Admin fee</th><th class="ac-num">Pool total</th><th class="ac-num">Charged to tenants</th><th class="ac-num">Left with the landlord</th></tr></thead>
+        <tbody>{% for p in plan.pools %}<tr><td><a class="text-decoration-none" href="{% url 'commercial:cam_pool' assoc.pk p.pool.pk %}">{{ p.name }}</a>{% if p.occupancy is not None %}<div class="small text-muted">{{ p.occupancy|floatformat:1 }}% occupied</div>{% endif %}</td>
+            <td class="ac-num">{{ p.cost.recoverable|money }}</td><td class="ac-num">{{ p.cost.gross_up|plain_blank }}</td><td class="ac-num">{{ p.cost.admin_fee|plain_blank }}</td><td class="ac-num fw-semibold">{{ p.cost.total|money }}</td>
+            <td class="ac-num">{{ p.allocated|money }}</td><td class="ac-num">{{ p.left_with_landlord|money }}</td></tr>
+        {% empty %}<tr><td colspan="7" class="text-muted">No pools for {{ year }}. <a href="{% url 'commercial:cam' assoc.pk %}?year={{ year }}">Add one</a>.</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Each tenant</h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Tenant</th><th class="ac-num">Share of the year</th><th class="ac-num">Estimates billed</th><th class="ac-num">Billed or credited</th><th class="ac-num">New monthly estimate</th></tr></thead>
+        <tbody>{% for r in plan.lines %}<tr><td><span class="fw-semibold">{{ r.tenant }}</span><div class="small text-muted">Unit {{ r.unit }}{% if r.sf %} &middot; {{ r.sf|floatformat:0 }} sq ft{% endif %}{% if r.year_fraction < 1 %} &middot; {{ r.year_fraction|floatformat:2 }} of the year{% endif %}</div>
+                <details><summary class="small text-muted" style="cursor: pointer;">How it is worked out</summary>
+                    <table class="table table-sm mb-0 mt-1" style="font-size: 0.8rem;"><tbody>{% for p in r.pools %}<tr><td>{{ p.name }}<div class="text-muted">{{ p.method_label }}</div></td><td class="ac-num">pool {{ p.pool_cost|money }}</td><td class="ac-num">{% if p.fraction_pct != '0.0000' %}{{ p.fraction_pct }}%{% endif %}</td><td class="ac-num">{{ p.allocated|money }}</td>
+                        <td class="text-muted">{% for st in p.steps|slice:"1:" %}{{ st }}{% if not forloop.last %}; {% endif %}{% endfor %}</td></tr>{% endfor %}</tbody></table></details></td>
+            <td class="ac-num">{{ r.allocated|money }}</td><td class="ac-num">{{ r.estimates|money }}</td>
+            <td class="ac-num fw-semibold">{% if r.true_up > 0 %}{{ r.true_up|money }} <span class="ac-chip warn">owes</span>{% elif r.true_up < 0 %}{{ r.true_up|money }} <span class="ac-chip good">credit</span>{% else %}{{ r.true_up|money }}{% endif %}</td>
+            <td class="ac-num">{{ r.new_estimate|plain_blank }}</td></tr>
+        {% empty %}<tr><td colspan="5" class="text-muted">No tenant has a share in a pool for {{ year }}.</td></tr>{% endfor %}</tbody>
+        {% if plan.lines %}<tfoot><tr class="fw-semibold"><td>Total</td><td class="ac-num">{{ plan.totals.allocated|money }}</td><td class="ac-num">{{ plan.totals.estimates|money }}</td><td class="ac-num">{{ plan.totals.true_up|money }}</td><td></td></tr></tfoot>{% endif %}
+    </table>
+</div></div>
+
+<form method="post" class="card mb-3">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><div class="card-body">
+    <h6 class="card-title">Approve {% include '_tip.html' with text="Approving posts one charge (or one credit) per tenant dated the approval date, keeps these figures as they are now, and cannot be done twice. A charge is due the number of days after the approval date that you choose. You can take an approval back later if nobody has paid the charges." %}</h6>
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Post on</label><input type="date" class="form-control form-control-sm" name="approval_date" value="{{ default_date|date:'Y-m-d' }}"></div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Due after (days)</label><input class="form-control form-control-sm" name="due_days" value="{{ recon.due_days }}" inputmode="numeric"></div>
+        <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">New estimate adds %</label><input class="form-control form-control-sm" name="growth_percent" value="{{ recon.growth_percent|floatformat:'-3' }}" inputmode="decimal"></div>
+        <div class="col-6 col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="update_estimates" id="ue" {% if recon.update_estimates %}checked{% endif %}><label class="form-check-label small" for="ue">Set each tenant's monthly estimate to the new amount</label></div></div>
+        <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Starting</label><input type="date" class="form-control form-control-sm" name="estimates_effective" value="{{ default_effective|date:'Y-m-d' }}"></div>
+    </div>
+    <div class="d-flex flex-wrap gap-3 align-items-center mt-3 ac-noprint">
+        <button class="btn btn-sm btn-outline-secondary" name="action" value="settings">Save and recalculate</button>
+        <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm" value="yes" id="cf"><label class="form-check-label small" for="cf">I looked at the figures</label></div>
+        <button class="btn btn-sm btn-primary" name="action" value="approve" {% if not plan.lines %}disabled{% endif %}>Approve and post</button>
+    </div>
+</div></form>
+
+{% else %}
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="card-title mb-0">As approved</h6>
+        <div class="d-flex gap-2 flex-wrap ac-noprint">
+            <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><button class="btn btn-sm btn-primary" name="action" value="send_all" {% if not delivery %}disabled{% endif %}>Send all the statements</button></form>
+            <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="undo" onclick="return confirm('Take the approval back? Its charges and credits are voided and the year is a draft again.')">Take the approval back</button></form>
+        </div>
+    </div>
+    {% if not delivery %}<div class="small text-muted mb-2">No email delivery is set up yet: connect a Gmail mailbox in Admin Tools before sending.</div>{% endif %}
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Tenant</th><th class="ac-num">Share of the year</th><th class="ac-num">Estimates billed</th><th class="ac-num">Billed or credited</th><th class="ac-num">New monthly estimate</th><th></th></tr></thead>
+        <tbody>{% for l in lines %}<tr><td><span class="fw-semibold">{{ l.tenant_name }}</span><div class="small text-muted">Unit {{ l.unit_label }}</div>
+                <details><summary class="small text-muted" style="cursor: pointer;">How it was worked out</summary><table class="table table-sm mb-0 mt-1" style="font-size: 0.8rem;"><tbody>{% for p in l.rows %}<tr><td>{{ p.name }}<div class="text-muted">{{ p.method_label }}</div></td><td class="ac-num">pool {{ p.pool_cost|money }}</td><td class="ac-num">{% if p.pct != '0.0000' %}{{ p.pct }}%{% endif %}</td><td class="ac-num">{{ p.allocated|money }}</td></tr>{% endfor %}</tbody></table></details></td>
+            <td class="ac-num">{{ l.allocated|money }}</td><td class="ac-num">{{ l.estimates|money }}</td>
+            <td class="ac-num fw-semibold">{% if l.true_up > 0 %}{{ l.true_up|money }} <span class="ac-chip warn">owes</span>{% elif l.true_up < 0 %}{{ l.true_up|money }} <span class="ac-chip good">credit</span>{% else %}{{ l.true_up|money }}{% endif %}</td><td class="ac-num">{{ l.new_estimate|plain_blank }}</td>
+            <td class="text-end text-nowrap ac-noprint"><a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:cam_statement' assoc.pk l.pk %}" target="_blank">Statement</a>
+                {% if l.sent_at %}<span class="ac-chip good">Sent {{ l.sent_at|mdate:'short' }}</span>
+                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="line" value="{{ l.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="resend" onclick="return confirm('Send this statement a second time?')" {% if not delivery %}disabled{% endif %}>Send again</button></form>
+                {% else %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="line" value="{{ l.pk }}"><button class="btn btn-sm btn-primary" name="action" value="send" {% if not delivery %}disabled{% endif %}>Send</button></form>{% endif %}</td></tr>{% endfor %}</tbody>
+        <tfoot><tr class="fw-semibold"><td>Total</td><td class="ac-num">{{ recon.total_allocated|money }}</td><td class="ac-num">{{ recon.total_estimates|money }}</td><td class="ac-num">{{ recon.total_true_up|money }}</td><td colspan="2"></td></tr></tfoot>
+    </table>
+</div></div>
+{% endif %}
+{% endblock %}

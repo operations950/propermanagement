@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.http import JsonResponse
 
-from core.models import StaffProfile
+from core.models import Property, StaffProfile
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -14,7 +14,7 @@ from . import charges, checkprint, closing, documents, invoice_inbox, ledger, ow
 from . import standard_chart as sc
 from . import checkface
 from .models import AssociationDocument, BankAccount, Budget, ChargeRule, Payment, Receipt, SettingProposal
-from .web import admin_only, association_or_404, parse_date, parse_money
+from .web import admin_only, association_or_404, parse_date, parse_money, acc_up
 
 
 def _go(name, *args):
@@ -206,7 +206,7 @@ def settings(request, pk):
         try:
             if action == 'switch':
                 on = bool(request.POST.get('on'))
-                if on and not documents.has_contract(prop):
+                if on and prop.property_type == Property.Type.ASSOCIATION and not documents.has_contract(prop):
                     raise ValueError('Upload the management contract first: every association we keep the books for needs its contract on file.')
                 profile.we_do_financials = on
                 profile.save(update_fields=['we_do_financials'])
@@ -248,7 +248,7 @@ def settings(request, pk):
                 for f in ('legal_name', 'state_doc_number', 'ein', 'state_status', 'principal_address', 'mailing_address', 'registered_agent', 'sunbiz_url'):
                     setattr(profile, f, (request.POST.get(f) or '').strip())
                 profile.date_filed, profile.annual_report_filed = parse_date(request.POST.get('date_filed')), parse_date(request.POST.get('annual_report_filed'))
-                profile.sunbiz_checked_on, profile.sunbiz_checked_by = timezone.localdate(), 'hand'
+                # saving what was typed is not a check: "I checked it" (sunbiz_hand) is what records that a person looked at SunBiz
                 profile.sunbiz_alerts = ['The registered agent is ' + (profile.registered_agent.split(',')[0] or 'not listed') + ', not Proper Realty Co.'] if profile.registered_agent_alert() else []
                 officers = []
                 for line in (request.POST.get('officers') or '').splitlines():
@@ -261,7 +261,14 @@ def settings(request, pk):
             elif action == 'sunbiz_check':
                 from . import sunbiz
                 ok, message = sunbiz.check(profile)
-                (messages.success if ok else messages.error)(request, message)
+                (messages.success if ok else (messages.info if message == sunbiz.REFUSED_NOTE else messages.error))(request, message)
+            elif action == 'sunbiz_hand':
+                # SunBiz does not let a program look things up, so a person opens it, looks, and says they did. Everything but the date is optional.
+                from . import sunbiz
+                agent = request.POST.get('hand_agent')
+                alerts = sunbiz.hand_check(profile, status=request.POST.get('hand_status'), annual_report_filed=parse_date(request.POST.get('hand_annual')),
+                                           agent_ok={'us': True, 'other': False}.get(agent))
+                messages.success(request, f'Marked as checked by hand on {profile.sunbiz_checked_on:%B} {profile.sunbiz_checked_on.day}.' + (' ' + ' '.join(alerts) if alerts else ''))
             elif action == 'bank':
                 name = (request.POST.get('name') or '').strip()
                 code = request.POST.get('account')
@@ -364,7 +371,8 @@ def settings(request, pk):
             import logging
             logging.getLogger(__name__).exception('Accounting settings action failed')
             messages.error(request, 'That did not work. Try again.')
-        target = request.POST.get('next') or here
+        nxt = request.POST.get('next') or ''
+        target = nxt if (nxt.startswith('/') and not nxt.startswith('//')) else here
         if asked_id:
             base, _, frag = target.partition('#')
             target = f'{base}{"&" if "?" in base else "?"}asked={asked_id}#{frag or "documents"}'
@@ -372,5 +380,5 @@ def settings(request, pk):
     ctx = assoc_context(prop)
     ctx.update({'assoc': prop, 'profile': profile, 'cash_accounts': prop.accounts.filter(code__lt='1200', kind='asset').order_by('code'), 'banks': prop.bank_accounts.all(),
                 'officers_text': '\n'.join(f'{o["name"]}, {o["title"]}' for o in (profile.sunbiz_officers or [])), 'months': list(enumerate(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], 1)),
-                'acc_back': reverse('property_detail', args=[prop.pk]), 'acc_back_label': prop.name})
+                **acc_up(request, prop, ['accounting:hub', 'accounting:close'], reverse('property_detail', args=[prop.pk]), prop.name)})
     return render(request, 'accounting/settings.html', ctx)

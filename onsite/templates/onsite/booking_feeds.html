@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}Booking calendars{% endblock %}
 {% block content %}
-<a href="{% url 'onsite_dashboard' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> On-Site Visits</a>
+{% up_link css="mb-2" %}
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
     <h2 class="page-title mb-0">Booking calendars {% include '_tip.html' with text='Every short-term rental gets an Airbnb line and a VRBO line (one pair per unit for a building). Paste that listing’s calendar link, found in the listing’s calendar settings on the platform under Export calendar (an .ics link). The app checks it regularly: new reservations get a turnover visit and calendar event, changed dates move it, and a reservation that has disappeared is cancelled once it has been missing for several checks in a row. If a property is not on a platform, mark it Not listed so it stops being flagged. Each link is stored encrypted and shown partly hidden.' %}</h2>

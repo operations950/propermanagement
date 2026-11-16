@@ -1,0 +1,47 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Tenant invoices - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon-lg"></i> Tenant invoices {% include '_tip.html' with text="Rent and the CAM estimate post to the books by themselves, and each tenant's invoice is made then. Look at them here and send them, one by one or all at once, from admin@proper-realty.com." %}</h2>
+        <div class="small text-muted">{{ assoc.name }} &middot; rent due {{ month|date:"F Y" }}, posted from {{ post_on|date:"M j" }}</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="card-title mb-0">This month</h6>
+        <div class="d-flex gap-2 flex-wrap ac-noprint">
+            <form method="post">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="post_rent">Post the rent now</button></form>
+            {% if ready %}<form method="post">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><button class="btn btn-sm btn-primary" name="action" value="send_all" {% if not delivery %}disabled{% endif %}>Send all {{ ready }} ready</button></form>{% endif %}
+        </div>
+    </div>
+    {% if not delivery %}<div class="small text-muted mb-2">No email delivery is set up yet: connect a Gmail mailbox in Admin Tools before sending.</div>{% endif %}
+    <table class="table table-sm ac-table mb-0 ac-stack">
+        <thead><tr><th>Tenant</th><th>Unit</th><th class="ac-num">This month</th><th class="ac-num">Before</th><th class="ac-num">Total due</th><th></th></tr></thead>
+        <tbody>{% for i in invoices %}<tr><td>{{ i.tenant_name }}<div class="small text-muted">{{ i.number }}</div></td><td>{{ i.unit_label }}</td>
+            <td class="ac-num">{% for l in i.lines %}<div class="small">{{ l.description }} {{ l.amount|money }}</div>{% endfor %}</td><td class="ac-num">{{ i.previous_balance|plain_blank }}</td><td class="ac-num fw-semibold">{{ i.total|money }}</td>
+            <td class="text-end text-nowrap ac-noprint"><a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:invoice_pdf' assoc.pk i.pk %}" target="_blank">View</a>
+                {% if i.status == 'ready' %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="invoice" value="{{ i.pk }}">
+                    <button class="btn btn-sm btn-outline-secondary" name="action" value="refresh" title="Take the figures again from the books">Refresh</button>
+                    <button class="btn btn-sm btn-primary" name="action" value="send" {% if not delivery %}disabled{% endif %}>Send</button></form>
+                {% else %}<span class="ac-chip good">Sent {{ i.sent_at|mdate:'short' }}</span>
+                <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="invoice" value="{{ i.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="resend" onclick="return confirm('Send this invoice a second time?')" {% if not delivery %}disabled{% endif %}>Send again</button></form>{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="6" class="text-muted">No invoices for this month yet.</td></tr>{% endfor %}
+        {% for w in waiting %}<tr class="text-muted"><td>{{ w.lease.tenant.name }}</td><td>{{ w.lease.unit.label }}</td><td class="ac-num" colspan="3">{% if w.posted %}Rent is posted: the invoice is not made yet{% else %}Rent not posted yet ({{ w.rent|money }}{% if w.cam %} + CAM {{ w.cam|money }}{% endif %}){% endif %}</td>
+            <td class="text-end ac-noprint">{% if w.posted %}<form method="post">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="lease" value="{{ w.lease.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="make">Make the invoice</button></form>{% endif %}</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+<details class="card"><summary class="card-body small" style="cursor: pointer;">Settings for this property</summary>
+    <form method="post" class="card-body pt-0 row g-2">{% csrf_token %}<input type="hidden" name="action" value="settings"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
+        <div class="col-md-3"><label class="small text-muted">Post the rent this many days before it is due</label><input class="form-control form-control-sm" type="number" name="days" min="0" max="45" value="{{ cfg.rent_post_days_ahead }}"></div>
+        <div class="col-md-9"><label class="small text-muted">How to pay (printed on every invoice)</label><textarea class="form-control form-control-sm" name="instructions" rows="3">{{ cfg.payment_instructions }}</textarea></div>
+        <div class="col-12"><label class="small"><input type="checkbox" name="auto_send" {% if cfg.auto_send_invoices %}checked{% endif %}> Email each invoice to the tenant by itself when it is made {% include '_tip.html' with text="Off: you look at the invoices first and send them yourself. Automatic sending never sends an invoice for a month that has already passed." %}</label></div>
+        <div class="col-12"><button class="btn btn-sm btn-primary">Save</button></div>
+    </form></details>
+{% endblock %}

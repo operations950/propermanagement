@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_budget, views_chart, views_check_runs, views_collections, views_contracts, views_delinquency, views_money, views_payables_hub, views_setup
+from . import views, views_budget, views_chart, views_check_runs, views_closing, views_collections, views_contracts, views_delinquency, views_money, views_payables_hub, views_setup
 
 app_name = 'accounting'
 
@@ -30,6 +30,8 @@ urlpatterns = [
     path('<int:pk>/cases/<int:case_pk>/', views_delinquency.case_detail, name='case'),
     path('<int:pk>/', views.hub, name='hub'),
     path('<int:pk>/close/<str:month>/', views.close_sheet, name='close'),
+    path('<int:pk>/close/<str:month>/reserve/', views_closing.reserve, name='reserve_check'),
+    path('<int:pk>/close/<str:month>/send-board/', views_closing.send_board, name='send_board'),
     path('<int:pk>/units/', views.units, name='units'),
     path('<int:pk>/units/import/', views.units_import, name='units_import'),
     path('<int:pk>/unit/<int:unit_pk>/', views.unit_detail, name='unit'),

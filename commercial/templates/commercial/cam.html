@@ -1,0 +1,45 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}CAM {{ year }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="calculator" class="icon-lg"></i> Common area maintenance {% include '_tip.html' with text="The shared costs of running the building are charged back to the tenants. Each month the tenant's CAM estimate is billed with the rent. Once a year the real cost is worked out from the books, divided between the tenants by the method in each lease, and the difference from the estimates is billed or credited. A pool is one group of costs (the building, the parking, taxes and insurance) with its own way of dividing." %}</h2>
+        <div class="small text-muted">{{ assoc.name }} &middot; the year {{ start|date:"M j, Y" }} to {{ end|date:"M j, Y" }}</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        {% for y in years %}<a href="?year={{ y }}" class="btn {% if y == year %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ y }}</a>{% endfor %}
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="card-title mb-0">Pools for {{ year }}</h6>
+        <div class="d-flex gap-2 flex-wrap ac-noprint">
+            <a class="btn btn-sm btn-primary" href="{% url 'commercial:cam_pool_new' assoc.pk %}?year={{ year }}">Add a pool</a>
+            {% if has_previous %}<form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="copy_forward">Copy the pools from {{ year|add:"-1" }}</button></form>{% endif %}
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:cam_reconcile' assoc.pk %}?year={{ year }}">{% if recon and recon.status == 'approved' %}See the reconciliation{% else %}Reconcile {{ year }}{% endif %}</a>
+        </div>
+    </div>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Pool</th><th>Accounts</th><th class="ac-num">Cost so far</th><th class="ac-num">Tenants</th><th></th></tr></thead>
+        <tbody>{% for p in pools %}<tr><td><a href="{% url 'commercial:cam_pool' assoc.pk p.pool.pk %}" class="fw-semibold text-decoration-none">{{ p.pool.name }}</a>
+                {% if p.pool.admin_fee_percent %}<div class="small text-muted">plus {{ p.pool.admin_fee_percent|floatformat:"-3" }}% administration fee</div>{% endif %}</td>
+            <td class="small text-muted">{% for c in p.accounts %}{{ c }}{% if not forloop.last %}, {% endif %}{% empty %}none chosen{% endfor %}</td>
+            <td class="ac-num">{{ p.actual|money }}</td><td class="ac-num">{{ p.tenants }}</td>
+            <td class="text-end ac-noprint"><a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:cam_pool' assoc.pk p.pool.pk %}">Open</a>
+                {% if not recon or recon.status != 'approved' %}<form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="pool" value="{{ p.pool.pk }}"><button class="btn btn-sm btn-outline-secondary" name="action" value="delete_pool" onclick="return confirm('Remove this pool and its shares?')">Remove</button></form>{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="5" class="text-muted">No pools for {{ year }} yet. Add one for the costs you recover from the tenants.</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+
+<div class="card"><div class="card-body">
+    <h6 class="card-title">Reconciliations</h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Year</th><th>Approved</th><th class="ac-num">Tenants' shares</th><th class="ac-num">Estimates billed</th><th class="ac-num">Billed or credited</th><th></th></tr></thead>
+        <tbody>{% for h in history %}<tr><td>{{ h.year }}</td><td>{{ h.approval_date|mdate }}</td><td class="ac-num">{{ h.total_allocated|money }}</td><td class="ac-num">{{ h.total_estimates|money }}</td><td class="ac-num">{{ h.total_true_up|money }}</td>
+            <td class="text-end ac-noprint"><a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:cam_reconcile' assoc.pk %}?year={{ h.year }}">Open</a></td></tr>
+        {% empty %}<tr><td colspan="6" class="text-muted">No year has been approved yet.</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% load acc_extras %}
+<section id="tenants" class="mb-3">
+    <div class="card"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h6 class="card-title mb-0 d-flex align-items-center gap-2"><i data-lucide="store" class="icon"></i> Units &amp; tenants {% include '_tip.html' with text="Commercial buildings keep their books like an association, with tenants on leases instead of owners. Open the leases to see each tenant's rent, increases, lease copy and invoices." %}</h6>
+            <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-sm btn-primary" href="{% url 'commercial:leases' property.pk %}">Leases</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:invoices' property.pk %}">Tenant invoices</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:cam' property.pk %}">CAM</a>
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:owners' property.pk %}">Owners</a>
+                {% if cm.books_on %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:hub' property.pk %}">Accounting</a>{% else %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:settings' property.pk %}">Switch on the books</a>{% endif %}
+            </div>
+        </div>
+        <div class="row g-2 mt-2">
+            <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Units</div><div class="ac-big">{{ cm.units }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Leases</div><div class="ac-big">{{ cm.leases }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Rent a month</div><div class="ac-big">{{ cm.monthly_rent|money }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="ac-stat"><div class="ac-lab">Owed now</div><div class="ac-big">{{ cm.owed|money }}</div></div></div>
+        </div>
+        {% for l in cm.ending_soon %}<div class="small mt-2"><strong>{{ l.tenant.name }}</strong> ({{ l.unit.label }}): the lease ends {{ l.end_date|mdate }}.</div>{% endfor %}
+    </div></div>
+</section>

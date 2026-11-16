@@ -46,9 +46,9 @@ class TheCloseSheetInItsNewOrderTests(TestCase):
         self.assertEqual(ks[:3], ['charges', 'recurring', 'entries'])
         banks = [k for k in ks if k.startswith('bank')]
         self.assertEqual(len(banks), 2)
-        order = ['entries'] + banks + ['reserve_tie', 'variable_bills', 'late_fees', 'collections', 'lock']
+        order = ['entries'] + banks + ['reserve_tie', 'variable_bills', 'late_fees', 'collections', 'lock', 'send_board']
         self.assertEqual([ks.index(k) for k in order], sorted(ks.index(k) for k in order))
-        self.assertEqual(ks[-1], 'lock')
+        self.assertEqual(ks[-2:], ['lock', 'send_board'])
 
     def test_bills_waiting_is_no_longer_a_step_and_the_old_delinquencies_step_is_late_fees(self):
         ks = keys(self.sheet())

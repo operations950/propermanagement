@@ -30,6 +30,7 @@ urlpatterns = [
     path('documents/', include('legalforms.urls')),
     path('clock/', include('timeclock.urls')),
     path('accounting/', include('accounting.urls')),
+    path('commercial/', include('commercial.urls')),
     path('w/', include('workspace.urls')),
     path('', include('core.urls')),
     path('', include('intake.urls')),

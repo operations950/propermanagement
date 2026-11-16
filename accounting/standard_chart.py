@@ -84,6 +84,14 @@ CHART = [
     ('6919', 'Tree Trimming', EXPENSE), ('6920', 'Bad Debt Expense', EXPENSE),
 ]
 
+# What a commercial building adds to the chart (income from tenants, and where a tenant's deposit would sit). They are added to a commercial property's chart only
+# (ledger.ensure_chart), never to an association's, so they are in a dict and a list, not module-level strings (those are the accounts every association must have).
+COMMERCIAL_CODES = {'rent': '4100', 'cam': '4110', 'percentage_rent': '4120', 'utility_reimbursement': '4130', 'tenant_deposits': '2255'}
+COMMERCIAL_CHART = [
+    ('4100', 'Base Rent', INCOME), ('4110', 'CAM Reimbursements', INCOME), ('4120', 'Percentage Rent', INCOME), ('4130', 'Tenant Utility Reimbursements', INCOME),
+    ('2255', 'Tenant Security Deposits', LIABILITY),
+]
+
 # Report sections, by account number
 def section(code):
     n = int(code)

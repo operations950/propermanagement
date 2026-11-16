@@ -1,0 +1,62 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{% if pool %}{{ pool.name }}{% else %}New pool{% endif %} {{ year }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="mb-3">
+    <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="layers" class="icon-lg"></i> {% if pool %}{{ pool.name }}{% else %}New CAM pool{% endif %} <span class="text-muted fs-6">{{ year }}</span>
+        {% include '_tip.html' with text="A pool is a group of shared costs divided one way. Pick the expense accounts whose cost you recover. The cost for the year is read from the books each time, so it is always what was really spent. Then choose, for each tenant, how its share is worked out and any limits its lease puts on it." %}</h2>
+    <div class="small text-muted">{{ assoc.name }} &middot; {{ start|date:"M j, Y" }} to {{ end|date:"M j, Y" }}</div>
+</div>
+{% if locked %}<div class="ac-strip small mb-3">This year is approved, so its pools are fixed. Take the approval back on the reconciliation screen to change them.</div>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}">
+<fieldset {% if locked %}disabled{% endif %}>
+<div class="card mb-3"><div class="card-body">
+    <div class="row g-3">
+        <div class="col-md-5"><label class="form-label small text-muted mb-1">Name</label><input class="form-control form-control-sm" name="name" value="{{ pool.name|default:'' }}" required placeholder="Building, Parking, Taxes and insurance"></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Cost taken from</label><select class="form-select form-select-sm" name="basis"><option value="accrual" {% if pool.basis != 'cash' %}selected{% endif %}>Accrual book</option><option value="cash" {% if pool.basis == 'cash' %}selected{% endif %}>Cash book</option></select></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Admin fee %</label><input class="form-control form-control-sm" name="admin_fee_percent" value="{{ pool.admin_fee_percent|default:'0'|floatformat:'-3' }}" inputmode="decimal"></div>
+        <div class="col-md-2"><label class="form-label small text-muted mb-1">Gross up to %</label><input class="form-control form-control-sm" name="gross_up_percent" value="{{ pool.gross_up_percent|default_if_none:''|floatformat:'-3' }}" inputmode="decimal" placeholder="none"></div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-5"><label class="form-label small text-muted mb-1">Count the square feet as</label><select class="form-select form-select-sm" name="denominator">{% for v, l in denominators %}<option value="{{ v }}" {% if pool.denominator == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Typed square-foot total</label><input class="form-control form-control-sm" name="denominator_sf" value="{{ pool.denominator_sf|default_if_none:''|floatformat:'-2' }}" inputmode="decimal"></div>
+        <div class="col-md-4"><label class="form-label small text-muted mb-1">Occupancy % for the gross-up {% include '_tip.html' with text="Blank: worked out from the leases and the square feet of the units. The variable costs are grossed up to the percent in 'Gross up to' only when the building was less occupied than that." %}</label><input class="form-control form-control-sm" name="occupancy_override" value="{{ pool.occupancy_override|default_if_none:''|floatformat:'-3' }}" inputmode="decimal" placeholder="from the leases"></div>
+    </div>
+    <div class="row g-3 mt-1">
+        <div class="col-md-6"><label class="form-label small text-muted mb-1">Costs recovered (expense accounts)</label>
+            <div class="border rounded p-2" style="max-height: 220px; overflow-y: auto;">{% for a in accounts %}<div class="form-check"><input class="form-check-input" type="checkbox" name="accounts" value="{{ a.pk }}" id="a{{ a.pk }}" {% if a.pk in chosen %}checked{% endif %}><label class="form-check-label small" for="a{{ a.pk }}">{{ a.code }} {{ a.name }}</label></div>{% endfor %}</div></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Always left out {% include '_tip.html' with text="Hold Ctrl or Command to choose more than one. An account chosen here is never charged back, even when it is ticked on the left." %}</label>
+            <select class="form-select form-select-sm" name="excluded" multiple size="8">{% for a in accounts %}<option value="{{ a.pk }}" {% if a.pk in excluded %}selected{% endif %}>{{ a.code }} {{ a.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label small text-muted mb-1">Variable costs (for the gross-up) {% include '_tip.html' with text="The accounts whose cost rises and falls with how full the building is. Blank: the whole pool is grossed up." %}</label>
+            <select class="form-select form-select-sm" name="gross_up" multiple size="8">{% for a in accounts %}<option value="{{ a.pk }}" {% if a.pk in gross %}selected{% endif %}>{{ a.code }} {{ a.name }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="mt-3"><label class="form-label small text-muted mb-1">Notes</label><textarea class="form-control form-control-sm" name="notes" rows="2">{{ pool.notes|default:'' }}</textarea></div>
+</div></div>
+
+{% if pool %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title">Each tenant's share {% include '_tip.html' with text="Choose the method for each tenant, or 'Not in this pool'. The value box is the percent, the weight or the yearly amount, whichever the method needs. Open More for the limits a lease can put on the share: a cap on the yearly rise, the most a square foot pays, a base-year stop, costs this tenant does not pay, and whether a part-year tenant pays by the day." %}</h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Tenant</th><th class="ac-num">Sq ft</th><th class="ac-num">Part of year</th><th>Method</th><th style="width: 130px;">Value</th></tr></thead>
+        <tbody>{% for r in rows %}{% with L=r.lease s=r.share %}<tr><td><input type="hidden" name="in_{{ L.pk }}" value="1"><span class="fw-semibold">{{ L.tenant.name }}</span><div class="small text-muted">Unit {{ L.unit.label }}</div></td>
+            <td class="ac-num">{{ r.sf|default_if_none:'' }}</td><td class="ac-num">{{ r.fraction|floatformat:2 }}</td>
+            <td><select class="form-select form-select-sm" name="m_{{ L.pk }}"><option value="">Not in this pool</option>{% for v, l in methods %}<option value="{{ v }}" {% if s and s.method == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+            <td><input class="form-control form-control-sm" name="v_{{ L.pk }}" value="{{ r.value }}" inputmode="decimal" placeholder="percent, weight or amount"></td></tr>
+        <tr><td colspan="5" class="border-top-0 pt-0"><details><summary class="small text-muted" style="cursor: pointer;">More for {{ L.tenant.name }}</summary>
+            <div class="row g-2 mt-1">
+                <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Cap on rise %</label><input class="form-control form-control-sm" name="cap_{{ L.pk }}" value="{{ s.cap_percent|default_if_none:''|floatformat:'-3' }}" inputmode="decimal"></div>
+                <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Most per sq ft</label><input class="form-control form-control-sm" name="msf_{{ L.pk }}" value="{{ s.max_per_sf|default_if_none:''|floatformat:'-3' }}" inputmode="decimal"></div>
+                <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Base year</label><input class="form-control form-control-sm" name="by_{{ L.pk }}" value="{{ s.base_year|default_if_none:'' }}" inputmode="numeric"></div>
+                <div class="col-6 col-md-2"><label class="form-label small text-muted mb-1">Or base amount</label><input class="form-control form-control-sm" name="ba_{{ L.pk }}" value="{{ s.base_amount|default_if_none:''|floatformat:'-2' }}" inputmode="decimal"></div>
+                <div class="col-12 col-md-4"><label class="form-label small text-muted mb-1">Costs this tenant does not pay</label><select class="form-select form-select-sm" name="ex_{{ L.pk }}" multiple size="3">{% for a in accounts %}<option value="{{ a.pk }}" {% if a.pk in r.excluded %}selected{% endif %}>{{ a.code }} {{ a.name }}</option>{% endfor %}</select></div>
+                <div class="col-12 col-md-8"><label class="form-label small text-muted mb-1">Note</label><input class="form-control form-control-sm" name="note_{{ L.pk }}" value="{{ s.note|default:'' }}"></div>
+                <div class="col-12 col-md-4 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" name="pr_{{ L.pk }}" id="pr{{ L.pk }}" {% if not s or s.prorate %}checked{% endif %}><label class="form-check-label small" for="pr{{ L.pk }}">Part-year tenant pays by the day</label></div></div>
+            </div></details></td></tr>{% endwith %}
+        {% empty %}<tr><td colspan="5" class="text-muted">No tenant had space in {{ year }}. Add the leases first.</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+{% else %}<div class="small text-muted mb-3">Save the pool first, then each tenant's share appears here.</div>{% endif %}
+</fieldset>
+<div class="d-flex gap-2 ac-noprint"><button class="btn btn-primary" {% if locked %}disabled{% endif %}>Save</button><a class="btn btn-outline-secondary" href="{% url 'commercial:cam' assoc.pk %}?year={{ year }}">Back to CAM {{ year }}</a></div>
+</form>
+{% endblock %}

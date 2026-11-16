@@ -23,5 +23,10 @@ class Command(BaseCommand):
             done = charges.post_due(prop, today)
             made = payables.post_recurring(prop, today)
             entries = scheduled.post_due(prop, today, automatic=True)         # each recurring entry also has its own switch
+            if prop.property_type == 'commercial':
+                from commercial import rent
+                rented = rent.post_rent_due(prop, today)               # rent and CAM from the leases, posted ahead of the 1st (default 10 days), and the tenants' invoices made
+                if rented['posted'] or rented['invoices']:
+                    self.stdout.write(f'{prop.name}: {rented["posted"]} rent charges, {rented["invoices"]} invoices, {rented["sent"]} sent')
             if done or made or entries:
                 self.stdout.write(f'{prop.name}: {sum(n for _, _, n in done)} charges, {len(made)} bills, {len(entries)} scheduled entries')

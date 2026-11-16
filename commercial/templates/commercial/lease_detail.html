@@ -1,0 +1,105 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ lease.tenant.name }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="store" class="icon-lg"></i> {{ lease.tenant.name }}</h2>
+        <div class="small text-muted">{{ assoc.name }} &middot; unit {{ unit.label }}{% if unit.square_footage %} &middot; {{ unit.square_footage }} sq ft{% endif %} &middot; <span class="ac-chip {% if lease.status == 'active' %}good{% endif %}">{{ lease.get_status_display }}</span></div>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        {% if balance > 0 %}<span class="ac-chip warn">Owes {{ balance|money }}</span>{% elif balance < 0 %}<span class="ac-chip good">Paid ahead {{ balance|money }}</span>{% else %}<span class="ac-chip good">Paid up</span>{% endif %}
+        {% if books_on %}<a class="btn btn-sm btn-primary" href="{% url 'accounting:receipt_new' assoc.pk %}?unit={{ unit.pk }}"><i data-lucide="hand-coins" class="icon"></i> Record a payment</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:charge_one' assoc.pk %}?unit={{ unit.pk }}"><i data-lucide="plus" class="icon"></i> Post a charge</a>{% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:lease_edit' assoc.pk lease.pk %}"><i data-lucide="pencil" class="icon"></i> Edit lease</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6"><div class="card h-100"><div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-signature" class="icon"></i> The lease</h6>
+        <table class="table table-sm mb-0 small"><tbody>
+            <tr><th class="text-muted fw-normal">Term</th><td>{% if lease.start_date %}{{ lease.start_date|mdate }}{% else %}no start date{% endif %} to {% if lease.end_date %}{{ lease.end_date|mdate }}{% else %}open{% endif %}</td></tr>
+            <tr><th class="text-muted fw-normal">Base rent</th><td>{{ lease.base_rent|money }} a month{% if lease.prorate %} <span class="text-muted">(part months by the day)</span>{% endif %}</td></tr>
+            <tr><th class="text-muted fw-normal">CAM estimate</th><td>{{ lease.cam_estimate|money }} a month</td></tr>
+            <tr><th class="text-muted fw-normal">Security deposit</th><td>{% if lease.security_deposit %}{{ lease.security_deposit|money }}{% if lease.deposit_received_on %} received {{ lease.deposit_received_on|mdate }}{% endif %}{% if lease.deposit_note %}<div class="text-muted">{{ lease.deposit_note }}</div>{% endif %}{% else %}none recorded{% endif %}</td></tr>
+            <tr><th class="text-muted fw-normal">Invoices go to</th><td>{% for e in lease.billing_list %}{{ e }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-danger">no email address yet</span>{% endfor %}</td></tr>
+            {% if lease.renewal_notes %}<tr><th class="text-muted fw-normal">Renewal</th><td>{{ lease.renewal_notes|linebreaksbr }}</td></tr>{% endif %}
+            {% if lease.notes %}<tr><th class="text-muted fw-normal">Notes</th><td>{{ lease.notes|linebreaksbr }}</td></tr>{% endif %}
+        </tbody></table>
+        {% if lease.status != 'ended' %}<details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">End this lease</summary>
+            <form method="post" class="d-flex gap-2 mt-1 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="end_lease">
+                <div><label class="small text-muted">Last day</label><input class="form-control form-control-sm" type="date" name="end_date" value="{{ lease.end_date|date:'Y-m-d' }}"></div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="return confirm('End this lease? Rent stops after the last day.')">End the lease</button></form></details>{% endif %}
+    </div></div></div>
+    <div class="col-md-6"><div class="card h-100"><div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="paperclip" class="icon"></i> Documents {% include '_tip.html' with text="A copy of the lease and anything that changes it, kept with the tenant." %}</h6>
+        {% for d in documents %}<div class="d-flex justify-content-between align-items-center py-1 {% if not forloop.first %}border-top{% endif %}">
+            <div><a href="{{ d.file.url }}" target="_blank" rel="noopener">{{ d.name|default:d.file.name }}</a> <span class="ac-chip">{{ d.get_kind_display }}</span><div class="small text-muted">added {{ d.uploaded_at|mdate }}</div></div>
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_doc"><input type="hidden" name="doc" value="{{ d.pk }}"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Remove this document?')">Remove</button></form></div>
+        {% empty %}<p class="text-muted small mb-2">No lease on file yet.</p>{% endfor %}
+        <form method="post" enctype="multipart/form-data" class="row g-2 mt-1 ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="upload_doc">
+            <div class="col-md-4"><select class="form-select form-select-sm" name="kind">{% for v, l in kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+            <div class="col-md-8"><input class="form-control form-control-sm" name="name" placeholder="Name (optional)"></div>
+            <div class="col-md-9"><input class="form-control form-control-sm" type="file" name="file" required></div>
+            <div class="col-md-3"><button class="btn btn-sm btn-primary w-100">Upload</button></div>
+        </form>
+    </div></div></div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> The next 12 months {% include '_tip.html' with text="What the lease will charge each month, with the rent steps and seasonal rents applied. The rent posts about 10 days before the first of the month." %}</h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Month</th><th>Rent from</th><th class="ac-num">Rent</th><th class="ac-num">CAM</th></tr></thead>
+        <tbody>{% for r in schedule %}<tr><td>{{ r.month|date:"F Y" }}</td><td class="small text-muted">{{ r.label }}{% if r.prorated %} &middot; {{ r.days }} of {{ r.of }} days{% endif %}</td><td class="ac-num">{{ r.rent|money }}</td><td class="ac-num">{{ r.cam|money }}</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-6"><div class="card h-100"><div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="trending-up" class="icon"></i> Rent increases {% include '_tip.html' with text="From the date, the monthly rent is the new amount. A date that is not the 1st starts with the next month." %}</h6>
+        {% for s in steps %}<div class="d-flex justify-content-between align-items-center py-1 {% if not forloop.first %}border-top{% endif %}"><div>{{ s.effective_date|mdate }}: <strong>{{ s.monthly_rent|money }}</strong> <span class="small text-muted">{{ s.note }}</span></div>
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_step"><input type="hidden" name="step" value="{{ s.pk }}"><button class="btn btn-sm btn-outline-secondary">Remove</button></form></div>
+        {% empty %}<p class="text-muted small mb-2">The base rent never changes.</p>{% endfor %}
+        <form method="post" class="row g-2 mt-1 ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="add_step">
+            <div class="col-5"><input class="form-control form-control-sm" type="date" name="effective_date" required></div>
+            <div class="col-4"><input class="form-control form-control-sm" name="monthly_rent" placeholder="New rent" required></div>
+            <div class="col-3"><button class="btn btn-sm btn-primary w-100">Add</button></div>
+        </form>
+        <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Yearly increases</summary>
+            <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="generate_steps">
+                <div class="col-6"><label class="small text-muted">First increase on</label><input class="form-control form-control-sm" type="date" name="first_effective" required></div>
+                <div class="col-6"><label class="small text-muted">For how many years</label><input class="form-control form-control-sm" type="number" name="years" min="1" max="30" value="5" required></div>
+                <div class="col-6"><label class="small text-muted">Percent a year</label><input class="form-control form-control-sm" name="percent" placeholder="3"></div>
+                <div class="col-6"><label class="small text-muted">or dollars a year</label><input class="form-control form-control-sm" name="amount" placeholder="100"></div>
+                <div class="col-12"><button class="btn btn-sm btn-outline-secondary">Make the increases</button></div>
+            </form></details>
+    </div></div></div>
+    <div class="col-md-6"><div class="card h-100"><div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="sun-snow" class="icon"></i> Seasonal rent {% include '_tip.html' with text="A different monthly rent in certain months of every year, such as November to April. It replaces the base rent or the rent increase in those months." %}</h6>
+        {% for s in seasons %}<div class="d-flex justify-content-between align-items-center py-1 {% if not forloop.first %}border-top{% endif %}"><div>{{ s.name|default:"Season" }}: months {{ s.start_month }} to {{ s.end_month }}, <strong>{{ s.monthly_rent|money }}</strong></div>
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_season"><input type="hidden" name="season" value="{{ s.pk }}"><button class="btn btn-sm btn-outline-secondary">Remove</button></form></div>
+        {% empty %}<p class="text-muted small mb-2">No seasonal rent.</p>{% endfor %}
+        <form method="post" class="row g-2 mt-1 ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="add_season">
+            <div class="col-12"><input class="form-control form-control-sm" name="name" placeholder="Name (winter season)"></div>
+            <div class="col-4"><select class="form-select form-select-sm" name="start_month">{% for n, m in months %}<option value="{{ n }}">From {{ m }}</option>{% endfor %}</select></div>
+            <div class="col-4"><select class="form-select form-select-sm" name="end_month">{% for n, m in months %}<option value="{{ n }}">to {{ m }}</option>{% endfor %}</select></div>
+            <div class="col-4"><input class="form-control form-control-sm" name="monthly_rent" placeholder="Monthly rent" required></div>
+            <div class="col-12"><button class="btn btn-sm btn-primary">Add the season</button></div>
+        </form>
+    </div></div></div>
+</div>
+
+{% if invoices %}<div class="card mb-3"><div class="card-body"><h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Invoices</h6>
+    {% for i in invoices %}<div class="d-flex justify-content-between py-1 {% if not forloop.first %}border-top{% endif %}"><span><a href="{% url 'commercial:invoice_pdf' assoc.pk i.pk %}" target="_blank">{{ i.month|date:"F Y" }}</a> <span class="small text-muted">{{ i.total|money }}</span></span>
+        <span class="ac-chip {% if i.status == 'sent' %}good{% endif %}">{{ i.get_status_display }}{% if i.sent_at %} {{ i.sent_at|mdate:'short' }}{% endif %}</span></div>{% endfor %}</div></div>{% endif %}
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="book-open" class="icon"></i> Ledger <span class="small fw-normal text-muted ms-auto">Newest first</span></h6>
+    <table class="table table-sm ac-table mb-0">
+        <thead><tr><th>Date</th><th>What</th><th class="ac-num">Charge</th><th class="ac-num">Payment</th><th class="ac-num">Balance</th></tr></thead>
+        <tbody>{% for r in rows %}<tr><td>{{ r.date|mdate }}</td><td>{{ r.what }}</td><td class="ac-num">{{ r.charge|plain_blank }}</td><td class="ac-num">{{ r.payment|plain_blank }}</td><td class="ac-num">{{ r.balance|plain }}</td></tr>
+        {% empty %}<tr><td colspan="5" class="text-muted">Nothing has been charged or paid yet.</td></tr>{% endfor %}</tbody>
+    </table>
+</div></div>
+{% endblock %}

@@ -80,12 +80,12 @@ class EligibilityTests(PayablesBase):
         other = Property.objects.create(name='Unbooked HOA', property_type=Property.Type.ASSOCIATION)
         self.assertEqual(hub.eligibility(other)[0], 'books')
 
-    def test_only_associations_are_eligible_now_and_commercial_is_a_one_line_addition(self):
-        self.assertEqual(hub.ELIGIBLE_TYPES, (Property.Type.ASSOCIATION,))
-        commercial = Property.objects.create(name='Office Park', property_type=Property.Type.COMMERCIAL)
-        self.assertEqual(hub.eligibility(commercial)[0], 'type')
-        with mock.patch.object(hub, 'ELIGIBLE_TYPES', (Property.Type.ASSOCIATION, Property.Type.COMMERCIAL)):
-            self.assertNotEqual(hub.eligibility(commercial)[0], 'type')
+    def test_associations_and_commercial_buildings_are_eligible_and_other_kinds_are_not(self):
+        self.assertEqual(hub.ELIGIBLE_TYPES, (Property.Type.ASSOCIATION, Property.Type.COMMERCIAL))
+        commercial = Property.objects.create(name='Office Park', property_type=Property.Type.COMMERCIAL)     # its books start switched on, with no bank account yet
+        self.assertEqual(hub.eligibility(commercial)[0], 'bank')
+        rental = Property.objects.create(name='Beach House', property_type=Property.Type.SHORT_TERM_RENTAL)
+        self.assertEqual(hub.eligibility(rental)[0], 'type')
 
     def test_the_picker_lists_the_ones_we_can_pay_for_first_and_explains_the_rest(self):
         make_assoc('No Bank Condos')

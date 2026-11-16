@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% load core_extras ticket_extras static %}
+{% load core_extras ticket_extras static nav_tags %}
 {% block title %}{{ contact.name }}{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}"><script src="{% static 'js/quo-links.js' %}" defer></script>{% endblock %}
 {% block content %}
 <div class="ml-scope ml-page mx-auto" style="max-width: 640px;">
-    <a href="{% url 'contact_list' %}" class="ml-back"><i data-lucide="arrow-left" class="icon"></i> Contacts</a>
+    {% up_link bare="ml-back" icon="arrow-left" %}
     <h1 class="ml-title">{{ contact.name }}</h1>
     <div class="ml-tags">
         <span class="ml-tag">{{ contact.get_contact_type_display }}</span>

@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load static ticket_extras %}
 {% block title %}New ticket{% endblock %}
 {% block extra_head %}<link href="{% static 'css/mobile-tickets.css' %}" rel="stylesheet">{% endblock %}
-{% block mobile_back_url %}{% url 'ticket_list' %}{% endblock %}
 {% block content %}
-<a href="{% url 'ticket_list' %}" class="m-back d-md-none mt-2"><i data-lucide="arrow-left" class="icon"></i>&nbsp;Tickets</a>
-<a href="{% url 'ticket_list' %}" class="text-decoration-none small d-none d-md-inline-flex align-items-center gap-1 mt-3" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> All tickets</a>
+{% up_link bare="m-back d-md-none mt-2" icon="arrow-left" %}
+{% up_link css="d-none d-md-inline-flex mt-3" %}
 <h2 class="page-title mb-3">New ticket</h2>
 
 <form method="post" class="card m-tk-form" style="max-width: 760px; border-radius: var(--bs-border-radius-lg);">

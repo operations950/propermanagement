@@ -286,6 +286,57 @@ class HolidayForNoScheduleTests(TestCase):
         self.assertEqual(services._holiday_dates(flex, date(2026, 11, 1), date(2026, 11, 30)), [(thanksgiving, 'Thanksgiving'), (thanksgiving + timedelta(days=1), 'Day after Thanksgiving')])
 
 
+class NewestFirstTests(TestCase):
+    """Wherever days or weeks are listed, the latest is on top and the oldest at the bottom."""
+    def setUp(self):
+        self.person = make_person('flex', variable=True)
+        self.start = policy.pay_period(TODAY)[0]
+        for offset in (0, 1, 4, 8, 11):
+            punch(self.person, self.start + timedelta(days=offset))
+
+    def test_the_weeks_and_each_weeks_days_run_from_the_latest_to_the_oldest(self):
+        report = services.PeriodReport(self.person, self.start, TODAY)
+        weeks = report.weeks_to_show
+        self.assertEqual([w['start'] for w in weeks], sorted((w['start'] for w in report.weeks), reverse=True))
+        for w in weeks:
+            days = [r['date'] for r in w['rows_newest']]
+            self.assertEqual(days, sorted(days, reverse=True))
+        days = [r['date'] for r in report.rows_newest]
+        self.assertEqual(days, sorted(days, reverse=True))
+        self.assertEqual((days[0], days[-1]), (self.start + timedelta(days=13), self.start))
+
+    def test_a_finished_period_is_in_the_same_order_as_one_in_progress(self):
+        later = self.start + timedelta(days=30)                                                    # the period is over: no week is "current"
+        report = services.PeriodReport(self.person, self.start, later)
+        self.assertFalse(any(w['current'] for w in report.weeks))
+        self.assertEqual([w['start'] for w in report.weeks_to_show], [self.start + timedelta(days=7), self.start])
+
+    def test_the_csv_lists_the_latest_day_first_with_the_total_last(self):
+        report = services.PeriodReport(self.person, self.start, TODAY)
+        lines = services.hours_csv([report]).strip().splitlines()
+        dates = [ln.split(',')[2] for ln in lines[1:-1]]
+        self.assertEqual(dates, sorted(dates, reverse=True))
+        self.assertEqual(dates[0], (self.start + timedelta(days=11)).isoformat())
+        self.assertEqual(lines[-1].split(',')[2], 'TOTAL')
+
+    @override_settings(STORAGES=STORAGES)
+    def test_the_hours_page_shows_today_at_the_top_and_the_oldest_day_at_the_bottom(self):
+        import re
+        from unittest import mock
+        boss = get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678')
+        self.client.force_login(boss)
+        with mock.patch.object(timezone, 'localdate', return_value=TODAY):
+            page = self.client.get(reverse('timeclock_hours')).content.decode()
+        shown = re.findall(r'timeclock/punch/?\?pid=\d+&amp;day=(\d{4}-\d{2}-\d{2})|\?pid=\d+&day=(\d{4}-\d{2}-\d{2})', page)
+        days = [a or b for a, b in shown]
+        self.assertTrue(days)
+        self.assertEqual(days[0], TODAY.isoformat())
+        self.assertEqual(days, sorted(days, reverse=True))
+        self.assertEqual(days[-1], self.start.isoformat())
+        weeks = re.findall(r'Week of ([A-Z][a-z]{2} \d+)', page)
+        self.assertEqual(weeks, [f'{(self.start + timedelta(days=7)):%b} {(self.start + timedelta(days=7)).day}', f'{self.start:%b} {self.start.day}'])
+
+
 class HoursAndCsvTests(TestCase):
     def test_her_hours_are_in_the_pay_period_and_the_csv_like_other_hourly_people(self):
         flex = make_person('flex', variable=True)

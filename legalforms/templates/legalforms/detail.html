@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}{{ doc.template.name }}{% endblock %}
 {% block content %}
 {% include 'legalforms/_paper_css.html' %}
-<a href="{% url 'legalforms:list' %}?property={{ doc.property.pk }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ doc.property.name }} documents</a>
+{% up_link css="mb-2 py-3 py-md-0" %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title mb-0">{{ doc.template.name }} <span class="badge rounded-pill fs-6 {% if doc.status == 'final' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ doc.get_status_display }}</span></h2>
@@ -27,11 +28,9 @@
     <div class="col-lg-8"><div class="border rounded lf-paper" style="overflow-x: auto;">{{ html }}</div></div>
     <div class="col-lg-4">
         <div class="card mb-3" style="border-radius: 12px;"><div class="card-body py-2 px-3">
-            <div class="small fw-semibold mb-1">Sending</div>
+            <div class="small fw-semibold mb-1">Sending {% include '_tip.html' with text="The day it was mailed or delivered. The 30-day follow-up on owner collections counts from this date, and a companion affidavit starts from it." %}</div>
             <form method="post" action="{% url 'legalforms:act' doc.pk %}" class="small">{% csrf_token %}<input type="hidden" name="action" value="mailing">
-                <label class="form-label mb-0">Date sent / mailed</label><input type="date" name="mailed_on" class="form-control form-control-sm mb-1" value="{{ doc.mailed_on|date:'Y-m-d' }}">
-                <label class="form-label mb-0">How</label><input type="text" name="mail_method" class="form-control form-control-sm mb-1" maxlength="60" placeholder="First class mail, certified, email…" value="{{ doc.mail_method }}">
-                <label class="form-label mb-0">Tracking number</label><input type="text" name="tracking" class="form-control form-control-sm mb-2" maxlength="80" value="{{ doc.tracking }}">
+                <label class="form-label mb-0">Date mailed</label><input type="date" name="mailed_on" class="form-control form-control-sm mb-2" value="{{ doc.mailed_on|date:'Y-m-d' }}">
                 <button class="btn btn-outline-secondary btn-sm">Record</button>
             </form>
         </div></div>

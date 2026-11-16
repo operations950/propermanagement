@@ -11,6 +11,7 @@ from django.utils.dateparse import parse_date, parse_time
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from core import nav
 from core.models import Property, StaffProfile
 from worksessions.models import Frequency
 
@@ -324,7 +325,9 @@ def run_detail(request, pk):
     else:
         origin_url, origin_label = '', run.origin_text()
     back = (reverse('ws_projects'), 'Projects') if is_project else ((origin_url, 'Compliance item') if run.session_line_id else (origin_url, 'Ticket'))
-    return render(request, 'workspace/run_detail.html', {'run': run, 'is_project': is_project, 'origin_url': origin_url, 'origin_label': origin_label, 'back': back,
+    # A project goes up to the wide screen it was opened from (Projects, Home); a process run belongs to the ticket or compliance item it was started for, so Up is that.
+    up = nav.up(request, {'ws_projects': 'Projects', 'ws_home': 'Home'}, default=back) if is_project else nav.Up(*back)
+    return render(request, 'workspace/run_detail.html', {'run': run, 'is_project': is_project, 'origin_url': origin_url, 'origin_label': origin_label, 'back': back, 'up': up,
                                                          'process_runs': [run]})
 
 

@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}Review payouts{% endblock %}
 {% block content %}
-<a href="{% url 'onsite_booking_import' %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-2" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Import payouts</a>
+{% up_link css="mb-2" %}
 
 {% if debug_last_import_error %}
 <div class="card mb-4" style="border-radius: var(--bs-border-radius-lg); border-color: var(--status-critical);">

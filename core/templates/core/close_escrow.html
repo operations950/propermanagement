@@ -1,9 +1,10 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}{{ cfg.title }}{% endblock %}
 {% block content %}
 {% include 'core/_phone_review.html' %}
 {% load core_extras %}
-<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+{% up_link css="mb-1" %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{{ cfg.icon }}" class="icon-lg"></i> {{ cfg.h2 }} {% include '_tip.html' with text=cfg.blurb %}</h2>

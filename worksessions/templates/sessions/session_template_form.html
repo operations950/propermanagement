@@ -1,11 +1,12 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load ticket_extras %}
 {% block title %}{% if template %}Edit {% if new_face %}compliance{% else %}recurring{% endif %} rule{% else %}New {% if new_face %}compliance{% else %}recurring{% endif %} rule{% endif %}{% endblock %}
 {% block content %}
 {% if template %}
-<a href="{% url 'session_template_detail' template.pk %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ template.name }}</a>
+{% up_link css="mt-3 py-3 py-md-0" %}
 {% else %}
-<a href="{% if new_face %}{% url 'ws_compliance' %}?tab=rules{% else %}{% url 'session_template_list' %}{% endif %}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {% if new_face %}Compliance rules{% else %}Recurring Rules{% endif %}</a>
+{% up_link css="mt-3 py-3 py-md-0" %}
 {% endif %}
 <h2 class="page-title mb-3">{% if template %}Edit {% if new_face %}compliance{% else %}recurring{% endif %} rule{% else %}New {% if new_face %}compliance{% else %}recurring{% endif %} rule{% endif %}</h2>
 

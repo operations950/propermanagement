@@ -1,9 +1,10 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load core_extras %}
 {% block title %}Long-term rent collection{% endblock %}
 {% block content %}
 {% include 'core/_phone_review.html' %}
-<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+{% up_link css="mb-1" %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Long-term rent collection {% include '_tip.html' with text="Rent comes in the first days of the month. For each long-term rental, the rent we expect is compared with what QuickBooks shows came in this month. Confirm each one. An owner who is paid the month it is collected is paid for it only once its rent is confirmed here." %}</h2>
         <div class="small text-muted">{{ rent_month|date:"F Y" }} rent &middot; {{ summary.detail }}</div></div>

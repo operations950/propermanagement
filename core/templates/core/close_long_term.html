@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load core_extras %}
 {% block title %}Close long-term rentals{% endblock %}
 {% block content %}
@@ -11,7 +12,7 @@
     .cl-ov tfoot td { font-weight: 700; border-top: 2px solid var(--border-hairline); background: var(--bs-light, #f4f6f8); }
     .cl-ov td.end { font-weight: 700; background: color-mix(in srgb, var(--bs-light, #f4f6f8) 60%, white); }
 </style>
-<a href="{% url 'close_home' %}?month={{ month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end checklist</a>
+{% up_link css="mb-1" %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Close long-term rentals</h2>

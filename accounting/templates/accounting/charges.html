@@ -1,11 +1,11 @@
 {% extends 'accounting/base_acc.html' %}
 {% load acc_extras %}
-{% block acc_title %}Charges to owners - {{ assoc.name }}{% endblock %}
+{% block acc_title %}{{ assoc|lab:"charges_title" }} - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div>
-        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="repeat" class="icon-lg"></i> Charges to owners</h2>
-        <div class="small text-muted">What each owner is billed, and when. They post themselves on their dates{% if not profile.auto_post %} once automatic posting is switched on in the settings{% endif %}.</div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="repeat" class="icon-lg"></i> {{ assoc|lab:"charges_title" }}</h2>
+        <div class="small text-muted">What each {{ assoc|lab:"holder_lower" }} is billed, and when.{% if assoc|is_commercial %} Rent and the CAM estimate come from the leases and post by themselves; charges set up here are for anything else.{% endif %} They post themselves on their dates{% if not profile.auto_post %} once automatic posting is switched on in the settings{% endif %}.</div>
     </div>
     <a class="btn btn-sm btn-primary" href="{% url 'accounting:charge_new' assoc.pk %}"><i data-lucide="plus" class="icon"></i> Add a charge</a>
 </div>

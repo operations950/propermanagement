@@ -1,0 +1,19 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Owners - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="users" class="icon-lg"></i> Owners {% include '_tip.html' with text="The month's financial package is emailed to these people at the end of the month-end close. Each needs an email address." %}</h2>
+<div class="small text-muted mb-3">{{ assoc.name }}</div>
+<div class="card mb-3"><div class="card-body">
+    {% for t in terms %}<div class="d-flex justify-content-between align-items-center py-2 {% if not forloop.first %}border-top{% endif %}">
+        <div><span class="fw-semibold">{{ t.person.name }}</span> <span class="text-muted">{{ t.position }}</span><div class="small {% if t.person.email %}text-muted{% else %}text-danger{% endif %}">{{ t.person.email|default:"no email address yet" }}</div></div>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="term" value="{{ t.pk }}"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Stop sending the financials to {{ t.person.name|escapejs }}?')">Remove</button></form>
+    </div>{% empty %}<p class="text-muted mb-0">No owner is listed yet, so the financials have nowhere to go.</p>{% endfor %}
+</div></div>
+<form method="post" class="card"><div class="card-body row g-2">{% csrf_token %}<input type="hidden" name="action" value="add">
+    <div class="col-md-4"><label class="small text-muted">Name</label><input class="form-control form-control-sm" name="name" required></div>
+    <div class="col-md-4"><label class="small text-muted">Email</label><input class="form-control form-control-sm" name="email" type="email"></div>
+    <div class="col-md-2"><label class="small text-muted">Position</label><input class="form-control form-control-sm" name="position" value="Owner"></div>
+    <div class="col-md-2"><label class="small text-muted">&nbsp;</label><button class="btn btn-sm btn-primary w-100">Add</button></div>
+</div></form>
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}People and menus{% endblock %}
 {% block content %}
 {% include 'workspace/_css.html' %}
@@ -15,7 +16,7 @@
         .ppl td:nth-child(4) select { max-width: none !important; width: 100%; }
     }
 </style>
-<a href="{% url 'ws_admin' %}" class="ws-up">&lsaquo; Admin</a>
+{% up_link bare="ws-up" icon="chevron-left" %}
 <h2 class="page-title mt-1 mb-1">People and menus</h2>
 <p class="small text-muted mb-3">Turn the new layout on for a person, and choose which menu they get. {% include '_tip.html' with text="A menu role only decides what is shown in their menu: it never stops anyone opening a screen, and it is separate from the team (ticket queue) each person is on. People who are not switched on keep seeing the original site, exactly as before." %}</p>
 <form method="post">

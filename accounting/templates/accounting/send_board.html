@@ -1,0 +1,62 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}{{ assoc|lab:"package_step" }} - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="send" class="icon-lg"></i> Send the financials to {{ assoc|lab:"package_to" }} {% include '_tip.html' with text="This is the last step of the month-end close. Look over the package, tick who it goes to, check the email, and send. Once it is sent the month is fully closed." %}</h2>
+        <div class="small text-muted">{{ assoc.name }} &middot; {{ month|date:"F Y" }}</div>
+    </div>
+    {% if sent %}<span class="ac-chip done">Sent</span>{% elif locked %}<span class="ac-chip attention">Ready to send</span>{% else %}<span class="ac-chip">Not started</span>{% endif %}
+</div>
+
+{% if sent %}
+<div class="ac-live mb-3">
+    <div class="fw-semibold d-flex align-items-center gap-2"><i data-lucide="check-circle" class="icon"></i> Sent on {{ sent.sent_at|date:"F j, Y" }} to:</div>
+    <ul class="mb-1 mt-2">{% for r in sent.recipients %}<li>{{ r.name }}{% if r.position %} ({{ r.position }}){% endif %}, {{ r.email }}</li>{% endfor %}</ul>
+    {% if sent.cc %}<div class="small text-muted">Copied: {{ sent.cc|join:", " }}</div>{% endif %}
+</div>
+{% endif %}
+
+{% if not locked %}
+<div class="ac-strip mb-3">Close {{ month|date:"F Y" }} first: {{ assoc|lab:"package_gets" }} the package once the month is closed. <a href="{% url 'accounting:close' assoc.pk month|date:'Y-m' %}">Back to the close</a></div>
+{% endif %}
+
+<form method="post">{% csrf_token %}
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> 1. The package</h6>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <a class="btn btn-sm btn-outline-primary" href="{{ package_url }}" target="_blank"><i data-lucide="external-link" class="icon"></i> Open and review the package</a>
+        <span class="small text-muted">{{ filename }}: {% if assoc|is_commercial %}the statements, tenant aging and bank statements.{% else %}the statements, budget comparison, owner aging and bank statements.{% endif %}</span>
+    </div>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="users" class="icon"></i> 2. Who it goes to</h6>
+    {% for r in rows %}
+    <label class="d-flex align-items-center gap-2 py-1 ac-row-wrap" {% if not r.email %}style="opacity: .75;"{% endif %}>
+        <input type="checkbox" name="to" value="{{ r.key }}" {% if r.picked and r.email %}checked{% endif %} {% if not r.email %}disabled{% endif %}>
+        <span class="fw-semibold">{{ r.name }}</span><span class="text-muted">{{ r.position }}</span>
+        {% if r.email %}<span class="ms-auto small ac-row-end">{{ r.email }}</span>{% else %}<span class="ms-auto ac-chip attention ac-row-end">{% if r.recorded %}not a valid email: {{ r.recorded }}{% else %}no email on file{% endif %}</span>{% endif %}
+    </label>
+    {% empty %}<div class="text-muted">No {{ assoc|lab:"package_people" }} are recorded for {{ assoc.name }}. Add them in <a href="{% if assoc|is_commercial %}{% url 'commercial:owners' assoc.pk %}{% else %}{% url 'accounting:settings' assoc.pk %}{% endif %}">{% if assoc|is_commercial %}the owners list{% else %}the settings{% endif %}</a>.</div>{% endfor %}
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="mail" class="icon"></i> 3. The email</h6>
+    <div class="small text-muted mb-2">From {{ from_email }}. Copied: {{ cc|join:", " }}. The package is attached.</div>
+    <label class="form-label small mb-1" for="subject">Subject</label>
+    <input class="form-control mb-2" id="subject" name="subject" maxlength="200" value="{{ subject }}">
+    <label class="form-label small mb-1" for="body">Message</label>
+    <textarea class="form-control" id="body" name="body" rows="9">{{ body }}</textarea>
+</div></div>
+
+<div class="card mb-3 ac-noprint"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="send" class="icon"></i> 4. Approve and send</h6>
+    <label class="d-flex align-items-center gap-2 mb-2"><input type="checkbox" name="approved" value="1" {% if not can_send %}disabled{% endif %}> I have reviewed the package and approve sending it.</label>
+    {% if sent %}<label class="d-flex align-items-center gap-2 mb-2"><input type="checkbox" name="again" value="1"> Send it again (it was already sent on {{ sent.sent_at|date:"M j" }}).</label>{% endif %}
+    <button class="btn btn-primary" {% if not can_send %}disabled{% endif %}><i data-lucide="send" class="icon"></i> {% if sent %}Send again{% else %}Send to {{ assoc|lab:"package_to" }}{% endif %}</button>
+    {% if why_not %}<div class="small text-muted mt-2">{{ why_not }}</div>{% endif %}
+</div></div>
+</form>
+{% endblock %}

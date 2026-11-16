@@ -9,6 +9,7 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 
+from core import nav
 from core.models import Property, StaffProfile, Unit
 from core.views import _is_admin
 
@@ -53,7 +54,8 @@ def document_list(request):
         if prop:
             docs = docs.filter(property=prop)
     templates = list(DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True))
-    return render(request, 'legalforms/list.html', {'docs': docs[:200], 'property': prop, 'templates': templates})
+    up = nav.up(request, {'ws_compliance': 'Compliance'}, default=(reverse('property_detail', args=[prop.pk]), prop.name)) if prop else nav.Up('', '')
+    return render(request, 'legalforms/list.html', {'docs': docs[:200], 'property': prop, 'templates': templates, 'up': up})
 
 
 def _target_from_query(request):
@@ -75,9 +77,13 @@ def _step_from(source):
 
 
 def _form_page(request, template, prop, unit, parent, values, errors, editing=None, step=None):
+    if editing is not None:                       # editing a document: Up is the document itself
+        up = nav.up(request, {'legalforms:detail': 'The document'}, default=(reverse('legalforms:detail', args=[editing.pk]), 'The document'))
+    else:                                         # a new document: Up is the list of that property's documents
+        up = nav.up(request, {'legalforms:list': 'Documents'}, default=(reverse('legalforms:list') + (f'?property={prop.pk}' if prop else ''), 'Documents'))
     return render(request, 'legalforms/form.html', {
         'template': template, 'property': prop, 'unit': unit, 'parent': parent, 'values': values, 'errors': errors,
-        'fields': template.fields, 'editing': editing, 'run_step': step,
+        'fields': template.fields, 'editing': editing, 'run_step': step, 'up': up,
     })
 
 
@@ -99,7 +105,8 @@ def document_new(request, slug):
         return _form_page(request, template, prop, unit, parent, raw, errors, step=step)
     step = _step_from(request.GET)
     if prop is None:
-        return render(request, 'legalforms/choose.html', {'template': template, 'properties': _properties(), 'units_json': _units_json()})
+        up = nav.up(request, {'legalforms:list': 'Documents'}, default=(reverse('legalforms:list'), 'Documents'))
+        return render(request, 'legalforms/choose.html', {'template': template, 'properties': _properties(), 'units_json': _units_json(), 'up': up})
     overrides = {}
     try:                                                                  # a late letter started from Owner collections carries the date the owner was behind as of
         overrides['balance_as_of'] = datetime.fromisoformat(request.GET['balance_as_of']).date().isoformat() if request.GET.get('balance_as_of') else ''
@@ -131,8 +138,10 @@ def document_edit(request, pk):
 def document_detail(request, pk):
     _guard(request)
     doc = get_object_or_404(GeneratedDocument.objects.select_related('template', 'property', 'unit', 'parent', 'created_by'), pk=pk)
+    label = f'{doc.property.name} documents'
+    up = nav.up(request, {'legalforms:list': label}, default=(reverse('legalforms:list') + f'?property={doc.property_id}', label))
     return render(request, 'legalforms/detail.html', {
-        'doc': doc, 'html': show_html(doc), 'companions': doc.template.companions.filter(is_active=True),
+        'doc': doc, 'up': up, 'html': show_html(doc), 'companions': doc.template.companions.filter(is_active=True),
         'children': doc.companions.select_related('template'), 'email_to': services.suggested_email(doc),
         'email_subject': services.default_email_subject(doc), 'email_message': services.default_email_message(doc),
     })
@@ -182,9 +191,8 @@ def document_act(request, pk):
         except ValueError:
             messages.error(request, 'Enter the mailing date.')
             return redirect('legalforms:detail', pk=doc.pk)
-        doc.mail_method = request.POST.get('mail_method', '').strip()[:60]
-        doc.tracking = request.POST.get('tracking', '').strip()[:80]
-        doc.save(update_fields=['mailed_on', 'mail_method', 'tracking'])
+        # Only the date is asked for now. The old "how" and tracking columns are kept (old documents still hold them) but are no longer shown or changed here.
+        doc.save(update_fields=['mailed_on'])
         messages.success(request, 'Mailing recorded.')
     elif action == 'revise':
         copy = services.revised_copy(doc, request.user)

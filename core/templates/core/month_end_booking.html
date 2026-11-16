@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load core_extras %}
 {% block title %}Book in QuickBooks{% endblock %}
 {% block content %}
@@ -10,7 +11,7 @@
     .mb-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
     .mb-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>
-<a href="{{ back }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ payment.get_kind_display }}</a>
+{% up_link css="mb-1" %}
 <h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="book-open-check" class="icon-lg"></i> Book in QuickBooks
     {% include '_tip.html' with text='Finds the one transaction this payment became in QuickBooks (same amount, a few days either side of the date sent, still sitting in an Uncategorized account) and splits it across the rentals. Nothing is changed until you click the button, and anything it is not sure of is left alone.' %}</h2>
 <p class="text-muted mb-3">{{ payment.get_kind_display }} for {{ payment.month|date:"F Y" }} &middot; <strong>{{ payment.total|money }}</strong> sent {{ payment.paid_on|date:"M j, Y" }}{% if payment.reference %} &middot; {{ payment.reference }}{% endif %}</p>

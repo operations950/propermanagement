@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% load core_extras %}
 {% block title %}Tourist tax{% endblock %}
 {% block content %}
@@ -32,7 +33,7 @@
     @media (max-width: 767.98px) { .tt-id-row { grid-template-columns: 1fr 1fr; } .tt-id-row > .fw-semibold { grid-column: 1 / -1; } }
     @media (max-width: 575.98px) { .tt-hero { grid-template-columns: 1fr; } .tt-big { font-size: 1.6rem; } .tt-cols, .tt-sum { grid-template-columns: 1fr 2.6rem 5.2rem 4.2rem 1.2rem; } }
 </style>
-<a href="{% url 'close_home' %}?month={{ rep.month|date:'Y-m' }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mb-1" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> Month-end close</a>
+{% up_link css="mb-1" %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="receipt" class="icon-lg"></i> Tourist tax</h2>
     <div class="btn-group btn-group-sm">
@@ -50,10 +51,17 @@
     <div class="d-flex align-items-center flex-wrap gap-2 border-top mt-3 pt-3 small">
         <i data-lucide="calendar" class="icon"></i> Return due <strong>{{ rep.due_on|date:"M j" }}</strong>, late after <strong>{{ rep.late_after|date:"M j" }}</strong>
         {% if rep.late and rep.filed < rep.rows|length %}<span class="tt-chip attention">Late: the county adds penalty and interest</span>{% elif rep.flags %}<span class="tt-chip attention">Needs a look</span>{% elif rep.in_progress %}<span class="tt-chip progress">Month in progress</span>{% else %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Every deposit matched</span>{% endif %}
-        {% if rep.rows %}{% if rep.filed == rep.rows|length %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> All filed</span>{% elif rep.filed or rep.changed %}<span class="tt-chip progress">{{ rep.filed }} of {{ rep.rows|length }} filed</span>{% endif %}{% endif %}
+        {% if rep.rows %}{% if rep.filed == rep.rows|length %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> All filed</span>{% if rep.pay_state == 'paid' %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Paid</span>{% elif rep.pay_state == 'unpaid' or rep.pay_state == 'paid_changed' %}<span class="tt-chip attention">Filed, not paid</span>{% endif %}{% elif rep.filed or rep.changed %}<span class="tt-chip progress">{{ rep.filed }} of {{ rep.rows|length }} filed</span>{% endif %}{% endif %}
         <a href="?month={{ rep.month|date:'Y-m' }}&csv=1" class="btn btn-outline-secondary btn-sm ms-auto"><i data-lucide="download" class="icon"></i> Download deposits (CSV)</a>
     </div>
 </div></div>
+
+{% if rep.pay_state == 'unpaid' or rep.pay_state == 'paid_changed' %}
+<a href="#pay-county" class="d-flex align-items-center gap-2 mb-3 px-3 py-2 rounded small text-decoration-none" style="background: color-mix(in srgb, var(--status-warning) 22%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 60%, white); color: #5c3b00;">
+    <i data-lucide="triangle-alert" class="icon"></i>
+    <span><strong>{% if rep.pay_state == 'unpaid' %}Filed but not paid.{% else %}The amount due changed after the payment was recorded.{% endif %}</strong> {% if rep.pay_state == 'unpaid' %}Filing and adding the returns to the cart does not pay the county. Pay it, then record the payment and its confirmation number at the bottom of this page.{% else %}Check what the county was paid and record the payment again below.{% endif %}</span>
+</a>
+{% endif %}
 
 {% if rep.flags %}
 <div class="d-flex flex-column gap-1 mb-3 px-3 py-2 rounded small" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
@@ -116,6 +124,46 @@
         <tfoot><tr class="fw-bold"><td colspan="2">The county payment</td><td class="text-end">${{ rep.tax|floatformat:"2g" }}</td><td class="text-end">&minus;${{ rep.allowance|floatformat:"2g" }}</td><td class="text-end">${{ rep.due|floatformat:"2g" }}</td></tr></tfoot>
     </table></div>
     {% if rep.unfiled %}<p class="small text-muted mb-0 mt-2">{{ rep.unfiled }} of the {{ rep.rows|length }} return{{ rep.rows|length|pluralize }} {{ rep.unfiled|pluralize:"is,are" }} not marked as filed yet; the payment above includes {{ rep.unfiled|pluralize:"it,them" }}.</p>{% endif %}
+</div></div>
+
+<div class="card mt-4" id="pay-county" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="credit-card" class="icon"></i> Pay the county {% include '_tip.html' with text='The last step. Marking the returns as filed and adding them to the county cart does not pay anything. Pay the county once for all the returns, then record here what you paid, the date and the payment confirmation number. The step on the month-end checklist is complete only after that.' %}</h6>
+        {% if rep.pay_state == 'paid' %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Paid</span>
+        {% elif rep.pay_state == 'unpaid' %}<span class="tt-chip attention">Filed, not paid</span>
+        {% elif rep.pay_state == 'paid_changed' %}<span class="tt-chip attention">Amount changed</span>
+        {% elif rep.pay_state == 'nothing' %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Nothing due</span>
+        {% else %}<span class="tt-chip progress">Not filed yet</span>{% endif %}
+    </div>
+    {% if rep.pay_state == 'partial' or rep.pay_state == 'changed' or rep.pay_state == 'none' %}
+    <p class="small text-muted mb-0">{% if rep.pay_state == 'changed' %}A filed return changed since it was filed: file it again, then record the payment here.{% else %}Mark every return as filed above ({{ rep.filed }} of {{ rep.rows|length }} so far). Then pay the county and record the payment here.{% endif %}</p>
+    {% elif rep.pay_state == 'nothing' %}
+    <p class="small text-muted mb-0">Every return is filed and nothing is due, so there is no payment to make.</p>
+    {% else %}
+    {% if rep.payment and rep.pay_state == 'paid' %}
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+        <div><div class="tt-label">Paid</div><div class="tt-big tabular-nums" style="font-size: 1.5rem;">${{ rep.payment.amount_paid|floatformat:"2g" }}</div></div>
+        <div class="small"><div>{{ rep.payment.paid_on|date:"M j, Y" }} &middot; confirmation <strong>{{ rep.payment.confirmation }}</strong></div>
+        <div class="text-muted">Recorded {{ rep.payment.recorded_at|date:"M j" }}{% if rep.payment.recorded_by %} by {{ rep.payment.recorded_by.get_full_name|default:rep.payment.recorded_by.get_username }}{% endif %}{% if rep.payment.reason %} &middot; {{ rep.payment.reason }}{% endif %}</div></div>
+    </div>
+    {% endif %}
+    <details{% if rep.pay_state != 'paid' %} open{% endif %}>
+        {% if rep.pay_state == 'paid' %}<summary class="small text-muted" style="cursor: pointer;">Correct the payment</summary>{% endif %}
+        <form method="post" class="row g-2 align-items-end mt-1" id="pay-form" data-due="{{ rep.due }}">{% csrf_token %}<input type="hidden" name="action" value="record_payment">
+            <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1">Amount due</label><div class="form-control-plaintext fw-semibold tabular-nums">${{ rep.due|floatformat:"2g" }}</div></div>
+            <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1" for="pay-amount">Amount you paid</label><input id="pay-amount" type="text" inputmode="decimal" name="amount_paid" class="form-control form-control-sm" value="{% if rep.payment %}{{ rep.payment.amount_paid }}{% else %}{{ rep.due }}{% endif %}" required></div>
+            <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1" for="pay-date">Date paid</label><input id="pay-date" type="date" name="paid_on" class="form-control form-control-sm" value="{% if rep.payment %}{{ rep.payment.paid_on|date:'Y-m-d' }}{% else %}{{ today|date:'Y-m-d' }}{% endif %}" required></div>
+            <div class="col-6 col-md-3"><label class="form-label small text-muted mb-1" for="pay-conf">Payment confirmation number</label><input id="pay-conf" type="text" name="confirmation" class="form-control form-control-sm" maxlength="60" value="{% if rep.payment %}{{ rep.payment.confirmation }}{% endif %}" required></div>
+            <div class="col-12" id="pay-reason-row" hidden><label class="form-label small text-muted mb-1" for="pay-reason">Why the amount paid differs from the amount due</label><input id="pay-reason" type="text" name="reason" class="form-control form-control-sm" maxlength="200" value="{% if rep.payment %}{{ rep.payment.reason }}{% endif %}"></div>
+            <div class="col-12 d-flex align-items-center gap-2"><button class="btn btn-primary btn-sm" type="submit"><i data-lucide="check" class="icon"></i> {% if rep.pay_state == 'paid' %}Save the correction{% else %}Record the payment{% endif %}</button><span class="small text-muted">The step is complete once this is recorded.</span></div>
+        </form>
+    </details>
+    {% if rep.payment %}
+    <form method="post" class="mt-2" onsubmit="return confirm('Clear the payment record? The tourist tax step will be open again.');">{% csrf_token %}<input type="hidden" name="action" value="clear_payment"><button class="btn btn-link btn-sm text-muted p-0" type="submit">Clear the payment record</button></form>
+    {% endif %}
+    <script>(function () { var f = document.getElementById('pay-form'); if (!f) return; var a = document.getElementById('pay-amount'), row = document.getElementById('pay-reason-row'), due = parseFloat(f.dataset.due);
+        function check() { var v = parseFloat((a.value || '').replace(/[$,]/g, '')); row.hidden = isNaN(v) || Math.abs(v - due) < 0.005; } a.addEventListener('input', check); check(); })();</script>
+    {% endif %}
 </div></div>
 {% else %}
 <div class="card" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body text-muted">No rental days and no deposits in {{ rep.month|date:"F Y" }}. File a $0.00 return.</div></div>

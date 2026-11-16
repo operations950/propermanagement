@@ -15,7 +15,7 @@ from . import ledger
 from .budgeting import EXPENSE_SECTIONS, section_of
 from . import standard_chart as sc
 from .models import Account, JournalLine, MasterAccount
-from .web import admin_only
+from .web import admin_only, acc_up
 
 KIND_ORDER = [Account.Kind.ASSET, Account.Kind.LIABILITY, Account.Kind.EQUITY, Account.Kind.INCOME, Account.Kind.EXPENSE]
 FIRST_DIGIT = {'1': 'asset', '2': 'liability', '3': 'equity', '4': 'income', '5': 'expense', '6': 'expense', '7': 'expense', '8': 'expense', '9': 'expense'}
@@ -163,4 +163,4 @@ def master(request):
         return redirect(here)
     ledger.sync_all_charts()
     return render(request, 'accounting/master_chart.html', {'groups': _master_rows(), 'kinds': Account.Kind.choices, 'sections': EXPENSE_SECTIONS, 'books': len(_books()), 'reserve_note': RESERVE_NOTE,
-                                                            'acc_back': reverse('ws_financials'), 'acc_back_label': 'Financials'})
+                                                            **acc_up(request, None, ['ws_financials'], reverse('ws_financials'), 'Financials')})

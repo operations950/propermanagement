@@ -766,7 +766,7 @@ class RecurringScreenAndCloseSheetTests(TestCase):
         JournalRule.objects.create(association=self.prop, day_of_month=27)
         sheet = closing.close_sheet(self.prop, date(2026, 10, 1), today=date(2026, 11, 10))
         keys = [i['key'] for i in sheet['items']]
-        self.assertEqual(keys[-1], 'lock')
+        self.assertEqual(keys[-2:], ['lock', 'send_board'])                                        # the last step comes after the month is closed
         self.assertEqual(keys[:3], ['charges', 'recurring', 'entries'])
         self.assertLess(keys.index('entries'), keys.index('bank%d' % self.bank.pk))
         by = {i['key']: i for i in sheet['items']}
@@ -1209,7 +1209,7 @@ class DelinquencyScreenTests(DelinquencyBase):
         sheet = closing.close_sheet(self.prop, date(2026, 10, 1), today=self.today)
         by = {i['key']: i for i in sheet['items']}
         self.assertNotIn('delinquency', by)
-        self.assertEqual(by['late_fees']['url'], reverse('accounting:late_fees', args=[self.prop.pk]))
+        self.assertTrue(by['late_fees']['url'].startswith(reverse('accounting:late_fees', args=[self.prop.pk]) + '?as_of=2026-10-31'))        # the screen opens as of the last day of the month being closed
         self.assertIn('late fees or interest ready', by['late_fees']['detail'])
         self.assertEqual(by['collections']['url'], reverse('accounting:collections', args=[self.prop.pk]))
         self.assertIn('need a late letter', by['collections']['detail'])

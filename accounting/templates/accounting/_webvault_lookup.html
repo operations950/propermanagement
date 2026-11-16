@@ -1,0 +1,22 @@
+{# The units of the Web Vault lookup file that need an answer. What was certain is already saved. #}
+<div class="card mb-3 ac-noprint" id="wv-lookup-result"><div class="card-body py-2">
+    <form method="post">{% csrf_token %}
+        <input type="hidden" name="wv_token" value="{{ wvl.token }}">
+        {% if wvl.changed %}
+        <div class="ac-strip small mb-2">These units already have a different Web Vault number saved. Tick the ones that really changed; the rest keep the number they have.</div>
+        <div class="table-responsive mb-2"><table class="table table-sm ac-table"><thead><tr><th>Our unit</th><th>Saved now</th><th>The file says</th><th>Owner there</th><th>Change it</th></tr></thead><tbody>
+            {% for x in wvl.changed %}<tr><td>{{ x.unit.label }}</td><td>{{ x.stored|default:"(another unit holds this number)" }}</td><td>{{ x.bill }}</td><td>{{ x.owner }}</td>
+                <td><input type="checkbox" name="accept_{{ x.prefix }}" aria-label="Change {{ x.unit.label }}"></td></tr>{% endfor %}
+        </tbody></table></div>
+        {% endif %}
+        {% if wvl.undecided %}
+        <div class="ac-strip small mb-2">These units in the file could not be tied to one of ours by themselves. Pick the unit for each.</div>
+        <div class="table-responsive mb-2"><table class="table table-sm ac-table"><thead><tr><th>Web Vault unit</th><th>Owner there</th><th>Our unit</th></tr></thead><tbody>
+            {% for d in wvl.undecided %}<tr><td>{{ d.unit }}</td><td>{{ d.owner }}</td>
+                <td><select class="form-select form-select-sm" name="map_{{ d.prefix }}" style="max-width: 300px;"><option value="">Leave for now</option>
+                    {% for pk, label, owner in wvl.units %}<option value="{{ pk }}">{{ label }}{% if owner %} - {{ owner }}{% endif %}</option>{% endfor %}</select></td></tr>{% endfor %}
+        </tbody></table></div>
+        {% endif %}
+        <button class="btn btn-sm btn-primary" name="action" value="wv_lookup_apply">Save my answers</button>
+    </form>
+</div></div>

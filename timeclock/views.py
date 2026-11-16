@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from core import nav
 from core.auth_backends import _client_ip
 from core.models import StaffProfile
 from core.views import _is_admin
@@ -398,7 +399,8 @@ def manage_punch(request):
             return redirect(back)
         except ClockError as e:
             messages.error(request, str(e))
-    return render(request, 'timeclock/punch_edit.html', {'profile': profile, 'day': day, 'punch': punch, 'back': back, 'post': request.POST})
+    up = nav.up(request, {'timeclock_hours': 'Hours'}, default=(back, 'Hours'))
+    return render(request, 'timeclock/punch_edit.html', {'profile': profile, 'day': day, 'punch': punch, 'back': back, 'up': up, 'post': request.POST})
 
 
 @login_required

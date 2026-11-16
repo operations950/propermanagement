@@ -46,7 +46,7 @@
         <thead><tr><th>Day</th><th>In</th><th>Out</th><th>Lunch</th><th>Flags</th><th class="text-end">Hours</th><th></th></tr></thead>
         <tbody>
         {% for wk in rep.weeks_to_show %}
-        {% for r in wk.rows %}{% if r.date <= today %}
+        {% for r in wk.rows_newest %}{% if r.date <= today %}
         <tr>
             <td>{{ r.date|short_date }}</td>
             {% if r.punch %}

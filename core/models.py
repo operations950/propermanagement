@@ -1667,6 +1667,30 @@ class TouristTaxFiling(models.Model):
         return f'Tourist tax {self.month:%Y-%m} {self.property_id}: {self.amount}'
 
 
+class TouristTaxPayment(models.Model):
+    """The county payment for a month's tourist tax, recorded once it has actually been made. The county takes ONE payment for every property's return, so this
+    is one record a month (not one a property). Filing the returns and adding them to the cart is not paying: the month-end step is only complete once this is
+    recorded with the county's confirmation number. A correction keeps who and when in `history`; clearing the record keeps the row (cleared_at) so nothing is lost."""
+    month = models.DateField(unique=True, help_text='The first day of the month the payment covers.')
+    amount_due = models.DecimalField(max_digits=12, decimal_places=2, help_text='What the screen said was due when the payment was recorded.')
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_on = models.DateField()
+    confirmation = models.CharField(max_length=60)
+    reason = models.CharField(max_length=200, blank=True, help_text='Why the amount paid differs from the amount due.')
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    recorded_at = models.DateTimeField(null=True, blank=True)
+    cleared_at = models.DateTimeField(null=True, blank=True)
+    cleared_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    history = models.JSONField(default=list, blank=True, help_text='Every record, correction and clearing: when, who, and what it said.')
+
+    def __str__(self):
+        return f'Tourist tax payment {self.month:%Y-%m}: {self.amount_paid} ({self.confirmation})'
+
+    @property
+    def is_recorded(self):
+        return self.cleared_at is None
+
+
 class MonthEndPayment(models.Model):
     """One lump payment made at month end, recorded so it can be booked in QuickBooks later: the owner payments (one bank batch to the owners), or the reimbursable
     expenses, or the commissions, moved from the trust account to Proper Realty. Each is ONE amount in the bank - exactly what the person ticked - made up of one line per

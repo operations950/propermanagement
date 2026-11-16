@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
+{% load nav_tags %}
 {% block title %}{{ run.process_template.name }}{% endblock %}
 {% block content %}
 {% include 'workspace/_css.html' %}
-<a href="{{ back.0 }}" class="text-decoration-none small d-inline-flex align-items-center gap-1 mt-3 mb-2 py-3 py-md-0" style="color: var(--ink-muted);"><i data-lucide="arrow-up" class="icon"></i> {{ back.1 }}</a>
+{% up_link css="mt-3 mb-2 py-3 py-md-0" %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div>
         <h2 class="page-title mb-0">{{ run.process_template.name }}</h2>

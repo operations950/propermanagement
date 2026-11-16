@@ -13,10 +13,10 @@ from django.views.decorators.http import require_POST
 
 from core.models import Contact, Property, Unit
 
-from . import charges, closing, documents, ledger, owners
+from . import charges, closing, documents, labels, ledger, owners
 from . import standard_chart as sc
 from .models import (Account, AssociationProfile, BoardTerm, Charge, ChargeRule, Ownership, OwnerProfile, Receipt, ShareKind, UnitProfile, UnitShare)
-from .web import (admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month)
+from .web import (acc_up, admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month)
 
 
 def _go(name, *args, **query):
@@ -35,8 +35,11 @@ def home(request):
         status, detail = closing.association_status(prof.property, month)
         rows.append({'assoc': prof.property, 'status': status, 'detail': detail})
     kept = {r['assoc'].pk for r in rows}
-    others = [p for p in Property.objects.filter(property_type=Property.Type.ASSOCIATION, is_active=True, is_general=False).order_by('name') if p.pk not in kept]
-    return render(request, 'accounting/home.html', {'rows': rows, 'others': others, 'done': sum(1 for r in rows if r['status'] == 'done'), **month_context(month)})
+    others = [p for p in Property.objects.filter(property_type__in=labels.BOOKS_TYPES, is_active=True, is_general=False).order_by('name') if p.pk not in kept]
+    assoc_rows = [r for r in rows if not labels.is_commercial(r['assoc'])]
+    commercial_rows = [r for r in rows if labels.is_commercial(r['assoc'])]
+    return render(request, 'accounting/home.html', {'rows': rows, 'assoc_rows': assoc_rows, 'commercial_rows': commercial_rows, 'others': others, 'has_commercial': bool(commercial_rows),
+                                                    'done': sum(1 for r in rows if r['status'] == 'done'), **month_context(month)})
 
 
 @admin_only
@@ -46,7 +49,7 @@ def hub(request, pk):
     if redirect_to:
         return redirect_to
     month = default_month()
-    return render(request, 'accounting/hub.html', {'assoc': prop, 'profile': ledger.profile_for(prop), 'month': month, 'acc_back': reverse('property_detail', args=[prop.pk]), 'acc_back_label': prop.name,
+    return render(request, 'accounting/hub.html', {'assoc': prop, 'profile': ledger.profile_for(prop), 'month': month, **acc_up(request, prop, ['accounting:home', 'ws_financials'], reverse('property_detail', args=[prop.pk]), prop.name),
                                                    'banks': prop.bank_accounts.filter(is_active=True)})
 
 
@@ -85,7 +88,7 @@ def close_sheet(request, pk, month):
             messages.error(request, str(e))
         return redirect(here)
     sheet = closing.close_sheet(prop, first)
-    return render(request, 'accounting/close_sheet.html', {'assoc': prop, 'sheet': sheet, 'profile': ledger.profile_for(prop), 'acc_back': _go('home') + f'?month={first:%Y-%m}', 'acc_back_label': 'Close associations',
+    return render(request, 'accounting/close_sheet.html', {'assoc': prop, 'sheet': sheet, 'profile': ledger.profile_for(prop), **acc_up(request, prop, [('accounting:home', labels.label(prop, 'close_steps')), 'close_home', 'accounting:hub'], _go('home') + f'?month={first:%Y-%m}', labels.label(prop, 'close_steps')),
                                                            **month_context(first)})
 
 
@@ -113,7 +116,7 @@ def units(request, pk):
     former = [r for r in charges.accounts(prop) if not r['current'] and r['balance'] != 0]
     return render(request, 'accounting/units.html', {'assoc': prop, 'rows': rows, 'totals': totals, 'former': former, 'buildings': sorted({r['building'] for r in rows if r['building']}),
                                                      'counts': {'owes': sum(1 for r in rows if r['state'] == 'owes'), 'ahead': sum(1 for r in rows if r['state'] == 'ahead'), 'away': sum(1 for r in rows if r['away'])},
-                                                     'books_on': ledger.profile_for(prop).we_do_financials, 'acc_back': reverse('property_detail', args=[prop.pk]), 'acc_back_label': prop.name})
+                                                     'books_on': ledger.profile_for(prop).we_do_financials, **acc_up(request, prop, ['accounting:hub', 'accounting:close'], reverse('property_detail', args=[prop.pk]), prop.name)})
 
 
 @admin_only
@@ -147,7 +150,7 @@ def units_import(request, pk):
                 return redirect(_go('units', prop.pk))
     if plan is not None:
         plan['units_list'] = {u: o for u, o in plan['multi_owner_units'].items()}
-    return render(request, 'accounting/units_import.html', {'assoc': prop, 'plan': plan, 'acc_back': _go('units', prop.pk), 'acc_back_label': 'Units & owners'})
+    return render(request, 'accounting/units_import.html', {'assoc': prop, 'plan': plan, **acc_up(request, prop, ['accounting:units'], _go('units', prop.pk), labels.label(prop, 'units_title'))})
 
 
 @admin_only
@@ -193,8 +196,8 @@ def unit_detail(request, pk, unit_pk):
     return render(request, 'accounting/unit_detail.html', {'assoc': prop, 'unit': unit, 'building': unit.assoc_profile.building if hasattr(unit, 'assoc_profile') else '', 'current': [o for o in own if o.is_current],
                                                            'former': [o for o in own if not o.is_current], 'accounts': accounts, 'balance': sum((a['balance'] for a in accounts), Decimal('0.00')),
                                                            'rows': list(reversed(charges.ledger_rows(unit))), 'share': UnitShare.objects.filter(unit=unit, kind__is_default=True).first(),
-                                                           'open_tickets': open_tickets, 'books_on': ledger.profile_for(prop).we_do_financials, 'today': timezone.localdate(),
-                                                           'acc_back': _go('units', prop.pk), 'acc_back_label': 'Units & owners'})
+                                                           'open_tickets': open_tickets, 'books_on': ledger.profile_for(prop).we_do_financials, 'today': timezone.localdate(), 'leases': list(unit.leases.select_related('tenant')) if labels.is_commercial(prop) else [],
+                                                           **acc_up(request, prop, ['accounting:units', 'accounting:charges', 'accounting:collections', 'accounting:delinquencies', 'accounting:report_aging', 'accounting:late_fees', 'accounting:hub'], _go('units', prop.pk), labels.label(prop, 'units_title'))})
 
 
 @admin_only
@@ -235,7 +238,7 @@ def owner_detail(request, pk, contact_pk):
     for o in own:
         o.account = accts.get(o.unit_id)
     return render(request, 'accounting/owner_detail.html', {'assoc': prop, 'person': person, 'profile': profile, 'ownerships': own, 'terms': person.board_terms.filter(association=prop),
-                                                            'balance': sum((a['balance'] for a in accts.values()), Decimal('0.00')), 'acc_back': _go('units', prop.pk), 'acc_back_label': 'Units & owners'})
+                                                            'balance': sum((a['balance'] for a in accts.values()), Decimal('0.00')), **acc_up(request, prop, ['accounting:units', 'accounting:report_aging', 'accounting:collections', 'accounting:hub'], _go('units', prop.pk), labels.label(prop, 'units_title'))})
 
 
 # ---------------------------------------------------------------- shares
@@ -272,7 +275,7 @@ def shares(request, pk):
     if rule:
         per = dict(owners.split_by_share(rule.amount if rule.method == 'share' else rule.amount * len(rows), rows)) if total > 0 else None
     return render(request, 'accounting/shares.html', {'assoc': prop, 'kind': kind, 'rows': rows, 'total': total, 'ok': total == Decimal('100'), 'rule': rule, 'per': per,
-                                                      'acc_back': _go('charges', prop.pk), 'acc_back_label': 'Charges to owners'})
+                                                      **acc_up(request, prop, ['accounting:charges', 'accounting:units', 'accounting:hub'], _go('charges', prop.pk), labels.label(prop, 'charges_title'))})
 
 
 # ---------------------------------------------------------------- charges to owners
@@ -309,7 +312,7 @@ def charges_list(request, pk):
         per_unit = rule.amount if rule.method == 'flat' else None
         total = rule.amount * n_units if rule.method == 'flat' else rule.amount
         rows.append({'rule': rule, 'status': st, 'per_unit': per_unit, 'total': total})
-    return render(request, 'accounting/charges.html', {'assoc': prop, 'rows': rows, 'profile': ledger.profile_for(prop), 'units_count': n_units, 'acc_back': _go('hub', prop.pk), 'acc_back_label': 'Accounting'})
+    return render(request, 'accounting/charges.html', {'assoc': prop, 'rows': rows, 'profile': ledger.profile_for(prop), 'units_count': n_units, **acc_up(request, prop, ['accounting:hub', 'accounting:close'], _go('hub', prop.pk), 'Accounting')})
 
 
 @admin_only
@@ -360,7 +363,7 @@ def charge_form(request, pk, rule_pk=None):
     share_rows = [(u.label, p) for u, p in owners.shares(prop, kind)[:5]]
     default_income = prop.accounts.filter(code=sc.INCOME_ASSESSMENT).first()
     return render(request, 'accounting/charge_form.html', {'assoc': prop, 'rule': rule, 'income_accounts': income_accounts, 'default_income': default_income, 'units_n': units_n, 'share_rows': share_rows,
-                                                           'frequencies': ChargeRule.Frequency.choices, 'today': timezone.localdate(), 'acc_back': _go('charges', prop.pk), 'acc_back_label': 'Charges to owners'})
+                                                           'frequencies': ChargeRule.Frequency.choices, 'today': timezone.localdate(), **acc_up(request, prop, ['accounting:charges'], _go('charges', prop.pk), labels.label(prop, 'charges_title'))})
 
 
 @admin_only
@@ -389,7 +392,7 @@ def charge_one(request, pk):
         except (ValueError, ledger.LedgerError, charges.ChargeError) as e:
             messages.error(request, str(e))
     return render(request, 'accounting/charge_one.html', {'assoc': prop, 'unit': unit, 'units': owners.active_units(prop), 'income_accounts': prop.accounts.filter(kind='income', is_active=True).order_by('code'),
-                                                          'today': timezone.localdate(), 'acc_back': _go('unit', prop.pk, unit.pk) if unit else _go('hub', prop.pk), 'acc_back_label': 'Back'})
+                                                          'today': timezone.localdate(), **acc_up(request, prop, ['accounting:unit', 'accounting:hub', 'accounting:collections', 'accounting:late_fees', 'accounting:report_aging'], _go('unit', prop.pk, unit.pk) if unit else _go('hub', prop.pk), 'Back')})
 
 
 @admin_only
@@ -428,4 +431,4 @@ def receipt_new(request, pk):
     accounts = [a for a in charges.accounts(prop) if unit and a['unit'].pk == unit.pk]
     return render(request, 'accounting/receipt_form.html', {'assoc': prop, 'unit': unit, 'units': owners.active_units(prop), 'banks': prop.bank_accounts.filter(is_active=True), 'methods': Receipt.Method.choices,
                                                             'today': timezone.localdate(), 'accounts': accounts, 'billed': owners.billed_owner(unit) if unit else None,
-                                                            'acc_back': _go('unit', prop.pk, unit.pk) if unit else _go('hub', prop.pk), 'acc_back_label': 'Back'})
+                                                            **acc_up(request, prop, ['accounting:unit', 'accounting:hub', 'accounting:collections', 'accounting:report_aging', 'accounting:bank'], _go('unit', prop.pk, unit.pk) if unit else _go('hub', prop.pk), 'Back')})

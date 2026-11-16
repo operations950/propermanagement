@@ -29,8 +29,8 @@ from .models import ZERO, Account, AssociationProfile, BankAccount, Bill, BillLi
 
 logger = logging.getLogger(__name__)
 
-# The kinds of property a payable may be set up for. Commercial properties work like associations and will be added here (one line) once their books exist.
-ELIGIBLE_TYPES = (Property.Type.ASSOCIATION,)
+# The kinds of property a payable may be set up for: the ones whose books we keep (an association, a commercial building). It still needs we_do_financials and a bank account.
+ELIGIBLE_TYPES = (Property.Type.ASSOCIATION, Property.Type.COMMERCIAL)
 
 ALLOWED = {'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg'}
 MAX_BYTES = 15 * 1024 * 1024
@@ -46,7 +46,7 @@ class IntakeError(Exception):
 def eligibility(prop):
     """(code, message, fix_url): code 'ok' when a payable may be set up for this property, else why not and where to fix it."""
     if prop.property_type not in ELIGIBLE_TYPES:
-        return 'type', 'Payables are only set up for associations so far.', None
+        return 'type', 'Payables are only set up for associations and commercial buildings so far.', None
     profile = ledger.profile_for(prop)
     if not profile.we_do_financials:
         return 'books', f'We do not keep the books for {prop.name} yet.', reverse('accounting:settings', args=[prop.pk])

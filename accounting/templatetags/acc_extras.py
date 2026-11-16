@@ -144,3 +144,17 @@ def bdm(value, cents=False):
 def bdc(value, cents=False):
     """A change on the board sheet: $1,750 / ($1,750) / a dash, or with cents when the sheet shows cents."""
     return cparen(value) if cents else dparen(value)
+
+
+@register.filter
+def lab(prop, key):
+    """The word for this property's books: an association says Owner and Assessment, a commercial building says Tenant and Rent. {{ assoc|lab:"holders" }}"""
+    from accounting import labels
+    return labels.label(prop, key)
+
+
+@register.filter
+def is_commercial(prop):
+    """{% if assoc|is_commercial %}: true for a commercial building."""
+    from accounting import labels
+    return labels.is_commercial(prop)

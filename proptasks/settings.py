@@ -167,6 +167,7 @@ INSTALLED_APPS = [
     'legalforms',
     'timeclock',
     'accounting',
+    'commercial',
     'workspace',
 ]
 
@@ -183,6 +184,7 @@ MIDDLEWARE = [
     'timeclock.middleware.PolicyWallMiddleware',
     'core.middleware.TimezoneMiddleware',
     'tickets.middleware.TicketFilterMemoryMiddleware',
+    'core.nav.NavTrailMiddleware',          # the trail of pages the smart Up link reads (core/nav.py)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.NoStoreHtmlMiddleware',

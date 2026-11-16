@@ -1,7 +1,8 @@
 /* The phone top bar and the full-site switch (see templates/_mobile_bar.html and static/css/mobile.css).
  *   - fills in the page's name in the bar;
- *   - decides whether this page is a main screen (no Back) or one level down (Back shows), and where Back goes: the page the person came from on this site, or else
- *     the main screen of that area (Tickets, Properties, ...), never a dead end;
+ *   - decides whether this page is a main screen (no Back) or one level down (Back shows), and where Back goes: the page's own Up address when it has one (the wide screen the
+ *     person came from, worked out on the server: core/nav.py, passed in #mBackUrl), else the page the person came from on this site, else the main screen of that area
+ *     (Tickets, Properties, ...), never a dead end;
  *   - "Open the full site" (data-m-full) turns the phone bar off for the rest of the visit; "App menu" (data-m-app) turns it back on;
  *   - the Home calendar's day-by-day agenda (data-m-agenda).
  * Nothing here is needed for a page to work: with no script the bar is just Menu. Storage that is blocked only means the full-site switch does not stick. */

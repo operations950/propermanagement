@@ -674,7 +674,7 @@ def _item_from_key(bank_account, month_first, key):
 
 @transaction.atomic
 def match_manual(bank_account, month_first, bank_line_ids, item_keys, note=''):
-    lines = list(BankLine.objects.filter(pk__in=bank_line_ids, statement__bank_account=bank_account, match__isnull=True))
+    lines = list(BankLine.objects.select_for_update(of=('self',)).filter(pk__in=bank_line_ids, statement__bank_account=bank_account, match__isnull=True))
     if len(lines) != len(set(bank_line_ids)) or not lines:
         raise StatementError('Choose at least one bank line that is not matched yet.')
     items = [_item_from_key(bank_account, month_first, k) for k in item_keys]
@@ -690,7 +690,7 @@ def match_manual(bank_account, month_first, bank_line_ids, item_keys, note=''):
 def clear_selected(bank_account, month_first, bank_line_ids, item_keys, note='', user=None, account=None, day=None, memo=''):
     """Clear what a person ticked: bank lines and ledger items that are the same money, or that cancel each other out (a deposit and its returned item). Nothing is cleared on its own.
     When the ticked things are not equal, the difference is posted as one journal entry to `account`, dated `day` (the end of the month by default), and cleared with them."""
-    lines = list(BankLine.objects.filter(pk__in=bank_line_ids, statement__bank_account=bank_account, match__isnull=True))
+    lines = list(BankLine.objects.select_for_update(of=('self',)).filter(pk__in=bank_line_ids, statement__bank_account=bank_account, match__isnull=True))
     if len(lines) != len(set(bank_line_ids)):
         raise StatementError('One of those bank lines is already matched. Refresh the page.')
     items = [_item_from_key(bank_account, month_first, k) for k in item_keys]
@@ -777,9 +777,21 @@ def suggested_accounts(bank_lines, accounts):
     return out
 
 
+def claim_line(bank_line):
+    """Lock a bank line for the one action that will deal with it, and refuse if something already has: a click that arrives twice (a double click, a slow page pressed again) must not put the same
+    money in the books twice. Call it inside the transaction, before anything is posted; it returns the fresh, locked line."""
+    line = BankLine.objects.select_for_update(of=('self',)).select_related('statement__bank_account__association').get(pk=bank_line.pk)
+    if line.match_id:
+        raise StatementError('That bank line is already matched. Refresh the page.')
+    if JournalEntry.objects.filter(association=line.statement.bank_account.association, source_ref=f'bankline:{line.pk}', reverses__isnull=True).exclude(reversed_by__isnull=False).exists():
+        raise StatementError('That bank line was already added to the books. Refresh the page.')
+    return line
+
+
 @transaction.atomic
 def add_to_books(bank_line, account, user=None, vendor=None, memo=''):
     """A bank line the books do not have yet (a fee, interest, an autopay): post it to the books, dated as the bank has it, and match it."""
+    bank_line = claim_line(bank_line)
     bank = bank_line.statement.bank_account
     assoc = bank.association
     desc = memo or bank_line.description
@@ -799,6 +811,7 @@ def add_to_books(bank_line, account, user=None, vendor=None, memo=''):
 @transaction.atomic
 def owner_payment_from_line(bank_line, unit, owner, user=None, method=None):
     """A deposit on the statement that is an owner's payment the books do not have: record it, and match it."""
+    bank_line = claim_line(bank_line)
     bank = bank_line.statement.bank_account
     method = method or {'check': Receipt.Method.CHECK, 'online': Receipt.Method.ONLINE, 'ach': Receipt.Method.ACH, 'card': Receipt.Method.CARD}.get(bank_channel(bank_line), Receipt.Method.CHECK)
     receipt = charges.receive_payment(bank.association, unit, owner, bank_line.date, bank_line.amount, method, reference=bank_line.description[:80], bank_account=bank, user=user)
@@ -829,11 +842,12 @@ def sort_deposit(bank_line, owner_rows, other_rows, item_keys=(), user=None):
     """One bank deposit, broken out. It is made of any of: owner payments already recorded (`item_keys`), new owner payments (`owner_rows`: unit, owner, amount, ref), and money that is
     not an owner's (`other_rows`: account, amount, memo), which is posted to the account chosen. The pieces must add up to the deposit exactly. Everything is posted and the deposit
     matched in one step, or nothing happens."""
-    bank_line = BankLine.objects.select_for_update().select_related('statement__bank_account__association').get(pk=bank_line.pk)
+    bank_line = BankLine.objects.select_for_update(of=('self',)).select_related('statement__bank_account__association').get(pk=bank_line.pk)
     bank = bank_line.statement.bank_account
     assoc = bank.association
     if bank_line.match_id:
         raise StatementError('That deposit is already matched.')
+    claim_line(bank_line)
     if bank_line.amount <= 0:
         raise StatementError('Only a deposit can be sorted here.')
     month_first = ledger.month_start(bank_line.statement.period_end)

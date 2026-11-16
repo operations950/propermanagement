@@ -260,6 +260,15 @@ dead.
   generous `padding-bottom` so the last element on a page isn't flush
   against the viewport edge. Any new page should extend `base.html` and get
   both for free.
+- The **Up link** is smart (`core/nav.py`, `core/nav_map.py`, `{% up_link %}` in `core/templatetags/nav_tags.py`): Up is not Back, it moves out to a wider screen
+  (a list, hub, checklist or dashboard) and to the one the person actually came from (late fees opened from the close shows "Month-end close", from the accounting hub
+  "Accounting"). A session trail (`NavTrailMiddleware`) keeps the last ~15 page visits; `nav.up(request, parents, default)` returns the most recent trail entry that is one
+  of the screen's `parents` and the same record (same association, same month), else the usual parent. Never hand-write an up link and never make a detail screen
+  (one ticket, property, contact, unit) another detail's parent. To add a screen: one line in `core/nav_map.py` (its url name, the wide screens it is reached from,
+  its usual parent as `D(...)`) and `{% up_link %}` in the template. A screen whose label or default needs the record (a property's name, a ticket's saved filters)
+  calls `nav.up()` in the view and passes `up` in the context; the accounting screens do it with `**acc_up(request, prop, [names], default_url, default_label)`
+  (`accounting/web.py`). The phone top bar's Back button reads the same address (`#mBackUrl`). `core/test_nav.py` guards all of it, including "no hand-written
+  arrow-up link is left" (an in-screen view switch is marked `data-no-back`).
 - No automated test suite exists. Verification throughout this project has
   been manual/browser-driven (direct browser interaction, raw HTTP against
   the real dev DB), not pytest/Django TestCase. Worth knowing before
@@ -372,3 +381,19 @@ per-property FAQ, through a small JSON API (`core/bot_api.py`, routes under
   live in `core/faq.py`: secrets (codes, wifi password) are refused inside FAQ text so
   they stay single-sourced; the same question (normalised) is corrected in place, never
   duplicated; an entry staff reviewed or wrote is locked against the assistant.
+
+
+## Commercial buildings (the `commercial` app, added 2026-11-16)
+
+A commercial property keeps its books exactly like an association: the same accounting screens, ledger, bank reconciliation, bills and month-end close (`accounting.web.association_or_404`
+now opens either type; `accounting/labels.py` and the `lab` template filter swap the words: Tenant for Owner, Rent for Assessment). New commercial properties start with
+`AssociationProfile.we_do_financials` on (`commercial/signals.py`; `manage.py enable_commercial_financials` and accounting migration 0024 did the existing ones). The commercial-only chart
+accounts (4100 Base Rent, 4110 CAM Reimbursements, 4120, 4130, 2255 Tenant Security Deposits) are added by `ledger.ensure_chart` for commercial properties only (`standard_chart.COMMERCIAL_CHART`).
+
+- A **tenant** is a Contact on a **Lease** (`commercial/models.py`); saving a lease keeps a billed `accounting.Ownership` row for the tenant, so charges, payments, aging and statements work unchanged.
+- **Rent** comes from the lease (`commercial/rent.py`): base rent, rent steps (from a date), seasonal rents (months of every year), a monthly CAM estimate, proration by the day for part months.
+  It posts as ordinary Charges dated the 1st, `rent_post_days_ahead` (default 10) days early, by `manage.py post_accounting_recurring` (the scheduler job), once (the entry's source_ref names lease, month, line).
+- **Invoices** (`commercial/invoices.py`): one `TenantInvoice` per lease and month, made when the rent posts, a reportlab PDF, emailed from admin@ on request (or automatically when the property's switch is on).
+- The month's package goes to the property's **owners** (BoardTerm rows with position 'Owner', `commercial:owners`). No owner collections or delinquency cases for commercial (those views 404).
+- Opening balances: `manage.py load_commercial_opening` (Yardi trial balance, dry run unless `--apply`). Security deposits are recorded on the lease only (no ledger entries).
+- Not built yet: the CAM reconciliation (the lease has `cam_method`, `cam_share_percent`, `cam_notes` waiting for it).

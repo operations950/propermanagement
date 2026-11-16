@@ -14,8 +14,9 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 
-from . import bank_tieout, escrow, ledger, month_end_booking, month_end_payments, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
+from . import bank_tieout, escrow, ledger, month_end_booking, nav, month_end_payments, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
 from . import close_ltr_tax, month_close_project, workdays
 from .models import SalesTaxFiling, SalesTaxReturn
 from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, MonthEndPayment, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
@@ -222,6 +223,16 @@ def _page_url(month, prop, unit=None):
     return reverse('close_unit', args=[month.strftime('%Y-%m'), prop.pk, unit.pk])
 
 
+def _property_page_up(request, prop, month, unit=None):
+    """Up from a rental's month page: the close screen it was opened from (the rentals list, the long-term list or the month-end checklist); from one unit's page, the rental's page."""
+    if unit is not None:
+        label = f'{prop.name} — all units'
+        return nav.up(request, {'close_property': label}, default=(_page_url(month, prop), label))
+    usual = 'close_long_term' if prop.is_long_term else 'close_overview'
+    default = (reverse(usual) + f'?month={month:%Y-%m}', 'Long-term rentals' if prop.is_long_term else 'Rentals')
+    return nav.up(request, {'close_overview': 'Rentals', 'close_long_term': 'Long-term rentals', 'close_home': 'Month-end checklist'}, default=default)
+
+
 def _consolidated_page(request, prop, month):
     """A unit-level property's month: its units added up, with a way in to each unit."""
     here = _page_url(month, prop)
@@ -249,6 +260,7 @@ def _consolidated_page(request, prop, month):
         'rows': rows, 'consolidated': consolidated,
         'prev_url': _page_url(ledger.previous_month(month), prop), 'next_url': _page_url(ledger.next_month(month), prop),
         'ready_clean': sum(1 for r in rows if r['state'] == 'ready' and not _has_warning(r)),
+        'up': _property_page_up(request, prop, month),
     })
 
 
@@ -266,10 +278,11 @@ def close_statement(request, pk):
     except ValueError:
         year = month.year
     data = ledger.statement(prop, year=year)
+    page_label = f'{prop.name} — {month:%B %Y}'
     return render(request, 'core/close_statement.html', {
         'property': prop, 'st': data, 'year': year, 'earlier': year - 1, 'later': year + 1, 'month': month,
         'can_go_later': year < this_year, 'can_go_earlier': year > 2000,
-        'back_url': _page_url(month, prop), 'back_label': f'{prop.name} — {month:%B %Y}',
+        'up': nav.up(request, {'close_property': page_label}, default=(_page_url(month, prop), page_label)),
     })
 
 
@@ -282,9 +295,10 @@ def close_month_statement(request, pk, month):
     if first is None:
         return redirect('close_statement', pk=pk)
     data = owner_portal.statement_data(prop, first, require_closed=False)
+    statement_label = f'{prop.name} — statement'
     return render(request, 'core/month_statement.html', {
         'property': prop, 'month': first, 's': owner_portal.display(data), 'previous': ledger.previous_month(first), 'next': ledger.next_month(first),
-        'released': owner_portal.is_released(prop, first), 'back_url': reverse('close_statement', args=[prop.pk]) + f'?month={first:%Y-%m}',
+        'released': owner_portal.is_released(prop, first), 'up': nav.up(request, {'close_statement': statement_label}, default=(reverse('close_statement', args=[prop.pk]) + f'?month={first:%Y-%m}', statement_label)),
         'live': not data['closed'],
     })
 
@@ -410,8 +424,7 @@ def close_property(request, month, pk, unit_pk=None):
         'property': prop, 'book': book, 'unit': unit, 'title': book.name, 'month': month, 'close': close,
         'previous': ledger.previous_month(month), 'next': ledger.next_month(month),
         'prev_url': _page_url(ledger.previous_month(month), prop, unit), 'next_url': _page_url(ledger.next_month(month), prop, unit),
-        'back_url': (_page_url(month, prop) if unit is not None else reverse('close_long_term' if prop.is_long_term else 'close_overview') + f'?month={month:%Y-%m}'),
-        'back_label': (f'{prop.name} — all units' if unit is not None else ('Long-term rentals' if prop.is_long_term else 'Month-end close')),
+        'up': _property_page_up(request, prop, month, unit),
         'lines': lines, 'all_categories': list(CATEGORY_LABELS.items()), 'removed': removed, 'checks': items, 'can_close': ledger.can_close(items),
         'warn_keys': [i['key'] for i in items if i['level'] == 'warn'],
         'totals': ledger.closed_summary(close) if close else ledger.totals(book, month, lines),
@@ -581,9 +594,10 @@ def _associations_step(month):
 
 
 def _tourist_tax_step(month):
-    """(status, detail) for the Palm Beach County tourist tax step: grey until a property is marked filed, a count while some are, green Complete
-    once every property listed for the month is filed, amber if a filed one has changed since. The figures are only worked out once something
-    has been filed, so the checklist stays quick."""
+    """(status, detail) for the Palm Beach County tourist tax step: grey until a property is marked filed, a count while some are, amber when a filed return
+    changed or when every return is filed but the county payment has not been recorded (filing and adding to the cart is not paying), and green Complete only
+    once the payment is recorded with its confirmation number (or when nothing is due). The figures are only worked out once something has been filed, so
+    the checklist stays quick."""
     if month < ledger.month_of(ledger.books_start()):
         return None, ''
     from .models import TouristTaxFiling
@@ -591,10 +605,17 @@ def _tourist_tax_step(month):
         return 'not_started', ''
     rep = tourist_tax_service.report(month)
     total = len(rep['rows'])
-    if rep['changed']:
+    state = rep['pay_state']
+    if state == 'changed':
         return 'attention', f'{rep["changed"]} filed return{"" if rep["changed"] == 1 else "s"} changed since it was filed.'
-    if total and rep['filed'] == total:
-        return 'done', f'All {total} return{"" if total == 1 else "s"} filed.'
+    if state == 'unpaid':
+        return 'attention', f'Filed, payment not recorded: pay the county ${rep["due"]:,.2f} and enter the confirmation number.'
+    if state == 'paid_changed':
+        return 'attention', f'The amount due is now ${rep["due"]:,.2f}, not the ${rep["payment"].amount_due:,.2f} that was recorded as paid.'
+    if state == 'paid':
+        return 'done', f'All {total} return{"" if total == 1 else "s"} filed and paid (confirmation {rep["payment"].confirmation}).'
+    if state == 'nothing':
+        return 'done', f'All {total} return{"" if total == 1 else "s"} filed; nothing is due.'
     return None, f'{rep["filed"]} of {total} filed.'
 
 
@@ -814,6 +835,8 @@ def tourist_tax(request):
             messages.error(request, f'The renewal date is not a date for: {", ".join(bad)}. Those were left as they were.')
         messages.success(request, f'Saved the tax numbers of {saved} rental{"" if saved == 1 else "s"}.' if saved else 'Nothing changed.')
         return redirect(reverse('tourist_tax') + f'?month={month:%Y-%m}#tax-numbers')
+    if request.method == 'POST' and request.POST.get('action') in ('record_payment', 'clear_payment'):
+        return _tourist_tax_payment_post(request, month, today)
     if request.method == 'POST':
         from .models import TouristTaxFiling
         prop = get_object_or_404(Property, pk=request.POST.get('property'))
@@ -849,7 +872,60 @@ def tourist_tax(request):
         return render(request, 'core/tourist_tax_split.html', {'rep': rep, 'splits': splits})
     rentals = _tax_id_rentals()
     return render(request, 'core/tourist_tax.html', {'rep': rep, 'splits': splits, 'tax_rentals': rentals, 'missing_ids': any(not p.tdt_account_number for p in rentals),
-                                                     'previous': ledger.previous_month(month), 'next': ledger.next_month(month)})
+                                                     'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'today': today})
+
+
+def _tourist_tax_payment_post(request, month, today):
+    """The last step of the tourist tax: record (or correct, or clear) the one county payment for the month. It needs the amount paid, the date and the county's
+    confirmation number; an amount that differs from the amount due needs a short reason. Every change keeps who and when in the record's history."""
+    from .models import TouristTaxPayment
+    here = reverse('tourist_tax') + f'?month={month:%Y-%m}#pay-county'
+    now = timezone.now()
+    who = request.user.get_full_name() or request.user.get_username()
+    if request.POST.get('action') == 'clear_payment':
+        pay = TouristTaxPayment.objects.filter(month=month, cleared_at__isnull=True).first()
+        if pay is None:
+            messages.error(request, 'No payment is recorded for that month.')
+            return redirect(here)
+        pay.cleared_at, pay.cleared_by = now, request.user
+        pay.history = list(pay.history or []) + [{'at': now.isoformat(timespec='seconds'), 'by': who, 'action': 'cleared', 'amount_paid': str(pay.amount_paid), 'confirmation': pay.confirmation}]
+        pay.save()
+        messages.success(request, f'The {month:%B %Y} tourist tax payment record was cleared. The step is open again.')
+        return redirect(here)
+    rep = tourist_tax_service.report(month)
+    if rep['pay_state'] not in ('unpaid', 'paid_changed', 'paid'):
+        messages.error(request, 'Mark every return as filed first; the payment is recorded after that.')
+        return redirect(here)
+    try:
+        paid = Decimal((request.POST.get('amount_paid') or '').replace(',', '').replace('$', '').strip()).quantize(Decimal('0.01'))
+        if paid <= 0:
+            raise InvalidOperation
+    except InvalidOperation:
+        messages.error(request, 'Enter the amount you paid the county, above zero.')
+        return redirect(here)
+    paid_on = parse_date(request.POST.get('paid_on') or '') or today
+    confirmation = (request.POST.get('confirmation') or '').strip()[:60]
+    if not confirmation:
+        messages.error(request, 'Enter the payment confirmation number: the step is not complete without it.')
+        return redirect(here)
+    reason = (request.POST.get('reason') or '').strip()[:200]
+    if paid != rep['due'] and not reason:
+        messages.error(request, f'You paid ${paid:,.2f} but ${rep["due"]:,.2f} is due. Say in a few words why they differ.')
+        return redirect(here)
+    pay = TouristTaxPayment.objects.filter(month=month).first()
+    action = 'recorded'
+    if pay is None:
+        pay = TouristTaxPayment(month=month)
+    elif pay.cleared_at is None:
+        action = 'corrected'
+    pay.amount_due, pay.amount_paid, pay.paid_on, pay.confirmation = rep['due'], paid, paid_on, confirmation
+    pay.reason = reason if paid != rep['due'] else ''
+    pay.recorded_by, pay.recorded_at, pay.cleared_at, pay.cleared_by = request.user, now, None, None
+    pay.history = list(pay.history or []) + [{'at': now.isoformat(timespec='seconds'), 'by': who, 'action': action, 'amount_paid': str(paid), 'amount_due': str(rep['due']),
+                                              'paid_on': paid_on.isoformat(), 'confirmation': confirmation, 'reason': pay.reason}]
+    pay.save()
+    messages.success(request, f'Payment {action}: ${paid:,.2f} paid {paid_on:%b} {paid_on.day}, confirmation {confirmation}. The tourist tax step is complete.')
+    return redirect(here)
 
 
 def _tax_id_rentals():
@@ -1198,4 +1274,6 @@ def pay_booking(request, pk):
         for why in failed:
             messages.error(request, why)
         return redirect(reverse('close_pay_booking', args=[payment.pk]))
-    return render(request, 'core/month_end_booking.html', {'payment': payment, 'result': result, 'back': back, 'ready': any(t['status'] == 'ready' for t in result['targets'])})
+    kind = payment.get_kind_display()
+    up = nav.up(request, {'close_pay_owners': 'Pay owners', 'close_pay_proper': 'Pay Proper', 'close_pay_ltr_owners': 'Pay long-term owners'}, default=(back, kind))
+    return render(request, 'core/month_end_booking.html', {'payment': payment, 'result': result, 'back': back, 'up': up, 'ready': any(t['status'] == 'ready' for t in result['targets'])})

@@ -1,0 +1,68 @@
+{% extends 'accounting/base_acc.html' %}
+{% load acc_extras %}
+{% block acc_title %}Reserve check - {{ assoc.name }}{% endblock %}
+{% block acc_body %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Reserve funds and reserve cash {% include '_tip.html' with text="The reserve cash is every reserve bank account; the reserve funds are the reserve accounts on the balance sheet. They should be the same. A reserve project paid from operating, or a transfer not yet booked, is the usual reason they are not." %}</h2>
+        <div class="small text-muted">{{ assoc.name }} &middot; as of {{ info.month_end|date:"F j, Y" }}</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="{% url 'accounting:reserve_check' assoc.pk previous|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="{% url 'accounting:reserve_check' assoc.pk next|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+
+{% if not info.has_reserve_bank %}
+<div class="card"><div class="card-body">There is no reserve bank account for {{ assoc.name }}, so there is nothing to compare. Add one in <a href="{% url 'accounting:settings' assoc.pk %}#banks">the settings</a>.</div></div>
+{% else %}
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="rp-wrap"><table class="rp">
+            <thead><tr><th style="text-align: left;">Reserve cash</th><th>Balance</th></tr></thead>
+            <tbody>
+            {% for r in info.banks %}<tr class="ln flat"><td>{{ r.bank.label }}</td><td class="num">{{ r.balance|money }}</td></tr>{% endfor %}
+            <tr class="tot"><td>Total reserve cash</td><td class="num">{{ info.cash|money }}</td></tr>
+            </tbody>
+        </table></div>
+    </div>
+    <div class="col-md-6">
+        <div class="rp-wrap"><table class="rp">
+            <thead><tr><th style="text-align: left;">Reserve funds</th><th>Balance</th></tr></thead>
+            <tbody>
+            {% for r in info.funds %}<tr class="ln flat"><td><span class="code">{{ r.account.code }}</span>{{ r.account.name }}</td><td class="num">{{ r.amount|money }}</td></tr>
+            {% empty %}<tr class="ln flat"><td class="text-muted">No reserve fund has a balance.</td><td class="num">{{ 0|money }}</td></tr>{% endfor %}
+            <tr class="tot"><td>Total reserve funds</td><td class="num">{{ info.funds_total|money }}</td></tr>
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
+{% if info.diff == 0 %}
+<div class="ac-live d-flex align-items-center gap-2"><i data-lucide="check-circle" class="icon"></i><span class="fw-semibold">They match.</span><span class="ac-chip done ms-auto">Complete</span></div>
+{% else %}
+<div class="ac-strip mb-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="fw-semibold">Difference: {{ info.diff|money }}</span>
+        <span class="small text-muted">The reserve cash is {% if info.diff > 0 %}more{% else %}less{% endif %} than the reserve funds.</span>
+        {% if info.acknowledged %}<span class="ac-chip done ms-auto">Acknowledged</span>{% else %}<span class="ac-chip attention ms-auto">Needs attention</span>{% endif %}
+    </div>
+</div>
+{% if info.acknowledged %}
+<div class="card mb-3"><div class="card-body">
+    <div class="small text-muted">Acknowledged{% if info.ack.acknowledged_by %} by {{ info.ack.acknowledged_by.get_full_name|default:info.ack.acknowledged_by.username }}{% endif %} on {{ info.ack.acknowledged_at|date:"M j, Y" }}</div>
+    <div class="my-2">{{ info.ack.reason }}</div>
+    <form method="post" class="ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="remove" onclick="return confirm('Remove this acknowledgement? The step will need attention again.')">Remove the acknowledgement</button></form>
+</div></div>
+{% else %}
+<form method="post" class="card ac-noprint"><div class="card-body">{% csrf_token %}
+    {% if info.stale_ack %}<div class="small text-muted mb-2">The difference was acknowledged before as {{ info.ack.difference|money }}, but it is {{ info.diff|money }} now, so it needs acknowledging again.</div>{% endif %}
+    <label class="form-label fw-semibold" for="reason">Why do they differ?</label>
+    <input class="form-control mb-2" id="reason" name="reason" maxlength="500" required placeholder="For example: roof deposit paid from operating, to be moved next month" value="{{ info.ack.reason|default:'' }}">
+    <button class="btn btn-sm btn-primary" name="action" value="acknowledge"><i data-lucide="check" class="icon"></i> Acknowledge the difference</button>
+</div></form>
+{% endif %}
+{% endif %}
+{% endif %}
+{% endblock %}
