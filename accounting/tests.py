@@ -1872,10 +1872,10 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         self.assertNotIn('.bd-unitbox .t { background: #1c2430', html)
         ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
         head = next(r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == 'By unit calculation')
-        for c in (1, 2, 4, 5):
+        for c in (1, 2, 3, 5, 6):
             self.assertEqual(ws.cell(row=head, column=c).fill.fgColor.rgb[-6:].upper(), 'D9E1EC')
-            self.assertEqual(ws.cell(row=head - 1, column=1 if c == 5 else c).fill.fgColor.rgb[-6:].upper(), 'D9E1EC')       # (the group row's last cell is merged into the one before it)
-        self.assertEqual(ws.cell(row=head, column=3).fill.fgColor.rgb[-6:].upper(), 'E4EDFB')                    # the 2027 column keeps its tint
+            self.assertEqual(ws.cell(row=head - 1, column=5 if c == 6 else c).fill.fgColor.rgb[-6:].upper(), 'D9E1EC')       # (the group row's last cell is merged into the one before it)
+        self.assertEqual(ws.cell(row=head, column=4).fill.fgColor.rgb[-6:].upper(), 'E4EDFB')                    # the 2027 column keeps its tint, in column D like the budget above it
         self.assertEqual(ws.cell(row=head, column=1).font.color.rgb[-6:].upper(), '1C2430')                      # dark text on the muted band
 
     def test_the_budget_screen_has_download_buttons_at_the_top(self):

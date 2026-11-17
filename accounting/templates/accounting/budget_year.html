@@ -140,11 +140,20 @@
     <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="refresh"><input type="hidden" name="stage" value="{{ stage }}"><button class="btn btn-primary btn-sm">Bring the actuals up to date</button></form>
     <span>Methods, adjustments and reasons stay as they are.</span></div>
 {% endif %}
+<div class="d-flex align-items-center gap-2 flex-wrap mb-2 ac-noprint" id="freqbar">
+    <span class="small text-muted">Owners pay</span>
+    {% if state_json.frequency.locked %}<span class="ac-chip good">{{ state_json.frequency.label }}</span><span class="small text-muted">locked: every sheet and PDF shows the {{ state_json.frequency.noun }}ly amount</span>
+    {% elif state_json.frequency.can_set %}<form method="post" class="d-flex gap-1 align-items-center m-0" onsubmit="var f = this.frequency.value; return window.confirm('Set the {{ year }} budget to ' + f + ' payments? Every sheet, PDF and notice for this budget will show the ' + (f === 'quarterly' ? 'quarterly' : 'monthly') + ' amount, and this cannot be changed afterwards.');">{% csrf_token %}<input type="hidden" name="action" value="frequency"><input type="hidden" name="ack" value="yes"><input type="hidden" name="stage" value="{{ stage }}">
+        <select name="frequency" class="form-select form-select-sm" style="width: auto;" aria-label="How often owners pay"><option value="monthly" {% if state_json.frequency.key == 'monthly' %}selected{% endif %}>Monthly</option><option value="quarterly" {% if state_json.frequency.key == 'quarterly' %}selected{% endif %}>Quarterly</option></select>
+        <button class="btn btn-sm btn-outline-secondary">Set and lock</button></form>
+    <span class="small text-muted">Monthly until you set it. Setting it locks it.</span>
+    {% else %}<span class="fw-semibold">{{ state_json.frequency.label }}</span>{% endif %}
+</div>
 <div class="row g-2 mb-3">
     <div class="col-6 col-lg-3"><div class="bd-kpi"><div class="l">Operating expenses, {{ year }}</div><div class="v" id="kOp"></div><div class="d" id="kOpD"></div></div></div>
     <div class="col-6 col-lg-3"><div class="bd-kpi"><div class="l">Reserves, {{ year }}</div><div class="v" id="kRes"></div><div class="d" id="kResD"></div></div></div>
     <div class="col-6 col-lg-3"><div class="bd-kpi big"><div class="l">Total assessments needed</div><div class="v" id="kTot"></div><div class="d" id="kTotD"></div></div></div>
-    <div class="col-6 col-lg-3"><div class="bd-kpi big"><div class="l">Per unit per month</div><div class="v" id="kUnit"></div><div class="d" id="kUnitD"></div></div></div>
+    <div class="col-6 col-lg-3"><div class="bd-kpi big"><div class="l">Per unit per {{ state_json.frequency.noun }}</div><div class="v" id="kUnit"></div><div class="d" id="kUnitD"></div></div></div>
 </div>
 <div class="card"><div style="overflow-x: auto;">
 <table class="bd-table bd-fit" id="tbl" style="min-width: 980px;">
@@ -283,8 +292,8 @@
         document.getElementById('kResD').textContent = (YEAR - 1) + ' budget ' + $(T.rs.prior);
         document.getElementById('kTot').textContent = $(T.needed);
         document.getElementById('kTotD').textContent = (YEAR - 1) + ' budget ' + $(T.needed_prior) + (T.needed_prior ? ' · ' + pct((T.needed / T.needed_prior - 1) * 100, 1) + '%' : '');
-        document.getElementById('kUnit').textContent = $2(T.unit_month);
-        document.getElementById('kUnitD').textContent = (YEAR - 1) + ': ' + $2(T.unit_month_prior) + ' · ' + $2(T.unit_year) + ' a year';
+        document.getElementById('kUnit').textContent = $2(T.unit_period);
+        document.getElementById('kUnitD').textContent = (YEAR - 1) + ': ' + $2(T.unit_period_prior) + ' · ' + $2(T.unit_year) + ' a year';
     }
     render();
 })();
@@ -410,7 +419,7 @@
         put('Xp', $(F.exp.p)); put('Xb', $(F.exp.b)); put('Xd', chg(F.exp.b - F.exp.p), tone(F.exp.b - F.exp.p)); put('Xc', pct(F.exp.b, F.exp.p), tone(F.exp.b - F.exp.p)); put('Xf', $(F.exp.f));
         var needP = F.exp.p - (F.sections['Income'] ? F.sections['Income'].p : 0);                  // last year's assessments needed: its expenses and reserves less its other income
         put('Np', $(needP)); put('Nb', $(F.reg.b)); put('Nd', chg(F.reg.b - needP), tone(F.reg.b - needP)); put('Nc', pct(F.reg.b, needP), tone(F.reg.b - needP)); put('Nf', $(F.reg.f));
-        var upP = S.totals.unit_month_prior, upB = F.reg.b / U / 12, upF = F.needed / U / 12;
+        var PER = S.totals.periods || 12, upP = S.totals.unit_period_prior, upB = F.reg.b / U / PER, upF = F.needed / U / PER;
         var c2 = function (n) { return Math.abs(n) < 0.005 ? '—' : (n > 0 ? $2(n) : '(' + $2(Math.abs(n)) + ')'); };
         var tone2 = function (n) { return Math.abs(n) < 0.005 ? '' : (n > 0 ? 't-bad' : 't-good'); };
         put('Up', $2(upP)); put('Ub', $2(upB)); put('Ud', c2(upB - upP), tone2(upB - upP)); put('Uc', pct(upB, upP), tone2(upB - upP)); put('Uf', $2(upF));
@@ -502,9 +511,9 @@
     <tr class="grand last"><td>Total expenses with reserves</td><td>{{ sheet.total.prior|bdm:sheet.cents }}</td><td>{{ sheet.total.projected|bdm:sheet.cents }}</td><td class="c27">{{ sheet.total.proposed|bdm:sheet.cents }}</td><td class="t-{{ sheet.total.tone }}">{{ sheet.total.d|bdc:sheet.cents }}</td><td class="t-{{ sheet.total.ptone }}">{{ sheet.total.p|pparen }}</td></tr>
     </tbody></table>
     <div class="bd-unitbox"><div class="t">By unit calculation</div>
-    <table class="bd-table"><thead><tr class="grp"><th colspan="2"></th><th class="c27"></th><th colspan="2" class="bd-grp">{{ year }} vs {{ year|add:"-1" }}</th></tr><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th class="c27">{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
-    {% for g in sheet.calc %}<tr class="ghd"><td><b>{{ g.header }}</b>{% if g.units %}<div class="gu">{{ g.units }}</div>{% endif %}</td><td></td><td class="c27"></td><td></td><td></td></tr>
-    {% for p in g.rows %}<tr{% if forloop.last and forloop.parentloop.last %} class="last"{% endif %}><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td class="c27">{{ p.new|money }}</td><td class="t-{{ p.tone }}">{{ p.d|cparen }}</td><td class="t-{{ p.ptone }}">{{ p.p|pparen }}</td></tr>{% endfor %}
+    <table class="bd-table"><thead><tr class="grp"><th colspan="3"></th><th class="c27"></th><th colspan="2" class="bd-grp">{{ year }} vs {{ year|add:"-1" }}</th></tr><tr><th>&nbsp;</th><th>{{ year|add:"-1" }}</th><th></th><th class="c27">{{ year }}</th><th>$ change</th><th>% change</th></tr></thead><tbody>
+    {% for g in sheet.calc %}<tr class="ghd"><td><b>{{ g.header }}</b>{% if g.units %}<div class="gu">{{ g.units }}</div>{% endif %}</td><td></td><td></td><td class="c27"></td><td></td><td></td></tr>
+    {% for p in g.rows %}<tr{% if forloop.last and forloop.parentloop.last %} class="last"{% endif %}><td>{% if p.bold %}<b>{{ p.label }}</b>{% else %}{{ p.label }}{% endif %}</td><td>{{ p.old|money }}</td><td></td><td class="c27">{{ p.new|money }}</td><td class="t-{{ p.tone }}">{{ p.d|cparen }}</td><td class="t-{{ p.ptone }}">{{ p.p|pparen }}</td></tr>{% endfor %}
     {% endfor %}
     </tbody></table></div>
 </div>

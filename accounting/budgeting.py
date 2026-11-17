@@ -398,6 +398,38 @@ def add_missing_income(version):
 
 # ---------------------------------------------------------------- stages
 
+PER_YEAR = {'monthly': 12, 'quarterly': 4}
+FREQ_WORDS = {'monthly': ('Monthly', 'month'), 'quarterly': ('Quarterly', 'quarter')}
+
+
+def periods_of(budget):
+    """How many payments a year the budget's assessment is paid in (12 or 4)."""
+    return PER_YEAR.get(getattr(budget, 'payment_frequency', None) or 'monthly', 12)
+
+
+def frequency_info(budget):
+    key = (getattr(budget, 'payment_frequency', None) or 'monthly')
+    label, noun = FREQ_WORDS.get(key, FREQ_WORDS['monthly'])
+    return {'key': key, 'label': label, 'noun': noun, 'per_year': PER_YEAR.get(key, 12), 'locked': bool(getattr(budget, 'frequency_locked', False))}
+
+
+def can_set_frequency(budget, have):
+    """The payment frequency is chosen on the management draft or the Board draft, once: before the meeting version exists, and while it is not locked."""
+    return bool(budget and not budget.frequency_locked and have and 'meeting' not in have and 'approved' not in have)
+
+
+def set_frequency(budget, key, have):
+    """Choose how owners pay (monthly or quarterly) and lock it. Raises LedgerError with the reason it cannot."""
+    if key not in PER_YEAR:
+        raise ledger.LedgerError('Choose monthly or quarterly.')
+    if budget.frequency_locked:
+        raise ledger.LedgerError(f'Payments are {frequency_info(budget)["label"].lower()} for this budget and that is locked.')
+    if not can_set_frequency(budget, have):
+        raise ledger.LedgerError('The payment frequency is chosen on the management draft or the Board draft, before the meeting version.')
+    budget.payment_frequency, budget.frequency_locked = key, True
+    budget.save(update_fields=['payment_frequency', 'frequency_locked'])
+
+
 def get_budget(prop, year):
     return Budget.objects.filter(association=prop, year=year).first()
 
@@ -522,7 +554,7 @@ def line_rows(version, info, prev_version=None):
     return rows
 
 
-def totals(rows, units):
+def totals(rows, units, periods=12):
     out = {}
     for s in SECTIONS:
         rs = [r for r in rows if r['section'] == s]
@@ -536,7 +568,8 @@ def totals(rows, units):
     income = {'assessments': {'prior': op['prior'], 'proposed': op['proposed']}, 'reserve': {'prior': rs['prior'], 'proposed': rs['proposed']}, 'total': {'prior': need_b, 'proposed': need}}
     return {'sections': out, 'op': op, 'rs': rs, 'oi': oi, 'income': income, 'total': tot, 'total_prior': tot_b, 'total_projected': tot_p,
             'needed': need, 'needed_prior': need_b, 'needed_projected': need_p,
-            'unit_month': need / u / 12, 'unit_month_prior': need_b / u / 12, 'unit_year': need / u, 'units': units}
+            'unit_month': need / u / 12, 'unit_month_prior': need_b / u / 12, 'unit_year': need / u, 'units': units,
+            'unit_period': need / u / periods, 'unit_period_prior': need_b / u / periods, 'periods': periods}
 
 
 def scheduled_assessments(prop, info):
@@ -623,14 +656,14 @@ def editor_state(version, have):
     prev = have.get(STAGE_KEYS[idx - 1]) if idx else None
     rows = line_rows(version, info, prev)
     units = unit_count(version.budget.association)
-    t = totals(rows, units)
+    t = totals(rows, units, periods_of(version.budget))
     assess = assessment_row(version, info, t['needed'])
     used = {l.account_id for l in version.lines.all()}
     addable = {}
     for a in Account.objects.filter(association=version.budget.association, is_active=True).order_by('code'):
         if is_budgetable(a) and a.pk not in used:
             addable.setdefault(section_of(a), []).append({'id': a.pk, 'label': f'{a.code} {a.name}'})
-    return {'sections': SECTIONS, 'units': units, 'rows': rows, 'totals': t, 'assess': assess, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'], 'actual_label': info['actual_label'], 'rest_label': info['rest_label'], 'recent_n': info['recent_n'], 'n': info['n'],
+    return {'frequency': dict(frequency_info(version.budget), can_set=can_set_frequency(version.budget, have)), 'sections': SECTIONS, 'units': units, 'rows': rows, 'totals': t, 'assess': assess, 'addable': addable, 'editable': is_editable(version, have), 'remaining': info['remaining'], 'actual_label': info['actual_label'], 'rest_label': info['rest_label'], 'recent_n': info['recent_n'], 'n': info['n'],
             'stale': is_stale(version) and is_editable(version, have), 'prev_label': STAGE_LABEL[STAGE_KEYS[idx - 1]] if idx else '', 'methods': [(m, method_label(m, info) if m != 'custom' else 'Custom amount') for m in METHODS]}
 
 

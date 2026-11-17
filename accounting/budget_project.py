@@ -353,19 +353,20 @@ def template(slug):
 
 def proposed_totals(prop, version):
     rows = bg.line_rows(version, bg.info_for(version))
-    return bg.totals(rows, bg.unit_count(prop))
+    return bg.totals(rows, bg.unit_count(prop), bg.periods_of(version.budget))
 
 
-def assessment_summary(prop, year, t):
-    """What the budget means for each unit, in words for the notice."""
+def assessment_summary(prop, year, t, budget=None):
+    """What the budget means for each unit, in words for the notice: by the month, or by the quarter when the budget is paid quarterly."""
+    per, noun = (bg.periods_of(budget), bg.frequency_info(budget)['noun']) if budget is not None else (12, 'month')
     groups, basis = bg.unit_groups(prop)
     n = bg.unit_count(prop) or 1
     needed, prior = Decimal(str(t['needed'])), Decimal(str(t['needed_prior']))
     if basis == 'equal':
-        new, old = (needed / n / 12).quantize(CENT, ROUND_HALF_UP), (prior / n / 12).quantize(CENT, ROUND_HALF_UP)
-        text = f'The regular assessment for each unit is ${new:,.2f} a month (${new * 12:,.2f} a year)'
-        return text + (f', compared with ${old:,.2f} a month in {year - 1}.' if old else '.')
-    parts = [f'{g["label"]}: ${(needed * Decimal(str(g["fraction"])) / 12).quantize(CENT, ROUND_HALF_UP):,.2f} a month' for g in groups[:8]]
+        new, old = (needed / n / per).quantize(CENT, ROUND_HALF_UP), (prior / n / per).quantize(CENT, ROUND_HALF_UP)
+        text = f'The regular assessment for each unit is ${new:,.2f} a {noun} (${new * per:,.2f} a year)'
+        return text + (f', compared with ${old:,.2f} a {noun} in {year - 1}.' if old else '.')
+    parts = [f'{g["label"]}: ${(needed * Decimal(str(g["fraction"])) / per).quantize(CENT, ROUND_HALF_UP):,.2f} a {noun}' for g in groups[:8]]
     return 'Regular assessments are divided by each unit\'s share of the common expenses: ' + '; '.join(parts) + ('; and others as shown on the budget.' if len(groups) > 8 else '.')
 
 
@@ -387,7 +388,7 @@ def make_notice(prop, bud, project, user, have, association_type=None):
     co = lf_config.company()
     raw = {'association_name': prop.name, 'association_type': association_type or last_association_type(prop), 'letter_date': timezone.localdate().isoformat(), 'budget_year': str(bud.year),
            'meeting_date': project.meeting_date.isoformat(), 'meeting_time': project.meeting_time, 'meeting_place': project.meeting_place, 'video_link': '',
-           'total_assessments': f'{needed:.2f}', 'assessment_summary': assessment_summary(prop, bud.year, t), 'assessment_purpose': DEFAULT_PURPOSE,
+           'total_assessments': f'{needed:.2f}', 'assessment_summary': assessment_summary(prop, bud.year, t, bud), 'assessment_purpose': DEFAULT_PURPOSE,
            'contact_phone': co['company_phone_display'], 'contact_email': co['company_email']}
     doc, errors = lf_services.save_document(template('budget-meeting-notice'), prop, None, user, raw)
     if errors:
@@ -469,8 +470,10 @@ def load_plan(prop, bud, have, today=None):
     plan.update({'needed': needed, 'prior': prior, 'units': units, 'first_due': first_due, 'ends_on': first_due - timedelta(days=1), 'lines': ver.lines.filter(proposed__gt=0).count()})
     groups, basis = bg.unit_groups(prop)
     plan['basis'] = basis
-    plan['groups'] = [{'label': g['label'], 'monthly': (needed * Decimal(str(g['fraction'])) / 12).quantize(CENT, ROUND_HALF_UP), 'annual': (needed * Decimal(str(g['fraction']))).quantize(CENT, ROUND_HALF_UP),
-                       'old_monthly': (prior * Decimal(str(g['fraction'])) / 12).quantize(CENT, ROUND_HALF_UP)} for g in groups]
+    per = bg.periods_of(bud)
+    plan['period_noun'] = bg.frequency_info(bud)['noun']
+    plan['groups'] = [{'label': g['label'], 'monthly': (needed * Decimal(str(g['fraction'])) / per).quantize(CENT, ROUND_HALF_UP), 'annual': (needed * Decimal(str(g['fraction']))).quantize(CENT, ROUND_HALF_UP),
+                       'old_monthly': (prior * Decimal(str(g['fraction'])) / per).quantize(CENT, ROUND_HALF_UP)} for g in groups]
     old = ChargeRule.objects.filter(association=prop, is_active=True, is_special=False).order_by('first_due').last()
     plan['old_rule'] = old
     existing = ChargeRule.objects.filter(association=prop, is_active=True, is_special=False, first_due=first_due).first()
@@ -480,7 +483,7 @@ def load_plan(prop, bud, have, today=None):
     elif needed <= 0:
         plan['problems'].append('The approved budget needs no assessments, so there is no rule to set.')
     else:
-        freq = old.frequency if old and old.frequency in PERIODS else ChargeRule.Frequency.MONTHLY
+        freq = bud.payment_frequency if bud.frequency_locked else (old.frequency if old and old.frequency in PERIODS else ChargeRule.Frequency.MONTHLY)      # a payment frequency chosen on the budget wins
         ppy = PERIODS[freq]
         per_period = (needed / ppy).quantize(CENT, ROUND_HALF_UP)
         if basis == 'equal':

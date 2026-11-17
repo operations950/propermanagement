@@ -93,7 +93,9 @@ def _sheet(version, info, units, cents=False):
     expenses with reserves are the sum of the sections, and the regular assessments are those expenses less the other income shown, so the page always adds up and the total income
     equals the total expenses with reserves. A change is the difference of the two figures beside it."""
     rows = bg.line_rows(version, info)
-    t = bg.totals(rows, units)
+    periods = bg.periods_of(version.budget)
+    fi = bg.frequency_info(version.budget)
+    t = bg.totals(rows, units, periods)
     year = version.budget.year
     zero = Decimal('0')
 
@@ -126,8 +128,8 @@ def _sheet(version, info, units, cents=False):
     for g in groups:
         f = g['fraction']
         rows_ = []
-        for label, mult, bold in (('Monthly assessment', 1, True), ('Annual per unit', 12, False)):
-            old, new = t['needed_prior'] * f / 12 * mult, t['needed'] * f / 12 * mult
+        for label, per_year, bold in ((f'{fi["label"]} assessment', periods, True), ('Annual per unit', 1, False)):
+            old, new = t['needed_prior'] * f / per_year, t['needed'] * f / per_year
             d, p = new - old, _chg(new, old)
             tone = _tone(d, False, 0.005)
             rows_.append({'label': label, 'old': old, 'new': new, 'd': d, 'p': p, 'tone': tone, 'ptone': tone, 'bold': bold})
@@ -135,7 +137,7 @@ def _sheet(version, info, units, cents=False):
     basis_note = 'Every unit pays the same.' if basis == 'equal' else "Split by each unit's share of the common expenses."
     return {'year': year, 'proj_word': 'projected' if info['remaining'] else 'actual', 'sections': sections, 'op': pack(op['prior'], op['projected'], op['proposed']),
             'total': pack(exp['prior'], exp['projected'], exp['proposed']), 'needed': pack(exp['prior'] - oi['prior'], exp['projected'] - oi['projected'], reg['proposed']),
-            'calc': calc, 'basis_note': basis_note, 'units': units, 'cents': cents}
+            'calc': calc, 'basis_note': basis_note, 'units': units, 'cents': cents, 'frequency': fi['key'], 'period_noun': fi['noun']}
 
 
 
@@ -143,7 +145,7 @@ def _compare(have, units):
     keys, rows = bg.compare_rows(have, units)
     tot = {}
     for k in keys:
-        tot[k] = bg.totals(bg.line_rows(have[k], bg.info_for(have[k])), units)
+        tot[k] = bg.totals(bg.line_rows(have[k], bg.info_for(have[k])), units, bg.periods_of(have[k].budget))
     sections = []
     for s in bg.SECTIONS:
         lines = []
@@ -167,7 +169,7 @@ def _compare(have, units):
         trow('Reserves', lambda t, prior=False: t['rs']['prior' if prior else 'proposed']),
         trow('Other income', lambda t, prior=False: t['oi']['prior' if prior else 'proposed']),
         trow('Total assessments needed', lambda t, prior=False: t['needed_prior' if prior else 'needed']),
-        trow('Per unit per month', lambda t, prior=False: t['unit_month_prior' if prior else 'unit_month'], True),
+        trow(f'Per unit per {bg.frequency_info(have[keys[0]].budget)["noun"]}', lambda t, prior=False: t['unit_period_prior' if prior else 'unit_period'], True),
     ]
     totals = [r for r in totals if r['label'] != 'Other income' or r['prior'] or any(c['v'] for c in r['cells'])]
     return {'keys': keys, 'labels': [bg.STAGE_LABEL[k] for k in keys], 'sections': sections, 'totals': totals, 'cols': 2 * len(keys) + 2}
@@ -200,6 +202,12 @@ def budget_year(request, pk, year):
                 bg.refresh_actuals(ver)
                 messages.success(request, f'Actuals now run through {bg.info_for(ver)["through"]:%B %Y}. Your methods, adjustments and reasons are unchanged.')
                 return redirect(here + f'?stage={ver.stage}')
+            elif action == 'frequency' and bud:
+                if request.POST.get('ack') != 'yes':
+                    raise ledger.LedgerError('Confirm the payment frequency first: it cannot be changed afterwards.')
+                bg.set_frequency(bud, request.POST.get('frequency'), bg.versions(bud))
+                messages.success(request, f'Payments are {bg.frequency_info(bud)["label"].lower()} for the {year} budget, and that is now locked. Every sheet and PDF shows the {bg.frequency_info(bud)["noun"]}ly amount.')
+                return redirect(here + (f'?stage={request.POST.get("stage")}' if request.POST.get('stage') in bg.STAGE_KEYS else ''))
             elif action == 'reopen' and bud:
                 bg.reopen(bud)
                 messages.success(request, 'The approved budget is open again as the Meeting final.')
@@ -576,8 +584,8 @@ def budget_packet(request, pk, year):
     sent = bp.deliverable(rows)
     flags = bp.flagged(rows)
     t = bp.proposed_totals(prop, have['board'])
-    ctx = {'assoc': prop, 'year': year, 'project': project, 'rows': rows, 'sent': len(sent), 'flags': flags, 'owner_total': len(rows), 'meeting_ready': bp.meeting_ready(project), 'needed': t['needed'],
-           'unit_month': t['unit_month'], 'changed': bp.changed_since_notice(prop, project, have), **acc_up(request, prop, ['accounting:budget_project'], back, f'{year} budget project'),
+    ctx = {'period_noun': bg.frequency_info(bud)['noun'], 'assoc': prop, 'year': year, 'project': project, 'rows': rows, 'sent': len(sent), 'flags': flags, 'owner_total': len(rows), 'meeting_ready': bp.meeting_ready(project), 'needed': t['needed'],
+           'unit_month': t['unit_period'], 'changed': bp.changed_since_notice(prop, project, have), **acc_up(request, prop, ['accounting:budget_project'], back, f'{year} budget project'),
            'notice': project.notice_doc if project else None, 'affidavit': project.affidavit_doc if project else None, 'from_list': bool(project and project.mailed_on and project.mailing_snapshot),
            'return_text': '\n'.join(bp.return_lines(prop, project)), 'envelope_size': project.envelope_size if project else 'no10', 'association_type': bp.last_association_type(prop)}
     ctx['files'] = {w: reverse('accounting:budget_packet_file', args=[pk, year, w]) for w in ('notice', 'budget', 'affidavit', 'mailing_list', 'mailing_csv', 'envelopes', 'everything')}

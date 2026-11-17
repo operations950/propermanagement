@@ -17,7 +17,7 @@
 
 <div class="card mb-3"><div class="card-body">
     <div class="ac-lab mb-2">What each unit pays {% include '_tip.html' with text="From the approved budget: the assessments needed, divided the way this association divides them (the same for every unit, or by each unit's share)." %}</div>
-    <table class="table table-sm ac-table mb-2"><thead><tr><th>Units</th><th class="ac-num">{{ year|add:"-1" }} a month</th><th class="ac-num">{{ year }} a month</th><th class="ac-num">{{ year }} a year</th></tr></thead>
+    <table class="table table-sm ac-table mb-2"><thead><tr><th>Units</th><th class="ac-num">{{ year|add:"-1" }} a {{ plan.period_noun|default:"month" }}</th><th class="ac-num">{{ year }} a {{ plan.period_noun|default:"month" }}</th><th class="ac-num">{{ year }} a year</th></tr></thead>
         <tbody>{% for g in plan.groups %}<tr><td>{{ g.label }}</td><td class="ac-num">{{ g.old_monthly|money }}</td><td class="ac-num fw-semibold">{{ g.monthly|money }}</td><td class="ac-num">{{ g.annual|money }}</td></tr>{% endfor %}</tbody></table>
     {% if plan.already %}
         <div class="ac-chip done">Already set</div> <span class="small text-muted">A regular assessment already starts on {{ plan.first_due|date:"M j, Y" }}: {{ plan.rule.existing.name }}.</span>

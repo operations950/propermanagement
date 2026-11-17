@@ -72,7 +72,6 @@ def group_label(sheet):
 
 
 COLS = [2.45 * inch, 0.95 * inch, 0.95 * inch, 0.95 * inch, 1.0 * inch, 1.0 * inch]            # the main table's columns
-UNIT_COLS = [2.55 * inch, 1.1 * inch, 1.1 * inch, 1.05 * inch, 0.9 * inch]                      # the by-unit box's columns
 PAD = 12                                                                                        # the table's left and right padding together, in points
 
 
@@ -151,31 +150,31 @@ def pdf(sheet):
     story += [table, Spacer(1, 14)]
     ps = ParagraphStyle('u', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#667085'))
     pb = ParagraphStyle('ub', fontName='Helvetica-Bold', fontSize=8.5, leading=10.5, textColor=colors.HexColor(INK))
-    per = [['', '', '', f'{sheet["year"]} vs {sheet["year"] - 1}', ''], ['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', '$ change', '% change']]
+    per = [['', '', '', '', f'{sheet["year"]} vs {sheet["year"] - 1}', ''], ['By unit calculation', f'{sheet["year"] - 1}', '', f'{sheet["year"]}', '$ change', '% change']]
     pstyle = [('FONT', (0, 0), (-1, -1), 'Helvetica', 8.5), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#b9c3d3')), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
               ('TOPPADDING', (0, 0), (-1, -1), 3.5), ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
               ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor(BAND)), ('TEXTCOLOR', (0, 0), (-1, 1), ink), ('FONT', (0, 1), (-1, 1), 'Helvetica-Bold', 8.5),
-              ('SPAN', (3, 0), (4, 0)), ('ALIGN', (3, 0), (4, 0), 'CENTER'), ('FONT', (3, 0), (4, 0), 'Helvetica', 7.5), ('TEXTCOLOR', (3, 0), (4, 0), colors.HexColor('#667085')), ('LINEBELOW', (3, 0), (4, 0), 0.5, colors.HexColor('#aab4c5')),
+              ('SPAN', (4, 0), (5, 0)), ('ALIGN', (4, 0), (5, 0), 'CENTER'), ('FONT', (4, 0), (5, 0), 'Helvetica', 7.5), ('TEXTCOLOR', (4, 0), (5, 0), colors.HexColor('#667085')), ('LINEBELOW', (4, 0), (5, 0), 0.5, colors.HexColor('#aab4c5')),
               ('TOPPADDING', (0, 0), (-1, 0), 2.5), ('BOTTOMPADDING', (0, 0), (-1, 0), 1.5)]
     for g in sheet['calc']:
-        per.append([[Paragraph(g['header'], pb)] + ([Paragraph(g['units'], ps)] if g['units'] else []), '', '', '', ''])
-        pstyle.append(('BACKGROUND', (0, len(per) - 1), (1, len(per) - 1), colors.HexColor('#f6f8fb')))
+        per.append([[Paragraph(g['header'], pb)] + ([Paragraph(g['units'], ps)] if g['units'] else []), '', '', '', '', ''])
+        pstyle.append(('BACKGROUND', (0, len(per) - 1), (2, len(per) - 1), colors.HexColor('#f6f8fb')))
         for p in g['rows']:
             bold = bool(p.get('bold'))
-            per.append([_label_cell(p['label'], bold), _fit(_c2(p['old']), UNIT_COLS[1], bold), _fit(_c2(p['new']), UNIT_COLS[2], True), _fit(_c2chg(p['d']), UNIT_COLS[3], bold, 8.5, _hex(p['tone'])),
-                        _fit(_pc(p['p']), UNIT_COLS[4], bold, 8.5, _hex(p['ptone']))])
+            per.append([_label_cell(p['label'], bold), _fit(_c2(p['old']), COLS[1], bold), '', _fit(_c2(p['new']), COLS[3], True), _fit(_c2chg(p['d']), COLS[4], bold, 8.5, _hex(p['tone'])),
+                        _fit(_pc(p['p']), COLS[5], bold, 8.5, _hex(p['ptone']))])
             i = len(per) - 1
             pstyle.append(('LINEBELOW', (0, i), (-1, i), 0.3, colors.HexColor('#e3e8ef')))
             if p.get('bold'):
                 pstyle.append(('FONT', (0, i), (-1, i), 'Helvetica-Bold', 8.5))
             if _hex(p['tone']):
-                pstyle.append(('TEXTCOLOR', (3, i), (3, i), colors.HexColor(_hex(p['tone']))))
+                pstyle.append(('TEXTCOLOR', (4, i), (4, i), colors.HexColor(_hex(p['tone']))))
             if _hex(p['ptone']):
-                pstyle.append(('TEXTCOLOR', (4, i), (4, i), colors.HexColor(_hex(p['ptone']))))
+                pstyle.append(('TEXTCOLOR', (5, i), (5, i), colors.HexColor(_hex(p['ptone']))))
     n = len(per) - 1
-    pstyle.extend([('BACKGROUND', (2, 2), (2, n), colors.HexColor(TINT)), ('FONT', (2, 2), (2, n), 'Helvetica-Bold', 8.5), ('LINEBEFORE', (2, 0), (2, n), 1.8, ink), ('LINEAFTER', (2, 0), (2, n), 1.8, ink),
-                   ('LINEABOVE', (2, 0), (2, 0), 1.8, ink), ('LINEBELOW', (2, n), (2, n), 1.8, ink)])
-    pt = Table(per, colWidths=UNIT_COLS, repeatRows=2)
+    pstyle.extend([('BACKGROUND', (3, 2), (3, n), colors.HexColor(TINT)), ('FONT', (3, 2), (3, n), 'Helvetica-Bold', 8.5), ('LINEBEFORE', (3, 0), (3, n), 1.8, ink), ('LINEAFTER', (3, 0), (3, n), 1.8, ink),
+                   ('LINEABOVE', (3, 0), (3, 0), 1.8, ink), ('LINEBELOW', (3, n), (3, n), 1.8, ink)])
+    pt = Table(per, colWidths=COLS, repeatRows=2)
     pt.setStyle(TableStyle(pstyle))
     story += [pt]
 
@@ -269,15 +268,15 @@ def xlsx(sheet):
     box(4, head_row - 1, last_row)                  # the box starts at the group row above the headings, as in the PDF
     r += 1
     per_head = r
-    ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=5)
-    for c in range(1, 6):
+    ws.merge_cells(start_row=r, start_column=5, end_row=r, end_column=6)
+    for c in range(1, 7):
         ws.cell(row=r, column=c).fill = PatternFill('solid', fgColor=BAND.lstrip('#'))
-    gcell = ws.cell(row=r, column=4, value=f'{sheet["year"]} vs {sheet["year"] - 1}')
+    gcell = ws.cell(row=r, column=5, value=f'{sheet["year"]} vs {sheet["year"] - 1}')
     gcell.font = Font(color='667085', size=9)
     gcell.alignment = Alignment(horizontal='center')
     r += 1
     per_head = r
-    for c, h in enumerate(['By unit calculation', f'{sheet["year"] - 1}', f'{sheet["year"]}', '$ change', '% change'], 1):
+    for c, h in enumerate(['By unit calculation', f'{sheet["year"] - 1}', None, f'{sheet["year"]}', '$ change', '% change'], 1):
         cell = ws.cell(row=r, column=c, value=h)
         cell.font = Font(bold=True, color=INK.lstrip('#'))
         cell.fill = PatternFill('solid', fgColor=BAND.lstrip('#'))
@@ -291,21 +290,21 @@ def xlsx(sheet):
         ws.row_dimensions[r].height = 15 * max(1, -(-len(text) // 46))
         r += 1
         for p in g['rows']:
-            for c, v in enumerate([p['label'], p['old'], p['new'], p['d'], None if p['p'] is None else p['p'] / 100], 1):
-                if c == 5 and v is None:
+            for c, v in enumerate([p['label'], p['old'], None, p['new'], p['d'], None if p['p'] is None else p['p'] / 100], 1):
+                if c == 6 and v is None:
                     v = 'new' if abs(p['d']) >= 0.005 else '—'
                 cell = ws.cell(row=r, column=c, value=v)
-                cell.number_format = pct if c == 5 else money2
+                cell.number_format = pct if c == 6 else money2
                 cell.alignment = Alignment(horizontal='left' if c == 1 else 'right')
                 if p.get('bold'):
                     cell.font = ink
-                tone = {4: p['tone'], 5: p['ptone']}.get(c)
+                tone = {5: p['tone'], 6: p['ptone']}.get(c)
                 if _hex(tone):
                     cell.font = Font(bold=bool(p.get('bold')), color=_hex(tone).lstrip('#'))
             r += 1
-    box(3, per_head, r - 1)
+    box(4, per_head, r - 1)
     for row in range(per_head + 1, r):
-        ws.cell(row=row, column=3).font = ink
+        ws.cell(row=row, column=4).font = ink
     r += 1
     ws.cell(row=r, column=1, value=f'Prepared by Proper Realty, {sheet["on"]:%B} {sheet["on"].day}, {sheet["on"].year}.').font = Font(color='667085', size=9)
     ws.column_dimensions['A'].width = 44

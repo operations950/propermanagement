@@ -16,7 +16,7 @@
     <div class="small text-muted">
         {% if meeting_ready %}Meeting {{ project.meeting_date|date:"l, F j, Y" }}, {{ project.meeting_time }}, {{ project.meeting_place }}.
         {% else %}Enter the date, time and place of the meeting first: the notice needs them.{% endif %}
-        &middot; The {{ year }} budget needs {{ needed|money }} in assessments ({{ unit_month|money }} per unit per month).
+        &middot; The {{ year }} budget needs {{ needed|money }} in assessments ({{ unit_month|money }} per unit per {{ period_noun }}).
     </div>
 </div>
 

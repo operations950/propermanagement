@@ -319,6 +319,8 @@ class Budget(models.Model):
     association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='budgets')
     year = models.PositiveSmallIntegerField(help_text='The year the fiscal year starts in.')
     show_cents = models.BooleanField(default=False, help_text='The board sheet, its PDF and Excel show cents. Off: whole dollars, every total the sum of the lines above it.')
+    payment_frequency = models.CharField(max_length=10, default='monthly', choices=[('monthly', 'Monthly'), ('quarterly', 'Quarterly')], help_text='How often owners pay the assessment. Every sheet, PDF and notice for this budget shows the per-unit amount that way.')
+    frequency_locked = models.BooleanField(default=False, help_text='Chosen on purpose (with a warning): it cannot be changed afterwards.')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['association', 'year'], name='uniq_budget_year')]
