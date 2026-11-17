@@ -516,7 +516,7 @@ def _recurring_for(line, recs):
     text = _squash(line.description)
     named = [r for r in recs if _squash(r.statement_match) and _squash(r.statement_match) in text]
     by_vendor = [r for r in recs if not _squash(r.statement_match) and r.is_fixed and r.pay_method == 'ach' and _tokens(r.vendor.name) & _tokens(line.description)]
-    fixed = [r for r in named + by_vendor if r.is_fixed and r.amount == amount]
+    fixed = [r for r in named + by_vendor if r.is_fixed and payables.amount_fits(r, amount)]
     if fixed:
         return fixed[0] if len(fixed) == 1 else None
     varies = [r for r in named if not r.is_fixed]

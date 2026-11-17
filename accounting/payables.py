@@ -283,9 +283,61 @@ def post_recurring(association, today, user=None):
     return made
 
 
+SETTLE_DOLLARS, SETTLE_PERCENT = Decimal('1.00'), Decimal('0.01')
+
+
+def amount_fits(rec, amount):
+    """Whether `amount` is this recurring bill's amount: a bill whose amount changes takes any; a fixed one is within a dollar or one percent (a cable bill moves by cents, an insurance
+    installment by a penny of rounding)."""
+    if not rec.is_fixed:
+        return True
+    return abs(Decimal(amount) - rec.amount) <= max(SETTLE_DOLLARS, rec.amount * SETTLE_PERCENT)
+
+
+def _squash(text):
+    import re
+    return re.sub(r'[^A-Z0-9]', '', (text or '').upper())
+
+
+def _words(text):
+    import re
+    return {w for w in re.findall(r'[a-z]{3,}', (text or '').lower())}
+
+
+def _words_fit(rec, description):
+    """Whether a statement line's words are this recurring bill's: its own text on the statement, else (a fixed ACH bill with no text set) its vendor's name."""
+    if _squash(rec.statement_match):
+        return _squash(rec.statement_match) in _squash(description)
+    return bool(rec.is_fixed and rec.pay_method == 'ach' and _words(rec.vendor.name) & _words(description))
+
+
+def settled_outside(rec, month_first):
+    """Whether this month's payment of a recurring bill is in the books although no bill of its own was made from it: a bill of the same vendor, about that amount, made some other way
+    (the payables screen, say), or a statement line you put in the books yourself in the reconciliation (Add to books, Split) whose words and amount are this bill's."""
+    from .models import BankLine, RecurringBill
+    first, nxt = ledger.month_start(month_first), ledger.next_month(ledger.month_start(month_first))
+    for b in Bill.objects.filter(vendor=rec.vendor, recurring__isnull=True, date__gte=first, date__lt=nxt).exclude(status=Bill.Status.VOID):
+        if amount_fits(rec, b.amount):
+            return True
+    fixed_siblings = list(RecurringBill.objects.filter(association=rec.association, is_active=True, amount__isnull=False).exclude(pk=rec.pk).select_related('vendor'))
+    lines = BankLine.objects.filter(statement__bank_account__association=rec.association, date__gte=first, date__lt=nxt, amount__lt=0,
+                                    match__ledger_items__line__entry__source=JournalEntry.Source.BANK).distinct()
+    for line in lines:
+        amount = -line.amount
+        if not (_words_fit(rec, line.description) and amount_fits(rec, amount)):
+            continue
+        if not rec.is_fixed and any(_words_fit(o, line.description) and amount_fits(o, amount) for o in fixed_siblings):
+            continue            # a fixed bill with the same words fits this line better: it is that bill's, not this one's
+        return True
+    return False
+
+
 def _has_bill_in_month(rec, day):
-    """Whether this recurring bill already has a bill (not a void one) in the month of `day`: one made by hand, by the schedule, or read from the bank statement."""
-    return Bill.objects.filter(recurring=rec, date__gte=ledger.month_start(day), date__lte=ledger.month_end(day)).exclude(status=Bill.Status.VOID).exists()
+    """Whether this recurring bill already has its bill (not a void one) in the month of `day`: one made by hand, by the schedule, or read from the bank statement; or its payment is
+    already in the books another way (see settled_outside), so a second one must not be posted."""
+    if Bill.objects.filter(recurring=rec, date__gte=ledger.month_start(day), date__lte=ledger.month_end(day)).exclude(status=Bill.Status.VOID).exists():
+        return True
+    return settled_outside(rec, ledger.month_start(day))
 
 
 def skip_past(rec, day):
@@ -327,7 +379,7 @@ def recurring_status(association, month_first):
     nxt = ledger.next_month(month_first)
     skipped_ids = set(RecurringBillSkip.objects.filter(recurring__association=association, month=month_first).values_list('recurring_id', flat=True))
     for rec in RecurringBill.objects.filter(association=association, is_active=True).select_related('vendor'):
-        posted = Bill.objects.filter(recurring=rec, date__gte=month_first, date__lt=nxt).exclude(status=Bill.Status.VOID).exists()
+        posted = Bill.objects.filter(recurring=rec, date__gte=month_first, date__lt=nxt).exclude(status=Bill.Status.VOID).exists() or settled_outside(rec, month_first)
         skipped = rec.pk in skipped_ids and not posted
         due_this_month = rec.next_date < nxt or posted or skipped
         rows.append({'rec': rec, 'posted': posted, 'skipped': skipped, 'due': due_this_month, 'fixed': rec.is_fixed})
