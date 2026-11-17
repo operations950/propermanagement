@@ -188,6 +188,8 @@
             .catch(function () { alert('That did not save. Check the connection and try again.'); render(); });
     }
     window.bdSet = function (id, field, value) { send({op: 'set', line: id, field: field, value: value}); };
+    window.bdAssess = function (value) { send({op: 'assess_projected', value: value}); };
+    function plainNum(n) { return (Math.round(n * 100) / 100).toFixed(2); }
     window.bdAdd = function (section) { var sel = document.getElementById('add-' + section); if (sel && sel.value) send({op: 'add', account: sel.value}); };
     window.bdRemove = function (id) { send({op: 'remove', line: id}); };
     function closePop() { if (popEl) { popEl.remove(); popEl = null; } }
@@ -246,7 +248,7 @@
             if (isInc) {
                 var A = S.assess, ac = chgOf(A.proposed, A.prior);
                 html += '<tr><td>Regular assessments <span class="bd-mut small">what the budget must collect</span></td><td class="bud">' + $(A.prior) + '</td><td class="sep">' + $(A.actual) + '</td>' + (REM ? '<td class="bd-mut">' + $(A.nd) + '</td>' : '') +
-                    '<td class="land"><b>' + $(A.projected) + '</b></td><td class="sep"></td><td></td><td class="new sep">' + $(A.proposed) + '</td><td>' + (ac === null ? '<span class="bd-mut">new</span>' : '<span class="bd-mut">' + pct(ac, 0) + '%</span>') + '</td></tr>';
+                    '<td class="land">' + (ed ? '<input class="bd-i" id="asProj" style="width:110px;text-align:right" inputmode="decimal" autocomplete="off" aria-label="Where the regular assessments will land this year" value="' + plainNum(A.projected) + '" onkeydown="if(event.key==='Enter'){this.blur();}" onchange="bdAssess(this.value)">' + (A.manual ? '<div class="small bd-mut">typed &middot; worked out: ' + $(A.calc) + ' <a href="#" onclick="bdAssess('');return false;">use it</a></div>' : '') : '<b>' + $(A.projected) + '</b>' + (A.manual ? ' <span class="small bd-mut">typed</span>' : '')) + '</td><td class="sep"></td><td></td><td class="new sep">' + $(A.proposed) + '</td><td>' + (ac === null ? '<span class="bd-mut">new</span>' : '<span class="bd-mut">' + pct(ac, 0) + '%</span>') + '</td></tr>';
             }
             rows.forEach(function (l) {
                 var chg = chgOf(l.proposed, l.prior);

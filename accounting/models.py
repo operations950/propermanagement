@@ -387,6 +387,7 @@ class BudgetVersion(models.Model):
     stage = models.CharField(max_length=10, choices=Stage.choices)
     through_month = models.DateField(null=True, blank=True, help_text='First day of the last closed month the actuals run through.')
     months_actual = models.PositiveSmallIntegerField(default=0)
+    assess_projected = models.DecimalField(null=True, blank=True, help_text='Where the regular assessments will land this year, typed by hand. Blank: worked out from what is booked so far and the months left.', **MONEY)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 

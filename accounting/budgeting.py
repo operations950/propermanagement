@@ -446,7 +446,7 @@ def advance(budget, user):
         raise ledger.LedgerError('There is nothing to move forward.')
     nxt = STAGE_KEYS[STAGE_KEYS.index(cur) + 1]
     src = have[cur]
-    ver = BudgetVersion.objects.create(budget=budget, stage=nxt, through_month=src.through_month, months_actual=src.months_actual, created_by=user)
+    ver = BudgetVersion.objects.create(budget=budget, stage=nxt, through_month=src.through_month, months_actual=src.months_actual, assess_projected=src.assess_projected, created_by=user)
     BudgetVersionLine.objects.bulk_create([BudgetVersionLine(version=ver, account_id=l.account_id, prior_budget=l.prior_budget, actual=l.actual, recent=l.recent, method=l.method, custom=l.custom,
                                                               adjust=l.adjust, note=l.note, meeting_amount=l.meeting_amount, proposed=l.proposed) for l in src.lines.all()])
     if nxt == 'approved':
@@ -532,7 +532,12 @@ def assessment_row(version, info, needed):
         actual = actuals_for(prop, info, [acct])[0].get(acct.pk, ZERO)
     n, r = info['n'], info['remaining']
     nd = (actual / n * r).quantize(Decimal('0.01')) if n and r else ZERO
-    return {'prior': float(prior), 'actual': float(actual), 'nd': float(nd), 'projected': float(actual + nd), 'proposed': float(needed)}
+    calc = actual + nd
+    typed = version.assess_projected                      # where this year's assessments will land, typed by hand: it wins over the pace worked out from what is booked
+    if typed is not None:
+        nd = typed - actual
+    return {'prior': float(prior), 'actual': float(actual), 'nd': float(nd), 'projected': float(typed if typed is not None else calc), 'proposed': float(needed),
+            'manual': typed is not None, 'calc': float(calc)}
 
 
 def unit_groups(prop):

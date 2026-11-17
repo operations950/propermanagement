@@ -303,7 +303,17 @@ def budget_edit(request, pk, year):
         return _err('Bad request.')
     info = bg.info_for(ver)
     op = body.get('op')
-    if op == 'set':
+    if op == 'assess_projected':             # where this year's regular assessments will land: typed by hand; blank goes back to the worked-out figure
+        text = '' if body.get('value') is None else str(body.get('value')).strip()
+        if text == '':
+            ver.assess_projected = None
+        else:
+            try:
+                ver.assess_projected = parse_money(text)
+            except ValueError as e:
+                return _err(str(e))
+        ver.save(update_fields=['assess_projected'])
+    elif op == 'set':
         line = ver.lines.filter(pk=body.get('line')).first()
         if line is None:
             return _err('That line is gone. Reload the page.', 404)
