@@ -71,3 +71,11 @@ class TypedProjectedAssessmentsTests(TestCase):
         html = self.client.get(self.page).content.decode()
         self.assertIn('id="asProj"', html)
         self.assertIn('bdAssess', html)
+
+    def test_the_script_has_no_quotes_that_end_its_own_strings_early(self):
+        """The draft screen builds its rows in JavaScript strings in single quotes: a raw single quote inside an attribute broke the whole screen once."""
+        html = self.client.get(self.page).content.decode()
+        row = [line for line in html.splitlines() if 'id="asProj"' in line][0]
+        self.assertNotIn("===\x27", row)
+        self.assertNotIn("bdAssess(\x27\x27)", row)
+        self.assertIn('event.keyCode===13', row)
