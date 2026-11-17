@@ -45,13 +45,13 @@ def ensure_project(bud):
 # ---------------------------------------------------------------- the steps
 
 def _titles(year):
-    return [('draft', 'Management company draft'), ('board', 'Board draft'), ('mailing', 'Meeting notice and final draft for mailing'), ('mailed', 'Mailed to the owners'),
+    return [('draft', 'Management draft'), ('board', 'Board draft'), ('mailing', 'Meeting notice and final draft for mailing'), ('mailed', 'Mailed to the owners'),
             ('meeting', 'The meeting'), ('locked', 'Final locked budget'), ('loaded', f'Loaded into the system for {year}')]
 
 
 def _commercial_titles(year):
     """A commercial property has no mailed notice, packet or affidavit: only a meeting date and time."""
-    return [('draft', 'Management company draft'), ('board', 'Owner draft'), ('meeting', 'The meeting'), ('locked', 'Final locked budget'), ('loaded', f'Loaded into the system for {year}')]
+    return [('draft', 'Management draft'), ('board', 'Owner draft'), ('meeting', 'The meeting'), ('locked', 'Final locked budget'), ('loaded', f'Loaded into the system for {year}')]
 
 
 def _d(day):
@@ -134,6 +134,26 @@ def _commercial_steps(prop, year, have, project):
         out.append({'n': i, 'key': key, 'title': title, 'status': status, 'detail': notes[key][status], 'enabled': prev_done or status != 'todo'})
         prev_done = prev_done and done[key]
     return out
+
+
+def unlock_stage(bud, stage):
+    """Unlock a frozen version of the budget (see budgeting.unlock) and put the steps back where they were: the Board draft is no longer final once it is gone, the meeting is no longer
+    held once the meeting version is gone. A Board draft that was already mailed to the owners cannot be taken away: that is the legal record of what they were sent."""
+    have = bg.versions(bud)
+    project = get_project(bud)
+    later = [k for k in bg.STAGE_KEYS[bg.STAGE_KEYS.index(stage) + 1:] if k in have] if stage in have and stage != 'approved' else []
+    if 'board' in later and project and project.mailed_on:
+        raise ProjectError('The Board draft was already mailed to the owners, so it cannot be taken away. Make your changes in the meeting version instead.')
+    removed = bg.unlock(bud, stage)
+    if project:
+        fields = []
+        if 'board' in removed:
+            project.final_at, fields = None, fields + ['final_at']
+        if 'meeting' in removed:
+            project.held_on, fields = None, fields + ['held_on']
+        if fields:
+            project.save(update_fields=fields)
+    return removed
 
 
 def chip(status):

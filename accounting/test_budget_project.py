@@ -634,7 +634,7 @@ class CommercialBudgetChecklistTests(TestCase):
         bud = bg.get_budget(self.prop, 2027)
         steps = bp.step_list(self.prop, 2027, bud, bg.versions(bud), bp.get_project(bud))
         self.assertEqual([s['key'] for s in steps], ['draft', 'board', 'meeting', 'locked', 'loaded'])
-        self.assertEqual([s['title'] for s in steps][:3], ['Management company draft', 'Owner draft', 'The meeting'])
+        self.assertEqual([s['title'] for s in steps][:3], ['Management draft', 'Owner draft', 'The meeting'])
 
     def test_the_page_asks_only_for_a_date_and_a_time(self):
         self.client.post(self.url, {'action': 'start'})
@@ -666,3 +666,81 @@ class CommercialBudgetChecklistTests(TestCase):
         bud = bg.get_budget(self.prop, 2027)
         steps = {s['key']: s for s in bp.step_list(self.prop, 2027, bud, bg.versions(bud), bp.get_project(bud))}
         self.assertIn('Jan 20, 2027, 6:00 p.m.', steps['meeting']['detail'])
+
+
+class UnlockingAFrozenVersionTests(TheStepsTests):
+    """The first stage is the management draft. A version is frozen once the next stage is started from it; unlocking it takes the later versions away so it can be changed."""
+
+    def board_url(self):
+        return reverse('accounting:budget_year', args=[self.prop.pk, self.year])
+
+    def test_the_first_stage_is_called_the_management_draft_everywhere(self):
+        from . import budgeting as bg
+        self.assertEqual(bg.STAGE_LABEL['draft'], 'Management draft')
+        self.to_board()
+        html = self.client.get(self.project_url).content.decode()
+        self.assertIn('Management draft', html)
+        self.assertIn('Open the management draft', html)
+        self.assertNotIn('Management company draft', html)
+
+    def test_a_frozen_management_draft_has_an_unlock_button_that_says_what_it_removes(self):
+        self.to_board()
+        html = self.client.get(self.board_url() + '?stage=draft').content.decode()
+        self.assertIn('This version is frozen', html)
+        self.assertIn('Unlock the Management draft', html)
+        self.assertIn('This removes the Board draft that was started from it', html)
+
+    def test_an_open_version_has_no_unlock_button(self):
+        self.to_board()
+        html = self.client.get(self.board_url() + '?stage=board').content.decode()
+        self.assertNotIn('Unlock the', html)
+
+    def test_unlocking_the_management_draft_removes_the_board_draft_and_makes_it_editable(self):
+        from . import budgeting as bg
+        from .models import Budget
+        self.to_board()
+        r = self.client.post(self.board_url(), {'action': 'unlock', 'stage': 'draft'}, follow=True)
+        self.assertContains(r, 'Management draft is open again')
+        have = bg.versions(Budget.objects.get(association=self.prop, year=2027))
+        self.assertEqual(list(have), ['draft'])
+        self.assertTrue(bg.is_editable(have['draft'], have))
+        self.client.post(self.project_url, {'action': 'to_board'})                          # and the Board draft can be started again from the changed draft
+        self.assertEqual(list(bg.versions(Budget.objects.get(association=self.prop, year=2027))), ['draft', 'board'])
+
+    def test_unlocking_the_board_draft_removes_the_meeting_version_and_the_held_date(self):
+        from . import budgeting as bg
+        from .models import Budget, BudgetProject
+        self.to_board()
+        self.act('details', meeting_date='2027-01-20', meeting_time='6:00 p.m.', meeting_place='Clubhouse')
+        self.act('notice', association_type='Condominium')
+        self.mail()
+        self.act('to_meeting')
+        BudgetProject.objects.update(held_on=date(2027, 1, 20))
+        r = self.client.post(self.board_url(), {'action': 'unlock', 'stage': 'board'}, follow=True)
+        self.assertContains(r, 'Board draft is open again')
+        have = bg.versions(Budget.objects.get(association=self.prop, year=2027))
+        self.assertEqual(list(have), ['draft', 'board'])
+        self.assertIsNone(BudgetProject.objects.get().held_on)
+
+    def test_a_board_draft_already_mailed_cannot_be_taken_away(self):
+        from . import budgeting as bg
+        from .models import Budget
+        self.to_board()
+        self.act('details', meeting_date='2027-01-20', meeting_time='6:00 p.m.', meeting_place='Clubhouse')
+        self.act('notice', association_type='Condominium')
+        self.mail()
+        r = self.client.post(self.board_url(), {'action': 'unlock', 'stage': 'draft'}, follow=True)
+        self.assertContains(r, 'already mailed to the owners')
+        self.assertEqual(list(bg.versions(Budget.objects.get(association=self.prop, year=2027))), ['draft', 'board'])
+
+    def test_the_project_page_has_the_unlock_too_and_marking_final_is_undone(self):
+        from . import budgeting as bg
+        from .models import Budget, BudgetProject
+        self.to_board()
+        self.act('final')
+        self.assertIsNotNone(BudgetProject.objects.get().final_at)
+        self.assertIn('Unlock it', self.client.get(self.project_url).content.decode())
+        r = self.act('unlock', stage='draft')
+        self.assertContains(r, 'Management draft is open again')
+        self.assertIsNone(BudgetProject.objects.get().final_at)
+        self.assertEqual(list(bg.versions(Budget.objects.get(association=self.prop, year=2027))), ['draft'])

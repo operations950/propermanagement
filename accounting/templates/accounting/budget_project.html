@@ -49,7 +49,8 @@
                     {% if can_start %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="start"><button class="btn btn-primary btn-sm">Start the {{ year }} budget</button></form>
                     {% else %}<span class="small text-muted">Close at least one month of {{ year|add:"-1" }} first.</span>{% endif %}
                 {% else %}
-                    <a class="btn btn-outline-secondary btn-sm" href="{{ draft_url }}">Open the draft</a>
+                    <a class="btn btn-outline-secondary btn-sm" href="{{ draft_url }}">Open the management draft</a>
+                    {% if have.board %}<form method="post" onsubmit="return confirm('Unlock the management draft? This removes the Board draft{% if have.meeting %} and the meeting version{% endif %} that was started from it, with everything typed in them. Then you can change the management draft and start the Board draft again.');">{% csrf_token %}<input type="hidden" name="action" value="unlock"><input type="hidden" name="stage" value="draft"><button class="btn btn-link btn-sm text-muted">Unlock it</button></form>{% endif %}
                     {% if not have.board %}<form method="post" onsubmit="return confirm('Start the Board draft? The draft stays exactly as it is, and the board&#39;s version starts from it.');">{% csrf_token %}<input type="hidden" name="action" value="to_board"><button class="btn btn-primary btn-sm">Start the Board draft</button></form>{% endif %}
                 {% endif %}
             {% elif s.key == 'board' %}

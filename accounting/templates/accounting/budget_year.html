@@ -159,7 +159,8 @@
     <th class="sep">{{ year }}<br>{{ stage_label }} {% include '_tip.html' with text="Starts at the projected year and adds your adjustment. Orange text shows how much it moved since the previous stage." %}</th><th>vs {{ year|add:"-1" }}<br>budget</th></tr>
 </thead><tbody id="body"></tbody></table>
 </div></div>
-<div class="small text-muted mt-2">Assessments are not typed: they come out of expenses plus reserves, divided by {{ units }} units (an equal share each). {% if not state_json.editable %}This version is frozen because the next stage was started from it.{% endif %}
+<div class="small text-muted mt-2">Assessments are not typed: they come out of expenses plus reserves, divided by {{ units }} units (an equal share each). {% if not state_json.editable %}This version is frozen because the next stage was started from it.
+    {% if unlock %}<form method="post" class="d-inline ac-noprint" onsubmit="return confirm('Unlock the {{ unlock.label|escapejs }}? {{ unlock.warning|escapejs }}');">{% csrf_token %}<input type="hidden" name="action" value="unlock"><input type="hidden" name="stage" value="{{ unlock.stage }}"><button class="btn btn-sm btn-outline-secondary">Unlock the {{ unlock.label }}</button></form>{% endif %}{% endif %}
     <span class="ac-noprint">Board sheet: <a href="?stage={{ stage }}&sheet=1">see it</a> &middot; <a href="?stage={{ stage }}&export=pdf">PDF</a> &middot; <a href="?stage={{ stage }}&export=xlsx">Excel</a></span></div>
 {{ state_json|json_script:"bd-state" }}
 <script>

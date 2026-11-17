@@ -378,7 +378,7 @@ class PriorYearToDate(models.Model):
 class BudgetVersion(models.Model):
     """One stage of a year's budget, kept exactly as it was at that stage: the draft I propose, the draft after the board's comments, the version edited at the meeting, and the approved (locked) one."""
     class Stage(models.TextChoices):
-        DRAFT = 'draft', 'Draft'
+        DRAFT = 'draft', 'Management draft'
         BOARD = 'board', 'Board draft'
         MEETING = 'meeting', 'Meeting final'
         APPROVED = 'approved', 'Approved'

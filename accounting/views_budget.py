@@ -204,12 +204,17 @@ def budget_year(request, pk, year):
                 bg.reopen(bud)
                 messages.success(request, 'The approved budget is open again as the Meeting final.')
                 return redirect(here + '?stage=meeting')
+            elif action == 'unlock' and bud:
+                stage = request.POST.get('stage')
+                removed = bp.unlock_stage(bud, stage)
+                messages.success(request, f'{bg.STAGE_LABEL[stage]} is open again. The {" and ".join(bg.STAGE_LABEL[k] for k in removed)} started from it {"was" if len(removed) == 1 else "were"} removed.')
+                return redirect(here + f'?stage={stage}')
             elif action == 'rounding' and bud:          # how the board sheet, its PDF and its Excel show the numbers; nothing in the budget itself changes
                 bud.show_cents = request.POST.get('mode') == 'cents'
                 bud.save(update_fields=['show_cents'])
                 back = request.POST.get('stage')
                 return redirect(here + (f'?stage={back}' + ('&sheet=1' if request.POST.get('sheet') else '') if back in bg.STAGE_KEYS else ''))
-        except ledger.LedgerError as e:
+        except (ledger.LedgerError, bp.ProjectError) as e:
             messages.error(request, str(e))
         return redirect(here)
     have = bg.versions(bud)
@@ -227,6 +232,9 @@ def budget_year(request, pk, year):
     ctx['stage_label'] = 'Compare stages' if stage == 'compare' else bg.STAGE_LABEL[stage]
     ctx['hint'] = 'Everything side by side: what we proposed, what the board came back with, what changed at the meeting.' if stage == 'compare' else bg.STAGE_HINT[stage]
     ctx['latest'] = latest
+    if stage in have and stage not in ('approved', 'compare') and not bg.is_editable(have[stage], have):
+        gone = [bg.STAGE_LABEL[k] for k in bg.STAGE_KEYS[bg.STAGE_KEYS.index(stage) + 1:] if k in have]
+        ctx['unlock'] = {'stage': stage, 'label': bg.STAGE_LABEL[stage], 'warning': f'This removes the {" and the ".join(gone)} that was started from it, with everything typed in it. Then you can change {bg.STAGE_LABEL[stage]} and start the next stage again.'}
     ctx['next_label'] = bg.NEXT_LABEL.get(latest) if stage == latest and latest != 'approved' else ''
     if stage not in ('compare', 'meeting') and stage in have:      # at the meeting the numbers are fixed: nothing is brought up to date under the board's feet
         bg.heal(have[stage], have)       # a draft made before the months ahead of our books counted as actual: bring it up to date, nothing typed in changes
@@ -414,6 +422,10 @@ def _project_post(request, prop, year, bud, have, project):
         messages.success(request, 'The meeting details are saved.')
         if project.notice_doc_id and not labels.is_commercial(prop):
             messages.warning(request, 'The notice was made with the old details. Make a new one before you mail it.')
+    elif action == 'unlock':
+        stage = request.POST.get('stage')
+        removed = bp.unlock_stage(bud, stage)
+        messages.success(request, f'{bg.STAGE_LABEL[stage]} is open again. The {" and ".join(bg.STAGE_LABEL[k] for k in removed)} started from it {"was" if len(removed) == 1 else "were"} removed.')
     elif action == 'to_board':
         if 'draft' not in have or 'board' in have:
             raise bp.ProjectError('The Board draft is already started.' if 'board' in have else 'There is no draft yet.')

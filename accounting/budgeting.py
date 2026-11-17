@@ -17,7 +17,7 @@ STAGES = [BudgetVersion.Stage.DRAFT, BudgetVersion.Stage.BOARD, BudgetVersion.St
 STAGE_KEYS = [s.value for s in STAGES]
 STAGE_LABEL = {s.value: s.label for s in STAGES}
 STAGE_HINT = {
-    'draft': 'What we propose. Working copy, not sent to the board yet.',
+    'draft': 'What management proposes. Working copy, not sent to the board yet.',
     'board': 'Draft 2.0: the draft after the board\'s comments.',
     'meeting': 'Edited live at the meeting. Change numbers while we talk.',
     'approved': 'Locked after the meeting. This is the budget in the system.',
@@ -452,6 +452,24 @@ def advance(budget, user):
     if nxt == 'approved':
         write_budget_lines(budget, ver)
     return ver
+
+
+def unlock(budget, stage):
+    """Open a frozen version again. A version is frozen because the next stage was started from it, so unlocking it takes away the versions made after it (everything typed in them goes
+    too). Returns the keys of what was removed. The approved budget is not unlocked here: it is the budget in the system and has its own Open it again."""
+    have = versions(budget)
+    if stage not in have:
+        raise ledger.LedgerError('That version does not exist.')
+    if stage == 'approved':
+        raise ledger.LedgerError('The approved budget is opened again with its own button.')
+    later = [k for k in STAGE_KEYS[STAGE_KEYS.index(stage) + 1:] if k in have]
+    if not later:
+        raise ledger.LedgerError('That version is already open.')
+    if 'approved' in later:
+        raise ledger.LedgerError('The budget has been approved from it. Open the approved budget again first.')
+    for k in later:
+        have[k].delete()
+    return later
 
 
 def write_budget_lines(budget, version):
