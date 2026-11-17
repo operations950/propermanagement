@@ -27,10 +27,10 @@
 {% if project or have %}
 <form method="post" class="bp-meet">{% csrf_token %}<input type="hidden" name="action" value="details">
     <div class="row g-2 align-items-end">
-        <div class="col-12 col-md-auto fw-semibold d-flex align-items-center gap-1" style="min-width: 8rem;">The meeting {% include '_tip.html' with text="When and where the board meets to consider the budget. The notice is made from this, and the page tells you how many days before the meeting the notice went out." %}</div>
+        <div class="col-12 col-md-auto fw-semibold d-flex align-items-center gap-1" style="min-width: 8rem;">The meeting {% if commercial %}{% include '_tip.html' with text="When the owners meet to consider the budget." %}{% else %}{% include '_tip.html' with text="When and where the board meets to consider the budget. The notice is made from this, and the page tells you how many days before the meeting the notice went out." %}{% endif %}</div>
         <div class="col-6 col-md-2"><label class="form-label small text-muted mb-0">Date</label><input type="date" name="meeting_date" value="{{ project.meeting_date|date:'Y-m-d' }}" class="form-control form-control-sm"></div>
         <div class="col-6 col-md-2"><label class="form-label small text-muted mb-0">Time</label><input name="meeting_time" value="{{ project.meeting_time }}" placeholder="6:00 p.m." class="form-control form-control-sm" maxlength="40"></div>
-        <div class="col-12 col-md"><label class="form-label small text-muted mb-0">Place</label><input name="meeting_place" value="{{ project.meeting_place }}" placeholder="Clubhouse, 100 Main St" class="form-control form-control-sm" maxlength="200"></div>
+        {% if not commercial %}<div class="col-12 col-md"><label class="form-label small text-muted mb-0">Place</label><input name="meeting_place" value="{{ project.meeting_place }}" placeholder="Clubhouse, 100 Main St" class="form-control form-control-sm" maxlength="200"></div>{% endif %}
         <div class="col-12 col-md-auto"><button class="btn btn-sm btn-outline-secondary">Save</button></div>
     </div>
 </form>
@@ -54,11 +54,18 @@
                 {% endif %}
             {% elif s.key == 'board' %}
                 {% if have.board %}<a class="btn btn-outline-secondary btn-sm" href="{{ board_url }}">Open the Board draft</a>
-                    {% if not project.final_at and not have.meeting and not have.approved %}<form method="post" onsubmit="return confirm('Mark the Board draft final for mailing? It is not locked: if you change it after you print the notice, the packet will tell you.');">{% csrf_token %}<input type="hidden" name="action" value="final"><button class="btn btn-primary btn-sm">Mark it final for mailing</button></form>
+                    {% if commercial %}{% if not have.meeting and not have.approved %}<form method="post" onsubmit="return confirm('Prepare the meeting version? The owner draft stays exactly as it is, and the meeting version starts from it.');">{% csrf_token %}<input type="hidden" name="action" value="to_meeting"><button class="btn btn-primary btn-sm">Prepare the meeting version</button></form>{% endif %}
+                    {% elif not project.final_at and not have.meeting and not have.approved %}<form method="post" onsubmit="return confirm('Mark the Board draft final for mailing? It is not locked: if you change it after you print the notice, the packet will tell you.');">{% csrf_token %}<input type="hidden" name="action" value="final"><button class="btn btn-primary btn-sm">Mark it final for mailing</button></form>
                     {% elif project.final_at and not project.notice_doc_id and not have.meeting %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="unfinal"><button class="btn btn-link btn-sm text-muted">Not final yet</button></form>{% endif %}
                 {% endif %}
             {% elif s.key == 'mailing' %}
-                <a class="btn {% if s.status == 'doing' %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm" href="{{ packet_url }}">{% if s.status == 'done' %}Open the packet{% else %}Make the packet{% endif %}</a>
+                {% if meeting_ready %}
+                <form method="post" class="d-flex gap-1 align-items-center flex-wrap" {% if project.notice_doc_id %}onsubmit="return confirm('Make a new notice? The one on file is kept in the legal forms list, and this one becomes the notice for the packet.');"{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="notice">
+                    <select name="association_type" class="form-select form-select-sm" style="width: auto;" aria-label="Kind of association"><option {% if association_type == 'Condominium' %}selected{% endif %}>Condominium</option><option {% if association_type != 'Condominium' %}selected{% endif %}>Homeowners association</option></select>
+                    <button class="btn {% if project.notice_doc_id and not changed %}btn-outline-secondary{% else %}btn-primary{% endif %} btn-sm">{% if project.notice_doc_id %}Make a new notice{% else %}Make the meeting notice{% endif %}</button></form>
+                {% else %}<span class="small text-muted">Enter the meeting date, time and place above first.</span>{% endif %}
+                {% if project.notice_doc_id %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{% url 'accounting:budget_packet_file' assoc.pk year 'notice' %}">View the notice</a>{% endif %}
+                <a class="btn {% if s.status == 'doing' and project.notice_doc_id %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm" href="{{ packet_url }}">{% if s.status == 'done' %}Open the packet{% else %}Make the packet{% endif %}</a>
             {% elif s.key == 'mailed' %}
                 {% if project.affidavit_doc_id %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{% url 'accounting:budget_packet_file' assoc.pk year 'affidavit' %}">Affidavit</a>{% endif %}
             {% elif s.key == 'meeting' %}

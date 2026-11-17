@@ -579,3 +579,90 @@ class LoadingTheBudgetTests(BudgetProjectBase):
         plan = self.client.get(self.load_url).context['plan']
         self.assertTrue(plan['problems'])
         self.assertIn('needs no assessments', plan['problems'][0])
+
+
+class MeetingNoticeFromTheChecklistTests(TheStepsTests):
+    """The notice of the budget meeting is made right on the checklist (an association), and a commercial property only needs a meeting date and time."""
+
+    def test_the_checklist_offers_the_notice_once_the_meeting_details_are_in(self):
+        self.to_board()
+        html = self.client.get(self.project_url).content.decode()
+        self.assertIn('Enter the meeting date, time and place above first.', html)
+        self.assertNotIn('Make the meeting notice', html)
+        self.act('details', meeting_date='2027-01-20', meeting_time='6:00 p.m.', meeting_place='Clubhouse')
+        html = self.client.get(self.project_url).content.decode()
+        self.assertIn('Make the meeting notice', html)
+        self.assertIn('Meeting notice and final draft for mailing', html)
+
+    def test_pressing_it_makes_the_notice_and_it_can_be_viewed_from_the_checklist(self):
+        self.to_board()
+        self.act('details', meeting_date='2027-01-20', meeting_time='6:00 p.m.', meeting_place='Clubhouse')
+        r = self.act('notice', association_type='Condominium')
+        self.assertContains(r, 'The notice is made')
+        from .models import BudgetProject
+        self.assertTrue(BudgetProject.objects.get().notice_doc_id)
+        html = self.client.get(self.project_url).content.decode()
+        self.assertIn('View the notice', html)
+        self.assertIn('Make a new notice', html)
+
+    def test_it_is_refused_until_the_meeting_has_a_date_time_and_place(self):
+        self.to_board()
+        r = self.act('notice')
+        self.assertContains(r, 'Enter the date, time and place of the meeting first')
+
+
+class CommercialBudgetChecklistTests(TestCase):
+    """A commercial property: no mailed notice, packet, affidavit or place; just a meeting date and time."""
+
+    def setUp(self):
+        from core.models import Property
+        from .tests import close, make_assoc, spend
+        self.prop = make_assoc('Commercial Plaza')
+        Property.objects.filter(pk=self.prop.pk).update(property_type=Property.Type.COMMERCIAL)
+        self.prop.refresh_from_db()
+        from datetime import date
+        for m in range(1, 7):
+            spend(self.prop, date(2026, m, 10), '6906', '600')
+        close(self.prop, range(1, 7))
+        from django.contrib.auth import get_user_model
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.url = reverse('accounting:budget_project', args=[self.prop.pk, 2027])
+
+    def test_it_has_five_steps_and_none_about_mailing(self):
+        from . import budget_project as bp
+        from . import budgeting as bg
+        bud = bg.get_budget(self.prop, 2027)
+        steps = bp.step_list(self.prop, 2027, bud, bg.versions(bud), bp.get_project(bud))
+        self.assertEqual([s['key'] for s in steps], ['draft', 'board', 'meeting', 'locked', 'loaded'])
+        self.assertEqual([s['title'] for s in steps][:3], ['Management company draft', 'Owner draft', 'The meeting'])
+
+    def test_the_page_asks_only_for_a_date_and_a_time(self):
+        self.client.post(self.url, {'action': 'start'})
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('name="meeting_date"', html)
+        self.assertIn('name="meeting_time"', html)
+        self.assertNotIn('name="meeting_place"', html)
+        for gone in ('Make the meeting notice', 'Make the packet', 'Mailed to the owners', 'Affidavit'):
+            self.assertNotIn(gone, html)
+
+    def test_the_meeting_version_needs_no_mailing_and_there_is_no_notice_or_packet(self):
+        self.client.post(self.url, {'action': 'start'})
+        self.client.post(self.url, {'action': 'to_board'})
+        self.client.post(self.url, {'action': 'details', 'meeting_date': '2027-01-20', 'meeting_time': '6:00 p.m.'})
+        r = self.client.post(self.url, {'action': 'to_meeting'}, follow=True)
+        self.assertContains(r, 'The meeting version is ready')
+        r = self.client.post(self.url, {'action': 'notice'}, follow=True)
+        self.assertContains(r, 'no mailed notice')
+        r = self.client.get(reverse('accounting:budget_packet', args=[self.prop.pk, 2027]), follow=True)
+        self.assertContains(r, 'no mailing packet')
+
+    def test_the_meeting_step_shows_the_date_and_time(self):
+        from . import budget_project as bp
+        from . import budgeting as bg
+        self.client.post(self.url, {'action': 'start'})
+        self.client.post(self.url, {'action': 'to_board'})
+        self.client.post(self.url, {'action': 'details', 'meeting_date': '2027-01-20', 'meeting_time': '6:00 p.m.'})
+        self.client.post(self.url, {'action': 'to_meeting'})
+        bud = bg.get_budget(self.prop, 2027)
+        steps = {s['key']: s for s in bp.step_list(self.prop, 2027, bud, bg.versions(bud), bp.get_project(bud))}
+        self.assertIn('Jan 20, 2027, 6:00 p.m.', steps['meeting']['detail'])

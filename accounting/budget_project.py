@@ -18,7 +18,7 @@ from legalforms import services as lf_services
 from legalforms.models import DocumentTemplate
 
 from . import budgeting as bg
-from . import ledger, owners
+from . import labels, ledger, owners
 from . import standard_chart as sc
 from .models import ZERO, BudgetProject, ChargeRule, JournalRule
 
@@ -45,8 +45,13 @@ def ensure_project(bud):
 # ---------------------------------------------------------------- the steps
 
 def _titles(year):
-    return [('draft', 'Management company draft'), ('board', 'Board draft'), ('mailing', 'Final draft for mailing'), ('mailed', 'Mailed to the owners'),
+    return [('draft', 'Management company draft'), ('board', 'Board draft'), ('mailing', 'Meeting notice and final draft for mailing'), ('mailed', 'Mailed to the owners'),
             ('meeting', 'The meeting'), ('locked', 'Final locked budget'), ('loaded', f'Loaded into the system for {year}')]
+
+
+def _commercial_titles(year):
+    """A commercial property has no mailed notice, packet or affidavit: only a meeting date and time."""
+    return [('draft', 'Management company draft'), ('board', 'Owner draft'), ('meeting', 'The meeting'), ('locked', 'Final locked budget'), ('loaded', f'Loaded into the system for {year}')]
 
 
 def _d(day):
@@ -56,6 +61,8 @@ def _d(day):
 def step_list(prop, year, bud, have, project):
     """The seven steps, in order: [{'n', 'key', 'title', 'status': todo|doing|done, 'detail', 'enabled'}]. A step is enabled once the one before it is done, or once it has been reached;
     every step already done stays open, so nothing locks anyone out of going back."""
+    if labels.is_commercial(prop):
+        return _commercial_steps(prop, year, have, project)
     f = {k: k in have for k in ('draft', 'board', 'meeting', 'approved')}
     p = project
     final, notice, mailed, held, loaded = (bool(p and p.final_at), bool(p and p.notice_doc_id), bool(p and p.mailed_on), bool(p and p.held_on), bool(p and p.loaded_at))
@@ -101,6 +108,34 @@ def step_list(prop, year, bud, have, project):
     return out
 
 
+def _commercial_steps(prop, year, have, project):
+    """The steps for a commercial property: draft, owner draft, the meeting (a date and a time), locked, loaded. Nothing is mailed, so there is no notice, packet or affidavit."""
+    f = {k: k in have for k in ('draft', 'board', 'meeting', 'approved')}
+    p = project
+    held, loaded = bool(p and p.held_on), bool(p and p.loaded_at)
+    legacy = f['approved'] and p is None
+    done = {'draft': f['board'] or f['meeting'] or f['approved'], 'board': f['meeting'] or f['approved'], 'meeting': held or f['approved'], 'locked': f['approved'], 'loaded': loaded or legacy}
+    started = {'draft': f['draft'], 'board': f['board'], 'meeting': f['meeting'], 'locked': f['meeting'], 'loaded': f['approved']}
+    when = ''
+    if p and p.meeting_date:
+        when = f'{_d(p.meeting_date)}' + (f', {p.meeting_time}' if p.meeting_time else '')
+    notes = {
+        'draft': {'todo': 'Not started.', 'doing': 'Made from the closed months. Change it until it is ready for the owners.', 'done': 'Sent to the owners.'},
+        'board': {'todo': 'After the draft is sent to the owners.', 'doing': "Put the owners' changes in. When it is right, prepare the meeting version.", 'done': 'Went on to the meeting.'},
+        'meeting': {'todo': 'After the owner draft is ready.', 'doing': ('Meeting ' + when + '. ' if when else 'Enter the meeting date and time above. ') + 'Run the meeting, then mark it over.',
+                    'done': f'Held {_d(p.held_on)}.' if held else 'Held.'},
+        'locked': {'todo': 'After the meeting.', 'doing': 'Approve and lock the budget the meeting agreed on.', 'done': 'Approved and locked.'},
+        'loaded': {'todo': 'After the budget is locked.', 'doing': 'Put the approved budget to work for the new year.',
+                   'done': (p.loaded_note or f'Loaded {_d(p.loaded_at.date())}.') if loaded else 'Approved before the steps were tracked here.'},
+    }
+    out, prev_done = [], True
+    for i, (key, title) in enumerate(_commercial_titles(year), 1):
+        status = 'done' if done[key] else 'doing' if started[key] else 'todo'
+        out.append({'n': i, 'key': key, 'title': title, 'status': status, 'detail': notes[key][status], 'enabled': prev_done or status != 'todo'})
+        prev_done = prev_done and done[key]
+    return out
+
+
 def chip(status):
     return {'done': ('done', 'Done'), 'doing': ('attention', 'In progress'), 'todo': ('', 'Not started')}[status]
 
@@ -114,8 +149,9 @@ def summary(prop, year, bud, have, project):
 
 # ---------------------------------------------------------------- the meeting details
 
-def meeting_ready(project):
-    return bool(project and project.meeting_date and project.meeting_time and project.meeting_place)
+def meeting_ready(project, place_required=True):
+    """The meeting has what the notice needs: a date, a time and (for an association) a place. A commercial property only needs a date and a time."""
+    return bool(project and project.meeting_date and project.meeting_time and (project.meeting_place or not place_required))
 
 
 def days_before(project):

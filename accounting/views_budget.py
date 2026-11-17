@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 from . import budget_export
 from . import budget_project as bp
 from . import budgeting as bg
-from . import closing, ledger
+from . import closing, labels, ledger
 from .models import ZERO, Account, BudgetVersionLine
 from .web import admin_only, association_or_404, books_or_redirect, parse_date, parse_money, acc_up
 
@@ -412,8 +412,8 @@ def _project_post(request, prop, year, bud, have, project):
         project.meeting_place = (request.POST.get('meeting_place') or '').strip()[:200]
         project.save(update_fields=['meeting_date', 'meeting_time', 'meeting_place'])
         messages.success(request, 'The meeting details are saved.')
-        if project.notice_doc_id:
-            messages.warning(request, 'The notice was made with the old details. Make a new one on the packet page before you mail it.')
+        if project.notice_doc_id and not labels.is_commercial(prop):
+            messages.warning(request, 'The notice was made with the old details. Make a new one before you mail it.')
     elif action == 'to_board':
         if 'draft' not in have or 'board' in have:
             raise bp.ProjectError('The Board draft is already started.' if 'board' in have else 'There is no draft yet.')
@@ -429,7 +429,17 @@ def _project_post(request, prop, year, bud, have, project):
         project.final_at = None
         project.save(update_fields=['final_at'])
         messages.success(request, 'The Board draft is open again.')
+    elif action == 'notice':                  # the notice of the budget meeting, made right from the checklist (associations only)
+        if labels.is_commercial(prop):
+            raise bp.ProjectError('A commercial property has no mailed notice: it only needs a meeting date and time.')
+        if not bp.meeting_ready(project):
+            raise bp.ProjectError('Enter the date, time and place of the meeting first: the notice needs them.')
+        atype = request.POST.get('association_type')
+        bp.make_notice(prop, bud, project, user, have, atype if atype in ('Condominium', 'Homeowners association') else None)
+        messages.success(request, 'The notice is made. Print it from the packet.')
     elif action == 'mailed':
+        if labels.is_commercial(prop):
+            raise bp.ProjectError('A commercial property has no mailing to record.')
         if not bp.meeting_ready(project):
             raise bp.ProjectError('Enter the date, time and place of the meeting first.')
         on = parse_date(request.POST.get('mailed_on'))
@@ -446,7 +456,7 @@ def _project_post(request, prop, year, bud, have, project):
     elif action == 'to_meeting':
         if 'board' not in have or 'meeting' in have:
             raise bp.ProjectError('The meeting version is already made.' if 'meeting' in have else 'There is no Board draft yet.')
-        if not project.mailed_on:
+        if not project.mailed_on and not labels.is_commercial(prop):
             raise bp.ProjectError('Record the mailing first: preparing the meeting version freezes the Board draft that was mailed.')
         bg.advance(bud, user)
         messages.success(request, 'The meeting version is ready.')
@@ -497,11 +507,12 @@ def budget_project(request, pk, year):
     today = timezone.localdate()
     ctx = {'assoc': prop, 'year': year, 'steps': steps, 'have': have, 'project': project, 'info': info, 'closed': bg.closed_note(info), 'can_start': bg.can_start(info), 'units': bg.unit_count(prop),
            **acc_up(request, prop, ['accounting:budgets', 'accounting:hub'], reverse('accounting:budgets') + f'?year={year}', 'Budgets'), 'today': today, 'methods': bp.MAIL_METHODS, 'default_by': (project.mailed_by if project and project.mailed_by else bp.DEFAULT_AFFIANT),
-           'default_title': bp.DEFAULT_TITLE, 'live_count': len(bp.deliverable(live_rows)) if live_rows else None, 'meeting_ready': bp.meeting_ready(project),
+           'default_title': bp.DEFAULT_TITLE, 'live_count': len(bp.deliverable(live_rows)) if live_rows else None, 'meeting_ready': bp.meeting_ready(project, place_required=not labels.is_commercial(prop)),
            'days_before': bp.days_before(project), 'changed': bp.changed_since_notice(prop, project, have), 'by_key': {s['key']: s for s in steps},
            'draft_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=draft', 'board_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=board',
            'meeting_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=meeting&focus=1', 'approved_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=approved',
-           'packet_url': reverse('accounting:budget_packet', args=[pk, year]), 'load_url': reverse('accounting:budget_load', args=[pk, year])}
+           'packet_url': reverse('accounting:budget_packet', args=[pk, year]), 'load_url': reverse('accounting:budget_load', args=[pk, year]),
+           'commercial': labels.is_commercial(prop), 'association_type': bp.last_association_type(prop) if not labels.is_commercial(prop) else ''}
     return render(request, 'accounting/budget_project.html', ctx)
 
 
@@ -516,6 +527,9 @@ def budget_packet(request, pk, year):
     have = bg.versions(bud)
     project = bp.get_project(bud)
     back = reverse('accounting:budget_project', args=[pk, year])
+    if labels.is_commercial(prop):
+        messages.info(request, 'A commercial property has no mailing packet: it only needs a meeting date and time.')
+        return redirect(back)
     if 'board' not in have:
         messages.error(request, 'The packet is made from the Board draft, which is not started yet.')
         return redirect(back)
