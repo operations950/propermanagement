@@ -79,3 +79,77 @@ class TypedProjectedAssessmentsTests(TestCase):
         self.assertNotIn("===\x27", row)
         self.assertNotIn("bdAssess(\x27\x27)", row)
         self.assertIn('event.keyCode===13', row)
+
+
+@override_settings(STORAGES=STORAGES)
+class ScheduledOwnerPaymentsTests(TestCase):
+    """The rest of the year's regular assessments follow the owners' payment schedule (the assessment rules), not the pace of the months already booked."""
+
+    def setUp(self):
+        self.prop = make_assoc('Scheduled Condos')
+        for m in range(1, 7):
+            spend(self.prop, date(2026, m, 10), '6906', '600')
+        close(self.prop, range(1, 7))                       # January to June are closed: July to December are still to come
+        from core.models import Unit
+        from .tests import owner_of
+        for u in Unit.objects.filter(property=self.prop):
+            owner_of(self.prop, u, f'Owner {u.label}')         # four units, each with a billed owner
+        self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
+        self.page = reverse('accounting:budget_year', args=[self.prop.pk, 2027])
+
+    def rule(self, **kw):
+        from decimal import Decimal as D
+        from . import ledger
+        from .models import ChargeRule
+        base = dict(association=self.prop, name='Assessment', frequency='monthly', first_due=date(2026, 1, 1), amount=D('250'), income_account=ledger.account(self.prop, '4500'))
+        base.update(kw)
+        return ChargeRule.objects.create(**base)
+
+    def row(self):
+        self.client.post(self.page, {'action': 'start'})
+        from .models import Budget
+        have = bg.versions(Budget.objects.get(association=self.prop, year=2027))
+        return bg.editor_state(have['draft'], have)['assess']
+
+    def units(self):
+        from . import charges
+        return len(charges.billable_units(self.prop))
+
+    def test_a_monthly_rule_drives_the_six_months_to_come(self):
+        self.rule()
+        a = self.row()
+        self.assertEqual(self.units(), 4)
+        self.assertEqual(a['nd'], 6000.0)                                                  # July to December: 6 months x 4 units x 250
+        self.assertTrue(a['scheduled'])
+        self.assertEqual([m for m, v in a['sched_months']], ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+        self.assertAlmostEqual(a['projected'], a['actual'] + a['nd'], places=2)
+
+    def test_a_quarterly_rule_counts_only_the_quarters_that_fall_in_the_months_to_come(self):
+        self.rule(frequency='quarterly', amount=__import__('decimal').Decimal('700'))
+        a = self.row()
+        self.assertEqual(a['nd'], 5600.0)                                                  # July 1 and October 1: 2 quarters x 4 units x 700, not November or December
+        self.assertEqual({m: v for m, v in a['sched_months']}['Nov'], 0.0)
+
+    def test_a_charge_already_posted_ahead_counts_as_posted(self):
+        from decimal import Decimal as D
+        from . import charges
+        r = self.rule(frequency='quarterly', amount=D('700'), first_due=date(2026, 1, 1))
+        charges.post_rule(r, date(2026, 7, 1))
+        a = self.row()
+        self.assertEqual(a['nd'], 5600.0)                                                  # the July charge (2,800) is counted once, from what was posted, and October's from the rule
+
+    def test_a_typed_figure_still_wins_over_the_schedule(self):
+        self.rule()
+        self.client.post(self.page, {'action': 'start'})
+        r = self.client.post(reverse('accounting:budget_edit', args=[self.prop.pk, 2027]) + '?stage=draft', '{"op": "assess_projected", "value": "50000"}', content_type='application/json')
+        a = r.json()['assess']
+        self.assertEqual((a['manual'], a['projected'], a['scheduled']), (True, 50000.0, False))
+
+    def test_a_special_assessment_rule_is_not_the_regular_assessment(self):
+        self.rule(is_special=True)
+        a = self.row()
+        self.assertFalse(a['scheduled'])
+
+    def test_with_no_schedule_it_is_the_pace_as_before(self):
+        a = self.row()
+        self.assertFalse(a['scheduled'])

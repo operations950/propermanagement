@@ -521,6 +521,34 @@ def totals(rows, units):
             'unit_month': need / u / 12, 'unit_month_prior': need_b / u / 12, 'unit_year': need / u, 'units': units}
 
 
+def scheduled_assessments(prop, info):
+    """What the owners are scheduled to pay in the months of the year still to come: every active regular assessment rule's due dates in those months (a rule's charge already posted ahead counts
+    as posted; one not posted yet is what the rule will post: the same for every unit, or the total split by share). Returns (total, [(month, amount)], has_rules)."""
+    from . import charges
+    from .models import Charge, ChargeRule
+    rules = list(ChargeRule.objects.filter(association=prop, is_active=True, is_special=False))
+    rest = [_add_months(info['fy_start'], i) for i in range(info['n'], 12)]
+    if not rules or not rest:
+        return ZERO, [], bool(rules)
+    year_end = ledger.month_end(_add_months(info['fy_start'], 11))
+    pairs = charges.billable_units(prop)
+    per_month = {m: ZERO for m in rest}
+    for rule in rules:
+        for due in charges.rule_due_dates(rule, year_end):
+            m = date(due.year, due.month, 1)
+            if m not in per_month:
+                continue
+            posted = Charge.objects.filter(rule=rule, due_date=due, is_void=False)
+            if posted.exists():
+                amount = sum((c.amount for c in posted), ZERO)
+            elif rule.method == ChargeRule.Method.FLAT:
+                amount = ledger.money(rule.amount) * len(pairs)
+            else:
+                amount = ledger.money(rule.amount)
+            per_month[m] += amount
+    return sum(per_month.values(), ZERO), [(m, per_month[m]) for m in rest], True
+
+
 def assessment_row(version, info, needed):
     """The regular assessments as a line of the budget, the way a P&L shows them: last year's approved budget for them, where this year will land (what is booked so far plus the months
     left at the same pace) and next year's amount, which is what the budget needs them to bring in."""
@@ -532,12 +560,16 @@ def assessment_row(version, info, needed):
         actual = actuals_for(prop, info, [acct])[0].get(acct.pk, ZERO)
     n, r = info['n'], info['remaining']
     nd = (actual / n * r).quantize(Decimal('0.01')) if n and r else ZERO
+    sched, by_month, has_rules = scheduled_assessments(prop, info)
+    if has_rules:                                        # the owners' payments are on a schedule: the rest of the year is what is scheduled, not last months' pace
+        nd = sched
     calc = actual + nd
-    typed = version.assess_projected                      # where this year's assessments will land, typed by hand: it wins over the pace worked out from what is booked
+    typed = version.assess_projected                      # where this year's assessments will land, typed by hand: it wins over what the schedule says
     if typed is not None:
         nd = typed - actual
     return {'prior': float(prior), 'actual': float(actual), 'nd': float(nd), 'projected': float(typed if typed is not None else calc), 'proposed': float(needed),
-            'manual': typed is not None, 'calc': float(calc)}
+            'manual': typed is not None, 'calc': float(calc), 'scheduled': has_rules and typed is None,
+            'sched_months': [[f'{m:%b}', float(a)] for m, a in by_month]}
 
 
 def unit_groups(prop):
