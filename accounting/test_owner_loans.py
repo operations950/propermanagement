@@ -251,3 +251,14 @@ class DepositScreenLoanTests(LoanBase):
         source = open('accounting/templates/accounting/deposits.html', encoding='utf8').read()
         self.assertIn('For the loan (', source)
         self.assertIn('to_loan: !!r.loan', source)
+
+
+class BudgetIncomeAccountTests(TestCase):
+    def test_special_assessment_loan_interest_income_can_be_a_budget_income_line(self):
+        from . import budgeting
+        prop = make_assoc()
+        income = ledger.account(prop, '4516')
+        self.assertTrue(budgeting.is_budgetable(income))
+        self.assertEqual(budgeting.section_of(income), 'Income')
+        for code in ('4500', '4513', '4515'):                                     # the assessments themselves and the special assessments stay off the list
+            self.assertFalse(budgeting.is_budgetable(ledger.account(prop, code)), code)

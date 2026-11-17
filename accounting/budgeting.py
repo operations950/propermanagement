@@ -26,8 +26,9 @@ NEXT_LABEL = {'draft': 'Send to the board: start the Board draft', 'board': 'Pre
 
 SECTIONS = ['Income', 'Administrative', 'Utilities', 'Operating', 'Reserves']
 EXPENSE_SECTIONS = ['Administrative', 'Utilities', 'Operating']
-# Income that is not a line of the budget: the assessments are what the budget works out (expenses and reserves, less the other income), the special assessments are their own thing
-NOT_OTHER_INCOME = {'4500', '4701', '4475', '4513', '4515', '4516'}
+# Income that is not a line of the budget: the assessments are what the budget works out (expenses and reserves, less the other income), the special assessments are their own thing.
+# 4516 (special assessment loan interest income) IS a budget line: it offsets the loan interest expense (6611), which is budgeted.
+NOT_OTHER_INCOME = {'4500', '4701', '4475', '4513', '4515'}
 UTILITIES = {'6410', '6420', '6425', '6429', '6430', '6431', '6435', '6440', '6450'}
 ADMIN = {'6320', '6350', '6460', '6510', '6610', '6611', '6800', '6820', '6830', '6880', '6881', '6882', '6883', '6884', '6885', '6886', '6891', '6894', '6895', '6899', '6902', '6904', '6916', '6917', '6920'}
 RESERVE_INTEREST = sc.RESERVE_INTEREST
