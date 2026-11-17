@@ -14,7 +14,7 @@ from core.models import Property, StaffProfile, Unit
 from core.views import _is_admin
 
 from . import pdf, services
-from .models import DocumentTemplate, GeneratedDocument
+from .models import BUDGET_ONLY_SLUGS, DocumentTemplate, GeneratedDocument
 
 
 def _allowed(user):
@@ -52,7 +52,7 @@ def document_list(request):
         prop = Property.objects.filter(pk=int(request.GET['property'])).first()
         if prop:
             docs = docs.filter(property=prop)
-    templates = list(DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True))
+    templates = list(DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True).exclude(slug__in=BUDGET_ONLY_SLUGS))
     up = nav.up(request, {'ws_compliance': 'Compliance'}, default=(reverse('property_detail', args=[prop.pk]), prop.name)) if prop else nav.Up('', '')
     return render(request, 'legalforms/list.html', {'docs': docs[:200], 'property': prop, 'templates': templates, 'up': up})
 
@@ -89,6 +89,9 @@ def _form_page(request, template, prop, unit, parent, values, errors, editing=No
 @login_required
 def document_new(request, slug):
     _guard(request)
+    if slug in BUDGET_ONLY_SLUGS:
+        messages.info(request, 'The budget meeting notice is made by following the budget steps: open the budget and go through them.')
+        return redirect('accounting:budgets')
     template = get_object_or_404(DocumentTemplate, slug=slug, is_active=True)
     prop, unit, parent = _target_from_query(request)
     if request.method == 'POST':
@@ -140,7 +143,7 @@ def document_detail(request, pk):
     label = f'{doc.property.name} documents'
     up = nav.up(request, {'legalforms:list': label, 'accounting:collections': 'Owner collections'}, default=(reverse('legalforms:list') + f'?property={doc.property_id}', label))
     return render(request, 'legalforms/detail.html', {
-        'doc': doc, 'up': up, 'html': show_html(doc), 'companions': doc.template.companions.filter(is_active=True),
+        'doc': doc, 'up': up, 'html': show_html(doc), 'companions': doc.template.companions.filter(is_active=True).exclude(slug__in=BUDGET_ONLY_SLUGS),
         'children': doc.companions.select_related('template'), 'email_to': services.suggested_email(doc),
         'email_subject': services.default_email_subject(doc), 'email_message': services.default_email_message(doc),
     })

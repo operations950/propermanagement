@@ -1595,7 +1595,7 @@ def property_detail(request, pk):
     # a clear error naming which unit already has it.
     available_supply_items = SupplyItem.objects.filter(is_active=True).order_by('name')
 
-    from legalforms.models import DocumentTemplate
+    from legalforms.models import BUDGET_ONLY_SLUGS, DocumentTemplate
     from legalforms.views import _allowed as _can_use_documents
     btr_state, btr_days = prop.business_tax_receipt_state()
     return render(request, 'core/property_detail.html', {
@@ -1605,7 +1605,7 @@ def property_detail(request, pk):
         'btr_state': btr_state, 'btr_days': btr_days, 'btr_days_over': -btr_days if btr_state == 'overdue' else None,
         'sections': PROPERTY_SECTIONS.get(prop.property_type, PROPERTY_SECTIONS_COMMON),
         'can_use_documents': _can_use_documents(request.user),
-        'legal_templates': DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True) if prop.property_type == Property.Type.ASSOCIATION else [],
+        'legal_templates': DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True).exclude(slug__in=BUDGET_ONLY_SLUGS) if prop.property_type == Property.Type.ASSOCIATION else [],
         'specs_summary': property_specs.summary(property_specs.missing_specs(prop)),
         'faqs': prop.faqs.filter(status=PropertyFAQ.Status.ACTIVE).select_related('unit', 'created_by_key').order_by('reviewed', 'question'),
         'qb': _property_qb_context(prop) if (_is_admin(request.user) and qb_accounts.applies_to(prop)) else None,

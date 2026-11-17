@@ -5,6 +5,11 @@ from django.utils import timezone
 from core.models import Contact, Property, Unit
 
 
+# Made only by following the budget steps (accounting/budget_project.py): the notice of the budget meeting and its affidavit of mailing are never started from the Legal forms list,
+# a property's page or another document, so they cannot be made without the meeting details, the Board draft and the mailing record behind them.
+BUDGET_ONLY_SLUGS = ('budget-meeting-notice', 'budget-mailing-affidavit')
+
+
 class DocumentTemplate(models.Model):
     """A standardized form with legal or statutory wording that is filled from the system's records plus what a
     person types in (a notice of late assessment, an estoppel certificate, ...). `body` is the document's HTML with
