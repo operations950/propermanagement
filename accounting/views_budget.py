@@ -457,6 +457,11 @@ def _project_post(request, prop, year, bud, have, project):
         atype = request.POST.get('association_type')
         bp.make_notice(prop, bud, project, user, have, atype if atype in ('Condominium', 'Homeowners association') else None)
         messages.success(request, 'The notice is made. Print it from the packet.')
+    elif action == 'signed_affidavit':
+        if labels.is_commercial(prop):
+            raise bp.ProjectError('A commercial property has no mailing, so no affidavit.')
+        bp.save_signed_affidavit(project, request.FILES.get('file'), user)
+        messages.success(request, 'The signed affidavit is saved.')
     elif action == 'mailed':
         if labels.is_commercial(prop):
             raise bp.ProjectError('A commercial property has no mailing to record.')
@@ -532,7 +537,8 @@ def budget_project(request, pk, year):
            'draft_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=draft', 'board_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=board',
            'meeting_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=meeting&focus=1', 'approved_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=approved',
            'packet_url': reverse('accounting:budget_packet', args=[pk, year]), 'load_url': reverse('accounting:budget_load', args=[pk, year]),
-           'commercial': labels.is_commercial(prop), 'association_type': bp.last_association_type(prop) if not labels.is_commercial(prop) else ''}
+           'commercial': labels.is_commercial(prop), 'association_type': bp.last_association_type(prop) if not labels.is_commercial(prop) else '',
+           'signed_url': project.signed_affidavit.url if project and project.signed_affidavit else '', 'affidavit_url': reverse('accounting:budget_packet_file', args=[pk, year, 'affidavit']) if project and project.affidavit_doc_id else ''}
     return render(request, 'accounting/budget_project.html', ctx)
 
 
@@ -588,7 +594,7 @@ def budget_packet(request, pk, year):
            'unit_month': t['unit_period'], 'changed': bp.changed_since_notice(prop, project, have), **acc_up(request, prop, ['accounting:budget_project'], back, f'{year} budget project'),
            'notice': project.notice_doc if project else None, 'affidavit': project.affidavit_doc if project else None, 'from_list': bool(project and project.mailed_on and project.mailing_snapshot),
            'return_text': '\n'.join(bp.return_lines(prop, project)), 'envelope_size': project.envelope_size if project else 'no10', 'association_type': bp.last_association_type(prop)}
-    ctx['files'] = {w: reverse('accounting:budget_packet_file', args=[pk, year, w]) for w in ('notice', 'budget', 'affidavit', 'mailing_list', 'mailing_csv', 'envelopes', 'group1', 'group2')}
+    ctx['files'] = {w: reverse('accounting:budget_packet_file', args=[pk, year, w]) for w in ('notice', 'budget', 'affidavit', 'mailing_list', 'mailing_csv', 'envelopes', 'group1')}
     return render(request, 'accounting/budget_packet.html', ctx)
 
 
@@ -625,13 +631,9 @@ def budget_packet_file(request, pk, year, what):
         size = request.GET.get('size') or (project.envelope_size if project else 'no10')
         test = bool(request.GET.get('test'))
         return _pdf_response(bp.envelopes_pdf(prop, rows, project, 'full' if size == 'full' else 'no10', test), f'{base}_envelopes{"_test" if test else ""}.pdf')
-    # The packet prints in three groups, each on its own paper: 1. the notice and the budget, 2. the affidavit and the mailing list, 3. the envelopes
+    # The packet prints in two groups, each on its own paper: 1. the notice and the budget, 2. the envelopes (the affidavit is printed, signed and uploaded on its own step)
     if what == 'group1':
         return _pdf_response(bp.merge_pdfs([lf_pdf.document_pdf(project.notice_doc), _stage_pdf(prop, bud, have, 'board')]), f'{base}_1_notice_and_budget.pdf')
-    if what == 'group2':
-        if not (project and project.affidavit_doc_id):
-            raise Http404('The affidavit is made when the mailing is recorded.')
-        return _pdf_response(bp.merge_pdfs([lf_pdf.document_pdf(project.affidavit_doc), bp.mailing_list_pdf(prop, year, rows)]), f'{base}_2_affidavit_and_mailing_list.pdf')
     raise Http404('Unknown file.')
 
 

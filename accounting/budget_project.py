@@ -46,7 +46,7 @@ def ensure_project(bud):
 
 def _titles(year):
     return [('draft', 'Management draft'), ('board', 'Board draft'), ('mailing', 'Meeting notice and final draft for mailing'), ('mailed', 'Mailed to the owners'),
-            ('meeting', 'The meeting'), ('locked', 'Final locked budget'), ('loaded', f'Loaded into the system for {year}')]
+            ('signed', 'Signed and notarized affidavit'), ('meeting', 'The meeting'), ('locked', 'Final locked budget'), ('loaded', f'Loaded into the system for {year}')]
 
 
 def _commercial_titles(year):
@@ -73,6 +73,7 @@ def step_list(prop, year, bud, have, project):
         'board': final or notice or f['meeting'] or f['approved'],
         'mailing': notice or f['approved'],
         'mailed': mailed or f['approved'],
+        'signed': bool(p and p.signed_affidavit) or f['approved'],
         'meeting': held or f['approved'],
         'locked': f['approved'],
         'loaded': loaded or legacy,
@@ -82,6 +83,7 @@ def step_list(prop, year, bud, have, project):
         'board': f['board'],
         'mailing': final or f['board'],
         'mailed': notice,
+        'signed': mailed,
         'meeting': mailed or f['meeting'],
         'locked': f['meeting'],
         'loaded': f['approved'],
@@ -95,6 +97,8 @@ def step_list(prop, year, bud, have, project):
     notes['mailed'] = {'todo': 'After the notice is made.', 'doing': 'Record when and how it went out. That makes the affidavit.',
                        'done': (f'Mailed {_d(p.mailed_on)}{" by " + p.mailed_by if p.mailed_by else ""}, {p.mailed_count if p.mailed_count is not None else "?"} owners'
                                 + (f', {(p.meeting_date - p.mailed_on).days} days before the meeting.' if p.meeting_date else '.')) if mailed else 'Not recorded here.'}
+    notes['signed'] = {'todo': 'After the mailing is recorded: that makes the affidavit.', 'doing': 'Print the affidavit, sign it before a notary, scan it and upload the signed copy.',
+                       'done': (f'Signed copy uploaded {_d(p.signed_uploaded_at.date())}.') if p and p.signed_uploaded_at else 'Approved before this step was tracked here.'}
     notes['meeting'] = {'todo': 'After it is mailed.', 'doing': 'Prepare the meeting version, run the meeting, then mark it over.',
                         'done': (f'Held {_d(p.held_on)}.') if held else 'Held.'}
     notes['locked'] = {'todo': 'After the meeting.', 'doing': 'Approve and lock the budget the meeting agreed on.', 'done': 'Approved and locked.'}
@@ -104,7 +108,8 @@ def step_list(prop, year, bud, have, project):
     for i, (key, title) in enumerate(_titles(year), 1):
         status = 'done' if done[key] else 'doing' if started[key] else 'todo'
         out.append({'n': i, 'key': key, 'title': title, 'status': status, 'detail': notes[key][status], 'enabled': prev_done or status != 'todo'})
-        prev_done = prev_done and done[key]
+        if key != 'signed':                         # the signed copy can come back from the notary any time: the meeting does not wait for it
+            prev_done = prev_done and done[key]
     return out
 
 
@@ -154,6 +159,31 @@ def unlock_stage(bud, stage):
         if fields:
             project.save(update_fields=fields)
     return removed
+
+
+SIGNED_EXTENSIONS = ('pdf', 'jpg', 'jpeg', 'png')
+
+
+def save_signed_affidavit(project, uploaded, user=None):
+    """Keep the scanned, signed and notarized affidavit. Only after the mailing is recorded (that is what makes the affidavit); a PDF or a picture that fits the file storage."""
+    from . import documents
+    if not project or not project.affidavit_doc_id:
+        raise ProjectError('Record the mailing first: that makes the affidavit you print and sign.')
+    if uploaded is None:
+        raise ProjectError('Choose the scanned affidavit to upload.')
+    try:
+        documents._check_file(uploaded)
+    except documents.DocumentError as e:
+        raise ProjectError(str(e))
+    ext = uploaded.name.rsplit('.', 1)[-1].lower() if '.' in uploaded.name else ''
+    if ext not in SIGNED_EXTENSIONS:
+        raise ProjectError('Upload the scan as a PDF or a picture (JPG or PNG).')
+    if uploaded.size > documents.STORE_LIMIT:
+        raise ProjectError(f'That file is over {documents.STORE_LIMIT // (1024 * 1024)} MB. Scan it again at a lower quality, or save it as a smaller PDF.')
+    project.signed_affidavit = uploaded
+    project.signed_uploaded_at = timezone.now()
+    project.signed_uploaded_by = user if getattr(user, 'pk', None) else None
+    project.save(update_fields=['signed_affidavit', 'signed_uploaded_at', 'signed_uploaded_by'])
 
 
 def chip(status):

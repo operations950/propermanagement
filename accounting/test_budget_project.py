@@ -91,9 +91,9 @@ class TheStepsTests(BudgetProjectBase):
         r = self.client.get(self.project_url)
         self.assertEqual(r.status_code, 200)
         steps = r.context['steps']
-        self.assertEqual([s['key'] for s in steps], ['draft', 'board', 'mailing', 'mailed', 'meeting', 'locked', 'loaded'])
-        self.assertEqual([s['status'] for s in steps], ['todo'] * 7)
-        self.assertEqual([s['enabled'] for s in steps], [True] + [False] * 6)
+        self.assertEqual([s['key'] for s in steps], ['draft', 'board', 'mailing', 'mailed', 'signed', 'meeting', 'locked', 'loaded'])
+        self.assertEqual([s['status'] for s in steps], ['todo'] * 8)
+        self.assertEqual([s['enabled'] for s in steps], [True] + [False] * 7)
         self.assertContains(r, 'Start the 2027 budget')
 
     def test_the_steps_follow_the_budget_from_the_draft_to_the_loaded_year(self):
@@ -158,7 +158,7 @@ class TheStepsTests(BudgetProjectBase):
         self.to_board()
         r = self.client.get(reverse('accounting:budgets') + '?year=2027')
         row = next(x for x in r.context['rows'] if x['assoc'].pk == self.pk)
-        self.assertEqual((row['status'], row['label'], row['detail']), ('attention', 'Step 2 of 7', 'Board draft'))
+        self.assertEqual((row['status'], row['label'], row['detail']), ('attention', 'Step 2 of 8', 'Board draft'))
         self.assertContains(r, self.project_url)
 
     def test_the_meeting_and_the_lock_wait_for_what_comes_before(self):
@@ -436,26 +436,23 @@ class TheNoticeAndAffidavitTests(BudgetProjectBase):
         self.assertContains(r, 'There is no owner with an address')
         self.assertIsNone(self.project().mailed_on)
 
-    def test_the_packet_prints_in_three_groups_notice_and_budget_then_affidavit_and_list_then_envelopes(self):
+    def test_the_packet_prints_in_two_groups_notice_and_budget_then_envelopes_and_no_affidavit(self):
         self.details()
         self.make_notice()
         g1 = reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'group1'])
-        g2 = reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'group2'])
         text1 = '\n'.join(p.extract_text() or '' for p in pdf_pages(self.client.get(g1).content))
         for word in ('NOTICE OF MEETING', 'Regular assessments'):                           # group 1: the notice, then the budget
             self.assertIn(word, text1)
         self.assertLess(text1.index('NOTICE OF MEETING'), text1.index('Regular assessments'))
-        self.assertNotIn('Mailing list', text1)
         self.assertNotIn('AFFIDAVIT OF MAILING', text1)
-        self.assertEqual(self.client.get(g2).status_code, 404)                            # group 2 waits for the mailing to be recorded: the affidavit is made then
         self.mail()
-        text2 = '\n'.join(p.extract_text() or '' for p in pdf_pages(self.client.get(g2).content))
-        self.assertIn('AFFIDAVIT OF MAILING', text2)                                      # group 2: the affidavit, then the mailing list
-        self.assertIn('Mailing list', text2)
-        self.assertLess(text2.index('AFFIDAVIT OF MAILING'), text2.index('Mailing list'))
-        self.assertNotIn('Regular assessments', text2)                                    # the budget is in group 1, not here
-        self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'envelopes'])).status_code, 200)     # group 3 is its own file
-        self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'everything'])).status_code, 404)    # the one big file is gone
+        self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'envelopes'])).status_code, 200)     # group 2 is its own file
+        for gone in ('group2', 'everything'):                                              # the affidavit has its own step: there is no group for it
+            self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, gone])).status_code, 404)
+        html = self.client.get(self.packet_url).content.decode()
+        self.assertIn('Print in two groups', html)
+        self.assertNotIn('Affidavit of mailing', html)                                      # no affidavit card on the packet any more
+        self.assertNotIn('Print in three groups', html)
 
     def test_the_pieces_that_need_the_notice_are_not_there_until_it_is_made(self):
         for what in ('notice', 'group1', 'group2', 'affidavit'):
@@ -466,7 +463,7 @@ class TheNoticeAndAffidavitTests(BudgetProjectBase):
         self.details()
         r = self.client.get(self.packet_url)
         html = r.content.decode()
-        for word in ('Notice of the budget meeting', 'The proposed budget', 'Mailing list', 'Envelopes', 'Affidavit of mailing', 'Print in three groups', 'Notice and budget', 'Affidavit and mailing list', 'Print one test page', 'Return address'):
+        for word in ('Notice of the budget meeting', 'The proposed budget', 'Mailing list', 'Envelopes', 'Print in two groups', 'Notice and budget', 'Print one test page', 'Return address'):
             self.assertIn(word, html)
         self.assertEqual(r.context['sent'], 4)
 
@@ -751,3 +748,81 @@ class UnlockingAFrozenVersionTests(TheStepsTests):
         self.assertContains(r, 'Management draft is open again')
         self.assertIsNone(BudgetProject.objects.get().final_at)
         self.assertEqual(list(bg.versions(Budget.objects.get(association=self.prop, year=2027))), ['draft'])
+
+
+class SignedAffidavitStepTests(TheNoticeAndAffidavitTests):
+    """After the mailing is recorded: print the affidavit, sign it before a notary, scan it and upload the signed copy. That is its own step, after "Mailed to the owners"."""
+
+    def scan(self, name='signed.pdf', size=2000):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile(name, b'%PDF-1.4 ' + b'x' * size, content_type='application/pdf')
+
+    def upload(self, file):
+        return self.client.post(self.project_url, {'action': 'signed_affidavit', 'file': file}, follow=True)
+
+    def steps(self):
+        return {s['key']: s for s in bp.step_list(self.prop, self.year, self.bud(), self.have(), BudgetProject.objects.filter(budget__association=self.prop, budget__year=self.year).first())}
+
+    def ready(self):
+        self.details()
+        self.make_notice()
+        self.mail()
+
+    def test_the_step_comes_right_after_mailed_and_waits_for_the_mailing(self):
+        self.to_board()
+        keys = list(self.steps())
+        self.assertEqual(keys.index('signed'), keys.index('mailed') + 1)
+        self.assertEqual(self.steps()['signed']['status'], 'todo')
+        self.ready()
+        st = self.steps()
+        self.assertEqual(st['signed']['status'], 'doing')
+        self.assertEqual(st['signed']['title'], 'Signed and notarized affidavit')
+        self.assertIn('Print the affidavit, sign it before a notary', st['signed']['detail'])
+
+    def test_the_page_offers_the_print_and_the_upload_once_the_affidavit_is_made(self):
+        self.ready()
+        html = self.client.get(self.project_url).content.decode()
+        self.assertIn('Print the affidavit', html)
+        self.assertIn('name="action" value="signed_affidavit"', html)
+        self.assertIn('Upload the signed copy', html)
+
+    def test_uploading_the_scan_completes_the_step_and_keeps_the_file(self):
+        self.ready()
+        r = self.upload(self.scan())
+        self.assertContains(r, 'The signed affidavit is saved')
+        project = BudgetProject.objects.get()
+        self.assertTrue(project.signed_affidavit)
+        self.assertIsNotNone(project.signed_uploaded_at)
+        self.assertEqual(self.steps()['signed']['status'], 'done')
+        html = self.client.get(self.project_url).content.decode()
+        self.assertIn('View the signed copy', html)
+        self.assertIn('Replace the signed copy', html)
+
+    def test_it_is_refused_before_the_mailing_and_for_the_wrong_kind_of_file_or_a_file_that_is_too_big(self):
+        self.to_board()
+        self.details()
+        self.make_notice()
+        r = self.upload(self.scan())
+        self.assertContains(r, 'Record the mailing first')
+        self.mail()
+        self.assertContains(self.upload(self.scan('notes.docx')), 'PDF, a picture or a text file' if False else 'is not a PDF')
+        self.assertContains(self.upload(self.scan('notes.txt')), 'Upload the scan as a PDF or a picture')
+        from . import documents
+        big = self.scan('huge.pdf', documents.STORE_LIMIT + 10)
+        self.assertContains(self.upload(big), 'Scan it again at a lower quality')
+        self.assertFalse(BudgetProject.objects.get().signed_affidavit)
+
+    def test_the_meeting_does_not_wait_for_the_signed_copy(self):
+        self.ready()
+        st = self.steps()
+        self.assertTrue(st['meeting']['enabled'])                                         # the notary can take their time
+        r = self.act('to_meeting')
+        self.assertContains(r, 'The meeting version is ready')
+
+    def test_the_replacement_is_kept_and_an_approved_budget_never_nags_for_it(self):
+        self.ready()
+        self.upload(self.scan('first.pdf'))
+        first = BudgetProject.objects.get().signed_affidavit.name
+        self.upload(self.scan('second.pdf'))
+        self.assertNotEqual(BudgetProject.objects.get().signed_affidavit.name, first)
+        self.assertEqual(self.steps()['signed']['status'], 'done')

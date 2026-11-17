@@ -69,6 +69,9 @@
                 <a class="btn {% if s.status == 'doing' and project.notice_doc_id %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm" href="{{ packet_url }}">{% if s.status == 'done' %}Open the packet{% else %}Make the packet{% endif %}</a>
             {% elif s.key == 'mailed' %}
                 {% if project.affidavit_doc_id %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{% url 'accounting:budget_packet_file' assoc.pk year 'affidavit' %}">Affidavit</a>{% endif %}
+            {% elif s.key == 'signed' %}
+                {% if affidavit_url %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ affidavit_url }}"><i data-lucide="printer" class="icon"></i> Print the affidavit</a>{% endif %}
+                {% if signed_url %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ signed_url }}"><i data-lucide="eye" class="icon"></i> View the signed copy</a>{% endif %}
             {% elif s.key == 'meeting' %}
                 {% if have.board and not have.meeting %}<form method="post" onsubmit="return confirm('Prepare the meeting version? The Board draft that was mailed is frozen exactly as it is, and the meeting version starts from it.');">{% csrf_token %}<input type="hidden" name="action" value="to_meeting"><button class="btn btn-primary btn-sm">Prepare the meeting version</button></form>{% endif %}
                 {% if have.meeting %}<a class="btn {% if not project.held_on %}btn-primary{% else %}btn-outline-secondary{% endif %} btn-sm" href="{{ meeting_url }}">Run the meeting</a>
@@ -84,6 +87,16 @@
         </div>
         {% endif %}
     </div>
+    {% if s.key == 'signed' and s.enabled and project.affidavit_doc_id %}
+    <div class="bp-more">
+        <details {% if s.status == 'doing' %}open{% endif %}><summary>{% if project.signed_affidavit %}Replace the signed copy{% else %}Upload the signed copy{% endif %}</summary>
+            <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center mt-2">{% csrf_token %}<input type="hidden" name="action" value="signed_affidavit">
+                <input type="file" name="file" class="form-control form-control-sm" style="max-width: 320px;" accept=".pdf,.jpg,.jpeg,.png" required aria-label="The scanned, signed and notarized affidavit">
+                <button class="btn btn-primary btn-sm">Save the signed affidavit</button>
+                <span class="small text-muted w-100">Print it, sign it before a notary, scan it, and upload the scan here (a PDF or a picture, under about 10 MB).</span></form>
+        </details>
+    </div>
+    {% endif %}
     {% if s.key == 'mailed' and s.enabled and project.notice_doc_id %}
     <div class="bp-more">
         <details {% if s.status == 'doing' %}open{% endif %}><summary>{% if project.mailed_on %}Change what was recorded{% else %}Record the mailing{% endif %}</summary>
