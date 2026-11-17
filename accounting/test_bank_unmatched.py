@@ -71,9 +71,9 @@ class UnmatchedLinesScreenTests(TestCase):
     def test_a_deposit_with_no_guess_has_the_account_box_and_three_buttons_and_no_paid_to(self):
         line(self.statement, date(2026, 3, 12), 'DEPOSIT 8841', '615', 'deposit')
         html = self.page()
-        self.assertIn('class="ub-top"', html)                                              # description, account box and amount on one line
-        self.assertIn('<option value="">Which account?</option>', html)
-        self.assertIn('>Add to books</button>', html)
+        self.assertIn('class="ub-top"', html)                                              # description, the three choices and the amount on one line
+        self.assertIn('data-ub-pick="add">Add to books</button>', html)
+        self.assertIn('data-ub-panel="add" hidden', html)                                  # the account box only appears when Add to books is clicked
         self.assertIn("data-ub-pick=\"owner\">Owner's payment</button>", html)
         self.assertIn('data-ub-pick="split">Split</button>', html)                          # one split button, not two
         self.assertNotIn('Split it', html)
@@ -98,7 +98,7 @@ class UnmatchedLinesScreenTests(TestCase):
         line(self.statement, date(2026, 3, 31), 'Interest Paid', '3.10', 'interest')
         html = self.page()
         self.assertIn(f'<option value="{interest.pk}" selected>', html)                  # the account the same words went to last month is chosen for you
-        self.assertIn('>Add to books</button>', html)
+        self.assertIn('Same words went to', html)
         self.assertNotIn('Paid to', html)
 
     def test_the_guess_button_posts_exactly_what_the_old_form_did(self):

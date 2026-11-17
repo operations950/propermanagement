@@ -302,11 +302,12 @@ class ClearSelectedScreenTests(TestCase):
         self.client.force_login(User.objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
         self.url = reverse('accounting:bank', args=[self.prop.pk, self.bank.pk, '2026-03'])
 
-    def test_page_has_tick_boxes_the_clear_bar_and_the_account_picker(self):
+    def test_page_has_no_tick_to_clear_bar_you_post_then_match(self):
         r = self.client.get(self.url)
-        self.assertContains(r, 'name="item"')
-        self.assertContains(r, 'id="clear-form"')
-        self.assertContains(r, 'ac-pick')
+        self.assertNotContains(r, 'id="clear-form"')                                    # nothing to tick and clear: post what is missing, then match again
+        self.assertNotContains(r, 'Clear selected')
+        self.assertContains(r, 'Match what can be matched')
+        self.assertContains(r, 'then match again to see what is still outstanding')
         self.assertContains(r, 'drag the file')
 
     def test_clearing_from_the_page_then_it_shows_as_matched(self):

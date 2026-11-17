@@ -86,7 +86,7 @@
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clock" class="icon"></i> Checks and deposits not on the statement {% include '_tip.html' with text='A check over 30 days old is flagged.' %}</h6>
     {% for r in s.rows %}
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-1 {% if not forloop.first %}border-top{% endif %}">
-        <div><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="item" value="{{ r.item.key }}" data-amt="{{ r.item.amount }}" data-side="item" aria-label="Select this item"><span class="fw-semibold">{% if r.item.ref %}Check {{ r.item.ref }}{% elif r.item.amount < 0 %}Payment{% else %}Deposit{% endif %}{% if r.item.text %} &middot; {{ r.item.text|truncatechars:48 }}{% endif %}</span>
+        <div><span class="fw-semibold">{% if r.item.ref %}Check {{ r.item.ref }}{% elif r.item.amount < 0 %}Payment{% else %}Deposit{% endif %}{% if r.item.text %} &middot; {{ r.item.text|truncatechars:48 }}{% endif %}</span>
             <span class="ac-chip {% if r.stale %}warn{% endif %}">{{ r.item.date|mdate }}, {{ r.age }} day{{ r.age|pluralize }}</span>{% if r.stale %} <span class="ac-chip warn">Over 30 days: worth a call</span>{% endif %}</div>
         <div class="d-flex align-items-center gap-2"><span class="fw-semibold ac-num">{{ r.item.amount|money }}</span>
             <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="item" value="{{ r.item.key }}">
@@ -101,51 +101,46 @@
 <style>
     .ub [hidden] { display: none !important; }
     .ub { font-size: .84rem; }
-    .ub .btn { font-size: .76rem; padding: .15rem .55rem; }
+    .ub .btn { font-size: .76rem; padding: .15rem .6rem; }
     .ub .form-select, .ub .form-control { font-size: .8rem; }
     .ub .card-title { font-size: .92rem; }
-    .ub-top { display: grid; grid-template-columns: 50% 40% 10%; align-items: center; }
-    .ub-desc { min-width: 0; padding-right: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ub-acct { min-width: 0; padding-right: 14px; }
-    .ub-amt { text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .ub-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
+    .ub-top { display: flex; align-items: center; gap: 12px; }
+    .ub-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ub-btns { flex: none; display: flex; gap: 6px; width: 18rem; justify-content: flex-start; }
+    .ub-btns .btn { white-space: nowrap; }
+    .ub-amt { flex: none; width: 7.5rem; text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .ub-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .ub-pick { flex: 1 1 240px; min-width: 200px; max-width: 360px; }
     @media (max-width: 768px) {
-        .ub-top { grid-template-columns: 1fr auto; row-gap: 4px; }
-        .ub-desc { white-space: normal; padding-right: 8px; }
-        .ub-acct { grid-column: 1 / -1; grid-row: 2; padding-right: 0; }
+        .ub-top { flex-wrap: wrap; row-gap: 6px; }
+        .ub-desc { flex: 1 1 60%; white-space: normal; }
+        .ub-amt { width: auto; }
+        .ub-btns { order: 3; width: 100%; }
         .ub .btn, .ub select, .ub input[type=text] { min-height: 44px; }
     }
 </style>
 <div class="card mb-3 ub" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body py-3">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-alert" class="icon"></i> On the statement, not matched to the books</h6>
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-alert" class="icon"></i> On the statement, not matched to the books {% include '_tip.html' with text='Choose what each line is. Posting it ties it to the statement line straight away. When you have posted what was missing, press "Match what can be matched" to see what is still outstanding.' %}</h6>
     {% if dep_n %}<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pb-2 mb-1 border-bottom ac-noprint"><div><strong>{{ dep_n }} deposit{{ dep_n|pluralize }}</strong> <span class="small text-muted">{{ dep_total|money }} &middot; owner payments or something else</span></div>
         <a class="btn btn-sm btn-primary" href="{{ deposits_url }}">Sort the deposits &rarr;</a></div>{% endif %}
     {% for b in s.unmatched_bank %}
     <div class="py-2 {% if not forloop.first %}border-top{% endif %}" data-ub>
-        <form method="post" id="ab{{ b.pk }}" class="d-none ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}"></form>
         <div class="ub-top">
-            <div class="ub-desc" title="{{ b.description }}"><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="bank_line" value="{{ b.pk }}" data-amt="{{ b.amount }}" data-side="bank" aria-label="Select this bank line">{{ b.date|mdate:'short' }} &middot; {{ b.description }}</div>
-            <div class="ub-acct ac-noprint" data-ub-acct{% if b.split_suggest %} hidden{% endif %}>
-                <select class="form-select form-select-sm ac-pick" name="account" form="ab{{ b.pk }}" required aria-label="Which account for this line"><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select>
+            <div class="ub-desc" title="{{ b.description }}">{{ b.date|mdate:'short' }} &middot; {{ b.description }}</div>
+            <div class="ub-btns ac-noprint">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="add">Add to books</button>
+                {% if b.amount > 0 %}<button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="owner">Owner's payment</button>{% endif %}
+                <button type="button" class="btn btn-sm {% if b.split_suggest %}btn-secondary{% else %}btn-outline-secondary{% endif %}" data-ub-pick="split">Split</button>
             </div>
             <div class="ub-amt ac-num">{{ b.amount|money }}</div>
         </div>
         <div class="ac-noprint">
-            {% if b.split_suggest %}
-            <div class="mt-2" data-ub-suggest>
-                {% include 'accounting/_bank_split.html' with split_json=b.split_json split_open=True split_title='Same split as last month' %}
-                <button type="button" class="btn btn-link btn-sm p-0 text-muted mt-1" data-ub-change>Do something else with this line</button>
-            </div>
-            {% endif %}
-            <div class="ub-actions" data-ub-choose{% if b.split_suggest %} hidden{% endif %}>
-                <button class="btn btn-sm btn-primary" form="ab{{ b.pk }}">Add to books</button>
-                {% if b.amount < 0 %}<input class="form-control form-control-sm" style="width: 180px;" name="vendor" form="ab{{ b.pk }}" placeholder="Paid to (optional)" aria-label="Paid to">{% endif %}
-                {% if b.amount > 0 %}<button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="owner">Owner's payment</button>{% endif %}
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="split">Split</button>
-            </div>
-            <div class="mt-2" data-ub-panel="split" hidden>{% include 'accounting/_bank_split.html' %}</div>
+            <form method="post" class="ub-row mt-2" data-ub-panel="add" hidden>{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
+                <div class="ub-pick"><select class="form-select form-select-sm ac-pick" name="account" required aria-label="Which account for this line"><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select></div>
+                {% if b.amount < 0 %}<input class="form-control form-control-sm" style="flex: 1 1 170px; max-width: 240px;" name="vendor" placeholder="Paid to (optional)" aria-label="Paid to">{% endif %}
+                <button class="btn btn-sm btn-primary">Add</button>
+                {% if b.suggested %}<span class="small text-muted">Same words went to {{ b.suggested }} before.</span>{% endif %}</form>
+            <div class="mt-2" data-ub-panel="split"{% if not b.split_suggest %} hidden{% endif %}>{% if b.split_suggest %}{% include 'accounting/_bank_split.html' with split_json=b.split_json split_open=True split_title='Same split as last month' %}{% else %}{% include 'accounting/_bank_split.html' %}{% endif %}</div>
             {% if b.amount > 0 %}
             <div class="mt-2" data-ub-panel="owner" hidden>
                 {% if b.candidates %}
@@ -170,22 +165,15 @@
 <script>
 (function () {
     document.querySelectorAll('[data-ub]').forEach(function (box) {
-        var suggest = box.querySelector('[data-ub-suggest]'), choose = box.querySelector('[data-ub-choose]'), acct = box.querySelector('[data-ub-acct]');
         function pick(which) {
             var panel = box.querySelector('[data-ub-panel="' + which + '"]'), wasOpen = panel && !panel.hidden;
             box.querySelectorAll('[data-ub-panel]').forEach(function (p) { p.hidden = wasOpen || p.dataset.ubPanel !== which; });
             box.querySelectorAll('[data-ub-pick]').forEach(function (b) { var on = !wasOpen && b.dataset.ubPick === which; b.classList.toggle('btn-secondary', on); b.classList.toggle('btn-outline-secondary', !on); });
             if (wasOpen) return;
-            var f = box.querySelector('[data-ub-panel="' + which + '"] .ac-pk input, [data-ub-panel="' + which + '"] select[name=unit]');
+            var f = box.querySelector('[data-ub-panel="' + which + '"] .ac-pk input, [data-ub-panel="' + which + '"] select[name=unit], [data-ub-panel="' + which + '"] select[name=account]');
             if (f) f.focus();
         }
         box.querySelectorAll('[data-ub-pick]').forEach(function (b) { b.addEventListener('click', function () { pick(b.dataset.ubPick); }); });
-        var change = box.querySelector('[data-ub-change]');
-        if (change) change.addEventListener('click', function () {
-            if (suggest) suggest.hidden = true;
-            choose.hidden = false;
-            if (acct) acct.hidden = false;
-        });
     });
 })();
 </script>
@@ -293,60 +281,10 @@
 })();
 </script>
 {% endif %}
-<form method="post" id="clear-form" class="ac-clearbar ac-noprint" hidden>{% csrf_token %}<input type="hidden" name="action" value="clear_selected">
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-        <span class="fw-semibold" id="clr-sum"></span>
-        <span class="small" id="clr-msg"></span>
-    </div>
-    <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
-        <div id="clr-post" class="d-flex flex-wrap gap-2 align-items-center" hidden>
-            <div style="width: 250px;"><select class="form-select form-select-sm ac-pick" name="account" disabled><option value="">Post the difference to...</option>{% for a in accounts %}{% if a.pk != bank.account_id %}<option value="{{ a.pk }}">{{ a }}</option>{% endif %}{% endfor %}</select></div>
-            <label class="small text-muted mb-0">Date</label><input type="date" class="form-control form-control-sm" style="width: 150px;" name="date" value="{{ month_end|date:'Y-m-d' }}" max="{{ month_end|date:'Y-m-d' }}" disabled>
-            <input class="form-control form-control-sm" style="width: 190px;" name="memo" placeholder="Reconciling difference" disabled>
-        </div>
-        <input class="form-control form-control-sm" style="width: 200px;" name="note" placeholder="Note (optional)">
-        <button class="btn btn-sm btn-primary" id="clr-btn">Clear selected</button>
-        <button type="button" class="btn btn-sm btn-link text-muted" id="clr-none">Untick all</button>
-    </div>
-</form>
-<script>
-(function () {
-    var form = document.getElementById('clear-form');
-    if (!form) return;
-    var boxes = Array.prototype.slice.call(document.querySelectorAll('input.clr'));
-    var post = document.getElementById('clr-post'), btn = document.getElementById('clr-btn');
-    function cents(el) { return Math.round(parseFloat(el.dataset.amt) * 100); }
-    function usd(c) { return (c < 0 ? '-' : '') + '$' + (Math.abs(c) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
-    function refresh() {
-        var on = boxes.filter(function (b) { return b.checked; });
-        form.hidden = on.length === 0;
-        if (!on.length) return;
-        var bank = 0, books = 0;
-        on.forEach(function (b) { if (b.dataset.side === 'bank') bank += cents(b); else books += cents(b); });
-        var diff = bank - books;
-        document.getElementById('clr-sum').textContent = on.length + ' ticked' + (on.some(function (b) { return b.dataset.side === 'bank'; }) ? ' · statement ' + usd(bank) : '') + (on.some(function (b) { return b.dataset.side === 'item'; }) ? ' · books ' + usd(books) : '');
-        var msg = document.getElementById('clr-msg');
-        if (diff === 0) { msg.textContent = 'These add up. Nothing to post: they will be marked cleared.'; msg.style.color = '#0b6a0b'; }
-        else { msg.textContent = 'Difference ' + usd(diff) + '. Choose the account to post it to, and the date.'; msg.style.color = '#8a5a00'; }
-        post.hidden = diff === 0;
-        Array.prototype.forEach.call(post.querySelectorAll('select, input'), function (el) { el.disabled = diff === 0; });
-        var sel = post.querySelector('select');
-        sel.required = false;
-        btn.textContent = diff === 0 ? 'Clear selected' : 'Post the difference and clear';
-    }
-    boxes.forEach(function (b) { b.addEventListener('change', refresh); });
-    document.getElementById('clr-none').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = false; }); refresh(); });
-    form.addEventListener('submit', function (e) {
-        var sel = post.querySelector('select');
-        if (!post.hidden && sel && sel.value === '') { e.preventDefault(); var inp = post.querySelector('input[type=text]'); if (inp) inp.focus(); alert('Choose the account to post the difference to.'); }
-    });
-    refresh();
-})();
-</script>
-
 <div class="d-flex flex-wrap gap-2 mb-3 ac-noprint">
     <form method="post" class="d-flex gap-2">{% csrf_token %}
         <button class="btn btn-sm btn-outline-secondary" name="action" value="auto"><i data-lucide="wand-sparkles" class="icon"></i> Match what can be matched</button>
+        <span class="small text-muted align-self-center">Post what is missing above, then match again to see what is still outstanding.</span>
         {% if s.status == 'done' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="reopen">Open the reconciliation again</button>
         {% else %}<button class="btn btn-sm btn-primary" name="action" value="close" {% if s.status != 'ready' %}disabled{% endif %}><i data-lucide="lock" class="icon"></i> Close the reconciliation</button>{% endif %}
     </form>
