@@ -401,5 +401,5 @@ def settings(request, pk):
     ctx = assoc_context(prop)
     ctx.update({'assoc': prop, 'profile': profile, 'cash_accounts': prop.accounts.filter(code__lt='1200', kind='asset').order_by('code'), 'banks': prop.bank_accounts.all(),
                 'officers_text': '\n'.join(f'{o["name"]}, {o["title"]}' for o in (profile.sunbiz_officers or [])), 'months': list(enumerate(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], 1)),
-                **acc_up(request, prop, ['accounting:hub', 'accounting:close'], reverse('property_detail', args=[prop.pk]), prop.name)})
+                **acc_up(request, prop, ['accounting:hub', 'accounting:close', 'accounting:charges', 'accounting:collections', 'accounting:delinquencies', 'accounting:late_fees', 'accounting:payables_home', 'accounting:reserve_check', 'accounting:recurring', 'accounting:checks'], reverse('property_detail', args=[prop.pk]), prop.name)})
     return render(request, 'accounting/settings.html', ctx)

@@ -177,3 +177,14 @@ class CloseSheetAndUpTests(TestCase):
         for tab in ('bills', 'charges', 'entries'):
             r = self.client.get(reverse('accounting:recurring', args=[self.prop.pk]) + f'?tab={tab}&month=2026-10', **self.html)
             self.assertEqual(r.context['acc_back_label'], 'Month-end close')
+
+    def test_setup_opened_from_late_fees_goes_back_to_late_fees_not_to_an_older_screen(self):
+        self.client.get(reverse('accounting:close', args=[self.prop.pk, '2026-10']), **self.html)
+        self.client.get(reverse('accounting:late_fees', args=[self.prop.pk]) + '?as_of=2026-10-31&month=2026-10', **self.html)
+        r = self.client.get(reverse('accounting:settings', args=[self.prop.pk]), **self.html)
+        self.assertEqual(r.context['acc_back_label'], 'Late fees and interest')
+
+    def test_a_company_close_step_opened_from_the_financials_page_goes_back_to_it(self):
+        self.client.get(reverse('ws_financials'), **self.html)
+        r = self.client.get(reverse('close_bank_tieout'), **self.html)
+        self.assertEqual(r.context['up'].label, 'Financials')

@@ -350,7 +350,7 @@ class StatementTests(Base):
         cam.send_statement(self.line)
         self.line.refresh_from_db()
         msg = mail.outbox[0]
-        self.assertEqual((msg.to, msg.from_email, self.line.send_count, self.line.sent_to), (['alpha@tenant.example'], 'admin@proper-realty.com', 1, ['alpha@tenant.example']))
+        self.assertEqual((msg.to, msg.from_email, self.line.send_count, self.line.sent_to), (['alpha@tenant.example'], 'Proper Realty Co <admin@proper-realty.com>', 1, ['alpha@tenant.example']))
         self.assertEqual(msg.attachments[0][2], 'application/pdf')
 
     def test_a_second_send_is_refused_unless_asked_for(self):

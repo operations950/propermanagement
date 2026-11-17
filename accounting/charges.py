@@ -22,6 +22,8 @@ INCOME_FOR_KIND = {Charge.Kind.ASSESSMENT: sc.INCOME_ASSESSMENT, Charge.Kind.SPE
                    Charge.Kind.FINE: sc.INCOME_MISC, Charge.Kind.OTHER: sc.INCOME_MISC, Charge.Kind.OPENING: sc.INCOME_ASSESSMENT, Charge.Kind.INTEREST: sc.INTEREST_INCOME,
                    Charge.Kind.LOAN: sc.INCOME_SPECIAL}
 # A payment goes first to interest, then to late fees, then to costs and fines, and last to the assessment itself (the declaration and Florida law say so).
+# What late fees and interest are charged on: dues, and the balance forward carried from the old system (its own interest only from the day the books start, since the old system charged its own before)
+DUES_KINDS = (Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL, Charge.Kind.OPENING)
 PAY_ORDER = {Charge.Kind.INTEREST: 0, Charge.Kind.LATE_FEE: 1, Charge.Kind.FINE: 2, Charge.Kind.OTHER: 2}
 
 
@@ -306,16 +308,18 @@ def _lease_late_fee(charge):
     return (lease.late_fee_flat, lease.late_fee_percent) if lease else None
 
 
-def late_fee_amount(profile, charge):
+def late_fee_amount(profile, charge, amount=None):
+    """The late fee on a charge: on its amount, or on `amount` when that is given (a balance forward is charged on what is still unpaid of it)."""
+    base = charge.amount if amount is None else amount
     own = _lease_late_fee(charge)
     if own is not None:
         flat, pct = own[0], own[1]
         fee_flat = ledger.money(flat) if flat is not None else None
-        fee_pct = ledger.money((pct or ZERO) / Decimal('100') * charge.amount) if pct is not None else None
+        fee_pct = ledger.money((pct or ZERO) / Decimal('100') * base) if pct is not None else None
         return max(x for x in (fee_flat, fee_pct) if x is not None)
     kind = profile.late_fee_kind
     flat = profile.late_fee_flat or ZERO
-    pct = (profile.late_fee_percent or ZERO) / Decimal('100') * charge.amount
+    pct = (profile.late_fee_percent or ZERO) / Decimal('100') * base
     if kind == profile.LateFeeKind.FLAT:
         return ledger.money(flat)
     if kind == profile.LateFeeKind.PERCENT:
@@ -339,17 +343,18 @@ def _late_fee_rows(association, today, units=None, as_of=None):
         return []
     grace = profile.late_fee_grace_days or 0
     day = as_of or today
+    books_start = profile.books_start
     rows = []
-    qs = Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL], due_date__lt=day - timedelta(days=grace))
+    qs = Charge.objects.filter(association=association, is_void=False, kind__in=DUES_KINDS, due_date__lt=day - timedelta(days=grace))
     if units is not None:
         qs = qs.filter(unit_id__in=units)
     for charge in qs.select_related('unit', 'owner').prefetch_related('applications'):
         open_ = balance_as_of(charge, as_of) if as_of is not None else charge.balance
         if open_ <= 0 or Charge.objects.filter(parent=charge, kind=Charge.Kind.LATE_FEE).exists():
             continue
-        fee = late_fee_amount(profile, charge)
+        fee = late_fee_amount(profile, charge, open_ if charge.kind == Charge.Kind.OPENING else None)       # a balance forward is charged on what is still unpaid of it
         if fee > 0:
-            rows.append((charge, fee, charge.due_date + timedelta(days=grace + 1)))
+            rows.append((charge, fee, max(charge.due_date + timedelta(days=grace + 1), books_start + timedelta(days=1) if charge.kind == Charge.Kind.OPENING and books_start else date.min)))
     return rows
 
 
@@ -413,9 +418,10 @@ def _interest_rows(association, today, units=None, as_of=None):
         return []
     months = _interest_months(today, as_of)
     rows = []
-    qs = Charge.objects.filter(association=association, is_void=False, kind__in=[Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL])
+    qs = Charge.objects.filter(association=association, is_void=False, kind__in=DUES_KINDS)
     if units is not None:
         qs = qs.filter(unit_id__in=units)
+    books_start = profile.books_start
     for charge in qs.select_related('unit', 'owner').prefetch_related('applications'):
         if as_of is not None and (charge.due_date > as_of or balance_as_of(charge, as_of) <= 0):
             continue
@@ -423,7 +429,12 @@ def _interest_rows(association, today, units=None, as_of=None):
             end = ledger.month_end(month_first)
             if charge.due_date > end or _interest_charged(charge, month_first, end):
                 continue
-            amount = interest_for_period(charge, month_first, end, profile.interest_rate, profile.interest_grace_days)
+            start = month_first
+            if charge.kind == Charge.Kind.OPENING and books_start:
+                if end <= books_start:
+                    continue                                                   # the old system charged these months
+                start = max(month_first, books_start + timedelta(days=1))
+            amount = interest_for_period(charge, start, end, profile.interest_rate, profile.interest_grace_days)
             if amount >= Decimal('0.01'):
                 rows.append((charge, month_first, end, amount))
     return rows

@@ -52,7 +52,7 @@ TICKET_FROM = {'ticket_list': TICKETS, 'dashboard': DASH, 'department_dashboard'
 
 ONSITE_FROM = {'onsite_dashboard': ONSITE, 'onsite_calendar': 'Calendar', 'onsite_str_today': RENTALS_TODAY, 'ws_home': HOME, 'ws_week': 'My week'}
 
-_CLOSE_CHILD = ({'close_home': CHECKLIST}, D('close_home', CHECKLIST, query=('month',)))
+_CLOSE_CHILD = ({'close_home': CHECKLIST, 'ws_financials': FINANCIALS}, D('close_home', CHECKLIST, query=('month',)))
 _ADMIN_CHILD = ({'admin_tools': ADMIN}, D('admin_tools', ADMIN))
 _ONSITE_CHILD = ({'onsite_dashboard': ONSITE, 'ws_home': HOME}, D('onsite_dashboard', ONSITE))
 _RENTALS_CHILD = ({'onsite_str_today': RENTALS_TODAY}, D('onsite_str_today', RENTALS_TODAY))

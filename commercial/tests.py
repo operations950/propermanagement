@@ -452,7 +452,7 @@ class InvoiceTests(TestCase):
         invoices.send_invoice(self.inv)
         self.inv.refresh_from_db()
         msg = mail.outbox[0]
-        self.assertEqual((msg.to, msg.from_email, self.inv.status, self.inv.sent_to, self.inv.send_count), (['pay@tenant.example'], 'admin@proper-realty.com', 'sent', ['pay@tenant.example'], 1))
+        self.assertEqual((msg.to, msg.from_email, self.inv.status, self.inv.sent_to, self.inv.send_count), (['pay@tenant.example'], 'Proper Realty Co <admin@proper-realty.com>', 'sent', ['pay@tenant.example'], 1))
         self.assertEqual(msg.attachments[0][2], 'application/pdf')
         self.assertIn('Hello', msg.body)
 

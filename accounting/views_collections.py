@@ -124,7 +124,7 @@ def late_fee_rows(prop, today):
     return sorted(units.values(), key=lambda r: (r['unit'].label,))
 
 
-ASSESSMENT_KINDS = (Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL)
+ASSESSMENT_KINDS = (Charge.Kind.ASSESSMENT, Charge.Kind.SPECIAL, Charge.Kind.OPENING)
 
 
 def _charged_text(done):

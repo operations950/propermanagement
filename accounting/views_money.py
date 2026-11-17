@@ -194,7 +194,7 @@ def _owner_rows(prop, rows):
             unit = None
         if unit is None:
             raise bankrec.StatementError('One of those units is not part of this association.')
-        out.append({'unit': unit, 'owner': owners.billed_owner(unit), 'amount': parse_money(str(r.get('amount') or '')), 'ref': str(r.get('ref') or '')})
+        out.append({'unit': unit, 'owner': owners.billed_owner(unit), 'amount': parse_money(str(r.get('amount') or '')), 'ref': str(r.get('ref') or ''), 'to_loan': bool(r.get('to_loan'))})
     return out
 
 
@@ -214,7 +214,9 @@ def _other_rows(prop, rows):
 
 def _deposit_people(prop):
     """Every unit with its billed owner, what is owed now, its usual monthly charge and what the owner has paid before: what the sorting screen suggests from."""
-    owed, monthly = defaultdict(lambda: ZERO), {}
+    owed, monthly, loans = defaultdict(lambda: ZERO), {}, defaultdict(lambda: ZERO)
+    for c in Charge.objects.filter(association=prop, is_void=False, kind=Charge.Kind.LOAN).prefetch_related('applications'):
+        loans[c.unit_id] += c.balance
     for c in Charge.objects.filter(association=prop, is_void=False).exclude(kind=Charge.Kind.LOAN).prefetch_related('applications'):
         owed[(c.unit_id, c.owner_id)] += c.balance
         if c.kind == Charge.Kind.ASSESSMENT and (c.unit_id not in monthly or c.due_date >= monthly[c.unit_id][0]):
@@ -227,7 +229,7 @@ def _deposit_people(prop):
     for u in owners.active_units(prop):
         o = owners.billed_owner(u)
         people.append({'id': u.pk, 'label': u.label, 'owner': o.name if o else '', 'owes': str(owed.get((u.pk, o.pk), ZERO)) if o else '0', 'monthly': str(monthly[u.pk][1]) if u.pk in monthly else '0',
-                       'earlier': [str(a) for a in earlier.get(u.pk, [])]})
+                       'earlier': [str(a) for a in earlier.get(u.pk, [])], 'loan': str(loans.get(u.pk, ZERO))})
     return people
 
 
@@ -949,7 +951,7 @@ def report_payables(request, pk):
     if redirect_to:
         return redirect_to
     end = parse_date(request.GET.get('end')) or timezone.localdate()
-    return render(request, 'accounting/report_payables.html', {'assoc': prop, 'ag': payables.aging(prop, end), 'end': end, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+    return render(request, 'accounting/report_payables.html', {'assoc': prop, 'ag': payables.aging(prop, end), 'end': end, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank', 'accounting:bills', 'accounting:payables_home'], _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only

@@ -196,7 +196,7 @@ class PhoneOnSiteTests(TestCase):
 
     # ---------------------------------------------------------------- the properties board
     def _stay(self):
-        now = timezone.now()
+        now = timezone.localtime()                                       # the local day, not the UTC one: in the evening they are different days
         return Booking.objects.create(property=self.prop, source='manual', external_uid='a1', guest_name='Dana', check_in=now - timedelta(days=2), check_out=now.replace(hour=11, minute=0) + timedelta(days=1),
                                       listing_name='Palm Cottage')
 

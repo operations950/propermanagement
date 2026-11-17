@@ -77,7 +77,7 @@
     var money = function (c) { return (c < 0 ? '−' : '') + '$' + (Math.abs(c) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); };
     var plain = function (c) { return (c / 100).toFixed(2); };
     var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); };
-    UNITS.forEach(function (u) { u.owesC = cents(u.owes); u.monthlyC = cents(u.monthly); u.earlierC = u.earlier.map(cents); });
+    UNITS.forEach(function (u) { u.owesC = cents(u.owes); u.loanC = cents(u.loan || '0'); u.monthlyC = cents(u.monthly); u.earlierC = u.earlier.map(cents); });
     CANDS.forEach(function (c) { c.amt = cents(c.amount); });
     var unitOf = function (id) { return UNITS.filter(function (u) { return u.id === id; })[0]; };
     var acctOf = function (id) { return ACCTS.filter(function (a) { return a[0] === id; })[0]; };
@@ -121,7 +121,7 @@
             }
             var u = unitOf(r.unit);
             return '<tr><td>' + esc(u.label) + '</td><td>' + esc(u.owner) + '</td><td>' + money(u.owesC) + '</td><td class="text-end"><input class="form-control form-control-sm dp-amt d-inline-block" data-act="amt" data-sid="' + s.id + '" data-i="' + i + '" value="' + plain(r.amt) + '"></td>' +
-                '<td><input class="form-control form-control-sm dp-ref" style="width:140px" placeholder="optional" data-sid="' + s.id + '" data-i="' + i + '" value="' + esc(r.ref) + '"></td><td class="text-end"><button type="button" class="btn btn-sm btn-outline-secondary" data-act="drop" data-sid="' + s.id + '" data-i="' + i + '">Remove</button></td></tr>';
+                '<td><input class="form-control form-control-sm dp-ref" style="width:140px" placeholder="optional" data-sid="' + s.id + '" data-i="' + i + '" value="' + esc(r.ref) + '">' + (u.loanC > 0 ? '<label class="small d-block mt-1 mb-0"><input type="checkbox" class="dp-loan" data-sid="' + s.id + '" data-i="' + i + '"' + (r.loan ? ' checked' : '') + '> For the loan (' + money(u.loanC) + ')</label>' : '') + '</td><td class="text-end"><button type="button" class="btn btn-sm btn-outline-secondary" data-act="drop" data-sid="' + s.id + '" data-i="' + i + '">Remove</button></td></tr>';
         }).join('');
         return (s.rows.length ? '<div class="table-responsive"><table class="table table-sm ac-table mb-1"><thead><tr><th>Unit</th><th>Owner</th><th>Owes now</th><th class="text-end">Paid</th><th>Check # / note</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="small text-muted mb-1">Nothing assigned yet.</div>') +
             '<div class="ac-lab mt-2">Pick owners ' + tip('Ticking an owner adds a row with one month’s charge, or what they owe if that is smaller. You can change the amount. Anything paid beyond what an owner owes is kept as a credit and used on their next charge.') + '</div>' +
@@ -230,7 +230,7 @@
     };
     function addOwner(s, id) { var u = unitOf(id); if (u && !s.rows.some(function (r) { return r.kind !== 'other' && r.unit === id; })) s.rows.push({kind: 'owner', unit: id, amt: defaultAmount(s, u), ref: ''}); }
     var form = function (f) { if (window.acSubmit) window.acSubmit(f); else f.submit(); };
-    function ownersPayload(s) { return s.rows.filter(function (r) { return r.kind !== 'other'; }).map(function (r) { return {unit: r.unit, amount: plain(r.amt), ref: r.ref}; }); }
+    function ownersPayload(s) { return s.rows.filter(function (r) { return r.kind !== 'other'; }).map(function (r) { return {unit: r.unit, amount: plain(r.amt), ref: r.ref, to_loan: !!r.loan}; }); }
     document.addEventListener('click', function (e) {
         var t = e.target.closest('[data-act]'); if (!t) return;
         var act = t.dataset.act, s = S[t.dataset.sid];
@@ -260,6 +260,7 @@
         var t = e.target, s = S[t.dataset && t.dataset.sid];
         if (!s) return;
         if (t.classList.contains('dp-ref')) s.rows[+t.dataset.i].ref = t.value;
+        else if (t.classList.contains('dp-loan')) s.rows[+t.dataset.i].loan = t.checked;
         else if (t.classList.contains('dp-memo')) s.rows[+t.dataset.i].memo = t.value;
         else if (t.classList.contains('dp-note')) s.memo = t.value;
         else if (t.classList.contains('dp-uq')) { s.uq = t.value; document.getElementById('pk' + s.id).innerHTML = pickerHtml(s); }

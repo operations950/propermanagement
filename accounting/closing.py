@@ -209,7 +209,7 @@ def _late_fee_candidates(association, as_of):
     profile = ledger.profile_for(association)
     grace = profile.late_fee_grace_days or 0
     n = 0
-    for c in Charge.objects.filter(association=association, is_void=False, kind__in=['assessment', 'special'], due_date__lt=as_of - timedelta(days=grace)).prefetch_related('applications'):
+    for c in Charge.objects.filter(association=association, is_void=False, kind__in=['assessment', 'special', 'opening'], due_date__lt=as_of - timedelta(days=grace)).prefetch_related('applications'):
         if c.balance > 0 and not Charge.objects.filter(parent=c, kind='late_fee').exists():
             n += 1
     return n

@@ -126,7 +126,7 @@ class KeptOutOfDuesTests(LoanBase):
         self.with_loan()
         charges.post_charge(self.prop, self.unit, self.owner, Charge.Kind.ASSESSMENT, 'Regular assessment Sep 2026', date(2026, 9, 1), D('3332.33'))
         rows = charges._late_fee_rows(self.prop, TODAY)
-        self.assertEqual([(c.description, fee) for c, fee, due in rows], [('Regular assessment Sep 2026', D('25.00'))])
+        self.assertEqual(sorted((c.description, fee) for c, fee, due in rows), [('Balance forward from Yardi, 61 to 90 days', D('25.00')), ('Regular assessment Sep 2026', D('25.00'))])      # the dues, never the loan
 
     def test_the_loan_is_not_in_what_is_owed_a_letter_or_the_list(self):
         self.with_loan(opening='23000.00', loan='22688.55')
@@ -228,3 +228,26 @@ class CommandAndScreenTests(LoanBase):
         self.assertIn('This payment is for the loan', page)
         self.client.post(reverse('accounting:receipt_new', args=[self.prop.pk]), {'unit': self.unit.pk, 'amount': '500.00', 'date': '2026-11-01', 'method': 'check', 'to_loan': '1'})
         self.assertEqual(self.account()['loan'], D('22188.55'))
+
+
+@override_settings(STORAGES=STORAGES)
+class DepositScreenLoanTests(LoanBase):
+    def test_an_owner_row_on_the_deposits_screen_can_be_for_the_loan(self):
+        from . import views_money
+        self.with_loan(opening='23000.00', loan='22688.55')
+        people = {p['id']: p for p in views_money._deposit_people(self.prop)}
+        self.assertEqual(people[self.unit.pk]['loan'], '22688.55')
+        self.assertEqual(people[self.unit.pk]['owes'], '311.45')                              # the loan is not in what they owe
+        rows = views_money._owner_rows(self.prop, [{'unit': self.unit.pk, 'amount': '1000.00', 'ref': 'ACH', 'to_loan': True}])
+        self.assertTrue(rows[0]['to_loan'])
+        receipt = charges.receive_payment(self.prop, self.unit, self.owner, date(2026, 11, 1), D('1000.00'), to_loan=rows[0]['to_loan'])
+        self.assertEqual(self.account()['loan'], D('21688.55'))
+        self.assertEqual(receipt.applications.count(), 1)
+
+    def test_the_deposits_screen_offers_the_loan_checkbox(self):
+        user = get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678')
+        self.client.force_login(user)
+        self.with_loan(opening='23000.00', loan='22688.55')
+        source = open('accounting/templates/accounting/deposits.html', encoding='utf8').read()
+        self.assertIn('For the loan (', source)
+        self.assertIn('to_loan: !!r.loan', source)

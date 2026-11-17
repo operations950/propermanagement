@@ -1005,7 +1005,7 @@ def sort_deposit(bank_line, owner_rows, other_rows, item_keys=(), user=None):
     for r in owner_rows:
         if r.get('owner') is None:
             raise StatementError(f'Unit {r["unit"].label} has no owner on record.')
-        receipt = charges.receive_payment(assoc, r['unit'], r['owner'], bank_line.date, r['amount'], method, reference=((r.get('ref') or '').strip() or bank_line.description)[:80], bank_account=bank, user=user)
+        receipt = charges.receive_payment(assoc, r['unit'], r['owner'], bank_line.date, r['amount'], method, reference=((r.get('ref') or '').strip() or bank_line.description)[:80], bank_account=bank, user=user, to_loan=bool(r.get('to_loan')))
         line = receipt.entry.lines.get(account=bank.account)
         tied.append(Item('line', line, receipt.date, line.debit - line.credit))
     for r in other_rows:
@@ -1027,7 +1027,7 @@ def record_owner_payments(bank_account, day, rows, method=Receipt.Method.CHECK, 
         if r.get('owner') is None:
             raise StatementError(f'Unit {r["unit"].label} has no owner on record.')
         made.append(charges.receive_payment(bank_account.association, r['unit'], r['owner'], day, _positive(r.get('amount'), 'Each owner payment'), method, reference=(r.get('ref') or '').strip()[:80],
-                                            bank_account=bank_account, user=user))
+                                            bank_account=bank_account, user=user, to_loan=bool(r.get('to_loan'))))
     return made
 
 
