@@ -311,15 +311,23 @@ class FinalizeTests(BinderBase):
         with mock.patch.object(binders, '_cut_and_store', side_effect=RuntimeError('storage is down')):
             with self.assertRaises(documents.DocumentError) as e:
                 binders.confirm(head, choices, set(), self.user)
-        self.assertIn('Nothing was lost', str(e.exception))
+        self.assertIn('Your sorted list is kept', str(e.exception))
         self.assertEqual(AssociationDocument.objects.filter(is_staging=True).count(), before)
         self.assertFalse(AssociationDocument.objects.filter(is_staging=False).exists())
         head.refresh_from_db()
-        self.assertEqual(head.binder_state, 'failed')
+        self.assertEqual(head.binder_state, 'needs_confirm')                 # back on the review screen with the sort intact, not "could not be read"
+        self.assertTrue(head.sections)
         # and it can be tried again
         made, _ = binders.finalize(head, self.user)
         self.assertEqual(len(made), 4)
         self.assertFalse(AssociationDocument.objects.filter(is_staging=True).exists())
+
+    def test_a_very_long_document_title_can_always_be_saved(self):
+        title = 'Castlewood Town Villas Rules and Regulations (revised 2-9-13) with every amendment and exhibit ' * 2
+        head = self.ready_binder([{'kind': 'rules', 'title': title, 'start': 1, 'end': 12, 'confidence': 0.9}])
+        made, _ = binders.confirm(head, [('rules', title, None)], set(), self.user)
+        self.assertEqual(len(made), 1)
+        self.assertLessEqual(len(made[0].file.name), 100)                    # the column holds 100 characters, whatever the title
 
     def test_a_partly_stored_save_is_rolled_back(self):
         head = self.ready_binder()
@@ -447,7 +455,9 @@ class SettingsScreenTests(BinderBase):
             form.update({f'kind_{i}': s['kind'], f'title_{i}': s['title'], f'applies_{i}': ''})
         with mock.patch.object(binders, '_cut_and_store', side_effect=RuntimeError('down')):
             r = self.client.post(self.url, form, follow=True)
-        self.assertContains(r, 'Nothing was lost')
+        self.assertContains(r, 'Your sorted list is kept')
+        self.assertContains(r, 'Needs a look')
+        self.assertNotContains(r, 'Could not be read')
         self.assertTrue(AssociationDocument.objects.filter(is_staging=True).exists())
 
     def test_the_split_button_shows_only_for_a_sorted_file_and_works(self):

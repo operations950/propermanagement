@@ -266,7 +266,7 @@ def _store(association, kind, name, file, user, **extra):
         raise
     except Exception as exc:
         logger.exception('A document could not be stored')
-        raise DocumentError(f'"{name}" could not be stored right now ({str(exc)[:120]}). Try again, or make the file smaller.')
+        raise DocumentError(f'"{name}" could not be saved right now. Nothing you did is lost: try again in a minute, or make the file smaller.')
 
 
 def upload(association, kind, uploaded_file, user=None):

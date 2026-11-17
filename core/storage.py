@@ -31,7 +31,33 @@ from django.core.files.storage import storages
 from django.utils.deconstruct import deconstructible
 
 
+MAX_STORED_NAME = 80        # a FileField column holds 100 characters and the storage adds a random suffix (about 12) to a name that is taken: stay well under
+
+
+def clamp_stored_name(name, limit=MAX_STORED_NAME):
+    """A stored file name (folders and all) no longer than `limit`: the file's own name is shortened, never its folder or its extension. A name that cannot be made to fit (a folder
+    alone over the limit) is returned as it is."""
+    name = str(name or '')
+    if len(name) <= limit:
+        return name
+    folder, _, base = name.rpartition('/')
+    stem, dot, ext = base.rpartition('.')
+    if not dot or len(ext) > 8:
+        stem, ext = base, ''
+    else:
+        ext = '.' + ext
+    room = limit - len(folder) - (1 if folder else 0) - len(ext)
+    if room < 8:
+        return name
+    stem = stem[:room].rstrip(' ._-') or 'file'
+    return f'{folder}/{stem}{ext}' if folder else f'{stem}{ext}'
+
+
 @deconstructible
 class DocumentStorage:
+    def generate_filename(self, filename):
+        """Every upload field (documents, bills, statements, leases, attachments) names its file through here, so no name can be longer than the database column holds."""
+        return clamp_stored_name(storages['documents'].generate_filename(filename))
+
     def __getattr__(self, name):
         return getattr(storages['documents'], name)

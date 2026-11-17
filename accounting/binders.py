@@ -304,8 +304,10 @@ def finalize(head, user=None):
     except Exception as exc:
         _drop(created)
         logger.exception('Saving the big upload "%s" failed', head.binder_name)
-        note = str(exc) if isinstance(exc, DocumentError) else 'The documents could not be saved just now. Nothing was lost; press the button again.'
-        AssociationDocument.objects.filter(pk=head.pk).update(binder_state='failed', read_note=note[:300])
+        # The words and the sort are all kept: it goes back to the review screen (not to "could not be read"), where the same button saves it again.
+        reason = str(exc) if isinstance(exc, DocumentError) else 'The documents could not be saved just now.'
+        note = f'Saving stopped. {reason} Your sorted list is kept: press the button to save again.'
+        AssociationDocument.objects.filter(pk=head.pk).update(binder_state='needs_confirm', read_note=note[:300])
         raise DocumentError(note)
     _drop(parts)
     return created, left_out

@@ -237,7 +237,9 @@
         .list-group-item-action:hover { background: var(--surface-page); }
 
         .badge { font-weight: 500; }
-        .nav-pip { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px; margin-left: 6px; border-radius: 999px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: 1px; }
+        /* The count on a menu item that needs attention: the same soft amber chip the rest of the site uses for "needs attention", not a loud red dot. */
+        .nav-pip { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 6px; margin-left: 6px; border-radius: 999px; background: color-mix(in srgb, var(--status-warning) 24%, white); color: #7a4e00; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-warning) 55%, transparent); font-size: 0.72rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; line-height: 1; vertical-align: 1px; }
+        .brand-bar .nav-link.active .nav-pip, .brand-bar .nav-link:hover .nav-pip { background: color-mix(in srgb, var(--status-warning) 30%, white); }
 
         /* The small (i) next to a label: the full explanation lives in a bubble that opens on click, so a screen can stay short.
            Use: {% include '_tip.html' with text='...' %}. Wired up at the bottom of this file. */
