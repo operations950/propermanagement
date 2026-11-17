@@ -271,7 +271,7 @@ def save_lookup(association, rows, choices=None, accept=()):
 
 def _owner_for(unit):
     """The person this unit's charges are under: whoever has the most open charges, else the billed owner."""
-    count = Counter(c.owner_id for c in Charge.objects.filter(unit=unit, is_void=False).prefetch_related('applications') if c.owner_id and c.balance > 0)
+    count = Counter(c.owner_id for c in Charge.objects.filter(unit=unit, is_void=False).exclude(kind='loan').prefetch_related('applications') if c.owner_id and c.balance > 0)
     if count:
         from core.models import Contact
         return Contact.objects.get(pk=count.most_common(1)[0][0])

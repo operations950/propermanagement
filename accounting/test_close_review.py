@@ -59,6 +59,20 @@ class ReviewAndCloseTests(TestCase):
         self.assertContains(r, 'Finish the items on the close sheet first')
         self.assertFalse(MonthLock.objects.exists())
 
+    def test_when_every_step_before_it_is_done_nothing_is_said_to_be_waiting_and_approve_is_open(self):
+        done = {'items': [{'key': 'bank', 'title': 'Bank reconciliation', 'blocks': True, 'status': 'done'},
+                          {'key': 'lock', 'title': 'Review and close the month', 'blocks': True, 'status': 'attention'}], 'locked': False, 'sent': False, 'can_lock': True, 'blocking': 0}
+        with mock.patch.object(closing, 'close_sheet', return_value=done):
+            html = self.client.get(self.url).content.decode()
+        self.assertNotIn('still need', html)                                          # the last step is never "waiting" on itself
+        self.assertNotIn('disabled', html.split('Approve and close the month')[0].rsplit('<button', 1)[1])
+
+    def test_the_package_opens_at_its_first_page_and_a_little_larger_than_the_width(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('page=1', html)
+        self.assertIn('Date.now()', html)                                              # a fresh address each time: the browser does not reopen it where it was last scrolled
+        self.assertIn('* 1.12', html)
+
     def test_opening_the_month_again_removes_the_approval(self):
         ledger.lock_month(self.prop, MONTH, self.user)
         self.client.post(self.url, {'action': 'reopen'})

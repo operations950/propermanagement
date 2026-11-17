@@ -29,7 +29,7 @@ def breakdown(unit, owner, asof=None):
     """{'assessments', 'late_fees', 'interest', 'other', 'total', 'oldest_due'}: what is still unpaid, split by kind. With `asof`, as the account stood that day (charges due by then, less
     the payments applied by then)."""
     out = {'assessments': ZERO, 'late_fees': ZERO, 'interest': ZERO, 'other': ZERO, 'oldest_due': None}
-    qs = Charge.objects.filter(unit=unit, owner=owner, is_void=False).prefetch_related('applications')
+    qs = Charge.objects.filter(unit=unit, owner=owner, is_void=False).exclude(kind=Kind.LOAN).prefetch_related('applications')       # an owner loan is never part of what is owed (no letter, no list)
     if asof:
         qs = qs.filter(due_date__lte=asof)
     for c in qs:

@@ -109,7 +109,8 @@ class PostingTests(AsOfBase):
         self.assertEqual(self.names(r.context['rows']), ['Anna', 'Cora', 'Dan'])
         self.assertNotIn('What for', html)
         self.assertIn('Total owed', html)
-        self.assertIn('Last charged', html)
+        self.assertIn('Late fee last charged', html)
+        self.assertIn('Interest last charged', html)
 
     def test_a_day_in_the_future_or_not_a_date_means_today(self):
         with mock.patch('django.utils.timezone.localdate', return_value=self.today):

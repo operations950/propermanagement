@@ -83,4 +83,4 @@ class SplitPdfTests(TestCase):
         with mock.patch.object(AssociationDocument.objects, 'create', side_effect=RuntimeError('File size too large')):
             with self.assertRaises(documents.DocumentError) as e:
                 documents.upload(prop, 'bylaws', SimpleUploadedFile('Bylaws.pdf', make_pdf(1), content_type='application/pdf'))
-        self.assertIn('could not be stored', str(e.exception))
+        self.assertIn('could not be saved right now', str(e.exception))

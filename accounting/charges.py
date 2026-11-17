@@ -19,7 +19,8 @@ from .models import ZERO, Application, BankAccount, Charge, ChargeRule, JournalE
 
 FREQ_MONTHS = {'monthly': 1, 'quarterly': 3, 'semiannual': 6, 'annual': 12}
 INCOME_FOR_KIND = {Charge.Kind.ASSESSMENT: sc.INCOME_ASSESSMENT, Charge.Kind.SPECIAL: sc.INCOME_SPECIAL, Charge.Kind.LATE_FEE: sc.INCOME_LATE_FEE,
-                   Charge.Kind.FINE: sc.INCOME_MISC, Charge.Kind.OTHER: sc.INCOME_MISC, Charge.Kind.OPENING: sc.INCOME_ASSESSMENT, Charge.Kind.INTEREST: sc.INTEREST_INCOME}
+                   Charge.Kind.FINE: sc.INCOME_MISC, Charge.Kind.OTHER: sc.INCOME_MISC, Charge.Kind.OPENING: sc.INCOME_ASSESSMENT, Charge.Kind.INTEREST: sc.INTEREST_INCOME,
+                   Charge.Kind.LOAN: sc.INCOME_SPECIAL}
 # A payment goes first to interest, then to late fees, then to costs and fines, and last to the assessment itself (the declaration and Florida law say so).
 PAY_ORDER = {Charge.Kind.INTEREST: 0, Charge.Kind.LATE_FEE: 1, Charge.Kind.FINE: 2, Charge.Kind.OTHER: 2}
 
@@ -142,6 +143,8 @@ def post_charge(association, unit, owner, kind, description, due, amount, income
     amount = ledger.money(amount)
     if amount <= 0:
         raise ChargeError('A charge needs an amount above zero.')
+    if kind == Charge.Kind.LOAN:
+        raise ChargeError('An owner loan is set up on the Owner loans screen, not as a charge.')
     income = income_account or ledger.account(association, INCOME_FOR_KIND[kind])
     entry = ledger.post_entry(association, due, [{'account': sc.AR, 'debit': amount, 'unit': unit, 'owner': owner, 'memo': description},
                                                  {'account': income, 'credit': amount, 'memo': description}],
@@ -157,6 +160,8 @@ def void_charge(charge, user=None, day=None):
     """Take a charge back: it must not have been paid. Posts the opposite entry and marks the charge void."""
     if charge.is_void:
         return
+    if charge.kind == Charge.Kind.LOAN:
+        raise ChargeError('An owner loan is not voided like a charge. Change it on the Owner loans screen.')
     if charge.applications.exists():
         raise ChargeError('That charge has a payment on it. Reverse the payment first.')
     day = day or date.today()
@@ -172,10 +177,21 @@ def void_charge(charge, user=None, day=None):
 
 # ---------------------------------------------------------------- what owners pay
 
-def open_charges(unit, owner):
-    """What the owner still owes, in the order a payment pays it: interest, late fees, costs, then assessments, the oldest first within each."""
-    rows = [c for c in Charge.objects.filter(unit=unit, owner=owner, is_void=False).order_by('due_date', 'id').prefetch_related('applications') if c.balance > 0]
+def open_charges(unit, owner, loan=False):
+    """What the owner still owes, in the order a payment pays it: interest, late fees, costs, then assessments, the oldest first within each. An owner loan is never in this list
+    (a payment never pays it by itself); with loan=True it is the only thing in the list, for a payment the person says is for the loan."""
+    qs = Charge.objects.filter(unit=unit, owner=owner, is_void=False)
+    qs = qs.filter(kind=Charge.Kind.LOAN) if loan else qs.exclude(kind=Charge.Kind.LOAN)
+    rows = [c for c in qs.order_by('due_date', 'id').prefetch_related('applications') if c.balance > 0]
     return sorted(rows, key=lambda c: (PAY_ORDER.get(c.kind, 3), c.due_date, c.id))
+
+
+def loan_balance(unit, owner=None):
+    """What an owner still owes on their long-term loan."""
+    qs = Charge.objects.filter(unit=unit, is_void=False, kind=Charge.Kind.LOAN)
+    if owner is not None:
+        qs = qs.filter(owner=owner)
+    return sum((c.balance for c in qs.prefetch_related('applications')), ZERO)
 
 
 def _income_lines(applied):
@@ -187,27 +203,39 @@ def _income_lines(applied):
 
 
 @transaction.atomic
-def receive_payment(association, unit, owner, day, amount, method=Receipt.Method.CHECK, reference='', bank_account=None, memo='', user=None):
-    """Record money an owner paid. It pays their oldest charges first; anything left over is held as a credit. Posts to both books."""
+def receive_payment(association, unit, owner, day, amount, method=Receipt.Method.CHECK, reference='', bank_account=None, memo='', user=None, to_loan=False):
+    """Record money an owner paid. It pays their oldest charges first; anything left over is held as a credit. Posts to both books. With `to_loan` the money pays the owner's loan
+    and nothing else (it cannot be more than the loan balance); without it the loan is never touched."""
     amount = ledger.money(amount)
     if amount <= 0:
         raise ChargeError('A payment needs an amount above zero.')
+    if to_loan:
+        owed_on_loan = loan_balance(unit, owner)
+        if owed_on_loan <= 0:
+            raise ChargeError('This owner has no loan balance.')
+        if amount > owed_on_loan:
+            raise ChargeError(f'That is more than the loan balance of ${owed_on_loan:,.2f}.')
     bank = bank_account or default_bank(association)
     receipt = Receipt.objects.create(association=association, owner=owner, unit=unit, date=day, amount=amount, method=method, reference=reference[:80],
                                      memo=memo[:200], bank_account=bank, created_by=user)
     remaining, applied = amount, []
-    for charge in open_charges(unit, owner):
+    for charge in open_charges(unit, owner, loan=to_loan):
         if remaining <= 0:
             break
         take = min(charge.balance, remaining)
         applied.append((charge, take))
         remaining -= take
     who = {'unit': unit, 'owner': owner}
-    desc = f'Payment from {owner.name}, {unit.label}'
+    desc = f'Payment from {owner.name}, {unit.label}' + (' (loan)' if to_loan else '')
     accrual = [{'account': bank.account, 'debit': amount, 'memo': desc, **who}]
     cash = [{'account': bank.account, 'debit': amount, 'memo': desc, **who}]
     if applied:
-        accrual.append({'account': sc.AR, 'credit': sum((a for c, a in applied), ZERO), 'memo': desc, **who})
+        on_loan = sum((a for c, a in applied if c.kind == Charge.Kind.LOAN), ZERO)
+        on_dues = sum((a for c, a in applied if c.kind != Charge.Kind.LOAN), ZERO)
+        if on_dues:
+            accrual.append({'account': sc.AR, 'credit': on_dues, 'memo': desc, **who})
+        if on_loan:
+            accrual.append({'account': sc.OWNER_LOAN, 'credit': on_loan, 'memo': desc + ' (loan)', **who})
         for account_id, amt in _income_lines(applied).items():
             cash.append({'account': ledger.Account.objects.get(pk=account_id) if account_id else sc.INCOME_ASSESSMENT, 'credit': amt, 'memo': desc, 'unit': unit, 'owner': owner})
     if remaining > 0:
@@ -453,14 +481,20 @@ def terms_sentences(profile, example=None):
 def accounts(association):
     """One row per (unit, owner) that has ever been charged or has paid: what was charged, what came in, and the balance (owed is plus, paid ahead is minus)."""
     rows = {}
+    new = lambda unit, owner: {'unit': unit, 'owner': owner, 'charged': ZERO, 'received': ZERO, 'loan_charged': ZERO, 'loan_paid': ZERO}
     for c in Charge.objects.filter(association=association, is_void=False).select_related('unit', 'owner'):
-        r = rows.setdefault((c.unit_id, c.owner_id), {'unit': c.unit, 'owner': c.owner, 'charged': ZERO, 'received': ZERO})
+        r = rows.setdefault((c.unit_id, c.owner_id), new(c.unit, c.owner))
         r['charged'] += c.amount
+        if c.kind == Charge.Kind.LOAN:
+            r['loan_charged'] += c.amount
     for p in Receipt.objects.filter(association=association, is_void=False).select_related('unit', 'owner'):
-        r = rows.setdefault((p.unit_id, p.owner_id), {'unit': p.unit, 'owner': p.owner, 'charged': ZERO, 'received': ZERO})
+        r = rows.setdefault((p.unit_id, p.owner_id), new(p.unit, p.owner))
         r['received'] += p.amount
+    for a in Application.objects.filter(charge__association=association, charge__kind=Charge.Kind.LOAN, charge__is_void=False, receipt__is_void=False).select_related('charge'):
+        rows[(a.charge.unit_id, a.charge.owner_id)]['loan_paid'] += a.amount
     for r in rows.values():
-        r['balance'] = r['charged'] - r['received']
+        r['loan'] = r['loan_charged'] - r['loan_paid']                                                    # what is owed on the loan: its own figure
+        r['balance'] = (r['charged'] - r['loan_charged']) - (r['received'] - r['loan_paid'])             # dues only: the loan is not in it
         r['current'] = owners.billed_owner(r['unit']) is not None and r['owner'].pk in [o.person_id for o in owners.current_ownerships(r['unit'])]
     return sorted(rows.values(), key=lambda r: (r['unit'].label, r['owner'].name))
 
@@ -479,8 +513,9 @@ def unit_balance(unit):
 def ledger_rows(unit, owner=None):
     """Chronological charges and payments for a unit (or one owner on it) with a running balance."""
     items = []
-    cq = Charge.objects.filter(unit=unit, is_void=False)
-    rq = Receipt.objects.filter(unit=unit, is_void=False)
+    cq = Charge.objects.filter(unit=unit, is_void=False).exclude(kind=Charge.Kind.LOAN)
+    loan_receipts = set(Application.objects.filter(charge__unit=unit, charge__kind=Charge.Kind.LOAN).values_list('receipt_id', flat=True))
+    rq = Receipt.objects.filter(unit=unit, is_void=False).exclude(pk__in=loan_receipts)
     if owner is not None:
         cq, rq = cq.filter(owner=owner), rq.filter(owner=owner)
     for c in cq.select_related('owner'):
@@ -496,13 +531,30 @@ def ledger_rows(unit, owner=None):
     return items
 
 
+def loan_rows(unit, owner=None):
+    """The owner's loan on its own: what was set up, each payment on it, and the balance after each. [] when the unit has none."""
+    cq = Charge.objects.filter(unit=unit, is_void=False, kind=Charge.Kind.LOAN)
+    if owner is not None:
+        cq = cq.filter(owner=owner)
+    items = [{'date': c.due_date, 'order': 0, 'what': c.description, 'charge': c.amount, 'payment': None} for c in cq]
+    for a in Application.objects.filter(charge__in=cq, receipt__is_void=False).select_related('receipt'):
+        how = a.receipt.get_method_display() + (f' {a.receipt.reference}' if a.receipt.reference else '')
+        items.append({'date': a.date, 'order': 1, 'what': f'Payment, {how}', 'charge': None, 'payment': a.amount})
+    items.sort(key=lambda r: (r['date'], r['order']))
+    running = ZERO
+    for r in items:
+        running += (r['charge'] or ZERO) - (r['payment'] or ZERO)
+        r['balance'] = running
+    return items
+
+
 BUCKETS = (('Current', -10 ** 6, 30), ('31 to 60 days', 31, 60), ('61 to 90 days', 61, 90), ('Over 90 days', 91, 10 ** 6))
 
 
 def aging(association, as_of):
     """Open charges by how long they have been owed, per owner and unit."""
     out = {}
-    for c in Charge.objects.filter(association=association, is_void=False).select_related('unit', 'owner').prefetch_related('applications'):
+    for c in Charge.objects.filter(association=association, is_void=False).exclude(kind=Charge.Kind.LOAN).select_related('unit', 'owner').prefetch_related('applications'):
         bal = c.amount - sum((a.amount for a in c.applications.all() if a.date <= as_of), ZERO)       # what was still owed on that date, not today
         if bal <= 0 or c.due_date > as_of:
             continue

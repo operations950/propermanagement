@@ -101,7 +101,7 @@ def close_review(request, pk, month):
     sheet = closing.close_sheet(prop, first)
     lock = MonthLock.objects.filter(association=prop, month=first).select_related('locked_by').first()
     pdf = reverse('accounting:report_package', args=[pk]) + f'?month={first:%Y-%m}'
-    waiting = [i for i in sheet['items'] if i['blocks'] and i['status'] != 'done']
+    waiting = [i for i in sheet['items'] if i['blocks'] and i['status'] != 'done' and i['key'] != 'lock']       # this screen IS the last step: it is never waiting on itself
     return render(request, 'accounting/close_review.html', {
         'assoc': prop, 'month': first, 'sheet': sheet, 'lock': lock, 'pdf': pdf, 'waiting': waiting, 'sheet_url': reverse('accounting:close', args=[pk, f'{first:%Y-%m}']),
         'send_url': reverse('accounting:send_board', args=[pk, f'{first:%Y-%m}']), 'send_label': labels.label(prop, 'package_step'),
@@ -249,7 +249,7 @@ def unit_detail(request, pk, unit_pk):
     from tickets.models import Ticket
     open_tickets = Ticket.objects.filter(property=prop, unit=unit).exclude(status__in=['completed', 'verified', 'skipped', 'not_applicable', 'cancelled']).count() if hasattr(Ticket, 'unit') else 0
     return render(request, 'accounting/unit_detail.html', {'assoc': prop, 'unit': unit, 'building': unit.assoc_profile.building if hasattr(unit, 'assoc_profile') else '', 'current': [o for o in own if o.is_current],
-                                                           'former': [o for o in own if not o.is_current], 'accounts': accounts, 'balance': sum((a['balance'] for a in accounts), Decimal('0.00')),
+                                                           'former': [o for o in own if not o.is_current], 'accounts': accounts, 'balance': sum((a['balance'] for a in accounts), Decimal('0.00')), 'loan': sum((a['loan'] for a in accounts), Decimal('0.00')), 'loan_rows': charges.loan_rows(unit),
                                                            'rows': list(reversed(charges.ledger_rows(unit))), 'share': UnitShare.objects.filter(unit=unit, kind__is_default=True).first(),
                                                            'open_tickets': open_tickets, 'books_on': ledger.profile_for(prop).we_do_financials, 'today': timezone.localdate(), 'leases': list(unit.leases.select_related('tenant')) if labels.is_commercial(prop) else [],
                                                            **acc_up(request, prop, ['accounting:units', 'accounting:charges', 'accounting:collections', 'accounting:delinquencies', 'accounting:report_aging', 'accounting:late_fees', 'accounting:hub'], _go('units', prop.pk), labels.label(prop, 'units_title'))})
@@ -478,12 +478,12 @@ def receipt_new(request, pk):
             bank = prop.bank_accounts.filter(pk=request.POST.get('bank'), is_active=True).first() or _lease_bank(prop, unit) or charges.default_bank(prop)
             method = request.POST.get('method') if request.POST.get('method') in dict(Receipt.Method.choices) else 'check'
             charges.receive_payment(prop, unit, owner, parse_date(request.POST.get('date')) or timezone.localdate(), parse_money(request.POST.get('amount')), method,
-                                    reference=(request.POST.get('reference') or '').strip(), bank_account=bank, memo=(request.POST.get('memo') or '').strip(), user=request.user)
-            messages.success(request, 'Payment recorded.')
+                                    reference=(request.POST.get('reference') or '').strip(), bank_account=bank, memo=(request.POST.get('memo') or '').strip(), user=request.user, to_loan=request.POST.get('to_loan') == '1')
+            messages.success(request, 'Loan payment recorded.' if request.POST.get('to_loan') == '1' else 'Payment recorded.')
             return redirect(_go('unit', prop.pk, unit.pk))
         except (ValueError, ledger.LedgerError, charges.ChargeError) as e:
             messages.error(request, str(e))
     accounts = [a for a in charges.accounts(prop) if unit and a['unit'].pk == unit.pk]
     return render(request, 'accounting/receipt_form.html', {'assoc': prop, 'unit': unit, 'units': owners.active_units(prop), 'banks': prop.bank_accounts.filter(is_active=True), 'methods': Receipt.Method.choices,
-                                                            'today': timezone.localdate(), 'accounts': accounts, 'billed': owners.billed_owner(unit) if unit else None, 'lease_bank': _lease_bank(prop, unit),
+                                                            'today': timezone.localdate(), 'accounts': accounts, 'billed': owners.billed_owner(unit) if unit else None, 'lease_bank': _lease_bank(prop, unit), 'loan': sum((a['loan'] for a in accounts), Decimal('0.00')),
                                                             **acc_up(request, prop, ['accounting:unit', 'accounting:hub', 'accounting:collections', 'accounting:report_aging', 'accounting:bank'], _go('unit', prop.pk, unit.pk) if unit else _go('hub', prop.pk), 'Back')})

@@ -215,7 +215,7 @@ def _other_rows(prop, rows):
 def _deposit_people(prop):
     """Every unit with its billed owner, what is owed now, its usual monthly charge and what the owner has paid before: what the sorting screen suggests from."""
     owed, monthly = defaultdict(lambda: ZERO), {}
-    for c in Charge.objects.filter(association=prop, is_void=False).prefetch_related('applications'):
+    for c in Charge.objects.filter(association=prop, is_void=False).exclude(kind=Charge.Kind.LOAN).prefetch_related('applications'):
         owed[(c.unit_id, c.owner_id)] += c.balance
         if c.kind == Charge.Kind.ASSESSMENT and (c.unit_id not in monthly or c.due_date >= monthly[c.unit_id][0]):
             monthly[c.unit_id] = (c.due_date, c.amount)

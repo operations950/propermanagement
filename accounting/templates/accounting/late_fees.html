@@ -42,14 +42,14 @@
 {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
 {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
 <div class="rp-wrap mb-2"><table class="rp ac-stack">
-    <thead><tr><th style="width: 28px;"><input type="checkbox" id="lf-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Total owed</th><th>Principal</th><th>Late fees open</th><th>Interest open</th><th>Last charged</th><th>Late fee ready</th><th>Interest ready</th></tr></thead><tbody>
+    <thead><tr><th style="width: 28px;"><input type="checkbox" id="lf-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Total owed</th><th>Principal</th><th>Late fees open</th><th>Interest open</th><th>Late fee last charged</th><th>Interest last charged</th><th>Late fee ready</th><th>Interest ready</th></tr></thead><tbody>
     {% for r in rows %}<tr><td>{% if r.ready %}<input type="checkbox" class="lf-pick" name="unit" value="{{ r.unit.pk }}">{% endif %}</td>
         <td style="white-space: normal;"><button type="button" class="lf-chev" data-lf-toggle="lf-d{{ r.unit.pk }}" aria-expanded="false" aria-label="Show what makes this up"><i data-lucide="chevron-right" class="icon"></i></button><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}
             {% if r.charged_text %}<div class="small"><span class="ac-chip done">Charged</span> <span class="text-muted">{{ r.charged_text }}</span></div>{% endif %}
             {% if not r.late %}<div class="small text-muted">Not late on {{ as_of|mdate }}</div>{% endif %}</td>
         <td class="num fw-semibold">{{ r.total|money }}</td><td class="num">{{ r.principal|money:True }}</td><td class="num">{{ r.late_fees|money:True }}</td><td class="num">{{ r.interest|money:True }}</td>
-        <td class="num">{{ r.last_charged|mdate:'short' }}</td><td class="num">{{ r.fee_ready|money:True }}</td><td class="num">{{ r.interest_ready|money:True }}</td></tr>
-    <tr class="lf-detail" id="lf-d{{ r.unit.pk }}" hidden><td></td><td colspan="8">
+        <td class="num">{{ r.last_fee|mdate:'short' }}</td><td class="num">{{ r.last_interest|mdate:'short' }}</td><td class="num">{{ r.fee_ready|money:True }}</td><td class="num">{{ r.interest_ready|money:True }}</td></tr>
+    <tr class="lf-detail" id="lf-d{{ r.unit.pk }}" hidden><td></td><td colspan="9">
         <table class="lf-sub"><thead><tr><th style="text-align: left;">Charge</th><th style="text-align: left;">Due</th><th style="text-align: right;">Owed that day</th><th style="text-align: right;">Late fee ready</th><th style="text-align: left;">Interest ready</th></tr></thead><tbody>
         {% for l in r.lines %}<tr><td style="white-space: normal;">{{ l.charge.description }}</td><td>{{ l.charge.due_date|mdate:'short' }}</td><td class="num">{{ l.balance|money }}</td><td class="num">{{ l.fee|money:True }}</td>
             <td>{% for mf, end, amt in l.months %}{{ mf|date:"M Y" }} {{ amt|money }}{% if not forloop.last %}, {% endif %}{% endfor %}{% for k, amt, d in l.charged %}<span class="text-muted">{% if k == 'late_fee' %}Late fee{% else %}Interest{% endif %} {{ amt|money }} charged {{ d|mdate:'short' }}{% if not forloop.last %}; {% endif %}</span>{% endfor %}</td></tr>

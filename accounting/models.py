@@ -592,6 +592,7 @@ class Charge(models.Model):
         FINE = 'fine', 'Fine'
         OTHER = 'other', 'Other charge'
         OPENING = 'opening', 'Balance forward'
+        LOAN = 'loan', 'Owner loan'            # what an owner owes on a long-term loan: kept apart from dues (no late fee, no interest, not in the balance or on a late letter)
 
     association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='charges')
     unit = models.ForeignKey(Unit, on_delete=models.CASCADE, related_name='charges')

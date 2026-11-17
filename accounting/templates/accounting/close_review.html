@@ -22,8 +22,18 @@
 {% if waiting and not lock %}
 <div class="alert alert-warning small py-2">{{ waiting|length }} item{{ waiting|length|pluralize }} on the close sheet still need{{ waiting|length|pluralize:"s," }} doing before the month can be approved: {% for i in waiting %}{{ i.title }}{% if not forloop.last %}, {% endif %}{% endfor %}. <a href="{{ sheet_url }}">Back to the close sheet</a></div>
 {% endif %}
-<div class="card"><div class="card-body p-0">
-    <iframe src="{{ pdf }}#view=FitH&toolbar=1&navpanes=0" title="Financial package for {{ month|date:'F Y' }}" style="width: 100%; height: calc(100vh - 170px); min-height: 520px; border: 0; border-radius: 12px;"></iframe>
+<div class="card"><div class="card-body p-0" id="pkg-box">
+    <iframe id="pkg" src="{{ pdf }}#page=1&view=FitH&toolbar=1&navpanes=0" data-src="{{ pdf }}" title="Financial package for {{ month|date:'F Y' }}" style="width: 100%; height: calc(100vh - 170px); min-height: 520px; border: 0; border-radius: 12px;"></iframe>
 </div></div>
+<script>
+/* Open the package at its first page, a little larger than fit-to-width, every time. The address carries a fresh number so the browser does not
+   reopen it where it was last scrolled (that is how it used to land on a bank statement). A letter page is 816 px wide at 100%. */
+(function () {
+    var frame = document.getElementById('pkg'), box = document.getElementById('pkg-box');
+    if (!frame || !box) { return; }
+    var zoom = Math.max(100, Math.min(230, Math.round(box.clientWidth / 816 * 100 * 1.12)));
+    frame.src = frame.getAttribute('data-src') + '&v=' + Date.now() + '#page=1&zoom=' + zoom + '&toolbar=1&navpanes=0';
+})();
+</script>
 <div class="small text-muted mt-2 ac-noprint">Cannot see it above (some phones do not show a PDF here)? <a href="{{ pdf }}" target="_blank" rel="noopener">Open the package in its own tab</a>.</div>
 {% endblock %}

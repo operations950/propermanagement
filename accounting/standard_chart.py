@@ -10,6 +10,7 @@ ASSET, LIABILITY, EQUITY, INCOME, EXPENSE = 'asset', 'liability', 'equity', 'inc
 CASH_OPERATING = '1110'
 CASH_RESERVE = '1120'
 AR = '1300'
+OWNER_LOAN = '1305'
 DUE_FROM_OPERATING = '1893'
 AP = '2200'
 DUE_TO_RESERVES = '2207'
@@ -38,7 +39,7 @@ CHART = [
     # assets
     ('1110', 'Operating Cash', ASSET), ('1111', 'Operating Cash #2', ASSET), ('1120', 'Escrow Cash', ASSET), ('1121', 'Escrow Cash #2', ASSET),
     ('1122', 'Escrow Cash #3', ASSET), ('1125', 'Petty Cash', ASSET), ('1130', 'Reserve Fund Cash', ASSET),
-    ('1300', 'Accounts Receivable', ASSET), ('1310', 'Allowance for Doubtful Accounts', ASSET), ('1320', 'Suspense', ASSET),
+    ('1300', 'Accounts Receivable', ASSET), ('1305', 'Owner Loans Receivable (long-term)', ASSET), ('1310', 'Allowance for Doubtful Accounts', ASSET), ('1320', 'Suspense', ASSET),
     ('1891', 'Prepaid Expenses', ASSET), ('1892', 'Prepaid Insurance', ASSET), ('1893', 'Due from Operating', ASSET), ('1895', 'Utility Deposits', ASSET),
     ('1896', 'Advance Insurance Reserve Disb', ASSET),
     # liabilities

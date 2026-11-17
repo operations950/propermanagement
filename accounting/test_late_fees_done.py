@@ -53,6 +53,7 @@ class LateFeesAfterTheChargesTests(AsOfBase):
         row = {x['owner'].name: x for x in late_fee_data(self.prop, OCT31)}['Anna']
         self.assertEqual((row['principal'], row['late_fees'], row['interest']), (D('615.00'), D('30.75'), D('9.10')))
         self.assertEqual(row['total'], D('654.85'))
+        self.assertEqual((row['last_fee'], row['last_interest']), (OCT31, OCT31))
         self.assertEqual(row['last_charged'], OCT31)
 
     def test_pressing_charge_again_with_nobody_ticked_charges_nobody_a_second_time(self):

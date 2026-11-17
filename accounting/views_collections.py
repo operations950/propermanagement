@@ -181,8 +181,7 @@ def _late_qs(as_of, min_balance, show_all, month):
 
 def late_fee_data(prop, as_of, min_balance=ZERO, show_all=False):
     """The Post late fees screen for one day. One row for each unit that is late on `as_of` (an assessment unpaid past its grace period that day), whether or not its late fee and
-    interest were already charged, and that owes at least `min_balance` in all: total owed (principal, late fees and interest still open that day), when it was last charged a late fee
-    or interest, the late fee and interest READY to charge, and what was ALREADY charged (so an owner does not drop off the list once charged), with the charges that make the numbers up.
+    interest were already charged, and that owes at least `min_balance` in all: total owed (principal, late fees and interest still open that day), the date a late fee was last charged and the date interest was last charged (two dates), the late fee and interest READY to charge, and what was ALREADY charged (so an owner does not drop off the list once charged), with the charges that make the numbers up.
     With `show_all`, units that are not late but owe something are listed too. Everything is as the account stood on `as_of`."""
     profile = ledger.profile_for(prop)
     grace = profile.late_fee_grace_days or 0
@@ -190,19 +189,21 @@ def late_fee_data(prop, as_of, min_balance=ZERO, show_all=False):
     interest_for = {}
     for c, month_first, end, amount in charges._interest_rows(prop, as_of, as_of=as_of):
         interest_for.setdefault(c.pk, []).append((month_first, end, amount))
-    last_charged = dict(Charge.objects.filter(association=prop, is_void=False, kind__in=[Charge.Kind.LATE_FEE, Charge.Kind.INTEREST]).values_list('unit_id').annotate(d=Max('due_date')))
+    def last_of(kind):
+        return dict(Charge.objects.filter(association=prop, is_void=False, kind=kind, due_date__lte=as_of).values_list('unit_id').annotate(d=Max('due_date')))
+    last_fee, last_interest = last_of(Charge.Kind.LATE_FEE), last_of(Charge.Kind.INTEREST)       # each kept on its own: the date a late fee was last charged, and the date interest was
     # what was already charged on each assessment: its late fee and its interest, so an owner charged already still shows what was charged and when
     already = {}
     for child in Charge.objects.filter(association=prop, is_void=False, kind__in=[Charge.Kind.LATE_FEE, Charge.Kind.INTEREST], parent__isnull=False):
         already.setdefault(child.parent_id, []).append(child)
     units = {}
-    qs = Charge.objects.filter(association=prop, is_void=False, due_date__lte=as_of).select_related('unit', 'owner').prefetch_related('applications').order_by('due_date', 'id')
+    qs = Charge.objects.filter(association=prop, is_void=False, due_date__lte=as_of).exclude(kind=Charge.Kind.LOAN).select_related('unit', 'owner').prefetch_related('applications').order_by('due_date', 'id')
     for c in qs:
         open_ = charges.balance_as_of(c, as_of)
         if open_ <= 0:
             continue
         row = units.setdefault(c.unit_id, {'unit': c.unit, 'owner': c.owner, 'principal': ZERO, 'late_fees': ZERO, 'interest': ZERO, 'total': ZERO, 'fee_ready': ZERO, 'interest_ready': ZERO,
-                                           'late': False, 'lines': [], 'last_charged': last_charged.get(c.unit_id), 'charged': []})
+                                           'late': False, 'lines': [], 'last_fee': last_fee.get(c.unit_id), 'last_interest': last_interest.get(c.unit_id), 'charged': []})
         row['owner'] = c.owner
         if c.kind == Charge.Kind.LATE_FEE:
             row['late_fees'] += open_
@@ -224,6 +225,7 @@ def late_fee_data(prop, as_of, min_balance=ZERO, show_all=False):
     for row in units.values():
         ready = row['fee_ready'] + row['interest_ready']
         row['charged_text'] = _charged_text(row['charged'])
+        row['last_charged'] = max((d for d in (row['last_fee'], row['last_interest']) if d), default=None)     # the later of the two, kept for anything that wants one date
         row['ready'] = ready > 0
         if not (ready > 0 or row['late'] or show_all):
             continue

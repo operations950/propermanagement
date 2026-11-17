@@ -237,9 +237,10 @@
         .list-group-item-action:hover { background: var(--surface-page); }
 
         .badge { font-weight: 500; }
-        /* The count on a menu item that needs attention: the same soft amber chip the rest of the site uses for "needs attention", not a loud red dot. */
-        .nav-pip { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 6px; margin-left: 6px; border-radius: 999px; background: color-mix(in srgb, var(--status-warning) 24%, white); color: #7a4e00; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-warning) 55%, transparent); font-size: 0.72rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; line-height: 1; vertical-align: 1px; }
-        .brand-bar .nav-link.active .nav-pip, .brand-bar .nav-link:hover .nav-pip { background: color-mix(in srgb, var(--status-warning) 30%, white); }
+        /* A menu item that needs attention carries one small dot in the brand blue, raised a little like a footnote mark. The count is in the markup (and read aloud, and shown on hover),
+           but it is not drawn: the screen itself says how many. */
+        .nav-pip { display: inline-block; width: 7px; height: 7px; padding: 0; margin-left: 1px; border-radius: 50%; background: var(--brand-primary); font-size: 0; line-height: 0; color: transparent; overflow: hidden; align-self: flex-start; margin-top: 0.15rem; flex: none; }
+        @media (max-width: 1199.98px) { .nav-pip { align-self: center; margin-top: 0; margin-left: 6px; } }
 
         /* The small (i) next to a label: the full explanation lives in a bubble that opens on click, so a screen can stay short.
            Use: {% include '_tip.html' with text='...' %}. Wired up at the bottom of this file. */
@@ -414,9 +415,9 @@
                     {% else %}
                     <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'ticket_list' and request.GET.source != 'recurring' %}active{% endif %}" href="{% url 'ticket_list' %}?source=reactive"><i data-lucide="ticket" class="icon"></i> Tickets</a>
-                    <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties{% if nav_alerts.properties %}<span class="nav-pip">{{ nav_alerts.properties }}</span>{% endif %}</a>
-                    <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts{% if nav_alerts.contacts %}<span class="nav-pip">{{ nav_alerts.contacts }}</span>{% endif %}</a>
-                    <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site{% if nav_alerts.onsite %}<span class="nav-pip">{{ nav_alerts.onsite }}</span>{% endif %}</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties{% if nav_alerts.properties %}<span class="nav-pip" title="{{ nav_alerts.properties }} need{{ nav_alerts.properties|pluralize:'s,' }} attention">{{ nav_alerts.properties }}</span>{% endif %}</a>
+                    <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts{% if nav_alerts.contacts %}<span class="nav-pip" title="{{ nav_alerts.contacts }} need{{ nav_alerts.contacts|pluralize:'s,' }} attention">{{ nav_alerts.contacts }}</span>{% endif %}</a>
+                    <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site{% if nav_alerts.onsite %}<span class="nav-pip" title="{{ nav_alerts.onsite }} need{{ nav_alerts.onsite|pluralize:'s,' }} attention">{{ nav_alerts.onsite }}</span>{% endif %}</a>
                     <a class="nav-link" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i> Recurring</a>
                     <a class="nav-link" href="{% url 'supplies:cart' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
                     {% if tc_employee %}
@@ -429,7 +430,7 @@
                     <a class="nav-link" href="{% url 'portfolio_dashboard' %}"><i data-lucide="briefcase" class="icon"></i> Portfolio</a>
                     {% endif %}
                     {% if request.user.is_superuser or request.user.staff_profile.can_financial %}
-                    <a class="nav-link {% if request.resolver_match.url_name in 'close_home close_bank_tieout close_overview close_payouts close_statement close_property close_unit' or request.resolver_match.namespace == 'accounting' %}active{% endif %}" href="{% url 'close_home' %}"><i data-lucide="landmark" class="icon"></i> Financials{% if nav_alerts.financials %}<span class="nav-pip">{{ nav_alerts.financials }}</span>{% endif %}</a>
+                    <a class="nav-link {% if request.resolver_match.url_name in 'close_home close_bank_tieout close_overview close_payouts close_statement close_property close_unit' or request.resolver_match.namespace == 'accounting' %}active{% endif %}" href="{% url 'close_home' %}"><i data-lucide="landmark" class="icon"></i> Financials{% if nav_alerts.financials %}<span class="nav-pip" title="{{ nav_alerts.financials }} need{{ nav_alerts.financials|pluralize:'s,' }} attention">{{ nav_alerts.financials }}</span>{% endif %}</a>
                     {% endif %}
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
                     {% endif %}
