@@ -23,6 +23,23 @@ from django.core.mail.backends.base import BaseEmailBackend
 logger = logging.getLogger(__name__)
 
 
+class MailNotConnected(RuntimeError):
+    """The mail could not be sent because the sending mailbox is not connected, or Google has cancelled its sign-in (a password change does that). It is recorded for the admins' banner
+    (intake/mail_health.py) and shown to the person who asked as a plain message (core/middleware.py::MailNotConnectedMiddleware), not an error page."""
+
+
+def _is_cancelled(exc):
+    """Google refusing the saved sign-in: a refresh that fails with invalid_grant, or a send answered 401."""
+    try:
+        from google.auth.exceptions import RefreshError
+        if isinstance(exc, RefreshError):
+            return True
+    except ImportError:
+        pass
+    status = getattr(getattr(exc, 'resp', None), 'status', None)
+    return status == 401
+
+
 class GmailAPIBackend(BaseEmailBackend):
     def send_messages(self, email_messages):
         if not email_messages:
@@ -40,17 +57,24 @@ class GmailAPIBackend(BaseEmailBackend):
         # a mailbox before is_send_from existed and hasn't touched Admin
         # Tools' "Send from" picker since.
         token = GmailInboxToken.objects.filter(is_send_from=True).first() or GmailInboxToken.objects.first()
+        from intake import mail_health
         if not token:
+            mail_health.record_failure('', 'not_connected', 'No Gmail mailbox is connected.')
             if not self.fail_silently:
-                raise RuntimeError('No Gmail account connected — connect one in Admin Tools first.')
+                raise MailNotConnected('No Gmail account connected — connect one in Admin Tools first.')
             return 0
 
         try:
             creds = credentials_for(token)
             service = build('gmail', 'v1', credentials=creds, cache_discovery=False)
-        except Exception:
+        except Exception as exc:
             logger.exception('Gmail API: could not build an authenticated client')
+            cancelled = _is_cancelled(exc)
+            if cancelled:
+                mail_health.record_failure(token.mailbox_email, 'expired', 'Google cancelled the saved sign-in for this mailbox (invalid_grant).')
             if not self.fail_silently:
+                if cancelled:
+                    raise MailNotConnected(f'The Gmail connection for {token.mailbox_email} needs to be reconnected.') from exc
                 raise
             return 0
 
@@ -60,10 +84,17 @@ class GmailAPIBackend(BaseEmailBackend):
                 raw = self._build_raw_message(message, token.mailbox_email)
                 service.users().messages().send(userId='me', body={'raw': raw}).execute()
                 sent_count += 1
-            except Exception:
+            except Exception as exc:
                 logger.exception('Gmail API: send failed for %r', message.to)
+                cancelled = _is_cancelled(exc)
+                if cancelled:
+                    mail_health.record_failure(token.mailbox_email, 'expired', 'Google refused the saved sign-in while sending (401).')
                 if not self.fail_silently:
+                    if cancelled:
+                        raise MailNotConnected(f'The Gmail connection for {token.mailbox_email} needs to be reconnected.') from exc
                     raise
+        if sent_count:
+            mail_health.note_success(token.mailbox_email)
         return sent_count
 
     def _build_raw_message(self, message, from_address):

@@ -15,7 +15,7 @@ from core.models import Contact, Property, Unit
 
 from . import charges, closing, documents, labels, ledger, owners
 from . import standard_chart as sc
-from .models import (Account, AssociationProfile, BoardTerm, Charge, ChargeRule, Ownership, OwnerProfile, Receipt, ShareKind, UnitProfile, UnitShare)
+from .models import (MonthLock, Account, AssociationProfile, BoardTerm, Charge, ChargeRule, Ownership, OwnerProfile, Receipt, ShareKind, UnitProfile, UnitShare)
 from .web import (acc_up, admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month)
 
 
@@ -26,20 +26,38 @@ def _go(name, *args, **query):
 
 # ---------------------------------------------------------------- the list and the hub
 
-@admin_only
-def home(request):
-    """Close associations: every association we keep the books for, and where its month stands."""
+def _lease_bank(prop, unit):
+    """The bank account a commercial unit's lease says its rent is paid into (the form's first choice), or None."""
+    if unit is None or prop.property_type != Property.Type.COMMERCIAL:
+        return None
+    from commercial.models import Lease
+    lease = Lease.objects.filter(unit=unit, bank_account__isnull=False).exclude(status='ended').select_related('bank_account').order_by('-start_date').first()
+    return lease.bank_account if lease and lease.bank_account.is_active else None
+
+
+def _close_list(request, commercial):
     month = parse_month(request.GET.get('month'), default_month())
     rows = []
     for prof in closing.associations():
+        if labels.is_commercial(prof.property) != commercial:
+            continue
         status, detail = closing.association_status(prof.property, month)
         rows.append({'assoc': prof.property, 'status': status, 'detail': detail})
-    kept = {r['assoc'].pk for r in rows}
-    others = [p for p in Property.objects.filter(property_type__in=labels.BOOKS_TYPES, is_active=True, is_general=False).exclude(name__icontains='(general)').order_by('name') if p.pk not in kept]
-    assoc_rows = [r for r in rows if not labels.is_commercial(r['assoc'])]
-    commercial_rows = [r for r in rows if labels.is_commercial(r['assoc'])]
-    return render(request, 'accounting/home.html', {'rows': rows, 'assoc_rows': assoc_rows, 'commercial_rows': commercial_rows, 'others': others, 'has_commercial': bool(commercial_rows),
-                                                    'done': sum(1 for r in rows if r['status'] == 'done'), **month_context(month)})
+    kept = {p.pk for p in closing.associations()}
+    others = [] if commercial else [p for p in Property.objects.filter(property_type__in=labels.BOOKS_TYPES, is_active=True, is_general=False).exclude(name__icontains='(general)').order_by('name') if p.pk not in kept and p.property_type != Property.Type.COMMERCIAL]
+    return render(request, 'accounting/home.html', {'rows': rows, 'commercial': commercial, 'others': others, 'done': sum(1 for r in rows if r['status'] == 'done'), **month_context(month)})
+
+
+@admin_only
+def home(request):
+    """Close associations: every association we keep the books for, and where its month stands."""
+    return _close_list(request, False)
+
+
+@admin_only
+def home_commercial(request):
+    """Close commercial properties: every commercial building we keep the books for, and where its month stands."""
+    return _close_list(request, True)
 
 
 @admin_only
@@ -51,6 +69,43 @@ def hub(request, pk):
     month = default_month()
     return render(request, 'accounting/hub.html', {'assoc': prop, 'profile': ledger.profile_for(prop), 'month': month, **acc_up(request, prop, ['accounting:home', 'ws_financials'], reverse('property_detail', args=[prop.pk]), prop.name),
                                                    'banks': prop.bank_accounts.filter(is_active=True)})
+
+
+@admin_only
+def close_review(request, pk, month):
+    """The last step before the financials go out: the month's financial package, and nothing else. Approving it closes (locks) the month and records who approved it; the step after it,
+    sending the package to the board or owners, is what finishes the month. Opening the month again is here too."""
+    prop = association_or_404(pk)
+    redirect_to = books_or_redirect(request, prop)
+    if redirect_to:
+        return redirect_to
+    first = parse_month(month, default_month())
+    here = reverse('accounting:close_review', args=[pk, f'{first:%Y-%m}'])
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        try:
+            if action == 'approve':
+                sheet = closing.close_sheet(prop, first)
+                if sheet['locked']:
+                    raise ledger.LedgerError(f'{first:%B %Y} is already closed.')
+                if not sheet['can_lock']:
+                    raise ledger.LedgerError('Finish the items on the close sheet first: some still need doing.')
+                ledger.lock_month(prop, first, request.user)
+                messages.success(request, f'{first:%B %Y} is approved and closed.')
+            elif action == 'reopen':
+                ledger.unlock_month(prop, first)
+                messages.success(request, f'{first:%B %Y} is open again.')
+        except ledger.LedgerError as e:
+            messages.error(request, str(e))
+        return redirect(here)
+    sheet = closing.close_sheet(prop, first)
+    lock = MonthLock.objects.filter(association=prop, month=first).select_related('locked_by').first()
+    pdf = reverse('accounting:report_package', args=[pk]) + f'?month={first:%Y-%m}'
+    waiting = [i for i in sheet['items'] if i['blocks'] and i['status'] != 'done']
+    return render(request, 'accounting/close_review.html', {
+        'assoc': prop, 'month': first, 'sheet': sheet, 'lock': lock, 'pdf': pdf, 'waiting': waiting, 'sheet_url': reverse('accounting:close', args=[pk, f'{first:%Y-%m}']),
+        'send_url': reverse('accounting:send_board', args=[pk, f'{first:%Y-%m}']), 'send_label': labels.label(prop, 'package_step'),
+        **acc_up(request, prop, [('accounting:close', 'Month-end close'), 'close_home'], reverse('accounting:close', args=[pk, f'{first:%Y-%m}']), 'Month-end close')})
 
 
 @admin_only
@@ -420,7 +475,7 @@ def receipt_new(request, pk):
             owner = get_object_or_404(Contact, pk=request.POST.get('owner')) if request.POST.get('owner') else owners.billed_owner(unit)
             if owner is None:
                 raise ValueError('That unit has no owner.')
-            bank = prop.bank_accounts.filter(pk=request.POST.get('bank'), is_active=True).first() or charges.default_bank(prop)
+            bank = prop.bank_accounts.filter(pk=request.POST.get('bank'), is_active=True).first() or _lease_bank(prop, unit) or charges.default_bank(prop)
             method = request.POST.get('method') if request.POST.get('method') in dict(Receipt.Method.choices) else 'check'
             charges.receive_payment(prop, unit, owner, parse_date(request.POST.get('date')) or timezone.localdate(), parse_money(request.POST.get('amount')), method,
                                     reference=(request.POST.get('reference') or '').strip(), bank_account=bank, memo=(request.POST.get('memo') or '').strip(), user=request.user)
@@ -430,5 +485,5 @@ def receipt_new(request, pk):
             messages.error(request, str(e))
     accounts = [a for a in charges.accounts(prop) if unit and a['unit'].pk == unit.pk]
     return render(request, 'accounting/receipt_form.html', {'assoc': prop, 'unit': unit, 'units': owners.active_units(prop), 'banks': prop.bank_accounts.filter(is_active=True), 'methods': Receipt.Method.choices,
-                                                            'today': timezone.localdate(), 'accounts': accounts, 'billed': owners.billed_owner(unit) if unit else None,
+                                                            'today': timezone.localdate(), 'accounts': accounts, 'billed': owners.billed_owner(unit) if unit else None, 'lease_bank': _lease_bank(prop, unit),
                                                             **acc_up(request, prop, ['accounting:unit', 'accounting:hub', 'accounting:collections', 'accounting:report_aging', 'accounting:bank'], _go('unit', prop.pk, unit.pk) if unit else _go('hub', prop.pk), 'Back')})

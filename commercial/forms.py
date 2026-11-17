@@ -16,9 +16,9 @@ class LeaseForm(forms.ModelForm):
 
     class Meta:
         model = Lease
-        fields = ['unit', 'status', 'start_date', 'end_date', 'base_rent', 'prorate', 'cam_estimate', 'security_deposit', 'deposit_received_on', 'deposit_note', 'billing_emails',
+        fields = ['unit', 'status', 'start_date', 'end_date', 'rate_expires_on', 'bank_account', 'base_rent', 'prorate', 'cam_estimate', 'security_deposit', 'deposit_received_on', 'deposit_note', 'billing_emails',
                   'renewal_notes', 'notes', 'late_fee_flat', 'late_fee_percent']
-        widgets = {'start_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'), 'end_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        widgets = {'rate_expires_on': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'), 'start_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'), 'end_date': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
                    'deposit_received_on': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'), 'billing_emails': forms.Textarea(attrs={'rows': 2}),
                    'renewal_notes': forms.Textarea(attrs={'rows': 2}), 'notes': forms.Textarea(attrs={'rows': 2})}
 
@@ -27,6 +27,10 @@ class LeaseForm(forms.ModelForm):
         self.prop = prop
         self.fields['unit'].queryset = Unit.objects.filter(property=prop, is_active=True).order_by('label')
         self.fields['unit'].required = False
+        from accounting.models import BankAccount
+        self.fields['bank_account'].queryset = BankAccount.objects.filter(association=prop, is_active=True).order_by('name')
+        self.fields['bank_account'].required = False
+        self.fields['bank_account'].empty_label = 'The operating account'
         self.fields['unit'].empty_label = 'Choose a unit'
         for f in self.fields.values():
             w = f.widget

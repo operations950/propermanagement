@@ -95,7 +95,7 @@ class WorkdayTests(TestCase):
 
 def make_staff(username='closer'):
     user = get_user_model().objects.create_user(username, password='pw12345678')
-    return StaffProfile.objects.create(user=user, role=StaffProfile.Role.ACCOUNTING, is_company_admin=True)
+    return StaffProfile.objects.create(user=user, role=StaffProfile.Role.ACCOUNTING, is_company_admin=True, can_financial=True, can_time_admin=True)
 
 
 def make_ltr(name='1 Ross', rent='3600', same_month=False):
@@ -202,12 +202,12 @@ class MonthCloseProjectTests(TestCase):
         make_staff()
         self.client.force_login(get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678'))
 
-    def test_the_checklist_has_thirteen_steps_in_four_days(self):
+    def test_the_checklist_has_fifteen_steps_in_four_days(self):
         from .close_views import close_steps
         steps = close_steps(date(2026, 10, 1), date(2026, 11, 3))
-        self.assertEqual([s['n'] for s in steps], list(range(1, 14)))
-        self.assertEqual([s['day'] for s in steps], [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 4])
-        self.assertEqual([s['title'] for s in steps][6:], ['Pay owners', 'Pay Proper', 'Tourist tax', 'Pay sales tax', 'Long-term rent collection', 'Close associations', 'Pay long-term owners'])
+        self.assertEqual([s['n'] for s in steps], list(range(1, 16)))
+        self.assertEqual([s['day'] for s in steps], [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 4])
+        self.assertEqual([s['title'] for s in steps][6:], ['Pay owners', 'Pay Proper', 'Tourist tax', 'Pay sales tax', 'Long-term rent collection', 'Close associations', 'Pay long-term owners', 'Close commercial properties', 'Lease renewals'])
         self.assertEqual(steps[0]['due'], date(2026, 11, 2))
         self.assertEqual(steps[6]['due'], date(2026, 11, 3))
         self.assertEqual(steps[12]['due'], date(2026, 11, 5))
@@ -217,7 +217,7 @@ class MonthCloseProjectTests(TestCase):
         from worksessions.models import Session
         with mock.patch.object(month_close_project, 'workdays', workdays):
             made = month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
-        self.assertEqual(made, 13)
+        self.assertEqual(made, 15)
         by_name = {s.template.name: s for s in Session.objects.select_related('template')}
         self.assertEqual(by_name['Month-end close: 1. Bank tie-out'].due_at, date(2026, 11, 2))
         self.assertEqual(by_name['Month-end close: 7. Pay owners'].due_at, date(2026, 11, 3))
@@ -259,7 +259,7 @@ class MonthCloseProjectTests(TestCase):
         with mock.patch.object(close_views, 'close_steps', fake):
             self.assertEqual(self.client.get(reverse('close_home') + '?month=2026-10').status_code, 200)
         self.assertNotIn('Month-end close: 13. Pay long-term owners', self.open_items())
-        self.assertEqual(len(self.open_items()), 12)
+        self.assertEqual(len(self.open_items()), 14)
 
     def test_a_payment_step_that_is_done_closes_its_item_the_moment_its_page_is_opened(self):
         from . import close_views
@@ -291,7 +291,7 @@ class MonthCloseProjectTests(TestCase):
         month_close_project.ensure_items(date(2026, 10, 1), date(2026, 11, 3))
         sessions = {s.template.name: s for s in Session.objects.select_related('template')}
         steps = close_steps(date(2026, 10, 1), date(2026, 11, 3))
-        self.assertEqual(len(steps), 13)
+        self.assertEqual(len(steps), 15)
         for step in steps:
             session = sessions[f'{month_close_project.PREFIX}{step["n"]}. {step["title"]}']
             response = self.client.get(reverse('session_detail', args=[session.pk]))
@@ -460,7 +460,7 @@ class OwnerDashboardAndRemindersTests(TestCase):
         self.user = user
 
     def test_the_dashboard_has_what_was_asked_for_and_nothing_that_was_dropped(self):
-        r = self.client.get(reverse('dashboard'))
+        r = self.client.get(reverse('dashboard') + '?stats=1')
         self.assertEqual(r.status_code, 200)
         for kept in ('Who opened and who closed', 'Today', 'Last 7 days', 'Last 30 days', 'Updated today', 'Closed today', 'Hover any dot'):
             self.assertContains(r, kept)
@@ -493,7 +493,7 @@ class OwnerDashboardAndRemindersTests(TestCase):
         self.assertContains(page, 'waiting for a yes or no')
         self.assertContains(page, '1 thing needs attention in Contacts')
         self.assertContains(page, 'class="nav-pip"')
-        self.assertNotContains(self.client.get(reverse('dashboard')), 'waiting for a yes or no')
+        self.assertNotContains(self.client.get(reverse('dashboard') + '?stats=1'), 'waiting for a yes or no')
         self.assertNotContains(self.client.get(reverse('property_list')), 'waiting for a yes or no')
 
     def test_short_term_rental_reminders_gather_on_the_onsite_number(self):

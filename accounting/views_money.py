@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.db.models import Q
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -15,7 +16,7 @@ from core.models import Contact, Unit
 
 from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, package, payables, reporting, scheduled, webvault
 from . import standard_chart as sc
-from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, ChargeRule, JournalEntry, JournalRule, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
+from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, ChargeRule, JournalEntry, JournalRule, Ownership, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
 from .web import admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month, acc_up
 
 
@@ -59,6 +60,15 @@ def _after_upload(request, prop, acct, result):
 
 def _where_text(sec):
     return (sec.get('name') or 'An account') + (f' ending {sec["last4"]}' if sec.get('last4') else '')
+
+
+def _unit_choices(prop):
+    """Every active unit as {'pk', 'label'}, the label carrying who is on it ('128 - Bjorn Eicken'), so a payment can be found by name as well as by unit. Typing any part of the name, unit or address narrows the list."""
+    names = defaultdict(list)
+    for o in Ownership.objects.filter(unit__property=prop, end_date__isnull=True).select_related('person').order_by('-is_billed', 'id'):
+        if o.person.name not in names[o.unit_id]:
+            names[o.unit_id].append(o.person.name)
+    return [{'pk': u.pk, 'label': u.label + (' - ' + ' / '.join(names[u.pk]) if names.get(u.pk) else '')} for u in owners.active_units(prop)]
 
 
 @admin_only
@@ -113,7 +123,7 @@ def bank(request, pk, bank_pk, month):
                 line = get_object_or_404(BankLine, pk=request.POST.get('bank_line'), statement__bank_account=acct)
                 unit = get_object_or_404(Unit, pk=request.POST.get('unit'), property=prop)
                 owner = get_object_or_404(Contact, pk=request.POST.get('owner')) if request.POST.get('owner') else owners.billed_owner(unit)
-                bankrec.owner_payment_from_line(line, unit, owner, request.user)
+                bankrec.owner_payment_from_line(line, unit, owner, request.user, force=request.POST.get('force') == '1')
                 messages.success(request, f'Recorded as a payment from {owner.name}.')
             elif action == 'close':
                 bankrec.close_reconciliation(acct, first, request.user)
@@ -130,9 +140,11 @@ def bank(request, pk, bank_pk, month):
     other_banks = prop.bank_accounts.filter(is_active=True)
     accounts = list(prop.accounts.filter(is_active=True).order_by('code'))
     guesses = bankrec.suggested_accounts(s['unmatched_bank'], accounts)
+    open_items = [r['item'] for r in s['rows']]
     for b in s['unmatched_bank']:
         b.suggested = guesses.get(b.pk)                      # what the same words were put to before: a suggestion, never posted by itself
-    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': accounts, 'units': owners.active_units(prop),
+        b.candidates = bankrec.receipt_candidates(b, open_items) if b.amount > 0 else []     # payments the books already hold that this deposit may be
+    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': accounts, 'units': _unit_choices(prop),
                                                     **acc_up(request, prop, ['accounting:close', 'accounting:hub', 'accounting:reports'], _go('close', prop.pk, f'{first:%Y-%m}'), f'{prop.name} close'), **month_context(first)})
 
 
@@ -728,6 +740,7 @@ def reports(request, pk):
     return render(request, 'accounting/reports.html', {'assoc': prop, 'month': month, 'banks': prop.bank_accounts.filter(is_active=True), **acc_up(request, prop, ['accounting:hub', 'accounting:close'], _go('hub', prop.pk), 'Accounting'), 'today': timezone.localdate()})
 
 
+@xframe_options_sameorigin
 @admin_only
 def report_package(request, pk):
     """The month's financial package as one PDF: statements, aging, then the bank statements."""

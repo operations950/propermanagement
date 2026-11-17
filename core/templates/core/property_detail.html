@@ -600,6 +600,23 @@
 </div>
 
 {% endif %}
+{% if required_docs %}
+<div class="card mb-3">
+    <div class="card-body">
+        <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-check" class="icon"></i> Required documents {% include '_tip.html' with text='Every property needs its management agreement. Commercial and long-term rentals also need the lease. Upload what is missing here (it is read once, so questions and rent schedules can come from it).' %}</h6>
+        {% for r in required_docs %}
+        <div class="d-flex flex-wrap align-items-center gap-2 py-1 {% if not forloop.first %}border-top{% endif %}">
+            <span class="flex-grow-1">{% if r.have %}<i data-lucide="check-circle-2" class="icon text-success"></i>{% else %}<i data-lucide="alert-circle" class="icon text-danger"></i>{% endif %} {{ r.label }}{% if r.detail %} <span class="small text-muted">{{ r.detail }}</span>{% endif %}</span>
+            {% if r.have %}<span class="ac-chip good">On file</span>
+            {% elif r.lease and property.property_type == 'commercial' %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'commercial:lease' property.pk r.lease.pk %}">Add it on the lease</a>
+            {% else %}<form method="post" enctype="multipart/form-data" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="action" value="add_required_document"><input type="hidden" name="kind" value="{{ r.key }}">
+                <input type="file" name="file" class="form-control form-control-sm" style="max-width: 15rem;" required><button class="btn btn-sm btn-primary">Upload</button></form>{% endif %}
+        </div>
+        {% endfor %}
+        {% if property.property_type == 'ltr' %}<div class="small mt-2"><a href="{% url 'commercial:ltr_leases' property.pk %}">Tenant leases and rent</a></div>{% endif %}
+    </div>
+</div>
+{% endif %}
 <div class="card mb-3">
     <div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="folder" class="icon"></i> Documents</h6>

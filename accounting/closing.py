@@ -150,9 +150,13 @@ def close_sheet(association, month_first, today=None):
     # 8. Owner collections: right after the late fees is the best time to write the late letters.
     if not commercial:                           # a commercial property has no owner collections for now
         look = owner_collections.attention(association, today)
-        items.append(_item('collections', 'Owner collections', 'scale', 'attention' if look['count'] else 'done',
-                           (f'{look["count"]} owner{"s" if look["count"] != 1 else ""} need attention: ' + '; '.join(look['bits']) + '.') if look['count'] else ('Nobody needs attention.' if look['open'] else 'Nobody is behind.'),
-                           reverse('accounting:collections', args=[pk]), blocks=False))
+        marked_c = CloseStepDone.objects.filter(association=association, month=month_first, key='collections').select_related('marked_by').first()
+        if marked_c:
+            c_status, c_detail = 'done', f'Marked done on {marked_c.marked_at:%b} {marked_c.marked_at.day}.' + (f' {look["count"]} owner{"s" if look["count"] != 1 else ""} still need{"s" if look["count"] == 1 else ""} a look.' if look['count'] else '')
+        else:
+            c_status = 'attention' if look['count'] else 'done'
+            c_detail = (f'{look["count"]} owner{"s" if look["count"] != 1 else ""} need attention: ' + '; '.join(look['bits']) + '. Mark the step done when you have looked.') if look['count'] else ('Nobody needs attention.' if look['open'] else 'Nobody is behind.')
+        items.append(_item('collections', 'Owner collections', 'scale', c_status, c_detail, reverse('accounting:collections', args=[pk]) + f'?month={month_param}', blocks=False))
 
     # The official record: SunBiz cannot be read by a program, so a person checks it by hand (the settings card has the Open on SunBiz button and I checked it).
     official_url = reverse('accounting:settings', args=[pk]) + '#official'
@@ -165,10 +169,16 @@ def close_sheet(association, month_first, today=None):
         else:
             items.append(_item('state', 'Official record', 'building', 'done', f'Checked {profile.sunbiz_checked_on:%b} {profile.sunbiz_checked_on.day}.', official_url, blocks=False))
 
-    locked = MonthLock.objects.filter(association=association, month=month_first).exists()
+    lock = MonthLock.objects.filter(association=association, month=month_first).select_related('locked_by').first()
+    locked = lock is not None
     blocking = [i for i in items if i['blocks'] and i['status'] != 'done']
-    items.append(_item('lock', 'Review and close the month', 'lock', 'done' if locked else ('attention' if not blocking else 'not_started'),
-                       'The month is closed.' if locked else ('Finish the items above first.' if blocking else 'Everything is done. Close the month.'), reverse('accounting:reports', args=[pk])))
+    if locked:
+        who = (lock.locked_by.get_full_name() or lock.locked_by.username) if lock.locked_by else ''
+        lock_detail = f'Approved{" by " + who if who else ""} on {lock.locked_at:%b} {lock.locked_at.day} and the month is closed.'
+    else:
+        lock_detail = 'Finish the items above first.' if blocking else 'Everything is done. Review the financial package and approve it to close the month.'
+    items.append(_item('lock', 'Review and close the month', 'lock', 'done' if locked else ('attention' if not blocking else 'not_started'), lock_detail,
+                       reverse('accounting:close_review', args=[pk, month_param])))
     # The last step: the financials go to the board. It comes after the lock, so it can never stop the month from closing.
     sent_status, sent_detail = board_send.status(association, month_first)
     items.append(_item('send_board', lab['package_step'], 'send', sent_status, sent_detail, reverse('accounting:send_board', args=[pk, month_param]), blocks=False))
@@ -199,13 +209,14 @@ def association_status(association, month_first):
     return 'attention', f'{done} of {len(items)} done'
 
 
-def checklist_step(month_first):
-    """(status, detail) for the company checklist's "Close associations" step."""
-    rows = associations()
+def checklist_step(month_first, kind='associations'):
+    """(status, detail) for the company checklist's "Close associations" step (kind 'associations') or its "Close commercial properties" step (kind 'commercial')."""
+    commercial = kind == 'commercial'
+    rows = [a for a in associations() if (a.property.property_type == Property.Type.COMMERCIAL) == commercial]
+    noun = 'commercial properties' if commercial else 'associations'
     if not rows:
-        return 'not_started', 'No association is set up for financials yet.'
+        return 'not_started', f'No {"commercial property" if commercial else "association"} is set up for financials yet.'
     closed = sum(1 for a in rows if association_status(a.property, month_first)[0] == 'done')
-    noun = 'associations' if all(a.property.property_type == Property.Type.ASSOCIATION for a in rows) else 'properties'
     if closed == len(rows):
         return 'done', f'All {len(rows)} {noun} are closed.'
     if closed == 0 and all(association_status(a.property, month_first)[0] == 'not_started' for a in rows):

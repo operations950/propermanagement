@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from core import nav
 from core.auth_backends import _client_ip
 from core.models import StaffProfile
-from core.views import _is_admin
+from core.permissions import has_time_admin as _is_admin
 
 from . import policy, policy_text, services
 from .models import (HolidayPay, OfficeConnection, PayPeriodLock, PolicySignature, Punch, PunchRequest, ScheduleChange, Status, TimeOff,

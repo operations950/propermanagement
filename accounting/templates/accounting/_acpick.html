@@ -37,7 +37,7 @@
         var opts = Array.prototype.filter.call(sel.options, function (o) { return o.value !== ''; });
         var hot = -1, shown = [];
         function labelOf() { var o = sel.options[sel.selectedIndex]; return o && o.value !== '' ? o.text : ''; }
-        function validity() { input.setCustomValidity(need && sel.value === '' ? 'Pick an account from the list.' : ''); }
+        function validity() { input.setCustomValidity(need && sel.value === '' ? 'Pick ' + (sel.dataset.noun === 'unit' ? 'a unit' : 'an account') + ' from the list.' : ''); }
         function show() {
             var q = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
             var typing = input.value.trim().toLowerCase() !== labelOf().toLowerCase();
@@ -50,7 +50,7 @@
                 var t = esc(o.text);
                 if (typing) q.forEach(function (w) { t = t.replace(new RegExp('(' + rx(esc(w)) + ')', 'ig'), '<mark>$1</mark>'); });
                 return '<div data-i="' + i + '" class="' + (i === 0 ? 'on' : '') + '">' + t + '</div>';
-            }).join('') : '<div class="none">No account matches. Try fewer letters.</div>';
+            }).join('') : '<div class="none">No ' + (sel.dataset.noun || 'account') + ' matches. Try fewer letters.</div>';
             list.hidden = false;
         }
         function choose(i) {

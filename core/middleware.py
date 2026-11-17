@@ -121,3 +121,41 @@ class OwnerWallMiddleware:
                 return redirect('owner_home')
             return HttpResponseForbidden('This area is not available to owner logins.')
         return self.get_response(request)
+
+
+class MailNotConnectedMiddleware:
+    """When an email cannot go because the sending mailbox is not connected (core/email_backends.py::MailNotConnected), the person who asked gets a plain message and is sent back where they
+    were, not an error page. The admins' banner (intake/mail_health.py) does the rest; an admin is told where to reconnect, anyone else that an admin has been alerted."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
+    def process_exception(self, request, exception):
+        from .email_backends import MailNotConnected
+        if not isinstance(exception, MailNotConnected):
+            return None
+        from django.contrib import messages
+        from django.http import JsonResponse
+        from django.shortcuts import redirect
+        from django.utils.http import url_has_allowed_host_and_scheme
+
+        from intake import mail_health
+
+        from . import permissions
+        user = getattr(request, 'user', None)
+        mail_health.note_user(user)
+        if permissions.has_admin(user):
+            text = 'Your email did not send: the email connection is not working. Reconnect Gmail with the red button at the top of the page, then send it again.'
+        else:
+            text = 'Your email did not send. Our email connection needs to be reconnected by an admin, who has been alerted. Please try again later.'
+        wants_json = 'application/json' in (request.headers.get('Accept') or '') or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        if wants_json:
+            return JsonResponse({'error': text}, status=503)
+        messages.error(request, text)
+        back = request.META.get('HTTP_REFERER', '')
+        if back and url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}):
+            return redirect(back)
+        return redirect('/')

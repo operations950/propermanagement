@@ -41,6 +41,9 @@ class DocumentError(Exception):
     pass
 
 
+STORE_LIMIT = 10 * 1024 * 1024 - 300 * 1024      # the file storage refuses a file over 10 MB; a margin is kept under it
+
+
 # ---------------------------------------------------------------- what is on file
 
 def _sources(association):
@@ -193,10 +196,78 @@ def _check_file(f):
     return name.rsplit('.', 1)[0][:200]
 
 
+def split_pdf(data, limit=None):
+    """A PDF as a list of PDFs (bytes), each under the storage limit, cut by page: [(first_page, last_page, bytes)]. One page that alone is too big cannot be cut."""
+    import io
+    import math
+
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.errors import PdfReadError
+    limit = limit or STORE_LIMIT
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted and not reader.decrypt(''):
+            raise DocumentError('That PDF is password-protected, so it cannot be split. Remove the password and upload it again.')
+        n = len(reader.pages)
+    except PdfReadError:
+        raise DocumentError('That PDF could not be read, so it cannot be split. Open it and save it again as a PDF.')
+    out = []
+
+    def build(lo, hi):
+        writer = PdfWriter()
+        for i in range(lo, hi):
+            writer.add_page(reader.pages[i])
+        buf = io.BytesIO()
+        writer.write(buf)
+        return buf.getvalue()
+
+    def go(lo, hi):
+        blob = build(lo, hi)
+        if len(blob) <= limit:
+            out.append((lo + 1, hi, blob))
+        elif hi - lo == 1:
+            raise DocumentError(f'Page {lo + 1} alone is larger than {limit // (1024 * 1024)} MB, so the file cannot be stored. Save the PDF at a lower scan quality and upload it again.')
+        else:
+            mid = (lo + hi) // 2
+            go(lo, mid)
+            go(mid, hi)
+
+    step = max(1, math.ceil(n / max(2, math.ceil(len(data) / limit * 1.2))))
+    for lo in range(0, n, step):
+        go(lo, min(n, lo + step))
+    return out
+
+
+def _parts(uploaded_file, name):
+    """[(name, file)] to store: the file as it is, or (a PDF over the storage limit) its parts, each under the limit and named 'part 1 of 3'."""
+    if uploaded_file.size <= STORE_LIMIT:
+        return [(name, uploaded_file)]
+    if not (getattr(uploaded_file, 'name', '') or '').lower().endswith('.pdf'):
+        raise DocumentError(f'"{name}" is over {STORE_LIMIT // (1024 * 1024)} MB and is not a PDF, so it cannot be split. Save it as a PDF, or make it smaller.')
+    from django.core.files.base import ContentFile
+    uploaded_file.seek(0)
+    cut = split_pdf(uploaded_file.read())
+    total = len(cut)
+    return [(f'{name} (part {i} of {total})', ContentFile(blob, name=f'{name} part {i} of {total}.pdf')) for i, (_, _, blob) in enumerate(cut, 1)]
+
+
+def _store(association, kind, name, file, user, **extra):
+    try:
+        return AssociationDocument.objects.create(property=association, kind=kind, name=name[:200], file=file, uploaded_by=user, text_status='waiting', **extra)
+    except DocumentError:
+        raise
+    except Exception as exc:
+        logger.exception('A document could not be stored')
+        raise DocumentError(f'"{name}" could not be stored right now ({str(exc)[:120]}). Try again, or make the file smaller.')
+
+
 def upload(association, kind, uploaded_file, user=None):
-    """One file that you say what it is (the way to add a management contract or a budget by hand)."""
+    """One file that you say what it is (the way to add a management contract or a budget by hand). A PDF too big for the storage is split into parts, each its own document (the first
+    is returned; every part carries `.parts` on it)."""
     name = _check_file(uploaded_file)
-    return AssociationDocument.objects.create(property=association, kind=kind, name=name, file=uploaded_file, uploaded_by=user, text_status='waiting')
+    made = [_store(association, kind, part_name, part, user) for part_name, part in _parts(uploaded_file, name)]
+    made[0].parts = made
+    return made[0]
 
 
 def upload_many(association, uploaded_files, user=None):
@@ -208,7 +279,11 @@ def upload_many(association, uploaded_files, user=None):
         except DocumentError as e:
             problems.append(str(e))
             continue
-        made.append(AssociationDocument.objects.create(property=association, kind=Kind.OTHER, name=name, file=f, uploaded_by=user, text_status='waiting', auto_sort=True, sort_status='waiting'))
+        try:
+            for part_name, part in _parts(f, name):
+                made.append(_store(association, Kind.OTHER, part_name, part, user, auto_sort=True, sort_status='waiting'))
+        except DocumentError as e:
+            problems.append(str(e))
     return made, problems
 
 

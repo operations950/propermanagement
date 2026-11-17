@@ -16,6 +16,8 @@
         <div class="col-md-4"><label class="small text-muted">Tenant phone</label>{{ form.tenant_phone }}</div>
         <div class="col-md-3"><label class="small text-muted">Lease starts</label>{{ form.start_date }}{{ form.start_date.errors }}</div>
         <div class="col-md-3"><label class="small text-muted">Lease ends</label>{{ form.end_date }}{{ form.end_date.errors }}</div>
+        <div class="col-md-3"><label class="small text-muted">Rent rate expires {% include '_tip.html' with text="The date the rent steps up (the next increase). It shows on the month-end lease check." %}</label>{{ form.rate_expires_on }}</div>
+        <div class="col-md-3"><label class="small text-muted">Paid into {% include '_tip.html' with text="The bank account this lease pays rent into. Two leases of one tenant can pay into two accounts, each billed on its own invoice." %}</label>{{ form.bank_account }}</div>
         <div class="col-md-3"><label class="small text-muted">Monthly rent {% include '_tip.html' with text="The base rent. Increases and seasonal rents are added on the tenant's page after the lease is saved." %}</label>{{ form.base_rent }}{{ form.base_rent.errors }}</div>
         <div class="col-md-3"><label class="small text-muted">Monthly CAM estimate {% include '_tip.html' with text="Billed with the rent every month. The yearly true-up against the real common costs is done separately." %}</label>{{ form.cam_estimate }}</div>
         <div class="col-12"><label class="small">{{ form.prorate }} Charge a part month by the day {% include '_tip.html' with text="When the lease starts or ends in the middle of a month, that month's rent is the monthly rent times the days covered over the days in the month." %}</label></div>

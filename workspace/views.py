@@ -26,7 +26,7 @@ def new_face_only(view=None, *, admins_too=False):
         @login_required
         def wrapper(request, *args, **kwargs):
             profile = getattr(request.user, 'staff_profile', None)
-            allowed = bool(profile and (profile.new_face or (admins_too and profile.is_company_admin))) or request.user.is_superuser
+            allowed = bool(profile) or request.user.is_superuser           # everyone on the team is on the new layout
             if not allowed:
                 return redirect('dashboard')
             return fn(request, *args, **kwargs)
@@ -40,7 +40,7 @@ def _profile(request):
 
 def _is_boss(request):
     p = _profile(request)
-    return bool(p and (p.is_company_admin or menu.role_for(p) in ('owner', 'manager'))) or request.user.is_superuser
+    return bool(p and (p.is_company_admin or p.can_financial)) or request.user.is_superuser
 
 
 PHONE_DAYS_AHEAD = 13          # the phone's calendar agenda: today and the next two weeks
@@ -139,6 +139,9 @@ def projects(request):
 
 @new_face_only
 def financials(request):
+    from core.permissions import has_financial
+    if not has_financial(request.user):
+        return redirect('ws_home')
     return render(request, 'workspace/financials.html', {})
 
 
@@ -160,28 +163,67 @@ def admin_home(request):
 
 @new_face_only(admins_too=True)
 def people(request):
-    """Who sees the new layout, and which menu each person gets. Switching someone on here is the only thing that changes what they see."""
+    """People and roles: add or remove a person and choose what each one can use. Four switches per person (Financial, Time clock management, Admin; Portfolio is yours alone);
+    everything else is open to the whole team. Removing a person turns their login off and keeps their history."""
+    from django.contrib.auth import get_user_model
+
+    from core.forms import StaffCreateForm
+    from core.models import Contact
     from core.views import _is_admin
     if not _is_admin(request.user):
         return redirect('ws_home')
+    me = _profile(request)
+    form = StaffCreateForm()
     if request.method == 'POST':
-        changed = 0
-        for sp in StaffProfile.objects.all():
-            if f'row_{sp.pk}' not in request.POST:
-                continue            # only the rows that were on the form: a person added since it loaded is left alone
-            on = request.POST.get(f'face_{sp.pk}') == 'on'
-            role = request.POST.get(f'role_{sp.pk}', '')
-            role = role if role in StaffProfile.MenuRole.values else ''
-            if sp.pk == _profile(request).pk:
-                on = True            # you can't lock yourself out of the layout you are editing from
-            if (sp.new_face, sp.menu_role) != (on, role):
-                sp.new_face, sp.menu_role = on, role
-                sp.save(update_fields=['new_face', 'menu_role'])
-                changed += 1
-        messages.success(request, f'Saved. {changed} person(s) changed.' if changed else 'Nothing changed.')
-        return redirect('ws_people')
-    return render(request, 'workspace/people.html', {'staff_list': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__username'),
-                                                      'roles': StaffProfile.MenuRole.choices, 'me': _profile(request)})
+        action = request.POST.get('action', 'save')
+        if action == 'add':
+            form = StaffCreateForm(request.POST)
+            if form.is_valid():
+                User = get_user_model()
+                email = form.cleaned_data['email']
+                with transaction.atomic():
+                    user = User.objects.create_user(username=email, email=email, first_name=form.cleaned_data['first_name'], last_name=form.cleaned_data['last_name'], password=form.cleaned_data['password'])
+                    StaffProfile.objects.create(user=user, role=form.cleaned_data['role'], phone=form.cleaned_data['phone'], timezone=form.cleaned_data['timezone'])
+                    match = Contact.objects.filter(email__iexact=email).first()
+                    if match:
+                        match.contact_type, match.secondary_types = Contact.ContactType.STAFF_ADJACENT, []
+                        match.save(update_fields=['contact_type', 'secondary_types'])
+                    else:
+                        Contact.objects.create(name=user.get_full_name() or email, contact_type=Contact.ContactType.STAFF_ADJACENT, phone=form.cleaned_data['phone'], email=email)
+                messages.success(request, f'{user.get_full_name() or email} added. Tick what they can use.')
+                return redirect('ws_people')
+            messages.error(request, 'That person could not be added: ' + '; '.join(' '.join(e) for e in form.errors.values()))
+        elif action in ('remove', 'restore'):
+            sp = get_object_or_404(StaffProfile, pk=request.POST.get('person'))
+            if sp.pk == me.pk and action == 'remove':
+                messages.error(request, 'You cannot remove yourself.')
+            else:
+                sp.user.is_active = action == 'restore'
+                sp.user.save(update_fields=['is_active'])
+                messages.success(request, f'{sp} is {"back" if action == "restore" else "removed: their login is off, and their history is kept"}.')
+            return redirect('ws_people')
+        else:
+            changed = 0
+            for sp in StaffProfile.objects.all():
+                if f'row_{sp.pk}' not in request.POST:
+                    continue            # only the rows that were on the form: a person added since it loaded is left alone
+                want = {'can_financial': request.POST.get(f'financial_{sp.pk}') == 'on', 'can_time_admin': request.POST.get(f'time_{sp.pk}') == 'on',
+                        'is_company_admin': request.POST.get(f'admin_{sp.pk}') == 'on'}
+                if sp.pk == me.pk:
+                    want['is_company_admin'] = True          # you cannot take your own Admin away from yourself here
+                role = request.POST.get(f'dept_{sp.pk}', sp.role)
+                if role in StaffProfile.Role.values or role == '':
+                    want['role'] = role
+                if any(getattr(sp, k) != v for k, v in want.items()):
+                    for k, v in want.items():
+                        setattr(sp, k, v)
+                    sp.save(update_fields=list(want))
+                    changed += 1
+            messages.success(request, f'Saved. {changed} person(s) changed.' if changed else 'Nothing changed.')
+            return redirect('ws_people')
+    people_list = list(StaffProfile.objects.select_related('user').order_by('-user__is_active', 'user__first_name', 'user__username'))
+    return render(request, 'workspace/people.html', {'staff_list': people_list, 'departments': StaffProfile.Role.choices, 'me': me, 'form': form,
+                                                      'timezones': StaffProfile.Timezone.choices})
 
 
 @require_POST

@@ -181,6 +181,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'core.pwa.PwaFilesMiddleware',          # the app manifest, service worker and offline page: open to everyone, ahead of the walls below
     'core.middleware.OwnerWallMiddleware',
+    'core.middleware.MailNotConnectedMiddleware',
     'timeclock.middleware.PolicyWallMiddleware',
     'core.middleware.TimezoneMiddleware',
     'tickets.middleware.TicketFilterMemoryMiddleware',
@@ -206,6 +207,7 @@ TEMPLATES = [
                 'timeclock.context_processors.nav',
                 'workspace.context_processors.face',
                 'core.context_processors.alerts',
+                'intake.context_processors.mail_problem',
             ],
         },
     },

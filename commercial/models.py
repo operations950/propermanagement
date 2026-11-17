@@ -51,6 +51,14 @@ class Lease(models.Model):
     billing_emails = models.TextField(blank=True, help_text='Where invoices go: one or more addresses separated by commas or lines. Blank: the tenant contact\'s own email.')
     renewal_notes = models.TextField(blank=True, help_text='Renewal options, notice dates, anything the lease says about the end of the term.')
     notes = models.TextField(blank=True)
+    # where this lease's rent is paid (two leases of one tenant can pay into two bank accounts), and when its rent rate runs out
+    bank_account = models.ForeignKey('accounting.BankAccount', null=True, blank=True, on_delete=models.SET_NULL, related_name='+', help_text='The bank account this lease is paid into. Blank: the operating account of the property.')
+    rate_expires_on = models.DateField(null=True, blank=True, help_text='The date the current rent rate runs out and the rent steps up (the next increase), when the lease says so.')
+    # month-end lease renewals step: the end date / rate date a person has looked at and said is okay
+    renewal_ok_for = models.DateField(null=True, blank=True, help_text='The lease end date the month-end close was told is okay (it asks again when the end date changes).')
+    rate_ok_for = models.DateField(null=True, blank=True, help_text='The rent rate expiry date the month-end close was told is okay.')
+    renewal_ok_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    renewal_ok_at = models.DateTimeField(null=True, blank=True)
     # a different late fee for this lease (blank: the property's own terms apply; the grace period is always the property's)
     late_fee_flat = models.DecimalField(null=True, blank=True, **MONEY)
     late_fee_percent = models.DecimalField(null=True, blank=True, max_digits=6, decimal_places=3)
@@ -78,6 +86,95 @@ class Lease(models.Model):
                 seen.add(e.lower())
                 out.append(e)
         return out
+
+
+class LongTermLease(models.Model):
+    """A long-term rental's lease. These properties are not run through our books (the rent goes to the owner's trust account), so this is the record of the tenant, the term and the rent,
+    with the rent increases for the life of the lease. The monthly rent in force feeds the month-end rent check."""
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Signed, not started'
+        ACTIVE = 'active', 'Active'
+        ENDED = 'ended', 'Ended'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='ltr_leases')
+    tenant = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name='ltr_leases')
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.ACTIVE)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    monthly_rent = models.DecimalField(default=Decimal('0.00'), help_text='The monthly rent before any rent increase.', **MONEY)
+    security_deposit = models.DecimalField(default=Decimal('0.00'), **MONEY)
+    rate_expires_on = models.DateField(null=True, blank=True, help_text='The date the current rent rate runs out and the rent steps up.')
+    renewal_notes = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    renewal_ok_for = models.DateField(null=True, blank=True)
+    rate_ok_for = models.DateField(null=True, blank=True)
+    renewal_ok_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    renewal_ok_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['property__name', '-start_date']
+
+    def __str__(self):
+        return f'{self.tenant.name} at {self.property.name}'
+
+    def rent_for_month(self, month):
+        """The monthly rent for a month: the rent, replaced by the latest increase that has started by then (an increase dated the 1st starts that month, any other date the next)."""
+        from datetime import timedelta
+        month = month.replace(day=1)
+        amount = self.monthly_rent
+        steps = []
+        for st in self.steps.all():
+            d = st.effective_date
+            first = d if d.day == 1 else (d.replace(day=1) + timedelta(days=32)).replace(day=1)
+            if first <= month:
+                steps.append((first, st.pk, st.monthly_rent))
+        if steps:
+            amount = max(steps)[2]
+        return amount
+
+    def covers(self, month):
+        """Whether the lease runs in any part of the month."""
+        import calendar
+        month = month.replace(day=1)
+        last = month.replace(day=calendar.monthrange(month.year, month.month)[1])
+        if self.status == self.Status.ENDED and not self.end_date:
+            return False
+        if self.start_date and self.start_date > last:
+            return False
+        return not (self.end_date and self.end_date < month)
+
+
+class LongTermRentStep(models.Model):
+    lease = models.ForeignKey(LongTermLease, on_delete=models.CASCADE, related_name='steps')
+    effective_date = models.DateField()
+    monthly_rent = models.DecimalField(**MONEY)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['effective_date', 'id']
+        constraints = [models.UniqueConstraint(fields=['lease', 'effective_date'], name='uniq_ltr_rent_step_date')]
+
+
+class LeaseProposal(models.Model):
+    """What was read out of an uploaded lease, waiting for a person: the term, the rent, and the rent increases for the life of the lease. Nothing changes the lease until it is applied."""
+    class Status(models.TextChoices):
+        PROPOSED = 'proposed', 'To review'
+        APPLIED = 'applied', 'Applied'
+        DISMISSED = 'dismissed', 'Dismissed'
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='lease_proposals')
+    lease = models.ForeignKey(Lease, null=True, blank=True, on_delete=models.CASCADE, related_name='proposals')
+    ltr_lease = models.ForeignKey(LongTermLease, null=True, blank=True, on_delete=models.CASCADE, related_name='proposals')
+    document = models.ForeignKey('accounting.AssociationDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PROPOSED)
+    data = models.JSONField(default=dict, blank=True, help_text='{term_start, term_end, monthly_rent, cam_monthly, security_deposit, steps: [{date, monthly_rent, quote, page}], renewal, notes}')
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
 
 
 class RentStep(models.Model):
@@ -122,6 +219,7 @@ class LeaseDocument(models.Model):
     file = models.FileField(upload_to='lease_documents/%Y/%m/', storage=DocumentStorage())
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    reader_doc = models.ForeignKey('accounting.AssociationDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+', help_text='The same file kept as a document the program reads (a lease or amendment).')
 
     class Meta:
         ordering = ['-uploaded_at', '-id']

@@ -6,6 +6,7 @@ app_name = 'accounting'
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('commercial/', views.home_commercial, name='home_commercial'),
     path('budgets/', views_budget.budgets, name='budgets'),
     path('<int:pk>/budget/<int:year>/', views_budget.budget_year, name='budget_year'),
     path('<int:pk>/budget/<int:year>/edit/', views_budget.budget_edit, name='budget_edit'),
@@ -33,6 +34,7 @@ urlpatterns = [
     path('<int:pk>/prep/<str:kind>.pdf', views_prep.prep_pdf, name='prep_pdf'),
     path('<int:pk>/', views.hub, name='hub'),
     path('<int:pk>/close/<str:month>/', views.close_sheet, name='close'),
+    path('<int:pk>/close/<str:month>/review/', views.close_review, name='close_review'),
     path('<int:pk>/close/<str:month>/reserve/', views_closing.reserve, name='reserve_check'),
     path('<int:pk>/close/<str:month>/send-board/', views_closing.send_board, name='send_board'),
     path('<int:pk>/units/', views.units, name='units'),

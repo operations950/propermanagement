@@ -20,6 +20,7 @@ from . import bank_tieout, escrow, ledger, month_end_booking, nav, month_end_pay
 from . import close_ltr_tax, month_close_project, workdays
 from .models import SalesTaxFiling, SalesTaxReturn
 from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, MonthEndPayment, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
+from .permissions import has_financial as _is_financial
 from .views import _clean_tax_ids, _is_admin
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ def _closed_message(closed, skipped, month):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_overview(request):
     today = timezone.localdate()
     default_month = ledger.previous_month(today)
@@ -131,7 +132,7 @@ def close_overview(request):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_long_term(request):
     """The long-term rentals' close: one row per rental with the owner's running balance (what was owed at the start, plus the rent collected, less commission and
     expenses, less what was paid the owner, is what is owed at the end), and the way into each one's own close."""
@@ -265,7 +266,7 @@ def _consolidated_page(request, prop, month):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_statement(request, pk):
     """A rental's calendar year, month by month, the way the owner sees it: the calculation, what is owed and paid.
     The arrows move to the year before or after."""
@@ -287,7 +288,7 @@ def close_statement(request, pk):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_month_statement(request, pk, month):
     """One month of a rental as its owner sees it: every line with transactions behind it expands to that month's transactions."""
     prop = get_object_or_404(Property, pk=pk, property_type__in=ledger.CLOSE_TYPES, financials_managed=True)
@@ -304,7 +305,7 @@ def close_month_statement(request, pk, month):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_property(request, month, pk, unit_pk=None):
     prop = get_object_or_404(Property.objects.select_related('qb_expense_account', 'qb_trust_account'), pk=pk, property_type__in=ledger.CLOSE_TYPES, financials_managed=True)
     month = _parse_month(month, None)
@@ -438,7 +439,7 @@ def close_property(request, month, pk, unit_pk=None):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def payouts(request):
     """Every platform payout (a bank transfer and the lines that make it up), whether it has reached the bank, and the
     ones that have been waiting too long."""
@@ -712,13 +713,13 @@ def _ledger_page(request, kind):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_escrow(request):
     return _ledger_page(request, escrow.ESCROW)
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_misc(request):
     return _ledger_page(request, escrow.MISC)
 
@@ -750,6 +751,10 @@ def close_steps(month, today=None):
     ltr_status, ltr_detail = _closed_step(month, long_term=True)
     tax_status, tax_detail = _tourist_tax_step(month)
     assoc_status, assoc_detail = _associations_step(month)
+    from accounting import closing as _closing
+    from commercial import renewals as _renewals
+    comm_status, comm_detail = _closing.checklist_step(month, kind='commercial')
+    renew_status, renew_detail = _renewals.summary(month)
     owners_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['owners'])
     ltr_pay = month_end_payments.summary(month, month_end_payments.SECTIONS['ltr_owners'], 'ltr')
     rent_step = close_ltr_tax.rent_summary(month)
@@ -769,6 +774,8 @@ def close_steps(month, today=None):
         {'n': 11, 'title': 'Long-term rent collection', 'icon': 'key-round', 'status': rent_step['status'], 'detail': rent_step['detail'], 'url': reverse('close_rent_collection') + q},
         {'n': 12, 'title': 'Close associations', 'icon': 'building-2', 'status': assoc_status, 'detail': assoc_detail, 'url': reverse('accounting:home') + q},
         {'n': 13, 'title': 'Pay long-term owners', 'icon': 'users', 'status': ltr_pay['status'], 'detail': ltr_pay['detail'], 'url': reverse('close_pay_ltr_owners') + q},
+        {'n': 14, 'title': 'Close commercial properties', 'icon': 'store', 'status': comm_status, 'detail': comm_detail, 'url': reverse('accounting:home_commercial') + q},
+        {'n': 15, 'title': 'Lease renewals', 'icon': 'calendar-clock', 'status': renew_status, 'detail': renew_detail, 'url': reverse('commercial:renewals') + q},
     ]
     pay_next = ledger.next_month(month)
     for step in steps:
@@ -786,7 +793,7 @@ def close_steps(month, today=None):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_home(request):
     """The month-end checklist: the prior month by default, a day at a time, one numbered step after another."""
     today = timezone.localdate()
@@ -812,7 +819,7 @@ def close_home(request):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def tourist_tax(request):
     """Palm Beach County tourist development tax for a month: the short-term rental receipts that reached the trust accounts, by property."""
     today = timezone.localdate()
@@ -937,7 +944,7 @@ STATEMENT_EXTENSIONS = ('.pdf', '.csv')
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def close_bank_tieout(request):
     """Step 1: upload the bank statement, pull QuickBooks's bank and trust balances, and see why they don't match."""
     today = timezone.localdate()
@@ -1162,13 +1169,13 @@ def _pay_page(request, section, page_title):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def pay_owners(request):
     return _pay_page(request, 'owners', 'Pay owners')
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def rent_collection(request):
     """Long-term rent collection: this month's rent for every long-term rental, against what QuickBooks shows came in. The person confirms each one."""
     today = timezone.localdate()
@@ -1202,7 +1209,7 @@ def rent_collection(request):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def sales_tax_returns(request):
     """The sales tax returns we are responsible for, a list kept by hand: tick off the ones due for the month's period as they are filed."""
     today = timezone.localdate()
@@ -1237,19 +1244,19 @@ def sales_tax_returns(request):
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def pay_ltr_owners(request):
     return _pay_page(request, 'ltr_owners', 'Pay long-term owners')
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def pay_proper(request):
     return _pay_page(request, 'proper', 'Pay Proper')
 
 
 @login_required
-@user_passes_test(_is_admin)
+@user_passes_test(_is_financial)
 def pay_booking(request, pk):
     """Books one recorded payment in QuickBooks: shows the QuickBooks transaction(s) it matched and how each would be split, and splits them when asked."""
     payment = get_object_or_404(MonthEndPayment, pk=pk)

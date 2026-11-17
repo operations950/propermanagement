@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load nav_tags %}
+{% block title %}Lease renewals{% endblock %}
+{% block content %}
+{% up_link css="mb-1" %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="calendar-clock" class="icon-lg"></i> Lease renewals {% include '_tip.html' with text='Every commercial and long-term lease that ends, or whose rent rate runs out, within 120 days of the end of the month. Tick each one once you have looked at it and it is okay. If a date changes, it comes back to be ticked again.' %}</h2>
+        <div class="small text-muted">{{ detail }}</div>
+    </div>
+    <div class="btn-group btn-group-sm">
+        <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
+    </div>
+</div>
+<div class="card" style="border-radius: 12px;"><div class="card-body p-2">
+{% if rows %}
+<div class="table-responsive"><table class="table table-sm mb-0">
+    <thead><tr><th style="width: 2.2rem;"></th><th>Tenant</th><th>Property</th><th>What</th><th>Date</th><th class="text-end">Rent</th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+        <td><form method="post" class="m-0">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="kind" value="{{ r.kind }}"><input type="hidden" name="pk" value="{{ r.pk }}"><input type="hidden" name="what" value="{{ r.what }}"><input type="hidden" name="ok" value="{% if r.ok %}0{% else %}1{% endif %}">
+            <input type="checkbox" class="form-check-input" {% if r.ok %}checked{% endif %} onchange="this.form.submit()" aria-label="Confirm this is okay"></form></td>
+        <td><a href="{{ r.link }}" class="text-decoration-none fw-semibold">{{ r.tenant }}</a></td>
+        <td>{{ r.where }}</td>
+        <td>{{ r.label }}{% if r.past %} <span class="text-danger small">(late)</span>{% endif %}</td>
+        <td>{{ r.date|date:"M j, Y" }} <span class="small text-muted">{% if r.days < 0 %}{{ r.days|cut:"-" }} days ago{% else %}in {{ r.days }} days{% endif %}</span></td>
+        <td class="text-end">${{ r.rent }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<form method="post" class="mt-2">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="confirm_all"><button class="btn btn-sm btn-outline-secondary">Confirm all are okay</button></form>
+{% else %}<div class="text-muted p-2">Nothing ends or changes rent rate in the next {{ window }} days.</div>{% endif %}
+</div></div>
+{% endblock %}

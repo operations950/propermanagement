@@ -297,9 +297,10 @@
             <i data-lucide="users" class="icon"></i> Staff <span class="ad-status">{{ staff_profiles|length }} {{ staff_profiles|length|pluralize:"person,people" }}</span><i data-lucide="chevron-down" class="icon"></i>
         </h6>
         <div class="collapse" id="admin-section-staff">
+        <div class="small mt-3">Add or remove people and choose Financial, Time clock management and Admin on <a href="{% url 'ws_people' %}">People and roles</a>.</div>
         <div class="table-responsive mt-3">
         <table class="table table-sm align-middle mb-0">
-            <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Phone</th><th>Company Admin</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Phone</th><th>Admin</th></tr></thead>
             <tbody>
             {% for sp in staff_profiles %}
             <tr>
@@ -322,7 +323,7 @@
                         {% csrf_token %}
                         <input class="form-check-input" type="checkbox" name="is_company_admin" value="1"
                                {% if sp.is_company_admin %}checked{% endif %} onchange="this.form.submit()"
-                               title="Sees the company-wide owner dashboard instead of the standard dashboard">
+                               title="Admin: Admin Tools, People and roles and the statistics dashboard. Financial and Time clock management are set on People and roles.">
                     </form>
                 </td>
             </tr>

@@ -1,38 +1,57 @@
 {% extends 'base.html' %}
 {% load nav_tags %}
-{% block title %}People and menus{% endblock %}
+{% block title %}People and roles{% endblock %}
 {% block content %}
 {% include 'workspace/_css.html' %}
 <style>
+    .ppl th.sw, .ppl td.sw { text-align: center; width: 5.2rem; }
+    .ppl .gone { opacity: 0.55; }
     @media (max-width: 768px) {
         .ppl thead { display: none; }
-        .ppl tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.35rem 0.8rem; align-items: center; padding: 0.9rem 1rem; border-bottom: 1px solid var(--border-hairline); }
+        .ppl tr { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem 0.8rem; align-items: center; padding: 0.9rem 1rem; border-bottom: 1px solid var(--border-hairline); }
         .ppl td { display: block; padding: 0 !important; border: 0 !important; }
-        .ppl td:nth-child(1) { font-weight: 600; font-size: 1.08rem; }
-        .ppl td:nth-child(2) { grid-column: 1; overflow-wrap: anywhere; font-size: 0.95rem; }
-        .ppl td:nth-child(3) { grid-row: 1 / span 2; grid-column: 2; display: flex !important; flex-direction: column; align-items: center; gap: 0.2rem; text-align: center; }
-        .ppl td:nth-child(3) .form-check-input { width: 2rem; height: 2rem; margin: 0; }
-        .ppl td:nth-child(4) { grid-column: 1 / -1; }
-        .ppl td:nth-child(4) select { max-width: none !important; width: 100%; }
+        .ppl td:nth-child(1), .ppl td:nth-child(2), .ppl td:nth-child(3), .ppl td:last-child { grid-column: 1 / -1; }
+        .ppl td.sw { width: auto; }
+        .ppl td.sw .form-check-input { width: 1.8rem; height: 1.8rem; }
     }
 </style>
 {% up_link bare="ws-up" icon="chevron-left" %}
-<h2 class="page-title mt-1 mb-1">People and menus</h2>
-<p class="small text-muted mb-3">Turn the new layout on for a person, and choose which menu they get. {% include '_tip.html' with text="A menu role only decides what is shown in their menu: it never stops anyone opening a screen, and it is separate from the team (ticket queue) each person is on. People who are not switched on keep seeing the original site, exactly as before." %}</p>
+<h2 class="page-title mt-1 mb-1">People and roles {% include '_tip.html' with text="Everyone on the team can open Properties, Contacts, Tickets, Compliance, Projects, On-Site, Legal forms and Commercial. These boxes add the rest. Financial: all of the books, commercial leases, invoices and CAM, and the whole month-end checklist (adds Financials to the menu). Time clock management: everyone's hours, approvals and setup. Admin: Admin Tools (keys, QuickBooks, Gmail and Quo, creating staff), this screen and the statistics dashboard. Portfolio is yours alone." %}</h2>
+<p class="small text-muted mb-3">Tick what each person can use. A removed person's login is turned off; their history stays.</p>
+
+<details class="card mb-3"{% if form.errors %} open{% endif %}><summary class="card-body py-2 fw-semibold" style="cursor: pointer;"><i data-lucide="user-plus" class="icon"></i> Add a person</summary>
+<form method="post" class="card-body border-top pt-3">{% csrf_token %}<input type="hidden" name="action" value="add">
+    <div class="row g-2">
+        <div class="col-md-3"><label class="small text-muted">First name</label><input class="form-control form-control-sm" name="first_name" value="{{ form.first_name.value|default:'' }}" required></div>
+        <div class="col-md-3"><label class="small text-muted">Last name</label><input class="form-control form-control-sm" name="last_name" value="{{ form.last_name.value|default:'' }}"></div>
+        <div class="col-md-3"><label class="small text-muted">Email (their login)</label><input class="form-control form-control-sm" type="email" name="email" value="{{ form.email.value|default:'' }}" required></div>
+        <div class="col-md-3"><label class="small text-muted">Phone (optional)</label><input class="form-control form-control-sm" name="phone" value="{{ form.phone.value|default:'' }}"></div>
+        <div class="col-md-3"><label class="small text-muted">Department {% include '_tip.html' with text='Which team they are on. Tickets and On-Site use it to decide who is assigned what; a cleaner also gets the phone layout. It does not limit what they can open.' %}</label><select class="form-select form-select-sm" name="role"><option value="">None</option>{% for v, l in departments %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="small text-muted">Timezone</label><select class="form-select form-select-sm" name="timezone">{% for v, l in timezones %}<option value="{{ v }}"{% if v == 'America/New_York' %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="small text-muted">Temporary password</label><input class="form-control form-control-sm" type="password" name="password" autocomplete="new-password" required></div>
+        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-dark btn-sm">Add</button></div>
+    </div>
+</form></details>
+
 <form method="post">
-{% csrf_token %}
+{% csrf_token %}<input type="hidden" name="action" value="save">
 <div class="card"><div class="table-responsive"><table class="table table-sm align-middle mb-0 ppl">
-<thead><tr><th>Person</th><th>Email</th><th class="text-center">New layout</th><th>Menu</th></tr></thead>
+<thead><tr><th>Person</th><th>Email</th><th>Department</th><th class="sw">Financial</th><th class="sw">Time clock mgmt</th><th class="sw">Admin</th><th class="sw">Portfolio</th><th></th></tr></thead>
 <tbody>
 {% for sp in staff_list %}
-<tr>
-<td><input type="hidden" name="row_{{ sp.pk }}" value="1">{{ sp }}{% if sp.is_company_admin %} <span class="badge text-bg-light">admin</span>{% endif %}</td>
+<tr class="{% if not sp.user.is_active %}gone{% endif %}">
+<td><input type="hidden" name="row_{{ sp.pk }}" value="1">{{ sp }}{% if not sp.user.is_active %} <span class="badge text-bg-secondary">removed</span>{% endif %}</td>
 <td class="small text-muted">{{ sp.user.email }}</td>
-<td class="text-center"><span class="d-md-none small text-muted">New layout</span><input type="checkbox" class="form-check-input" name="face_{{ sp.pk }}" {% if sp.new_face %}checked{% endif %} {% if sp.pk == me.pk %}disabled checked{% endif %} aria-label="New layout for {{ sp }}"></td>
-<td><span class="d-md-none small text-muted">Menu</span><select name="role_{{ sp.pk }}" class="form-select form-select-sm" style="max-width: 14rem;" aria-label="Menu for {{ sp }}"><option value="">Default</option>{% for v, l in roles %}<option value="{{ v }}" {% if sp.menu_role == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+<td><select name="dept_{{ sp.pk }}" class="form-select form-select-sm" style="max-width: 11rem;" aria-label="Department of {{ sp }}"><option value="">None</option>{% for v, l in departments %}<option value="{{ v }}" {% if sp.role == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+<td class="sw"><span class="d-md-none small text-muted d-block">Financial</span><input type="checkbox" class="form-check-input" name="financial_{{ sp.pk }}" {% if sp.can_financial %}checked{% endif %} aria-label="Financial for {{ sp }}"></td>
+<td class="sw"><span class="d-md-none small text-muted d-block">Time clock</span><input type="checkbox" class="form-check-input" name="time_{{ sp.pk }}" {% if sp.can_time_admin %}checked{% endif %} aria-label="Time clock management for {{ sp }}"></td>
+<td class="sw"><span class="d-md-none small text-muted d-block">Admin</span><input type="checkbox" class="form-check-input" name="admin_{{ sp.pk }}" {% if sp.is_company_admin %}checked{% endif %} {% if sp.pk == me.pk %}disabled checked{% endif %} aria-label="Admin for {{ sp }}"></td>
+<td class="sw"><span class="d-md-none small text-muted d-block">Portfolio</span>{% if sp.is_portfolio_owner %}<i data-lucide="lock" class="icon text-muted" title="Locked to the owner"></i>{% else %}<span class="text-muted">&ndash;</span>{% endif %}</td>
+<td class="text-end">{% if sp.pk != me.pk %}<button type="submit" form="rm_{{ sp.pk }}" class="btn btn-sm btn-outline-secondary" {% if sp.user.is_active %}onclick="return confirm('Remove {{ sp|escapejs }}? Their login is turned off and their history is kept.')"{% endif %}>{% if sp.user.is_active %}Remove{% else %}Restore{% endif %}</button>{% endif %}</td>
 </tr>
 {% endfor %}
 </tbody></table></div></div>
 <button class="btn btn-dark mt-3" type="submit">Save</button>
 </form>
+{% for sp in staff_list %}{% if sp.pk != me.pk %}<form id="rm_{{ sp.pk }}" method="post" hidden>{% csrf_token %}<input type="hidden" name="action" value="{% if sp.user.is_active %}remove{% else %}restore{% endif %}"><input type="hidden" name="person" value="{{ sp.pk }}"></form>{% endif %}{% endfor %}
 {% endblock %}

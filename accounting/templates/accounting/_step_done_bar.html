@@ -1,0 +1,13 @@
+{% load acc_extras %}
+{# The one place a manual month-end step is marked done: top right of the step's own screen. Needs step_label, step_month, step_done (or None), step_confirm; step_hidden is [(name, value)] to send back. #}
+<form method="post" class="d-flex flex-wrap align-items-center justify-content-end gap-2 m-0 ac-noprint">{% csrf_token %}
+    {% for name, value in step_hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <input type="hidden" name="confirm" value="1">
+    {% if step_done %}
+    <span class="ac-chip done">Done</span>
+    <span class="small text-muted">{{ step_month|date:"F Y" }}, marked {{ step_done.marked_at|mdate }}{% if step_done.marked_by %} by {{ step_done.marked_by.get_full_name|default:step_done.marked_by.username }}{% endif %}</span>
+    <button class="btn btn-sm btn-outline-secondary" name="action" value="undo_done">Undo</button>
+    {% else %}
+    <button class="btn btn-success" name="action" value="mark_done" onclick="return confirm('{{ step_confirm|escapejs }}')"><i data-lucide="check" class="icon"></i> Mark {{ step_label }} done for {{ step_month|date:"F Y" }}</button>
+    {% endif %}
+</form>

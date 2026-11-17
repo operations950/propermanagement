@@ -238,6 +238,9 @@ def income_statement(association, start, end, basis=ACCRUAL):
     return {'income': income, 'expense': expense, 'total_income': ti, 'total_expense': te, 'net': ti - te, 'start': start, 'end': end, 'basis': basis}
 
 
+ASSET_SECTIONS = ('Cash', 'Receivables', 'Other assets')
+
+
 def balance_sheet(association, day, basis=ACCRUAL):
     bal = balances_as_of(association, day, basis)
     accts = {a.pk: a for a in Account.objects.filter(association=association)}
@@ -246,7 +249,9 @@ def balance_sheet(association, day, basis=ACCRUAL):
         a = accts[account_id]
         if not a.is_balance_sheet or not amount:
             continue
-        sections[sc.section(a.code)].append({'account': a, 'amount': amount if a.normal_debit else -amount})
+        section = sc.section(a.code)
+        debit_side = section in ASSET_SECTIONS or a.normal_debit      # what sits in the asset sections counts as debits less credits, so a contra-asset (a credit balance) reduces them
+        sections[section].append({'account': a, 'amount': amount if debit_side else -amount})
     for rows in sections.values():
         rows.sort(key=lambda r: r['account'].code)
     net_year = sum((-v for k, v in bal.items() if accts[k].kind in (Account.Kind.INCOME, Account.Kind.EXPENSE)), ZERO)

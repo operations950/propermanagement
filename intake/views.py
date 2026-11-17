@@ -41,6 +41,13 @@ def _quo_webhook_signing_key():
 _CONVERSATION_ID_RE = re.compile(r'/c/(CN[0-9a-f]+)')
 
 
+def _numbers(value):
+    """A phone number from Quo as text: one number as is, and a group text's list of numbers joined with commas (a list saved as it came would not fit the column)."""
+    if isinstance(value, (list, tuple)):
+        return ','.join(str(v) for v in value if v)[:255]
+    return str(value or '')[:255]
+
+
 @login_required
 @user_passes_test(_is_admin)
 def gmail_connect(request):
@@ -113,6 +120,8 @@ def gmail_callback(request):
         token.save(update_fields=['is_send_from'])
     from core.app_settings import _sync_email_backend
     _sync_email_backend()
+    from . import mail_health
+    mail_health.resolve(email or None)          # the banner for a broken connection goes away the moment it is reconnected
     messages.success(
         request,
         f'Gmail connected: {email or "mailbox"} — now polled for new tickets'
@@ -217,14 +226,14 @@ def _process_quo_webhook_event(event):
     match = _CONVERSATION_ID_RE.search(data.get('deepLink', '') or '')
     conversation_id = match.group(1) if match else ''
     direction = QuoMessage.Direction.IN if obj.get('direction') == 'incoming' else QuoMessage.Direction.OUT
-    participant = obj.get('from') if direction == QuoMessage.Direction.IN else obj.get('to')
+    participant = _numbers(obj.get('from') if direction == QuoMessage.Direction.IN else obj.get('to'))
 
     QuoMessage.objects.get_or_create(message_id=message_id, defaults={
         'conversation_id': conversation_id,
         'phone_number_id': obj.get('phoneNumberId', ''),
         'direction': direction,
-        'from_number': obj.get('from', ''),
-        'to_number': obj.get('to', ''),
+        'from_number': _numbers(obj.get('from', '')),
+        'to_number': _numbers(obj.get('to', '')),
         'body': obj.get('text', ''),
         'quo_created_at': _parse_iso(obj.get('createdAt', '')),
     })

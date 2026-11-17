@@ -771,9 +771,18 @@ class StaffProfile(models.Model):
     )
     is_company_admin = models.BooleanField(
         default=False,
-        help_text='Full admin: the company-wide owner dashboard, checklist/property editing, staff creation, '
-                   'and Admin Tools (including API keys/secrets) — equivalent to User.is_superuser. '
-                   'Orthogonal to role, which is just a department/queue concept.',
+        help_text='The "Admin" switch on People and roles: Admin Tools (API keys, QuickBooks, Gmail and Quo, creating staff), '
+                   'People and roles itself and the statistics dashboard. It no longer includes the books or the time clock '
+                   'management, which have their own switches (can_financial, can_time_admin). Orthogonal to role, which is just a department/queue concept.',
+    )
+    can_financial = models.BooleanField(
+        default=False,
+        help_text='The "Financial" switch: all of the books (bank reconciliation, bills, checks, journal, reports, budgets), '
+                   'commercial leases, invoices and CAM, and the whole month-end checklist. Adds Financials to the menu.',
+    )
+    can_time_admin = models.BooleanField(
+        default=False,
+        help_text='The "Time clock management" switch: see all hours, approve or fix punches, requests, setup and the office connection.',
     )
     is_portfolio_owner = models.BooleanField(
         default=False,
@@ -791,7 +800,7 @@ class StaffProfile(models.Model):
         CLEANER = 'cleaner', 'Cleaner'
 
     new_face = models.BooleanField(
-        default=False,
+        default=True,
         help_text='Shows this person the new Home / Tickets / Compliance / Projects / On-Site layout instead of the original menu. '
                    'Only the data presentation changes; nothing is removed, and the original screens still work by their old addresses.',
     )

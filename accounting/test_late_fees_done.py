@@ -141,7 +141,7 @@ class MarkTheStepDoneTests(AsOfBase):
         self.post({'action': 'mark_done', 'confirm': '1', 'as_of': '2026-10-31', 'month': '2026-10'})
         with mock.patch('django.utils.timezone.localdate', return_value=TODAY):
             html = self.client.get(self.url + '?as_of=2026-10-31&month=2026-10').content.decode()
-        self.assertIn('marked done for October 2026', html)
+        self.assertIn('October 2026, marked', html)
         self.assertIn('Pat', html)
         self.assertIn('Undo', html)
 

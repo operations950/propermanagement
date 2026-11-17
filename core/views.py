@@ -25,7 +25,7 @@ from processes.models import ProcessTemplate
 from tickets.models import FollowUpLog, Ticket
 from tickets.views import OPEN_STATUSES, _parse_quo_timestamp
 
-from . import app_settings, faq as faq_service, google_calendar, google_login, ledger, listings as listings_service, nudges, places, property_actions, property_specs, qb_accounts, quickbooks, trash as trash_service, usps
+from . import app_settings, permissions, required_docs, faq as faq_service, google_calendar, google_login, ledger, listings as listings_service, nudges, places, property_actions, property_specs, qb_accounts, quickbooks, trash as trash_service, usps
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
@@ -72,16 +72,9 @@ def _parse_int(value):
 
 
 def _is_admin(user):
-    """True for a Django superuser OR a staff member flagged Company Admin
-    from /admin-tools/ — the two used to be separate concepts (Company
-    Admin only unlocked the owner dashboard), but that split meant toggling
-    someone "Company Admin" silently left them locked out of every other
-    admin-gated screen (checklist editing, property delete, staff
-    creation, Admin Tools itself). Unified at the user's explicit request:
-    Company Admin now means full admin, same as is_superuser."""
-    if user.is_superuser:
-        return True
-    return getattr(getattr(user, 'staff_profile', None), 'is_company_admin', False)
+    """The Admin switch on People and roles (or a superuser): Admin Tools, People and roles, the statistics dashboard. The books and the time clock management have their own
+    switches: see core/permissions.py."""
+    return permissions.has_admin(user)
 
 
 def _safe_next(request, default='dashboard'):
@@ -450,6 +443,12 @@ def timezone_select(request):
             request.user.staff_profile.save(update_fields=['timezone'])
             messages.success(request, 'Timezone updated.')
     return redirect(next_url)
+
+
+@login_required
+def missing_documents(request):
+    """Every property that lacks a required document: a management agreement everywhere, and a lease on every commercial and long-term rental."""
+    return render(request, 'core/missing_documents.html', {'rows': required_docs.all_missing()})
 
 
 @login_required
@@ -1243,7 +1242,7 @@ def _own_card(prop):
 
 def _assoc_extra(request, prop):
     """The extra cards an association's page shows an administrator: official record, units and owners, accounting settings and documents."""
-    if prop.property_type != Property.Type.ASSOCIATION or not _is_admin(request.user):
+    if prop.property_type != Property.Type.ASSOCIATION or not permissions.has_financial(request.user):
         return {}
     from accounting.views_setup import assoc_context
     return assoc_context(prop)
@@ -1251,7 +1250,7 @@ def _assoc_extra(request, prop):
 
 def _commercial_extra(request, prop):
     """For a commercial property's page: a small card for the administrator with the books, the tenants and the invoices."""
-    if prop.property_type != Property.Type.COMMERCIAL or not _is_admin(request.user):
+    if prop.property_type != Property.Type.COMMERCIAL or not permissions.has_financial(request.user):
         return {}
     from commercial.views import property_card
     return {'cm': property_card(prop)}
@@ -1364,6 +1363,17 @@ def property_detail(request, pk):
                     file=file, uploaded_by=request.user,
                 )
                 messages.success(request, 'Document added.')
+        elif action == 'add_required_document':
+            from accounting import documents as acc_documents
+            kind, file = request.POST.get('kind'), request.FILES.get('file')
+            if kind not in ('contract', 'lease') or file is None:
+                messages.error(request, 'Choose the file to keep.')
+            else:
+                try:
+                    acc_documents.upload(prop, kind, file, request.user)
+                    messages.success(request, 'Document added.')
+                except acc_documents.DocumentError as e:
+                    messages.error(request, str(e))
         elif action == 'delete_document':
             PropertyDocument.objects.filter(pk=request.POST.get('document_id'), property=prop).delete()
             messages.success(request, 'Removed.')
@@ -1617,6 +1627,7 @@ def property_detail(request, pk):
         'airbnb_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.AIRBNB).select_related('unit'),
         'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO).select_related('unit'),
         'documents': prop.documents.all(),
+        'required_docs': required_docs.required_for(prop),
         'supply_standard_count': SupplyItem.objects.filter(is_standard=True, is_active=True).count(),
         'property_wide_supply_overrides': property_wide_overrides,
         'supply_unit_scopes': supply_unit_scopes,

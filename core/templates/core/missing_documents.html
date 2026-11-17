@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% load nav_tags %}
+{% block title %}Missing documents{% endblock %}
+{% block content %}
+{% up_link css="mb-1" %}
+<h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-warning" class="icon-lg"></i> Missing documents {% include '_tip.html' with text='Every property needs a management agreement. Commercial and long-term rentals also need the lease. Open a property to upload what is missing.' %}</h2>
+<div class="small text-muted mb-3">{% if rows %}{{ rows|length }} propert{{ rows|length|pluralize:"y,ies" }} to finish.{% else %}Every property has what it needs.{% endif %}</div>
+{% if rows %}<div class="card" style="border-radius: 12px;"><div class="card-body p-2">
+    {% for prop, missing in rows %}<a href="{% url 'property_detail' prop.pk %}#documents" class="d-flex align-items-center gap-2 py-2 text-decoration-none {% if not forloop.first %}border-top{% endif %}">
+        <span class="fw-semibold flex-grow-1">{{ prop.name }} <span class="small text-muted fw-normal">{{ prop.get_property_type_display }}</span></span>
+        <span class="small text-danger">{% for m in missing %}{{ m.label }}{% if not forloop.last %}, {% endif %}{% endfor %}</span></a>{% endfor %}
+</div></div>{% endif %}
+{% endblock %}

@@ -1044,7 +1044,7 @@ from .models import CaseEvent, DelinquencyCase
 def staff_admin(username='mgr'):
     from core.models import StaffProfile
     user = get_user_model().objects.create_user(username, password='pw12345678', first_name='Alexis')
-    return StaffProfile.objects.create(user=user, role=StaffProfile.Role.ACCOUNTING, is_company_admin=True)
+    return StaffProfile.objects.create(user=user, role=StaffProfile.Role.ACCOUNTING, is_company_admin=True, can_financial=True, can_time_admin=True)
 
 
 class DelinquencyBase(TestCase):
@@ -1222,7 +1222,7 @@ class DelinquencyScreenTests(DelinquencyBase):
         self.assertNotIn('delinquency', by)
         self.assertTrue(by['late_fees']['url'].startswith(reverse('accounting:late_fees', args=[self.prop.pk]) + '?as_of=2026-10-31'))        # the screen opens as of the last day of the month being closed
         self.assertIn('late fees or interest ready', by['late_fees']['detail'])
-        self.assertEqual(by['collections']['url'], reverse('accounting:collections', args=[self.prop.pk]))
+        self.assertEqual(by['collections']['url'], reverse('accounting:collections', args=[self.prop.pk]) + '?month=2026-10')        # the screen knows which close it is for, so its Mark done button marks the right month
         self.assertIn('need a late letter', by['collections']['detail'])
         self.assertFalse(by['late_fees']['blocks'] or by['collections']['blocks'])
 

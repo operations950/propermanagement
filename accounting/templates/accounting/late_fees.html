@@ -11,9 +11,12 @@
     table.lf-sub th { color: var(--ink-muted); font-weight: 700; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .04em; padding: 2px 10px 2px 0; }
     table.lf-sub td { padding: 2px 10px 2px 0; white-space: nowrap; }
 </style>
-<div class="mb-2">
+<div class="mb-2 d-flex justify-content-between align-items-start flex-wrap gap-2">
+  <div>
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="alarm-clock" class="icon-lg"></i> Post late fees and interest {% include '_tip.html' with text="Who is late on the day you choose, from the rules in the declaration. Each owner is judged by what they owed that day: someone who had paid by then is not late, and someone who had not is, even if they paid later. Choosing the 31st with a 10-day grace period is the same as giving 31 days. Nothing is charged until you press a button, so you can look first." %}</h2>
     <div class="small text-muted">{{ assoc.name }}</div>
+  </div>
+  {% if is_set %}{% include 'accounting/_step_done_bar.html' %}{% endif %}
 </div>
 {% if not is_set %}
 <div class="card"><div class="card-body">The late fee and interest rules are not set up yet. <a href="{% url 'accounting:settings' assoc.pk %}#late">Set them from the declaration</a>.</div></div>
@@ -59,17 +62,6 @@
     {% if profile.late_fee_is_set %}<button class="btn btn-sm btn-primary" name="action" value="charge_late">Charge late fees</button>{% endif %}
     {% if profile.interest_is_set %}<button class="btn btn-sm btn-primary" name="action" value="charge_interest">Charge interest</button>{% endif %}
     <span class="small text-muted align-self-center">The ticked owners, or everyone listed with something ready when none are ticked. An owner already charged is never charged again.</span></div>{% endif %}
-<div class="card mt-3 ac-noprint"><div class="card-body py-2">
-    {% if done %}
-    <div class="d-flex flex-wrap gap-2 align-items-center"><span class="ac-chip done">Done</span> <span>Late fees and interest were marked done for {{ done_month|date:"F Y" }} on {{ done.marked_at|mdate }}{% if done.marked_by %} by {{ done.marked_by.get_full_name|default:done.marked_by.username }}{% endif %}.</span>
-        <button class="btn btn-sm btn-outline-secondary ms-auto" name="action" value="undo_done">Undo</button></div>
-    {% else %}
-    <div class="d-flex flex-wrap gap-3 align-items-center">
-        <div class="form-check mb-0"><input class="form-check-input" type="checkbox" name="confirm" value="1" id="lf-confirm"><label class="form-check-label small" for="lf-confirm" style="display: inline;">I have charged late fees and interest to everyone I wish to charge</label> {% include '_tip.html' with text="This does not charge anyone. It tells the month-end close that you have finished this step; owners you chose not to charge can stay as they are." %}</div>
-        <button class="btn btn-sm btn-success" name="action" value="mark_done">Mark late fees and interest done for {{ done_month|date:"F Y" }}</button>
-    </div>
-    {% endif %}
-</div></div>
 </form>
 <script>(function () {
     var all = document.getElementById('lf-all');

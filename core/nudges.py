@@ -143,8 +143,9 @@ def _financials(today, is_admin):
 
 
 def _is_admin(user):
-    staff = getattr(user, 'staff_profile', None)
-    return bool(staff and staff.is_company_admin)
+    """Reminders are for the people who run the business: Admin or Financial."""
+    from . import permissions
+    return permissions.has_admin(user) or permissions.has_financial(user)
 
 
 def _sorted(items):

@@ -293,7 +293,7 @@ class TheTicketPageTests(TestCase):
         from core.models import Property
         from tickets.models import Priority, Ticket
         user = get_user_model().objects.create_user('pm', password='pw12345678', first_name='Pat')
-        self.staff = StaffProfile.objects.create(user=user, role=StaffProfile.Role.PROPERTY_MANAGER)
+        self.staff = StaffProfile.objects.create(user=user, role=StaffProfile.Role.PROPERTY_MANAGER, new_face=False)
         self.client.login(username='pm', password='pw12345678')
         self.prop = Property.objects.create(name='Grand Condos', property_type=Property.Type.ASSOCIATION, is_active=True)
         self.ticket = Ticket.objects.create(title='Roof leak', created_by=user, source=Ticket.Source.MANUAL, status=Ticket.Status.OPEN, priority=Priority.URGENT,

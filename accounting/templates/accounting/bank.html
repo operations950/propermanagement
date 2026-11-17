@@ -103,9 +103,20 @@
                 <form method="post" class="ub-row mt-2" data-ub-panel="add" hidden>{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
                     <div class="ub-pick"><select class="form-select form-select-sm ac-pick" name="account" required><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select></div>
                     <button class="btn btn-sm btn-primary">Add</button></form>
-                <form method="post" class="ub-row mt-2" data-ub-panel="owner" hidden>{% csrf_token %}<input type="hidden" name="action" value="owner_payment"><input type="hidden" name="bank_line" value="{{ b.pk }}">
-                    <div class="ub-pick"><select class="form-select form-select-sm" name="unit" required><option value="">Which unit paid?</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select></div>
-                    <button class="btn btn-sm btn-primary">Record</button></form>
+                <div class="mt-2" data-ub-panel="owner" hidden>
+                    {% if b.candidates %}
+                    <div class="small fw-semibold mb-1">Already in the books, not on the statement {% include '_tip.html' with text='These are payments of this amount, dated within a week, that the books already hold (a Yardi receipt, for example). The deposit is almost certainly one of them: pick it and nothing new is recorded.' %}</div>
+                    {% for c in b.candidates %}
+                    <form method="post" class="ub-row mb-1">{% csrf_token %}<input type="hidden" name="action" value="match_manual"><input type="hidden" name="bank_line" value="{{ b.pk }}"><input type="hidden" name="item" value="{{ c.key }}">
+                        <span class="small" style="flex: 1 1 240px;">{{ c.date|mdate }} &middot; {{ c.text|truncatechars:60 }} &middot; <span class="ac-num">{{ c.amount|money }}</span></span>
+                        <button class="btn btn-sm btn-primary">This one</button></form>
+                    {% endfor %}
+                    <div class="small text-muted mt-2 mb-1">None of these? Record a new payment:</div>
+                    {% endif %}
+                    <form method="post" class="ub-row">{% csrf_token %}<input type="hidden" name="action" value="owner_payment"><input type="hidden" name="bank_line" value="{{ b.pk }}">{% if b.candidates %}<input type="hidden" name="force" value="1">{% endif %}
+                        <div class="ub-pick"><select class="form-select form-select-sm ac-pick" data-noun="unit" name="unit" required><option value="">Type a name or unit</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select></div>
+                        <button class="btn btn-sm {% if b.candidates %}btn-outline-secondary{% else %}btn-primary{% endif %}">{% if b.candidates %}Record a new one{% else %}Record{% endif %}</button></form>
+                </div>
                 {% else %}
                 <form method="post" class="ub-row" data-ub-panel="add">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
                     <div class="ub-pick"><select class="form-select form-select-sm ac-pick" name="account" required><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select></div>

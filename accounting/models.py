@@ -118,6 +118,7 @@ class AssociationDocument(models.Model):
         AMENDMENT = 'amendment', 'Amendment'
         EXHIBIT = 'exhibit', 'Exhibit or survey'
         CONTRACT = 'contract', 'Management contract'
+        LEASE = 'lease', 'Lease'
         BUDGET = 'budget', 'Budget'
         OTHER = 'other', 'Other'
 

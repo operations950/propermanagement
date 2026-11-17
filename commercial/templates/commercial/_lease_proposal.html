@@ -1,0 +1,20 @@
+{% load acc_extras %}
+<div class="card mb-3 border-primary"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-search" class="icon"></i> What the lease says {% include '_tip.html' with text="Read from the uploaded lease. Nothing changes until you press Apply: untick any rent increase that is wrong. The words and page each one came from are shown." %}</h6>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="apply_proposal"><input type="hidden" name="proposal" value="{{ proposal.pk }}">
+        <div class="small mb-2">
+            {% if proposal.data.term_start or proposal.data.term_end %}<div><label><input type="checkbox" name="set_term" value="1" checked> Term {{ proposal.data.term_start|default:"?" }} to {{ proposal.data.term_end|default:"?" }}</label> <span class="text-muted">(fills only dates that are empty)</span></div>{% endif %}
+            {% if proposal.data.monthly_rent %}<div>Rent at the start: <strong>${{ proposal.data.monthly_rent }}</strong> a month{% if proposal.data.cam_monthly %} &middot; CAM ${{ proposal.data.cam_monthly }}{% endif %}{% if proposal.data.security_deposit %} &middot; deposit ${{ proposal.data.security_deposit }}{% endif %} <span class="text-muted">(fills only what is empty)</span></div>{% endif %}
+            {% if proposal.data.renewal %}<div>Renewal: {{ proposal.data.renewal }}</div>{% endif %}
+            {% if proposal.data.notes %}<div class="text-muted">{{ proposal.data.notes }}</div>{% endif %}
+        </div>
+        {% if proposal.data.steps %}
+        <table class="table table-sm ac-table mb-2"><thead><tr><th></th><th>From</th><th class="ac-num">Monthly rent</th><th>How</th></tr></thead><tbody>
+            {% for s in proposal.data.steps %}<tr><td><input type="checkbox" name="step" value="{{ s.date }}" checked></td><td>{{ s.date }}</td><td class="ac-num">${{ s.monthly_rent }}</td>
+                <td class="small text-muted">{{ s.basis }}{% if s.page %} &middot; page {{ s.page }}{% endif %}{% if s.quote %}<div title="{{ s.quote }}" class="text-truncate" style="max-width: 420px;">&ldquo;{{ s.quote }}&rdquo;</div>{% endif %}</td></tr>{% endfor %}
+        </tbody></table>
+        {% else %}<p class="text-muted small">The lease states no rent changes after the start.</p>{% endif %}
+        <button class="btn btn-sm btn-primary">Apply</button>
+    </form>
+    <form method="post" class="mt-2">{% csrf_token %}<input type="hidden" name="action" value="dismiss_proposal"><input type="hidden" name="proposal" value="{{ proposal.pk }}"><button class="btn btn-sm btn-link text-muted p-0">Dismiss</button></form>
+</div></div>

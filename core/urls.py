@@ -69,6 +69,7 @@ urlpatterns = [
     ),
     path('admin-tools/staff/<int:pk>/role/', views.staff_set_role, name='staff_set_role'),
     path('properties/', views.property_list, name='property_list'),
+    path('properties/missing-documents/', views.missing_documents, name='missing_documents'),
     path('properties/new/', views.property_create, name='property_create'),
     path('properties/<int:pk>/', views.property_detail, name='property_detail'),
     path('properties/<int:pk>/edit/', views.property_edit, name='property_edit'),

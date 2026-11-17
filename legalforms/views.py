@@ -18,9 +18,8 @@ from .models import DocumentTemplate, GeneratedDocument
 
 
 def _allowed(user):
-    """Legal documents go out under the association's and the company's name: admins and property managers."""
-    profile = getattr(user, 'staff_profile', None)
-    return _is_admin(user) or (profile is not None and profile.role == StaffProfile.Role.PROPERTY_MANAGER)
+    """Legal forms are open to everyone on the team."""
+    return getattr(user, 'staff_profile', None) is not None or user.is_superuser
 
 
 def _guard(request):

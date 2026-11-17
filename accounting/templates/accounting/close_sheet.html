@@ -25,7 +25,5 @@
     <button class="btn btn-sm btn-outline-secondary" name="action" value="post_charges"><i data-lucide="receipt" class="icon"></i> Post charges that are due</button>
     <button class="btn btn-sm btn-outline-secondary" name="action" value="recurring"><i data-lucide="repeat" class="icon"></i> Post recurring bills that are due</button>
     {% if profile.late_fee_confirmed %}<button class="btn btn-sm btn-outline-secondary" name="action" value="late_fees"><i data-lucide="alarm-clock" class="icon"></i> Charge late fees</button>{% endif %}
-    {% if sheet.locked %}<button class="btn btn-sm btn-outline-secondary" name="action" value="unlock" onclick="return confirm('Open this month again so entries can be posted into it?')"><i data-lucide="lock-open" class="icon"></i> Open the month again</button>
-    {% else %}<button class="btn btn-sm btn-primary" name="action" value="lock" {% if not sheet.can_lock %}disabled{% endif %}><i data-lucide="lock" class="icon"></i> Close {{ month|date:"F" }}</button>{% endif %}
 </form>
 {% endblock %}

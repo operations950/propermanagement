@@ -21,6 +21,16 @@ def ltr_rentals():
     return [p for p in ledger.rentals() if p.property_type == Property.Type.LONG_TERM_RENTAL and not p.income_collected_by_owner]
 
 
+def lease_rent(prop, month):
+    """The rent we expect for the month: the rent in force on the rental's lease when it has one (its increases applied), else the rent set on the property."""
+    from commercial.models import LongTermLease
+    leases = [l for l in LongTermLease.objects.filter(property=prop).exclude(status='ended').prefetch_related('steps') if l.covers(month)]
+    if leases:
+        latest = max(leases, key=lambda l: (l.start_date is not None, l.start_date or month, l.pk))
+        return latest.rent_for_month(month)
+    return prop.monthly_rent
+
+
 def rent_rows(close_month):
     """One row per long-term rental: the rent we expect, what the books show came in this month, the difference, and the person's confirmation."""
     month = rent_month(close_month)
@@ -30,7 +40,7 @@ def rent_rows(close_month):
         seen = ZERO
         for book in ledger.books_for(prop, month):
             seen += Decimal(str(ledger.totals(book, month, with_prior=False)['deposits']))
-        expected = prop.monthly_rent
+        expected = lease_rent(prop, month)
         if expected is None:
             kind = 'no_rent'
         elif seen == 0:
@@ -85,7 +95,7 @@ def confirm_rent(prop, close_month, status, note, user):
         raise ValueError('That is not a long-term rental we collect rent for.')
     if status == RentCheck.Status.RECEIVED and row['kind'] not in ('matches', 'no_rent') and not (note or '').strip():
         raise ValueError(f'The books show {row["seen"]:,.2f}, not the rent of {row["expected"]:,.2f}: say why it is right (a note), or choose Partly received.')
-    obj, _ = RentCheck.objects.update_or_create(property=prop, month=month, defaults={'expected': prop.monthly_rent, 'seen': row['seen'], 'status': status, 'note': (note or '').strip()[:300],
+    obj, _ = RentCheck.objects.update_or_create(property=prop, month=month, defaults={'expected': row['expected'], 'seen': row['seen'], 'status': status, 'note': (note or '').strip()[:300],
                                                                                    'confirmed_by': user if getattr(user, 'pk', None) else None})
     return obj
 

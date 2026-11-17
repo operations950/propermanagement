@@ -617,16 +617,19 @@ class ScreenTests(TestCase):
         self.assertEqual(self.client.get(reverse('accounting:collections_home')).status_code, 200)
         self.assertNotContains(self.client.get(reverse('accounting:collections_home')), self.prop.name)
 
-    def test_the_close_home_groups_associations_and_commercial(self):
+    def test_the_close_lists_keep_associations_and_commercial_apart(self):
         hoa = Property.objects.create(name='Some HOA', property_type=Property.Type.ASSOCIATION)
         profile = ledger.profile_for(hoa)
         profile.we_do_financials = True
         profile.save()
         r = self.client.get(reverse('accounting:home') + '?month=2026-10')
-        self.assertContains(r, 'Close properties')
-        self.assertContains(r, 'Commercial')
-        self.assertContains(r, self.prop.name)
+        self.assertContains(r, 'Close associations')
         self.assertContains(r, 'Some HOA')
+        self.assertNotContains(r, self.prop.name)
+        r = self.client.get(reverse('accounting:home_commercial') + '?month=2026-10')
+        self.assertContains(r, 'Close commercial properties')
+        self.assertContains(r, self.prop.name)
+        self.assertNotContains(r, 'Some HOA')
 
     def test_the_send_to_owners_screen_uses_owner_words(self):
         ledger.lock_month(self.prop, date(2026, 10, 1))

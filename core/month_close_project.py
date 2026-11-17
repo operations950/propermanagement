@@ -1,7 +1,7 @@
 """The month-end close as a project with days: each step of the checklist is its own compliance item, due on its working day, and finishes itself when its screen says it is done.
 
 Day 1 is steps 1 to 6 (the bank, the trust accounts, the payouts, the closes), day 2 pays the short-term owners and Proper and does the taxes, day 3 checks the long-term rent and closes the
-associations, day 4 pays the long-term owners. Owners must be paid by the 5th. Days are working days: Monday to Friday, less the major US holidays.
+associations, day 4 pays the long-term owners, closes the commercial properties and checks the lease renewals. Owners must be paid by the 5th. Days are working days: Monday to Friday, less the major US holidays.
 The items are made together on day 1 so the whole plan shows; the compliance screen shows what is due each day.
 """
 import logging
@@ -13,7 +13,7 @@ from . import ledger, workdays
 
 logger = logging.getLogger(__name__)
 
-STEP_DAY = {1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 2, 8: 2, 9: 2, 10: 2, 11: 3, 12: 3, 13: 4}
+STEP_DAY = {1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 2, 8: 2, 9: 2, 10: 2, 11: 3, 12: 3, 13: 4, 14: 4, 15: 4}
 OWNER_STEPS = (7, 13)          # the owner payments: due by the 5th
 PREFIX = 'Month-end close: '
 NOTE_KEY = 'close-month:'
@@ -21,7 +21,7 @@ NOTE_KEY = 'close-month:'
 # The screen each step is done on: (the screen's name, whether it is opened for one month). The checklist (close_views.close_steps) gives the same addresses.
 SCREENS = {1: ('close_bank_tieout', True), 2: ('close_misc', True), 3: ('close_escrow', True), 4: ('close_payouts', False), 5: ('close_overview', True), 6: ('close_long_term', True),
            7: ('close_pay_owners', True), 8: ('close_pay_proper', True), 9: ('tourist_tax', True), 10: ('close_sales_tax', True), 11: ('close_rent_collection', True),
-           12: ('accounting:home', True), 13: ('close_pay_ltr_owners', True)}
+           12: ('accounting:home', True), 13: ('close_pay_ltr_owners', True), 14: ('accounting:home_commercial', True), 15: ('commercial:renewals', True)}
 
 
 def screen_url(session):

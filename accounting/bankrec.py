@@ -808,11 +808,32 @@ def add_to_books(bank_line, account, user=None, vendor=None, memo=''):
     return _commit(bank, month_first, [bank_line], [Item('line', line, entry.date, line.debit - line.credit)], 'added to the books', auto=False)
 
 
+DUPLICATE_DAYS = 7
+
+
+def receipt_candidates(bank_line, items=None):
+    """The unmatched ledger items ('checks and deposits not on the statement') that could already BE this deposit: the same amount, dated within a week of it, owner receipts first, then the
+    nearest in date. `items` may be the ledger items already read for the screen (so a page of deposits reads them once)."""
+    bank = bank_line.statement.bank_account
+    if items is None:
+        items = ledger_items(bank, ledger.month_start(bank_line.statement.period_end))
+    found = [it for it in items if it.amount == bank_line.amount and abs((it.date - bank_line.date).days) <= DUPLICATE_DAYS]
+    found.sort(key=lambda it: (0 if getattr(it.obj, 'owner_id', None) else 1, abs((it.date - bank_line.date).days), it.date))
+    return found
+
+
 @transaction.atomic
-def owner_payment_from_line(bank_line, unit, owner, user=None, method=None):
-    """A deposit on the statement that is an owner's payment the books do not have: record it, and match it."""
+def owner_payment_from_line(bank_line, unit, owner, user=None, method=None, force=False):
+    """A deposit on the statement that is an owner's payment the books do not have: record it, and match it.
+    Refused when the books already hold a payment of the same amount from the same unit, within a week, that is not on the statement yet (a Yardi receipt, say): that is this deposit, and
+    recording it again would count it twice. `force=True` records it anyway."""
     bank_line = claim_line(bank_line)
     bank = bank_line.statement.bank_account
+    if not force:
+        same = [it for it in receipt_candidates(bank_line) if getattr(it.obj, 'unit_id', None) == unit.pk]
+        if same:
+            it = same[0]
+            raise StatementError(f'The books already have a ${it.amount:,.2f} payment for {unit.label} dated {it.date:%b} {it.date.day} that is not on the statement yet. Match this deposit to it instead of recording a new one.')
     method = method or {'check': Receipt.Method.CHECK, 'online': Receipt.Method.ONLINE, 'ach': Receipt.Method.ACH, 'card': Receipt.Method.CARD}.get(bank_channel(bank_line), Receipt.Method.CHECK)
     receipt = charges.receive_payment(bank.association, unit, owner, bank_line.date, bank_line.amount, method, reference=bank_line.description[:80], bank_account=bank, user=user)
     line = receipt.entry.lines.get(account=bank.account)

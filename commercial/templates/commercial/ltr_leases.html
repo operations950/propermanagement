@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% load nav_tags %}
+{% load acc_extras %}
+{% block title %}Leases - {{ prop.name }}{% endblock %}
+{% block content %}
+{% up_link css="mb-1" %}
+<h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> Leases {% include '_tip.html' with text='The tenant, the term and the rent of this long-term rental. Upload the lease and it is read for the rent increases. The rent in force is what the month-end rent check expects.' %}</h2>
+<div class="small text-muted mb-3">{{ prop.name }}</div>
+<div class="card mb-3"><div class="card-body">
+    {% for l in leases %}<a class="ac-step d-flex align-items-center gap-2 py-2 {% if not forloop.first %}border-top{% endif %} text-decoration-none" href="{% url 'commercial:ltr_lease' prop.pk l.pk %}">
+        <span class="fw-semibold flex-grow-1">{{ l.tenant.name }}</span>
+        <span class="small text-muted">{% if l.start_date %}{{ l.start_date|date:"M j, Y" }}{% else %}?{% endif %} to {% if l.end_date %}{{ l.end_date|date:"M j, Y" }}{% else %}open{% endif %}</span>
+        <span>${{ l.monthly_rent }}</span><span class="ac-chip {% if l.status == 'active' %}good{% endif %}">{{ l.get_status_display }}</span></a>
+    {% empty %}<p class="text-muted mb-0">No lease yet.</p>{% endfor %}
+</div></div>
+<form method="post" class="card"><div class="card-body">{% csrf_token %}
+    <h6 class="card-title">Add a lease</h6>
+    <div class="row g-2">
+        <div class="col-md-4"><label class="small text-muted">Tenant</label><input class="form-control form-control-sm" name="tenant_name" required></div>
+        <div class="col-md-4"><label class="small text-muted">Email</label><input class="form-control form-control-sm" name="tenant_email"></div>
+        <div class="col-md-4"><label class="small text-muted">Phone</label><input class="form-control form-control-sm" name="tenant_phone"></div>
+        <div class="col-md-3"><label class="small text-muted">Starts</label><input class="form-control form-control-sm" type="date" name="start_date"></div>
+        <div class="col-md-3"><label class="small text-muted">Ends</label><input class="form-control form-control-sm" type="date" name="end_date"></div>
+        <div class="col-md-3"><label class="small text-muted">Monthly rent</label><input class="form-control form-control-sm" name="monthly_rent" required></div>
+        <div class="col-md-3"><label class="small text-muted">Rent rate expires</label><input class="form-control form-control-sm" type="date" name="rate_expires_on"></div>
+    </div>
+    <button class="btn btn-primary btn-sm mt-3">Add</button>
+</div></form>
+{% endblock %}

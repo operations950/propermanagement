@@ -101,7 +101,7 @@ class PhoneOnSiteTests(TestCase):
         self.assertIn('flex-wrap: nowrap', inside.split('body .ws-sub {')[1].split('}')[0])
         self.assertNotIn('grid-template-columns: 1fr 1fr', inside.split('body .ws-sub {')[1].split('}')[0])
         plain = get_user_model().objects.create_user('amy', password='pw12345678')
-        StaffProfile.objects.create(user=plain, role=StaffProfile.Role.PROPERTY_MANAGER)         # not on the new layout: she gets the same row from the phone-only partial
+        StaffProfile.objects.create(user=plain, role=StaffProfile.Role.PROPERTY_MANAGER, new_face=False)         # not on the new layout: she gets the same row from the phone-only partial
         self.client.force_login(plain)
         html = self.client.get(reverse('onsite_dashboard')).content.decode()
         self.assertIn('class="mo-sections d-md-none"', html)

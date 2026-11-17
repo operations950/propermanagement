@@ -426,7 +426,7 @@
                     {% if request.user.staff_profile.is_portfolio_owner %}
                     <a class="nav-link" href="{% url 'portfolio_dashboard' %}"><i data-lucide="briefcase" class="icon"></i> Portfolio</a>
                     {% endif %}
-                    {% if request.user.is_superuser or request.user.staff_profile.is_company_admin %}
+                    {% if request.user.is_superuser or request.user.staff_profile.can_financial %}
                     <a class="nav-link {% if request.resolver_match.url_name in 'close_home close_bank_tieout close_overview close_payouts close_statement close_property close_unit' or request.resolver_match.namespace == 'accounting' %}active{% endif %}" href="{% url 'close_home' %}"><i data-lucide="landmark" class="icon"></i> Financials{% if nav_alerts.financials %}<span class="nav-pip">{{ nav_alerts.financials }}</span>{% endif %}</a>
                     {% endif %}
                     <a class="nav-link" href="{% url 'admin_tools' %}"><i data-lucide="shield" class="icon"></i> Admin</a>
@@ -455,6 +455,15 @@
     {% if new_face and ws_lines %}
     <div class="ws-lines"><div class="container-fluid">{% for l in ws_lines %}<a href="{{ l.url }}" class="{% if l.active %}on{% endif %}">{{ l.label }}</a>{% endfor %}</div></div>
     {% endif %}
+    {% endif %}
+    {% if mail_problem %}
+    <div class="alert alert-danger rounded-0 mb-0 py-2 px-3 d-flex flex-wrap align-items-center gap-2" role="alert" style="position: relative; z-index: 5;">
+        <i data-lucide="mail-warning" class="icon"></i>
+        <span class="flex-grow-1 small"><strong>Email is not connected, so nothing can be sent.</strong>
+            {% if mail_problem.mailbox_email %}Google has cancelled the saved sign-in for {{ mail_problem.mailbox_email }} (a password change does that).{% else %}No Gmail mailbox is connected.{% endif %}
+            {{ mail_problem.fail_count }} send{{ mail_problem.fail_count|pluralize }} failed, the last {{ mail_problem.last_failed_at|timesince }} ago{% if mail_problem.last_user %}, for {{ mail_problem.last_user.get_full_name|default:mail_problem.last_user.username }}{% endif %}.</span>
+        <a href="{% url 'gmail_connect' %}?next=admin_tools" class="btn btn-danger btn-sm">Reconnect Gmail</a>
+    </div>
     {% endif %}
     {% if messages %}
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false">

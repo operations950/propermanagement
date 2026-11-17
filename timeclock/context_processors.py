@@ -9,7 +9,7 @@ def nav(request):
     user = getattr(request, 'user', None)
     if not user or not user.is_authenticated:
         return {}
-    from core.views import _is_admin
+    from core.permissions import has_time_admin as _is_admin
     profile = services.profile_for(user)
     manager = _is_admin(user)
     out = {'tc_employee': bool(profile), 'tc_manager': manager}
@@ -28,7 +28,7 @@ def wants_clock_card(profile):
     """True for people who clock in on a phone: a cleaner (by team or by menu) or anyone with no set schedule."""
     from core.models import StaffProfile
     staff = profile.staff
-    return bool(profile.variable_hours or staff.role == StaffProfile.Role.CLEANER or staff.menu_role == StaffProfile.MenuRole.CLEANER)
+    return bool(profile.variable_hours or staff.role == StaffProfile.Role.CLEANER)
 
 
 def _clock(request, profile):

@@ -39,6 +39,15 @@ def collections_home(request):
     return render(request, 'accounting/collections_home.html', {'rows': rows, 'total': sum(r['count'] for r in rows), **acc_up(request, None, ['ws_financials'], reverse('ws_financials'), 'Financials')})
 
 
+def step_done_context(prop, month_text, today):
+    """What the top-right 'mark done' button on the owner collections screen needs: the month of the close it is for (the one the close sheet passed, else last month) and whether it is marked."""
+    month_text = month_text if month_text and len(month_text) == 7 else ''
+    month = _done_month(month_text, ledger.previous_month(today))
+    done = CloseStepDone.objects.filter(association=prop, month=month, key='collections').select_related('marked_by').first()
+    return {'step_done': done, 'step_month': month, 'step_label': 'owner collections', 'step_confirm': f'Mark owner collections done for {month:%B %Y}? This does not change anything for any owner; it tells the month-end close you have looked.',
+            'step_hidden': [('month', f'{month:%Y-%m}')]}
+
+
 @admin_only
 def collections(request, pk):
     prop = association_only_or_404(pk)            # a commercial property has no owner collections
@@ -61,6 +70,16 @@ def collections(request, pk):
                 profile.delinquency_threshold = amount
                 profile.save(update_fields=['delinquency_threshold'])
                 messages.success(request, f'Saved: owners are listed once they owe more than ${amount:,.2f}.')
+            elif action in ('mark_done', 'undo_done'):
+                month_text = request.POST.get('month') or ''
+                done_for = _done_month(month_text if len(month_text) == 7 else '', ledger.previous_month(today))
+                if action == 'mark_done':
+                    CloseStepDone.objects.get_or_create(association=prop, month=done_for, key='collections', defaults={'marked_by': request.user})
+                    messages.success(request, f'Owner collections are marked done for {done_for:%B %Y}.')
+                else:
+                    CloseStepDone.objects.filter(association=prop, month=done_for, key='collections').delete()
+                    messages.success(request, f'Owner collections are open again for {done_for:%B %Y}.')
+                return redirect(here + f'?month={done_for:%Y-%m}')
             elif action == 'advance':
                 case = get_object_or_404(DelinquencyCase.objects.select_related('unit', 'owner'), pk=request.POST.get('case'), association=prop, resolved_on__isnull=True)
                 stage = delinquency.advance(case, request.user, note=request.POST.get('note') or '', attorney=request.POST.get('attorney') or '')
@@ -86,7 +105,8 @@ def collections(request, pk):
     ctx = {'assoc': prop, 'profile': profile, 'data': data, 'tabs': data['tabs'], 'tab': by_key[tab], 'today': today, 'terms': charges.terms_sentences(profile), 'threshold': data['threshold'],
            'asof': asof, 'default_asof': data['default_asof'], 'asof_given': given, 'asof_is_default': asof == data['default_asof'], 'asof_is_today': asof == today,
            'asof_qs': f'&asof={asof:%Y-%m-%d}' if given else '',
-           'letter_days': owner_collections.LETTER_DAYS, 'notice_days': owner_collections.NOTICE_DAYS, **acc_up(request, prop, ['accounting:hub', 'accounting:close', 'accounting:collections_home', 'accounting:late_fees'], reverse('accounting:hub', args=[pk]), 'Accounting')}
+           'letter_days': owner_collections.LETTER_DAYS, 'notice_days': owner_collections.NOTICE_DAYS, **step_done_context(prop, request.GET.get('month'), today),
+           **acc_up(request, prop, ['accounting:hub', 'accounting:close', 'accounting:collections_home', 'accounting:late_fees'], reverse('accounting:hub', args=[pk]), 'Accounting')}
     return render(request, 'accounting/collections.html', ctx)
 
 
@@ -272,6 +292,9 @@ def late_fees(request, pk):
     # Up: the close sheet when this screen was opened from it (its link always carries ?month=), else Accounting; the trail still wins when it knows where the person came from
     up_default = (reverse('accounting:close', args=[pk, month]), 'Month-end close') if month and _done_month(month, as_of).strftime('%Y-%m') == month else (reverse('accounting:hub', args=[pk]), 'Accounting')
     ctx = {'assoc': prop, 'profile': profile, 'rows': rows, 'fees': sum((r['fee_ready'] for r in rows), ZERO), 'interest': sum((r['interest_ready'] for r in rows), ZERO), 'owed': sum((r['total'] for r in rows), ZERO),
+           'step_done': CloseStepDone.objects.filter(association=prop, month=done_month, key='late_fees').select_related('marked_by').first(), 'step_month': done_month, 'step_label': 'late fees and interest',
+           'step_confirm': f'Mark late fees and interest done for {done_month:%B %Y}? This charges nobody; it tells the month-end close you have charged everyone you wish to charge.',
+           'step_hidden': [('month', month), ('as_of', f'{as_of:%Y-%m-%d}')],
            'ready_n': sum(1 for r in rows if r['ready']), 'done_month': done_month, 'done': CloseStepDone.objects.filter(association=prop, month=done_month, key='late_fees').select_related('marked_by').first(),
            'today': today, 'as_of': as_of, 'as_of_note': as_of_note, 'min_balance': min_balance, 'show_all': show_all, 'month': month, 'post_on': as_of,
            'is_set': profile.late_fee_is_set() or profile.interest_is_set(), 'terms': charges.terms_sentences(profile), 'look': owner_collections.attention(prop, today),

@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from core.models import Contact, Property
 
@@ -41,7 +43,7 @@ class QuoThreadState(models.Model):
 
     conversation_id = models.CharField(max_length=100, unique=True)
     phone_number_id = models.CharField(max_length=100, blank=True)
-    participant = models.CharField(max_length=30, blank=True)
+    participant = models.CharField(max_length=255, blank=True)
     last_message_id = models.CharField(max_length=100, blank=True)
     last_classified_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -113,8 +115,8 @@ class QuoMessage(models.Model):
     message_id = models.CharField(max_length=100, unique=True)
     phone_number_id = models.CharField(max_length=100, blank=True)
     direction = models.CharField(max_length=3, choices=Direction.choices)
-    from_number = models.CharField(max_length=30, blank=True)
-    to_number = models.CharField(max_length=30, blank=True)
+    from_number = models.CharField(max_length=255, blank=True)
+    to_number = models.CharField(max_length=255, blank=True, help_text='One number, or several separated by commas for a group text.')
     body = models.TextField(blank=True)
     quo_created_at = models.DateTimeField(null=True, blank=True)
     received_at = models.DateTimeField(auto_now_add=True)
@@ -124,3 +126,24 @@ class QuoMessage(models.Model):
 
     def __str__(self):
         return f'{self.direction} {self.message_id} in {self.conversation_id}'
+
+
+class MailProblem(models.Model):
+    """Email could not be sent because the mailbox is not connected (or Google cancelled its sign-in, for example after the account's password changed). One open row per mailbox
+    shows admins a banner at the top of every page until it is reconnected (intake/mail_health.py); a send that works again, or a reconnect, closes it."""
+    class Reason(models.TextChoices):
+        NOT_CONNECTED = 'not_connected', 'No mailbox connected'
+        EXPIRED = 'expired', 'Google cancelled the connection'
+
+    mailbox_email = models.CharField(max_length=254, blank=True)
+    reason = models.CharField(max_length=14, choices=Reason.choices, default=Reason.EXPIRED)
+    detail = models.CharField(max_length=300, blank=True)
+    first_failed_at = models.DateTimeField(auto_now_add=True)
+    last_failed_at = models.DateTimeField(default=timezone.now)
+    fail_count = models.PositiveIntegerField(default=1)
+    last_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+                                  help_text='The last person whose email did not go (blank: an automatic send).')
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-last_failed_at']

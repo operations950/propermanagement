@@ -18,7 +18,7 @@ def is_cleaner(profile):
     """The same test the installed app's start address uses: a cleaner by menu role on the new layout, by team on the original site."""
     if profile is None:
         return False
-    return (profile.menu_role == 'cleaner') if profile.new_face else (profile.role == 'cleaner')
+    return profile.role == 'cleaner'
 
 
 def _plural(n, one, many=None):

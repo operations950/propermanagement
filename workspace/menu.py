@@ -1,6 +1,6 @@
-"""The menu of the new layout: which items a person sees, built from their menu role.
+"""The menu: the items the whole team sees, plus Financials, Dashboard, Portfolio and Admin for the people whose switches on People and roles allow them.
 
-The menu role decides what is *shown*. It never blocks an address, and it has nothing to do with StaffProfile.role (the ticket queue)."""
+The menu only shows or hides a link. The screens themselves check the same switches (core/permissions.py), so a hidden link is also a closed door."""
 from django.urls import reverse
 
 # key -> (label, lucide icon)
@@ -15,21 +15,13 @@ ITEMS = {
     'financials': ('Financials', 'landmark'),
     'contacts': ('Contacts', 'contact'),
     'time': ('Time', 'clock'),
+    'legal': ('Legal forms', 'scale'),
     'portfolio': ('Portfolio', 'briefcase'),
     'admin': ('Admin', 'shield'),
 }
 
-ROLE_MENUS = {
-    'owner': ['home', 'dashboard', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'financials', 'contacts', 'time', 'portfolio', 'admin'],
-    'manager': ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'financials', 'contacts', 'time'],
-    'property_manager': ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts', 'time'],
-    'accounting': ['home', 'tickets', 'compliance', 'projects', 'properties', 'financials', 'time'],
-    'maintenance': ['home', 'tickets', 'projects', 'time'],
-    'cleaner': ['home', 'onsite', 'time'],
-}
-
-# Roles that also get the row of business lines under the menu.
-LINE_ROLES = {'owner', 'manager', 'property_manager', 'accounting'}
+# Everyone on the team gets these. Financials, the statistics dashboard, Portfolio and Admin are added by the person's switches on People and roles (core/permissions.py).
+BASE_MENU = ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts', 'legal', 'time']
 
 LINES = [
     ('associations', 'Associations'),
@@ -50,34 +42,34 @@ PREFIXES = {
     'contacts': ['/contacts'],
     'time': ['/clock'],
     'portfolio': ['/portfolio'],
-    'admin': ['/w/admin', '/admin-tools', '/documents', '/faq-review', '/legal'],
+    'legal': ['/legal', '/documents'],
+    'admin': ['/w/admin', '/admin-tools', '/faq-review'],
 }
 
 
 def role_for(profile):
-    """The menu role a person gets: the one set on their profile, else owner for company admins and manager for everyone else."""
-    if profile.menu_role in ROLE_MENUS:
-        return profile.menu_role
+    """Only used to tell a cleaner (the phone layout and the guest-request prompt) from everyone else: the person's department decides, not a menu."""
+    if profile.role == 'cleaner':
+        return 'cleaner'
     return 'owner' if profile.is_company_admin else 'manager'
 
 
 def build(request, profile):
-    """[{key, label, icon, url, active}] for the new layout, in order."""
-    from core.views import _is_admin
+    """[{key, label, icon, url, active}] for the menu, in order: the team's items, plus what this person's switches allow."""
+    from core import permissions
     from timeclock import services as tc
     user = request.user
-    role = role_for(profile)
-    admin = _is_admin(user)
+    admin = permissions.has_admin(user)
     path = request.path
-    keys = []
-    for key in ROLE_MENUS[role]:
-        if key == 'dashboard' and not profile.is_company_admin:
-            continue          # the statistics dashboard is the owner's alone
-        if key == 'admin' and not admin:
-            continue
-        if key == 'portfolio' and not profile.is_portfolio_owner:
-            continue
-        keys.append(key)
+    keys = list(BASE_MENU)
+    if permissions.has_financial(user):
+        keys.insert(keys.index('contacts'), 'financials')
+    if admin:
+        keys.insert(1, 'dashboard')
+    if permissions.has_portfolio(user):
+        keys.append('portfolio')
+    if admin:
+        keys.append('admin')
     from core import nudges
     counts = nudges.nav_counts(user)
     out = []
@@ -103,8 +95,10 @@ def build(request, profile):
             url, active = reverse('contact_list'), any(path.startswith(p) for p in PREFIXES[key])
         elif key == 'time':
             has_profile = bool(tc.profile_for(user))
-            url = reverse('timeclock_home') if has_profile or not admin else reverse('timeclock_manage')
+            url = reverse('timeclock_home') if has_profile or not permissions.has_time_admin(user) else reverse('timeclock_manage')
             active = any(path.startswith(p) for p in PREFIXES[key])
+        elif key == 'legal':
+            url, active = reverse('legalforms:list'), any(path.startswith(p) for p in PREFIXES[key])
         elif key == 'portfolio':
             url, active = reverse('portfolio_dashboard'), any(path.startswith(p) for p in PREFIXES[key])
         else:
@@ -114,6 +108,4 @@ def build(request, profile):
 
 
 def lines(request, profile):
-    if role_for(profile) not in LINE_ROLES:
-        return []
     return [{'slug': slug, 'label': label, 'url': reverse('ws_line', args=[slug]), 'active': request.path.startswith(f'/w/lines/{slug}')} for slug, label in LINES]

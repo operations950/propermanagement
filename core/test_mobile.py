@@ -60,7 +60,7 @@ class TheSixTilesTests(TestCase):
 
     def test_a_cleaner_gets_on_site_first_on_either_layout_and_still_has_six(self):
         old, _ = person('cl_old', role='cleaner')
-        new, _ = person('cl_new', new_face=True, menu_role='cleaner')
+        new, _ = person('cl_new', new_face=True, role='cleaner')
         for user in (old, new):
             tiles = self.labels(user)
             self.assertEqual(tiles[0], 'On-Site')

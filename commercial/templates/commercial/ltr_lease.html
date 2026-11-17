@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% load nav_tags %}
+{% load acc_extras %}
+{% block title %}{{ lease.tenant.name }} - {{ prop.name }}{% endblock %}
+{% block content %}
+{% up_link css="mb-1" %}
+<h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="key-round" class="icon-lg"></i> {{ lease.tenant.name }}</h2>
+<div class="small text-muted mb-3">{{ prop.name }} &middot; <span class="ac-chip {% if lease.status == 'active' %}good{% endif %}">{{ lease.get_status_display }}</span></div>
+
+<form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="save">
+    <h6 class="card-title">The lease</h6>
+    <div class="row g-2">
+        <div class="col-md-3"><label class="small text-muted">Status</label><select class="form-select form-select-sm" name="status">{% for v, l in statuses %}<option value="{{ v }}"{% if v == lease.status %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="small text-muted">Starts</label><input class="form-control form-control-sm" type="date" name="start_date" value="{{ lease.start_date|date:'Y-m-d' }}"></div>
+        <div class="col-md-3"><label class="small text-muted">Ends</label><input class="form-control form-control-sm" type="date" name="end_date" value="{{ lease.end_date|date:'Y-m-d' }}"></div>
+        <div class="col-md-3"><label class="small text-muted">Rent rate expires</label><input class="form-control form-control-sm" type="date" name="rate_expires_on" value="{{ lease.rate_expires_on|date:'Y-m-d' }}"></div>
+        <div class="col-md-3"><label class="small text-muted">Monthly rent</label><input class="form-control form-control-sm" name="monthly_rent" value="{{ lease.monthly_rent }}"></div>
+        <div class="col-md-3"><label class="small text-muted">Security deposit</label><input class="form-control form-control-sm" name="security_deposit" value="{{ lease.security_deposit }}"></div>
+        <div class="col-md-6"><label class="small text-muted">Renewal options and notice dates</label><textarea class="form-control form-control-sm" rows="2" name="renewal_notes">{{ lease.renewal_notes }}</textarea></div>
+        <div class="col-12"><label class="small text-muted">Notes</label><textarea class="form-control form-control-sm" rows="2" name="notes">{{ lease.notes }}</textarea></div>
+    </div>
+    <button class="btn btn-primary btn-sm mt-3">Save</button>
+</div></form>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="paperclip" class="icon"></i> The lease on file {% include '_tip.html' with text='Upload the signed lease (and any amendment). It is read once; then press Read the lease to see its rent schedule. Nothing changes until you apply it.' %}</h6>
+    {% for d in docs %}<div class="d-flex justify-content-between align-items-center py-1 {% if not forloop.first %}border-top{% endif %}">
+        <div><a href="{{ d.file.url }}" target="_blank" rel="noopener">{{ d.name|default:d.file.name }}</a> <span class="ac-chip">{{ d.get_kind_display }}</span>
+            <div class="small text-muted">added {{ d.uploaded_at|date:"M j, Y" }} &middot; {% if d.text_status == 'ready' or d.text_status == 'partial' %}read{% elif d.text_status == 'failed' %}could not be read{% else %}being read&hellip;{% endif %}</div></div>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="read_lease"><input type="hidden" name="doc" value="{{ d.pk }}"><button class="btn btn-sm btn-outline-primary">Read the lease</button></form></div>
+    {% empty %}<p class="text-muted small mb-2">No lease on file yet.</p>{% endfor %}
+    <form method="post" enctype="multipart/form-data" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="upload_doc">
+        <div class="col-md-3"><select class="form-select form-select-sm" name="kind"><option value="lease">Lease</option><option value="amendment">Amendment</option></select></div>
+        <div class="col-md-5"><input class="form-control form-control-sm" type="file" name="file" required></div>
+        <div class="col-md-4"><button class="btn btn-sm btn-primary w-100">Upload</button></div>
+    </form>
+</div></div>
+
+{% if proposal %}{% include 'commercial/_lease_proposal.html' with proposal=proposal %}{% endif %}
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> The next 12 months</h6>
+    <table class="table table-sm ac-table mb-0"><thead><tr><th>Month</th><th class="ac-num">Rent</th></tr></thead>
+        <tbody>{% for r in schedule %}<tr><td>{{ r.month|date:"F Y" }}</td><td class="ac-num">${{ r.rent }}</td></tr>{% endfor %}</tbody></table>
+</div></div>
+
+<div class="card mb-3"><div class="card-body">
+    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="trending-up" class="icon"></i> Rent increases</h6>
+    {% for s in steps %}<div class="d-flex justify-content-between align-items-center py-1 {% if not forloop.first %}border-top{% endif %}"><div>{{ s.effective_date|date:"M j, Y" }}: <strong>${{ s.monthly_rent }}</strong> <span class="small text-muted">{{ s.note }}</span></div>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_step"><input type="hidden" name="step" value="{{ s.pk }}"><button class="btn btn-sm btn-outline-secondary">Remove</button></form></div>
+    {% empty %}<p class="text-muted small mb-2">The rent never changes.</p>{% endfor %}
+    <form method="post" class="row g-2 mt-1">{% csrf_token %}<input type="hidden" name="action" value="add_step">
+        <div class="col-5"><input class="form-control form-control-sm" type="date" name="effective_date" required></div>
+        <div class="col-4"><input class="form-control form-control-sm" name="monthly_rent" placeholder="New rent" required></div>
+        <div class="col-3"><button class="btn btn-sm btn-primary w-100">Add</button></div>
+    </form>
+</div></div>
+{% endblock %}

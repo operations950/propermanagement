@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from core import nav
 from core.models import Property
-from core.views import _is_admin
+from core.permissions import has_financial as _is_admin
 
 from . import labels, ledger
 

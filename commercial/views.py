@@ -12,9 +12,11 @@ from accounting import charges, ledger
 from accounting.web import acc_up, admin_only, parse_date, parse_month, parse_money
 from core.models import Property
 
-from . import invoices, rent
+from accounting.documents import DocumentError
+
+from . import invoices, leasereader, rent
 from .forms import LeaseForm
-from .models import Lease, LeaseDocument, RentStep, SeasonalRent, TenantInvoice
+from .models import Lease, LeaseDocument, LeaseProposal, RentStep, SeasonalRent, TenantInvoice
 
 
 def commercial_or_404(pk):
@@ -121,9 +123,32 @@ def lease_detail(request, pk, lease_pk):
                 f = request.FILES.get('file')
                 if f is None:
                     raise ValueError('Choose the file to keep.')
-                LeaseDocument.objects.create(lease=lease, file=f, kind=request.POST.get('kind') if request.POST.get('kind') in dict(LeaseDocument.Kind.choices) else 'lease',
-                                             name=(request.POST.get('name') or f.name)[:200], uploaded_by=request.user)
-                messages.success(request, 'The document is on file.')
+                kind = request.POST.get('kind') if request.POST.get('kind') in dict(LeaseDocument.Kind.choices) else 'lease'
+                name = (request.POST.get('name') or f.name)[:200]
+                kept = LeaseDocument.objects.create(lease=lease, file=f, kind=kind, name=name, uploaded_by=request.user)
+                if kind in ('lease', 'amendment'):
+                    try:
+                        kept.reader_doc = leasereader.attach_lease_document(prop, f, request.user, name, kind=kind)
+                        kept.save(update_fields=['reader_doc'])
+                        messages.success(request, 'The document is on file and is being read. In a few minutes, press "Read the lease" to see its rent schedule.')
+                    except DocumentError as e:
+                        messages.warning(request, f'The document is on file, but it cannot be read by the program: {e}')
+                else:
+                    messages.success(request, 'The document is on file.')
+            elif action == 'read_lease':
+                kept = get_object_or_404(LeaseDocument, pk=request.POST.get('doc'), lease=lease)
+                if kept.reader_doc_id is None:
+                    kept.reader_doc = leasereader.attach_lease_document(prop, kept.file, request.user, kept.name, kind=kept.kind if kept.kind in ('lease', 'amendment') else 'lease')
+                    kept.save(update_fields=['reader_doc'])
+                leasereader.read_lease(kept.reader_doc, lease, request.user)
+                messages.success(request, 'The lease is read. Look over what it found below and apply what is right.')
+            elif action == 'apply_proposal':
+                proposal = get_object_or_404(LeaseProposal, pk=request.POST.get('proposal'), lease=lease, status=LeaseProposal.Status.PROPOSED)
+                made = leasereader.apply_proposal(proposal, request.user, step_dates=request.POST.getlist('step'), set_term=bool(request.POST.get('set_term')))
+                messages.success(request, f'Applied: {made} rent increase{"s" if made != 1 else ""} now on the lease.')
+            elif action == 'dismiss_proposal':
+                leasereader.dismiss_proposal(get_object_or_404(LeaseProposal, pk=request.POST.get('proposal'), lease=lease), request.user)
+                messages.success(request, 'Dismissed.')
             elif action == 'delete_doc':
                 LeaseDocument.objects.filter(pk=request.POST.get('doc'), lease=lease).delete()
                 messages.success(request, 'The document is removed.')
@@ -133,14 +158,14 @@ def lease_detail(request, pk, lease_pk):
                 lease.save(update_fields=['end_date', 'status'])
                 rent.ensure_ownership(lease)
                 messages.success(request, f'The lease ends {lease.end_date:%b} {lease.end_date.day}, {lease.end_date.year}.')
-        except (ValueError, ArithmeticError) as e:
+        except (ValueError, ArithmeticError, DocumentError) as e:
             messages.error(request, str(e))
         return redirect(here)
     today = timezone.localdate()
     accounts = [a for a in charges.accounts(prop) if a['unit'].pk == lease.unit_id]
     return render(request, 'commercial/lease_detail.html', {
         'assoc': prop, 'lease': lease, 'unit': lease.unit, 'schedule': rent.schedule(lease, today.replace(day=1), 12), 'steps': list(lease.steps.all()), 'seasons': list(lease.seasons.all()),
-        'documents': list(lease.documents.all()), 'rows': list(reversed(charges.ledger_rows(lease.unit))), 'balance': sum((a['balance'] for a in accounts), Decimal('0.00')),
+        'documents': list(lease.documents.select_related('reader_doc')), 'proposal': lease.proposals.filter(status=LeaseProposal.Status.PROPOSED).first(), 'rows': list(reversed(charges.ledger_rows(lease.unit))), 'balance': sum((a['balance'] for a in accounts), Decimal('0.00')),
         'invoices': list(lease.invoices.order_by('-month')[:12]), 'months': [(i, n) for i, n in enumerate(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], 1)],
         'kinds': LeaseDocument.Kind.choices, 'today': today, 'books_on': ledger.profile_for(prop).we_do_financials, **acc_up(request, prop, ['commercial:leases', 'commercial:invoices', 'commercial:cam', 'accounting:units', 'accounting:report_aging', 'accounting:charges', 'accounting:hub', 'accounting:close'], reverse('commercial:leases', args=[prop.pk]), 'Leases')})
 

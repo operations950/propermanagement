@@ -64,8 +64,10 @@ UP = {
     # The company month-end close: every step's screen goes up to the checklist (and keeps its month)
     'close_bank_tieout': _CLOSE_CHILD, 'close_long_term': _CLOSE_CHILD, 'close_overview': _CLOSE_CHILD, 'close_escrow': _CLOSE_CHILD, 'close_misc': _CLOSE_CHILD,
     'close_pay_owners': _CLOSE_CHILD, 'close_pay_proper': _CLOSE_CHILD, 'close_pay_ltr_owners': _CLOSE_CHILD, 'close_rent_collection': _CLOSE_CHILD,
-    'close_sales_tax': _CLOSE_CHILD, 'tourist_tax': _CLOSE_CHILD, 'close_payouts': _CLOSE_CHILD,
+    'close_sales_tax': _CLOSE_CHILD, 'tourist_tax': _CLOSE_CHILD, 'close_payouts': _CLOSE_CHILD, 'commercial:renewals': _CLOSE_CHILD,
+    'commercial:ltr_leases': ({'property_detail': 'Property'}, D('property_detail', 'Property', args=('pk',))), 'commercial:ltr_lease': ({'commercial:ltr_leases': 'Leases'}, D('commercial:ltr_leases', 'Leases', args=('pk',))),
     # Properties and contacts
+    'missing_documents': ({'property_list': PROPERTIES}, D('property_list', PROPERTIES)),
     'faq_review_queue': ({'property_list': PROPERTIES}, D('property_list', PROPERTIES)),
     'property_create': ({'property_list': PROPERTIES}, D('property_list', PROPERTIES)),
     'property_edit': ({'property_list': PROPERTIES}, D('property_list', PROPERTIES)),

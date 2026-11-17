@@ -20,6 +20,8 @@
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-signature" class="icon"></i> The lease</h6>
         <table class="table table-sm mb-0 small"><tbody>
             <tr><th class="text-muted fw-normal">Term</th><td>{% if lease.start_date %}{{ lease.start_date|mdate }}{% else %}no start date{% endif %} to {% if lease.end_date %}{{ lease.end_date|mdate }}{% else %}open{% endif %}</td></tr>
+            {% if lease.rate_expires_on %}<tr><th class="text-muted fw-normal">Rent rate expires</th><td>{{ lease.rate_expires_on|mdate }}</td></tr>{% endif %}
+            <tr><th class="text-muted fw-normal">Paid into</th><td>{% if lease.bank_account %}{{ lease.bank_account.name }}{% else %}the operating account{% endif %}</td></tr>
             <tr><th class="text-muted fw-normal">Base rent</th><td>{{ lease.base_rent|money }} a month{% if lease.prorate %} <span class="text-muted">(part months by the day)</span>{% endif %}</td></tr>
             <tr><th class="text-muted fw-normal">CAM estimate</th><td>{{ lease.cam_estimate|money }} a month</td></tr>
             <tr><th class="text-muted fw-normal">Security deposit</th><td>{% if lease.security_deposit %}{{ lease.security_deposit|money }}{% if lease.deposit_received_on %} received {{ lease.deposit_received_on|mdate }}{% endif %}{% if lease.deposit_note %}<div class="text-muted">{{ lease.deposit_note }}</div>{% endif %}{% else %}none recorded{% endif %}</td></tr>
@@ -35,8 +37,9 @@
     <div class="col-md-6"><div class="card h-100"><div class="card-body">
         <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="paperclip" class="icon"></i> Documents {% include '_tip.html' with text="A copy of the lease and anything that changes it, kept with the tenant." %}</h6>
         {% for d in documents %}<div class="d-flex justify-content-between align-items-center py-1 {% if not forloop.first %}border-top{% endif %}">
-            <div><a href="{{ d.file.url }}" target="_blank" rel="noopener">{{ d.name|default:d.file.name }}</a> <span class="ac-chip">{{ d.get_kind_display }}</span><div class="small text-muted">added {{ d.uploaded_at|mdate }}</div></div>
-            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_doc"><input type="hidden" name="doc" value="{{ d.pk }}"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Remove this document?')">Remove</button></form></div>
+            <div><a href="{{ d.file.url }}" target="_blank" rel="noopener">{{ d.name|default:d.file.name }}</a> <span class="ac-chip">{{ d.get_kind_display }}</span><div class="small text-muted">added {{ d.uploaded_at|mdate }}{% if d.reader_doc %} &middot; {% if d.reader_doc.text_status == 'ready' or d.reader_doc.text_status == 'partial' %}read{% elif d.reader_doc.text_status == 'failed' %}could not be read{% else %}being read&hellip;{% endif %}{% endif %}</div></div>
+            <div class="d-flex gap-1">{% if d.kind == 'lease' or d.kind == 'amendment' %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="read_lease"><input type="hidden" name="doc" value="{{ d.pk }}"><button class="btn btn-sm btn-outline-primary">Read the lease</button></form>{% endif %}
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="delete_doc"><input type="hidden" name="doc" value="{{ d.pk }}"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Remove this document?')">Remove</button></form></div></div>
         {% empty %}<p class="text-muted small mb-2">No lease on file yet.</p>{% endfor %}
         <form method="post" enctype="multipart/form-data" class="row g-2 mt-1 ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="upload_doc">
             <div class="col-md-4"><select class="form-select form-select-sm" name="kind">{% for v, l in kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
@@ -46,6 +49,8 @@
         </form>
     </div></div></div>
 </div>
+
+{% if proposal %}{% include 'commercial/_lease_proposal.html' with proposal=proposal lease_label=lease.tenant.name %}{% endif %}
 
 <div class="card mb-3"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="calendar-range" class="icon"></i> The next 12 months {% include '_tip.html' with text="What the lease will charge each month, with the rent steps and seasonal rents applied. The rent posts about 10 days before the first of the month." %}</h6>
