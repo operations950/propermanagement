@@ -134,3 +134,18 @@ class MarkDoneFromTheTopRightTests(CollectionsBase):
             r = self.client.post(url, {'action': 'mark_done', 'confirm': '1', 'month': '2026-10', 'as_of': '2026-10-31'}, follow=True)
         self.assertContains(r, 'marked done for October 2026')
         self.assertTrue(CloseStepDone.objects.filter(key='late_fees', month=date(2026, 10, 1)).exists())
+
+
+@override_settings(STORAGES=STORAGES)
+class CloseListOthersTests(TestCase):
+    def test_properties_we_keep_the_books_for_are_not_listed_as_ones_we_do_not(self):
+        from core.models import Property
+        decoy = Property.objects.create(name='Decoy Villas', property_type=Property.Type.ASSOCIATION)      # no books: made first so property ids and profile ids differ
+        prop = make_assoc()
+        user = get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678')
+        self.client.force_login(user)
+        r = self.client.get(reverse('accounting:home'))
+        others = [p.name for p in r.context['others']]
+        self.assertIn('Decoy Villas', others)
+        self.assertNotIn(prop.name, others)
+        self.assertEqual([x['assoc'].name for x in r.context['rows']], [prop.name])

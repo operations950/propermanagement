@@ -41,6 +41,7 @@ class Command(BaseCommand):
         parser.add_argument('association', help='A part of the association\'s name')
         parser.add_argument('--loan', action='append', default=[], help='UNIT=AMOUNT, once per owner')
         parser.add_argument('--loan-payment', action='append', default=[], help='RECEIPT-REFERENCE=AMOUNT that was a loan installment')
+        parser.add_argument('--date', help='Date the move YYYY-MM-DD (default: the day the balance forward is dated). Use the first open day to leave a closed month as it was.')
         parser.add_argument('--apply', action='store_true')
         parser.add_argument('--into-closed-months', action='store_true')
 
@@ -56,7 +57,7 @@ class Command(BaseCommand):
         try:
             with transaction.atomic():
                 ledger.ensure_chart(prop)                     # the loan account (1305) is added to an association's chart if it lacks it
-                self.run(prop, wanted, installments, opts['into_closed_months'])
+                self.run(prop, wanted, installments, opts['into_closed_months'], opts.get('date'))
                 if not opts['apply']:
                     raise Rollback
         except Rollback:
@@ -64,7 +65,9 @@ class Command(BaseCommand):
             return
         self.stdout.write(self.style.SUCCESS('APPLIED.'))
 
-    def run(self, prop, wanted, installments, closed_ok):
+    def run(self, prop, wanted, installments, closed_ok, date_text=None):
+        from datetime import date as _date
+        move_day = _date.fromisoformat(date_text) if date_text else None
         for label, amount in wanted:
             unit = Unit.objects.filter(property=prop, label=label).first()
             if unit is None:
@@ -87,11 +90,12 @@ class Command(BaseCommand):
             for ref, part in installments:
                 for r in Receipt.objects.filter(unit=unit, is_void=False, reference__icontains=ref):
                     pay[r.pk] = part
-            if ledger.is_locked(prop, opening.due_date) and not closed_ok:
-                self.stdout.write(f'  SKIP {label} {owner.name}: {opening.due_date:%B %Y} is closed (add --into-closed-months to post it there anyway)')
+            when = move_day or opening.due_date
+            if ledger.is_locked(prop, when) and not closed_ok:
+                self.stdout.write(f'  SKIP {label} {owner.name}: {when:%B %Y} is closed (use --date for an open day, or --into-closed-months to post it there anyway)')
                 continue
             try:
-                loan, notes = owner_loans.move_into_loan(prop, unit, owner, use, allow_locked=closed_ok, loan_payments=pay)
+                loan, notes = owner_loans.move_into_loan(prop, unit, owner, use, day=move_day, allow_locked=closed_ok, loan_payments=pay)
             except (charges.ChargeError, ledger.LedgerError) as e:
                 self.stdout.write(f'  SKIP {label} {owner.name}: {e}')
                 continue
