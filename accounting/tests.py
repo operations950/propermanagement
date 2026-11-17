@@ -1507,7 +1507,7 @@ class ChartOfAccountsTests(TestCase):
         mk = lambda code, kind='equity': Account(code=code, name='x', kind=kind)
         for code in ('3810', '3827', '3836', '3899', '3950', '3999'):
             self.assertTrue(bg.is_reserve(mk(code)), code)
-        for code in ('3809', '3813', '3831', '4000'):
+        for code in ('3809', '3813', '4000'):
             self.assertFalse(bg.is_reserve(mk(code)), code)
         self.assertEqual([sc.section(c) for c in ('3801', '3810', '3999', '4500')], ['Equity', 'Reserve funds', 'Reserve funds', 'Income'])
 

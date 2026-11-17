@@ -31,9 +31,9 @@ UNCATEGORIZED = '6902'
 # the accounts above, by number: the program posts to these itself, so they can never be turned off or renumbered
 SYSTEM_CODES = {v for n, v in list(globals().items()) if n.isupper() and isinstance(v, str) and v.isdigit()}
 
-# the reserve funds are equity accounts numbered 3810-3999 (the two interest accounts are in the range but are not budgeted funds)
+# the reserve funds are equity accounts numbered 3810-3999 (the interest account, 3813, is in the range but is not a budgeted fund)
 RESERVE_FIRST, RESERVE_LAST = '3810', '3999'
-RESERVE_INTEREST = {'3813', '3831'}
+RESERVE_INTEREST = {'3813'}
 
 CHART = [
     # assets
@@ -58,7 +58,7 @@ CHART = [
     ('3820', 'Reserve Pool', EQUITY), ('3821', 'Reserve Seawall/Docks', EQUITY), ('3823', 'Reserve Electrical', EQUITY), ('3825', 'Reserve Fund Elevator', EQUITY),
     ('3826', 'Reserve Fund Painting', EQUITY), ('3827', 'Pooled Reserves', EQUITY), ('3828', 'Reserves Fund Plate Glass', EQUITY),
     ('3829', 'SIRS Pooled Reserves', EQUITY),
-    ('3831', 'Reserve Fund Interest', EQUITY), ('3832', 'Reserve Fund Asphalt Replacement', EQUITY), ('3833', 'Reserve Insurance Deductible', EQUITY),
+    ('3832', 'Reserve Fund Asphalt Replacement', EQUITY), ('3833', 'Reserve Insurance Deductible', EQUITY),
     ('3834', 'Reserve Fund Roof Replacement', EQUITY),
     ('3835', 'Reserve Insurance', EQUITY), ('3836', 'Reserve Perimeter Fence', EQUITY),
     # income
