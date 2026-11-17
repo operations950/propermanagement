@@ -129,9 +129,21 @@
     }
     function pickerHtml(s) {
         var on = {}; s.rows.forEach(function (r) { if (r.kind !== 'other') on[r.unit] = true; });
-        var q = (s.uq || '').toLowerCase();
-        var list = UNITS.filter(function (u) { return !q || (u.label + ' ' + u.owner).toLowerCase().indexOf(q) >= 0; });
-        return list.length ? list.map(function (u) { return '<label class="' + (on[u.id] ? 'used' : '') + '"><input type="checkbox" data-act="pick" data-sid="' + s.id + '" data-unit="' + u.id + '"' + (on[u.id] ? ' checked' : '') + '><span>' + esc(u.label) + '</span><span>' + esc(u.owner || 'no owner on record') + '</span><span class="small text-muted">owes ' + money(u.owesC) + '</span></label>'; }).join('') : '<div class="p-2 small text-muted">No unit matches.</div>';
+        var q = (s.uq || '').toLowerCase().trim();
+        // The list that opens on its own leaves out owners with a $0 balance (and anyone already ticked stays). Typing a search searches everyone; "show all" brings the $0 owners back.
+        var list = UNITS.filter(function (u) {
+            if (q) return (u.label + ' ' + u.owner).toLowerCase().indexOf(q) >= 0;
+            return s.showAll || u.owesC !== 0 || on[u.id];
+        });
+        var zero = UNITS.filter(function (u) { return u.owesC === 0 && !on[u.id]; }).length;
+        var foot = '';
+        if (!q) {
+            if (s.showAll) foot = '<div class="p-2 small text-muted">Showing every owner. <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-act="showall" data-sid="' + s.id + '">Only owners with a balance</button></div>';
+            else if (zero) foot = '<div class="p-2 small text-muted">' + zero + ' owner' + (zero === 1 ? '' : 's') + ' with a $0 balance ' + (zero === 1 ? 'is' : 'are') + ' not listed. Type to search them, or <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-act="showall" data-sid="' + s.id + '">show all</button>.</div>';
+        }
+        var rows = list.map(function (u) { return '<label class="' + (on[u.id] ? 'used' : '') + '"><input type="checkbox" data-act="pick" data-sid="' + s.id + '" data-unit="' + u.id + '"' + (on[u.id] ? ' checked' : '') + '><span>' + esc(u.label) + '</span><span>' + esc(u.owner || 'no owner on record') + '</span><span class="small text-muted">owes ' + money(u.owesC) + '</span></label>'; }).join('');
+        if (!rows) rows = '<div class="p-2 small text-muted">' + (q ? 'No unit matches.' : 'Nobody owes anything right now.') + '</div>';
+        return rows + foot;
     }
 
     // ---- the account search for money that is not an owner's
@@ -247,6 +259,7 @@
             form(document.getElementById('aheadform'));
         }
         else if (act === 'aheadclose') { AHEAD.open = false; render(); }
+        else if (act === 'showall') { s.showAll = !s.showAll; document.getElementById('pk' + s.id).innerHTML = pickerHtml(s); }
     });
     document.addEventListener('change', function (e) {
         var t = e.target, act = t.dataset && t.dataset.act, s = S[t.dataset && t.dataset.sid];
@@ -281,5 +294,6 @@
 })();
 </script>
 {% endif %}
+<div class="ac-noprint" style="height: 45vh;" aria-hidden="true"></div>                    {# room under the last card: a list or dropdown opened there can always be scrolled into view #}
 {% include 'accounting/_once.html' %}
 {% endblock %}
