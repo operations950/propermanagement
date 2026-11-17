@@ -85,8 +85,15 @@
 </div>
 
 <div class="pk-item" style="border-color: var(--brand-primary);">
-    <div class="pk-head"><i data-lucide="files" class="icon ico"></i><span class="fw-semibold">Print everything {% include '_tip.html' with text="The notice, the budget, the mailing list and (once it is made) the affidavit, in one PDF. The envelopes stay separate because they print on different paper." %}</span></div>
-    <div class="pk-act">{% if notice %}<a class="btn btn-primary btn-sm" target="_blank" href="{{ files.everything }}"><i data-lucide="printer" class="icon"></i> Notice, budget, list{% if affidavit %}, affidavit{% endif %}</a>
-        {% else %}<span class="small text-muted">Make the notice first.</span>{% endif %}</div>
+    <div class="pk-head"><i data-lucide="files" class="icon ico"></i><span class="fw-semibold">Print in three groups {% include '_tip.html' with text="The packet prints on three kinds of paper: the notice and the budget go to every owner; the affidavit and the mailing list are for the records; the envelopes print on their own paper." %}</span></div>
+    <div class="pk-act" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <div class="d-flex align-items-center gap-2 flex-wrap"><span class="ac-chip">1</span><span class="fw-semibold" style="min-width: 15rem;">Notice and budget</span>
+            {% if notice %}<a class="btn btn-primary btn-sm" target="_blank" href="{{ files.group1 }}"><i data-lucide="printer" class="icon"></i> Print notice and budget</a>{% else %}<span class="small text-muted">Make the notice first.</span>{% endif %}</div>
+        <div class="d-flex align-items-center gap-2 flex-wrap"><span class="ac-chip">2</span><span class="fw-semibold" style="min-width: 15rem;">Affidavit and mailing list</span>
+            {% if affidavit %}<a class="btn btn-primary btn-sm" target="_blank" href="{{ files.group2 }}"><i data-lucide="printer" class="icon"></i> Print affidavit and mailing list</a>{% else %}<span class="small text-muted">The affidavit is made when you record the mailing.</span> <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.mailing_list }}">Mailing list only</a>{% endif %}</div>
+        <div class="d-flex align-items-center gap-2 flex-wrap"><span class="ac-chip">3</span><span class="fw-semibold" style="min-width: 15rem;">Envelopes</span>
+            <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.envelopes }}?test=1"><i data-lucide="file-check" class="icon"></i> Print one test page</a>
+            <a class="btn btn-primary btn-sm" target="_blank" href="{{ files.envelopes }}"><i data-lucide="printer" class="icon"></i> Print all {{ sent }}</a></div>
+    </div>
 </div>
 {% endblock %}

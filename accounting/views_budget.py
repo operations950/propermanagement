@@ -588,7 +588,7 @@ def budget_packet(request, pk, year):
            'unit_month': t['unit_period'], 'changed': bp.changed_since_notice(prop, project, have), **acc_up(request, prop, ['accounting:budget_project'], back, f'{year} budget project'),
            'notice': project.notice_doc if project else None, 'affidavit': project.affidavit_doc if project else None, 'from_list': bool(project and project.mailed_on and project.mailing_snapshot),
            'return_text': '\n'.join(bp.return_lines(prop, project)), 'envelope_size': project.envelope_size if project else 'no10', 'association_type': bp.last_association_type(prop)}
-    ctx['files'] = {w: reverse('accounting:budget_packet_file', args=[pk, year, w]) for w in ('notice', 'budget', 'affidavit', 'mailing_list', 'mailing_csv', 'envelopes', 'everything')}
+    ctx['files'] = {w: reverse('accounting:budget_packet_file', args=[pk, year, w]) for w in ('notice', 'budget', 'affidavit', 'mailing_list', 'mailing_csv', 'envelopes', 'group1', 'group2')}
     return render(request, 'accounting/budget_packet.html', ctx)
 
 
@@ -603,7 +603,7 @@ def budget_packet_file(request, pk, year, what):
     if 'board' not in have:
         raise Http404('No Board draft.')
     base = _clean_name(f'{prop.name} {year} budget')
-    need_notice = what in ('notice', 'everything')
+    need_notice = what in ('notice', 'group1')
     if need_notice and not (project and project.notice_doc_id):
         raise Http404('The notice has not been made yet.')
     if what == 'notice':
@@ -625,11 +625,13 @@ def budget_packet_file(request, pk, year, what):
         size = request.GET.get('size') or (project.envelope_size if project else 'no10')
         test = bool(request.GET.get('test'))
         return _pdf_response(bp.envelopes_pdf(prop, rows, project, 'full' if size == 'full' else 'no10', test), f'{base}_envelopes{"_test" if test else ""}.pdf')
-    if what == 'everything':
-        parts = [lf_pdf.document_pdf(project.notice_doc), _stage_pdf(prop, bud, have, 'board'), bp.mailing_list_pdf(prop, year, rows)]
-        if project.affidavit_doc_id:
-            parts.append(lf_pdf.document_pdf(project.affidavit_doc))
-        return _pdf_response(bp.merge_pdfs(parts), f'{base}_everything.pdf')
+    # The packet prints in three groups, each on its own paper: 1. the notice and the budget, 2. the affidavit and the mailing list, 3. the envelopes
+    if what == 'group1':
+        return _pdf_response(bp.merge_pdfs([lf_pdf.document_pdf(project.notice_doc), _stage_pdf(prop, bud, have, 'board')]), f'{base}_1_notice_and_budget.pdf')
+    if what == 'group2':
+        if not (project and project.affidavit_doc_id):
+            raise Http404('The affidavit is made when the mailing is recorded.')
+        return _pdf_response(bp.merge_pdfs([lf_pdf.document_pdf(project.affidavit_doc), bp.mailing_list_pdf(prop, year, rows)]), f'{base}_2_affidavit_and_mailing_list.pdf')
     raise Http404('Unknown file.')
 
 

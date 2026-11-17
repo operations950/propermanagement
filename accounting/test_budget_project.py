@@ -436,22 +436,29 @@ class TheNoticeAndAffidavitTests(BudgetProjectBase):
         self.assertContains(r, 'There is no owner with an address')
         self.assertIsNone(self.project().mailed_on)
 
-    def test_print_everything_is_one_pdf_of_the_notice_the_budget_the_list_and_the_affidavit(self):
+    def test_the_packet_prints_in_three_groups_notice_and_budget_then_affidavit_and_list_then_envelopes(self):
         self.details()
         self.make_notice()
-        url = reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'everything'])
-        before = pdf_pages(self.client.get(url).content)
-        text = '\n'.join(p.extract_text() or '' for p in before)
-        for word in ('NOTICE OF MEETING', 'Mailing list', 'Regular assessments'):
-            self.assertIn(word, text)
-        self.assertNotIn('AFFIDAVIT OF MAILING', text)
+        g1 = reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'group1'])
+        g2 = reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'group2'])
+        text1 = '\n'.join(p.extract_text() or '' for p in pdf_pages(self.client.get(g1).content))
+        for word in ('NOTICE OF MEETING', 'Regular assessments'):                           # group 1: the notice, then the budget
+            self.assertIn(word, text1)
+        self.assertLess(text1.index('NOTICE OF MEETING'), text1.index('Regular assessments'))
+        self.assertNotIn('Mailing list', text1)
+        self.assertNotIn('AFFIDAVIT OF MAILING', text1)
+        self.assertEqual(self.client.get(g2).status_code, 404)                            # group 2 waits for the mailing to be recorded: the affidavit is made then
         self.mail()
-        after = pdf_pages(self.client.get(url).content)
-        self.assertGreater(len(after), len(before))
-        self.assertIn('AFFIDAVIT OF MAILING', '\n'.join(p.extract_text() or '' for p in after))
+        text2 = '\n'.join(p.extract_text() or '' for p in pdf_pages(self.client.get(g2).content))
+        self.assertIn('AFFIDAVIT OF MAILING', text2)                                      # group 2: the affidavit, then the mailing list
+        self.assertIn('Mailing list', text2)
+        self.assertLess(text2.index('AFFIDAVIT OF MAILING'), text2.index('Mailing list'))
+        self.assertNotIn('Regular assessments', text2)                                    # the budget is in group 1, not here
+        self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'envelopes'])).status_code, 200)     # group 3 is its own file
+        self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'everything'])).status_code, 404)    # the one big file is gone
 
     def test_the_pieces_that_need_the_notice_are_not_there_until_it_is_made(self):
-        for what in ('notice', 'everything', 'affidavit'):
+        for what in ('notice', 'group1', 'group2', 'affidavit'):
             self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, what])).status_code, 404)
         self.assertEqual(self.client.get(reverse('accounting:budget_packet_file', args=[self.pk, self.year, 'budget'])).status_code, 200)       # the budget itself always is
 
@@ -459,7 +466,7 @@ class TheNoticeAndAffidavitTests(BudgetProjectBase):
         self.details()
         r = self.client.get(self.packet_url)
         html = r.content.decode()
-        for word in ('Notice of the budget meeting', 'The proposed budget', 'Mailing list', 'Envelopes', 'Affidavit of mailing', 'Print everything', 'Print one test page', 'Return address'):
+        for word in ('Notice of the budget meeting', 'The proposed budget', 'Mailing list', 'Envelopes', 'Affidavit of mailing', 'Print in three groups', 'Notice and budget', 'Affidavit and mailing list', 'Print one test page', 'Return address'):
             self.assertIn(word, html)
         self.assertEqual(r.context['sent'], 4)
 
