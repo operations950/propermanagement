@@ -41,26 +41,51 @@
 </div></div>
 
 {% if s.statement %}
-<div class="card mb-3"><div class="card-body">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="scale" class="icon"></i> The proof {% include '_tip.html' with text='The statement, less what has not cleared, should equal the books.' %}</h6>
-    <table class="table table-sm ac-table mb-0" style="max-width: 560px;">
-        <tr><td>Statement balance, {{ s.statement.period_end|mdate:'short' }}</td><td class="ac-num">{{ s.statement.end_balance|money }}</td></tr>
-        <tr><td>Checks written, not cleared yet ({{ s.outstanding|length }})</td><td class="ac-num">{{ s.os_total|money }}</td></tr>
-        {% if s.transit %}<tr><td>Deposits on their way ({{ s.transit|length }})</td><td class="ac-num">+{{ s.dit_total|money }}</td></tr>{% endif %}
-        <tr class="fw-bold"><td>Should match the books</td><td class="ac-num">{{ s.adjusted_bank|money }}</td></tr>
-        <tr><td>Books (ledger), {{ s.month_end|mdate:'short' }}</td><td class="ac-num">{{ s.book|money }}</td></tr>
-        {% if s.bank_only %}<tr><td>On the statement, not in the books yet</td><td class="ac-num">{{ s.bank_only|money }}</td></tr>{% endif %}
-    </table>
-    <div class="d-flex align-items-center gap-2 flex-wrap mt-2 pt-2 border-top"><span class="ac-lab">Difference</span><span class="ac-big">{{ s.difference|money }}</span>
+<style>
+    .proof-h { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); font-weight: 600; margin-bottom: 8px; }
+    .proof-r { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 7px 0; font-size: .95rem; }
+    .proof-r + .proof-r { border-top: 1px solid var(--border-hairline); }
+    .proof-r .ac-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .proof-r.proof-t { border-top: 2px solid var(--ink-secondary); margin-top: 4px; padding-top: 10px; font-weight: 700; }
+    .proof-sub { font-size: .78rem; color: var(--ink-muted); }
+</style>
+<div class="card mb-3"><div class="card-body" style="padding: 1.25rem 1.5rem 1.4rem;">
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="scale" class="icon"></i> The proof {% include '_tip.html' with text='The statement, less what has not cleared, should equal the books. The difference is the bank side minus the books side.' %}</h6>
+        <a class="btn btn-sm btn-outline-secondary ms-auto ac-noprint" href="{% url 'accounting:report_rec' assoc.pk bank.pk month|date:'Y-m' %}">Printable report</a>
+    </div>
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="proof-h">The bank</div>
+            <div class="proof-r"><span>Statement balance <span class="proof-sub">{{ s.statement.period_end|mdate:'short' }}</span></span><span class="ac-num">{{ s.statement.end_balance|money }}</span></div>
+            <div class="proof-r"><span>Checks written, not cleared yet <span class="proof-sub">{{ s.outstanding|length }}</span></span><span class="ac-num">{{ s.os_total|money }}</span></div>
+            {% if s.transit %}<div class="proof-r"><span>Deposits on their way <span class="proof-sub">{{ s.transit|length }}</span></span><span class="ac-num">+{{ s.dit_total|money }}</span></div>{% endif %}
+            <div class="proof-r proof-t"><span>Should match the books</span><span class="ac-num">{{ s.adjusted_bank|money }}</span></div>
+        </div>
+        <div class="col-md-6">
+            <div class="proof-h">The books</div>
+            <div class="proof-r"><span>Books (ledger) <span class="proof-sub">{{ s.month_end|mdate:'short' }}</span></span><span class="ac-num">{{ s.book|money }}</span></div>
+            {% if s.bank_only %}<div class="proof-r"><span>On the statement, not in the books yet <span class="proof-sub">{{ s.unmatched_bank|length }}</span></span><span class="ac-num">{{ s.bank_only|money }}</span></div>{% endif %}
+            <div class="proof-r proof-t"><span>Books, with those</span><span class="ac-num">{{ s.books_total|money }}</span></div>
+        </div>
+    </div>
+    <div class="d-flex align-items-center gap-3 flex-wrap mt-4 pt-3 border-top">
+        <span class="ac-lab">Difference</span><span class="ac-big">{{ s.difference|money }}</span>
         {% if s.status == 'done' %}<span class="ac-chip good">Closed</span>{% elif s.status == 'ready' %}<span class="ac-chip good">Ready to close</span>{% else %}<span class="ac-chip warn">{{ s.need_count }} item{{ s.need_count|pluralize }} still need a look</span>{% endif %}
-        <a class="btn btn-sm btn-outline-secondary ms-auto" href="{% url 'accounting:report_rec' assoc.pk bank.pk month|date:'Y-m' %}">Printable report</a></div>
+    </div>
 </div></div>
 
 {% if s.outstanding or s.transit %}
-<div class="card mb-3" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body">
+<style>
+    .ct { font-size: .82rem; }
+    .ct .btn { font-size: .74rem; padding: .1rem .5rem; }
+    .ct .ac-chip { font-size: .66rem; padding: 1px 7px; }
+    .ct h6 { font-size: .9rem; }
+</style>
+<div class="card mb-3 ct" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body py-3">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="clock" class="icon"></i> Checks and deposits not on the statement {% include '_tip.html' with text='A check over 30 days old is flagged.' %}</h6>
     {% for r in s.rows %}
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-2 {% if not forloop.first %}border-top{% endif %}">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 py-1 {% if not forloop.first %}border-top{% endif %}">
         <div><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="item" value="{{ r.item.key }}" data-amt="{{ r.item.amount }}" data-side="item" aria-label="Select this item"><span class="fw-semibold">{% if r.item.ref %}Check {{ r.item.ref }}{% elif r.item.amount < 0 %}Payment{% else %}Deposit{% endif %}{% if r.item.text %} &middot; {{ r.item.text|truncatechars:48 }}{% endif %}</span>
             <span class="ac-chip {% if r.stale %}warn{% endif %}">{{ r.item.date|mdate }}, {{ r.age }} day{{ r.age|pluralize }}</span>{% if r.stale %} <span class="ac-chip warn">Over 30 days: worth a call</span>{% endif %}</div>
         <div class="d-flex align-items-center gap-2"><span class="fw-semibold ac-num">{{ r.item.amount|money }}</span>
@@ -75,65 +100,69 @@
 {% if s.unmatched_bank %}
 <style>
     .ub [hidden] { display: none !important; }
+    .ub { font-size: .84rem; }
+    .ub .btn { font-size: .76rem; padding: .15rem .55rem; }
+    .ub .form-select, .ub .form-control { font-size: .8rem; }
+    .ub .card-title { font-size: .92rem; }
+    .ub-top { display: grid; grid-template-columns: 50% 40% 10%; align-items: center; }
+    .ub-desc { min-width: 0; padding-right: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ub-acct { min-width: 0; padding-right: 14px; }
+    .ub-amt { text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ub-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
     .ub-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .ub-pick { flex: 1 1 240px; min-width: 200px; max-width: 360px; }
+    @media (max-width: 768px) {
+        .ub-top { grid-template-columns: 1fr auto; row-gap: 4px; }
+        .ub-desc { white-space: normal; padding-right: 8px; }
+        .ub-acct { grid-column: 1 / -1; grid-row: 2; padding-right: 0; }
+        .ub .btn, .ub select, .ub input[type=text] { min-height: 44px; }
+    }
 </style>
-<div class="card mb-3 ub" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body">
+<div class="card mb-3 ub" style="border-color: color-mix(in srgb, var(--status-warning) 45%, white);"><div class="card-body py-3">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="circle-alert" class="icon"></i> On the statement, not matched to the books</h6>
     {% if dep_n %}<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pb-2 mb-1 border-bottom ac-noprint"><div><strong>{{ dep_n }} deposit{{ dep_n|pluralize }}</strong> <span class="small text-muted">{{ dep_total|money }} &middot; owner payments or something else</span></div>
         <a class="btn btn-sm btn-primary" href="{{ deposits_url }}">Sort the deposits &rarr;</a></div>{% endif %}
     {% for b in s.unmatched_bank %}
     <div class="py-2 {% if not forloop.first %}border-top{% endif %}" data-ub>
-        <div class="d-flex justify-content-between flex-wrap gap-2"><span><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="bank_line" value="{{ b.pk }}" data-amt="{{ b.amount }}" data-side="bank" aria-label="Select this bank line">{{ b.date|mdate }} &middot; {{ b.description }}</span><span class="fw-semibold ac-num">{{ b.amount|money }}</span></div>
-        <div class="mt-2 ac-noprint">
+        <form method="post" id="ab{{ b.pk }}" class="d-none ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}"></form>
+        <div class="ub-top">
+            <div class="ub-desc" title="{{ b.description }}"><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="bank_line" value="{{ b.pk }}" data-amt="{{ b.amount }}" data-side="bank" aria-label="Select this bank line">{{ b.date|mdate:'short' }} &middot; {{ b.description }}</div>
+            <div class="ub-acct ac-noprint" data-ub-acct{% if b.split_suggest %} hidden{% endif %}>
+                <select class="form-select form-select-sm ac-pick" name="account" form="ab{{ b.pk }}" required aria-label="Which account for this line"><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select>
+            </div>
+            <div class="ub-amt ac-num">{{ b.amount|money }}</div>
+        </div>
+        <div class="ac-noprint">
             {% if b.split_suggest %}
-            <div data-ub-suggest>
+            <div class="mt-2" data-ub-suggest>
                 {% include 'accounting/_bank_split.html' with split_json=b.split_json split_open=True split_title='Same split as last month' %}
                 <button type="button" class="btn btn-link btn-sm p-0 text-muted mt-1" data-ub-change>Do something else with this line</button>
             </div>
-            {% elif b.suggested %}
-            <div class="ub-row" data-ub-suggest>
-                <form method="post" class="m-0">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}"><input type="hidden" name="account" value="{{ b.suggested.pk }}">
-                    <button class="btn btn-sm btn-primary">Add to books as {{ b.suggested }}</button></form>
-                <button type="button" class="btn btn-link btn-sm p-0 text-muted" data-ub-change>Change</button>
+            {% endif %}
+            <div class="ub-actions" data-ub-choose{% if b.split_suggest %} hidden{% endif %}>
+                <button class="btn btn-sm btn-primary" form="ab{{ b.pk }}">Add to books</button>
+                {% if b.amount < 0 %}<input class="form-control form-control-sm" style="width: 180px;" name="vendor" form="ab{{ b.pk }}" placeholder="Paid to (optional)" aria-label="Paid to">{% endif %}
+                {% if b.amount > 0 %}<button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="owner">Owner's payment</button>{% endif %}
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="split">Split</button>
+            </div>
+            <div class="mt-2" data-ub-panel="split" hidden>{% include 'accounting/_bank_split.html' %}</div>
+            {% if b.amount > 0 %}
+            <div class="mt-2" data-ub-panel="owner" hidden>
+                {% if b.candidates %}
+                <div class="small fw-semibold mb-1">Already in the books, not on the statement {% include '_tip.html' with text='These are payments of this amount, dated within a week, that the books already hold (a Yardi receipt, for example). The deposit is almost certainly one of them: pick it and nothing new is recorded.' %}</div>
+                {% for c in b.candidates %}
+                <form method="post" class="ub-row mb-1">{% csrf_token %}<input type="hidden" name="action" value="match_manual"><input type="hidden" name="bank_line" value="{{ b.pk }}"><input type="hidden" name="item" value="{{ c.key }}">
+                    <span class="small" style="flex: 1 1 240px;">{{ c.date|mdate }} &middot; {{ c.text|truncatechars:60 }} &middot; <span class="ac-num">{{ c.amount|money }}</span></span>
+                    <button class="btn btn-sm btn-primary">This one</button></form>
+                {% endfor %}
+                <div class="small text-muted mt-2 mb-1">None of these? Record a new payment:</div>
+                {% endif %}
+                <form method="post" class="ub-row">{% csrf_token %}<input type="hidden" name="action" value="owner_payment"><input type="hidden" name="bank_line" value="{{ b.pk }}">{% if b.candidates %}<input type="hidden" name="force" value="1">{% endif %}
+                    <div class="ub-pick"><select class="form-select form-select-sm ac-pick" data-noun="unit" name="unit" required><option value="">Type a name or unit</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select></div>
+                    <button class="btn btn-sm {% if b.candidates %}btn-outline-secondary{% else %}btn-primary{% endif %}">{% if b.candidates %}Record a new one{% else %}Record{% endif %}</button></form>
+                <div class="small text-muted mt-2">Several owners in one deposit? <a href="{{ deposits_url }}?open={{ b.pk }}">Sort it on the deposits screen</a>.</div>
             </div>
             {% endif %}
-            <div data-ub-choose{% if b.suggested %} hidden{% endif %}>
-                {% if b.amount > 0 %}
-                <div class="ub-row">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="add">Add to books</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="owner">Owner's payment</button>
-                    <a class="btn btn-sm btn-outline-secondary" href="{{ deposits_url }}?open={{ b.pk }}">Split it</a>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="split">Split between accounts</button>
-                </div>
-                <div class="mt-2" data-ub-panel="split" hidden>{% include 'accounting/_bank_split.html' %}</div>
-                <form method="post" class="ub-row mt-2" data-ub-panel="add" hidden>{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
-                    <div class="ub-pick"><select class="form-select form-select-sm ac-pick" name="account" required><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select></div>
-                    <button class="btn btn-sm btn-primary">Add</button></form>
-                <div class="mt-2" data-ub-panel="owner" hidden>
-                    {% if b.candidates %}
-                    <div class="small fw-semibold mb-1">Already in the books, not on the statement {% include '_tip.html' with text='These are payments of this amount, dated within a week, that the books already hold (a Yardi receipt, for example). The deposit is almost certainly one of them: pick it and nothing new is recorded.' %}</div>
-                    {% for c in b.candidates %}
-                    <form method="post" class="ub-row mb-1">{% csrf_token %}<input type="hidden" name="action" value="match_manual"><input type="hidden" name="bank_line" value="{{ b.pk }}"><input type="hidden" name="item" value="{{ c.key }}">
-                        <span class="small" style="flex: 1 1 240px;">{{ c.date|mdate }} &middot; {{ c.text|truncatechars:60 }} &middot; <span class="ac-num">{{ c.amount|money }}</span></span>
-                        <button class="btn btn-sm btn-primary">This one</button></form>
-                    {% endfor %}
-                    <div class="small text-muted mt-2 mb-1">None of these? Record a new payment:</div>
-                    {% endif %}
-                    <form method="post" class="ub-row">{% csrf_token %}<input type="hidden" name="action" value="owner_payment"><input type="hidden" name="bank_line" value="{{ b.pk }}">{% if b.candidates %}<input type="hidden" name="force" value="1">{% endif %}
-                        <div class="ub-pick"><select class="form-select form-select-sm ac-pick" data-noun="unit" name="unit" required><option value="">Type a name or unit</option>{% for u in units %}<option value="{{ u.pk }}">{{ u.label }}</option>{% endfor %}</select></div>
-                        <button class="btn btn-sm {% if b.candidates %}btn-outline-secondary{% else %}btn-primary{% endif %}">{% if b.candidates %}Record a new one{% else %}Record{% endif %}</button></form>
-                </div>
-                {% else %}
-                <div class="ub-row"><button type="button" class="btn btn-sm btn-secondary" data-ub-pick="add">Add to one account</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="split">Split between accounts</button></div>
-                <form method="post" class="ub-row mt-2" data-ub-panel="add">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
-                    <div class="ub-pick"><select class="form-select form-select-sm ac-pick" name="account" required><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select></div>
-                    <input class="form-control form-control-sm" style="flex: 1 1 170px; max-width: 240px;" name="vendor" placeholder="Paid to (optional)" aria-label="Paid to">
-                    <button class="btn btn-sm btn-primary">Add</button></form>
-                <div class="mt-2" data-ub-panel="split" hidden>{% include 'accounting/_bank_split.html' %}</div>
-                {% endif %}
-            </div>
         </div>
     </div>
     {% endfor %}
@@ -141,20 +170,21 @@
 <script>
 (function () {
     document.querySelectorAll('[data-ub]').forEach(function (box) {
-        var suggest = box.querySelector('[data-ub-suggest]'), choose = box.querySelector('[data-ub-choose]');
+        var suggest = box.querySelector('[data-ub-suggest]'), choose = box.querySelector('[data-ub-choose]'), acct = box.querySelector('[data-ub-acct]');
         function pick(which) {
-            box.querySelectorAll('[data-ub-panel]').forEach(function (p) { p.hidden = p.dataset.ubPanel !== which; });
-            box.querySelectorAll('[data-ub-pick]').forEach(function (b) { var on = b.dataset.ubPick === which; b.classList.toggle('btn-secondary', on); b.classList.toggle('btn-outline-secondary', !on); });
+            var panel = box.querySelector('[data-ub-panel="' + which + '"]'), wasOpen = panel && !panel.hidden;
+            box.querySelectorAll('[data-ub-panel]').forEach(function (p) { p.hidden = wasOpen || p.dataset.ubPanel !== which; });
+            box.querySelectorAll('[data-ub-pick]').forEach(function (b) { var on = !wasOpen && b.dataset.ubPick === which; b.classList.toggle('btn-secondary', on); b.classList.toggle('btn-outline-secondary', !on); });
+            if (wasOpen) return;
             var f = box.querySelector('[data-ub-panel="' + which + '"] .ac-pk input, [data-ub-panel="' + which + '"] select[name=unit]');
             if (f) f.focus();
         }
         box.querySelectorAll('[data-ub-pick]').forEach(function (b) { b.addEventListener('click', function () { pick(b.dataset.ubPick); }); });
         var change = box.querySelector('[data-ub-change]');
         if (change) change.addEventListener('click', function () {
-            suggest.hidden = true;
+            if (suggest) suggest.hidden = true;
             choose.hidden = false;
-            if (box.querySelector('[data-ub-pick="add"]')) pick('add');
-            else if (box.querySelector('[data-ub-pick="split"]')) pick('split');
+            if (acct) acct.hidden = false;
         });
     });
 })();

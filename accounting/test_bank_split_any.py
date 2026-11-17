@@ -102,8 +102,8 @@ class TheScreenTests(SplitBase):
         pay = self.line('-50.00', desc='Some fee')
         dep = self.line('80.00', desc='Some deposit', kind='deposit')
         html = self.client.get(self.url).content.decode()
-        self.assertEqual(html.count('data-ub-pick="split">'), 2)
-        self.assertIn('Split between accounts', html)
+        self.assertEqual(html.count('data-ub-pick="split">Split</button>'), 2)                # one Split button on each line
+        self.assertNotIn('Split between accounts</button>', html)
         self.assertIn('id="split-accounts"', html)
         self.assertIn(f'name="bank_line" value="{pay.pk}"', html)
         self.assertIn(f'name="bank_line" value="{dep.pk}"', html)

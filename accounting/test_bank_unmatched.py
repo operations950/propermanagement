@@ -68,32 +68,37 @@ class UnmatchedLinesScreenTests(TestCase):
     def page(self):
         return self.client.get(self.url).content.decode()
 
-    def test_a_deposit_with_no_guess_has_three_equal_choices_and_no_paid_to(self):
+    def test_a_deposit_with_no_guess_has_the_account_box_and_three_buttons_and_no_paid_to(self):
         line(self.statement, date(2026, 3, 12), 'DEPOSIT 8841', '615', 'deposit')
         html = self.page()
-        self.assertIn('data-ub-pick="add">Add to books</button>', html)
+        self.assertIn('class="ub-top"', html)                                              # description, account box and amount on one line
+        self.assertIn('<option value="">Which account?</option>', html)
+        self.assertIn('>Add to books</button>', html)
         self.assertIn("data-ub-pick=\"owner\">Owner's payment</button>", html)
-        self.assertIn('Split it', html)
+        self.assertIn('data-ub-pick="split">Split</button>', html)                          # one split button, not two
+        self.assertNotIn('Split it', html)
+        self.assertNotIn('Split between accounts', html)
+        self.assertNotIn('Add to one account', html)                                       # redundant: the account box is on the line itself
         self.assertNotIn('Paid to', html)                                                  # nobody was paid: the money came in
-        self.assertNotIn('Add to books as', html)
 
-    def test_a_payment_goes_straight_to_one_form_with_paid_to_and_no_owner_choice(self):
+    def test_a_payment_has_paid_to_a_split_and_no_owner_choice(self):
         line(self.statement, date(2026, 3, 12), 'ACH GARDEN CO', '-250', 'withdrawal')
         html = self.page()
         self.assertIn('Paid to', html)
-        self.assertIn('data-ub-pick="add">Add to one account', html)            # one account or a split between accounts: a payment can always be split
-        self.assertIn('data-ub-pick="split">Split between accounts', html)
+        self.assertIn('data-ub-pick="split">Split</button>', html)              # a payment can always be split between accounts
+        self.assertNotIn('Add to one account', html)
         self.assertNotIn('data-ub-pick="owner"', html)
         self.assertNotIn("Owner's payment", html)
-        self.assertNotIn('Split it', html)                                      # the deposits screen's owner split is for deposits only
+        self.assertNotIn('Split it', html)
 
-    def test_a_guess_is_one_primary_button_with_a_change_link(self):
+    def test_a_guess_is_already_chosen_in_the_account_box(self):
         earlier = BankStatement.objects.create(bank_account=self.bank, period_end=date(2026, 2, 28), end_balance=D('0'))
-        bankrec.add_to_books(line(earlier, date(2026, 2, 27), 'Interest Paid', '12.50', 'interest'), ledger.account(self.prop, '4511'))
+        interest = ledger.account(self.prop, '4511')
+        bankrec.add_to_books(line(earlier, date(2026, 2, 27), 'Interest Paid', '12.50', 'interest'), interest)
         line(self.statement, date(2026, 3, 31), 'Interest Paid', '3.10', 'interest')
         html = self.page()
-        self.assertIn('Add to books as 4511', html)
-        self.assertIn('data-ub-change', html)
+        self.assertIn(f'<option value="{interest.pk}" selected>', html)                  # the account the same words went to last month is chosen for you
+        self.assertIn('>Add to books</button>', html)
         self.assertNotIn('Paid to', html)
 
     def test_the_guess_button_posts_exactly_what_the_old_form_did(self):
@@ -112,7 +117,7 @@ class UnmatchedLinesScreenTests(TestCase):
         deposit = line(self.statement, date(2026, 3, 12), 'DEPOSIT 8841', '615', 'deposit')
         html = self.page()
         self.assertIn('name="action" value="owner_payment"', html)
-        self.assertIn(f'?open={deposit.pk}', html)                                          # Split it goes to the deposit sorting screen, opened on this line
+        self.assertIn(f'?open={deposit.pk}', html)                                          # several owners in one deposit: the deposit sorting screen, opened on this line
 
     def test_every_statement_screen_takes_a_dropped_file(self):
         html = self.page()

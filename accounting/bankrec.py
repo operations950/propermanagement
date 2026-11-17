@@ -1068,7 +1068,7 @@ def summary(bank_account, month_first):
     else:
         status = 'attention'
     return {'statement': stmt, 'month': month_first, 'month_end': end, 'rows': rows, 'outstanding': outstanding, 'transit': transit, 'unmatched_bank': unmatched_bank, 'matches': matches,
-            'book': book, 'os_total': os_total, 'dit_total': dit_total, 'bank_only': bank_only, 'adjusted_bank': adjusted_bank, 'adjusted_book': adjusted_book,
+            'book': book, 'os_total': os_total, 'dit_total': dit_total, 'bank_only': bank_only, 'books_total': book + bank_only, 'adjusted_bank': adjusted_bank, 'adjusted_book': adjusted_book,
             'difference': difference, 'status': status, 'reconciliation': rec, 'need_count': len(unaccepted) + len(unmatched_bank), 'matched_bank': (stmt.lines.filter(match__isnull=False).count() if stmt else 0),
             'bank_total': (stmt.lines.count() if stmt else 0)}
 
