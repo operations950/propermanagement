@@ -149,3 +149,31 @@ class CloseListOthersTests(TestCase):
         self.assertIn('Decoy Villas', others)
         self.assertNotIn(prop.name, others)
         self.assertEqual([x['assoc'].name for x in r.context['rows']], [prop.name])
+
+
+@override_settings(STORAGES=STORAGES)
+class CloseSheetAndUpTests(TestCase):
+    def setUp(self):
+        self.prop = make_assoc()
+        self.user = get_user_model().objects.create_superuser('boss', 'b@example.com', 'pw12345678')
+        self.client.force_login(self.user)
+        self.html = {'HTTP_ACCEPT': 'text/html'}
+
+    def test_the_close_sheet_has_no_buttons_under_its_steps_every_step_does_its_own_work(self):
+        page = self.client.get(reverse('accounting:close', args=[self.prop.pk, '2026-10'])).content.decode()
+        for gone in ('Post charges that are due', 'Post recurring bills that are due', 'value="post_charges"', 'value="late_fees"', 'value="recurring"'):
+            self.assertNotIn(gone, page)
+        self.assertNotIn('name="action"', page)
+
+    def test_up_from_a_recurring_screen_opened_from_the_main_checklist_goes_back_to_the_checklist(self):
+        self.client.get(reverse('accounting:hub', args=[self.prop.pk]), **self.html)                      # an older screen that used to be picked by mistake
+        self.client.get(reverse('close_home') + '?month=2026-10', **self.html)
+        r = self.client.get(reverse('accounting:recurring', args=[self.prop.pk]) + '?tab=bills&month=2026-10', **self.html)
+        self.assertEqual(r.context['acc_back_label'], 'Month-end checklist')
+        self.assertIn('/close/', r.context['acc_back'])
+
+    def test_up_from_a_recurring_screen_opened_from_the_associations_close_sheet_goes_to_that_sheet(self):
+        self.client.get(reverse('accounting:close', args=[self.prop.pk, '2026-10']), **self.html)
+        for tab in ('bills', 'charges', 'entries'):
+            r = self.client.get(reverse('accounting:recurring', args=[self.prop.pk]) + f'?tab={tab}&month=2026-10', **self.html)
+            self.assertEqual(r.context['acc_back_label'], 'Month-end close')

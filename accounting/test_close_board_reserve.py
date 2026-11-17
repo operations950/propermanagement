@@ -185,7 +185,7 @@ class BoardSendTests(Base):
         self.assertContains(r, 'Sent on')
         self.assertEqual(len(mail.outbox), 1)
         m = mail.outbox[0]
-        self.assertEqual(m.from_email, 'admin@proper-realty.com')
+        self.assertEqual(m.from_email, 'Proper Realty Co <admin@proper-realty.com>')          # the name shows in the inbox, not just "admin"
         self.assertEqual(sorted(m.to), ['pat@example.com', 'val@example.com'])
         self.assertEqual(m.cc, ['ana@proper-realty.com', 'justin@proper-realty.com'])
         self.assertEqual(m.subject, 'Subject line')
@@ -246,9 +246,9 @@ class BoardSendTests(Base):
 
     def test_the_default_message_is_friendly_and_has_no_names_accounts_or_amounts(self):
         body = board_send.default_body(self.prop, OCT)
-        self.assertTrue(body.startswith('Hello,'))
+        self.assertTrue(body.startswith('Hi all,'))
         self.assertIn('October 2026', body)
-        self.assertIn('Proper Realty management', body)
+        self.assertIn('Thank you,\nProper Realty team', body)
         self.assertIsNone(re.search(r'\$|\d{4,}', body.replace('2026', '')))
         self.assertEqual(board_send.default_subject(self.prop, OCT), f'{self.prop.name} financial package for October 2026')
 

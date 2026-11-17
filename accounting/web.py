@@ -105,5 +105,7 @@ def acc_up(request, prop, names, default_url, default_label):
     for item in names:
         name, label = item if isinstance(item, tuple) else (item, _up_label(prop, item))
         parents[name] = label
+    if 'accounting:close' in parents and 'close_home' not in parents:
+        parents['close_home'] = _up_label(prop, 'close_home')         # a close step opened from the main Month-end checklist goes back to it, not to some older screen
     found = nav.up(request, parents=parents, default=(default_url, default_label))
     return {'acc_back': found.url, 'acc_back_label': found.label}

@@ -9,9 +9,9 @@ from . import labels, ledger, package
 from .models import BoardPackageSend, BoardTerm, MonthLock
 
 # Who the board email comes from and who is copied. Change them here.
-FROM_EMAIL = 'admin@proper-realty.com'
+FROM_EMAIL = 'Proper Realty Co <admin@proper-realty.com>'          # the name people see in their inbox, then the address it is sent from
 CC_EMAILS = ['ana@proper-realty.com', 'justin@proper-realty.com']
-SIGN_OFF = 'Proper Realty management'
+SIGN_OFF = 'Proper Realty team'
 
 _NO_DELIVERY = ('django.core.mail.backends.console.EmailBackend', 'django.core.mail.backends.dummy.EmailBackend')
 
@@ -46,9 +46,9 @@ def default_subject(association, month_first):
 
 def default_body(association, month_first):
     if labels.is_commercial(association):
-        return (f'Hello,\n\nAttached is the financial package for {association.name} for {month_first:%B %Y}. It has the financial statements, the tenant aging and the bank '
+        return (f'Hi all,\n\nAttached is the financial package for {association.name} for {month_first:%B %Y}. It has the financial statements, the tenant aging and the bank '
                 f'statements for the month.\n\nPlease let me know if you have any questions or would like to go over any of it. I am happy to help.\n\nThank you,\n{SIGN_OFF}')
-    return (f'Hello,\n\nAttached is the financial package for {association.name} for {month_first:%B %Y}. It has the financial statements, the budget comparison, the owner aging and the bank '
+    return (f'Hi all,\n\nAttached is the financial package for {association.name} for {month_first:%B %Y}. It has the financial statements, the budget comparison, the owner aging and the bank '
             f'statements for the month.\n\nPlease let me know if you have any questions or would like to go over any of it. I am happy to help.\n\nThank you,\n{SIGN_OFF}')
 
 

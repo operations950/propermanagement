@@ -21,9 +21,4 @@
     <i data-lucide="chevron-right" class="icon text-muted"></i>
 </a>
 {% endfor %}
-<form method="post" class="d-flex flex-wrap gap-2 mt-3 ac-noprint">{% csrf_token %}
-    <button class="btn btn-sm btn-outline-secondary" name="action" value="post_charges"><i data-lucide="receipt" class="icon"></i> Post charges that are due</button>
-    <button class="btn btn-sm btn-outline-secondary" name="action" value="recurring"><i data-lucide="repeat" class="icon"></i> Post recurring bills that are due</button>
-    {% if profile.late_fee_confirmed %}<button class="btn btn-sm btn-outline-secondary" name="action" value="late_fees"><i data-lucide="alarm-clock" class="icon"></i> Charge late fees</button>{% endif %}
-</form>
 {% endblock %}

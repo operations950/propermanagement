@@ -118,7 +118,6 @@ def close_sheet(request, pk, month):
     here = _go('close', pk, f'{first:%Y-%m}')
     if request.method == 'POST':
         action = request.POST.get('action')
-        today = timezone.localdate()
         try:
             if action == 'lock':
                 sheet = closing.close_sheet(prop, first)
@@ -129,16 +128,6 @@ def close_sheet(request, pk, month):
             elif action == 'unlock':
                 ledger.unlock_month(prop, first)
                 messages.success(request, f'{first:%B %Y} is open again.')
-            elif action == 'post_charges':
-                done = charges.post_due(prop, min(today, ledger.month_end(first)), request.user)
-                messages.success(request, f'Posted {sum(n for _, _, n in done)} charge{"s" if sum(n for _, _, n in done) != 1 else ""}.' if done else 'Nothing more was due.')
-            elif action == 'late_fees':
-                made = charges.assess_late_fees(prop, ledger.month_end(first), request.user)
-                messages.success(request, f'{len(made)} late fee{"s" if len(made) != 1 else ""} charged.' if made else 'No late fees were owed.')
-            elif action == 'recurring':
-                from . import payables
-                made = payables.post_recurring(prop, ledger.month_end(first), request.user)
-                messages.success(request, f'Posted {len(made)} recurring bill{"s" if len(made) != 1 else ""}.' if made else 'Nothing more was due.')
         except (ledger.LedgerError, charges.ChargeError) as e:
             messages.error(request, str(e))
         return redirect(here)
