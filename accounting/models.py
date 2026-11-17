@@ -139,6 +139,12 @@ class AssociationDocument(models.Model):
     sort_status = models.CharField(max_length=10, blank=True, default='', help_text="'' nothing to sort, waiting, proposed (needs a look), manual (choose by hand), confirmed.")
     sections = models.JSONField(default=list, blank=True, help_text='[{"kind","title","start","end","confidence"}] by page, once sorted.')
     indexed = models.BooleanField(default=False, help_text='Claude has noted what each page is about (once), so a question finds the right pages.')
+    # a PDF too big for the file storage is held as hidden STAGING PARTS of one binder, sorted as one file, then re-cut into one file per document (accounting/binders.py)
+    binder_id = models.CharField(max_length=36, blank=True, default='', db_index=True, help_text='Shared by the staging parts of one big upload.')
+    binder_order = models.PositiveSmallIntegerField(default=0, help_text='Which part of the binder this is, from 0. Part 0 carries the binder state and the proposed sections.')
+    binder_name = models.CharField(max_length=200, blank=True, default='', help_text='What the whole upload was called.')
+    is_staging = models.BooleanField(default=False, help_text='A temporary part of a big upload: not a document of the association, not shown in its lists.')
+    binder_state = models.CharField(max_length=14, blank=True, default='', help_text="On part 0 of a binder: reading, sorting, needs_confirm, finalizing or failed.")
 
     class Meta:
         ordering = ['kind', '-uploaded_at']
@@ -705,10 +711,24 @@ class RecurringBill(models.Model):
         return self.amount is not None
 
 
+class RecurringBillSkip(models.Model):
+    """A recurring bill that was left out of a month on purpose (it does not come this month). It counts as handled on the close sheet; the schedule moves on past the month."""
+    recurring = models.ForeignKey('RecurringBill', on_delete=models.CASCADE, related_name='skips')
+    month = models.DateField(help_text='First day of the month skipped.')
+    skipped_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    skipped_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['recurring', 'month'], name='uniq_recurring_bill_skip')]
+
+
 class JournalRule(models.Model):
-    """A scheduled journal entry. For now one kind: the monthly reserve contribution, split by the approved budget's reserve lines (see scheduled.py)."""
+    """A scheduled journal entry. Two kinds: the monthly reserve contribution, split by the approved budget's reserve lines, and a recurring entry (a loan payment split into principal and
+    interest, say) whose lines are kept on the rule (JournalRuleLine). Each month an entry is posted (amounts may be changed first) or skipped (see scheduled.py)."""
     class Kind(models.TextChoices):
         RESERVE = 'reserve', 'Reserve contribution'
+        ENTRY = 'entry', 'Recurring entry'
 
     association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='journal_rules')
     name = models.CharField(max_length=120, default='Reserve contribution')
@@ -717,6 +737,47 @@ class JournalRule(models.Model):
     auto_post = models.BooleanField(default=True, help_text='Post this entry by itself on its day (the association\'s own automatic posting must be on too).')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class JournalRuleLine(models.Model):
+    """One line of a recurring entry: an account and the amount it was last posted with. The line marked 'the rest' is not typed: it is what makes the entry balance (a loan's principal is the
+    payment less the interest), so changing the other amounts moves it."""
+    rule = models.ForeignKey(JournalRule, on_delete=models.CASCADE, related_name='lines')
+    account = models.ForeignKey('Account', on_delete=models.PROTECT, related_name='+')
+    side = models.CharField(max_length=6, choices=[('debit', 'Debit'), ('credit', 'Credit')], default='debit')
+    amount = models.DecimalField(default=ZERO, help_text='What it was last posted with (for the line marked rest, what balanced the entry).', **MONEY)
+    memo = models.CharField(max_length=200, blank=True)
+    is_rest = models.BooleanField(default=False, help_text='Its amount is whatever balances the entry.')
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+
+class JournalRuleSkip(models.Model):
+    """A month a recurring entry was deliberately not posted ('skipped'), so the month-end close knows it was looked at."""
+    rule = models.ForeignKey(JournalRule, on_delete=models.CASCADE, related_name='skips')
+    month = models.DateField(help_text='First day of the month.')
+    skipped_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    skipped_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['rule', 'month'], name='uniq_journal_rule_skip')]
+
+
+class BankSplitTemplate(models.Model):
+    """How a statement line was split the last time, remembered by the words of its description on one bank account, so next month's line comes up with the same accounts and amounts and
+    only what changed has to be typed. `lines` is [{'account': id, 'amount': '4232.73', 'memo': '', 'rest': true}]; the line marked rest takes whatever the other amounts leave."""
+    bank_account = models.ForeignKey('BankAccount', on_delete=models.CASCADE, related_name='split_templates')
+    words = models.CharField(max_length=300)
+    outgoing = models.BooleanField(default=True, help_text='A payment (money out); false for a deposit.')
+    lines = models.JSONField(default=list)
+    used_count = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['bank_account', 'words', 'outgoing'], name='uniq_bank_split_template')]
 
 
 class Bill(models.Model):

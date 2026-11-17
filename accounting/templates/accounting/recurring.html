@@ -7,11 +7,12 @@
         <div class="small text-muted">{{ assoc.name }} &middot; Automatic posting is {% if profile.auto_post %}<strong>on</strong>{% else %}<strong style="color: #8a5a00;">off</strong>{% endif %}
             <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="auto_post"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="auto" value="{% if profile.auto_post %}off{% else %}on{% endif %}"><button class="btn btn-link btn-sm p-0 align-baseline">{% if profile.auto_post %}Turn it off{% else %}Turn it on{% endif %}</button></form>
             {% include '_tip.html' with text="Automatic posting posts the owner charges (a few days early) and the fixed recurring bills by themselves on their dates. Each recurring journal entry has its own switch as well. Turn it off to post everything by hand." %}</div></div>
+    <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">{% include 'accounting/_step_done_bar.html' %}
     <div class="btn-group btn-group-sm ac-noprint">
         <a href="?tab={{ tab }}&month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
         <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
         <a href="?tab={{ tab }}&month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
-    </div>
+    </div></div>
 </div>
 <style>.rc-tabs { display: flex; gap: 6px; margin: 10px 0 12px; flex-wrap: wrap; } .rc-tab { padding: 7px 16px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, #fff); color: inherit; text-decoration: none; font-weight: 600; }
     .rc-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; } .rc-tab .n { display: inline-block; min-width: 1.3em; text-align: center; border-radius: 999px; background: #b45309; color: #fff; font-size: .72rem; margin-left: 6px; padding: 0 5px; }</style>
@@ -60,29 +61,40 @@
     <td>{% if r.st.last_due %}{{ r.st.last_due|mdate:'short' }}: {% if r.st.pending %}<span class="ac-chip warn">{{ r.st.posted }} of {{ r.st.units }} posted</span>{% else %}<span class="ac-chip good">Posted to {{ r.st.posted }}</span>{% endif %}{% endif %}</td><td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:charge_edit' assoc.pk r.pk %}">Edit</a></td></tr>
 {% empty %}<tr><td colspan="7" class="text-muted p-3">No recurring charges yet.</td></tr>{% endfor %}</tbody></table>
 </div></div>
-<div class="card mt-3"><div class="card-body">
-    <h6 class="card-title">Late fees and interest</h6>
-    {% if not profile.late_fee_is_set and not profile.interest_is_set %}<div class="small text-muted">Neither is set up yet. <a href="{% url 'accounting:settings' assoc.pk %}#late">Set them from the declaration</a>.</div>
-    {% else %}
-    <div class="d-flex flex-wrap gap-3">
-        {% if profile.late_fee_is_set %}<div class="flex-grow-1"><div class="fw-semibold">Late fees</div>
-            {% if late_rows %}<div class="small">{{ late_rows|length }} owed, {{ late_total|money }}.</div>
-            <details class="small"><summary style="cursor: pointer;">See who</summary>{% for r in late_rows %}<div class="d-flex justify-content-between"><span>{{ r.unit }} {{ r.owner }}</span><span class="ac-num">{{ r.amount|money }}</span></div>{% endfor %}</details>
-            <form method="post" class="mt-1 ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="assess_late">Charge them</button></form>
-            {% else %}<div class="small text-muted">None owed.</div>{% endif %}</div>{% endif %}
-        {% if profile.interest_is_set %}<div class="flex-grow-1"><div class="fw-semibold">Interest</div>
-            {% if interest_rows %}<div class="small">{{ interest_rows|length }} charge{{ interest_rows|length|pluralize }} built up, {{ interest_total|money }}.</div>
-            <details class="small"><summary style="cursor: pointer;">See who</summary>{% for r in interest_rows %}<div class="d-flex justify-content-between"><span>{{ r.unit }} {{ r.owner }}: {{ r.what }}</span><span class="ac-num">{{ r.amount|money }}</span></div>{% endfor %}</details>
-            <form method="post" class="mt-1 ac-noprint">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="assess_interest">Charge it</button></form>
-            {% else %}<div class="small text-muted">None built up.</div>{% endif %}</div>{% endif %}
-    </div>
-    <div class="small text-muted mt-2">These are charged when you press the button, so you see them first. The close sheet reminds you each month.</div>
-    {% endif %}
-</div></div>
 
 {% else %}
 <div class="small text-muted mb-2">Entries that post themselves on a day of the month and do not touch cash. {% include '_tip.html' with text='The cash is already on the bank statement, and the reconciliation catches it. The first is the reserve contribution.' %}</div>
-{% for jr in jrules %}
+{% for jr in entry_rules %}
+<div class="card mb-3 {% if not jr.is_active %}text-muted{% endif %}"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div><h6 class="card-title mb-0">{{ jr.name }}{% if not jr.is_active %} <span class="ac-chip">Stopped</span>{% endif %}</h6>
+            <div class="small text-muted">Dated day {{ jr.day_of_month }} of the month. Post it each month with the amounts as they are or changed, or skip it.</div></div>
+        <div>{% if jr.st.state == 'posted' %}<span class="ac-chip good">{{ month|date:"F" }}: posted {{ jr.st.entry.date|mdate:'short' }}, J-{{ jr.st.entry.number }}</span>
+            {% elif jr.st.state == 'skipped' %}<span class="ac-chip">{{ month|date:"F" }}: skipped</span>
+            {% elif jr.st.state == 'due' %}<span class="ac-chip warn">{{ month|date:"F" }}: due {{ jr.st.day|mdate:'short' }}</span>{% else %}<span class="ac-chip">{{ month|date:"F" }}: scheduled {{ jr.st.day|mdate:'short' }}</span>{% endif %}</div>
+    </div>
+    {% if jr.is_active and jr.st.state != 'posted' %}
+    <form method="post" class="ac-noprint mt-2">{% csrf_token %}<input type="hidden" name="rule" value="{{ jr.pk }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">
+        <table class="table table-sm ac-table mb-2" style="max-width: 560px;"><tbody>
+        {% for r in jr.rows %}<tr><td>{{ r.account }}<div class="small text-muted">{{ r.side|capfirst }}</div></td>
+            <td class="ac-num" style="width: 11rem;">{% if r.is_rest %}<span class="small text-muted">the rest&nbsp;</span><strong>{{ r.amount|money }}</strong>
+                {% else %}<input class="form-control form-control-sm text-end" name="amt_{{ r.line.pk }}" value="{{ r.amount }}" inputmode="decimal" aria-label="Amount for {{ r.account }}">{% endif %}</td></tr>{% endfor %}
+        </tbody></table>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button class="btn btn-sm btn-primary" name="action" value="je_post">Post {{ month|date:"F" }}</button>
+            {% if jr.st.state != 'skipped' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="je_skip" onclick="return confirm('Skip {{ jr.name|escapejs }} for {{ month|date:"F Y"|escapejs }}? Nothing is posted, and the close sheet counts it as looked at.')">Skip this month</button>
+            {% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="je_unskip">Undo the skip</button>{% endif %}
+            {% include '_tip.html' with text='Change an amount before posting if it moved this month (the interest on a loan). The line marked the rest follows. The new amounts are what next month starts from.' %}
+        </div>
+    </form>
+    {% endif %}
+    <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Change this entry</summary><div class="mt-2">{% include 'accounting/_je_form.html' with rule=jr form_rows=jr.form_rows %}</div></details>
+    <form method="post" class="mt-2 ac-noprint">{% csrf_token %}<input type="hidden" name="rule" value="{{ jr.pk }}">{% if jr.is_active %}<button class="btn btn-sm btn-outline-secondary" name="action" value="jr_stop">Stop</button>{% else %}<button class="btn btn-sm btn-outline-secondary" name="action" value="jr_resume">Resume</button>{% endif %}</form>
+</div></div>
+{% endfor %}
+<details class="card mb-3 ac-noprint"{% if not entry_rules and not reserve_rules %} open{% endif %}><summary class="card-body py-2 fw-semibold" style="cursor: pointer;"><i data-lucide="plus" class="icon"></i> New recurring entry {% include '_tip.html' with text='An entry you post every month, such as a loan payment split into principal and interest. The month-end close asks you to post or skip it.' %}</summary>
+    <div class="card-body border-top">{% include 'accounting/_je_form.html' with rule=None form_rows=new_entry_rows %}</div></details>
+{% for jr in reserve_rules %}
 <div class="card mb-3 {% if not jr.is_active %}text-muted{% endif %}"><div class="card-body">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div><h6 class="card-title mb-0">{{ jr.name }}{% if not jr.is_active %} <span class="ac-chip">Stopped</span>{% endif %}</h6>

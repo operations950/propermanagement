@@ -12,10 +12,10 @@
         <span class="ac-chip done">Approved</span>
         <span class="small text-muted">{% if lock.locked_by %}by {{ lock.locked_by.get_full_name|default:lock.locked_by.username }} {% endif %}on {{ lock.locked_at|mdate }}</span>
         <form method="post" class="m-0">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" name="action" value="reopen" onclick="return confirm('Open this month again so entries can be posted into it? The approval is removed.')"><i data-lucide="lock-open" class="icon"></i> Open the month again</button></form>
-        <a class="btn btn-primary" href="{{ send_url }}"><i data-lucide="send" class="icon"></i> Next: {{ send_label }}</a>
+        <a class="btn btn-primary btn-sm" href="{{ send_url }}"><i data-lucide="send" class="icon"></i> Next: {{ send_label }}</a>
         {% else %}
-        <form method="post" class="m-0">{% csrf_token %}<button class="btn btn-success btn-lg" name="action" value="approve" {% if waiting %}disabled title="Finish the items on the close sheet first"{% endif %}
-            onclick="return confirm('Approve the {{ month|date:"F Y"|escapejs }} package and close the month? Nothing more can be posted into it until it is opened again.')"><i data-lucide="check-circle-2" class="icon"></i> Approve and close the month</button></form>
+        <form method="post" class="m-0">{% csrf_token %}<button class="btn btn-primary btn-sm" name="action" value="approve" {% if waiting %}disabled title="Finish the items on the close sheet first"{% endif %}
+            onclick="return confirm('Approve the {{ month|date:"F Y"|escapejs }} package and close the month? Nothing more can be posted into it until it is opened again.')"><i data-lucide="check" class="icon"></i> Approve and close the month</button></form>
         {% endif %}
     </div>
 </div>
@@ -23,7 +23,7 @@
 <div class="alert alert-warning small py-2">{{ waiting|length }} item{{ waiting|length|pluralize }} on the close sheet still need{{ waiting|length|pluralize:"s," }} doing before the month can be approved: {% for i in waiting %}{{ i.title }}{% if not forloop.last %}, {% endif %}{% endfor %}. <a href="{{ sheet_url }}">Back to the close sheet</a></div>
 {% endif %}
 <div class="card"><div class="card-body p-0">
-    <iframe src="{{ pdf }}" title="Financial package for {{ month|date:'F Y' }}" style="width: 100%; height: 78vh; border: 0; border-radius: 12px;"></iframe>
+    <iframe src="{{ pdf }}#view=FitH&toolbar=1&navpanes=0" title="Financial package for {{ month|date:'F Y' }}" style="width: 100%; height: calc(100vh - 170px); min-height: 520px; border: 0; border-radius: 12px;"></iframe>
 </div></div>
 <div class="small text-muted mt-2 ac-noprint">Cannot see it above (some phones do not show a PDF here)? <a href="{{ pdf }}" target="_blank" rel="noopener">Open the package in its own tab</a>.</div>
 {% endblock %}

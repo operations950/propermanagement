@@ -41,6 +41,11 @@ class DocumentError(Exception):
     pass
 
 
+def _docs(association):
+    """The documents of an association: never the hidden staging parts of a big upload that is still being sorted."""
+    return AssociationDocument.objects.filter(property=association, is_staging=False)
+
+
 STORE_LIMIT = 10 * 1024 * 1024 - 300 * 1024      # the file storage refuses a file over 10 MB; a margin is kept under it
 
 
@@ -49,7 +54,7 @@ STORE_LIMIT = 10 * 1024 * 1024 - 300 * 1024      # the file storage refuses a fi
 def _sources(association):
     """{kind: [{'doc', 'start', 'end', 'title'}]}: where each kind of document is, whole files that were uploaded as one kind and confirmed parts of sorted files."""
     out = {}
-    for d in AssociationDocument.objects.filter(property=association).order_by('uploaded_at'):
+    for d in _docs(association).order_by('uploaded_at'):
         if d.auto_sort:
             if d.sort_status != 'confirmed':
                 continue
@@ -105,7 +110,7 @@ def checklist(association):
     document) it is attached to, and a second copy under the document it copies. Anything that cannot be placed goes in a last row, 'Needs a look'."""
     rows = {k: {'kind': k, 'label': Kind(k).label, 'required': k in REQUIRED, 'mains': [], 'items': []} for k in WANTED}
     unplaced = []
-    for d in AssociationDocument.objects.filter(property=association).order_by('uploaded_at'):
+    for d in _docs(association).order_by('uploaded_at'):
         if d.auto_sort:
             if d.sort_status != 'confirmed':
                 continue
@@ -162,8 +167,9 @@ def has_contract(association):
 
 def files(association):
     """Every uploaded file with what is going on with it, for the screen."""
-    out = []
-    for d in AssociationDocument.objects.filter(property=association).order_by('-uploaded_at'):
+    from . import binders
+    out = binders.rows_for(association)
+    for d in _docs(association).order_by('-uploaded_at'):
         if d.text_status in ('', 'waiting', 'reading'):
             state = 'reading'
         elif d.text_status == 'failed':
@@ -180,7 +186,8 @@ def files(association):
             docs = sum(1 for s in secs if not s.get('repeat_of') and s.get('kind') in WANTED)
             rest = len(secs) - docs
             summary = f'Sorted into {docs} document{"s" if docs != 1 else ""} and {rest} attachment{"s" if rest != 1 else ""}: see the list above'
-        out.append({'doc': d, 'state': state, 'sections': secs, 'summary': summary})
+        splittable = bool(d.auto_sort and d.sort_status == 'confirmed' and state == 'ready' and len([s for s in secs if s.get('kind') not in ('exhibit',)]) > 1)
+        out.append({'doc': d, 'state': state, 'sections': secs, 'summary': summary, 'splittable': splittable})
     return out
 
 
@@ -252,8 +259,9 @@ def _parts(uploaded_file, name):
 
 
 def _store(association, kind, name, file, user, **extra):
+    extra.setdefault('text_status', 'waiting')
     try:
-        return AssociationDocument.objects.create(property=association, kind=kind, name=name[:200], file=file, uploaded_by=user, text_status='waiting', **extra)
+        return AssociationDocument.objects.create(property=association, kind=kind, name=name[:200], file=file, uploaded_by=user, **extra)
     except DocumentError:
         raise
     except Exception as exc:
@@ -280,6 +288,10 @@ def upload_many(association, uploaded_files, user=None):
             problems.append(str(e))
             continue
         try:
+            if f.size > STORE_LIMIT and (getattr(f, 'name', '') or '').lower().endswith('.pdf'):
+                from . import binders
+                made.append(binders.start_binder(association, f, name, user))          # one big upload: read as one file, sorted, then saved as one file per document
+                continue
             for part_name, part in _parts(f, name):
                 made.append(_store(association, Kind.OTHER, part_name, part, user, auto_sort=True, sort_status='waiting'))
         except DocumentError as e:
@@ -419,7 +431,7 @@ def _signature(docs):
 def significant_signature(association):
     """Which documents that could change an answer are on file: the declaration, articles, bylaws, rules, amendments and the contract (not exhibits, repeats or the budget)."""
     parts = []
-    for d in AssociationDocument.objects.filter(property=association).order_by('pk'):
+    for d in _docs(association).order_by('pk'):
         if d.auto_sort:
             if d.sort_status != 'confirmed':
                 continue
@@ -445,7 +457,7 @@ def ask(association, question, user=None, force=False):
     question = (question or '').strip()
     if not question:
         raise DocumentError('Type a question.')
-    docs = list(AssociationDocument.objects.filter(property=association))
+    docs = list(_docs(association))
     if not docs:
         raise DocumentError('Upload a document first: there is nothing to read yet.')
     usable = _ensure_read(docs)

@@ -39,6 +39,11 @@ def close_sheet(association, month_first, today=None):
 
     lab = labels.labels_for(association)
     commercial = labels.is_commercial(association)
+    marks = {c.key: c for c in CloseStepDone.objects.filter(association=association, month=month_first).select_related('marked_by')}
+
+    def marked_on(key):
+        c = marks.get(key)
+        return f'Marked done on {c.marked_at:%b} {c.marked_at.day}.' if c else ''
     # 1. This month's owner charges: they post by themselves a few days early; this step only checks, and posts any that did not.
     rules = list(ChargeRule.objects.filter(association=association, is_active=True))
     due_rows, pending = [], 0
@@ -60,36 +65,49 @@ def close_sheet(association, month_first, today=None):
         due_rows = due_rows or ([None] * rs['leases'])
     if pending:
         items.append(_item('charges', lab['charges_step'], 'receipt', 'attention', rent_note + f'{pending} charge{"s" if pending != 1 else ""} not posted yet: post {"them" if pending != 1 else "it"} there.' + auto_off, charges_url, blocks=False))
+    elif not due_rows and not rules:
+        items.append(_item('charges', lab['charges_step'], 'receipt', 'done', 'No recurring charges are set up.' + auto_off, charges_url, blocks=False))
+    elif 'charges' in marks:
+        items.append(_item('charges', lab['charges_step'], 'receipt', 'done', (rent_note or ('Posted to every unit.' if due_rows else 'Nothing was due this month.')) + ' ' + marked_on('charges'), charges_url, blocks=False))
     else:
-        items.append(_item('charges', lab['charges_step'], 'receipt', 'done', (rent_note or ('Posted to every unit.' if due_rows else 'Nothing was due this month.' if rules else 'No recurring charges are set up.')) + auto_off, charges_url, blocks=False))
+        items.append(_item('charges', lab['charges_step'], 'receipt', 'attention', (rent_note or ('Posted to every unit.' if due_rows else 'Nothing was due this month.')) + ' Check that they posted correctly, then mark the step done.' + auto_off, charges_url, blocks=False))
 
     # 2. Recurring bills: the fixed ones are checked; the ones whose amount changes are settled in the bank reconciliation and are kept apart.
     rec = [r for r in payables.recurring_status(association, month_first) if r['due']]
     fixed, variable = [r for r in rec if r['fixed']], [r for r in rec if not r['fixed']]
-    fixed_missing = [r for r in fixed if not r['posted']]
+    fixed_missing = [r for r in fixed if not r['posted'] and not r.get('skipped')]
     bills_url = recurring_url + f'?tab=bills&month={month_param}'
     variable_note = f' {len(variable)} variable bill{"s" if len(variable) != 1 else ""} (the amount changes) will be settled in the bank reconciliation.' if variable else ''
     if fixed_missing:
-        items.append(_item('recurring', 'Recurring bills', 'repeat', 'attention', f'{len(fixed) - len(fixed_missing)} of {len(fixed)} fixed bills posted; not posted yet: ' + ', '.join(r['rec'].description for r in fixed_missing) + '.' + variable_note + auto_off,
+        items.append(_item('recurring', 'Recurring bills', 'repeat', 'attention', 'Post or skip each fixed bill: ' + ', '.join(r['rec'].description for r in fixed_missing) + '.' + variable_note + auto_off,
                            bills_url, blocks=False))
+    elif not fixed:
+        items.append(_item('recurring', 'Recurring bills', 'repeat', 'done', 'No fixed recurring bills this month.' + variable_note, bills_url, blocks=False))
+    elif 'recurring' in marks:
+        items.append(_item('recurring', 'Recurring bills', 'repeat', 'done', 'Every fixed bill is posted or skipped. ' + marked_on('recurring') + variable_note, bills_url, blocks=False))
     else:
-        items.append(_item('recurring', 'Recurring bills', 'repeat', 'done', ('All fixed bills posted.' if fixed else 'No fixed recurring bills this month.') + variable_note, bills_url, blocks=False))
+        items.append(_item('recurring', 'Recurring bills', 'repeat', 'attention', 'Every fixed bill is posted or skipped. Look them over, then mark the step done.' + variable_note, bills_url, blocks=False))
 
     # 3. Recurring journal entries (the reserve contribution is one of them).
     entries_url = recurring_url + f'?tab=entries&month={month_param}'
-    entry_bits, entry_open = [], 0
-    for rule in JournalRule.objects.filter(association=association, is_active=True):
-        st = scheduled.status(association, rule, month_first, today)
-        if st['state'] == 'posted':
-            entry_bits.append(f'{rule.name}: posted {st["entry"].date:%b} {st["entry"].date.day}, J-{st["entry"].number}.')
-            continue
-        entry_open += 1
-        if st['state'] == 'no_budget':
-            entry_bits.append(f'{rule.name}: no {st["split"]["year"]} budget with reserve lines yet: approve the budget first.')
-        else:
-            how = 'It posts itself on its day.' if (rule.auto_post and profile.auto_post) else 'Automatic posting is off for it.'
-            entry_bits.append(f'{rule.name}: not posted yet, ${st["split"]["total"]:,.2f} dated {st["day"]:%b} {st["day"].day}. {how}')
-    items.append(_item('entries', 'Recurring journal entries', 'piggy-bank', 'attention' if entry_open else 'done', ' '.join(entry_bits) if entry_bits else 'No recurring journal entries are set up.', entries_url, blocks=False))
+    active_rules = list(JournalRule.objects.filter(association=association, is_active=True))
+    pending_rules = scheduled.pending_entries(association, month_first, today)
+    if not active_rules:
+        items.append(_item('entries', 'Recurring journal entries', 'piggy-bank', 'done', 'No recurring journal entries are set up.', entries_url, blocks=False))
+    elif pending_rules:
+        bits = []
+        for r in pending_rules:
+            rule = r['rule']
+            if rule.kind == JournalRule.Kind.RESERVE and r['state'] == 'no_budget':
+                bits.append(f'{rule.name}: no budget with reserve lines yet: approve the budget first.')
+            else:
+                how = 'It posts itself on its day.' if (rule.auto_post and profile.auto_post) else 'Automatic posting is off for it.'
+                bits.append(f'{rule.name}: post or skip it (${r["total"]:,.2f}, dated {r["day"]:%b} {r["day"].day}). {how}'.strip())
+        items.append(_item('entries', 'Recurring journal entries', 'piggy-bank', 'attention', ' '.join(bits), entries_url, blocks=False))
+    elif 'entries' in marks:
+        items.append(_item('entries', 'Recurring journal entries', 'piggy-bank', 'done', 'Every entry is posted or skipped. ' + marked_on('entries'), entries_url, blocks=False))
+    else:
+        items.append(_item('entries', 'Recurring journal entries', 'piggy-bank', 'attention', 'Every entry is posted or skipped. Look them over, then mark the step done.', entries_url, blocks=False))
 
     # 4. The bank reconciliations: owner payments are matched to cash here.
     for bank in association.bank_accounts.filter(is_active=True):
@@ -197,28 +215,64 @@ def _late_fee_candidates(association, as_of):
     return n
 
 
+def association_card(association, month_first):
+    """What the Close associations list shows for one property: {'status', 'detail', 'segments', 'pct'}. `segments` is one entry for EVERY step of its close sheet ('done', 'attention' or
+    'not_started'), so the card can draw progress as a bar the eye reads at once, with no numbers; `pct` is the share of the steps that are done. The chip is done (month closed and the
+    financials sent), not_started (nothing yet) or attention; a closed month whose financials are not sent yet still needs attention."""
+    sheet = close_sheet(association, month_first)
+    segments = [i['status'] if i['status'] in ('done', 'attention') else 'not_started' for i in sheet['items']]
+    pct = round(100 * segments.count('done') / len(segments)) if segments else 0
+    if sheet['locked']:
+        status, detail = ('done', 'Closed and sent to the owners' if labels.is_commercial(association) else 'Closed and sent to the board') if sheet['sent'] else ('attention', 'Closed, financials not sent')
+    else:
+        items = [i for i in sheet['items'] if i['blocks']]
+        done = sum(1 for i in items if i['status'] == 'done')
+        if done == 0 and all(i['status'] == 'not_started' for i in items):
+            status, detail = 'not_started', 'Not started'
+        else:
+            status, detail = 'attention', f'{done} of {len(items)} done'
+    return {'status': status, 'detail': detail, 'segments': segments, 'pct': pct}
+
+
 def association_status(association, month_first):
     """One chip for the list of associations: done (month closed and the financials sent to the board), not_started (nothing yet) or attention, with a short note."""
-    sheet = close_sheet(association, month_first)
-    if sheet['locked']:
-        return ('done', 'Closed and sent to the owners' if labels.is_commercial(association) else 'Closed and sent to the board') if sheet['sent'] else ('attention', 'Closed, financials not sent')
-    items = [i for i in sheet['items'] if i['blocks']]
-    done = sum(1 for i in items if i['status'] == 'done')
-    if done == 0 and all(i['status'] == 'not_started' for i in items):
-        return 'not_started', 'Not started'
-    return 'attention', f'{done} of {len(items)} done'
+    card = association_card(association, month_first)
+    return card['status'], card['detail']
 
 
 def checklist_step(month_first, kind='associations'):
-    """(status, detail) for the company checklist's "Close associations" step (kind 'associations') or its "Close commercial properties" step (kind 'commercial')."""
+    """(status, detail) for the company checklist's "Close associations" step (kind 'associations') or its "Close commercial properties" step (kind 'commercial'). It is kept cheap on
+    purpose (a few queries, not a close sheet for every property): closed means the month is locked AND the financials were sent; started means a month lock, a bank statement or a
+    marked step exists for the month."""
+    from datetime import timedelta
+    from .models import BankStatement, BoardPackageSend
     commercial = kind == 'commercial'
     rows = [a for a in associations() if (a.property.property_type == Property.Type.COMMERCIAL) == commercial]
     noun = 'commercial properties' if commercial else 'associations'
     if not rows:
         return 'not_started', f'No {"commercial property" if commercial else "association"} is set up for financials yet.'
-    closed = sum(1 for a in rows if association_status(a.property, month_first)[0] == 'done')
+    ids = [a.property_id for a in rows]
+    month_first = ledger.month_start(month_first)
+    month_end = ledger.month_end(month_first)
+    locked = set(MonthLock.objects.filter(association_id__in=ids, month=month_first).values_list('association_id', flat=True))
+    sent = set(BoardPackageSend.objects.filter(association_id__in=ids, month=month_first).values_list('association_id', flat=True))
+    closed = len(locked & sent)
     if closed == len(rows):
         return 'done', f'All {len(rows)} {noun} are closed.'
-    if closed == 0 and all(association_status(a.property, month_first)[0] == 'not_started' for a in rows):
-        return 'not_started', f'{len(rows)} {noun} to close.'
-    return 'attention', f'{closed} of {len(rows)} closed'
+    started = bool(locked) or BankStatement.objects.filter(bank_account__association_id__in=ids, period_end__gte=month_first, period_end__lte=month_end).exists() \
+        or CloseStepDone.objects.filter(association_id__in=ids, month=month_first).exists()
+    return ('attention' if started else 'not_started'), f'{closed} of {len(rows)} closed'
+
+
+def charges_pending(association, month_first):
+    """How many owner charges (or leases' rent) due in the month have not posted yet: what stops the owner charges step from being marked done."""
+    month_end = ledger.month_end(month_first)
+    n = 0
+    for r in ChargeRule.objects.filter(association=association, is_active=True):
+        for d in charges.rule_due_dates(r, month_end):
+            if month_first <= d <= month_end and charges.rule_status(r, month_end)['pending']:
+                n += 1
+    if labels.is_commercial(association):
+        from commercial import rent as commercial_rent
+        n += commercial_rent.month_status(association, month_first)['missing']
+    return n

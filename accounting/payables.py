@@ -322,10 +322,23 @@ def post_month(association, month_first, user=None, apply=True):
 
 def recurring_status(association, month_first):
     """For the close sheet: each recurring bill and whether this month's has posted (fixed) or is waiting on the statement (variable)."""
+    from .models import RecurringBillSkip
     rows = []
     nxt = ledger.next_month(month_first)
+    skipped_ids = set(RecurringBillSkip.objects.filter(recurring__association=association, month=month_first).values_list('recurring_id', flat=True))
     for rec in RecurringBill.objects.filter(association=association, is_active=True).select_related('vendor'):
         posted = Bill.objects.filter(recurring=rec, date__gte=month_first, date__lt=nxt).exclude(status=Bill.Status.VOID).exists()
-        due_this_month = rec.next_date < nxt or posted
-        rows.append({'rec': rec, 'posted': posted, 'due': due_this_month, 'fixed': rec.is_fixed})
+        skipped = rec.pk in skipped_ids and not posted
+        due_this_month = rec.next_date < nxt or posted or skipped
+        rows.append({'rec': rec, 'posted': posted, 'skipped': skipped, 'due': due_this_month, 'fixed': rec.is_fixed})
     return rows
+
+
+def skip_recurring(rec, month_first, user=None, note=''):
+    """Say a recurring bill does not come this month: it is remembered as skipped and the schedule moves on past the month, so it is not posted. Refuses a month that already has its bill."""
+    from .models import RecurringBillSkip
+    month_first = ledger.month_start(month_first)
+    if _has_bill_in_month(rec, month_first):
+        raise PayableError(f'{rec.description} already has a bill in {month_first:%B %Y}.')
+    RecurringBillSkip.objects.get_or_create(recurring=rec, month=month_first, defaults={'skipped_by': user if getattr(user, 'pk', None) else None, 'note': (note or '')[:200]})
+    skip_past(rec, month_first)

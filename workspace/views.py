@@ -221,8 +221,10 @@ def people(request):
                     changed += 1
             messages.success(request, f'Saved. {changed} person(s) changed.' if changed else 'Nothing changed.')
             return redirect('ws_people')
-    people_list = list(StaffProfile.objects.select_related('user').order_by('-user__is_active', 'user__first_name', 'user__username'))
-    return render(request, 'workspace/people.html', {'staff_list': people_list, 'departments': StaffProfile.Role.choices, 'me': me, 'form': form,
+    everyone = list(StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__username'))
+    people_list = [p for p in everyone if p.user.is_active]
+    removed_list = [p for p in everyone if not p.user.is_active]
+    return render(request, 'workspace/people.html', {'staff_list': people_list, 'removed_list': removed_list, 'departments': StaffProfile.Role.choices, 'me': me, 'form': form,
                                                       'timezones': StaffProfile.Timezone.choices})
 
 

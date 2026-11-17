@@ -41,8 +41,8 @@ def _close_list(request, commercial):
     for prof in closing.associations():
         if labels.is_commercial(prof.property) != commercial:
             continue
-        status, detail = closing.association_status(prof.property, month)
-        rows.append({'assoc': prof.property, 'status': status, 'detail': detail})
+        card = closing.association_card(prof.property, month)
+        rows.append({'assoc': prof.property, **card})
     kept = {p.pk for p in closing.associations()}
     others = [] if commercial else [p for p in Property.objects.filter(property_type__in=labels.BOOKS_TYPES, is_active=True, is_general=False).exclude(name__icontains='(general)').order_by('name') if p.pk not in kept and p.property_type != Property.Type.COMMERCIAL]
     return render(request, 'accounting/home.html', {'rows': rows, 'commercial': commercial, 'others': others, 'done': sum(1 for r in rows if r['status'] == 'done'), **month_context(month)})

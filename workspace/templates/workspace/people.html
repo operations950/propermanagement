@@ -39,19 +39,26 @@
 <thead><tr><th>Person</th><th>Email</th><th>Department</th><th class="sw">Financial</th><th class="sw">Time clock mgmt</th><th class="sw">Admin</th><th class="sw">Portfolio</th><th></th></tr></thead>
 <tbody>
 {% for sp in staff_list %}
-<tr class="{% if not sp.user.is_active %}gone{% endif %}">
-<td><input type="hidden" name="row_{{ sp.pk }}" value="1">{{ sp }}{% if not sp.user.is_active %} <span class="badge text-bg-secondary">removed</span>{% endif %}</td>
+<tr>
+<td><input type="hidden" name="row_{{ sp.pk }}" value="1">{{ sp }}</td>
 <td class="small text-muted">{{ sp.user.email }}</td>
 <td><select name="dept_{{ sp.pk }}" class="form-select form-select-sm" style="max-width: 11rem;" aria-label="Department of {{ sp }}"><option value="">None</option>{% for v, l in departments %}<option value="{{ v }}" {% if sp.role == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
 <td class="sw"><span class="d-md-none small text-muted d-block">Financial</span><input type="checkbox" class="form-check-input" name="financial_{{ sp.pk }}" {% if sp.can_financial %}checked{% endif %} aria-label="Financial for {{ sp }}"></td>
 <td class="sw"><span class="d-md-none small text-muted d-block">Time clock</span><input type="checkbox" class="form-check-input" name="time_{{ sp.pk }}" {% if sp.can_time_admin %}checked{% endif %} aria-label="Time clock management for {{ sp }}"></td>
 <td class="sw"><span class="d-md-none small text-muted d-block">Admin</span><input type="checkbox" class="form-check-input" name="admin_{{ sp.pk }}" {% if sp.is_company_admin %}checked{% endif %} {% if sp.pk == me.pk %}disabled checked{% endif %} aria-label="Admin for {{ sp }}"></td>
 <td class="sw"><span class="d-md-none small text-muted d-block">Portfolio</span>{% if sp.is_portfolio_owner %}<i data-lucide="lock" class="icon text-muted" title="Locked to the owner"></i>{% else %}<span class="text-muted">&ndash;</span>{% endif %}</td>
-<td class="text-end">{% if sp.pk != me.pk %}<button type="submit" form="rm_{{ sp.pk }}" class="btn btn-sm btn-outline-secondary" {% if sp.user.is_active %}onclick="return confirm('Remove {{ sp|escapejs }}? Their login is turned off and their history is kept.')"{% endif %}>{% if sp.user.is_active %}Remove{% else %}Restore{% endif %}</button>{% endif %}</td>
+<td class="text-end">{% if sp.pk != me.pk %}<button type="submit" form="rm_{{ sp.pk }}" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Remove {{ sp|escapejs }}? Their login is turned off and their history is kept.')">Remove</button>{% endif %}</td>
 </tr>
 {% endfor %}
 </tbody></table></div></div>
 <button class="btn btn-dark mt-3" type="submit">Save</button>
 </form>
-{% for sp in staff_list %}{% if sp.pk != me.pk %}<form id="rm_{{ sp.pk }}" method="post" hidden>{% csrf_token %}<input type="hidden" name="action" value="{% if sp.user.is_active %}remove{% else %}restore{% endif %}"><input type="hidden" name="person" value="{{ sp.pk }}"></form>{% endif %}{% endfor %}
+{% for sp in staff_list %}{% if sp.pk != me.pk %}<form id="rm_{{ sp.pk }}" method="post" hidden>{% csrf_token %}<input type="hidden" name="action" value="remove"><input type="hidden" name="person" value="{{ sp.pk }}"></form>{% endif %}{% endfor %}
+{% if removed_list %}
+<details class="card mt-3"><summary class="card-body py-2 small text-muted" style="cursor: pointer;">Removed people ({{ removed_list|length }})</summary>
+<div class="card-body border-top py-2">
+    {% for sp in removed_list %}<form method="post" class="d-flex justify-content-between align-items-center py-1">{% csrf_token %}<input type="hidden" name="action" value="restore"><input type="hidden" name="person" value="{{ sp.pk }}">
+        <span class="text-muted">{{ sp }} <span class="small">{{ sp.user.email }}</span></span><button class="btn btn-sm btn-outline-secondary">Restore</button></form>{% endfor %}
+</div></details>
+{% endif %}
 {% endblock %}

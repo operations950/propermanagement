@@ -13,6 +13,7 @@ from django.utils import timezone
 from . import charges, checkprint, closing, documents, invoice_inbox, ledger, owners
 from . import standard_chart as sc
 from . import checkface
+from . import binders
 from .models import AssociationDocument, BankAccount, Budget, ChargeRule, Payment, Receipt, SettingProposal
 from .web import admin_only, association_or_404, parse_date, parse_money, acc_up
 
@@ -185,7 +186,7 @@ def assoc_context(prop):
     ap_files = documents.files(prop)
     if any(f['state'] == 'needs_look' for f in ap_files):
         todo.append('confirm what the uploaded documents are')
-    return {'ap_files': ap_files, 'doc_kinds': [(k, 'Amendment' if k == 'amendment' else l) for k, l in AssociationDocument.Kind.choices if k != 'other'] + [('other', 'Something else')], 'ap': profile, 'ap_rows': settings_rows(prop), 'ap_docs': documents.checklist(prop), 'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name', 'user__username'), 'terms_lines': charges.terms_sentences(profile, _example_assessment(prop)), 'late_days': _bubble_days(profile.late_fee_grace_days or 0, (0, 5, 10, 15, 20, 30)), 'interest_days': _bubble_days(profile.interest_grace_days or 0, (0, 10, 15, 30)),
+    return {'store_limit': documents.STORE_LIMIT, 'ap_files': ap_files, 'doc_kinds': [(k, 'Amendment' if k == 'amendment' else l) for k, l in AssociationDocument.Kind.choices if k != 'other'] + [('other', 'Something else')], 'ap': profile, 'ap_rows': settings_rows(prop), 'ap_docs': documents.checklist(prop), 'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name', 'user__username'), 'terms_lines': charges.terms_sentences(profile, _example_assessment(prop)), 'late_days': _bubble_days(profile.late_fee_grace_days or 0, (0, 5, 10, 15, 20, 30)), 'interest_days': _bubble_days(profile.interest_grace_days or 0, (0, 10, 15, 30)),
             'example_assessment': _example_assessment(prop), 'applies_choices': [('declaration', 'Declaration'), ('articles', 'Articles'), ('bylaws', 'Bylaws'), ('rules', 'Rules and regulations')], 'ap_proposals': proposals,
             'ap_units': rows, 'ap_owing': owing[:5], 'ap_totals': totals, 'ap_todo': todo, 'ap_board': owners.board(prop), 'ap_board_matches': matches,
             'ap_qa': documents.qa_payload(prop), 'ap_has_contract': documents.has_contract(prop)}
@@ -330,13 +331,29 @@ def settings(request, pk):
                 for p in problems:
                     messages.error(request, p)
                 if made:
-                    messages.success(request, f'{len(made)} file{"s" if len(made) != 1 else ""} uploaded. Each is read once, which can take a few minutes for a long scan; then it is sorted for you to confirm.')
+                    big = sum(1 for d in made if d.is_staging)
+                    messages.success(request, f'{len(made)} file{"s" if len(made) != 1 else ""} uploaded. Each is read once, which can take a few minutes for a long scan; then it is sorted for you to confirm.'
+                                     + (' A big PDF is read as one file, sorted into its documents, and saved as a separate file for each.' if big else ''))
                 elif not problems:
                     raise ValueError('Choose at least one file.')
             elif action == 'sort_confirm':
                 doc = get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop)
                 documents.confirm_sections(doc, [(request.POST.get(f'kind_{i}'), request.POST.get(f'title_{i}'), request.POST.get(f'applies_{i}')) for i in range(len(doc.sections or []))])
                 messages.success(request, 'Saved: the checklist is up to date.')
+            elif action == 'binder_confirm':
+                head = get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop, is_staging=True, binder_order=0)
+                n = len(head.sections or [])
+                keeps = {i for i in range(n) if request.POST.get(f'keep_{i}')}
+                made, left_out = binders.confirm(head, [(request.POST.get(f'kind_{i}'), request.POST.get(f'title_{i}'), request.POST.get(f'applies_{i}')) for i in range(n)], keeps, request.user)
+                note = f' Left out {len(left_out)} second cop{"ies" if len(left_out) != 1 else "y"}.' if left_out else ''
+                messages.success(request, f'Saved as {len(made)} separate document{"s" if len(made) != 1 else ""}.{note}')
+            elif action == 'binder_sort_again':
+                binders.sort_again(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop, is_staging=True, binder_order=0))
+                messages.success(request, 'Sorting it again: it will be ready to look at in a minute.')
+            elif action == 'split_sorted':
+                made, left_out = binders.split_sorted(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop, is_staging=False), request.user)
+                note = f' Left out {len(left_out)} second cop{"ies" if len(left_out) != 1 else "y"}.' if left_out else ''
+                messages.success(request, f'Split into {len(made)} separate document{"s" if len(made) != 1 else ""}; the combined file is removed.{note}')
             elif action == 'sort_again':
                 documents.sort_again(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop))
                 messages.success(request, 'Sorting it again: it will be ready to look at in a minute.')
@@ -344,7 +361,11 @@ def settings(request, pk):
                 documents.read_again(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop))
                 messages.success(request, 'Reading it again.')
             elif action == 'delete_doc':
-                get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop).delete()
+                doc = get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop)
+                if doc.is_staging:
+                    binders.cancel(doc)               # a big upload that is still being sorted: every hidden part goes
+                else:
+                    doc.delete()
                 messages.success(request, 'Removed.')
             elif action == 'ask':
                 q = documents.ask(prop, request.POST.get('question'), request.user, force=bool(request.POST.get('again')))

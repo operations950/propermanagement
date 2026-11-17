@@ -17,7 +17,7 @@ def _general(prop, words):
 def _assoc_kinds(prop):
     """The kinds of accounting document on file, counting the parts of a sorted binder."""
     kinds = set()
-    for d in prop.assoc_documents.all():
+    for d in (x for x in prop.assoc_documents.all() if not x.is_staging):
         if d.auto_sort:
             if d.sort_status == 'confirmed':
                 kinds |= {s.get('kind') for s in d.sections or [] if not s.get('repeat_of')}

@@ -354,6 +354,9 @@ class CloseSheetTests(TestCase):
         self.assertEqual(rent.month_status(self.prop, date(2026, 10, 1))['posted'], 1)
         for lease in Lease.objects.filter(property=self.prop):
             rent.post_lease_month(lease, date(2026, 10, 1))
+        self.assertEqual(self.items()['charges']['status'], 'attention')                      # all posted: it waits for your word that you checked
+        from accounting.models import CloseStepDone
+        CloseStepDone.objects.create(association=self.prop, month=date(2026, 10, 1), key='charges')
         self.assertEqual(self.items()['charges']['status'], 'done')
 
     def test_the_send_step_says_owners(self):

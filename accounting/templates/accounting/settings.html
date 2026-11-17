@@ -86,9 +86,32 @@
 <div class="card mb-3" id="documents"><div class="card-body">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Documents &amp; rules</h6>
     <div class="mb-2">{% include 'accounting/_doc_tree.html' %}</div>
-    <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}<input type="hidden" name="action" value="upload_many">
-        <input type="file" name="files" multiple class="form-control form-control-sm" style="max-width: 360px;" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv" required><button class="btn btn-sm btn-primary">Upload</button>
-        <span class="small text-muted w-100">One file or several, a binder or single documents, up to 50 MB each. Each is read once, then sorted into the declaration, articles, bylaws, rules, amendments, contract or budget it holds, and you confirm.</span></form>
+    <form method="post" enctype="multipart/form-data" id="doc-form" data-limit="{{ store_limit }}" class="ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="upload_many">
+        <div id="doc-drop" class="rounded p-3 text-center" style="border: 2px dashed var(--border-hairline); background: color-mix(in srgb, var(--brand-primary) 4%, white);">
+            <div class="small mb-2"><i data-lucide="upload-cloud" class="icon"></i> Drag files here, or choose them {% include '_tip.html' with text='One file or several, a binder or single documents, up to 50 MB each. Each is read once, then sorted into the declaration, articles, bylaws, rules, amendments, contract or budget it holds, and you confirm. A PDF over 10 MB is read as one file, sorted by what is in it, and saved as a separate file for each document, with second copies left out.' %}</div>
+            <input type="file" name="files" id="doc-files" multiple class="form-control form-control-sm d-inline-block" style="max-width: 320px;" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv" required>
+            <button class="btn btn-sm btn-primary" id="doc-go">Upload</button>
+            <div class="small text-muted mt-2" id="doc-picked"></div>
+            <div class="small mt-1" id="doc-big" hidden>This PDF is over 10 MB: it will be read as one file, sorted by what is in it, and saved as a separate file for each document.</div>
+        </div>
+    </form>
+    <script>(function () {
+        var form = document.getElementById('doc-form'); if (!form) return;
+        var drop = document.getElementById('doc-drop'), input = document.getElementById('doc-files'), go = document.getElementById('doc-go'), picked = document.getElementById('doc-picked'), big = document.getElementById('doc-big');
+        var limit = parseInt(form.getAttribute('data-limit'), 10) || 0;
+        function refresh() {
+            var files = Array.prototype.slice.call(input.files || []), over = false, names = [];
+            files.forEach(function (f) { names.push(f.name + ' (' + (f.size / 1048576).toFixed(1) + ' MB)'); if (limit && f.size > limit && /\.pdf$/i.test(f.name)) over = true; });
+            picked.textContent = names.join(', ');
+            go.textContent = over ? 'Split into separate documents' : 'Upload';
+            big.hidden = !over;
+        }
+        input.addEventListener('change', refresh);
+        ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.style.borderColor = 'var(--brand-primary)'; }); });
+        ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.style.borderColor = ''; }); });
+        drop.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) { input.files = e.dataTransfer.files; refresh(); } });
+        refresh();
+    })();</script>
     <details class="mt-2 ac-noprint"><summary class="small" style="cursor: pointer;">Or say what a file is yourself</summary>
         <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="action" value="upload">
             <select class="form-select form-select-sm" name="kind" style="max-width: 250px;"><option value="declaration">Declaration of Condominium</option><option value="articles">Articles of Incorporation</option><option value="bylaws">Bylaws</option><option value="rules">Rules and regulations</option><option value="amendment">Amendment</option><option value="contract">Management contract</option><option value="budget">Budget</option><option value="other">Other</option></select>
@@ -96,23 +119,25 @@
 
     {% if ap_files %}<div class="mt-3 pt-3 border-top"><div class="ac-lab mb-1">Files</div>
         {% for f in ap_files %}<div class="py-2 {% if not forloop.first %}border-top{% endif %}">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div><a href="{{ f.doc.file.url }}" target="_blank" class="fw-semibold text-decoration-none">{{ f.doc.name|truncatechars:60 }}</a>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><div>{% if f.binder %}<span class="fw-semibold">{{ f.doc.binder_name|truncatechars:60 }}</span>{% else %}<a href="{{ f.doc.file.url }}" target="_blank" class="text-decoration-none fw-semibold">{{ f.doc.name|truncatechars:60 }}</a>{% endif %}
                 <span class="small text-muted">{% if f.doc.page_count %}{{ f.doc.page_count }} page{{ f.doc.page_count|pluralize }} &middot; {% endif %}{{ f.doc.uploaded_at|date:"M j, Y" }}</span>
-                {% if f.state == 'reading' %}<span class="ac-chip">Reading</span> <span class="small text-muted">once, a few minutes for a long scan</span>{% elif f.state == 'sorting' %}<span class="ac-chip">Sorting</span>
+                {% if f.binder and f.saving %}<span class="ac-chip">Saving the documents</span>{% elif f.state == 'reading' %}<span class="ac-chip">{% if f.binder %}Sorting your upload{% else %}Reading{% endif %}</span> <span class="small text-muted">once, a few minutes for a long scan</span>{% elif f.state == 'sorting' %}<span class="ac-chip">Sorting</span>
                 {% elif f.state == 'needs_look' %}<span class="ac-chip warn">Needs a look</span>{% elif f.state == 'failed' %}<span class="ac-chip warn">Could not be read</span>{% else %}<span class="ac-chip good">Ready</span>{% endif %}
                 {% if f.doc.read_note %}<div class="small text-muted">{{ f.doc.read_note }}</div>{% endif %}</div>
                 <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="doc" value="{{ f.doc.pk }}">
-                    {% if f.state == 'ready' or f.state == 'needs_look' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="read_doc" title="Find the late fee, spending limit and fees in this document">Read for settings</button> {% endif %}
+                    {% if f.splittable %}<button class="btn btn-sm btn-outline-secondary" name="action" value="split_sorted" onclick="return confirm('Save each document in this file as its own file, and remove the combined file? Second copies are left out.')">Split into separate documents</button> {% endif %}
+                    {% if not f.binder and f.state == 'ready' or not f.binder and f.state == 'needs_look' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="read_doc" title="Find the late fee, spending limit and fees in this document">Read for settings</button> {% endif %}
+                    {% if f.binder and f.state == 'failed' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="binder_sort_again">Sort it again</button> {% endif %}
                     {% if f.state == 'failed' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="read_again">Try again</button> {% endif %}
                     <button class="btn btn-sm btn-outline-secondary" name="action" value="delete_doc" onclick="return confirm('Remove this file?')">Remove</button></form></div>
             {% if f.state == 'needs_look' %}
             <form method="post" class="mt-2 p-2 rounded" style="background: color-mix(in srgb, var(--status-warning) 12%, white);">{% csrf_token %}<input type="hidden" name="doc" value="{{ f.doc.pk }}">
-                <div class="small mb-1">{% if f.doc.sort_status == 'manual' %}This file could not be sorted automatically. Say what it holds.{% else %}This file holds {{ f.sections|length }} document{{ f.sections|length|pluralize }}. Is that right?{% endif %}</div>
+                <div class="small mb-1">{% if f.doc.sort_status == 'manual' %}This file could not be sorted automatically. Say what it holds.{% else %}This file holds {{ f.sections|length }} document{{ f.sections|length|pluralize }}. Is that right?{% endif %}{% if f.binder %} {% include '_tip.html' with text='Each document below will be saved as its own file. Exhibits and surveys stay with the document they belong to. A second copy is left out so nothing is stored twice: tick Keep it anyway if it is not really a copy.' %}{% endif %}</div>
                 {% for s in f.sections %}<div class="row g-1 align-items-center mb-1"><div class="col-auto small text-muted" style="width: 110px;">{% if s.start == s.end %}Page {{ s.start }}{% else %}Pages {{ s.start }}&ndash;{{ s.end }}{% endif %}</div>
                     <div class="col-md-3"><select class="form-select form-select-sm" name="kind_{{ forloop.counter0 }}">{% for k, label in doc_kinds %}<option value="{{ k }}" {% if k == s.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
                     <div class="col"><input class="form-control form-control-sm" name="title_{{ forloop.counter0 }}" value="{{ s.title }}"></div>
-                    <div class="col-auto">{% if s.kind == 'amendment' %}<select class="form-select form-select-sm d-inline-block" style="width: auto;" name="applies_{{ forloop.counter0 }}" title="Which document this amends"><option value="">Amends...</option>{% for v, l in applies_choices %}<option value="{{ v }}" {% if s.applies_to == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select> {% endif %}{% if s.repeat_of %}<span class="ac-chip">Second copy of the one at page {{ s.repeat_of }}</span> {% endif %}{% if s.confidence < 0.6 and f.doc.sort_status != 'manual' %}<span class="ac-chip warn">Not sure</span>{% endif %}</div></div>{% endfor %}
-                <button class="btn btn-sm btn-primary" name="action" value="sort_confirm">Looks right</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="sort_again">Sort it again</button></form>
+                    <div class="col-auto">{% if s.kind == 'amendment' %}<select class="form-select form-select-sm d-inline-block" style="width: auto;" name="applies_{{ forloop.counter0 }}" title="Which document this amends"><option value="">Amends...</option>{% for v, l in applies_choices %}<option value="{{ v }}" {% if s.applies_to == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select> {% endif %}{% if s.leave_out %}<span class="ac-chip warn">Left out: a copy of {{ s.dup_title|truncatechars:40 }} ({{ s.dup_score }}% the same)</span> <label class="small ms-1"><input type="checkbox" name="keep_{{ forloop.counter0 }}" value="1" {% if s.keep %}checked{% endif %}> Keep it anyway</label> {% elif s.repeat_of %}<span class="ac-chip">Second copy of the one at page {{ s.repeat_of }}?</span> {% endif %}{% if s.confidence < 0.6 and f.doc.sort_status != 'manual' %}<span class="ac-chip warn">Not sure</span>{% endif %}</div></div>{% endfor %}
+                {% if f.binder %}<button class="btn btn-sm btn-primary" name="action" value="binder_confirm">Looks right: save as separate documents</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="binder_sort_again">Sort it again</button>{% else %}<button class="btn btn-sm btn-primary" name="action" value="sort_confirm">Looks right</button> <button class="btn btn-sm btn-outline-secondary" name="action" value="sort_again">Sort it again</button>{% endif %}</form>
             {% elif f.summary %}<div class="small text-muted mt-1">{{ f.summary }}</div>{% endif %}
         </div>{% endfor %}</div>{% endif %}
 
@@ -180,8 +205,11 @@
 </div></div>
 
 <div id="official" class="card mb-3"><div class="card-body pb-1">
-    <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building" class="icon"></i> Official record: check SunBiz</h6>
-    {% include 'accounting/_sunbiz_check.html' with sb=profile sb_prop=assoc %}
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+        <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="building" class="icon"></i> Official record: check SunBiz</h6>
+        <button class="btn btn-success" form="sb-check-form"><i data-lucide="check" class="icon"></i> I checked it</button>
+    </div>
+    {% include 'accounting/_sunbiz_check.html' with sb=profile sb_prop=assoc sb_button_outside=True %}
 </div></div>
 <form method="post" class="card mb-3"><div class="card-body">{% csrf_token %}<input type="hidden" name="action" value="official">
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="building" class="icon"></i> Official record <span class="small fw-normal text-muted ms-auto">What the state lists</span></h6>

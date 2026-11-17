@@ -86,7 +86,12 @@
     <div class="py-2 {% if not forloop.first %}border-top{% endif %}" data-ub>
         <div class="d-flex justify-content-between flex-wrap gap-2"><span><input type="checkbox" class="form-check-input me-2 clr ac-noprint" form="clear-form" name="bank_line" value="{{ b.pk }}" data-amt="{{ b.amount }}" data-side="bank" aria-label="Select this bank line">{{ b.date|mdate }} &middot; {{ b.description }}</span><span class="fw-semibold ac-num">{{ b.amount|money }}</span></div>
         <div class="mt-2 ac-noprint">
-            {% if b.suggested %}
+            {% if b.split_suggest %}
+            <div data-ub-suggest>
+                {% include 'accounting/_bank_split.html' with split_json=b.split_json split_open=True split_title='Same split as last month' %}
+                <button type="button" class="btn btn-link btn-sm p-0 text-muted mt-1" data-ub-change>Do something else with this line</button>
+            </div>
+            {% elif b.suggested %}
             <div class="ub-row" data-ub-suggest>
                 <form method="post" class="m-0">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}"><input type="hidden" name="account" value="{{ b.suggested.pk }}">
                     <button class="btn btn-sm btn-primary">Add to books as {{ b.suggested }}</button></form>
@@ -99,7 +104,9 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="add">Add to books</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="owner">Owner's payment</button>
                     <a class="btn btn-sm btn-outline-secondary" href="{{ deposits_url }}?open={{ b.pk }}">Split it</a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="split">Split between accounts</button>
                 </div>
+                <div class="mt-2" data-ub-panel="split" hidden>{% include 'accounting/_bank_split.html' %}</div>
                 <form method="post" class="ub-row mt-2" data-ub-panel="add" hidden>{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
                     <div class="ub-pick"><select class="form-select form-select-sm ac-pick" name="account" required><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select></div>
                     <button class="btn btn-sm btn-primary">Add</button></form>
@@ -118,10 +125,13 @@
                         <button class="btn btn-sm {% if b.candidates %}btn-outline-secondary{% else %}btn-primary{% endif %}">{% if b.candidates %}Record a new one{% else %}Record{% endif %}</button></form>
                 </div>
                 {% else %}
-                <form method="post" class="ub-row" data-ub-panel="add">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
+                <div class="ub-row"><button type="button" class="btn btn-sm btn-secondary" data-ub-pick="add">Add to one account</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-ub-pick="split">Split between accounts</button></div>
+                <form method="post" class="ub-row mt-2" data-ub-panel="add">{% csrf_token %}<input type="hidden" name="action" value="add_to_books"><input type="hidden" name="bank_line" value="{{ b.pk }}">
                     <div class="ub-pick"><select class="form-select form-select-sm ac-pick" name="account" required><option value="">Which account?</option>{% for a in accounts %}{% if a.kind == 'expense' or a.kind == 'income' or a.kind == 'equity' %}<option value="{{ a.pk }}"{% if b.suggested and b.suggested.pk == a.pk %} selected{% endif %}>{{ a }}</option>{% endif %}{% endfor %}</select></div>
                     <input class="form-control form-control-sm" style="flex: 1 1 170px; max-width: 240px;" name="vendor" placeholder="Paid to (optional)" aria-label="Paid to">
                     <button class="btn btn-sm btn-primary">Add</button></form>
+                <div class="mt-2" data-ub-panel="split" hidden>{% include 'accounting/_bank_split.html' %}</div>
                 {% endif %}
             </div>
         </div>
@@ -144,12 +154,115 @@
             suggest.hidden = true;
             choose.hidden = false;
             if (box.querySelector('[data-ub-pick="add"]')) pick('add');
+            else if (box.querySelector('[data-ub-pick="split"]')) pick('split');
         });
     });
 })();
 </script>
 {% endif %}
 
+{% if s.unmatched_bank %}
+{{ split_accounts|json_script:"split-accounts" }}
+<style>
+    .split-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 6px; }
+    .split-row .split-acct { flex: 1 1 220px; min-width: 180px; max-width: 340px; }
+    .split-row .split-amt { width: 8.5rem; text-align: right; }
+    .split-row .split-memo { flex: 1 1 140px; max-width: 220px; }
+    @media (max-width: 768px) { .split-row .split-acct, .split-row .split-memo { flex: 1 1 100%; max-width: none; } .split-row .btn, .split-row input { min-height: 44px; } }
+</style>
+<script>
+(function () {
+    var accts = JSON.parse(document.getElementById('split-accounts').textContent);
+    function cents(v) { var n = parseFloat(String(v).replace(/[$,]/g, '')); return isNaN(n) ? 0 : Math.round(n * 100); }
+    function usd(c) { return (c < 0 ? '-' : '') + '$' + (Math.abs(c) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+    document.querySelectorAll('form[data-split]').forEach(function (form) {
+        var total = Math.abs(cents(form.dataset.total)), box = form.querySelector('[data-split-rows]'), left = form.querySelector('[data-split-left]'), go = form.querySelector('[data-split-go]');
+        var n = 0, built = false;
+        function addRow(r) {
+            n += 1;
+            var row = document.createElement('div'), i = n;
+            row.className = 'split-row';
+            row.setAttribute('data-split-row', '1');
+            var wrap = document.createElement('div');
+            wrap.className = 'split-acct';
+            var sel = document.createElement('select');
+            sel.className = 'form-select form-select-sm ac-pick';
+            sel.name = 'split_account_' + i;
+            var first = document.createElement('option');
+            first.value = '';
+            first.textContent = 'Which account?';
+            sel.appendChild(first);
+            accts.forEach(function (a) { var o = document.createElement('option'); o.value = a.id; o.textContent = a.label; if (r.account === a.id) o.selected = true; sel.appendChild(o); });
+            wrap.appendChild(sel);
+            var amt = document.createElement('input');
+            amt.className = 'form-control form-control-sm split-amt';
+            amt.name = 'split_amount_' + i;
+            amt.setAttribute('inputmode', 'decimal');
+            amt.placeholder = 'Amount';
+            amt.value = r.amount || '';
+            var lab = document.createElement('label');
+            lab.className = 'small mb-0 text-nowrap';
+            var radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'split_rest';
+            radio.value = i;
+            radio.className = 'form-check-input';
+            radio.checked = !!r.rest;
+            radio.setAttribute('data-split-rest', '1');
+            lab.appendChild(radio);
+            lab.appendChild(document.createTextNode(' the rest'));
+            var memo = document.createElement('input');
+            memo.className = 'form-control form-control-sm split-memo';
+            memo.name = 'split_memo_' + i;
+            memo.placeholder = 'Note (optional)';
+            memo.value = r.memo || '';
+            var rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'btn btn-link btn-sm text-muted';
+            rm.setAttribute('aria-label', 'Remove this line');
+            rm.innerHTML = '&times;';
+            rm.addEventListener('click', function () { row.remove(); refresh(); });
+            [wrap, amt, lab, memo, rm].forEach(function (el) { row.appendChild(el); });
+            box.appendChild(row);
+        }
+        function refresh() {
+            var rows = Array.prototype.slice.call(box.querySelectorAll('[data-split-row]')), fixed = 0, rest = null, placed = 0;
+            rows.forEach(function (row) {
+                var sel = row.querySelector('select'), amt = row.querySelector('.split-amt'), isRest = row.querySelector('[data-split-rest]').checked;
+                if (sel.value !== '') placed += 1;
+                if (isRest) { rest = amt; amt.readOnly = true; } else { amt.readOnly = false; fixed += cents(amt.value); }
+            });
+            var remaining = total - fixed;
+            if (rest) rest.value = remaining > 0 ? (remaining / 100).toFixed(2) : '';
+            var ok = placed >= 2 && (rest ? remaining > 0 : remaining === 0);
+            left.textContent = rest ? (remaining > 0 ? 'The rest is ' + usd(remaining) : 'Nothing is left for the rest: lower the other amounts') : (remaining === 0 ? 'Adds up' : (remaining > 0 ? usd(remaining) + ' left to place' : usd(-remaining) + ' too much'));
+            left.style.color = ok ? '#0b6a0b' : '#8a5a00';
+            go.disabled = !ok;
+        }
+        function build() {
+            if (built) return;
+            built = true;
+            var rows = [];
+            try { rows = JSON.parse(form.dataset.rows || '[]'); } catch (e) { rows = []; }
+            if (!rows.length) rows = [{}, {}];
+            rows.forEach(addRow);
+            refresh();
+        }
+        form.addEventListener('input', refresh);
+        form.addEventListener('change', refresh);
+        form.querySelector('[data-split-add]').addEventListener('click', function () { addRow({}); refresh(); });
+        form.addEventListener('split-open', build);
+        if (form.dataset.open === '1') build();
+    });
+    document.querySelectorAll('[data-ub-pick="split"]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var box = btn.closest('[data-ub]'), f = box && box.querySelector('[data-ub-panel="split"] form[data-split]');
+            if (f) f.dispatchEvent(new Event('split-open'));
+        });
+    });
+})();
+</script>
+{% endif %}
 <form method="post" id="clear-form" class="ac-clearbar ac-noprint" hidden>{% csrf_token %}<input type="hidden" name="action" value="clear_selected">
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="fw-semibold" id="clr-sum"></span>

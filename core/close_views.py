@@ -785,10 +785,10 @@ def close_steps(month, today=None):
             step['deadline'] = pay_next.replace(day=5)
     for step in steps:
         # A step under way (not started, needs attention and done each have their own chip) shows just its count, such as "12 of 38"; the full sentence is the link's hover text.
-        found = re.match(r'(\d+ of \d+)', step['detail'] or '')
-        step['progress'] = found.group(1) if found and step['status'] not in ('done', 'attention', 'not_started') else ''
-        if not step['status'] and not step['progress']:
-            step['status'] = 'not_started'   # nothing done yet reads the same as a step not begun: a grey chip
+        under_way = bool(re.match(r'(\d+ of \d+)', step['detail'] or '')) and step['status'] not in ('done', 'attention', 'not_started')
+        step['progress'] = ''
+        if not step['status']:
+            step['status'] = 'attention' if under_way else 'not_started'      # three chips only: not started, needs attention, complete
     return steps
 
 

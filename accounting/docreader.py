@@ -228,16 +228,14 @@ def clean_sections(found, n):
     return out or [{'kind': 'other', 'title': '', 'start': 1, 'end': max(n, 1), 'confidence': 0.0}]
 
 
-def sort_document(doc):
-    """Work out which documents are in the file. Leaves sort_status 'proposed' (a person confirms) or 'manual' (a person chooses, when it cannot be worked out)."""
+def sort_pages(pages, name):
+    """Work out which documents are in a run of pages (the words of each page, kept). `pages` are objects with .number and .text, numbered 1 to N in order: the pages of one file, or of a
+    whole binder (a big upload held in parts). Returns (sections, status): 'proposed' (a person confirms) or 'manual' (a person chooses, when it cannot be worked out)."""
     from . import documents
-    pages = list(DocumentPage.objects.filter(document=doc).order_by('number'))
     n = len(pages)
-    whole = [{'kind': 'other', 'title': doc.name, 'start': 1, 'end': max(n, 1), 'confidence': 0.0}]
+    whole = [{'kind': 'other', 'title': name, 'start': 1, 'end': max(n, 1), 'confidence': 0.0}]
     if not n:
-        doc.sections, doc.sort_status = whole, 'manual'
-        doc.save(update_fields=['sections', 'sort_status'])
-        return
+        return whole, 'manual'
     chars = OUTLINE_CHARS if n <= 200 else 200
     outline = '\n'.join(f'[page {p.number}] ' + ' '.join(p.text.split())[:chars] for p in pages)
     prompt = (f'Below are the first words of each of the {n} pages of ONE file uploaded for a Florida condominium or homeowners association. The file may hold a single document or several joined together: '
@@ -258,15 +256,21 @@ def sort_document(doc):
             if as_dicts(found, 'documents'):
                 sections = clean_sections(found, n)
                 break
-            logger.warning('Claude\'s answer about "%s" held no documents (attempt %s): %r', doc.name, attempt + 1, str(found)[:200])
+            logger.warning('Claude\'s answer about "%s" held no documents (attempt %s): %r', name, attempt + 1, str(found)[:200])
         if not sections:
             raise ValueError('no usable answer')
-        status = 'proposed'
+        return sections, 'proposed'
     except documents.DocumentError:
-        sections, status = whole, 'manual'
+        return whole, 'manual'
     except Exception:
-        logger.exception('Claude could not sort the document "%s"', doc.name)
-        sections, status = whole, 'manual'
+        logger.exception('Claude could not sort the document "%s"', name)
+        return whole, 'manual'
+
+
+def sort_document(doc):
+    """Work out which documents are in the file. Leaves sort_status 'proposed' (a person confirms) or 'manual' (a person chooses, when it cannot be worked out)."""
+    pages = list(DocumentPage.objects.filter(document=doc).order_by('number'))
+    sections, status = sort_pages(pages, doc.name)
     doc.sections, doc.sort_status = sections, status
     doc.save(update_fields=['sections', 'sort_status'])
 
@@ -343,6 +347,11 @@ def process_waiting(limit=3, log=None):
     for doc in AssociationDocument.objects.filter(auto_sort=True, sort_status='waiting', text_status__in=['ready', 'partial']):
         sort_document(doc)
         say(f'sorted {doc.name}: {doc.sort_status}')
+    try:
+        from . import binders
+        binders.process(say)
+    except Exception:
+        logger.exception('Moving the big uploads along failed')
     for doc in list(AssociationDocument.objects.filter(indexed=False, text_status__in=['ready', 'partial']).order_by('uploaded_at')[:1]):      # one file a run: it is a few calls
         try:
             n = index_document(doc)

@@ -1,11 +1,11 @@
 {% load acc_extras %}
 {# The manual SunBiz check: open the state's page, look, say "I checked it". SunBiz does not let a program look things up, so this is how the record stays current. Needs: sb (the profile), sb_prop (the association), sb_next (where to come back to, optional). #}
-<form method="post" action="{% url 'accounting:settings' sb_prop.pk %}" class="sb-check mb-2">{% csrf_token %}
+<form method="post" {% if sb_button_outside %}id="sb-check-form" {% endif %}action="{% url 'accounting:settings' sb_prop.pk %}" class="sb-check mb-2">{% csrf_token %}
     <input type="hidden" name="action" value="sunbiz_hand">{% if sb_next %}<input type="hidden" name="next" value="{{ sb_next }}">{% endif %}
     <div class="d-flex flex-wrap align-items-center gap-2">
         {% if sb.sunbiz_link %}<a class="btn btn-sm btn-primary" href="{{ sb.sunbiz_link }}" target="_blank" rel="noopener"><i data-lucide="external-link" class="icon"></i> Open on SunBiz</a>
         {% else %}<span class="small text-warning-emphasis">Fill in the legal name first: the SunBiz search is built from it.</span>{% endif %}
-        <button class="btn btn-sm btn-outline-primary"><i data-lucide="check" class="icon"></i> I checked it</button>
+        {% if not sb_button_outside %}<button class="btn btn-sm btn-outline-primary"><i data-lucide="check" class="icon"></i> I checked it</button>{% endif %}
         <span class="small text-muted ms-auto">
             {% if sb.sunbiz_checked_on %}{% if sb.sunbiz_checked_by == 'auto' %}Looked up on SunBiz {{ sb.sunbiz_checked_on|mdate }}{% else %}Checked by hand on {{ sb.sunbiz_checked_on|mdate }}{% endif %}{% if sb.sunbiz_needs_check %} <span class="ac-chip warn">Check again</span>{% endif %}
             {% else %}<span class="ac-chip warn">Never checked</span>{% endif %}

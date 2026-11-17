@@ -2,6 +2,12 @@
 {% load acc_extras %}
 {% block acc_title %}{% if commercial %}Close commercial properties{% else %}Close associations{% endif %}{% endblock %}
 {% block acc_body %}
+<style>
+    .ac-bar { display: flex; gap: 3px; margin-top: 7px; max-width: 420px; }
+    .ac-seg { flex: 1 1 0; height: 9px; border-radius: 3px; background: #dfe3e8; }
+    .ac-seg.done { background: var(--status-good, #2e8b57); }
+    .ac-seg.attention { background: #e0a526; }
+</style>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{% if commercial %}store{% else %}building-2{% endif %}" class="icon-lg"></i> {% if commercial %}Close commercial properties{% else %}Close associations{% endif %}</h2>

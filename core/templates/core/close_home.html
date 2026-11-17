@@ -38,7 +38,7 @@
     <div class="ck-n {{ step.status|default:'' }}">{% if step.status == 'done' %}<i data-lucide="check" class="icon"></i>{% else %}{{ step.n }}{% endif %}</div>
     <i data-lucide="{{ step.icon }}" class="icon ck-ico"></i>
     <span class="ck-title flex-grow-1">{{ step.title }}{% if step.detail %}<small class="d-block fw-normal text-muted d-md-none" style="line-height: 1.25;">{{ step.detail }}</small>{% endif %}</span>
-    {% if step.status == 'done' %}<span class="ck-chip done">Complete</span>{% elif step.status == 'attention' %}<span class="ck-chip attention">Needs attention</span>{% elif step.status == 'not_started' %}<span class="ck-chip not_started">Not started</span>{% elif step.progress %}<span class="ck-chip progress">{{ step.progress }}</span>{% endif %}
+    {% if step.status == 'done' %}<span class="ck-chip done">Complete</span>{% elif step.status == 'attention' %}<span class="ck-chip attention">Needs attention</span>{% elif step.status == 'not_started' %}<span class="ck-chip not_started">Not started</span>{% endif %}
     {% if step.deadline %}<span class="small text-muted" title="Owners must be paid by the 5th">by {{ step.deadline|date:"M j" }}</span>{% endif %}
     <i data-lucide="chevron-right" class="icon text-muted"></i>
 </a>

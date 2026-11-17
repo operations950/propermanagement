@@ -8,6 +8,6 @@
     <span class="small text-muted">{{ step_month|date:"F Y" }}, marked {{ step_done.marked_at|mdate }}{% if step_done.marked_by %} by {{ step_done.marked_by.get_full_name|default:step_done.marked_by.username }}{% endif %}</span>
     <button class="btn btn-sm btn-outline-secondary" name="action" value="undo_done">Undo</button>
     {% else %}
-    <button class="btn btn-success" name="action" value="mark_done" onclick="return confirm('{{ step_confirm|escapejs }}')"><i data-lucide="check" class="icon"></i> Mark {{ step_label }} done for {{ step_month|date:"F Y" }}</button>
+    <button class="btn btn-primary btn-sm" name="action" value="mark_done" onclick="return confirm('{{ step_confirm|escapejs }}')"><i data-lucide="check" class="icon"></i> Mark {{ step_label }} done for {{ step_month|date:"F Y" }}</button>
     {% endif %}
 </form>

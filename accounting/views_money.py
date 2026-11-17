@@ -14,9 +14,9 @@ from django.utils import timezone
 
 from core.models import Contact, Unit
 
-from . import bankrec, charges, checkprint, invoice_inbox, ledger, owners, package, payables, reporting, scheduled, webvault
+from . import bankrec, charges, checkprint, closing, invoice_inbox, ledger, owners, package, payables, reporting, scheduled, webvault
 from . import standard_chart as sc
-from .models import (ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, ChargeRule, JournalEntry, JournalRule, Ownership, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
+from .models import (CloseStepDone, ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, ChargeRule, JournalEntry, JournalRule, Ownership, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
 from .web import admin_only, association_or_404, books_or_redirect, default_month, month_context, parse_date, parse_money, parse_month, acc_up
 
 
@@ -71,6 +71,20 @@ def _unit_choices(prop):
     return [{'pk': u.pk, 'label': u.label + (' - ' + ' / '.join(names[u.pk]) if names.get(u.pk) else '')} for u in owners.active_units(prop)]
 
 
+def _split_rows_from(request, prop):
+    """The rows typed on a split form: split_account_N, split_amount_N, split_memo_N, and split_rest naming the row that takes the rest. Blank rows are left out."""
+    rows = []
+    for i in range(1, bankrec.MAX_SPLIT_ROWS + 1):
+        pk = (request.POST.get(f'split_account_{i}') or '').strip()
+        if not pk:
+            continue
+        acct = get_object_or_404(Account, pk=pk, association=prop)
+        rest = request.POST.get('split_rest') == str(i)
+        typed = (request.POST.get(f'split_amount_{i}') or '').strip()
+        rows.append({'account': acct, 'amount': parse_money(typed) if typed and not rest else None, 'memo': request.POST.get(f'split_memo_{i}') or '', 'rest': rest})
+    return rows
+
+
 @admin_only
 def bank(request, pk, bank_pk, month):
     prop, redirect_to = _books(request, pk)
@@ -119,6 +133,11 @@ def bank(request, pk, bank_pk, month):
                 vendor = payables.vendor_for_name(request.POST.get('vendor')) if (request.POST.get('vendor') or '').strip() else None
                 bankrec.add_to_books(line, account, request.user, vendor=vendor, memo=(request.POST.get('memo') or '').strip())
                 messages.success(request, 'Added to the books and matched.')
+            elif action == 'split_line':
+                line = get_object_or_404(BankLine, pk=request.POST.get('bank_line'), statement__bank_account=acct)
+                rows = _split_rows_from(request, prop)
+                bankrec.split_line(line, rows, request.user, memo=(request.POST.get('memo') or '').strip(), remember=request.POST.get('remember') == '1')
+                messages.success(request, 'Split between the accounts and matched.')
             elif action == 'owner_payment':
                 line = get_object_or_404(BankLine, pk=request.POST.get('bank_line'), statement__bank_account=acct)
                 unit = get_object_or_404(Unit, pk=request.POST.get('unit'), property=prop)
@@ -140,11 +159,16 @@ def bank(request, pk, bank_pk, month):
     other_banks = prop.bank_accounts.filter(is_active=True)
     accounts = list(prop.accounts.filter(is_active=True).order_by('code'))
     guesses = bankrec.suggested_accounts(s['unmatched_bank'], accounts)
+    splits = bankrec.suggested_splits(s['unmatched_bank'])
     open_items = [r['item'] for r in s['rows']]
     for b in s['unmatched_bank']:
-        b.suggested = guesses.get(b.pk)                      # what the same words were put to before: a suggestion, never posted by itself
+        b.split_suggest = splits.get(b.pk)                   # the same words were split before: the same accounts, last time's amounts, the rest recalculated; never posted by itself
+        b.suggested = None if b.split_suggest else guesses.get(b.pk)          # what the same words were put to before: a suggestion, never posted by itself
+        if b.split_suggest:
+            b.split_json = json.dumps([{'account': r['account'].pk, 'amount': str(r['amount']), 'memo': r['memo'], 'rest': r['rest']} for r in b.split_suggest['rows']])
+            b.split_last = b.split_suggest['template'].updated_at
         b.candidates = bankrec.receipt_candidates(b, open_items) if b.amount > 0 else []     # payments the books already hold that this deposit may be
-    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': accounts, 'units': _unit_choices(prop),
+    return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': accounts, 'split_accounts': [{'id': a.pk, 'label': str(a)} for a in accounts if a.pk != acct.account_id], 'units': _unit_choices(prop),
                                                     **acc_up(request, prop, ['accounting:close', 'accounting:hub', 'accounting:reports'], _go('close', prop.pk, f'{first:%Y-%m}'), f'{prop.name} close'), **month_context(first)})
 
 
@@ -584,6 +608,35 @@ def recurring(request, pk):
                     RecurringBill.objects.create(association=prop, **fields)
                 VendorTerms.objects.update_or_create(association=prop, vendor=vendor, defaults={'default_account': account, 'pay_method': fields['pay_method']})
                 messages.success(request, 'Saved.')
+            elif action == 'skip_bill':
+                rec_obj = get_object_or_404(RecurringBill, pk=request.POST.get('rec'), association=prop)
+                skip_month = parse_month(request.POST.get('month'), ledger.month_start(timezone.localdate()))
+                payables.skip_recurring(rec_obj, skip_month, request.user, request.POST.get('note') or '')
+                messages.success(request, f'{rec_obj.description} is skipped for {skip_month:%B %Y}.')
+                return redirect(here + f'?tab=bills&month={skip_month:%Y-%m}')
+            elif action in ('mark_done', 'undo_done'):
+                step_tab = request.POST.get('tab') if request.POST.get('tab') in ('bills', 'charges', 'entries') else 'bills'
+                step_key = {'bills': 'recurring', 'charges': 'charges', 'entries': 'entries'}[step_tab]
+                step_month = parse_month(request.POST.get('month'), ledger.previous_month(timezone.localdate()))
+                if action == 'undo_done':
+                    CloseStepDone.objects.filter(association=prop, month=step_month, key=step_key).delete()
+                    messages.success(request, f'Open again for {step_month:%B %Y}.')
+                else:
+                    if step_key == 'recurring':
+                        left = [r['rec'].description for r in payables.recurring_status(prop, step_month) if r['due'] and r['fixed'] and not r['posted'] and not r['skipped']]
+                        if left:
+                            raise ValueError('Post or skip each fixed bill first: ' + ', '.join(left) + '.')
+                    elif step_key == 'entries':
+                        left = [r['rule'].name for r in scheduled.pending_entries(prop, step_month, timezone.localdate())]
+                        if left:
+                            raise ValueError('Post or skip each recurring entry first: ' + ', '.join(left) + '.')
+                    else:
+                        left = closing.charges_pending(prop, step_month)
+                        if left:
+                            raise ValueError(f'{left} charge{"s" if left != 1 else ""} not posted yet. Post {"them" if left != 1 else "it"} first.')
+                    CloseStepDone.objects.get_or_create(association=prop, month=step_month, key=step_key, defaults={'marked_by': request.user})
+                    messages.success(request, f'Marked done for {step_month:%B %Y}.')
+                return redirect(here + f'?tab={step_tab}&month={step_month:%Y-%m}')
             elif action == 'stop':
                 RecurringBill.objects.filter(pk=request.POST.get('rec'), association=prop).update(is_active=False)
             elif action == 'resume':
@@ -601,6 +654,39 @@ def recurring(request, pk):
                 what = 'late fee' if action == 'assess_late' else 'interest charge'
                 messages.success(request, f'Charged {len(made)} {what}{"s" if len(made) != 1 else ""}: ${sum((c.amount for c in made), ZERO):,.2f}.' if made else f'No {what}s were owed.')
                 return redirect(here + '?tab=charges')
+            elif action in ('je_save', 'je_post', 'je_skip', 'je_unskip'):
+                tab_back = here + '?tab=entries&month=' + (request.POST.get('month') or '')
+                rule = get_object_or_404(JournalRule, pk=request.POST.get('rule'), association=prop, kind=JournalRule.Kind.ENTRY) if request.POST.get('rule') else None
+                if action == 'je_save':
+                    rows = []
+                    for i in range(1, 13):
+                        acct_pk = (request.POST.get(f'je_account_{i}') or '').strip()
+                        if not acct_pk:
+                            continue
+                        typed = (request.POST.get(f'je_amount_{i}') or '').strip()
+                        is_rest = request.POST.get('je_rest') == str(i)
+                        rows.append({'account': get_object_or_404(Account, pk=acct_pk, association=prop), 'side': request.POST.get(f'je_side_{i}') or 'debit',
+                                     'amount': parse_money(typed) if typed and not is_rest else ZERO, 'memo': request.POST.get(f'je_memo_{i}') or '', 'is_rest': is_rest})
+                    saved = scheduled.save_entry_rule(prop, request.POST.get('name'), request.POST.get('day_of_month') or 0, rows, rule=rule)
+                    messages.success(request, f'{saved.name} saved. It comes up on the close sheet each month to post or skip.')
+                elif action == 'je_post':
+                    month_first = parse_month(request.POST.get('month'), ledger.month_start(timezone.localdate()))
+                    overrides = {}
+                    for l in rule.lines.all():
+                        typed = (request.POST.get(f'amt_{l.pk}') or '').strip()
+                        if typed and not l.is_rest:
+                            overrides[l.pk] = parse_money(typed)
+                    entry = scheduled.post_entry_rule(prop, rule, month_first, request.user, amounts=overrides or None)
+                    messages.success(request, f'Posted J-{entry.number}: ${sum(l.debit for l in entry.lines.all()):,.2f}, dated {entry.date:%b} {entry.date.day}.')
+                elif action == 'je_skip':
+                    month_first = parse_month(request.POST.get('month'), ledger.month_start(timezone.localdate()))
+                    scheduled.skip_rule(prop, rule, month_first, request.user, request.POST.get('note') or '')
+                    messages.success(request, f'{rule.name} is skipped for {month_first:%B %Y}.')
+                else:
+                    month_first = parse_month(request.POST.get('month'), ledger.month_start(timezone.localdate()))
+                    scheduled.unskip_rule(rule, month_first)
+                    messages.success(request, f'{rule.name} is open again for {month_first:%B %Y}.')
+                return redirect(tab_back)
             elif action in ('jr_add', 'jr_save'):
                 day = int(request.POST.get('day_of_month') or 0)
                 if not 1 <= day <= 31:
@@ -615,7 +701,7 @@ def recurring(request, pk):
                 JournalRule.objects.filter(pk=request.POST.get('rule'), association=prop).update(is_active=(action == 'jr_resume'))
                 return redirect(here + '?tab=entries')
             elif action == 'jr_post':
-                rule = get_object_or_404(JournalRule, pk=request.POST.get('rule'), association=prop)
+                rule = get_object_or_404(JournalRule, pk=request.POST.get('rule'), association=prop, kind=JournalRule.Kind.RESERVE)
                 month_first = parse_month(request.POST.get('month'), ledger.month_start(timezone.localdate()))
                 entry = scheduled.post_contribution(prop, rule, month_first, request.user)
                 messages.success(request, f'Posted J-{entry.number}: ${sum(l.credit for l in entry.lines.all()):,.2f} to the reserve funds, dated {entry.date:%b} {entry.date.day}.')
@@ -632,7 +718,7 @@ def recurring(request, pk):
     state = {r['rec'].pk: r for r in payables.recurring_status(prop, month)}
     for r in rows:
         st = state.get(r.pk)
-        r.this_month = None if not r.is_active or st is None or not st['due'] else ('posted' if st['posted'] else ('waiting' if not st['fixed'] else 'missing'))
+        r.this_month = None if not r.is_active or st is None or not st['due'] else ('posted' if st['posted'] else ('skipped' if st.get('skipped') else ('waiting' if not st['fixed'] else 'missing')))
     edit = next((r for r in rows if str(r.pk) == request.GET.get('edit')), None)
     rules = list(ChargeRule.objects.filter(association=prop).order_by('is_special', 'name'))
     for rule in rules:
@@ -642,12 +728,23 @@ def recurring(request, pk):
     jrules = list(JournalRule.objects.filter(association=prop).order_by('name'))
     for jr in jrules:
         jr.st = scheduled.status(prop, jr, month, today)
+        if jr.kind == JournalRule.Kind.ENTRY:
+            jr.rows = scheduled.entry_amounts(jr)
+            jr.form_rows = [{'account': r['account'].pk, 'side': r['side'], 'amount': r['amount'] if not r['is_rest'] else '', 'memo': r['memo'], 'rest': r['is_rest']} for r in jr.rows]
+            jr.form_rows += [{}] * max(2, 6 - len(jr.form_rows))
+    entry_rules = [jr for jr in jrules if jr.kind == JournalRule.Kind.ENTRY]
+    reserve_rules = [jr for jr in jrules if jr.kind != JournalRule.Kind.ENTRY]
     needs = [r for r in rows if r.this_month == 'missing']                     # only a fixed bill that should have posted: one whose amount changes is settled in the bank reconciliation
     fixed_rows = [r for r in rows if r.is_fixed]
     variable_rows = [r for r in rows if not r.is_fixed]
-    counts = {'bills': len(needs), 'charges': sum(1 for r in rules if r.is_active and r.st['pending']) + (1 if late_rows or interest_rows else 0), 'entries': sum(1 for jr in jrules if jr.is_active and jr.st['state'] in ('due', 'no_budget'))}
-    return render(request, 'accounting/recurring.html', {'assoc': prop, 'rows': rows, 'edit': edit, 'vendors': _vendor_names(prop), 'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'),
-                                                         'frequencies': RecurringBill.Frequency.choices, 'profile': ledger.profile_for(prop), 'today': today, 'tab': tab, 'rules': rules, 'jrules': jrules, 'counts': counts,
+    counts = {'bills': len(needs), 'charges': sum(1 for r in rules if r.is_active and r.st['pending']), 'entries': sum(1 for jr in jrules if jr.is_active and jr.st['state'] in ('due', 'no_budget'))}
+    step_key = {'bills': 'recurring', 'charges': 'charges', 'entries': 'entries'}[tab]
+    step_word = {'bills': 'recurring bills', 'charges': 'owner charges', 'entries': 'recurring entries'}[tab]
+    step_context = {'step_done': CloseStepDone.objects.filter(association=prop, month=month, key=step_key).select_related('marked_by').first(), 'step_month': month, 'step_label': step_word,
+                    'step_confirm': f'Mark {step_word} done for {month:%B %Y}? This changes nothing in the books; it tells the month-end close you have checked them.',
+                    'step_hidden': [('month', f'{month:%Y-%m}'), ('tab', tab)]}
+    return render(request, 'accounting/recurring.html', {**step_context, 'assoc': prop, 'rows': rows, 'edit': edit, 'vendors': _vendor_names(prop), 'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'),
+                                                         'frequencies': RecurringBill.Frequency.choices, 'profile': ledger.profile_for(prop), 'today': today, 'tab': tab, 'rules': rules, 'jrules': jrules, 'entry_rules': entry_rules, 'reserve_rules': reserve_rules, 'new_entry_rows': [{'side': 'debit'}, {'side': 'debit'}, {'side': 'credit'}, {}, {}, {}], 'all_accounts': list(prop.accounts.filter(is_active=True).order_by('code')), 'counts': counts,
                                                          'late_rows': late_rows, 'interest_rows': interest_rows, 'late_total': sum((r['amount'] for r in late_rows), ZERO), 'interest_total': sum((r['amount'] for r in interest_rows), ZERO),
                                                          'needs': needs, 'fixed_rows': fixed_rows, 'variable_rows': variable_rows, **acc_up(request, prop, ['accounting:hub', 'accounting:close'], _go('hub', prop.pk), 'Accounting'), **month_context(month)})
 

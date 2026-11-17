@@ -1,0 +1,14 @@
+{% load acc_extras %}
+{# Split one statement line between accounts. Needs b (the bank line). Optional: split_json (rows to start with: the remembered split), split_title, split_open (build the rows now). The rows are drawn by the script in bank.html from the page's account list. #}
+<form method="post" class="ub-split m-0" data-split data-total="{{ b.amount }}" data-open="{% if split_open %}1{% endif %}" data-rows="{{ split_json|default:'[]' }}">{% csrf_token %}
+    <input type="hidden" name="action" value="split_line"><input type="hidden" name="bank_line" value="{{ b.pk }}">
+    {% if split_title %}<div class="fw-semibold small mb-1">{{ split_title }} {% include '_tip.html' with text='This line was split before (the same words on the statement). The same accounts and last time\'s amounts are filled in, and the line marked "the rest" is worked out from this line\'s amount, so you only change what moved, such as the interest. Nothing is posted until you press the button.' %}</div>
+    {% else %}<div class="small text-muted mb-1">Split {{ b.amount|money }} between accounts {% include '_tip.html' with text='Choose each account and its amount; they must add up to the line. Tick "the rest" on one line to let it take whatever is left (a loan payment: type the interest, and the principal is the rest). One entry is posted from the bank account and the line is matched.' %}</div>{% endif %}
+    <div data-split-rows></div>
+    <div class="ub-row mt-1">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-split-add><i data-lucide="plus" class="icon"></i> Add a line</button>
+        <span class="small fw-semibold" data-split-left></span>
+        <label class="small text-muted ms-auto mb-0"><input type="checkbox" class="form-check-input" name="remember" value="1" checked> Remember this split for next month</label>
+        <button class="btn btn-sm btn-primary" data-split-go disabled>Post the split</button>
+    </div>
+</form>

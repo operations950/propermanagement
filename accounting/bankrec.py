@@ -27,7 +27,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from . import charges, ledger, payables
-from .models import (ZERO, BankAccount, BankOpeningItem, BankLine, BankStatement, Bill, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt,
+from .models import (ZERO, BankAccount, BankOpeningItem, BankSplitTemplate, BankLine, BankStatement, Bill, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt,
                      RecurringBill)
 
 logger = logging.getLogger(__name__)
@@ -760,8 +760,8 @@ def suggested_accounts(bank_lines, accounts):
     pool = {a.pk: a for a in accounts if a.pk != bank.account_id and a.kind in ('expense', 'income', 'equity')}
     past = {}
     for entry in JournalEntry.objects.filter(association=bank.association, source=JournalEntry.Source.BANK, reverses__isnull=True).order_by('-date', '-id')[:500].prefetch_related('lines', 'reversed_by'):
-        if entry.reversed_by.all():
-            continue
+        if entry.reversed_by.all() or len(entry.lines.all()) > 2:
+            continue                                      # reversed, or a split between several accounts: no single account to guess
         words = _words(entry.memo)
         for line in entry.lines.all():
             if words and line.account_id in pool:
@@ -806,6 +806,118 @@ def add_to_books(bank_line, account, user=None, vendor=None, memo=''):
     line = entry.lines.get(account=bank.account)
     month_first = ledger.month_start(bank_line.statement.period_end)
     return _commit(bank, month_first, [bank_line], [Item('line', line, entry.date, line.debit - line.credit)], 'added to the books', auto=False)
+
+
+# ---------------------------------------------------------------- splitting a statement line between accounts
+
+MAX_SPLIT_ROWS = 20
+
+
+def _split_rows(bank_line, rows):
+    """The rows of a split, checked and worked out: [{'account', 'amount' (signed, the way the line moves money: plus is the same direction as the line), 'memo', 'vendor', 'rest'}].
+    The row marked rest takes what the others leave. Raises StatementError with the reason in words."""
+    bank = bank_line.statement.bank_account
+    total = abs(bank_line.amount)
+    rows = [r for r in rows if r.get('account') is not None]
+    if len(rows) < 2:
+        raise StatementError('A split needs at least two accounts. For one account, use Add to books.')
+    if len(rows) > MAX_SPLIT_ROWS:
+        raise StatementError(f'A split can have at most {MAX_SPLIT_ROWS} lines.')
+    out, rest_row = [], None
+    for r in rows:
+        acct = r['account']
+        if acct.association_id != bank.association_id or not acct.is_active:
+            raise StatementError(f'{acct} is not an account of this association.')
+        if acct.pk == bank.account_id:
+            raise StatementError('A line cannot be split to the bank account itself.')
+        row = {'account': acct, 'amount': None if r.get('rest') else ledger.money(r.get('amount') or 0), 'memo': (r.get('memo') or '').strip()[:200], 'vendor': r.get('vendor'), 'rest': bool(r.get('rest'))}
+        if row['rest']:
+            if rest_row is not None:
+                raise StatementError('Only one line can be "the rest".')
+            rest_row = row
+        elif not row['amount']:
+            raise StatementError(f'Type an amount for {acct}, or mark it as "the rest".')
+        out.append(row)
+    fixed = sum((r['amount'] for r in out if not r['rest']), ZERO)
+    if rest_row is not None:
+        rest_row['amount'] = total - fixed
+        if rest_row['amount'] <= 0:
+            raise StatementError(f'The other amounts come to ${fixed:,.2f}, which leaves nothing for "{rest_row["account"]}" out of ${total:,.2f}.')
+    elif fixed != total:
+        raise StatementError(f'The amounts come to ${fixed:,.2f}, not ${total:,.2f}: ${abs(total - fixed):,.2f} {"left to place" if fixed < total else "too much"}.')
+    return out
+
+
+@transaction.atomic
+def split_line(bank_line, rows, user=None, memo='', remember=True):
+    """Put a statement line (money in or out, any kind) in the books split between several accounts, and match it: ONE entry, the bank account's own cash account for the whole amount on one
+    side and each account on the other. `rows` is [{'account', 'amount', 'memo', 'vendor', 'rest'}]; the amounts add up to the line, and the row marked rest takes what the others leave (a loan's
+    principal is the payment less the interest). A negative amount goes the other way (a refund inside a payment). The split is remembered for next month (see suggested_splits)."""
+    bank_line = claim_line(bank_line)
+    bank = bank_line.statement.bank_account
+    rows = _split_rows(bank_line, rows)
+    desc = (memo or '').strip() or bank_line.description
+    amount = abs(bank_line.amount)
+    outgoing = bank_line.amount < 0
+    cash = {'account': bank.account, 'memo': desc}
+    lines = [cash]
+    if outgoing:
+        cash['credit'] = amount
+    else:
+        cash['debit'] = amount
+    for r in rows:
+        side_debit = (r['amount'] > 0) if outgoing else (r['amount'] < 0)         # a payment debits the accounts it pays; a deposit credits them
+        line = {'account': r['account'], 'memo': r['memo'] or desc, 'vendor': r['vendor']}
+        line['debit' if side_debit else 'credit'] = abs(r['amount'])
+        lines.append(line)
+    entry = ledger.post_entry(bank.association, bank_line.date, lines, memo=desc, source=JournalEntry.Source.BANK, source_ref=f'bankline:{bank_line.pk}', user=user)
+    cash_line = entry.lines.get(account=bank.account)
+    month_first = ledger.month_start(bank_line.statement.period_end)
+    match = _commit(bank, month_first, [bank_line], [Item('line', cash_line, entry.date, cash_line.debit - cash_line.credit)], 'split between accounts', auto=False)
+    if remember:
+        remember_split(bank, bank_line, rows)
+    return match
+
+
+def remember_split(bank_account, bank_line, rows):
+    """Keep how a line was split under the words of its description (numbers and punctuation left out), so the same words next month come up with the same accounts. Returns the template, or
+    None when the description has no words to go by."""
+    words = _words(bank_line.description)
+    if not words:
+        return None
+    lines = [{'account': r['account'].pk, 'amount': str(r['amount']), 'memo': r['memo'], 'rest': bool(r['rest'])} for r in rows]
+    tpl, made = BankSplitTemplate.objects.get_or_create(bank_account=bank_account, words=words, outgoing=bank_line.amount < 0, defaults={'lines': lines})
+    if not made:
+        tpl.lines = lines
+        tpl.used_count += 1
+        tpl.save(update_fields=['lines', 'used_count', 'updated_at'])
+    return tpl
+
+
+def suggested_splits(bank_lines):
+    """{bank line id: {'rows': [{'account', 'amount', 'memo', 'rest'}], 'template'}} for the unmatched lines whose words were split before on this bank account: the same accounts, each row at
+    last time's amount, and the row marked rest recalculated from this line's amount, so only what changed has to be typed. A suggestion only: nothing is posted until a person presses the button."""
+    bank_lines = [b for b in bank_lines]
+    if not bank_lines:
+        return {}
+    bank = bank_lines[0].statement.bank_account
+    templates = {(t.words, t.outgoing): t for t in BankSplitTemplate.objects.filter(bank_account=bank)}
+    if not templates:
+        return {}
+    from .models import Account
+    accounts = {a.pk: a for a in Account.objects.filter(association=bank.association, is_active=True).exclude(pk=bank.account_id)}
+    out = {}
+    for b in bank_lines:
+        tpl = templates.get((_words(b.description), b.amount < 0))
+        if tpl is None or not tpl.lines or any(l['account'] not in accounts for l in tpl.lines):
+            continue
+        total = abs(b.amount)
+        rows = [{'account': accounts[l['account']], 'amount': Decimal(l['amount']), 'memo': l.get('memo', ''), 'rest': bool(l.get('rest'))} for l in tpl.lines]
+        rest = [r for r in rows if r['rest']]
+        if len(rest) == 1:
+            rest[0]['amount'] = total - sum((r['amount'] for r in rows if not r['rest']), ZERO)
+        out[b.pk] = {'rows': rows, 'template': tpl}
+    return out
 
 
 DUPLICATE_DAYS = 7

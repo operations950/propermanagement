@@ -12,7 +12,7 @@ from django.utils import timezone
 from core.models import Contact
 
 from . import charges, closing, delinquency, ledger, owner_collections, payables, scheduled
-from .models import Bill, CaseEvent, Charge, ChargeRule, DelinquencyCase, JournalEntry, JournalRule, RecurringBill
+from .models import Bill, CaseEvent, Charge, ChargeRule, CloseStepDone, DelinquencyCase, JournalEntry, JournalRule, RecurringBill
 from .tests import D, DelinquencyBase, bank_for, budget_with_reserves, make_assoc
 
 STORAGES = {'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
@@ -73,8 +73,12 @@ class TheCloseSheetInItsNewOrderTests(TestCase):
         self.assertIn('1 variable bill', by['recurring']['detail'])
         payables.post_recurring(self.prop, date(2026, 10, 31))
         by = {i['key']: i for i in self.sheet()['items']}
-        self.assertEqual(by['recurring']['status'], 'done')                                   # nothing but the variable bill is left, and it is not this step's business
-        self.assertIn('All fixed bills posted', by['recurring']['detail'])
+        self.assertEqual(by['recurring']['status'], 'attention')                              # nothing but the variable bill is left, but the step waits for your word that you looked
+        self.assertIn('posted or skipped', by['recurring']['detail'])
+        CloseStepDone.objects.create(association=self.prop, month=self.month, key='recurring')
+        by = {i['key']: i for i in self.sheet()['items']}
+        self.assertEqual(by['recurring']['status'], 'done')
+        self.assertIn('1 variable bill', by['recurring']['detail'])
 
     def test_the_variable_bills_have_their_own_check_after_the_bank_reconciliation(self):
         by = {i['key']: i for i in self.sheet()['items']}
@@ -104,6 +108,10 @@ class TheCloseSheetInItsNewOrderTests(TestCase):
         self.assertIn('tab=charges', item['url'])
         charges.post_due(self.prop, date(2026, 10, 1))
         item = {i['key']: i for i in self.sheet()['items']}['charges']
+        self.assertEqual(item['status'], 'attention')                                          # posted, and now it waits for you to say you checked them
+        self.assertIn('mark the step done', item['detail'])
+        CloseStepDone.objects.create(association=self.prop, month=self.month, key='charges')
+        item = {i['key']: i for i in self.sheet()['items']}['charges']
         self.assertEqual(item['status'], 'done')
 
     def test_the_recurring_journal_entries_step_covers_every_entry_and_replaces_the_reserve_step(self):
@@ -111,15 +119,18 @@ class TheCloseSheetInItsNewOrderTests(TestCase):
         rule = JournalRule.objects.create(association=self.prop, day_of_month=27)
         by = {i['key']: i for i in self.sheet()['items']}
         self.assertEqual(by['entries']['status'], 'attention')
-        self.assertIn('Reserve contribution: not posted yet', by['entries']['detail'])
+        self.assertIn('Reserve contribution: post or skip it', by['entries']['detail'])
         self.assertIn('posts itself on its day', by['entries']['detail'])
         rule.auto_post = False
         rule.save()
         self.assertIn('Automatic posting is off for it', {i['key']: i for i in self.sheet()['items']}['entries']['detail'])
         scheduled.post_contribution(self.prop, rule, self.month)
         by = {i['key']: i for i in self.sheet()['items']}
+        self.assertEqual(by['entries']['status'], 'attention')                                 # every entry is posted: now it waits for you to mark the step done
+        self.assertIn('Look them over', by['entries']['detail'])
+        CloseStepDone.objects.create(association=self.prop, month=self.month, key='entries')
+        by = {i['key']: i for i in self.sheet()['items']}
         self.assertEqual(by['entries']['status'], 'done')
-        self.assertIn('posted Oct 27', by['entries']['detail'])
         self.assertFalse(any(k.startswith('journal') for k in keys(self.sheet())))
 
     def test_with_no_recurring_entries_the_step_is_done(self):

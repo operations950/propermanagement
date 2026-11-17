@@ -81,9 +81,11 @@ class UnmatchedLinesScreenTests(TestCase):
         line(self.statement, date(2026, 3, 12), 'ACH GARDEN CO', '-250', 'withdrawal')
         html = self.page()
         self.assertIn('Paid to', html)
-        self.assertNotIn('data-ub-pick="add">', html)
+        self.assertIn('data-ub-pick="add">Add to one account', html)            # one account or a split between accounts: a payment can always be split
+        self.assertIn('data-ub-pick="split">Split between accounts', html)
+        self.assertNotIn('data-ub-pick="owner"', html)
         self.assertNotIn("Owner's payment", html)
-        self.assertNotIn('Split it', html)
+        self.assertNotIn('Split it', html)                                      # the deposits screen's owner split is for deposits only
 
     def test_a_guess_is_one_primary_button_with_a_change_link(self):
         earlier = BankStatement.objects.create(bank_account=self.bank, period_end=date(2026, 2, 28), end_balance=D('0'))
