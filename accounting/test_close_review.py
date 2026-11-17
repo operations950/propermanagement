@@ -188,3 +188,21 @@ class CloseSheetAndUpTests(TestCase):
         self.client.get(reverse('ws_financials'), **self.html)
         r = self.client.get(reverse('close_bank_tieout'), **self.html)
         self.assertEqual(r.context['up'].label, 'Financials')
+
+    def test_owner_collections_opened_from_late_fees_goes_up_to_the_checklist_not_to_late_fees(self):
+        for start in (reverse('close_home') + '?month=2026-10', reverse('accounting:close', args=[self.prop.pk, '2026-10'])):
+            s = self.client.session
+            s.pop('nav_trail', None)
+            s.save()
+            self.client.get(start, **self.html)
+            self.client.get(reverse('accounting:late_fees', args=[self.prop.pk]) + '?month=2026-10&as_of=2026-10-31', **self.html)
+            r = self.client.get(reverse('accounting:collections', args=[self.prop.pk]), **self.html)
+            self.assertIn(r.context['acc_back_label'], ('Month-end checklist', 'Month-end close'), start)
+            self.assertNotEqual(r.context['acc_back_label'], 'Late fees and interest')
+            r = self.client.get(reverse('accounting:late_fees', args=[self.prop.pk]) + '?month=2026-10&as_of=2026-10-31', **self.html)         # and back to late fees: still the checklist
+            self.assertIn(r.context['acc_back_label'], ('Month-end checklist', 'Month-end close'), start)
+
+    def test_owner_collections_opened_from_the_accounting_hub_still_goes_up_to_it(self):
+        self.client.get(reverse('accounting:hub', args=[self.prop.pk]), **self.html)
+        r = self.client.get(reverse('accounting:collections', args=[self.prop.pk]), **self.html)
+        self.assertEqual(r.context['acc_back_label'], 'Accounting')
