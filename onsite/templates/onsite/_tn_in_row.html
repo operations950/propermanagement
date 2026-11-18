@@ -1,0 +1,3 @@
+<div class="row2"><span class="nm"><a href="{% url 'property_detail' x.row.property.pk %}">{{ x.name }}</a>{% if x.unit %} <small>{{ x.unit }}</small>{% endif %}</span>
+  <span class="b {{ x.ready_tone }}">{{ x.ready }}</span>
+  {% include 'onsite/_tn_time.html' with e=x.e r=x.row word='in' cls='b in' %}</div>

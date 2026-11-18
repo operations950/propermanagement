@@ -6,5 +6,4 @@ The On-Site sections as one scrolling row of chips on a phone, for people who ar
     <a href="{% url 'onsite_turnovers' %}" class="{% if request.resolver_match.url_name == 'onsite_turnovers' %}on{% endif %}">Turnovers</a>
     <a href="{% url 'onsite_rentals_calendar' %}">Calendar</a>
     <a href="{% url 'onsite_performance' %}">Performance</a>
-    {% if is_admin %}<a href="{% url 'onsite_cleaning_payments' %}">Cleaning payments</a>{% endif %}
 </div>

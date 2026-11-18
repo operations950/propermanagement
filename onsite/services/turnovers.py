@@ -197,7 +197,7 @@ def week(start=None, today=None, now=None, show_all=False, status_filter=''):
                     first_at = (i, min(e['minutes'] for e in c['outs'] + c['ins']))
                 row_cells.append({'date': d, 'today': d == today, 'kind': kind, **c})
             info = now_status.get(key) or {'status': CLEAN, 'prev': None, 'cleaning': None, 'prev_visit': None}
-            rows.append({'label': str_board._label(p, unit), 'unit': unit.label if unit else '', 'property': p, 'cells': row_cells, 'status': info['status'], 'prev_cleaning': info['cleaning'],
+            rows.append({'key': key, 'label': str_board._label(p, unit), 'unit': unit.label if unit else '', 'property': p, 'cells': row_cells, 'status': info['status'], 'prev_cleaning': info['cleaning'],
                          'prev_visit': info['prev_visit'], 'first': first_at, 'busy': first_at is not None})
     rows.sort(key=lambda r: (r['first'] is None, r['first'] or (0, 0), r['label'].lower()))
     counts = {s: sum(1 for r in rows if r['status'] == s) for s in STATUSES}
@@ -236,22 +236,34 @@ def _ready_badge(state_cleaning, visit):
     return 'warn', text
 
 
+def _next_check_ins(property_ids, day):
+    """{(property_id, unit_id): the date of the next check-in AFTER `day`}: one query, for the 'next in' line on the clean and needs-cleaning rows."""
+    after = str_board._at(day + timedelta(days=1), time.min)
+    out = {}
+    for pid, uid, check_in in coverage.operational(Booking.objects.filter(
+            status=Booking.Status.ACTIVE, property_id__in=list(property_ids), check_in__gte=after), None).order_by('check_in').values_list('property_id', 'unit_id', 'check_in'):
+        out.setdefault((pid, uid), timezone.localtime(check_in).date())
+    return out
+
+
 def day_view(day, today=None, now=None):
-    """One day as the newspaper: {'summary', 'out', 'in', 'dirty', 'clean', 'occupied', 'day', ...}. The rows are the week board's own (same events, same cleaning states), cut to
+    """One day as the newspaper: {'out', 'in', 'dirty', 'clean', 'occupied', 'day', ...}. The rows are the week board's own (same events, same cleaning states), cut to
     this day. For today the dirty and clean boxes are the units' status right now; for a later day a vacant unit is dirty only when the stay before it has no cleaning scheduled at all;
-    for an earlier day nothing can be said about a vacant unit, so it counts as clean."""
+    for an earlier day nothing can be said about a vacant unit, so it counts as clean.
+
+    The screen is three columns: (1) Checking out over Checking in, (2) Clean & ready over Needs cleaning (each row says when that unit's NEXT check-in is), (3) Occupied. A same-day turnover
+    is not a section of its own: its check-out sits at the bottom of Checking out ('out_same') and its check-in at the top of Checking in ('in_same'), both in the same property order so the
+    pairs line up; 'out' and 'in' keep the whole list for counting."""
     today = today or timezone.localdate()
     now = now or timezone.now()
     w = week(day, today, now)
+    next_in = _next_check_ins({r['property'].pk for r in w['all_rows']}, day)
     boxes = {'out': [], 'in': [], 'dirty': [], 'clean': [], 'occupied': []}
-    turnovers = done = 0
     for r in w['all_rows']:
         c = r['cells'][0]
-        base = {'row': r, 'name': r['property'].name, 'unit': r['unit'], 'label': r['label']}
+        base = {'row': r, 'name': r['property'].name, 'unit': r['unit'], 'label': r['label'], 'next_in': next_in.get(r['key'])}
         same = bool(c['outs'] and c['ins'])
         for e in c['outs']:
-            cl = e['cleaning']
-            done += cl['code'] in CLEANED_CODES
             boxes['out'].append({**base, 'e': e, 'same_day': same, 'sort': e['minutes']})
         for e in c['ins']:
             if c['outs']:
@@ -262,7 +274,6 @@ def day_view(day, today=None, now=None):
                 tone, text = _ready_badge(r['prev_cleaning'], r['prev_visit'])
             else:
                 tone, text = 'good', 'clean & ready'
-            turnovers += same
             boxes['in'].append({**base, 'e': e, 'same_day': same, 'ready_tone': tone, 'ready': text, 'sort': e['minutes']})
         if c['outs'] or c['ins']:
             continue
@@ -287,6 +298,10 @@ def day_view(day, today=None, now=None):
             boxes['clean'].append({**base, 'sort': 0})
     for k in boxes:
         boxes[k].sort(key=lambda x: (x['sort'], x['label'].lower()) if k in ('out', 'in', 'occupied') else x['label'].lower())
-    summary = {'out': len(boxes['out']), 'in': len(boxes['in']), 'cleanings_done': done, 'turnovers': turnovers, 'staying': len(boxes['occupied'])}
-    return {**boxes, 'day': day, 'is_today': day == today, 'summary': summary, 'previous': day - timedelta(days=1), 'next': day + timedelta(days=1), 'cleaners': w['cleaners'],
+    # same-day turnovers: out at the bottom of Checking out, in at the top of Checking in, both in property order so the two groups pair up row for row
+    pair_order = lambda x: (x['label'].lower(), x['sort'])
+    out_same, in_same = sorted((x for x in boxes['out'] if x['same_day']), key=pair_order), sorted((x for x in boxes['in'] if x['same_day']), key=pair_order)
+    out_plain, in_plain = [x for x in boxes['out'] if not x['same_day']], [x for x in boxes['in'] if not x['same_day']]
+    boxes['out'], boxes['in'] = out_plain + out_same, in_same + in_plain
+    return {**boxes, 'out_plain': out_plain, 'out_same': out_same, 'in_same': in_same, 'in_plain': in_plain, 'day': day, 'is_today': day == today, 'previous': day - timedelta(days=1), 'next': day + timedelta(days=1), 'cleaners': w['cleaners'],
             'pending': w['pending'], 'without_cleaning': w['without_cleaning'], 'open_cleanings': w['open_cleanings'], 'now': now}

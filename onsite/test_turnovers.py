@@ -254,14 +254,16 @@ class DayViewTests(Base):
 
     def test_the_boxes_sort_the_units_by_what_they_are_doing(self):
         self.assertEqual(self.names('out'), ['100 Neptune', '800 Tropic'])             # by time: 10 AM, then 2 PM
-        self.assertEqual(self.names('in'), ['4606 Brady', '800 Tropic'])               # 4:00 PM, then 4:30 PM
+        self.assertEqual(self.names('in'), ['800 Tropic', '4606 Brady'])               # the same-day turnover goes to the top of Checking in, then the rest by time
         self.assertEqual(self.names('dirty'), ['803 NE 7th Ave'])
         self.assertEqual(self.names('clean'), ['2821 Frederick'])
         self.assertEqual(self.names('occupied'), ['716 Kittyhawk'])
 
-    def test_the_summary_counts_out_in_cleanings_done_turnovers_and_guests_staying(self):
-        s = self.day()['summary']
-        self.assertEqual(s, {'out': 2, 'in': 2, 'cleanings_done': 1, 'turnovers': 1, 'staying': 1})
+    def test_the_summary_line_is_gone_from_the_top_of_the_day(self):
+        html = self.client.get(reverse('onsite_turnovers') + f'?day={self.today:%Y-%m-%d}').content.decode()
+        for gone in ('guests staying through', 'guest staying through', 'same-day turnovers', 'cleanings <b'):
+            self.assertNotIn(gone, html, gone)
+        self.assertNotIn('summary', self.day())
 
     def test_a_turnover_is_flagged_on_both_its_rows(self):
         d = self.day()
@@ -297,16 +299,17 @@ class DayViewTests(Base):
     def test_an_earlier_day_has_no_dirty_box_entries(self):
         self.assertEqual(self.day(self.today - timedelta(days=2))['dirty'], [])
 
-    def test_the_page_draws_every_box_with_times_and_the_same_day_badge(self):
+    def test_the_page_draws_every_box_with_times(self):
         with mock.patch('django.utils.timezone.now', return_value=self.now):
             html = self.client.get(reverse('onsite_turnovers') + f'?day={self.today:%Y-%m-%d}').content.decode()
-        for word in ('Checking out', 'Checking in', 'Needs cleaning', 'Clean &amp; ready', 'Occupied &middot; staying through', 'same day', 'out 2p', 'in 4:30p', 'clean &amp; ready', 'cleaned',
-                     'Previous day', 'Next day', '2 out', '2 in'):
+        for word in ('Checking out', 'Checking in', 'Needs cleaning', 'Clean &amp; ready', 'Occupied &middot; staying through', 'out 2p', 'in 4:30p', 'clean &amp; ready', 'cleaned',
+                     'Previous day', 'Next day'):
             self.assertIn(word, html, word)
         self.assertNotIn('min gap', html)
         self.assertNotIn('Out Guest', html)
         self.assertIn('data-wk-time', html)                                                # a time is clickable
         self.assertIn('class="paper"', html)
+        self.assertNotIn('<span class="b bad">same day</span>', html)               # the dotted group says it; no red chip on the row
 
     def test_a_time_change_waiting_for_a_yes_has_the_dotted_outline(self):
         GuestRequest.objects.create(booking=self.b_out, kind=GuestRequest.CHECKOUT_KINDS[0], requested_time=time(15, 0), status=GuestRequest.Status.PENDING)
@@ -318,6 +321,91 @@ class DayViewTests(Base):
         self.assertIn(f'?day={(self.today + timedelta(days=1)):%Y-%m-%d}', html)
         self.assertIn(f'?day={(self.today - timedelta(days=1)):%Y-%m-%d}', html)
         self.assertIn(f'?start={self.today:%Y-%m-%d}', html)
+
+
+@override_settings(STORAGES=STORAGES)
+class DayLayoutTests(Base):
+    """Three columns; the same-day turnovers grouped (out at the bottom of Checking out, in at the top of Checking in, the same property order); a next check-in date on the clean and dirty rows."""
+
+    def setUp(self):
+        super().setUp()
+        d = self.today
+        for name in ('Zed Villa', 'Alpha Loft'):                              # two same-day turnovers; alphabetical order is Alpha, Zed whatever the times are
+            p = self.prop(name, 'u')
+            out = self.stay(p, at(d - timedelta(days=3), 15), at(d, 9 if name == 'Zed Villa' else 13))
+            self.stay(p, at(d, 15 if name == 'Zed Villa' else 17), at(d + timedelta(days=2), 10))
+            self.clean(out, Visit.Status.SCHEDULED)
+        self.leaves = self.prop('Early Leaver', 'u')                          # leaves alone at noon, nobody arrives
+        self.clean(self.stay(self.leaves, at(d - timedelta(days=2), 15), at(d, 12)), Visit.Status.SCHEDULED)
+        self.arrives = self.prop('Late Arriver', 'u')                         # arrives alone
+        self.stay(self.arrives, at(d, 18), at(d + timedelta(days=3), 10))
+
+    def day(self, day=None):
+        return turnovers.day_view(day or self.today, self.today, self.now)
+
+    def test_same_day_turnovers_sit_at_the_bottom_of_out_and_the_top_of_in_in_the_same_order(self):
+        d = self.day()
+        self.assertEqual([x['name'] for x in d['out']], ['Early Leaver', 'Alpha Loft', 'Zed Villa'])      # the lone leaver first, then the pairs by property
+        self.assertEqual([x['name'] for x in d['in']], ['Alpha Loft', 'Zed Villa', 'Late Arriver'])      # the same pairs, same order, then the lone arrival
+        self.assertEqual([x['name'] for x in d['out_same']], [x['name'] for x in d['in_same']])
+        self.assertEqual([x['name'] for x in d['out_plain']], ['Early Leaver'])
+        self.assertEqual([x['name'] for x in d['in_plain']], ['Late Arriver'])
+
+    def test_the_page_boxes_the_same_day_groups_in_dotted_lines_and_has_three_columns(self):
+        html = self.client.get(reverse('onsite_turnovers') + f'?day={self.today:%Y-%m-%d}').content.decode()
+        self.assertEqual(html.count('<div class="same"'), 2)                  # one under Checking out, one over Checking in
+        self.assertEqual(html.count('<div class="col">'), 3)
+        out_box = html.split('<section class="box out">')[1].split('</section>')[0]
+        in_box = html.split('<section class="box in">')[1].split('</section>')[0]
+        self.assertGreater(out_box.index('<div class="same"'), out_box.index('Early Leaver'))            # the group is below the lone check-out
+        self.assertLess(in_box.index('<div class="same"'), in_box.index('Late Arriver'))                 # and above the lone check-in
+        self.assertIn('dotted', html)
+        cols = html.split('<div class="col">')
+        self.assertIn('Checking out', cols[1])
+        self.assertIn('Checking in', cols[1])
+        self.assertIn('Clean &amp;', cols[2])
+        self.assertIn('Needs cleaning', cols[2])
+        self.assertIn('Occupied', cols[3])
+
+    def test_clean_and_dirty_rows_say_when_the_next_check_in_is(self):
+        later = self.prop('Quiet Cottage', 'u')
+        self.stay(later, at(self.today + timedelta(days=5), 16), at(self.today + timedelta(days=8), 10))
+        self.prop('Nobody Booked', 'u')
+        dirty = self.prop('Dirty One', 'u')
+        self.stay(dirty, at(self.today - timedelta(days=4), 15), at(self.today - timedelta(days=1), 11))
+        self.stay(dirty, at(self.today + timedelta(days=2), 15), at(self.today + timedelta(days=4), 11))
+        d = self.day()
+        by_clean = {x['name']: x for x in d['clean']}
+        self.assertEqual(by_clean['Quiet Cottage']['next_in'], self.today + timedelta(days=5))
+        self.assertIsNone(by_clean['Nobody Booked']['next_in'])
+        self.assertEqual({x['name']: x for x in d['dirty']}['Dirty One']['next_in'], self.today + timedelta(days=2))
+        html = self.client.get(reverse('onsite_turnovers') + f'?day={self.today:%Y-%m-%d}').content.decode()
+        self.assertIn(f'next in {(self.today + timedelta(days=5)):%a %b} {(self.today + timedelta(days=5)).day}', html)
+        self.assertIn('no check-in booked', html)
+
+    def test_next_check_in_looks_past_the_week_and_ignores_cancelled_bookings(self):
+        p = self.prop('Far Away', 'u')
+        self.stay(p, at(self.today + timedelta(days=1), 15), at(self.today + timedelta(days=2), 10), status=Booking.Status.CANCELLED)
+        self.stay(p, at(self.today + timedelta(days=20), 15), at(self.today + timedelta(days=22), 10))
+        x = {x['name']: x for x in self.day()['clean']}['Far Away']
+        self.assertEqual(x['next_in'], self.today + timedelta(days=20))
+
+    def test_cleaning_payments_is_not_a_tab_on_the_turnovers_screens_for_anyone(self):
+        url = reverse('onsite_cleaning_payments')
+        for query in ('', f'?day={self.today:%Y-%m-%d}'):
+            self.assertNotIn(f'href="{url}"', self.client.get(reverse('onsite_turnovers') + query).content.decode())
+
+    def test_the_cost_of_the_day_does_not_grow_with_the_number_of_units(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as few:
+            self.day()
+        for i in range(5):
+            p = self.prop(f'Extra {i}', 'u')
+            self.stay(p, at(self.today + timedelta(days=3 + i), 15), at(self.today + timedelta(days=5 + i), 10))
+        with CaptureQueriesContext(connection) as many:
+            self.day()
+        self.assertEqual(len(few), len(many))
 
 
 @override_settings(STORAGES=STORAGES)

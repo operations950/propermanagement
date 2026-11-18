@@ -65,8 +65,9 @@
 .tn .pgscroll { overflow-x: auto; }
 .tn .pgin { min-width: 980px; }
 /* the day: a newspaper of boxes */
-.tn .paper { column-count: 3; column-gap: 0.9rem; }
-.tn .box { break-inside: avoid; background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); margin: 0 0 0.9rem; overflow: hidden; }
+.tn .paper { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.9rem; align-items: start; }
+.tn .paper .col { min-width: 0; }
+.tn .box { background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); margin: 0 0 0.9rem; overflow: hidden; }
 .tn .box h3 { margin: 0; padding: 0.3rem 0.7rem; font-size: 0.68rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-secondary); background: rgba(110, 149, 178, .10); border-bottom: 1px solid var(--border-hairline); display: flex; justify-content: space-between; font-weight: 600; font-family: inherit; }
 .tn .box.out h3 { background: var(--out-bg); color: var(--out-ink); } .tn .box.in h3 { background: var(--in-bg); color: var(--in-ink); }
 .tn .box.dirty h3 { background: var(--warn-bg); color: var(--warn-ink); } .tn .box.clean h3 { background: var(--good-bg); color: var(--good-ink); }
@@ -82,8 +83,11 @@
 .tn .b.pending { outline: 1.5px dashed var(--warn-bar); outline-offset: -1px; background: var(--b-fbf3de, #fbf3de); color: var(--warn-ink); }
 .tn .b[data-wk-clean] { cursor: pointer; }
 .tn .box .none { padding: 0.5rem 0.7rem; color: var(--ink-muted); font-size: 0.8rem; }
-@media (max-width: 991px) { .tn .paper { column-count: 2; } }
-@media (max-width: 575px) { .tn .paper { column-count: 1; } }
+.tn .same { border: 2px dotted var(--ink-secondary); border-radius: 6px; margin: 5px 6px; }
+.tn .same .row2:first-child { border-top: 0; }
+.tn .row2 .nx { font-size: 0.72rem; color: var(--ink-muted); white-space: nowrap; }
+@media (max-width: 991px) { .tn .paper { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 575px) { .tn .paper { grid-template-columns: 1fr; } }
 /* phones: one day at a time (week board) */
 .tn .pg-phone { display: none; }
 @media (max-width: 767px) { .tn .pg-phone { display: block; } .tn .pgscroll { display: none; } }
