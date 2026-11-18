@@ -399,6 +399,31 @@ class ApprovalChannelTests(PayablesBase):
         self.assertEqual(bill.bank_account, self.bank)
         self.assertEqual(bill.approved_by, self.user)
 
+    def test_a_bill_already_in_the_books_is_not_posted_again_when_the_board_approves_it(self):
+        bill = payables.create_bill(self.prop, date(2026, 11, 1), [(self.acct('6800'), D('900'), '')], vendor=self.vendor('Already Posted Vendor'), kind=Bill.Kind.ROUTINE)
+        bill = payables.approve_bill(bill, self.user, board_by='Pat Smith')          # approved and posted
+        self.assertEqual(bill.status, Bill.Status.APPROVED)
+        first_entry = bill.entry_id
+        bill.status, bill.approval_channel = Bill.Status.AWAITING_BOARD, 'board'      # put on the waiting list afterwards, the entry stays
+        bill.save(update_fields=['status', 'approval_channel'])
+        posted = JournalEntry.objects.filter(association=self.prop, source=JournalEntry.Source.BILL).count()
+        r = self.client.post(self.home, {'action': 'board_ok', 'bill': bill.pk, 'by': 'Pat Smith', 'on': '2026-11-10', 'tab': 'board'})
+        self.assertEqual(r.status_code, 302)
+        bill.refresh_from_db()
+        self.assertEqual((bill.status, bill.board_approved_by, bill.entry_id), (Bill.Status.APPROVED, 'Pat Smith', first_entry))
+        self.assertEqual(JournalEntry.objects.filter(association=self.prop, source=JournalEntry.Source.BILL).count(), posted)
+
+    def test_a_bill_whose_entry_was_reversed_is_posted_again_on_approval(self):
+        bill = payables.create_bill(self.prop, date(2026, 11, 1), [(self.acct('6800'), D('900'), '')], vendor=self.vendor('Reversed Vendor'), kind=Bill.Kind.ROUTINE)
+        bill = payables.approve_bill(bill, self.user, board_by='Pat Smith')
+        ledger.reverse_entry(bill.entry, date(2026, 11, 2))
+        bill.status = Bill.Status.AWAITING_BOARD
+        bill.save(update_fields=['status'])
+        payables.approve_bill(bill, self.user, board_by='Pat Smith')
+        bill.refresh_from_db()
+        self.assertEqual(bill.status, Bill.Status.APPROVED)
+        self.assertEqual(JournalEntry.objects.filter(association=self.prop, source=JournalEntry.Source.BILL).count(), 2)
+
     def test_the_board_approval_needs_a_name(self):
         up = self.pick(self.drop(dict(READ, total=900.0)))
         bill = hub.create_payable(up, self.user)

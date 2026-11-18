@@ -108,7 +108,8 @@ def approve_bill(bill, user=None, board_by='', board_on=None):
         bill.board_approved_by, bill.board_approved_on = board_by.strip()[:120], board_on or timezone.localdate()
     bill.status = Bill.Status.APPROVED
     bill.approved_by, bill.approved_at = user, timezone.now()
-    _post_bill(bill, user)
+    if not (bill.entry_id and not bill.entry.reversed_by.exists()):          # a bill that is already in the books (put on the board's waiting list after it was posted) is not posted a second time
+        _post_bill(bill, user)
     bill.save()
     return bill
 
