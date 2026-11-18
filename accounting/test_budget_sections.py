@@ -68,10 +68,10 @@ class BudgetSectionOfAnAccountTests(TestCase):
         master = MasterAccount.objects.get(code='6903')
         self.client.post(self.chart, {'action': 'section', 'account': master.pk, 'budget_section': 'Reserves'})
         self.assertEqual(MasterAccount.objects.get(code='6903').budget_section, 'Administrative')
-        income = MasterAccount.objects.get(code='4800')
+        income = MasterAccount.objects.get(code='4810')
         response = self.client.post(self.chart, {'action': 'section', 'account': income.pk, 'budget_section': 'Operating'}, follow=True)
         self.assertContains(response, 'Only expense accounts have a place in the budget sections.')
-        self.assertEqual(MasterAccount.objects.get(code='4800').budget_section, '')
+        self.assertEqual(MasterAccount.objects.get(code='4810').budget_section, '')
 
     def test_a_new_account_is_added_with_its_section_everywhere(self):
         self.client.post(self.chart, {'action': 'add', 'code': '6921', 'name': 'Pool Maintenance', 'kind': 'expense', 'budget_section': 'Utilities'})
@@ -95,7 +95,7 @@ class BudgetSectionOfAnAccountTests(TestCase):
         self.assertIn('name="budget_section"', html)
         self.assertIn('Budget section', html)
         self.assertIn('Budget section of 6903 Insurance Financing', html)
-        self.assertNotIn('Budget section of 4800', html)
+        self.assertNotIn('Budget section of 4810', html)
 
     def test_the_chart_page_has_a_search_box_that_filters_as_you_type(self):
         MasterAccount.objects.filter(code='6906').update(is_active=False)

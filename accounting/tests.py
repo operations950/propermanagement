@@ -1690,7 +1690,7 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         prof.books_start = date(2026, 9, 30)
         prof.save()
         a = lambda code: ledger.account(self.prop, code)
-        ledger.post_entry(self.prop, date(2026, 9, 30), [{'account': a('6882'), 'debit': D('100000')}, {'account': a('4800'), 'credit': D('2000')}, {'account': a('1110'), 'credit': D('98000')}],
+        ledger.post_entry(self.prop, date(2026, 9, 30), [{'account': a('6882'), 'debit': D('100000')}, {'account': a('4810'), 'credit': D('2000')}, {'account': a('1110'), 'credit': D('98000')}],
                           memo='Opening balances', basis='accrual', source=JournalEntry.Source.OPENING, source_ref='yardi-sep30', allow_locked=True)
         spend(self.prop, date(2026, 10, 10), '6882', '8000')
         ledger.post_entry(self.prop, date(2026, 10, 12), [{'account': a('1110'), 'debit': D('300')}, {'account': a('4511'), 'credit': D('300')}], memo='Interest', basis='accrual')
@@ -1706,10 +1706,10 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
 
     def test_other_income_is_a_section_and_the_assessment_is_net_of_it(self):
         ver = self.draft()
-        self.assertEqual(sorted(ver.lines.values_list('account__code', flat=True)), ['4511', '4800', '6882'])      # the assessments are never a line
-        self.assertEqual(ver.lines.get(account__code='4800').actual, D('2000.00'))                                 # income is credits less debits
+        self.assertEqual(sorted(ver.lines.values_list('account__code', flat=True)), ['4511', '4810', '6882'])      # the assessments are never a line
+        self.assertEqual(ver.lines.get(account__code='4810').actual, D('2000.00'))                                 # income is credits less debits
         rows = bg.line_rows(ver, bg.info_for(ver))
-        self.assertEqual({r['code']: r['section'] for r in rows}, {'4511': 'Income', '4800': 'Income', '6882': 'Administrative'})
+        self.assertEqual({r['code']: r['section'] for r in rows}, {'4511': 'Income', '4810': 'Income', '6882': 'Administrative'})
         t = bg.totals(rows, 4)
         self.assertEqual(round(t['oi']['proposed'], 2), 2760.0)                                                     # 2,000 + 300, each with two more months at its average
         self.assertEqual((round(t['total'], 2), round(t['needed'], 2)), (129600.0, 126840.0))
@@ -1718,21 +1718,21 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
 
     def test_the_drill_down_shows_income_as_a_positive_amount(self):
         ver = self.draft()
-        d = bg.actual_detail(ver, ver.lines.get(account__code='4800'))
+        d = bg.actual_detail(ver, ver.lines.get(account__code='4810'))
         self.assertEqual((d['carried'], d['total'], d['actual'], d['matches']), (2000.0, 2000.0, 2000.0, True))
 
     def test_a_draft_made_before_income_counted_gets_its_income_lines(self):
         ver = self.draft()
-        ver.lines.filter(account__code__in=['4800', '4511']).delete()
+        ver.lines.filter(account__code__in=['4810', '4511']).delete()
         self.assertTrue(bg.heal(ver, bg.versions(ver.budget)))
-        self.assertEqual(sorted(ver.lines.values_list('account__code', flat=True)), ['4511', '4800', '6882'])
+        self.assertEqual(sorted(ver.lines.values_list('account__code', flat=True)), ['4511', '4810', '6882'])
         self.assertFalse(bg.heal(ver, bg.versions(ver.budget)))
 
     def test_approving_writes_the_income_lines_and_the_assessment_net_of_them(self):
         ver = self.draft()
         bg.write_budget_lines(ver.budget, ver)
         amounts = {l.account.code: l.annual_amount for l in BudgetLine.objects.filter(budget=ver.budget).select_related('account')}
-        self.assertEqual((amounts['4800'], amounts['4511'], amounts['6882'], amounts['4500']), (D('2400.00'), D('360.00'), D('129600.00'), D('126840.00')))
+        self.assertEqual((amounts['4810'], amounts['4511'], amounts['6882'], amounts['4500']), (D('2400.00'), D('360.00'), D('129600.00'), D('126840.00')))
 
     def test_changes_are_in_parentheses_and_green_when_good_red_when_bad(self):
         from .views_budget import _sheet
@@ -1742,10 +1742,10 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         sheet = _sheet(ver, bg.info_for(ver), 4)
         by = {l['name']: l for sec in sheet['sections'] for l in sec['lines']}
         self.assertEqual(by['Insurance - Hazard, Liability & Property']['tone'], 'good')                          # spending $70,400 less than the budget
-        self.assertEqual(by['Late Fee']['tone'], 'good')                                                           # more income than the (nil) budget
+        self.assertEqual(by['NSF Fees']['tone'], 'good')                                                           # more income than the (nil) budget
         self.assertEqual(sheet['needed']['tone'], 'good')
         self.assertEqual(sheet['calc'][0]['rows'][0]['tone'], 'good')                                              # owners pay less each month
-        self.assertEqual((by['Late Fee']['p'], by['Late Fee']['ptone']), (None, 'good'))                           # "new" is coloured like the dollar change
+        self.assertEqual((by['NSF Fees']['p'], by['NSF Fees']['ptone']), (None, 'good'))                           # "new" is coloured like the dollar change
         self.assertEqual(sheet['sections'][0]['lines'][0]['name'], 'Regular assessments')
         from .views_budget import _tone
         self.assertEqual((_tone(500), _tone(-500), _tone(500, income=True), _tone(-500, income=True), _tone(0.2)), ('bad', 'good', 'good', 'bad', ''))
@@ -1868,7 +1868,7 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         import openpyxl
         self.client.post(self.url, {'action': 'start'})
         html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
-        self.assertIn('.bd-unitbox .t { background: #d9e1ec; color: var(--t-1c2430, #1c2430);', html)
+        self.assertIn('.bd-unitbox .t { background: var(--b-d9e1ec, #d9e1ec); color: var(--t-1c2430, #1c2430);', html)
         self.assertNotIn('.bd-unitbox .t { background: #1c2430', html)
         ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
         head = next(r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == 'By unit calculation')
@@ -1900,7 +1900,7 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         reg = inc['lines'][0]
         self.assertEqual((reg['prior'], reg['projected'], round(reg['proposed'], 2)), (200000.0, 36000.0, 126840.0))      # 30,000 so far, and two more months at the same pace
         self.assertEqual(round(inc['proposed'], 2), round(sheet['total']['proposed'], 2))                              # next year the income covers the expenses exactly
-        self.assertEqual([l['name'] for l in inc['lines']][1:], ['Interest Income', 'Late Fee'])
+        self.assertEqual([l['name'] for l in inc['lines']][1:], ['Interest Income', 'NSF Fees'])
         self.assertEqual(bg.editor_state(ver, bg.versions(ver.budget))['assess']['projected'], 36000.0)
 
     def test_totals_have_a_line_above_and_a_double_line_below(self):

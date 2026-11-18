@@ -66,7 +66,7 @@ CHART = [
     ('4512', 'Legal Fee Income', INCOME), ('4513', 'Special Assessments', INCOME), ('4514', 'Dock Fee Income', INCOME), ('4515', 'Special Assessment Income', INCOME),
     ('4516', 'Special Assessment Loan Interest Income', INCOME), ('4600', 'Application fees', INCOME), ('4620', 'Other Monthly Charges', INCOME),
     ('4700', 'Miscellaneous Income', INCOME), ('4701', 'Maintenance Assessments', INCOME), ('4702', 'Late Fee Income', INCOME), ('4703', 'Laundry Income', INCOME),
-    ('4800', 'Late Fee', INCOME), ('4810', 'NSF Fees', INCOME), ('4820', 'Bank Interest', INCOME), ('4830', 'CleanUp (Misc)', INCOME),
+    ('4810', 'NSF Fees', INCOME), ('4820', 'Bank Interest', INCOME), ('4830', 'CleanUp (Misc)', INCOME),
     # expenses
     ('6205', 'Long-term Lease', EXPENSE), ('6206', 'Recreation Payment', EXPENSE), ('6207', 'Fitness Room Service', EXPENSE), ('6209', 'Irrigation - Parts and Repairs', EXPENSE),
     ('6210', 'Repair', EXPENSE), ('6220', 'Maintenance Personnel', EXPENSE), ('6221', 'Payroll Processing Fees', EXPENSE), ('6222', 'Security Guard Contract', EXPENSE),

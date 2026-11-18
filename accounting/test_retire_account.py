@@ -57,3 +57,14 @@ class RetireAccountTests(TestCase):
     def test_new_associations_no_longer_get_the_account(self):
         from . import standard_chart as sc
         self.assertNotIn('3831', [code for code, name, kind in sc.CHART])
+
+    def test_late_fees_have_one_account_4702_and_no_association_gets_a_separate_late_fee_account(self):
+        from . import standard_chart as sc
+        codes = [code for code, name, kind in sc.CHART]
+        self.assertIn('4702', codes)
+        self.assertNotIn('4800', codes)                                           # Late Fee (4800) was folded into Late Fee Income (4702)
+        self.assertEqual(sc.INCOME_LATE_FEE, '4702')
+        from .yardi_sep30_data import DATA
+        for key, cfg in DATA.items():
+            for book, tb in cfg['tb'].items():
+                self.assertNotIn('4800', tb, (key, book))                           # the opening figures carry it in 4702
