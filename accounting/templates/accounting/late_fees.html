@@ -44,7 +44,7 @@
 <div class="rp-wrap mb-2"><table class="rp ac-stack">
     <thead><tr><th style="width: 28px;"><input type="checkbox" id="lf-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Total owed</th><th>Principal</th><th>Late fees open</th><th>Interest open</th><th>Late fee last charged</th><th>Interest last charged</th><th>Late fee ready</th><th>Interest ready</th></tr></thead><tbody>
     {% for r in rows %}<tr><td>{% if r.ready %}<input type="checkbox" class="lf-pick" name="unit" value="{{ r.unit.pk }}">{% endif %}</td>
-        <td style="white-space: normal;"><button type="button" class="lf-chev" data-lf-toggle="lf-d{{ r.unit.pk }}" aria-expanded="false" aria-label="Show what makes this up"><i data-lucide="chevron-right" class="icon"></i></button><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}
+        <td style="white-space: normal;"><button type="button" class="lf-chev" data-lf-toggle="lf-d{{ r.unit.pk }}" aria-expanded="false" aria-label="Show what makes this up"><i data-lucide="chevron-right" class="icon"></i></button><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner|legal }}
             {% if r.charged_text %}<div class="small"><span class="ac-chip done">Charged</span> <span class="text-muted">{{ r.charged_text }}</span></div>{% endif %}
             {% if not r.late %}<div class="small text-muted">Not late on {{ as_of|mdate }}</div>{% endif %}</td>
         <td class="num fw-semibold">{{ r.total|money }}</td><td class="num">{{ r.principal|money:True }}</td><td class="num">{{ r.late_fees|money:True }}</td><td class="num">{{ r.interest|money:True }}</td>

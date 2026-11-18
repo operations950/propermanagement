@@ -91,6 +91,42 @@ def split_by_share(total, share_rows):
     return [(share_rows[i][0], out[i]) for i in range(len(share_rows))]
 
 
+# ---------------------------------------------------------------- the name an owner is shown by
+
+# Contact names carry the labels the phone book gave them ("Ally Amorim - SAG", "Ray Griffith GLEN"). A name that goes on a statement, a report or a letter is the owner's LEGAL name (the
+# owner's record, "exactly as on the deed"); when none is on file the contact name is shown without its association tag, so nothing with a tag ever goes out.
+_TAG_ROLE = r'(?:President|Vice President|Secretary|Treasurer|Director|Board|VP|LEAD)'
+_TAG_ASSOC = r'(?:SAGlen|SAG|GLEN|GRAND|LAP|LS?P?\d+|Lapensee|La Pensee)'
+_TAG_DASHED = re.compile(rf'\s*(?:[-–]\s*|\()\s*(?:{_TAG_ROLE}\s+)?{_TAG_ASSOC}\b\)?(?:\s+{_TAG_ROLE})*(?:\s+\d+)?\s*$', re.I)        # "- SAG", "-SAG Board", "(SAG)", "- President LS12 LEAD"
+_TAG_BARE = re.compile(rf'\s+(?:SAGlen|SAG|GLEN|LAP|LS?P?\d+)(?:\s+{_TAG_ROLE})*(?:\s+\d+)?\s*$')                                                              # "Ken SAG", "Ray Griffith GLEN", "Bohra SAG 21551" (capitals only)
+
+
+def clean_name(name):
+    """A contact name without the association tag the phone book added to it."""
+    name = ' '.join((name or '').split())
+    for pattern in (_TAG_DASHED, _TAG_BARE):
+        stripped = pattern.sub('', name).strip(' -–')
+        if stripped:
+            name = stripped
+    return name
+
+
+def _legal_name_map():
+    return dict(OwnerProfile.objects.exclude(legal_name='').values_list('contact_id', 'legal_name'))
+
+
+def legal_names():
+    """{contact id: legal name} for every owner with one on file: one query for the whole page (core/memo.py)."""
+    return request_memo.get(('legal_names',), _legal_name_map)
+
+
+def display_name(contact):
+    """The name to print for an owner on anything that goes to an owner, a board or an auditor: the legal name, else the contact name without its tag."""
+    if contact is None:
+        return ''
+    return legal_names().get(contact.pk) or clean_name(contact.name)
+
+
 # ---------------------------------------------------------------- who owns what
 
 def _load_current_ownerships(property_id):

@@ -725,8 +725,8 @@ def recurring(request, pk):
     rules = list(ChargeRule.objects.filter(association=prop).order_by('is_special', 'name'))
     for rule in rules:
         rule.st = charges.rule_status(rule, today)
-    late_rows = [{'unit': c.unit.label, 'owner': c.owner.name, 'what': f'Late fee on {c.description}', 'amount': fee} for c, fee, due in charges._late_fee_rows(prop, today)]
-    interest_rows = [{'unit': c.unit.label, 'owner': c.owner.name, 'what': f'Interest on {c.description}, {mf:%B %Y}', 'amount': amt} for c, mf, me, amt in charges._interest_rows(prop, today)]
+    late_rows = [{'unit': c.unit.label, 'owner': owners.display_name(c.owner), 'what': f'Late fee on {c.description}', 'amount': fee} for c, fee, due in charges._late_fee_rows(prop, today)]
+    interest_rows = [{'unit': c.unit.label, 'owner': owners.display_name(c.owner), 'what': f'Interest on {c.description}, {mf:%B %Y}', 'amount': amt} for c, mf, me, amt in charges._interest_rows(prop, today)]
     jrules = list(JournalRule.objects.filter(association=prop).order_by('name'))
     for jr in jrules:
         jr.st = scheduled.status(prop, jr, month, today)

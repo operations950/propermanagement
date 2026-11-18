@@ -241,7 +241,7 @@ def receive_payment(association, unit, owner, day, amount, method=Receipt.Method
         applied.append((charge, take))
         remaining -= take
     who = {'unit': unit, 'owner': owner}
-    desc = f'Payment from {owner.name}, {unit.label}' + (' (loan)' if to_loan else '')
+    desc = f'Payment from {owners.display_name(owner)}, {unit.label}' + (' (loan)' if to_loan else '')
     accrual = [{'account': bank.account, 'debit': amount, 'memo': desc, **who}]
     cash = [{'account': bank.account, 'debit': amount, 'memo': desc, **who}]
     if applied:
@@ -300,7 +300,7 @@ def void_receipt(receipt, user=None, day=None):
     # the payment's own entries and any later entries that used it as a credit all carry its reference; reverse them all
     for entry in JournalEntry.objects.filter(association=receipt.association, source=JournalEntry.Source.RECEIPT, source_ref=f'receipt:{receipt.pk}', reverses__isnull=True):
         if not entry.reversed_by.exists():
-            ledger.reverse_entry(entry, day, user=user, memo=f'Void: payment from {receipt.owner.name}')
+            ledger.reverse_entry(entry, day, user=user, memo=f'Void: payment from {owners.display_name(receipt.owner)}')
     receipt.applications.all().delete()
     receipt.is_void = True
     receipt.save(update_fields=['is_void'])

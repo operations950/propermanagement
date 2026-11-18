@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from . import charges, closing, delinquency, ledger, owner_collections
+from . import charges, closing, delinquency, ledger, owner_collections, owners
 from .models import ZERO, CaseEvent, Charge, CloseStepDone, DelinquencyCase
 from .views_delinquency import _ids, _make_letters
 from .web import admin_only, association_only_or_404, association_or_404, books_or_redirect, parse_date, parse_money, acc_up
@@ -83,7 +83,7 @@ def collections(request, pk):
             elif action == 'advance':
                 case = get_object_or_404(DelinquencyCase.objects.select_related('unit', 'owner'), pk=request.POST.get('case'), association=prop, resolved_on__isnull=True)
                 stage = delinquency.advance(case, request.user, note=request.POST.get('note') or '', attorney=request.POST.get('attorney') or '')
-                messages.success(request, f'{case.owner.name}, unit {case.unit.label}: now at "{DelinquencyCase.Stage(stage).label}". The next review is in 30 days.')
+                messages.success(request, f'{owners.display_name(case.owner)}, unit {case.unit.label}: now at "{DelinquencyCase.Stage(stage).label}". The next review is in 30 days.')
                 tab = str(stage)
             elif action in ('open_cases', 'make_letters'):
                 units = _ids(request)

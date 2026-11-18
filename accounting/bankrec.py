@@ -26,7 +26,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 
-from . import charges, ledger, payables
+from . import charges, ledger, owners, payables
 from .models import (ZERO, BankAccount, BankOpeningItem, BankSplitTemplate, BankLine, BankStatement, Bill, JournalEntry, JournalLine, Payment, ReconAcceptance, ReconLedgerItem, ReconMatch, Reconciliation, Receipt,
                      RecurringBill)
 
@@ -431,7 +431,7 @@ def ledger_items(bank_account, month_first):
     for l in qs:
         amount = l.debit - l.credit
         pay, rec = pays.get(l.entry_id), receipts.get(l.entry_id)
-        who = (l.vendor.name if l.vendor_id else '') or (l.owner.name if l.owner_id else '')
+        who = (l.vendor.name if l.vendor_id else '') or (owners.display_name(l.owner) if l.owner_id else '')
         text = f'{who} {l.memo or l.entry.memo}'
         channel = RECEIPT_CHANNEL.get(rec.method, '') if rec else ('check' if (pay and pay.method == 'check') else ('ach' if pay else ''))
         items.append(Item('line', l, l.entry.date, amount, ref=(pay.number if pay and pay.method == 'check' else ''), text=text, channel=channel))

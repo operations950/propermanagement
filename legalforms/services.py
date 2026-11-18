@@ -56,11 +56,22 @@ def run_tokens(run):
     return {k: v for k, v in out.items() if v}
 
 
+def _owner_names(prop, unit):
+    """Who a letter to this unit's owners is addressed to, as 'A and B', by LEGAL name. For a unit it is the people on the unit's owner records (accounting Ownership: the billed owner first), whatever
+    their contact type; only a unit with none falls back to the contacts linked to the unit. With no unit, the association's owner contacts."""
+    from accounting import owners as acc_owners
+    if unit:
+        people = [o.person for o in acc_owners.current_ownerships(unit)]
+        if not people:
+            people = list(Contact.objects.filter(contact_type=Contact.ContactType.OWNER, units=unit).order_by('name'))
+    else:
+        people = list(Contact.objects.filter(contact_type=Contact.ContactType.OWNER, properties=prop).order_by('name'))
+    return ' and '.join(dict.fromkeys(acc_owners.display_name(c) for c in people))
+
+
 def prefill_tokens(prop, unit, user, run=None):
     street, rest = _address_parts(prop, unit)
-    owners = Contact.objects.filter(contact_type=Contact.ContactType.OWNER)
-    owners = owners.filter(units=unit) if unit else owners.filter(properties=prop)
-    names = ' and '.join(dict.fromkeys(c.name for c in owners.order_by('name')))
+    names = _owner_names(prop, unit)
     co = config.company()
     return {
         'association_name': prop.name,

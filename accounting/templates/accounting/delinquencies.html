@@ -24,7 +24,7 @@
     <tbody>
     {% for r in rows %}<tr>
         <td><input type="checkbox" class="dq-pick" name="unit" value="{{ r.unit.pk }}" checked></td>
-        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}</td>
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner|legal }}</td>
         <td>{% if r.case %}{% include 'accounting/_case_icons.html' with icons=r.icons %} <span class="ac-chip">{{ r.case.get_stage_display }}</span>{% else %}<span class="ac-chip warn">Needs a letter</span>{% endif %}</td>
         <td class="num" title="Assessments {{ r.b.assessments|money }}, late fees {{ r.b.late_fees|money }}, interest {{ r.b.interest|money }}{% if r.b.other %}, other {{ r.b.other|money }}{% endif %}"><strong>{{ r.b.total|money }}</strong></td>
         <td>{% if r.b.oldest_due %}{{ r.b.oldest_due|mdate:'short' }} <span class="small text-muted">{{ r.days_late }} days</span>{% endif %}</td>
@@ -43,7 +43,7 @@
 <h6 class="mt-4">Open cases</h6>
 <div class="rp-wrap"><table class="rp ac-stack">
     <thead><tr><th>Unit and owner</th><th>Where it stands</th><th>Owes</th><th>Next review</th><th></th></tr></thead><tbody>
-    {% for c in cases %}<tr><td style="white-space: normal;"><span class="fw-semibold">{{ c.case.unit.label }}</span> {{ c.case.owner.name }}</td>
+    {% for c in cases %}<tr><td style="white-space: normal;"><span class="fw-semibold">{{ c.case.unit.label }}</span> {{ c.case.owner|legal }}</td>
         <td>{% include 'accounting/_case_icons.html' with icons=c.icons %} <span class="ac-chip">{{ c.case.get_stage_display }}</span>{% if c.paid %} <span class="ac-chip good">Paid in full</span>{% endif %}</td>
         <td class="num">{{ c.b.total|money }}</td>
         <td>{{ c.case.next_review|mdate:'short' }}{% if c.review_due %} <span class="ac-chip warn">Review due</span>{% endif %}</td>

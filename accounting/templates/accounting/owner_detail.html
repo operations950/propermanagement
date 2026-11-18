@@ -1,10 +1,10 @@
 {% extends 'accounting/base_acc.html' %}
 {% load acc_extras %}
-{% block acc_title %}{{ person.name }} - {{ assoc.name }}{% endblock %}
+{% block acc_title %}{{ person|legal }} - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
-        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{% if profile.is_company %}building{% else %}user{% endif %}" class="icon-lg"></i> {{ person.name }}</h2>
+        <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="{% if profile.is_company %}building{% else %}user{% endif %}" class="icon-lg"></i> {{ person|legal }}</h2>
         <div class="small text-muted">{% if profile.is_company %}Company &middot; {% endif %}Owner at {{ assoc.name }}</div>
     </div>
     <div class="d-flex gap-2 align-items-center">

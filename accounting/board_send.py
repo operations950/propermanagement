@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from django.core.validators import validate_email
 
-from . import labels, ledger, package
+from . import labels, ledger, owners, package
 from .models import BoardPackageSend, BoardTerm, MonthLock
 
 # Who the board email comes from and who is copied. Change them here.
@@ -36,7 +36,7 @@ def board_rows(association):
     """The current board, one row each: key (the board term), name, position, email ('' when there is none we can send to) and the raw email as recorded."""
     rows = []
     for t in BoardTerm.objects.filter(association=association, end_date__isnull=True).select_related('person').order_by('position', 'person__name'):
-        rows.append({'key': t.pk, 'name': t.person.name, 'position': t.position, 'email': valid_email(t.person.email), 'recorded': (t.person.email or '').strip()})
+        rows.append({'key': t.pk, 'name': owners.display_name(t.person), 'position': t.position, 'email': valid_email(t.person.email), 'recorded': (t.person.email or '').strip()})
     return rows
 
 

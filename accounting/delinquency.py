@@ -255,7 +255,7 @@ def ensure_review_line(case):
         if session.status == Session.Status.SUBMITTED:
             session.status = Session.Status.OPEN
             session.save(update_fields=['status'])
-        line = SessionLine.objects.create(session=session, label=f'{case.association.name}, unit {case.unit.label} ({case.owner.name}): review the delinquency case', property=case.association, unit=case.unit,
+        line = SessionLine.objects.create(session=session, label=f'{case.association.name}, unit {case.unit.label} ({owners.display_name(case.owner)}): review the delinquency case', property=case.association, unit=case.unit,
                                           display_order=session.lines.count())
         case.review_line = line
         case.save(update_fields=['review_line'])

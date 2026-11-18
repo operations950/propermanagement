@@ -55,7 +55,7 @@
 <div class="rp-wrap mb-2"><table class="rp ac-stack">
     <thead><tr><th style="width: 28px;"><input type="checkbox" id="oc-all" checked aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th>Owed<span class="d-none d-md-inline"> {{ asof|date:'M j' }}</span></th><th class="d-none d-md-table-cell">Behind</th><th class="d-none d-md-table-cell"></th></tr></thead><tbody>
     {% for r in tab.rows %}<tr class="oc-alert"><td><input type="checkbox" class="oc-pick" name="unit" value="{{ r.unit.pk }}" checked></td>
-        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner|legal }}
             <div class="d-md-none small text-muted">{{ r.months }} month{{ r.months|pluralize }} behind{% if r.b.oldest_due %}, since {{ r.b.oldest_due|mdate:'short' }} ({{ r.days_late }} days){% endif %}</div>
             <div class="d-md-none mt-1 ac-noprint" style="white-space: nowrap;"><a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'legalforms:new' 'nola' %}?property={{ assoc.pk }}&unit={{ r.unit.pk }}&balance_as_of={{ asof|date:'Y-m-d' }}">Write the late letter</a></div></td>
         <td class="num" title="Assessments {{ r.b.assessments|money }}, late fees {{ r.b.late_fees|money }}, interest {{ r.b.interest|money }}{% if r.b.other %}, other {{ r.b.other|money }}{% endif %}"><strong>{{ r.b.total|money }}</strong></td>
@@ -79,8 +79,8 @@
 <div class="rp-wrap"><table class="rp ac-stack">
     <thead><tr><th style="width: 28px;"><input type="checkbox" id="prep-all" aria-label="Tick all"></th><th style="text-align: left;">Unit and owner</th><th style="text-align: left;">Letter</th><th style="text-align: left;">Mailing affidavit</th><th style="text-align: left;">Print</th><th style="text-align: left;">Mailed</th></tr></thead><tbody>
     {% for r in tab.rows %}<tr class="{% if r.alert %}oc-alert{% endif %}">
-        <td><input type="checkbox" class="prep-pick" value="{{ r.case.pk }}" aria-label="Tick {{ r.owner.name }}"></td>
-        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}
+        <td><input type="checkbox" class="prep-pick" value="{{ r.case.pk }}" aria-label="Tick {{ r.owner|legal }}"></td>
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner|legal }}
             <div class="small text-muted">Owes {{ r.b.total|money }} &middot; {{ r.days_in }} day{{ r.days_in|pluralize }} on this step</div>
             {% if r.alert %}<div class="small" style="color: var(--t-8a5a00, #8a5a00); font-weight: 600;">{{ r.alert }}</div>{% endif %}
             {% if r.paid %}<div class="small"><span class="ac-chip good">Paid in full</span> open the case to resolve it</div>{% endif %}
@@ -106,7 +106,7 @@
 {% elif tab.key == 'resolved' %}
 <div class="rp-wrap"><table class="rp ac-stack">
     <thead><tr><th>Unit and owner</th><th>Resolved</th><th></th></tr></thead><tbody>
-    {% for r in tab.rows %}<tr><td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}</td><td>{{ r.resolved_on|mdate:'short' }}</td>
+    {% for r in tab.rows %}<tr><td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner|legal }}</td><td>{{ r.resolved_on|mdate:'short' }}</td>
         <td class="text-end"><a class="btn btn-sm btn-outline-secondary py-0" href="{% url 'accounting:case' assoc.pk r.case.pk %}">Open</a></td></tr>
     {% empty %}<tr><td colspan="3" class="text-muted p-3">No case ended in the last six months.</td></tr>{% endfor %}</tbody></table></div>
 
@@ -114,7 +114,7 @@
 <div class="rp-wrap"><table class="rp ac-stack">
     <thead><tr><th>Unit and owner</th><th>Owes</th><th>Behind</th>{% if tab.key == 'letter' %}<th>Last letter</th>{% endif %}<th>In this step</th><th>Next review</th><th class="d-none d-md-table-cell"></th></tr></thead><tbody>
     {% for r in tab.rows %}<tr class="{% if r.alert %}oc-alert{% endif %}">
-        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }} {% include 'accounting/_case_icons.html' with icons=r.icons %}
+        <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner|legal }} {% include 'accounting/_case_icons.html' with icons=r.icons %}
             {% if r.alert %}<div class="small" style="color: var(--t-8a5a00, #8a5a00); font-weight: 600;">{{ r.alert }}</div>{% endif %}
             {% if r.paid %}<div class="small"><span class="ac-chip good">Paid in full</span> open the case to resolve it</div>{% endif %}
             <div class="d-md-none mt-1 ac-noprint" style="white-space: nowrap;">{% include 'accounting/_collections_actions.html' %}</div></td>

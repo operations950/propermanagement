@@ -24,6 +24,13 @@ def money(value, blank_zero=False):
 
 
 @register.filter
+def legal(contact):
+    """An owner (a Contact) by their legal name: {{ r.owner|legal }}. Without one on file, the contact name minus its association tag (accounting/owners.py display_name)."""
+    from accounting import owners
+    return owners.display_name(contact)
+
+
+@register.filter
 def plain(value):
     """1,750.00 (no dollar sign); zero shows as 0.00."""
     d = _d(value)

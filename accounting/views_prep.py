@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from . import ledger, letter_prep
+from . import ledger, letter_prep, owners
 from .models import DelinquencyCase
 from .web import admin_only, association_only_or_404, books_or_redirect, parse_date
 
@@ -35,7 +35,7 @@ def prep_act(request, pk, case_pk):
     if request.method != 'POST':
         return redirect(reverse('accounting:case', args=[pk, case.pk]))
     action = request.POST.get('action')
-    who = f'{case.owner.name}, unit {case.unit.label}'
+    who = f'{owners.display_name(case.owner)}, unit {case.unit.label}'
     target = _back(request, prop)
     try:
         if case.stage != Stage.PREPARING:
