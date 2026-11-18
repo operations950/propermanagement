@@ -80,10 +80,11 @@ def upcoming(prop, today=None, within=120):
 
 def _template():
     from core.models import StaffProfile
+    from core.people import default_admin
     from worksessions.models import Frequency, SessionTemplate
     t = SessionTemplate.objects.filter(name='Contract alerts').first()
     if t is None:
-        owner = StaffProfile.objects.filter(is_company_admin=True).order_by('pk').first() or StaffProfile.objects.order_by('pk').first()
+        owner = default_admin()                       # an active person: a removed one is never handed new work
         if owner is None:
             return None
         t = SessionTemplate.objects.create(name='Contract alerts', description='A contract is about to end, or its cancellation notice is about to be due. Opened by the contracts, not by a schedule.',

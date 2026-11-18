@@ -22,6 +22,11 @@ class Command(BaseCommand):
             return
 
         username = os.environ.get('ADMIN_USERNAME', 'admin')
+        # This exists so a brand-new install has one working login. Once any other active administrator exists the job is done: recreating the shared
+        # login on every deploy would quietly bring back a login someone removed on purpose.
+        if User.objects.filter(is_active=True, is_superuser=True).exclude(username=username).exists():
+            self.stdout.write('Another active administrator exists — skipping admin bootstrap.')
+            return
         existing = User.objects.filter(username=username).first()
         if existing is not None and not existing.is_active:
             # Someone deactivated this login on purpose. Recreating its

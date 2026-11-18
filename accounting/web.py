@@ -76,36 +76,11 @@ def month_context(month):
     return {'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'month_end': ledger.month_end(month)}
 
 
-# ---------------------------------------------------------------- Up (see core/nav.py)
+# ---------------------------------------------------------------- Up (see core/nav.py and core/nav_tree.py)
 
-# What Up says for each wide screen a book screen can be reached from.
-UP_LABELS = {
-    'accounting:home': 'Associations', 'accounting:hub': 'Accounting', 'accounting:close': 'Month-end close', 'accounting:units': 'Units', 'accounting:charges': 'Charges',
-    'accounting:bills': 'Bills', 'accounting:reports': 'Reports', 'accounting:collections': 'Owner collections', 'accounting:collections_home': 'Owner collections',
-    'accounting:delinquencies': 'Delinquencies', 'accounting:late_fees': 'Late fees and interest', 'accounting:checks': 'Checks', 'accounting:bank': 'Bank reconciliation',
-    'accounting:payables_home': 'Payables', 'accounting:budgets': 'Budgets', 'accounting:budget_project': 'Budget project', 'accounting:contracts': 'Contracts',
-    'accounting:unit': 'Unit', 'accounting:report_aging': 'Aging', 'accounting:report_payables': 'Payables report', 'accounting:recurring': 'Recurring', 'accounting:journal': 'Journal',
-    'commercial:leases': 'Leases', 'commercial:invoices': 'Tenant invoices', 'commercial:cam': 'CAM', 'commercial:lease': 'Tenant',
-    'ws_financials': 'Financials', 'close_home': 'Month-end checklist',
-}
-
-
-def _up_label(prop, name):
-    if prop is not None and name == 'accounting:units':
-        return labels.label(prop, 'units_title')
-    if prop is not None and name == 'accounting:charges':
-        return labels.label(prop, 'charges_title')
-    return UP_LABELS.get(name, name)
-
-
-def acc_up(request, prop, names, default_url, default_label):
-    """acc_back / acc_back_label for a book screen: the wide screen (one of `names`, url names, or (url name, label) pairs) the person came from, else the screen's usual parent.
+def acc_up(request, prop, default_url, default_label, labels=None):
+    """acc_back / acc_back_label for a book screen: the wide screen above this one (core/nav_tree.py) that the person came from, else the screen's usual parent
+    (`default_url`, `default_label`: the view knows the association's name, the unit ...). `labels` ({url name: text}) is for a link whose words depend on the record on the page.
     Used as **acc_up(...) in the view's context; base_acc.html draws it with the shared Up link."""
-    parents = {}
-    for item in names:
-        name, label = item if isinstance(item, tuple) else (item, _up_label(prop, item))
-        parents[name] = label
-    if 'accounting:close' in parents and 'close_home' not in parents:
-        parents['close_home'] = _up_label(prop, 'close_home')         # a close step opened from the main Month-end checklist goes back to it, not to some older screen
-    found = nav.up(request, parents=parents, default=(default_url, default_label))
+    found = nav.up(request, default=(default_url, default_label), labels=labels, ctx={'prop': prop})
     return {'acc_back': found.url, 'acc_back_label': found.label}

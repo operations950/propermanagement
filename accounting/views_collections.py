@@ -36,7 +36,7 @@ def collections_home(request):
     for prof in closing.associations(commercial=False):
         look = owner_collections.attention(prof.property, today)
         rows.append({'assoc': prof.property, **look})
-    return render(request, 'accounting/collections_home.html', {'rows': rows, 'total': sum(r['count'] for r in rows), **acc_up(request, None, ['ws_financials'], reverse('ws_financials'), 'Financials')})
+    return render(request, 'accounting/collections_home.html', {'rows': rows, 'total': sum(r['count'] for r in rows), **acc_up(request, None, reverse('ws_financials'), 'Financials')})
 
 
 def step_done_context(prop, month_text, today):
@@ -106,7 +106,7 @@ def collections(request, pk):
            'asof': asof, 'default_asof': data['default_asof'], 'asof_given': given, 'asof_is_default': asof == data['default_asof'], 'asof_is_today': asof == today,
            'asof_qs': f'&asof={asof:%Y-%m-%d}' if given else '',
            'letter_days': owner_collections.LETTER_DAYS, 'notice_days': owner_collections.NOTICE_DAYS, **step_done_context(prop, request.GET.get('month'), today),
-           **acc_up(request, prop, ['accounting:hub', 'accounting:close', 'accounting:collections_home'], reverse('accounting:hub', args=[pk]), 'Accounting')}      # late fees is a step beside it, not above it: Up skips it, back to the checklist
+           **acc_up(request, prop, reverse('accounting:hub', args=[pk]), 'Accounting')}      # late fees is a step beside it, not above it: Up skips it, back to the checklist
     return render(request, 'accounting/collections.html', ctx)
 
 
@@ -300,5 +300,5 @@ def late_fees(request, pk):
            'ready_n': sum(1 for r in rows if r['ready']), 'done_month': done_month, 'done': CloseStepDone.objects.filter(association=prop, month=done_month, key='late_fees').select_related('marked_by').first(),
            'today': today, 'as_of': as_of, 'as_of_note': as_of_note, 'min_balance': min_balance, 'show_all': show_all, 'month': month, 'post_on': as_of,
            'is_set': profile.late_fee_is_set() or profile.interest_is_set(), 'terms': charges.terms_sentences(profile), 'look': owner_collections.attention(prop, today),
-           **acc_up(request, prop, ['accounting:close', 'accounting:hub'], *up_default)}                  # Owner collections is the next step beside it, not above it
+           **acc_up(request, prop, *up_default)}                  # Owner collections is the next step beside it, not above it
     return render(request, 'accounting/late_fees.html', ctx)

@@ -71,7 +71,7 @@ def cam_home(request, pk):
     history = list(CamReconciliation.objects.filter(property=prop, status=CamReconciliation.Status.APPROVED).order_by('-year'))
     start, end = cam.period(prop, year)
     return render(request, 'commercial/cam.html', {'assoc': prop, 'year': year, 'years': list(range(year - 3, year + 2)), 'pools': pools, 'recon': recon, 'history': history, 'start': start, 'end': end,
-                                                   'has_previous': CamPool.objects.filter(property=prop, year=year - 1).exists(), **acc_up(request, prop, ['commercial:leases', 'accounting:hub', 'accounting:close'], reverse('commercial:leases', args=[prop.pk]), 'Leases')})
+                                                   'has_previous': CamPool.objects.filter(property=prop, year=year - 1).exists(), **acc_up(request, prop, reverse('commercial:leases', args=[prop.pk]), 'Leases')})
 
 
 # ---------------------------------------------------------------- one pool and the tenants' shares
@@ -177,7 +177,7 @@ def cam_pool(request, pk, pool_pk=None):
         'assoc': prop, 'pool': pool, 'year': year, 'rows': rows, 'accounts': accounts, 'locked': locked, 'methods': CamShare.Method.choices, 'denominators': CamPool.Denominator.choices,
         'chosen': {a.pk for a in pool.accounts.all()} if pool else set(), 'excluded': {a.pk for a in pool.excluded_accounts.all()} if pool else set(),
         'gross': {a.pk for a in pool.gross_up_accounts.all()} if pool else set(), 'start': start, 'end': end,
-        **acc_up(request, prop, [('commercial:cam', f'CAM {year}')], reverse('commercial:cam', args=[prop.pk]) + f'?year={year}', f'CAM {year}')})
+        **acc_up(request, prop, reverse('commercial:cam', args=[prop.pk]) + f'?year={year}', f'CAM {year}', labels={'commercial:cam': f'CAM {year}'})})
 
 
 # ---------------------------------------------------------------- the reconciliation
@@ -234,7 +234,7 @@ def cam_reconcile(request, pk):
         except (ValueError, cam.CamError, InvoiceError, ledger.LedgerError) as e:
             messages.error(request, str(e))
         return redirect(here)
-    context = {'assoc': prop, 'year': year, 'recon': recon, 'approved': approved, **acc_up(request, prop, [('commercial:cam', f'CAM {year}'), 'accounting:close'], reverse('commercial:cam', args=[prop.pk]) + f'?year={year}', f'CAM {year}'),
+    context = {'assoc': prop, 'year': year, 'recon': recon, 'approved': approved, **acc_up(request, prop, reverse('commercial:cam', args=[prop.pk]) + f'?year={year}', f'CAM {year}', labels={'commercial:cam': f'CAM {year}'}),
                'delivery': board_send.delivery_available(), 'today': timezone.localdate()}
     if approved:
         lines = list(recon.lines.select_related('lease', 'charge'))

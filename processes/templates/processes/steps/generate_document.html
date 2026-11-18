@@ -10,11 +10,18 @@
 {% else %}
 {% with url=step|step_form_url %}
 {% if url %}
-<a class="btn btn-sm btn-outline-primary" href="{{ url }}"><i data-lucide="file-text" class="icon"></i> Prepare the document</a>
+<a class="btn btn-sm btn-outline-primary" href="{{ url }}"><i data-lucide="file-text" class="icon"></i> {% if step|is_welcome_letter %}Prepare the welcome letter{% else %}Prepare the document{% endif %}</a>
 <span class="small text-muted ms-1">Opens the form, filled in from the records and from what was entered earlier in this project.</span>
-{% else %}
+{% elif not step|is_welcome_letter %}
 <span class="small text-muted">Choose the association (and enter the unit number) in the steps above first.</span>
 {% endif %}
 {% endwith %}
+{% endif %}
+{% if step|is_welcome_letter and not step.is_complete %}
+<form method="post" action="{% url 'process_run_step_mark_document_sent' step.pk %}" class="d-inline-block ms-1">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Mark as sent</button>
+</form>
+<span class="small text-muted">The letter is optional: mark it sent if the welcome was handled another way.</span>
 {% endif %}
 {% endwith %}

@@ -226,7 +226,7 @@ def budget_year(request, pk, year):
             messages.error(request, str(e))
         return redirect(here)
     have = bg.versions(bud)
-    ctx = {'assoc': prop, 'year': year, 'info': info, 'closed': bg.closed_note(info), **acc_up(request, prop, ['accounting:budget_project', 'accounting:budgets'], reverse('accounting:budget_project', args=[pk, year]), f'{year} budget project'),
+    ctx = {'assoc': prop, 'year': year, 'info': info, 'closed': bg.closed_note(info), **acc_up(request, prop, reverse('accounting:budget_project', args=[pk, year]), f'{year} budget project'),
            'stages': [{'key': k, 'label': bg.STAGE_LABEL[k]} for k in bg.STAGE_KEYS if k in have], 'have': have, 'units': bg.unit_count(prop), 'cents': bool(bud and bud.show_cents)}
     if not have:
         ctx['view'] = 'none'
@@ -531,7 +531,7 @@ def budget_project(request, pk, year):
     live_rows = bp.mailing_rows(prop) if project and project.notice_doc_id and not project.mailed_on else []
     today = timezone.localdate()
     ctx = {'assoc': prop, 'year': year, 'steps': steps, 'have': have, 'project': project, 'info': info, 'closed': bg.closed_note(info), 'can_start': bg.can_start(info), 'units': bg.unit_count(prop),
-           **acc_up(request, prop, ['accounting:budgets', 'accounting:hub'], reverse('accounting:budgets') + f'?year={year}', 'Budgets'), 'today': today, 'methods': bp.MAIL_METHODS, 'default_by': (project.mailed_by if project and project.mailed_by else bp.DEFAULT_AFFIANT),
+           **acc_up(request, prop, reverse('accounting:budgets') + f'?year={year}', 'Budgets'), 'today': today, 'methods': bp.MAIL_METHODS, 'default_by': (project.mailed_by if project and project.mailed_by else bp.DEFAULT_AFFIANT),
            'default_title': bp.DEFAULT_TITLE, 'live_count': len(bp.deliverable(live_rows)) if live_rows else None, 'meeting_ready': bp.meeting_ready(project, place_required=not labels.is_commercial(prop)),
            'days_before': bp.days_before(project), 'changed': bp.changed_since_notice(prop, project, have), 'by_key': {s['key']: s for s in steps},
            'draft_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=draft', 'board_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=board',
@@ -591,7 +591,7 @@ def budget_packet(request, pk, year):
     flags = bp.flagged(rows)
     t = bp.proposed_totals(prop, have['board'])
     ctx = {'period_noun': bg.frequency_info(bud)['noun'], 'assoc': prop, 'year': year, 'project': project, 'rows': rows, 'sent': len(sent), 'flags': flags, 'owner_total': len(rows), 'meeting_ready': bp.meeting_ready(project), 'needed': t['needed'],
-           'unit_month': t['unit_period'], 'changed': bp.changed_since_notice(prop, project, have), **acc_up(request, prop, ['accounting:budget_project'], back, f'{year} budget project'),
+           'unit_month': t['unit_period'], 'changed': bp.changed_since_notice(prop, project, have), **acc_up(request, prop, back, f'{year} budget project'),
            'notice': project.notice_doc if project else None, 'affidavit': project.affidavit_doc if project else None, 'from_list': bool(project and project.mailed_on and project.mailing_snapshot),
            'return_text': '\n'.join(bp.return_lines(prop, project)), 'envelope_size': project.envelope_size if project else 'no10', 'association_type': bp.last_association_type(prop)}
     ctx['files'] = {w: reverse('accounting:budget_packet_file', args=[pk, year, w]) for w in ('notice', 'budget', 'affidavit', 'mailing_list', 'mailing_csv', 'envelopes', 'group1')}
@@ -664,4 +664,4 @@ def budget_load(request, pk, year):
             messages.error(request, str(e))
         return redirect(request.path)
     plan = bp.load_plan(prop, bud, have)
-    return render(request, 'accounting/budget_load.html', {'assoc': prop, 'year': year, 'plan': plan, 'project': project, **acc_up(request, prop, ['accounting:budget_project'], back, f'{year} budget project')})
+    return render(request, 'accounting/budget_load.html', {'assoc': prop, 'year': year, 'plan': plan, 'project': project, **acc_up(request, prop, back, f'{year} budget project')})

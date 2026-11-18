@@ -6,6 +6,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 
 from core.models import Property, StaffProfile
+from core.people import active_staff
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -13,8 +14,8 @@ from django.utils import timezone
 from . import charges, checkprint, closing, documents, invoice_inbox, ledger, owners
 from . import standard_chart as sc
 from . import checkface
-from . import binders
-from .models import AssociationDocument, BankAccount, Budget, ChargeRule, Payment, Receipt, SettingProposal
+from . import binders, docjobs
+from .models import AssociationDocument, BankAccount, DocumentJob, Budget, ChargeRule, Payment, Receipt, SettingProposal
 from .web import admin_only, association_or_404, parse_date, parse_money, acc_up
 
 
@@ -186,10 +187,17 @@ def assoc_context(prop):
     ap_files = documents.files(prop)
     if any(f['state'] == 'needs_look' for f in ap_files):
         todo.append('confirm what the uploaded documents are')
-    return {'store_limit': documents.STORE_LIMIT, 'ap_files': ap_files, 'doc_kinds': [(k, 'Amendment' if k == 'amendment' else l) for k, l in AssociationDocument.Kind.choices if k != 'other'] + [('other', 'Something else')], 'ap': profile, 'ap_rows': settings_rows(prop), 'ap_docs': documents.checklist(prop), 'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name', 'user__username'), 'terms_lines': charges.terms_sentences(profile, _example_assessment(prop)), 'late_days': _bubble_days(profile.late_fee_grace_days or 0, (0, 5, 10, 15, 20, 30)), 'interest_days': _bubble_days(profile.interest_grace_days or 0, (0, 10, 15, 30)),
+    return {'store_limit': documents.STORE_LIMIT, 'ap_files': ap_files, 'doc_kinds': [(k, 'Amendment' if k == 'amendment' else l) for k, l in AssociationDocument.Kind.choices if k != 'other'] + [('other', 'Something else')], 'ap': profile, 'ap_rows': settings_rows(prop), 'ap_docs': documents.checklist(prop), 'staff_choices': active_staff(also=[profile.compliance_owner_id], order=('user__first_name', 'user__username')), 'terms_lines': charges.terms_sentences(profile, _example_assessment(prop)), 'late_days': _bubble_days(profile.late_fee_grace_days or 0, (0, 5, 10, 15, 20, 30)), 'interest_days': _bubble_days(profile.interest_grace_days or 0, (0, 10, 15, 30)),
             'example_assessment': _example_assessment(prop), 'applies_choices': [('declaration', 'Declaration'), ('articles', 'Articles'), ('bylaws', 'Bylaws'), ('rules', 'Rules and regulations')], 'ap_proposals': proposals,
             'ap_units': rows, 'ap_owing': owing[:5], 'ap_totals': totals, 'ap_todo': todo, 'ap_board': owners.board(prop), 'ap_board_matches': matches,
             'ap_qa': documents.qa_payload(prop), 'ap_has_contract': documents.has_contract(prop)}
+
+
+@admin_only
+def document_jobs(request, pk):
+    """What the settings page polls while a document save runs in the background: the active jobs and how far they are."""
+    prop = association_or_404(pk)
+    return JsonResponse(docjobs.payload(prop))
 
 
 @admin_only
@@ -344,16 +352,22 @@ def settings(request, pk):
                 head = get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop, is_staging=True, binder_order=0)
                 n = len(head.sections or [])
                 keeps = {i for i in range(n) if request.POST.get(f'keep_{i}')}
-                made, left_out = binders.confirm(head, [(request.POST.get(f'kind_{i}'), request.POST.get(f'title_{i}'), request.POST.get(f'applies_{i}')) for i in range(n)], keeps, request.user)
-                note = f' Left out {len(left_out)} second cop{"ies" if len(left_out) != 1 else "y"}.' if left_out else ''
-                messages.success(request, f'Saved as {len(made)} separate document{"s" if len(made) != 1 else ""}.{note}')
+                choices = [(request.POST.get(f'kind_{i}'), request.POST.get(f'title_{i}'), request.POST.get(f'applies_{i}')) for i in range(n)]
+                # The save runs in the background (a long binder takes longer than a request may): the job is recorded first, so a second click cannot start a second save.
+                docjobs.submit(prop, 'binder_save', head.pk, head.binder_name, request.user, prepare=lambda: binders.prepare_save(head, choices, keeps))
+                messages.info(request, f'Saving "{head.binder_name}" as separate documents. You can leave this page: it finishes on its own, and this page shows how far it is.')
             elif action == 'binder_sort_again':
                 binders.sort_again(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop, is_staging=True, binder_order=0))
                 messages.success(request, 'Sorting it again: it will be ready to look at in a minute.')
             elif action == 'split_sorted':
-                made, left_out = binders.split_sorted(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop, is_staging=False), request.user)
-                note = f' Left out {len(left_out)} second cop{"ies" if len(left_out) != 1 else "y"}.' if left_out else ''
-                messages.success(request, f'Split into {len(made)} separate document{"s" if len(made) != 1 else ""}; the combined file is removed.{note}')
+                doc = get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop, is_staging=False)
+                docjobs.submit(prop, 'split_sorted', doc.pk, doc.name, request.user, prepare=lambda: binders.prepare_split(doc))       # refused here, in plain words, if it cannot be split
+                messages.info(request, f'Splitting "{doc.name}" into separate documents. You can leave this page: it finishes on its own, and this page shows how far it is.')
+            elif action == 'job_reset':
+                if docjobs.recover_stale(prop, patience=docjobs.STUCK_PATIENCE, job_id=request.POST.get('job')):
+                    messages.success(request, 'Stopped. Your upload is kept as it was: press the button to save it again.')
+                else:
+                    messages.info(request, 'It is still working (or already finished). Give it a minute.')
             elif action == 'sort_again':
                 documents.sort_again(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop))
                 messages.success(request, 'Sorting it again: it will be ready to look at in a minute.')
@@ -362,6 +376,8 @@ def settings(request, pk):
                 messages.success(request, 'Reading it again.')
             elif action == 'delete_doc':
                 doc = get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop)
+                if docjobs.active_job('binder_save', doc.pk) or docjobs.active_job('split_sorted', doc.pk):
+                    raise ValueError('It is being saved right now. Remove it once that finishes.')
                 if doc.is_staging:
                     binders.cancel(doc)               # a big upload that is still being sorted: every hidden part goes
                 else:
@@ -398,8 +414,11 @@ def settings(request, pk):
             base, _, frag = target.partition('#')
             target = f'{base}{"&" if "?" in base else "?"}asked={asked_id}#{frag or "documents"}'
         return redirect(target)
+    docjobs.recover_stale(prop)
+    docjobs.announce(request, prop)                  # how the background saves of the sorter ended, told once
     ctx = assoc_context(prop)
     ctx.update({'assoc': prop, 'profile': profile, 'cash_accounts': prop.accounts.filter(code__lt='1200', kind='asset').order_by('code'), 'banks': prop.bank_accounts.all(),
                 'officers_text': '\n'.join(f'{o["name"]}, {o["title"]}' for o in (profile.sunbiz_officers or [])), 'months': list(enumerate(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], 1)),
-                **acc_up(request, prop, ['accounting:hub', 'accounting:close', 'accounting:charges', 'accounting:collections', 'accounting:delinquencies', 'accounting:late_fees', 'accounting:payables_home', 'accounting:reserve_check', 'accounting:recurring', 'accounting:checks'], reverse('property_detail', args=[prop.pk]), prop.name)})
+                **acc_up(request, prop, reverse('property_detail', args=[prop.pk]), prop.name)})
+    ctx['jobs_active'] = DocumentJob.objects.filter(association=prop, status__in=DocumentJob.ACTIVE).exists()      # a document save is running in the background: the page follows it
     return render(request, 'accounting/settings.html', ctx)

@@ -86,8 +86,9 @@ class MenuTests(TestCase):
     def test_everyone_sees_the_team_items_and_commercial(self):
         plain = person('plain@x.com', role='cleaner')
         got = keys(self.client, plain)
-        for k in ('home', 'tickets', 'properties', 'contacts', 'legal', 'time', 'compliance', 'projects', 'onsite'):
+        for k in ('home', 'tickets', 'properties', 'contacts', 'time', 'compliance', 'projects', 'onsite'):
             self.assertIn(k, got)
+        self.assertNotIn('legal', got)               # Legal forms is a card on the Associations page, not a menu item
         for k in ('financials', 'admin', 'dashboard', 'portfolio'):
             self.assertNotIn(k, got)
         self.client.force_login(plain.user)

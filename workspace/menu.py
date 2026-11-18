@@ -21,7 +21,7 @@ ITEMS = {
 }
 
 # Everyone on the team gets these. Financials, the statistics dashboard, Portfolio and Admin are added by the person's switches on People and roles (core/permissions.py).
-BASE_MENU = ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts', 'legal', 'time']
+BASE_MENU = ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts', 'time']       # Legal forms is a card on the Associations page, not a menu item
 
 LINES = [
     ('associations', 'Associations'),
@@ -37,7 +37,7 @@ PREFIXES = {
     'compliance': ['/w/compliance', '/compliance', '/recurring'],
     'projects': ['/w/projects', '/processes'],
     'onsite': ['/onsite', '/w/onsite'],
-    'properties': ['/properties', '/w/lines'],
+    'properties': ['/properties', '/w/lines', '/legal', '/documents'],       # Legal forms is reached from the Associations page
     'financials': ['/w/financials', '/close', '/accounting'],
     'contacts': ['/contacts'],
     'time': ['/clock'],

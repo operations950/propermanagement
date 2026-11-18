@@ -3,28 +3,134 @@
 {% block content %}
 {% include 'workspace/_css.html' %}
 <h2 class="page-title mb-1">{{ label }}</h2>
-<p class="small text-muted mb-3">The properties in this line of business, and the screens that matter most for them.</p>
-<div class="row g-2">
+<p class="small text-muted mb-3">{% if slug == 'associations' %}Legal forms, owner collections, budgets and the books for the associations we manage.{% elif slug == 'short-term-rentals' %}Today's stays, the calendar and the month-end for the short-term rentals.{% elif slug == 'long-term-rentals' %}Tenants, rent and the month-end for the long-term rentals.{% else %}Leases, rent and the books for the commercial properties.{% endif %} Open a property below for its own screens.</p>
 {% if slug == 'associations' %}
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:home' %}"><i data-lucide="building" class="icon"></i><span>Association books<small>Ledgers, reconciliations, bills, owners</small></span></a></div>
+<div class="ws-label" style="margin-top:0">Everyday work</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'legalforms:list' %}"><i data-lucide="file-text" class="icon"></i><span>Legal forms<small>Notices, letters, affidavits and approvals</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_compliance' %}"><i data-lucide="calendar-check" class="icon"></i><span>Compliance<small>Filings, meetings, reconciliations</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_projects' %}"><i data-lucide="layers" class="icon"></i><span>Projects<small>Budget meetings and other longer jobs</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ticket_list' %}"><i data-lucide="ticket" class="icon"></i><span>Tickets<small>Open requests</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'faq_review_queue' %}"><i data-lucide="message-circle-question" class="icon"></i><span>FAQ review<small>Answers waiting for a look</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'missing_documents' %}"><i data-lucide="folder-search" class="icon"></i><span>Missing documents<small>Agreements and records not on file</small></span></a></div>
+</div>
+
+{% if can_financial %}
+<div class="ws-label">Books and owners</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:home' %}"><i data-lucide="building" class="icon"></i><span>Association books<small>Where each month stands, ledgers, bank reconciliations</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:collections_home' %}"><i data-lucide="scale" class="icon"></i><span>Owner collections<small>Late owners and where each case stands</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:receipt_pick' %}"><i data-lucide="hand-coins" class="icon"></i><span>Record owner payments<small>Enter a payment an owner made</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:budgets' %}"><i data-lucide="calculator" class="icon"></i><span>Budgets<small>The budget steps, from draft to the owners</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:master_chart' %}"><i data-lucide="list-tree" class="icon"></i><span>Chart of accounts<small>The master list every association starts from</small></span></a></div>
+</div>
+{% endif %}
+
+{% if can_financial %}
+<div class="ws-label">Paying bills</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_home' %}"><i data-lucide="file-input" class="icon"></i><span>Payables<small>Drop invoices, review, approve</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_print_checks' %}"><i data-lucide="printer" class="icon"></i><span>Print checks<small>This week's run</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_print_envelopes' %}"><i data-lucide="mail" class="icon"></i><span>Print envelopes<small>One for each check</small></span></a></div>
+</div>
+{% endif %}
+
 {% elif slug == 'short-term-rentals' %}
+<div class="ws-label" style="margin-top:0">Today</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_str_today' %}"><i data-lucide="sun" class="icon"></i><span>Today<small>Arrivals, departures and cleanings today</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i><span>On-Site visits<small>Cleanings and inspections</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_rentals_calendar' %}"><i data-lucide="calendar-range" class="icon"></i><span>Rentals calendar<small>Every rental, day by day</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_reservation_list' %}"><i data-lucide="book-marked" class="icon"></i><span>Reservations<small>Stays and edits</small></span></a></div>
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_performance' %}"><i data-lucide="trending-up" class="icon"></i><span>Performance<small>Revenue and ratings</small></span></a></div>
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_payouts' %}"><i data-lucide="file-up" class="icon"></i><span>Platform payouts<small>Import payout files and match deposits</small></span></a></div>
+</div>
+
+<div class="ws-label">To review</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_reservation_review' %}"><i data-lucide="list-checks" class="icon"></i><span>Reservations to review<small>Stays that need a person to confirm</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_block_review' %}"><i data-lucide="calendar-x" class="icon"></i><span>Calendar blocks to review<small>Blocked days nobody has explained</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_booking_feeds' %}"><i data-lucide="rss" class="icon"></i><span>Booking feeds<small>Calendar links from each platform</small></span></a></div>
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_home' %}"><i data-lucide="lock-keyhole" class="icon"></i><span>Month-end close<small>Statements and tie-out</small></span></a></div>
+</div>
+
+<div class="ws-label">Running the rentals</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_performance' %}"><i data-lucide="trending-up" class="icon"></i><span>Performance<small>Revenue and ratings</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_cleaner_activity' %}"><i data-lucide="footprints" class="icon"></i><span>Cleaner activity<small>Who cleaned what, and when</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_cleaning_payments' %}"><i data-lucide="banknote" class="icon"></i><span>Cleaning payments<small>What each cleaner is owed</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'supplies:cart' %}"><i data-lucide="shopping-cart" class="icon"></i><span>Supplies<small>What each rental needs restocked</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ticket_list' %}"><i data-lucide="ticket" class="icon"></i><span>Tickets<small>Open requests</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_compliance' %}"><i data-lucide="calendar-check" class="icon"></i><span>Compliance<small>Scheduled work</small></span></a></div>
+</div>
+
+{% if can_financial %}
+<div class="ws-label">Month-end and money</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_home' %}"><i data-lucide="lock-keyhole" class="icon"></i><span>Month-end close<small>The sheet for the month</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_overview' %}"><i data-lucide="table" class="icon"></i><span>Rentals overview<small>Every rental by month</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_bank_tieout' %}"><i data-lucide="scale" class="icon"></i><span>Bank tie-out<small>Match the bank to the books</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_payouts' %}"><i data-lucide="file-up" class="icon"></i><span>Platform payouts<small>Import payout files and match deposits</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'tourist_tax' %}"><i data-lucide="receipt" class="icon"></i><span>Tourist tax<small>Returns and payments</small></span></a></div>
-{% else %}
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_sales_tax' %}"><i data-lucide="landmark" class="icon"></i><span>Sales tax<small>The returns to file each month</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_escrow' %}"><i data-lucide="vault" class="icon"></i><span>Escrow<small>Held funds, checked every month</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_misc' %}"><i data-lucide="piggy-bank" class="icon"></i><span>Misc trust<small>Other trust balances</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'owner_portal_admin' %}"><i data-lucide="door-open" class="icon"></i><span>Owner portal<small>Owner logins and statements</small></span></a></div>
+</div>
+{% endif %}
+
+{% elif slug == 'long-term-rentals' %}
+<div class="ws-label" style="margin-top:0">Everyday work</div>
+<div class="row g-2">
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ticket_list' %}"><i data-lucide="ticket" class="icon"></i><span>Tickets<small>Open requests</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_compliance' %}"><i data-lucide="calendar-check" class="icon"></i><span>Compliance<small>Scheduled work</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_projects' %}"><i data-lucide="layers" class="icon"></i><span>Projects<small>Longer jobs with steps</small></span></a></div>
-{% endif %}
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i><span>On-Site visits<small>Inspections and turnovers</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'missing_documents' %}"><i data-lucide="folder-search" class="icon"></i><span>Missing documents<small>A lease and an agreement on every rental</small></span></a></div>
 </div>
+
+{% if can_financial %}
+<div class="ws-label">Rent and month-end</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_home' %}"><i data-lucide="lock-keyhole" class="icon"></i><span>Month-end close<small>The sheet for the month</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_rent_collection' %}"><i data-lucide="key-round" class="icon"></i><span>Rent collection<small>Confirm this month's rent came in</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_pay_ltr_owners' %}"><i data-lucide="users" class="icon"></i><span>Pay owners<small>Arrears and same-month owners</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'commercial:renewals' %}"><i data-lucide="calendar-clock" class="icon"></i><span>Lease renewals<small>Leases that end or change rent soon</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_overview' %}"><i data-lucide="table" class="icon"></i><span>Rentals overview<small>Every rental by month</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_bank_tieout' %}"><i data-lucide="scale" class="icon"></i><span>Bank tie-out<small>Match the bank to the books</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_escrow' %}"><i data-lucide="vault" class="icon"></i><span>Escrow<small>Tenant deposits and advance rent held</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_misc' %}"><i data-lucide="piggy-bank" class="icon"></i><span>Misc trust<small>Other trust balances</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'owner_portal_admin' %}"><i data-lucide="door-open" class="icon"></i><span>Owner portal<small>Owner logins and statements</small></span></a></div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="ws-label" style="margin-top:0">Everyday work</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ticket_list' %}"><i data-lucide="ticket" class="icon"></i><span>Tickets<small>Open requests</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_compliance' %}"><i data-lucide="calendar-check" class="icon"></i><span>Compliance<small>Scheduled work</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'ws_projects' %}"><i data-lucide="layers" class="icon"></i><span>Projects<small>Longer jobs with steps</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'missing_documents' %}"><i data-lucide="folder-search" class="icon"></i><span>Missing documents<small>A lease and an agreement on every property</small></span></a></div>
+</div>
+
+{% if can_financial %}
+<div class="ws-label">Books and leases</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:home_commercial' %}"><i data-lucide="building-2" class="icon"></i><span>Commercial books<small>Where each month stands, ledgers, rent, tenants</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'commercial:renewals' %}"><i data-lucide="calendar-clock" class="icon"></i><span>Lease renewals<small>Leases that end or change rent soon</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'close_sales_tax' %}"><i data-lucide="landmark" class="icon"></i><span>Sales tax<small>The returns to file each month</small></span></a></div>
+</div>
+{% endif %}
+
+{% if can_financial %}
+<div class="ws-label">Paying bills</div>
+<div class="row g-2">
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_home' %}"><i data-lucide="file-input" class="icon"></i><span>Payables<small>Drop invoices, review, approve</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_print_checks' %}"><i data-lucide="printer" class="icon"></i><span>Print checks<small>This week's run</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'accounting:payables_print_envelopes' %}"><i data-lucide="mail" class="icon"></i><span>Print envelopes<small>One for each check</small></span></a></div>
+</div>
+{% endif %}
+
+{% endif %}
 <div class="ws-label">Properties</div>
+{% if slug == 'commercial' %}<p class="small text-muted mb-2">Each property has its own leases, tenants, rent, invoices and CAM.</p>{% elif slug == 'associations' %}<p class="small text-muted mb-2">Each association has its own books, owners, documents and settings.</p>{% endif %}
 {% for city, props in by_city %}
 <div class="ws-kind" style="margin-left:0">{{ city }}</div>
 {% for p in props %}<a class="ws-row" href="{% url 'property_detail' p.pk %}" style="grid-template-columns: minmax(0,1fr) 0.9rem;"><span class="main"><b>{{ p.name }}</b><small>{{ p.address }}</small></span><span class="go">&rsaquo;</span></a>{% endfor %}

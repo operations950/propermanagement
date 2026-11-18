@@ -359,7 +359,7 @@
                     <div class="col-12 col-md-5"><label class="form-label small mb-1" for="mp-template">Project template</label>
                         <select name="template" id="mp-template" class="form-select form-select-sm" required><option value="">Choose…</option>{% for t in project_templates %}<option value="{{ t.pk }}">{{ t.name }}</option>{% endfor %}</select></div>
                     <div class="col-12 col-md-4"><label class="form-label small mb-1" for="mp-who">Assign it to</label>
-                        <select name="assignee" id="mp-who" class="form-select form-select-sm">{% for sp in staff_choices %}<option value="{{ sp.pk }}" {% if ticket.assigned_staff_id == sp.pk %}selected{% endif %}>{{ sp }}</option>{% endfor %}</select></div>
+                        <select name="assignee" id="mp-who" class="form-select form-select-sm">{% for sp in staff_choices %}<option value="{{ sp.pk }}" {% if ticket.assigned_staff_id == sp.pk %}selected{% endif %}>{{ sp }}{% if sp.is_removed %} (removed){% endif %}</option>{% endfor %}</select></div>
                     <div class="col-auto"><button class="btn btn-sm btn-dark" type="submit">Make this a project</button></div>
                 </form>
                 {% if not project_templates %}<div class="small text-muted mt-1">No project templates yet. Set one up under Projects, Templates.</div>{% endif %}

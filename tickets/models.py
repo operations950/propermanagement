@@ -319,8 +319,8 @@ class Ticket(models.Model):
         if not self.assigned_staff_id and not self.assigned_contact_id:
             default = None
             if self.assigned_role:
-                default = DepartmentDefaultAssignee.objects.filter(role=self.assigned_role).select_related('staff').first()
-            staff = default.staff if default else StaffProfile.objects.filter(is_company_admin=True).first()
+                default = DepartmentDefaultAssignee.objects.filter(role=self.assigned_role, staff__user__is_active=True).select_related('staff').first()
+            staff = default.staff if default else StaffProfile.objects.filter(is_company_admin=True).order_by('-user__is_active', 'pk').first()      # an active admin first; a removed one only as a last resort (a ticket must have someone)
             if staff:
                 self.assigned_staff = staff
                 self.assignment_source = self.AssignmentSource.AUTO

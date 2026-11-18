@@ -24,6 +24,7 @@ urlpatterns = [
     path('run-steps/<int:step_pk>/complete-upload/', views.process_run_step_complete_upload, name='process_run_step_complete_upload'),
     path('run-steps/<int:step_pk>/assign-task/', views.process_run_step_assign_task, name='process_run_step_assign_task'),
     path('run-steps/<int:step_pk>/complete-task/', views.process_run_step_complete_task, name='process_run_step_complete_task'),
+    path('run-steps/<int:step_pk>/document-sent/', views.process_run_step_mark_document_sent, name='process_run_step_mark_document_sent'),
     path('run-steps/<int:step_pk>/schedule-event/', views.process_run_step_schedule_event, name='process_run_step_schedule_event'),
     path('run-steps/<int:step_pk>/decide/', views.process_run_step_decide, name='process_run_step_decide'),
     path('run-steps/<int:step_pk>/mark-sent/', views.process_run_step_mark_sent, name='process_run_step_mark_sent'),

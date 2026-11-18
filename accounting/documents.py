@@ -167,7 +167,7 @@ def has_contract(association):
 
 def files(association):
     """Every uploaded file with what is going on with it, for the screen."""
-    from . import binders
+    from . import binders, docjobs
     out = binders.rows_for(association)
     for d in _docs(association).order_by('-uploaded_at'):
         if d.text_status in ('', 'waiting', 'reading'):
@@ -186,8 +186,9 @@ def files(association):
             docs = sum(1 for s in secs if not s.get('repeat_of') and s.get('kind') in WANTED)
             rest = len(secs) - docs
             summary = f'Sorted into {docs} document{"s" if docs != 1 else ""} and {rest} attachment{"s" if rest != 1 else ""}: see the list above'
-        splittable = bool(d.auto_sort and d.sort_status == 'confirmed' and state == 'ready' and len([s for s in secs if s.get('kind') not in ('exhibit',)]) > 1)
-        out.append({'doc': d, 'state': state, 'sections': secs, 'summary': summary, 'splittable': splittable})
+        job = docjobs.active_job('split_sorted', d.pk)          # a split that is running in the background: its button is replaced by how far it is
+        splittable = bool(not job and d.auto_sort and d.sort_status == 'confirmed' and state == 'ready' and len([s for s in secs if s.get('kind') not in ('exhibit',)]) > 1)
+        out.append({'doc': d, 'state': state, 'sections': secs, 'summary': summary, 'splittable': splittable, 'job': job})
     return out
 
 

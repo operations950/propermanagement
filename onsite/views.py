@@ -21,6 +21,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.json_utils import dumps_for_script
 from core.models import Contact, Property, PropertyListingName, StaffProfile, Unit
+from core.people import active_staff
 from core.views import _is_admin, _parse_decimal, _parse_int
 from supplies import services as supply_services
 from supplies.models import SupplyItem, SupplyReading
@@ -112,7 +113,7 @@ def cleaner_activity(request):
     elif kind == 'contact' and raw_id.isdigit():
         contact = Contact.objects.filter(pk=raw_id).first()
 
-    cleaners = list(StaffProfile.objects.select_related('user').filter(role=StaffProfile.Role.CLEANER).order_by('user__first_name', 'user__last_name'))
+    cleaners = list(active_staff(also=[staff.pk if staff else None]).filter(role=StaffProfile.Role.CLEANER))
     external = list(Contact.objects.filter(Q(contact_type=Contact.ContactType.VENDOR, trade__icontains='clean') | Q(contact_type=Contact.ContactType.ON_SITE_STAFF)).order_by('name'))
 
     notes = issues = []

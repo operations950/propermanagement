@@ -209,15 +209,19 @@ def review_owner(prop):
     """Who the reviews are assigned to: the association's chosen person, else the first company admin."""
     from core.models import StaffProfile
     profile = ledger.profile_for(prop)
-    return profile.compliance_owner or StaffProfile.objects.filter(is_company_admin=True, user__is_active=True).order_by('pk').first()
+    owner = profile.compliance_owner
+    if owner is not None and not owner.is_removed:
+        return owner
+    return StaffProfile.objects.filter(is_company_admin=True, user__is_active=True).order_by('pk').first()
 
 
 def _template():
     from worksessions.models import Frequency, SessionTemplate
     from core.models import StaffProfile
+    from core.people import default_admin
     t = SessionTemplate.objects.filter(name='Delinquency case reviews').first()
     if t is None:
-        owner = StaffProfile.objects.filter(is_company_admin=True).order_by('pk').first() or StaffProfile.objects.order_by('pk').first()
+        owner = default_admin()                       # an active person: a removed one is never handed new work
         if owner is None:
             return None
         t = SessionTemplate.objects.create(name='Delinquency case reviews', description='Each open delinquency case comes back every 30 days: look at it and move it on. Opened by the cases, not by a schedule.',

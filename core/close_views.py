@@ -228,10 +228,10 @@ def _property_page_up(request, prop, month, unit=None):
     """Up from a rental's month page: the close screen it was opened from (the rentals list, the long-term list or the month-end checklist); from one unit's page, the rental's page."""
     if unit is not None:
         label = f'{prop.name} — all units'
-        return nav.up(request, {'close_property': label}, default=(_page_url(month, prop), label))
+        return nav.up(request, default=(_page_url(month, prop), label), labels={'close_property': label})
     usual = 'close_long_term' if prop.is_long_term else 'close_overview'
     default = (reverse(usual) + f'?month={month:%Y-%m}', 'Long-term rentals' if prop.is_long_term else 'Rentals')
-    return nav.up(request, {'close_overview': 'Rentals', 'close_long_term': 'Long-term rentals', 'close_home': 'Month-end checklist'}, default=default)
+    return nav.up(request, default=default)
 
 
 def _consolidated_page(request, prop, month):
@@ -283,7 +283,7 @@ def close_statement(request, pk):
     return render(request, 'core/close_statement.html', {
         'property': prop, 'st': data, 'year': year, 'earlier': year - 1, 'later': year + 1, 'month': month,
         'can_go_later': year < this_year, 'can_go_earlier': year > 2000,
-        'up': nav.up(request, {'close_property': page_label}, default=(_page_url(month, prop), page_label)),
+        'up': nav.up(request, default=(_page_url(month, prop), page_label), labels={'close_property': page_label}),
     })
 
 
@@ -299,7 +299,7 @@ def close_month_statement(request, pk, month):
     statement_label = f'{prop.name} — statement'
     return render(request, 'core/month_statement.html', {
         'property': prop, 'month': first, 's': owner_portal.display(data), 'previous': ledger.previous_month(first), 'next': ledger.next_month(first),
-        'released': owner_portal.is_released(prop, first), 'up': nav.up(request, {'close_statement': statement_label}, default=(reverse('close_statement', args=[prop.pk]) + f'?month={first:%Y-%m}', statement_label)),
+        'released': owner_portal.is_released(prop, first), 'up': nav.up(request, default=(reverse('close_statement', args=[prop.pk]) + f'?month={first:%Y-%m}', statement_label), labels={'close_statement': statement_label}),
         'live': not data['closed'],
     })
 
@@ -1282,5 +1282,5 @@ def pay_booking(request, pk):
             messages.error(request, why)
         return redirect(reverse('close_pay_booking', args=[payment.pk]))
     kind = payment.get_kind_display()
-    up = nav.up(request, {'close_pay_owners': 'Pay owners', 'close_pay_proper': 'Pay Proper', 'close_pay_ltr_owners': 'Pay long-term owners'}, default=(back, kind))
+    up = nav.up(request, default=(back, kind))
     return render(request, 'core/month_end_booking.html', {'payment': payment, 'result': result, 'back': back, 'up': up, 'ready': any(t['status'] == 'ready' for t in result['targets'])})

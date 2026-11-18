@@ -153,6 +153,63 @@ class AssociationDocument(models.Model):
         return f'{self.get_kind_display()} - {self.property}'
 
 
+class DocumentJob(models.Model):
+    """One save of the document sorter that runs in the background (accounting/docjobs.py): a confirmed big upload saved as one file per document, or a sorted file split into separate
+    documents. The row is the whole truth about it, so a reload of the page or a restart of the site never loses track: queued, running (with a heartbeat), done or failed (with a plain reason)."""
+    class Kind(models.TextChoices):
+        BINDER_SAVE = 'binder_save', 'Save a big upload as separate documents'
+        SPLIT_SORTED = 'split_sorted', 'Split a sorted file into separate documents'
+
+    class Status(models.TextChoices):
+        QUEUED = 'queued', 'Waiting to start'
+        RUNNING = 'running', 'Saving'
+        DONE = 'done', 'Done'
+        FAILED = 'failed', 'Did not finish'
+
+    association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='document_jobs')
+    kind = models.CharField(max_length=14, choices=Kind.choices)
+    target_id = models.PositiveIntegerField(db_index=True, help_text='Part 0 of the big upload, or the sorted file. Not a foreign key: the upload is deleted when the save is finished.')
+    title = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.QUEUED, db_index=True)
+    done_count = models.PositiveIntegerField(default=0)
+    total_count = models.PositiveIntegerField(default=0)
+    message = models.CharField(max_length=200, blank=True)
+    error = models.CharField(max_length=300, blank=True)
+    result = models.JSONField(default=dict, blank=True, help_text='{"created": n, "left_out": n} once it is done.')
+    seen = models.BooleanField(default=False, help_text='Whether the person has been told how it ended.')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    heartbeat_at = models.DateTimeField(null=True, blank=True, help_text='Last sign of life while it runs: a save with none for 15 minutes is called stopped.')
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [models.UniqueConstraint(fields=['kind', 'target_id'], condition=models.Q(status__in=['queued', 'running']), name='uniq_active_document_job')]
+
+    ACTIVE = ('queued', 'running')
+
+    @property
+    def is_active(self):
+        return self.status in self.ACTIVE
+
+    @property
+    def label(self):
+        text = self.message or self.get_status_display()
+        return f'{text} ({self.done_count} of {self.total_count})' if self.total_count and self.status == 'running' else text
+
+    @property
+    def looks_stuck(self):
+        """Active with no sign of life for a couple of minutes: the screen then offers to start over."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+        return self.is_active and (self.heartbeat_at or self.created_at) < timezone.now() - timedelta(minutes=2)
+
+    def __str__(self):
+        return f'{self.get_kind_display()}: {self.title} ({self.status})'
+
+
 class DocumentPage(models.Model):
     """The words on one page of an uploaded document, kept so the document is never read again to answer a question."""
     document = models.ForeignKey(AssociationDocument, on_delete=models.CASCADE, related_name='pages')

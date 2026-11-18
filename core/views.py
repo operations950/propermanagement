@@ -29,6 +29,7 @@ from . import app_settings, permissions, required_docs, faq as faq_service, goog
 from onsite import google_calendar_push as onsite_calendar_push
 from .contact_document_import import DocumentImportError, extract_contacts_from_document
 from .duplicates import find_duplicate_groups, merge_all_into
+from .people import active_staff
 from .forms import (
     ContactForm,
     EmailOrUsernameAuthenticationForm,
@@ -710,7 +711,7 @@ def admin_tools(request):
         'quickbooks_redirect_uri': quickbooks.redirect_uri_for_display(request),
         'quo_phone_lines': _list_quo_phone_lines(),
         'outbound_from_number': django_settings.QUO_DEFAULT_FROM_NUMBER,
-        'staff_profiles': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__last_name'),
+        'staff_profiles': active_staff(order=('user__first_name', 'user__last_name')),
         'role_choices': StaffProfile.Role.choices,
         'email_settings': email_settings,
         'email_backend': django_settings.EMAIL_BACKEND,

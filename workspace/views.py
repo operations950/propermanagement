@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 
 from core import nav
 from core.models import Property, StaffProfile
+from core.people import active_staff
 from worksessions.models import Frequency
 
 from . import menu, services, week as week_service
@@ -98,7 +99,7 @@ def compliance(request):
 
     tab = 'rules' if request.GET.get('tab') == 'rules' else 'items'
     params = request.GET
-    staff_list = StaffProfile.objects.select_related('user').order_by('user__first_name')
+    staff_list = active_staff(also=[params.get('owner')])
     freq_labels = dict(Frequency.choices)
     ctx = {'tab': tab, 'staff_list': staff_list, 'frequencies': Frequency.choices, 'status_options': services.COMPLIANCE_STATUS,
            'due_options': DUE_OPTIONS, 'properties_by_type': properties_by_type()}
@@ -127,7 +128,7 @@ def projects(request):
     if tab == 'active':
         from core.models import properties_by_type
         from tickets.views import DUE_OPTIONS
-        staff_list = StaffProfile.objects.select_related('user').order_by('user__first_name')
+        staff_list = active_staff(also=[params.get('owner')])
         sel, ctx['rows'] = services.project_runs(params)
         sel.update(due_label=dict(DUE_OPTIONS).get(sel['due'], 'Custom date' if sel['due'] == 'custom' else ''),
                    owner_name=next((str(s) for s in staff_list if str(s.pk) == sel['owner']), ''))
@@ -149,8 +150,10 @@ def financials(request):
 def line(request, slug):
     if slug not in services.LINE_TYPES:
         raise Http404
+    from core.permissions import has_financial
     label, by_city = services.line_properties(slug)
-    return render(request, 'workspace/line.html', {'slug': slug, 'label': label, 'by_city': by_city})
+    # The money screens show only to people whose switch allows them (the screens check the same switch: a hidden card is also a closed door).
+    return render(request, 'workspace/line.html', {'slug': slug, 'label': label, 'by_city': by_city, 'can_financial': has_financial(request.user)})
 
 
 @new_face_only(admins_too=True)
@@ -370,7 +373,7 @@ def run_detail(request, pk):
         origin_url, origin_label = '', run.origin_text()
     back = (reverse('ws_projects'), 'Projects') if is_project else ((origin_url, 'Compliance item') if run.session_line_id else (origin_url, 'Ticket'))
     # A project goes up to the wide screen it was opened from (Projects, Home); a process run belongs to the ticket or compliance item it was started for, so Up is that.
-    up = nav.up(request, {'ws_projects': 'Projects', 'ws_home': 'Home'}, default=back) if is_project else nav.Up(*back)
+    up = nav.up(request, default=back) if is_project else nav.Up(*back)
     return render(request, 'workspace/run_detail.html', {'run': run, 'is_project': is_project, 'origin_url': origin_url, 'origin_label': origin_label, 'back': back, 'up': up,
                                                          'process_runs': [run]})
 

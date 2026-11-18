@@ -1,4 +1,4 @@
-"""The smart Up link: the session trail, the resolver, the registry, and what the screens show (core/nav.py, core/nav_map.py, {% up_link %})."""
+"""The smart Up link: the session trail, the resolver, the tree of screens, and what the screens show (core/nav.py, core/nav_tree.py, {% up_link %})."""
 import inspect
 import re
 from pathlib import Path
@@ -9,7 +9,7 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.urls import get_resolver, reverse
 from django.urls.resolvers import URLResolver
 
-from . import nav, nav_map
+from . import nav, nav_tree
 from .models import StaffProfile
 
 STATIC = override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
@@ -101,59 +101,59 @@ class TheResolverTests(SimpleTestCase):
     def test_the_wide_screen_you_came_from_wins_whichever_it_was(self):
         late = fake('accounting:late_fees', '/accounting/3/late-fees/', {'pk': 3})
         late.session[nav.TRAIL_KEY] = [self.HUB, self.CLOSE]
-        got = nav.up(late, self.PARENTS, self.DEFAULT)
+        got = nav.pick(late, self.PARENTS, self.DEFAULT)
         self.assertEqual((got.url, got.label, got.from_trail), ('/accounting/3/close/2026-10/', 'Month-end close', True))
         late.session[nav.TRAIL_KEY] = [self.CLOSE, self.HUB]
-        got = nav.up(late, self.PARENTS, self.DEFAULT)
+        got = nav.pick(late, self.PARENTS, self.DEFAULT)
         self.assertEqual((got.url, got.label), ('/accounting/3/', 'Accounting'))
 
     def test_a_visit_to_the_screen_itself_does_not_count_as_where_you_came_from(self):
         late = fake('accounting:late_fees', '/accounting/3/late-fees/', {'pk': 3}, trail=[self.HUB, ['accounting:late_fees', '/accounting/3/late-fees/', {'pk': '3'}]])
         late.session[nav.TRAIL_KEY] = [self.HUB, ['accounting:late_fees', '/accounting/3/late-fees/', {'pk': '3'}]]
-        self.assertEqual(nav.up(late, self.PARENTS, self.DEFAULT).label, 'Accounting')
+        self.assertEqual(nav.pick(late, self.PARENTS, self.DEFAULT).label, 'Accounting')
 
     def test_a_screen_that_is_not_one_of_the_parents_is_skipped(self):
         late = fake('accounting:late_fees', '/accounting/3/late-fees/', {'pk': 3}, trail=[self.CLOSE, ['ticket_detail', '/tickets/9/', {'pk': '9'}]])
-        got = nav.up(late, self.PARENTS, self.DEFAULT)
+        got = nav.pick(late, self.PARENTS, self.DEFAULT)
         self.assertEqual(got.label, 'Month-end close')
 
     def test_another_associations_screen_is_never_used(self):
         other = ['accounting:hub', '/accounting/4/', {'pk': '4'}]
         late = fake('accounting:late_fees', '/accounting/3/late-fees/', {'pk': 3}, trail=[other])
-        got = nav.up(late, self.PARENTS, self.DEFAULT)
+        got = nav.pick(late, self.PARENTS, self.DEFAULT)
         self.assertEqual((got.url, got.from_trail), ('/accounting/3/', False))
 
     def test_another_months_screen_is_skipped_too(self):
         sept = fake('accounting:bank', '/accounting/3/bank/7/2026-09/', {'pk': 3, 'bank_pk': 7, 'month': '2026-09'}, trail=[self.CLOSE])
-        got = nav.up(sept, {'accounting:close': 'Month-end close'}, ('/accounting/3/close/2026-09/', 'Month-end close'))
+        got = nav.pick(sept, {'accounting:close': 'Month-end close'}, ('/accounting/3/close/2026-09/', 'Month-end close'))
         self.assertEqual((got.url, got.from_trail), ('/accounting/3/close/2026-09/', False))
 
     def test_the_month_on_the_screen_you_leave_goes_with_you(self):
         screen = fake('tourist_tax', '/close/tourist-tax/', get={'month': '2026-09'}, trail=[self.LIST])
-        got = nav.up(screen, {'close_home': 'Month-end checklist'}, ('/close/', 'Month-end checklist'))
+        got = nav.pick(screen, {'close_home': 'Month-end checklist'}, ('/close/', 'Month-end checklist'))
         self.assertEqual(got.url, '/close/?month=2026-09')
 
     def test_a_bookmark_falls_back_to_the_usual_parent(self):
         late = fake('accounting:late_fees', '/accounting/3/late-fees/', {'pk': 3}, trail=[])
-        got = nav.up(late, self.PARENTS, self.DEFAULT)
+        got = nav.pick(late, self.PARENTS, self.DEFAULT)
         self.assertEqual((got.url, got.label, got.from_trail), ('/accounting/3/', 'Accounting', False))
 
     def test_a_label_can_be_worked_out_from_the_request(self):
         r = fake('accounting:unit', '/accounting/3/unit/5/', {'pk': 3, 'unit_pk': 5}, trail=[['accounting:units', '/accounting/3/units/', {'pk': '3'}]])
-        got = nav.up(r, {'accounting:units': lambda request: 'Units & tenants'}, ('/x/', 'Back'))
+        got = nav.pick(r, {'accounting:units': lambda request, ctx: 'Units & tenants'}, ('/x/', 'Back'))
         self.assertEqual(got.label, 'Units & tenants')
 
     def test_nowhere_to_go_is_an_empty_up(self):
         r = fake('x', trail=[])
-        self.assertFalse(nav.up(r, {'a': 'A'}, None))
+        self.assertFalse(nav.pick(r, {'a': 'A'}, None))
 
     def test_a_usual_parent_is_built_from_the_current_address(self):
         r = fake('onsite_performance_calendar', '/onsite/performance/7/calendar/', {'property_id': 7}, trail=[])
-        got = nav.up(r, {}, nav.D('onsite_performance_property', 'Property performance', args={'property_id': 'property_id'}))
+        got = nav.pick(r, {}, nav.D('onsite_performance_property', 'Property performance', args={'property_id': 'property_id'}))
         self.assertEqual(got.url, reverse('onsite_performance_property', args=[7]))
         r = fake('tourist_tax', '/close/tourist-tax/', get={'month': '2026-08'}, trail=[])
-        self.assertEqual(nav.up(r, {}, nav.D('close_home', 'Month-end checklist', query=('month',))).url, reverse('close_home') + '?month=2026-08')
-        self.assertEqual(nav.up(r, {}, nav.D('ws_compliance', 'Compliance rules', fixed={'tab': 'rules'})).url, reverse('ws_compliance') + '?tab=rules')
+        self.assertEqual(nav.pick(r, {}, nav.D('close_home', 'Month-end checklist', query=('month',))).url, reverse('close_home') + '?month=2026-08')
+        self.assertEqual(nav.pick(r, {}, nav.D('ws_compliance', 'Compliance rules', fixed={'tab': 'rules'})).url, reverse('ws_compliance') + '?tab=rules')
 
     def test_the_usual_parent_may_depend_on_the_person(self):
         r = fake('session_detail', '/compliance/3/', {'pk': 3}, trail=[])
@@ -176,38 +176,111 @@ def _all_url_names():
     return names
 
 
-class TheRegistryTests(SimpleTestCase):
-    def test_every_name_in_the_registry_is_a_real_screen(self):
+class TheTreeTests(SimpleTestCase):
+    """core/nav_tree.py walked end to end: the rules every screen's place in it must keep."""
+
+    def test_every_screen_in_the_tree_is_a_real_url_and_so_is_every_parent_and_usual_parent(self):
         real = _all_url_names()
-        for name, (parents, default) in nav_map.UP.items():
+        for name, node in nav_tree.SCREENS.items():
             self.assertIn(name, real, name)
-            for parent in parents:
+            for parent, _ in node.parents:
                 self.assertIn(parent, real, f'{name} lists {parent}')
-            if isinstance(default, dict):
-                self.assertIn(default['name'], real, f'{name} default')
+                self.assertIn(parent, nav_tree.SCREENS, f'{name} lists {parent}, which has no place of its own in the tree')
+            if isinstance(node.usual, dict):
+                self.assertIn(node.usual['name'], real, f'{name} usual parent')
 
-    def test_a_detail_screen_never_goes_up_to_another_detail_screen(self):
-        for name in nav_map.DETAIL_VIEWS:
-            entry = nav_map.UP.get(name)
-            if entry is None:
+    def test_there_is_no_cycle_and_no_screen_is_its_own_ancestor(self):
+        for name in nav_tree.SCREENS:
+            self.assertNotIn(name, nav_tree.ancestors(name), f'{name} is above itself')
+            for above in nav_tree.ancestors(name):
+                self.assertNotIn(name, nav_tree.ancestors(above), f'{name} and {above} are above each other')
+
+    def test_a_parent_is_a_wide_screen_with_a_label_or_the_record_a_form_hangs_off(self):
+        for name, node in nav_tree.SCREENS.items():
+            for parent, edge_label in node.parents:
+                above = nav_tree.SCREENS[parent]
+                self.assertTrue(edge_label or above.label, f'{name} goes up to {parent}, which has no label')
+                if above.kind == nav_tree.DETAIL:
+                    self.assertEqual(node.kind, nav_tree.FORM, f'{name} ({node.kind}) lists the detail screen {parent}: only a form or page that belongs to that record may')
+
+    def test_a_detail_screen_is_the_bottom_level_so_nothing_but_its_own_forms_is_beneath_it(self):
+        for name, node in nav_tree.SCREENS.items():
+            for above in nav_tree.ancestors(name):
+                if nav_tree.SCREENS[above].kind == nav_tree.DETAIL:
+                    self.assertEqual(node.kind, nav_tree.FORM, f'{above} (a detail screen) is above {name}')
+
+    def test_screens_that_sit_beside_each_other_are_never_ancestors_of_each_other(self):
+        pairs = [('accounting:late_fees', 'accounting:collections'), ('accounting:late_fees', 'accounting:reserve_check'), ('accounting:reserve_check', 'accounting:send_board'),
+                 ('close_payouts', 'tourist_tax'), ('close_overview', 'close_long_term'), ('onsite_performance', 'onsite_reservation_list'),
+                 ('accounting:units', 'accounting:charges'), ('accounting:contracts', 'accounting:recurring')]
+        for a, b in pairs:
+            self.assertNotIn(a, nav_tree.ancestors(b), f'{a} is above {b}')
+            self.assertNotIn(b, nav_tree.ancestors(a), f'{b} is above {a}')
+
+    def test_every_screen_that_ever_had_a_hand_written_up_link_is_in_the_tree(self):
+        """The screens that listed their own parents before the tree existed (accounting's acc_up, the old registry, the views that called nav.up)."""
+        before = """
+            accounting:hub accounting:close_review accounting:close accounting:units accounting:units_import accounting:unit accounting:owner accounting:shares accounting:charges
+            accounting:charge_new accounting:charge_edit accounting:charge_one accounting:receipt_new accounting:budget_year accounting:budget_project accounting:budget_packet
+            accounting:budget_load accounting:master_chart accounting:reserve_check accounting:send_board accounting:collections_home accounting:collections accounting:late_fees
+            accounting:contracts accounting:contracts_print accounting:delinquencies accounting:case accounting:bank accounting:deposits accounting:bills accounting:bill accounting:pay
+            accounting:checks accounting:check_setup accounting:recurring accounting:journal accounting:reports accounting:report_tb accounting:report_bs accounting:report_pl
+            accounting:report_bva accounting:report_is accounting:report_gl accounting:report_aging accounting:report_payables accounting:report_checks accounting:report_rec
+            accounting:budget accounting:payables_home accounting:settings commercial:leases commercial:lease_new commercial:lease_edit commercial:lease commercial:invoices
+            commercial:owners commercial:cam commercial:cam_pool_new commercial:cam_pool commercial:cam_reconcile commercial:ltr_leases commercial:ltr_lease commercial:renewals
+            bot_keys property_data_import quickbooks_accounts staff_create owner_portal_admin close_bank_tieout close_long_term close_overview close_escrow close_misc close_pay_owners
+            close_pay_proper close_pay_ltr_owners close_rent_collection close_sales_tax tourist_tax close_payouts missing_documents faq_review_queue property_create property_edit
+            property_detail contact_detail contact_create contact_edit onsite_booking_feeds onsite_calendar onsite_checklist_custom_items onsite_checklist_templates onsite_cleaner_activity
+            onsite_cleaning_payments onsite_visit_create onsite_visit_rule_list onsite_visit_detail onsite_checklist_template_detail onsite_booking_import onsite_booking_import_preview
+            onsite_feeds_recalibrate onsite_performance onsite_rentals_calendar onsite_reservation_list onsite_performance_property onsite_performance_calendar
+            onsite_reservation_review onsite_reservation_create onsite_reservation_edit ticket_create department_dashboard ticket_previous_conversation ticket_detail timeclock_policy
+            timeclock_change timeclock_time_off timeclock_fix timeclock_punch session_detail session_template_detail session_template_edit session_template_create
+            process_template_create process_template_edit process_template_preview ws_people portfolio_business_detail portfolio_task_detail supplies:order_detail
+            close_property close_unit close_statement close_month_statement close_pay_booking legalforms:list legalforms:new legalforms:edit legalforms:detail ws_run_detail
+        """.split()
+        self.assertEqual([n for n in before if n not in nav_tree.SCREENS], [])
+
+    def test_every_view_that_works_out_an_up_link_is_a_screen_in_the_tree(self):
+        """A view that calls acc_up() or nav.up() must have its url name in the tree, or the trail is ignored and Up only ever goes to its usual parent."""
+        import ast
+        wanted = {}
+
+        def walk(patterns, prefix=''):
+            for p in patterns:
+                if isinstance(p, URLResolver):
+                    walk(p.url_patterns, prefix + (p.namespace + ':' if p.namespace else ''))
+                elif p.name:
+                    callback = p.callback
+                    while hasattr(callback, '__wrapped__'):
+                        callback = callback.__wrapped__
+                    wanted.setdefault((callback.__module__, callback.__name__), []).append(prefix + p.name)
+        walk(get_resolver().url_patterns)
+        called = []
+        for path in ROOT.glob('*/views*.py'):
+            source = path.read_text(encoding='utf-8')
+            if 'acc_up(' not in source and 'nav.up(' not in source:
                 continue
-            parents, default = entry
-            for parent in parents:
-                self.assertNotIn(parent, nav_map.DETAIL_VIEWS, f'{name} lists the detail screen {parent}')
-            if isinstance(default, dict):
-                self.assertNotIn(default['name'], nav_map.DETAIL_VIEWS, f'{name} defaults to a detail screen')
+            module = '.'.join(path.relative_to(ROOT).with_suffix('').parts)
+            for fn in [n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef)]:
+                body = ast.get_source_segment(source, fn) or ''
+                if 'acc_up(' in body or 'nav.up(' in body:
+                    called.append((module, fn.name, wanted.get((module, fn.name), [])))
+        self.assertGreater(len(called), 40)
+        unregistered = [f'{m}.{f}: {names}' for m, f, names in called if names and not any(n in nav_tree.SCREENS for n in names)]
+        self.assertEqual(unregistered, [])
 
-    def test_the_accounting_detail_screens_list_only_wide_parents(self):
-        from accounting import views, views_delinquency, views_money
-        detail_names = {n for n in nav_map.DETAIL_VIEWS if n.startswith('accounting:')}
-        from commercial import views as commercial_views, views_cam
-        detail_names |= {'commercial:lease', 'commercial:cam_pool'}
-        for module, function in ((views, 'unit_detail'), (views, 'owner_detail'), (views_money, 'bill_detail'), (views_delinquency, 'case_detail'),
-                                 (commercial_views, 'lease_detail'), (views_cam, 'cam_pool')):
-            source = inspect.getsource(getattr(module, function))
-            names = set(re.findall(r"'(accounting:\w+|commercial:\w+|ws_\w+|close_\w+)'", source.split('acc_up(', 1)[1].split('],', 1)[0]))
-            self.assertTrue(names, function)
-            self.assertFalse(names & detail_names, f'{function} lists {names & detail_names}')
+    def test_late_fees_and_collections_are_steps_beside_each_other_so_up_never_goes_between_them(self):
+        self.assertNotIn('accounting:collections', nav_tree.allowed('accounting:late_fees'))
+        self.assertNotIn('accounting:late_fees', nav_tree.allowed('accounting:collections'))
+        self.assertEqual(sorted(k for k in nav_tree.allowed('accounting:late_fees') if k.startswith('accounting:')), ['accounting:close', 'accounting:home', 'accounting:hub'])
+
+    def test_a_close_step_of_the_checklist_is_below_the_checklist_and_the_financials_screen(self):
+        self.assertEqual(set(nav_tree.allowed('tourist_tax')), {'close_home', 'ws_financials', 'ws_line'})       # and the line page it is a card on
+        self.assertEqual(nav_tree.allowed('accounting:reserve_check')['close_home'], 'Month-end checklist')
+
+    def test_the_usual_parent_of_a_screen_without_one_written_is_its_first_parent(self):
+        self.assertEqual(nav_tree.usual('accounting:deposits')['name'], 'accounting:bank')
+        self.assertIsNone(nav_tree.usual('ws_home'))
 
     def test_no_screen_still_has_a_hand_written_up_link(self):
         """Every Up link is the shared one ({% up_link %}); an in-screen switch is marked data-no-back."""
@@ -365,5 +438,5 @@ class TheCommercialScreensTests(TestCase):
 
     def test_the_year_on_a_cam_screen_goes_up_with_it(self):
         screen = fake('commercial:cam_pool', '/commercial/3/cam/pool/new/', {'pk': 3}, get={'year': '2025'}, trail=[['commercial:cam', '/commercial/3/cam/?year=2026', {'pk': '3'}]])
-        got = nav.up(screen, {'commercial:cam': 'CAM 2025'}, ('/commercial/3/cam/?year=2025', 'CAM 2025'))
+        got = nav.pick(screen, {'commercial:cam': 'CAM 2025'}, ('/commercial/3/cam/?year=2025', 'CAM 2025'))
         self.assertEqual(got.url, '/commercial/3/cam/?year=2025')

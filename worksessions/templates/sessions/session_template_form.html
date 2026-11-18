@@ -52,7 +52,7 @@
                 <input type="hidden" name="owner" data-bubble-input value="{{ form.owner.value|default:'' }}" required>
                 <div class="bubble-slot" data-bubble-slot data-empty-text="Choose an owner"></div>
                 <div class="bubble-pool" data-bubble-pool>
-                    {% for s in staff %}<button type="button" class="bubble" data-value="{{ s.pk }}" data-label="{{ s }}">{{ s }}</button>{% endfor %}
+                    {% for s in staff %}<button type="button" class="bubble" data-value="{{ s.pk }}" data-label="{{ s }}{% if s.is_removed %} (removed){% endif %}">{{ s }}{% if s.is_removed %} (removed){% endif %}</button>{% endfor %}
                 </div>
             </div>
             {% if form.owner.errors %}<div class="invalid-feedback d-block">{{ form.owner.errors|join:', ' }}</div>{% endif %}

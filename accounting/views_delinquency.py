@@ -66,7 +66,7 @@ def delinquencies(request, pk):
            'summary': {'count': len(rows), 'owed': sum((r['b']['total'] for r in rows), ZERO), 'fees': sum((r['fee_due'] for r in rows), ZERO), 'interest': sum((r['interest_due'] for r in rows), ZERO),
                        'review': sum(1 for c in cases if c['review_due']), 'letters': sum(1 for r in rows if r['needs_letter'])},
            'other_cases': [c for c in cases if c['case'].unit_id not in shown_units], 'terms': charges.terms_sentences(profile),
-           **acc_up(request, prop, ['accounting:hub', 'accounting:close'], reverse('accounting:hub', args=[pk]), 'Accounting')}
+           **acc_up(request, prop, reverse('accounting:hub', args=[pk]), 'Accounting')}
     return render(request, 'accounting/delinquencies.html', ctx)
 
 
@@ -138,5 +138,5 @@ def case_detail(request, pk, case_pk):
     ctx = {'assoc': prop, 'case': case, 'b': b, 'open_charges': open_charges, 'events': events, 'icons': delinquency.case_icons(case), 'prep_row': prep_row,
            'stages': [s for s in DelinquencyCase.Stage if s not in (DelinquencyCase.Stage.RESOLVED, DelinquencyCase.Stage.PREPARING)],
            'letters': GeneratedDocument.objects.filter(property=prop, unit=case.unit, template__slug='nola').order_by('-created_at'), 'today': timezone.localdate(),
-           **acc_up(request, prop, ['accounting:collections', 'accounting:delinquencies'], reverse('accounting:collections', args=[pk]) + f'?tab={case.stage}', 'Owner collections')}
+           **acc_up(request, prop, reverse('accounting:collections', args=[pk]) + f'?tab={case.stage}', 'Owner collections')}
     return render(request, 'accounting/delinquency_case.html', ctx)

@@ -33,7 +33,7 @@ def reserve(request, pk, month):
             messages.error(request, str(e))
         return redirect(here)
     info = reserve_check.check(prop, first)
-    return render(request, 'accounting/reserve_check.html', {'assoc': prop, 'info': info, **acc_up(request, prop, ['accounting:close'], _close_back(pk, first), 'Month-end close'), **month_context(first)})
+    return render(request, 'accounting/reserve_check.html', {'assoc': prop, 'info': info, **acc_up(request, prop, _close_back(pk, first), 'Month-end close'), **month_context(first)})
 
 
 @admin_only
@@ -82,4 +82,4 @@ def send_board(request, pk, month):
         r['picked'] = r['key'] in selected
     return render(request, 'accounting/send_board.html', {'assoc': prop, 'rows': rows, 'sent': sent, 'locked': locked, 'subject': subject, 'body': body, 'from_email': board_send.FROM_EMAIL,
                                                           'cc': board_send.CC_EMAILS, 'can_send': can_send, 'why_not': why, 'filename': package.file_name(prop, first),
-                                                          'package_url': reverse('accounting:report_package', args=[pk]) + f'?month={first:%Y-%m}', **acc_up(request, prop, ['accounting:close'], _close_back(pk, first), 'Month-end close'), **month_context(first)})
+                                                          'package_url': reverse('accounting:report_package', args=[pk]) + f'?month={first:%Y-%m}', **acc_up(request, prop, _close_back(pk, first), 'Month-end close'), **month_context(first)})

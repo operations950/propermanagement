@@ -163,4 +163,4 @@ def master(request):
         return redirect(here)
     ledger.sync_all_charts()
     return render(request, 'accounting/master_chart.html', {'groups': _master_rows(), 'kinds': Account.Kind.choices, 'sections': EXPENSE_SECTIONS, 'books': len(_books()), 'reserve_note': RESERVE_NOTE,
-                                                            **acc_up(request, None, ['ws_financials'], reverse('ws_financials'), 'Financials')})
+                                                            **acc_up(request, None, reverse('ws_financials'), 'Financials')})

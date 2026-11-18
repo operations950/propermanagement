@@ -45,7 +45,7 @@ def text_for(n):
     return f'page {n} ' + ' '.join(f'w{n}x{i}' for i in range(30))
 
 
-@override_settings(STORAGES=STORAGES)
+@override_settings(STORAGES=STORAGES, DOCUMENT_JOBS_INLINE=True)       # the saves run inside the click here, so the outcome is certain; accounting/test_document_jobs.py covers the thread
 class BinderBase(TestCase):
     def setUp(self):
         self.prop = make_assoc()

@@ -260,15 +260,17 @@ dead.
   generous `padding-bottom` so the last element on a page isn't flush
   against the viewport edge. Any new page should extend `base.html` and get
   both for free.
-- The **Up link** is smart (`core/nav.py`, `core/nav_map.py`, `{% up_link %}` in `core/templatetags/nav_tags.py`): Up is not Back, it moves out to a wider screen
+- The **Up link** is smart (`core/nav.py`, `core/nav_tree.py`, `{% up_link %}` in `core/templatetags/nav_tags.py`): Up is not Back, it moves out to a wider screen
   (a list, hub, checklist or dashboard) and to the one the person actually came from (late fees opened from the close shows "Month-end close", from the accounting hub
-  "Accounting"). A session trail (`NavTrailMiddleware`) keeps the last ~15 page visits; `nav.up(request, parents, default)` returns the most recent trail entry that is one
-  of the screen's `parents` and the same record (same association, same month), else the usual parent. Never hand-write an up link and never make a detail screen
-  (one ticket, property, contact, unit) another detail's parent. To add a screen: one line in `core/nav_map.py` (its url name, the wide screens it is reached from,
-  its usual parent as `D(...)`) and `{% up_link %}` in the template. A screen whose label or default needs the record (a property's name, a ticket's saved filters)
-  calls `nav.up()` in the view and passes `up` in the context; the accounting screens do it with `**acc_up(request, prop, [names], default_url, default_label)`
-  (`accounting/web.py`). The phone top bar's Back button reads the same address (`#mBackUrl`). `core/test_nav.py` guards all of it, including "no hand-written
-  arrow-up link is left" (an in-screen view switch is marked `data-no-back`).
+  "Accounting"). `core/nav_tree.py` is THE tree of screens: each screen's url name, label, parents (the wider screens it is reached from), kind (wide / detail / form) and
+  usual parent. The screens an Up link may use are the screen's ANCESTORS in that tree; nobody writes a list of parents per screen. A session trail (`NavTrailMiddleware`)
+  keeps the last ~15 page visits; `nav.up(request, default=..., labels=...)` returns the most recent trail entry that is an ancestor of the screen and the same record (same
+  association, same month), else the usual parent. Never hand-write an up link; a detail screen (one ticket, property, contact, unit) is the bottom level and is never above a
+  wide or detail screen (only the forms/pages that hang off that record may go up to it); two steps beside each other are never each other's ancestors. To add a screen: one
+  `screen(...)` line in `core/nav_tree.py` and `{% up_link %}` in the template. A screen whose label or default needs the record (a property's name, a ticket's saved filters)
+  calls `nav.up()` in the view and passes `up` in the context; the accounting screens do it with `**acc_up(request, prop, default_url, default_label)` (`accounting/web.py`).
+  The phone top bar's Back button reads the same address (`#mBackUrl`, `{% up_url %}`). `core/test_nav.py` walks the whole tree (no cycles, wide parents only, labels, every view
+  that works out an Up link is registered) and guards "no hand-written arrow-up link is left" (an in-screen view switch is marked `data-no-back`).
 - No automated test suite exists. Verification throughout this project has
   been manual/browser-driven (direct browser interaction, raw HTTP against
   the real dev DB), not pytest/Django TestCase. Worth knowing before

@@ -53,7 +53,7 @@ def document_list(request):
         if prop:
             docs = docs.filter(property=prop)
     templates = list(DocumentTemplate.objects.filter(is_active=True, companion_of__isnull=True).exclude(slug__in=BUDGET_ONLY_SLUGS))
-    up = nav.up(request, {'ws_compliance': 'Compliance'}, default=(reverse('property_detail', args=[prop.pk]), prop.name)) if prop else nav.Up('', '')
+    up = nav.up(request, default=(reverse('property_detail', args=[prop.pk]), prop.name)) if prop else nav.Up('', '')
     return render(request, 'legalforms/list.html', {'docs': docs[:200], 'property': prop, 'templates': templates, 'up': up})
 
 
@@ -77,9 +77,9 @@ def _step_from(source):
 
 def _form_page(request, template, prop, unit, parent, values, errors, editing=None, step=None):
     if editing is not None:                       # editing a document: Up is the document itself
-        up = nav.up(request, {'legalforms:detail': 'The document'}, default=(reverse('legalforms:detail', args=[editing.pk]), 'The document'))
+        up = nav.up(request, default=(reverse('legalforms:detail', args=[editing.pk]), 'The document'))
     else:                                         # a new document: Up is the list of that property's documents
-        up = nav.up(request, {'legalforms:list': 'Documents'}, default=(reverse('legalforms:list') + (f'?property={prop.pk}' if prop else ''), 'Documents'))
+        up = nav.up(request, default=(reverse('legalforms:list') + (f'?property={prop.pk}' if prop else ''), 'Documents'))
     return render(request, 'legalforms/form.html', {
         'template': template, 'property': prop, 'unit': unit, 'parent': parent, 'values': values, 'errors': errors,
         'fields': template.fields, 'editing': editing, 'run_step': step, 'up': up,
@@ -107,7 +107,7 @@ def document_new(request, slug):
         return _form_page(request, template, prop, unit, parent, raw, errors, step=step)
     step = _step_from(request.GET)
     if prop is None:
-        up = nav.up(request, {'legalforms:list': 'Documents'}, default=(reverse('legalforms:list'), 'Documents'))
+        up = nav.up(request, default=(reverse('legalforms:list'), 'Documents'))
         return render(request, 'legalforms/choose.html', {'template': template, 'properties': _properties(), 'units_json': _units_json(), 'up': up})
     overrides = {}
     try:                                                                  # a late letter started from Owner collections carries the date the owner was behind as of
@@ -141,7 +141,7 @@ def document_detail(request, pk):
     _guard(request)
     doc = get_object_or_404(GeneratedDocument.objects.select_related('template', 'property', 'unit', 'parent', 'created_by'), pk=pk)
     label = f'{doc.property.name} documents'
-    up = nav.up(request, {'legalforms:list': label, 'accounting:collections': 'Owner collections'}, default=(reverse('legalforms:list') + f'?property={doc.property_id}', label))
+    up = nav.up(request, default=(reverse('legalforms:list') + f'?property={doc.property_id}', label), labels={'legalforms:list': label})
     return render(request, 'legalforms/detail.html', {
         'doc': doc, 'up': up, 'html': show_html(doc), 'companions': doc.template.companions.filter(is_active=True).exclude(slug__in=BUDGET_ONLY_SLUGS),
         'children': doc.companions.select_related('template'), 'email_to': services.suggested_email(doc),

@@ -46,10 +46,11 @@ def screen_url(session):
 def _template(step):
     from worksessions.models import Frequency, SessionTemplate
     from .models import StaffProfile
+    from .people import default_admin
     name = f'{PREFIX}{step["n"]}. {step["title"]}'
     t = SessionTemplate.objects.filter(name=name).first()
     if t is None:
-        owner = StaffProfile.objects.filter(is_company_admin=True).order_by('pk').first() or StaffProfile.objects.order_by('pk').first()
+        owner = default_admin()                       # an active person: a removed one is never handed new work
         if owner is None:
             return None
         t = SessionTemplate.objects.create(name=name, description='A step of the month-end close checklist. Made by the close, not by a schedule; it finishes itself when the step is done.', owner=owner,

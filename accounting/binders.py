@@ -26,7 +26,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
-from . import docreader, documents
+from . import docjobs, docreader, documents
 from .documents import DocumentError
 from .models import AssociationDocument, DocumentPage
 
@@ -99,6 +99,9 @@ def process(say=None):
     now = timezone.now()
     for head in AssociationDocument.objects.filter(is_staging=True, binder_order=0, binder_state__in=['reading', 'sorting', 'finalizing']):
         if head.binder_state == 'finalizing':
+            if docjobs.active_job('binder_save', head.pk):
+                docjobs.recover_stale()           # a background save is judged by its heartbeat, not by when it began: a long one is not cut off
+                continue
             if head.read_started_at and head.read_started_at < now - STALE_FINALIZING:
                 head.binder_state, head.read_note = 'needs_confirm', 'Saving the documents stopped halfway. Press the button again.'
                 head.save(update_fields=['binder_state', 'read_note'])
@@ -250,9 +253,12 @@ def plan_files(sections):
 
 # ---------------------------------------------------------------- the re-cut
 
-def _cut_and_store(association, user, plan, pages, created):
-    """Build each planned file from the pages and store it, carrying the words and notes over. Appends every stored document to `created` (so a failure can remove them)."""
+def _cut_and_store(association, user, plan, pages, created, progress=None, marker=''):
+    """Build each planned file from the pages and store it, carrying the words and notes over. Appends every stored document to `created` (so a failure can remove them).
+    Two phases: the pages are cut first (the slow part, no database writes, so `progress(done, total, message)` can be saved as it goes and be seen from another request), then every
+    document is stored in ONE transaction (all or nothing). `marker` is put on each stored document (binder_id) so a save that finished but was cut off before it cleaned up is recognised on the next try."""
     from pypdf import PdfReader, PdfWriter
+    progress = progress or (lambda done, total, message: None)
     by_number = {p.number: p for p in pages}
     readers = {}
 
@@ -262,7 +268,9 @@ def _cut_and_store(association, user, plan, pages, created):
         return readers[part.pk]
 
     partial = any(p.part.text_status == 'partial' for p in pages)
-    for g in plan:
+    built = []
+    for i, g in enumerate(plan):
+        progress(i, len(plan), f'Cutting "{g["title"]}"'[:190])
         writer = PdfWriter()
         for n in g['pages']:
             src = by_number[n]
@@ -271,24 +279,30 @@ def _cut_and_store(association, user, plan, pages, created):
         writer.write(buf)
         blob = buf.getvalue()
         chunks = [(1, len(g['pages']), blob)] if len(blob) <= documents.STORE_LIMIT else documents.split_pdf(blob)
-        total = len(chunks)
-        for ci, (first, last, data) in enumerate(chunks, 1):
-            name = g['title'] if total == 1 else f'{g["title"]} (part {ci} of {total})'
-            doc = documents._store(association, g['kind'], name, ContentFile(data, name=f'{_safe(name)}.pdf'), user, text_status='partial' if partial else 'ready')
-            created.append(doc)
-            rows = []
-            for local_no in range(first, last + 1):
-                src = by_number[g['pages'][local_no - 1]]
-                rows.append(DocumentPage(document=doc, number=local_no - first + 1, text=src.text, by_claude=src.by_claude, tags=src.tags))
-            DocumentPage.objects.bulk_create(rows)
-            doc.page_count = len(rows)
-            doc.save(update_fields=['page_count'])
+        built.append((g, chunks))
+    progress(len(plan), len(plan), 'Saving the files')
+    extra = {'binder_id': marker} if marker else {}
+    with transaction.atomic():
+        for g, chunks in built:
+            total = len(chunks)
+            for ci, (first, last, data) in enumerate(chunks, 1):
+                name = g['title'] if total == 1 else f'{g["title"]} (part {ci} of {total})'
+                doc = documents._store(association, g['kind'], name, ContentFile(data, name=f'{_safe(name)}.pdf'), user, text_status='partial' if partial else 'ready', **extra)
+                created.append(doc)
+                rows = []
+                for local_no in range(first, last + 1):
+                    src = by_number[g['pages'][local_no - 1]]
+                    rows.append(DocumentPage(document=doc, number=local_no - first + 1, text=src.text, by_claude=src.by_claude, tags=src.tags))
+                DocumentPage.objects.bulk_create(rows)
+                doc.page_count = len(rows)
+                doc.save(update_fields=['page_count'])
     return created
 
 
-def finalize(head, user=None):
+def finalize(head, user=None, progress=None):
     """Save a confirmed binder as one file per document, then delete the staging parts. Returns (documents, left_out copies). Only one save runs at a time; a failure leaves every
-    staging part in place with the state 'failed' and a plain message, and the person can press the button again."""
+    staging part in place with the state 'failed' and a plain message, and the person can press the button again. Normally run in the background (accounting/docjobs.py), which passes
+    `progress(done, total, message)`. Safe to run again after being cut off: documents already stored for this binder (marked with its id) are never stored twice."""
     claimed = AssociationDocument.objects.filter(pk=head.pk, binder_state__in=['needs_confirm', 'failed']).update(binder_state='finalizing', read_started_at=timezone.now(), read_note='')
     if not claimed:
         raise DocumentError('That upload is already being saved, or is not ready to be saved.')
@@ -299,8 +313,11 @@ def finalize(head, user=None):
         plan, left_out = plan_files(head.sections or [])
         if not plan:
             raise DocumentError('Nothing is left to save: every part was left out.')
-        with transaction.atomic():
-            _cut_and_store(head.property, user, plan, combined_pages(parts), created)
+        stored = list(AssociationDocument.objects.filter(property=head.property, binder_id=head.binder_id, is_staging=False).order_by('pk'))
+        if stored:                                # an earlier try stored everything (all or nothing) and was cut off before it cleaned up: only the cleaning is left
+            _drop(parts)
+            return stored, left_out
+        _cut_and_store(head.property, user, plan, combined_pages(parts), created, progress=progress, marker=head.binder_id)
     except Exception as exc:
         _drop(created)
         logger.exception('Saving the big upload "%s" failed', head.binder_name)
@@ -313,8 +330,22 @@ def finalize(head, user=None):
     return created, left_out
 
 
-def confirm(head, choices, keeps, user=None):
+def confirm(head, choices, keeps, user=None, progress=None):
     """The person confirms the proposed documents. `choices` is [(kind, title, applies_to)] in the order shown, `keeps` the numbers of the copies to keep anyway. Then it is saved."""
+    apply_choices(head, choices, keeps)
+    return finalize(head, user, progress)
+
+
+def prepare_save(head, choices, keeps):
+    """What the screen does before it hands the save to the background: the upload must be waiting for the person's yes, and what they chose is kept."""
+    head.refresh_from_db()
+    if head.binder_state not in ('needs_confirm', 'failed'):
+        raise DocumentError('That upload is already being saved, or is not ready to be saved.')
+    apply_choices(head, choices, keeps)
+
+
+def apply_choices(head, choices, keeps):
+    """Keep what the person chose for each proposed document: its kind, its title, what an amendment amends, and which second copies to keep."""
     sections = [dict(s) for s in head.sections or []]
     if len(choices) != len(sections):
         raise DocumentError('That list changed. Reload the page.')
@@ -332,7 +363,6 @@ def confirm(head, choices, keeps, user=None):
             s['keep'] = i in keeps
     head.sections = sections
     head.save(update_fields=['sections'])
-    return finalize(head, user)
 
 
 def sort_again(head):
@@ -342,9 +372,8 @@ def sort_again(head):
 
 # ---------------------------------------------------------------- a file that fit under the limit
 
-def split_sorted(doc, user=None):
-    """Make a sorted and confirmed file into separate documents, one per document it holds (same rules as a big upload; a second copy is left out). The original is removed only after every
-    new file is saved. Returns (documents, left_out copies)."""
+def prepare_split(doc):
+    """Check a sorted file can be split and work out how. Returns (pages, plan, left_out copies); raises DocumentError in plain words when it cannot."""
     if doc.is_staging or not doc.auto_sort or doc.sort_status != 'confirmed' or doc.text_status not in ('ready', 'partial'):
         raise DocumentError('Sort the file and confirm what it holds first.')
     rows = list(DocumentPage.objects.filter(document=doc).order_by('number'))
@@ -355,10 +384,21 @@ def split_sorted(doc, user=None):
     plan, left_out = plan_files(sections)
     if len(plan) < 2 and not left_out:
         raise DocumentError('This file holds one document, so there is nothing to separate.')
+    return pages, plan, left_out
+
+
+def split_sorted(doc, user=None, progress=None):
+    """Make a sorted and confirmed file into separate documents, one per document it holds (same rules as a big upload; a second copy is left out). The original is removed only after every
+    new file is saved. Returns (documents, left_out copies). Safe to run again after being cut off: documents already stored from this file (marked `split:<id>`) are never stored twice."""
+    pages, plan, left_out = prepare_split(doc)
+    marker = f'split:{doc.pk}'
+    stored = list(AssociationDocument.objects.filter(property=doc.property, binder_id=marker, is_staging=False).order_by('pk'))
+    if stored:                                    # an earlier try stored everything (all or nothing) and was cut off before the original was removed
+        _drop([doc])
+        return stored, left_out
     created = []
     try:
-        with transaction.atomic():
-            _cut_and_store(doc.property, user, plan, pages, created)
+        _cut_and_store(doc.property, user, plan, pages, created, progress=progress, marker=marker)
     except Exception as exc:
         _drop(created)
         logger.exception('Splitting "%s" failed', doc.name)
@@ -375,7 +415,8 @@ def rows_for(association):
     for head in AssociationDocument.objects.filter(property=association, is_staging=True, binder_order=0).order_by('-uploaded_at'):
         sections = head.sections or []
         copies = [s for s in sections if s.get('leave_out')]
-        summary = f'Read as one file of {sum(p.page_count or 0 for p in parts_of(head.binder_id))} pages, in {AssociationDocument.objects.filter(binder_id=head.binder_id).count()} parts.'
+        parts = parts_of(head.binder_id)
+        summary = f'Read as one file of {sum(p.page_count or 0 for p in parts)} pages, in {len(parts)} parts.'
         out.append({'doc': head, 'state': STATE_FOR_SCREEN.get(head.binder_state, 'reading'), 'sections': sections, 'summary': summary, 'binder': True,
-                    'saving': head.binder_state == 'finalizing', 'copies': len(copies)})
+                    'saving': head.binder_state == 'finalizing', 'copies': len(copies), 'job': docjobs.active_job('binder_save', head.pk)})
     return out

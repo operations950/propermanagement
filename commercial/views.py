@@ -58,7 +58,7 @@ def leases(request, pk):
     leased = {l.unit_id for l in rows if l.status != Lease.Status.ENDED and (not l.end_date or l.end_date >= today)}
     vacant = [u for u in prop.units.filter(is_active=True).order_by('label') if u.pk not in leased]
     return render(request, 'commercial/leases.html', {'assoc': prop, 'current': current, 'upcoming': upcoming, 'ended': ended, 'vacant': vacant, 'ending_soon': [r for r in current if r['ends_soon']],
-                                                      'books_on': ledger.profile_for(prop).we_do_financials, 'today': today, **acc_up(request, prop, ['accounting:hub', 'accounting:close', 'accounting:units', 'ws_financials'], reverse('property_detail', args=[prop.pk]), prop.name)})
+                                                      'books_on': ledger.profile_for(prop).we_do_financials, 'today': today, **acc_up(request, prop, reverse('property_detail', args=[prop.pk]), prop.name)})
 
 
 @admin_only
@@ -78,7 +78,7 @@ def lease_form(request, pk, lease_pk=None):
     from core.models import Contact
     names = list(Contact.objects.filter(properties=prop).values_list('name', flat=True).distinct()[:200])
     return render(request, 'commercial/lease_form.html', {'assoc': prop, 'form': form, 'lease': lease, 'tenant_names': names,
-                                                          **acc_up(request, prop, ([('commercial:lease', lease.tenant.name)] if lease is not None else []) + ['commercial:leases'], reverse('commercial:leases', args=[prop.pk]) if lease is None else reverse('commercial:lease', args=[prop.pk, lease.pk]), 'Leases' if lease is None else f'{lease.tenant.name}')})
+                                                          **acc_up(request, prop, reverse('commercial:leases', args=[prop.pk]) if lease is None else reverse('commercial:lease', args=[prop.pk, lease.pk]), 'Leases' if lease is None else f'{lease.tenant.name}', labels={'commercial:lease': lease.tenant.name} if lease is not None else None)})
 
 
 @admin_only
@@ -167,7 +167,7 @@ def lease_detail(request, pk, lease_pk):
         'assoc': prop, 'lease': lease, 'unit': lease.unit, 'schedule': rent.schedule(lease, today.replace(day=1), 12), 'steps': list(lease.steps.all()), 'seasons': list(lease.seasons.all()),
         'documents': list(lease.documents.select_related('reader_doc')), 'proposal': lease.proposals.filter(status=LeaseProposal.Status.PROPOSED).first(), 'rows': list(reversed(charges.ledger_rows(lease.unit))), 'balance': sum((a['balance'] for a in accounts), Decimal('0.00')),
         'invoices': list(lease.invoices.order_by('-month')[:12]), 'months': [(i, n) for i, n in enumerate(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], 1)],
-        'kinds': LeaseDocument.Kind.choices, 'today': today, 'books_on': ledger.profile_for(prop).we_do_financials, **acc_up(request, prop, ['commercial:leases', 'commercial:invoices', 'commercial:cam', 'accounting:units', 'accounting:report_aging', 'accounting:charges', 'accounting:hub', 'accounting:close'], reverse('commercial:leases', args=[prop.pk]), 'Leases')})
+        'kinds': LeaseDocument.Kind.choices, 'today': today, 'books_on': ledger.profile_for(prop).we_do_financials, **acc_up(request, prop, reverse('commercial:leases', args=[prop.pk]), 'Leases')})
 
 
 # ---------------------------------------------------------------- tenant invoices
@@ -243,7 +243,7 @@ def invoice_list(request, pk):
             waiting.append({'lease': lease, 'posted': rent.is_posted(lease, month), 'rent': due['rent'], 'cam': due['cam']})
     return render(request, 'commercial/invoices.html', {'assoc': prop, 'month': month, 'previous': ledger.previous_month(month), 'next': ledger.next_month(month), 'invoices': invs, 'waiting': waiting, 'cfg': cfg,
                                                         'ready': sum(1 for i in invs if i.status == i.Status.READY), 'delivery': invoices.board_send.delivery_available(),
-                                                        'post_on': month - timedelta(days=cfg.rent_post_days_ahead), **acc_up(request, prop, ['commercial:leases', 'accounting:hub', 'accounting:close'], reverse('commercial:leases', args=[prop.pk]), 'Leases')})
+                                                        'post_on': month - timedelta(days=cfg.rent_post_days_ahead), **acc_up(request, prop, reverse('commercial:leases', args=[prop.pk]), 'Leases')})
 
 
 @admin_only
@@ -306,4 +306,4 @@ def owners(request, pk):
             messages.error(request, str(e))
         return redirect(here)
     terms = list(BoardTerm.objects.filter(association=prop, end_date__isnull=True).select_related('person').order_by('person__name'))
-    return render(request, 'commercial/owners.html', {'assoc': prop, 'terms': terms, **acc_up(request, prop, ['commercial:leases', 'accounting:hub', 'accounting:close'], reverse('commercial:leases', args=[prop.pk]), 'Leases')})
+    return render(request, 'commercial/owners.html', {'assoc': prop, 'terms': terms, **acc_up(request, prop, reverse('commercial:leases', args=[prop.pk]), 'Leases')})

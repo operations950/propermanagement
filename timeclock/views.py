@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 from core import nav
 from core.auth_backends import _client_ip
 from core.models import StaffProfile
+from core.people import active_staff
 from core.permissions import has_time_admin as _is_admin
 
 from . import policy, policy_text, services
@@ -399,7 +400,7 @@ def manage_punch(request):
             return redirect(back)
         except ClockError as e:
             messages.error(request, str(e))
-    up = nav.up(request, {'timeclock_hours': 'Hours'}, default=(back, 'Hours'))
+    up = nav.up(request, default=(back, 'Hours'))
     return render(request, 'timeclock/punch_edit.html', {'profile': profile, 'day': day, 'punch': punch, 'back': back, 'up': up, 'post': request.POST})
 
 
@@ -407,7 +408,7 @@ def manage_punch(request):
 @admin_only
 def manage_setup(request):
     rows = []
-    for sp in StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__last_name'):
+    for sp in active_staff():                     # removed people are not set up here (their hours and history stay where they are)
         try:
             tp = sp.time_profile
         except TimeProfile.DoesNotExist:

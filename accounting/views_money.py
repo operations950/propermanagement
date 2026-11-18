@@ -169,7 +169,7 @@ def bank(request, pk, bank_pk, month):
             b.split_last = b.split_suggest['template'].updated_at
         b.candidates = bankrec.receipt_candidates(b, open_items) if b.amount > 0 else []     # payments the books already hold that this deposit may be
     return render(request, 'accounting/bank.html', {'assoc': prop, 'bank': acct, 's': s, 'deposits_url': _go('deposits', prop.pk, acct.pk, f'{first:%Y-%m}'), 'dep_n': len(deposits_open), 'dep_total': sum((b.amount for b in deposits_open), ZERO), 'other_banks': other_banks, 'accounts': accounts, 'split_accounts': [{'id': a.pk, 'label': str(a)} for a in accounts if a.pk != acct.account_id], 'units': _unit_choices(prop),
-                                                    **acc_up(request, prop, ['accounting:close', 'accounting:hub', 'accounting:reports'], _go('close', prop.pk, f'{first:%Y-%m}'), f'{prop.name} close'), **month_context(first)})
+                                                    **acc_up(request, prop, _go('close', prop.pk, f'{first:%Y-%m}'), f'{prop.name} close'), **month_context(first)})
 
 
 # ---------------------------------------------------------------- sorting the deposits
@@ -341,7 +341,7 @@ def deposits(request, pk, bank_pk, month):
         open_id = next((d['id'] for d in deposits_ if not d['done']), None)
     return render(request, 'accounting/deposits.html', {
         'assoc': prop, 'bank': acct, 'stmt': stmt, 'month': first, 'deposits': deposits_, 'open_id': int(open_id) if open_id else 0, 'units': _deposit_people(prop) if lines else [], 'accounts': accounts, 'suggest': suggest,
-        'candidates': candidates, 'open_n': sum(1 for d in deposits_ if not d['done']), **acc_up(request, prop, ['accounting:bank'], _go('bank', prop.pk, acct.pk, f'{first:%Y-%m}'), 'Bank reconciliation'), 'wv': wv_preview, 'wvl': wv_lookup, 'wv_status': webvault.lookup_status(prop),
+        'candidates': candidates, 'open_n': sum(1 for d in deposits_ if not d['done']), **acc_up(request, prop, _go('bank', prop.pk, acct.pk, f'{first:%Y-%m}'), 'Bank reconciliation'), 'wv': wv_preview, 'wvl': wv_lookup, 'wv_status': webvault.lookup_status(prop),
         'today': min(timezone.localdate(), ledger.month_end(first)), 'methods': [(v, l) for v, l in Receipt.Method.choices if v in ('check', 'online', 'ach', 'card', 'cash', 'other')]})
 
 
@@ -419,7 +419,7 @@ def bills(request, pk):
     return render(request, 'accounting/bills.html', {'assoc': prop, 'profile': profile, 'review': review, 'ready': payables.bills_to_pay(prop), 'paid': list(qs.filter(status=Bill.Status.PAID).order_by('-date')[:15]),
                                                      'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'), 'vendors': _vendor_names(prop), 'today': timezone.localdate(),
                                                      'owed': payables.aging(prop, timezone.localdate()), 'box': box, 'inbox_ready': invoice_inbox.is_configured(), 'needs_home': invoice_inbox.SeenEmail.objects.filter(needs_home=True).order_by('-created_at')[:10],
-                                                     **acc_up(request, prop, ['accounting:hub', 'accounting:close', 'accounting:payables_home'], _go('hub', prop.pk), 'Accounting')})
+                                                     **acc_up(request, prop, _go('hub', prop.pk), 'Accounting')})
 
 
 @admin_only
@@ -446,7 +446,7 @@ def bill_detail(request, pk, bill_pk):
             messages.error(request, str(e))
         return redirect('accounting:bill', pk=prop.pk, bill_pk=bill.pk)
     return render(request, 'accounting/bill_detail.html', {'assoc': prop, 'bill': bill, 'need': payables.requirement(prop, bill), 'profile': ledger.profile_for(prop), 'today': timezone.localdate(),
-                                                           'can_void': not bill.payments.exists() and bill.source != Bill.Source.OPENING and bill.status != Bill.Status.VOID, **acc_up(request, prop, ['accounting:bills', 'accounting:payables_home', 'accounting:checks', 'accounting:report_payables', 'accounting:bank', 'accounting:hub'], _go('bills', prop.pk), 'Bills')})
+                                                           'can_void': not bill.payments.exists() and bill.source != Bill.Source.OPENING and bill.status != Bill.Status.VOID, **acc_up(request, prop, _go('bills', prop.pk), 'Bills')})
 
 
 @admin_only
@@ -478,7 +478,7 @@ def pay(request, pk):
         except (payables.PayableError, ledger.LedgerError) as e:
             messages.error(request, str(e))
         return redirect(_go('pay', prop.pk))
-    return render(request, 'accounting/pay.html', {'assoc': prop, 'ready': ready, 'banks': prop.bank_accounts.filter(is_active=True), 'today': timezone.localdate(), **acc_up(request, prop, ['accounting:bills'], _go('bills', prop.pk), 'Bills')})
+    return render(request, 'accounting/pay.html', {'assoc': prop, 'ready': ready, 'banks': prop.bank_accounts.filter(is_active=True), 'today': timezone.localdate(), **acc_up(request, prop, _go('bills', prop.pk), 'Bills')})
 
 
 @admin_only
@@ -494,7 +494,7 @@ def checks(request, pk):
             messages.error(request, str(e))
         return redirect(_go('checks', prop.pk))
     pays = Payment.objects.filter(association=prop).select_related('vendor', 'bank_account').order_by('-date', '-id')[:200]
-    return render(request, 'accounting/checks.html', {'assoc': prop, 'payments': pays, 'profile': ledger.profile_for(prop), **acc_up(request, prop, ['accounting:bills', 'accounting:hub', 'accounting:payables_home'], _go('bills', prop.pk), 'Bills')})
+    return render(request, 'accounting/checks.html', {'assoc': prop, 'payments': pays, 'profile': ledger.profile_for(prop), **acc_up(request, prop, _go('bills', prop.pk), 'Bills')})
 
 
 @admin_only
@@ -564,7 +564,7 @@ def check_setup(request, pk):
             messages.error(request, 'That is not a number.')
         return redirect(_go('check_setup', prop.pk))
     layout = checkprint.layout_for(profile)
-    return render(request, 'accounting/check_setup.html', {'assoc': prop, 'profile': profile, 'layout': layout, **acc_up(request, prop, ['accounting:checks'], _go('checks', prop.pk), 'Checks')})
+    return render(request, 'accounting/check_setup.html', {'assoc': prop, 'profile': profile, 'layout': layout, **acc_up(request, prop, _go('checks', prop.pk), 'Checks')})
 
 
 # ---------------------------------------------------------------- recurring bills
@@ -748,7 +748,7 @@ def recurring(request, pk):
     return render(request, 'accounting/recurring.html', {**step_context, 'assoc': prop, 'rows': rows, 'edit': edit, 'vendors': _vendor_names(prop), 'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'),
                                                          'frequencies': RecurringBill.Frequency.choices, 'profile': ledger.profile_for(prop), 'today': today, 'tab': tab, 'rules': rules, 'jrules': jrules, 'entry_rules': entry_rules, 'reserve_rules': reserve_rules, 'new_entry_rows': [{'side': 'debit'}, {'side': 'debit'}, {'side': 'credit'}, {}, {}, {}], 'all_accounts': list(prop.accounts.filter(is_active=True).order_by('code')), 'counts': counts,
                                                          'late_rows': late_rows, 'interest_rows': interest_rows, 'late_total': sum((r['amount'] for r in late_rows), ZERO), 'interest_total': sum((r['amount'] for r in interest_rows), ZERO),
-                                                         'needs': needs, 'fixed_rows': fixed_rows, 'variable_rows': variable_rows, **acc_up(request, prop, ['accounting:hub', 'accounting:close'], _go('hub', prop.pk), 'Accounting'), **month_context(month)})
+                                                         'needs': needs, 'fixed_rows': fixed_rows, 'variable_rows': variable_rows, **acc_up(request, prop, _go('hub', prop.pk), 'Accounting'), **month_context(month)})
 
 
 # ---------------------------------------------------------------- journal
@@ -815,7 +815,7 @@ def journal(request, pk):
     month = parse_month(request.GET.get('month'), ledger.month_start(timezone.localdate()))
     entries = JournalEntry.objects.filter(association=prop, date__gte=month, date__lte=ledger.month_end(month)).prefetch_related('lines__account').order_by('-date', '-number')
     return render(request, 'accounting/journal.html', {'assoc': prop, 'entries': entries, 'accounts': prop.accounts.filter(is_active=True).order_by('code'), 'reserve_funds': prop.accounts.filter(kind='equity', code__gte=sc.RESERVE_FIRST, code__lte=sc.RESERVE_LAST).order_by('code'),
-                                                       'banks': prop.bank_accounts.filter(is_active=True), 'today': timezone.localdate(), 'range': range(1, 7), **acc_up(request, prop, ['accounting:hub', 'accounting:close'], _go('hub', prop.pk), 'Accounting'), **month_context(month)})
+                                                       'banks': prop.bank_accounts.filter(is_active=True), 'today': timezone.localdate(), 'range': range(1, 7), **acc_up(request, prop, _go('hub', prop.pk), 'Accounting'), **month_context(month)})
 
 
 # ---------------------------------------------------------------- reports
@@ -836,7 +836,7 @@ def reports(request, pk):
     if redirect_to:
         return redirect_to
     month = default_month()
-    return render(request, 'accounting/reports.html', {'assoc': prop, 'month': month, 'banks': prop.bank_accounts.filter(is_active=True), **acc_up(request, prop, ['accounting:hub', 'accounting:close'], _go('hub', prop.pk), 'Accounting'), 'today': timezone.localdate()})
+    return render(request, 'accounting/reports.html', {'assoc': prop, 'month': month, 'banks': prop.bank_accounts.filter(is_active=True), **acc_up(request, prop, _go('hub', prop.pk), 'Accounting'), 'today': timezone.localdate()})
 
 
 @xframe_options_sameorigin
@@ -860,7 +860,7 @@ def report_tb(request, pk):
     start, end = _range(request, prop)
     basis = _basis(request)
     tb = ledger.trial_balance(prop, start, end, basis)
-    return render(request, 'accounting/report_tb.html', {'assoc': prop, 'tb': tb, 'basis': basis, 'start': start, 'end': end, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+    return render(request, 'accounting/report_tb.html', {'assoc': prop, 'tb': tb, 'basis': basis, 'start': start, 'end': end, **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 def _end(request, prop):
@@ -875,7 +875,7 @@ def report_bs(request, pk):
     end, basis = _end(request, prop), _basis(request)
     view = request.GET.get('view') if request.GET.get('view') in ('compare', 'year', 'months') else 'compare'
     st = reporting.balance_sheet(prop, end, basis, view)
-    return render(request, 'accounting/report_bs.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, 'view': view, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports'),
+    return render(request, 'accounting/report_bs.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, 'view': view, **acc_up(request, prop, _go('reports', prop.pk), 'Reports'),
                                                          'views': [('compare', 'vs last month'), ('year', 'vs last year'), ('months', 'Month by month')]})
 
 
@@ -887,7 +887,7 @@ def report_pl(request, pk):
     end, basis = _end(request, prop), _basis(request)
     view = request.GET.get('view') if request.GET.get('view') in ('compare', 'months') else 'compare'
     st = reporting.profit_and_loss(prop, end, basis, view)
-    return render(request, 'accounting/report_pl.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, 'view': view, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports'),
+    return render(request, 'accounting/report_pl.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, 'view': view, **acc_up(request, prop, _go('reports', prop.pk), 'Reports'),
                                                          'views': [('compare', 'This month, last month, year to date'), ('months', 'Month by month')]})
 
 
@@ -898,7 +898,7 @@ def report_bva(request, pk):
         return redirect_to
     end, basis = _end(request, prop), _basis(request)
     st = reporting.budget_vs_actual(prop, end, basis)
-    return render(request, 'accounting/report_bva.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+    return render(request, 'accounting/report_bva.html', {'assoc': prop, 'st': st, 'basis': basis, 'end': end, **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only
@@ -916,7 +916,7 @@ def report_is(request, pk):
         annual = amounts.get(r['account'].pk)
         r['budget'] = (annual * months / 12).quantize(Decimal('0.01')) if annual is not None else None
         r['variance'] = (r['amount'] - r['budget']) if r['budget'] is not None else None
-    return render(request, 'accounting/report_is.html', {'assoc': prop, 'inc': inc, 'basis': basis, 'start': start, 'end': end, 'has_budget': bool(amounts), **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+    return render(request, 'accounting/report_is.html', {'assoc': prop, 'inc': inc, 'basis': basis, 'start': start, 'end': end, 'has_budget': bool(amounts), **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only
@@ -928,7 +928,7 @@ def report_gl(request, pk):
     basis = _basis(request)
     acct = prop.accounts.filter(pk=request.GET.get('account')).first() or prop.accounts.filter(code=sc.CASH_OPERATING).first()
     gl = ledger.general_ledger(prop, acct, start, end, basis) if acct else None
-    return render(request, 'accounting/report_gl.html', {'assoc': prop, 'gl': gl, 'acct': acct, 'accounts': prop.accounts.order_by('code'), 'basis': basis, 'start': start, 'end': end, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+    return render(request, 'accounting/report_gl.html', {'assoc': prop, 'gl': gl, 'acct': acct, 'accounts': prop.accounts.order_by('code'), 'basis': basis, 'start': start, 'end': end, **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only
@@ -942,7 +942,7 @@ def report_aging(request, pk):
     gl_net = bal.get(ledger.account(prop, sc.AR).pk, ZERO) + bal.get(ledger.account(prop, sc.PREPAID_FEES).pk, ZERO)   # receivables less paid-ahead, as the books hold them
     gap = gl_net - totals['net']
     return render(request, 'accounting/report_aging.html', {'assoc': prop, 'ag': charges.aging(prop, end), 'end': end, 'totals': totals, 'gl_net': gl_net, 'gap': gap,
-                                                            **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+                                                            **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only
@@ -951,7 +951,7 @@ def report_payables(request, pk):
     if redirect_to:
         return redirect_to
     end = parse_date(request.GET.get('end')) or timezone.localdate()
-    return render(request, 'accounting/report_payables.html', {'assoc': prop, 'ag': payables.aging(prop, end), 'end': end, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank', 'accounting:bills', 'accounting:payables_home'], _go('reports', prop.pk), 'Reports')})
+    return render(request, 'accounting/report_payables.html', {'assoc': prop, 'ag': payables.aging(prop, end), 'end': end, **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only
@@ -961,7 +961,7 @@ def report_checks(request, pk):
         return redirect_to
     start, end = _range(request, prop)
     pays = Payment.objects.filter(association=prop, date__gte=start, date__lte=end).select_related('vendor', 'bank_account').order_by('date', 'number')
-    return render(request, 'accounting/report_checks.html', {'assoc': prop, 'payments': pays, 'start': start, 'end': end, 'total': sum((p.amount for p in pays if p.status != 'void'), ZERO), **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+    return render(request, 'accounting/report_checks.html', {'assoc': prop, 'payments': pays, 'start': start, 'end': end, 'total': sum((p.amount for p in pays if p.status != 'void'), ZERO), **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only
@@ -977,7 +977,7 @@ def report_rec(request, pk, bank_pk, month):
     cleared = []
     if s['statement']:
         cleared = list(s['statement'].lines.filter(match__isnull=False).order_by('kind', 'date'))
-    return render(request, 'accounting/report_rec.html', {'assoc': prop, 'bank': acct, 's': s, 'rec': rec, 'cleared': cleared, **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports'), **month_context(first)})
+    return render(request, 'accounting/report_rec.html', {'assoc': prop, 'bank': acct, 's': s, 'rec': rec, 'cleared': cleared, **acc_up(request, prop, _go('reports', prop.pk), 'Reports'), **month_context(first)})
 
 
 @admin_only
@@ -1007,4 +1007,4 @@ def budget(request, pk):
     used = set(ledger.lines(prop).values_list('account_id', flat=True))
     rows = [{'account': a, 'amount': have.get(a.pk)} for a in prop.accounts.filter(kind__in=['income', 'expense']).order_by('code') if a.pk in used or a.pk in have]
     return render(request, 'accounting/budget.html', {'assoc': prop, 'rows': rows, 'year': year, 'others': prop.accounts.filter(kind__in=['income', 'expense']).exclude(pk__in=[r['account'].pk for r in rows]).order_by('code'),
-                                                      **acc_up(request, prop, ['accounting:reports', 'accounting:close', 'accounting:hub', 'accounting:bank'], _go('reports', prop.pk), 'Reports')})
+                                                      **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})

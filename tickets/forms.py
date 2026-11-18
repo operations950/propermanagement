@@ -90,6 +90,14 @@ class ReassignForm(forms.Form):
         label='Specific person (optional)',
     )
 
+    def __init__(self, *args, current_staff_id=None, **kwargs):
+        # Removed people are not offered; the person already on the ticket stays in the list (marked "(removed)") so the screen still shows who it is and saving it unchanged works.
+        super().__init__(*args, **kwargs)
+        from core.people import active_staff, label
+        field = self.fields['assigned_staff']
+        field.queryset = active_staff(also=[current_staff_id])
+        field.label_from_instance = label
+
 
 class AssignContractorForm(forms.Form):
     assigned_contact = forms.ModelChoiceField(

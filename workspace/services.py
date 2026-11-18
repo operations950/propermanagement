@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.utils.dateformat import format as format_date
 
 from core.models import Property, StaffProfile
+from core.people import active_staff
 from onsite.models import Visit
 from processes.models import ProcessRun, ProcessTemplate
 from tickets.models import Ticket, TicketPush, TicketStatusNote
@@ -474,5 +475,5 @@ def item_context(session, view=''):
             grid['rows'].append({**r, 'cells': cells})
     done, total = session.progress()
     return {'rule': rule, 'kind': kind, 'rows': rows, 'single': single, 'view': view, 'grid': grid, 'done': done, 'total': total, 'pct': int(100 * done / total) if total else 0,
-            'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name'),
+            'staff_choices': active_staff(also=[session.owner_id], order=('user__first_name',)),
             'project_template': rule.process_template if kind == 'project' else None}

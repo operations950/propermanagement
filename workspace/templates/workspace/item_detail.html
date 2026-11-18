@@ -93,7 +93,7 @@
     {% if kind == 'project' and r.line.state == 'pending' %}
       <details class="text-end"><summary class="btn btn-sm btn-dark" style="list-style:none;">Start project</summary>
         <form method="post" class="d-flex gap-2 mt-2 p-2 border rounded bg-white position-absolute" style="z-index:5; right: 1rem;">{% csrf_token %}<input type="hidden" name="action" value="start_project"><input type="hidden" name="line_id" value="{{ r.line.pk }}">
-          <select name="assignee" class="form-select form-select-sm" style="width: 11rem;" aria-label="Assign it to">{% for sp in staff_choices %}<option value="{{ sp.pk }}" {% if session.owner_id == sp.pk %}selected{% endif %}>{{ sp }}</option>{% endfor %}</select>
+          <select name="assignee" class="form-select form-select-sm" style="width: 11rem;" aria-label="Assign it to">{% for sp in staff_choices %}<option value="{{ sp.pk }}" {% if session.owner_id == sp.pk %}selected{% endif %}>{{ sp }}{% if sp.is_removed %} (removed){% endif %}</option>{% endfor %}</select>
           <button class="btn btn-sm btn-dark" type="submit">Start</button></form></details>
     {% elif r.in_project and r.run %}<a href="{{ r.run_url }}" class="btn btn-sm btn-outline-secondary">Open project</a>
     {% elif kind == 'process' and r.run and not r.closed %}<a href="{{ r.run_url }}" class="btn btn-sm btn-outline-secondary">Open</a>{% endif %}

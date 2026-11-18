@@ -49,7 +49,7 @@
     <div class="tf-layer" data-tf-layer="staff" hidden>
         <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
         <a href="{% querystring owner='none' %}" class="bubble{% if sel.owner == 'none' %} bubble-locked{% endif %}">Unassigned</a>
-        {% for sp in staff_list %}<a href="{% querystring owner=sp.id %}" class="bubble{% if sel.owner == sp.id|stringformat:'s' %} bubble-locked{% endif %}">{{ sp.user.get_full_name|default:sp.user.username }}</a>{% endfor %}
+        {% for sp in staff_list %}<a href="{% querystring owner=sp.id %}" class="bubble{% if sel.owner == sp.id|stringformat:'s' %} bubble-locked{% endif %}">{{ sp.user.get_full_name|default:sp.user.username }}{% if sp.is_removed %} (removed){% endif %}</a>{% endfor %}
     </div>
 </div>
 {% include 'tickets/_filter_box_script.html' %}

@@ -6,8 +6,8 @@
     {% up_link bare="ml-back" icon="arrow-left" %} a phone variant: only the classes given, no standard look
     {% up_url %}                                   just the address (the phone top bar's Back button)
 
-Where it goes comes from the view's own `up` (a core.nav.Up put in the context) when it has one, else from the registry in core/nav_map.py, else from the accounting views'
-acc_back / acc_back_label, else nothing is drawn.
+Where it goes comes from the view's own `up` (a core.nav.Up put in the context) when it has one, else from the accounting views' acc_back / acc_back_label (core/nav.up worked out with
+the association's words), else from the tree of screens in core/nav_tree.py, else nothing is drawn. The phone's top bar Back reads {% up_url %}, so it is always the same address.
 """
 from django import template
 
@@ -20,13 +20,13 @@ def _up(context):
     found = context.get('up')
     if isinstance(found, nav.Up):
         return found
+    if context.get('acc_back'):
+        return nav.Up(context['acc_back'], context.get('acc_back_label') or 'Back')
     request = context.get('request')
     if request is not None:
         found = nav.resolve(request)
         if found:
             return found
-    if context.get('acc_back'):
-        return nav.Up(context['acc_back'], context.get('acc_back_label') or 'Back')
     return nav.Up('', '')
 
 

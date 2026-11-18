@@ -15,7 +15,7 @@ from django.db.models import Sum
 
 from . import budgeting as bg
 from . import ledger
-from .models import ZERO, Account, Budget
+from .models import ZERO, Account, Budget, JournalEntry
 
 ACCRUAL = ledger.ACCRUAL
 
@@ -213,8 +213,14 @@ def budget_vs_actual(prop, end, basis=ACCRUAL):
     months_done = (end.year - fy.year) * 12 + end.month - fy.month + 1
     accts = {a.pk: a for a in Account.objects.filter(association=prop)}
 
-    def actuals(start, stop):
-        sums = ledger._sums(ledger.lines(prop, basis).filter(entry__date__gte=start, entry__date__lte=stop))
+    prior = bg.prior_ytd(prop, fy.year)               # reserve contributions made before our books began (loaded from the old system), part of the year to date
+
+    def actuals(start, stop, year_to_date=False):
+        qs = ledger.lines(prop, basis).filter(entry__date__gte=start, entry__date__lte=stop)
+        sums = ledger._sums(qs)
+        # A reserve account's line in the opening entry is the fund's BALANCE carried from the old system, not what was put in this year: it is left out, and the contributions made
+        # before our books are added for the year to date (the same rule the budget builder uses, budgeting._actuals).
+        opening = ledger._sums(qs.filter(entry__source=JournalEntry.Source.OPENING, account_id__in=[pk for pk, a in accts.items() if bg.is_reserve(a)]))
         out = {}
         for pk, (d, c) in sums.items():
             a = accts[pk]
@@ -223,10 +229,16 @@ def budget_vs_actual(prop, end, basis=ACCRUAL):
             elif a.kind == Account.Kind.EXPENSE and a.code not in bg.LEFT_OUT:
                 out[pk] = d - c
             elif bg.is_reserve(a):
-                out[pk] = c            # what was put into the reserve fund
+                put_in = c - opening[pk][1] if pk in opening else c            # what was put into the reserve fund
+                if put_in:                                                      # a fund that only carries its balance has no line (unless the budget names it)
+                    out[pk] = put_in
+        if year_to_date:
+            for pk, amount in prior.items():
+                if pk in accts and bg.is_reserve(accts[pk]):
+                    out[pk] = out.get(pk, ZERO) + amount
         return out
 
-    month, ytd = actuals(first, end), actuals(fy, end)
+    month, ytd = actuals(first, end), actuals(fy, end, True)
     ids = {pk for pk in set(month) | set(ytd) | set(annual) if pk in accts and (accts[pk].kind in (Account.Kind.INCOME, Account.Kind.EXPENSE) or bg.is_reserve(accts[pk])) and accts[pk].code not in bg.LEFT_OUT}
     kinds = ['dollars'] * 5 + ['dollars', 'pct', 'dollars', 'dollars']
     cols = [{'label': 'Actual', 'sub': _label(first)}, {'label': 'Budget', 'sub': _label(first)}, {'label': 'Over / (under)', 'sub': _label(first)},

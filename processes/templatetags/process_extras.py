@@ -100,7 +100,7 @@ def step_response_summary(step):
     if step.step_type == 'digital_signature':
         return 'Signed'
     if step.step_type == 'task_assignment':
-        return f'Task #{r.get("ticket_id", "")}'
+        return f'Task #{r["ticket_id"]}' if r.get('ticket_id') else 'Done'
     if step.step_type == 'calendar_event':
         return r.get('event_datetime', '') or 'Scheduled'
     if step.step_type == 'approval_decision':
@@ -116,7 +116,7 @@ def step_response_summary(step):
         bits = [r.get('name', ''), r.get('email', ''), r.get('phone', '')]
         return ' · '.join(b for b in bits if b) or 'Done'
     if step.step_type == 'generate_document':
-        return 'Made and final' if r.get('document_id') else 'Done'
+        return 'Made and final' if r.get('document_id') else 'Sent' if r.get('sent_without_document') else 'Done'
     return 'Done'
 
 
@@ -158,6 +158,12 @@ def step_document(step):
     from legalforms.models import GeneratedDocument
     doc_id = (step.response or {}).get('document_id')
     return GeneratedDocument.objects.select_related('template').filter(pk=doc_id).first() if doc_id else None
+
+
+@register.filter
+def is_welcome_letter(step):
+    """A step that makes one of the welcome letters (owner or tenant): the letter is optional there."""
+    return (step.step_type == 'generate_document') and ((step.config or {}).get('form', '').startswith('welcome-letter'))
 
 
 @register.filter

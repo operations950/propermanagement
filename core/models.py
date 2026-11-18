@@ -818,6 +818,11 @@ class StaffProfile(models.Model):
     def __str__(self):
         return self.user.get_full_name() or self.user.username
 
+    @property
+    def is_removed(self):
+        """Removed from the team (People and roles): the login is deactivated. Their history stays; they are not offered when picking who does a job."""
+        return not self.user.is_active
+
 
 class PropertyAttribute(models.Model):
     """A tag catalog for property characteristics — services provided,

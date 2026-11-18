@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.models import PropertyAttribute, StaffProfile
+from core.people import active_staff
 
 from processes.models import ProcessTemplate
 
@@ -260,7 +261,7 @@ def session_template_form_view(request, pk=None):
         'form': form,
         'template': template,
         'attributes': PropertyAttribute.objects.order_by('category', 'label'),
-        'staff': StaffProfile.objects.select_related('user').order_by('user__first_name', 'user__username'),
+        'staff': active_staff(also=[template.owner_id if template else None, form.data.get('owner') if form.is_bound else None], order=('user__first_name', 'user__username')),
         'process_templates': ProcessTemplate.objects.filter(is_active=True).order_by('kind', 'name'),
         'open_items': rules_service.open_items(template) if template else 0,
         'chosen_ids': set(form.data.getlist('properties')) if form.is_bound else ({str(p) for p in template.properties.values_list('pk', flat=True)} if template else set()),

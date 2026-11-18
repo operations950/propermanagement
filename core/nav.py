@@ -1,22 +1,24 @@
 """The smart Up link.
 
 "Up" is not "Back". It moves the person out to a WIDER screen (a list, a hub, a checklist, a dashboard), and it goes to the wide screen they actually came from: a screen that can be
-reached from more than one place (late fees, from the month-end close or from the accounting hub) shows "Month-end close" or "Accounting" depending on the way in.
-A detail screen (one ticket, one property, one contact, one unit) is the bottom level: Up never points to one, only to a screen its view lists as a parent.
+reached from more than one place (late fees, from the month-end close or from the Accounting hub) shows "Month-end close" or "Accounting" depending on the way in.
+A detail screen (one ticket, one property, one contact, one unit) is the bottom level: Up never points to one, except from the forms and pages that hang off that very record.
 
 How it works
+  * core/nav_tree.py is THE tree of screens: every screen's place in it (its parents, its kind, its usual parent). The screens a given screen's Up link may use are its ANCESTORS in that
+    tree; nobody writes a list of parents per screen any more.
   * NavTrailMiddleware keeps a short trail in the session: the last ~15 real page visits (full-page GETs that answered 200). Each entry is [url name, full address with its query,
     the address's keyword arguments]. Another visit to the same screen (a month arrow, a filter, a page) replaces the top entry instead of stacking, and a POST that redirects back
     to the same screen leaves one entry.
-  * up(request, parents, default) walks the trail from the most recent entry back and returns the first one whose url name is in `parents` (a {url name: label} dict of WIDE
-    screens) and that belongs to the same record (the same association, property, month ...: a keyword argument the two screens share must have the same value).
-    Nothing found (a bookmark, an emailed link, a new login) means `default`, the screen's usual parent.
-  * Screens list their parents either in core/nav_map.py (read by the {% up_link %} tag, nothing else to write in the view) or by calling up() themselves when the label or the
-    default is worked out in the view (accounting/web.py acc_up()).
+  * up(request) walks the trail from the most recent entry back and returns the first one that is an ancestor of the current screen and that belongs to the same record (the same
+    association, property, month ...: a keyword argument the two screens share must have the same value). Nothing found (a bookmark, an emailed link, a new login) means the screen's
+    usual parent: the `default` the view works out (it knows the property's name, the saved filters ...) or, failing that, the one written in the tree.
+  * The {% up_link %} / {% up_url %} tags draw it (the phone's top bar Back reads the same {% up_url %}), so the page and the phone never disagree.
 
-Adding a screen: add one line to core/nav_map.py (its url name, the wide screens it can be reached from, its usual parent), and put {% up_link %} where the old hand-written
-link was. A detail screen's own entry goes in DETAIL_VIEWS so the guard test keeps a detail out of every other detail's parents.
+Adding a screen: add one line to core/nav_tree.py, and put {% up_link %} where a back link would go. A view whose label or usual parent depends on the record on the page (a property's
+name, an association's own word for "Units", a ticket's saved filters) calls nav.up(request, default=..., labels=...) and puts the answer in the context as `up`.
 """
+import itertools
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -118,12 +120,28 @@ def _default_up(request, spec):
     match = getattr(request, 'resolver_match', None)
     have = dict(match.kwargs) if match else {}
     args = spec.get('args') or ()
-    wanted = args if isinstance(args, dict) else {a: a for a in args}
-    try:
-        url = reverse(spec['name'], kwargs={target: have[source] for target, source in wanted.items()})
-    except (NoReverseMatch, KeyError):
-        return Up('', '')
-    query = list((spec.get('fixed') or {}).items()) + [(k, request.GET[k]) for k in spec.get('query') or () if request.GET.get(k)]
+    if args == 'infer':                                      # the parent takes whichever of the current address's keyword arguments its own address uses
+        url = None
+        keys = list(have)
+        for size in range(len(keys), -1, -1):
+            for combo in itertools.combinations(keys, size):
+                try:
+                    url = reverse(spec['name'], kwargs={k: have[k] for k in combo})
+                except NoReverseMatch:
+                    continue
+                break
+            if url is not None:
+                break
+        if url is None:
+            return Up('', '')
+    else:
+        wanted = args if isinstance(args, dict) else {a: a for a in args}
+        try:
+            url = reverse(spec['name'], kwargs={target: have[source] for target, source in wanted.items()})
+        except (NoReverseMatch, KeyError):
+            return Up('', '')
+    query_keys = spec.get('query') or (CARRIED if args == 'infer' else ())
+    query = list((spec.get('fixed') or {}).items()) + [(k, request.GET[k]) for k in query_keys if request.GET.get(k)]
     if query:
         url += '?' + urlencode(query)
     return Up(url, spec['label'])
@@ -156,9 +174,17 @@ def _carry_month(url, request):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def up(request, parents=None, default=None):
-    """Where Up goes from this screen: the most recent wide screen on the trail that is one of `parents` ({url name: label, or a function of the request that returns the label}),
-    else `default` (an Up, a (url, label) pair, or a D(...) spec). Always returns an Up (empty when there is nowhere to go)."""
+def _say(label, request, ctx, entry=None):
+    if not callable(label):
+        return label
+    if getattr(label, 'uses_entry', False):                   # a label that depends on the trail entry itself (which line of business a line page was)
+        return label(request, ctx, entry or {})
+    return label(request, ctx)
+
+
+def pick(request, parents, default=None, ctx=None):
+    """The engine: the most recent screen on the trail that is one of `parents` ({url name: label, or a function of (request, ctx) that returns the label}) and belongs to the same
+    record, else `default` (an Up, a (url, label) pair, or a D(...) spec). Always returns an Up (empty when there is nowhere to go)."""
     match = getattr(request, 'resolver_match', None)
     here = match.view_name if match else ''
     current = _kwargs(match) if match else {}
@@ -168,19 +194,28 @@ def up(request, parents=None, default=None):
             continue
         if not _same_record(current, kwargs):
             continue
-        label = wanted[name]
-        return Up(_carry_month(url, request), label(request) if callable(label) else label, True)
+        return Up(_carry_month(url, request), _say(wanted[name], request, ctx, kwargs), True)
     return _default_up(request, default)
 
 
-def resolve(request):
-    """Up for the screen being shown, from the registry in core/nav_map.py (empty when the screen has no entry)."""
-    from .nav_map import UP
+def up(request, default=None, labels=None, ctx=None):
+    """Where Up goes from this screen: the most recent ancestor of it (core/nav_tree.py) on the person's trail, else `default` (an Up, a (url, label) pair or a D(...) spec; the tree's
+    usual parent when none is given). `labels` ({url name: text}) says something else on a link whose words depend on the record on the page; `ctx` is handed to the labels that are
+    functions (the association, say). Always returns an Up (empty when the screen has nowhere to go)."""
+    from . import nav_tree
     match = getattr(request, 'resolver_match', None)
-    if not match:
+    here = match.view_name if match else ''
+    wanted = dict(nav_tree.allowed(here))
+    for name, label in (labels or {}).items():
+        if name in wanted:
+            wanted[name] = label
+    return pick(request, wanted, default if default is not None else nav_tree.usual(here), ctx)
+
+
+def resolve(request):
+    """Up for the screen being shown, from the tree in core/nav_tree.py (empty when the screen is not in it)."""
+    from . import nav_tree
+    match = getattr(request, 'resolver_match', None)
+    if not match or match.view_name not in nav_tree.SCREENS:
         return Up('', '')
-    entry = UP.get(match.view_name)
-    if entry is None:
-        return Up('', '')
-    parents, default = entry
-    return up(request, parents, default)
+    return up(request)

@@ -5,9 +5,16 @@
     <button type="submit" class="btn btn-sm btn-outline-primary">Mark complete</button>
 </form>
 {% else %}
-<form method="post" action="{% url 'process_run_step_assign_task' step.pk %}" class="d-flex align-items-center gap-2">
-    {% csrf_token %}
-    <input type="number" name="due_days" class="form-control form-control-sm" placeholder="Due in days" style="max-width: 140px;" value="{{ step.config.default_days_until_due }}">
-    <button type="submit" class="btn btn-sm btn-outline-primary">Create task</button>
-</form>
+<div class="d-flex align-items-center gap-2 flex-wrap">
+    <form method="post" action="{% url 'process_run_step_assign_task' step.pk %}" class="d-flex align-items-center gap-2">
+        {% csrf_token %}
+        <input type="number" name="due_days" class="form-control form-control-sm" placeholder="Due in days" style="max-width: 140px;" value="{{ step.config.default_days_until_due }}">
+        <button type="submit" class="btn btn-sm btn-outline-primary">Create task</button>
+    </form>
+    <form method="post" action="{% url 'process_run_step_complete_task' step.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Mark complete</button>
+    </form>
+    <span class="small text-muted">A task is optional: mark it complete if it is already handled.</span>
+</div>
 {% endif %}

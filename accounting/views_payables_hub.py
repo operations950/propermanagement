@@ -49,7 +49,7 @@ def payables_home(request):
     if tab == 'review':
         hub.adopt_inbox_drafts()
     counts = hub.tab_counts()
-    ctx = {'tab': tab, 'counts': counts, **acc_up(request, None, ['ws_financials'], reverse('ws_financials'), 'Financials'), 'today': timezone.localdate(), 'properties': hub.picker_rows()}
+    ctx = {'tab': tab, 'counts': counts, **acc_up(request, None, reverse('ws_financials'), 'Financials'), 'today': timezone.localdate(), 'properties': hub.picker_rows()}
     if tab == 'review':
         ctx['cards'] = [hub.build_card(u) for u in PayableUpload.objects.filter(status=PayableUpload.Status.PENDING).select_related('bill')]
         ctx['vendors'] = list(Contact.objects.filter(contact_type=Contact.ContactType.VENDOR).order_by('name').values_list('name', flat=True)[:2000])

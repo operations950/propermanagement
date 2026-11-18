@@ -433,11 +433,30 @@ def process_run_step_complete_task(request, step_pk):
     if request.method == 'POST':
         ticket_id = step.response.get('ticket_id')
         ticket = Ticket.objects.filter(pk=ticket_id).first() if ticket_id else None
-        if not ticket or ticket.status not in Ticket.DEPENDENCY_SATISFYING_STATUSES:
+        if not ticket_id:
+            # A task is optional: the step can be marked complete when it was handled without one.
+            step.response = {'no_task': True}
+            step.mark_complete(request.user)
+            messages.success(request, 'Marked complete.')
+        elif not ticket or ticket.status not in Ticket.DEPENDENCY_SATISFYING_STATUSES:
             messages.error(request, 'The linked task isn\'t finished yet.')
         else:
             step.mark_complete(request.user)
             messages.success(request, 'Saved.')
+    return _run_redirect(request, step.run)
+
+
+@login_required
+def process_run_step_mark_document_sent(request, step_pk):
+    """GENERATE_DOCUMENT for the welcome letters: the letter is optional. Marks the step sent without making one (a letter already started stays linked)."""
+    step = get_object_or_404(ProcessRunStep, pk=step_pk)
+    if request.method == 'POST':
+        if step.step_type != StepType.GENERATE_DOCUMENT or not (step.config or {}).get('form', '').startswith('welcome-letter'):
+            messages.error(request, 'Only a welcome letter can be marked sent without making it.')
+        else:
+            step.response = {**(step.response or {}), 'sent_without_document': True}
+            step.mark_complete(request.user)
+            messages.success(request, 'Marked sent.')
     return _run_redirect(request, step.run)
 
 

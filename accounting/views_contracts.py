@@ -83,7 +83,7 @@ def contract_list(request, pk):
     edit = next((r['c'] for r in rows if str(r['c'].pk) == request.GET.get('edit')), None)
     vendor_text = (edit.vendor.name if edit and edit.vendor_id else (edit.vendor_name if edit else ''))
     return render(request, 'accounting/contracts.html', {'assoc': prop, 'rows': rows, 'edit': edit, 'vendor_text': vendor_text, 'frequencies': Contract.Frequency.choices, 'expense_accounts': prop.accounts.filter(kind='expense', is_active=True).order_by('code'),
-                                                         'today': today, **acc_up(request, prop, ['accounting:hub'], reverse('accounting:hub', args=[pk]), 'Accounting')})
+                                                         'today': today, **acc_up(request, prop, reverse('accounting:hub', args=[pk]), 'Accounting')})
 
 
 @admin_only
@@ -91,4 +91,4 @@ def contract_print(request, pk):
     """The contracts as the official-records list an owner may ask to see."""
     prop = association_or_404(pk)
     rows = [r for r in contracts.upcoming(prop) if r['c'].is_active and r['c'].visible_to_owners]
-    return render(request, 'accounting/contracts_print.html', {'assoc': prop, 'rows': rows, 'today': timezone.localdate(), **acc_up(request, prop, ['accounting:contracts'], reverse('accounting:contracts', args=[pk]), 'Contracts')})
+    return render(request, 'accounting/contracts_print.html', {'assoc': prop, 'rows': rows, 'today': timezone.localdate(), **acc_up(request, prop, reverse('accounting:contracts', args=[pk]), 'Contracts')})

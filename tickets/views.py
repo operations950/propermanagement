@@ -19,8 +19,8 @@ from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
 from core import nav, nudges
-from core.nav_map import TICKET_FROM
 from core.json_utils import dumps_for_script
+from core.people import active_staff
 from core.models import (
     Contact, Property, StaffProfile, Unit, group_vendors_by_trade, is_valid_phone,
     properties_by_type, property_dropdown_queryset,
@@ -966,7 +966,7 @@ def ticket_list(request):
         'q': q,
         'ws_horizon': ws_horizon,
         'ws_now_days': WS_NOW_DAYS,
-        'staff_list': StaffProfile.objects.select_related('user'),
+        'staff_list': active_staff(also=[assigned_staff_id]),      # removed people are not offered (the one filtered to stays, so the filter still reads)
         'vendor_groups': group_vendors_by_trade(
             Contact.objects.filter(contact_type=Contact.ContactType.VENDOR).order_by('name')
         ),
@@ -1358,7 +1358,7 @@ def ticket_detail(request, pk):
     reassign_form = ReassignForm(initial={
         'assigned_role': ticket.assigned_role,
         'assigned_staff': ticket.assigned_staff_id,
-    })
+    }, current_staff_id=ticket.assigned_staff_id)
     assign_contractor_form = AssignContractorForm(initial={'assigned_contact': ticket.assigned_contact_id})
     followup_parties = _followup_parties(ticket)
     linked_ticket_contacts = list(ticket.ticket_contacts.select_related('contact').all())
@@ -1371,7 +1371,7 @@ def ticket_detail(request, pk):
             vendor_link_cooldown_hours_left = max(1, round(24 - elapsed.total_seconds() / 3600))
 
     # Up: the wide screen the ticket was opened from (the filtered ticket list, a dashboard, Home); with no trail, the ticket list with the filters it last had
-    up = nav.up(request, TICKET_FROM, default=(_list_back_url(request), 'Tickets'))
+    up = nav.up(request, default=(_list_back_url(request), 'Tickets'))
     back_url = up.url
     all_attachments = list(ticket.attachments.all().order_by('-created_at'))
 
@@ -1420,7 +1420,7 @@ def ticket_detail(request, pk):
         'attachable_process_templates': ProcessTemplate.objects.filter(is_active=True, **({'kind': ProcessTemplate.Kind.CHECKLIST} if getattr(getattr(request.user, 'staff_profile', None), 'new_face', False) else {})),
         'project_templates': ProcessTemplate.objects.filter(is_active=True, kind=ProcessTemplate.Kind.PROJECT),
         'project_runs': ticket.process_runs.filter(process_template__kind=ProcessTemplate.Kind.PROJECT).exclude(status='cancelled').select_related('process_template', 'assigned_to__user'),
-        'staff_choices': StaffProfile.objects.filter(user__is_active=True).select_related('user').order_by('user__first_name'),
+        'staff_choices': active_staff(also=[ticket.assigned_staff_id], order=('user__first_name',)),
         'process_upload_form': ProcessAttachmentUploadForm(),
         'priority_choices': Priority.choices,
         'status_choices': Ticket.selectable_statuses(),
@@ -1598,7 +1598,7 @@ def ticket_reassign(request, pk):
     for the reverse direction)."""
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.method == 'POST':
-        form = ReassignForm(request.POST)
+        form = ReassignForm(request.POST, current_staff_id=ticket.assigned_staff_id)
         if form.is_valid():
             new_staff = form.cleaned_data.get('assigned_staff')
             TicketAssignmentLog.objects.create(

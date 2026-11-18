@@ -209,7 +209,7 @@
     <div class="tf-layer" data-tf-layer="staff" hidden>
         <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
         <a href="{% querystring assigned_staff='none' %}" class="bubble{% if selected_assigned_staff_id == 'none' %} bubble-locked{% endif %}">Unassigned</a>
-        {% for sp in staff_list %}<a href="{% querystring assigned_staff=sp.id %}" class="bubble{% if selected_assigned_staff.id == sp.id %} bubble-locked{% endif %}">{{ sp.user.get_full_name|default:sp.user.username }}</a>{% endfor %}
+        {% for sp in staff_list %}<a href="{% querystring assigned_staff=sp.id %}" class="bubble{% if selected_assigned_staff.id == sp.id %} bubble-locked{% endif %}">{{ sp.user.get_full_name|default:sp.user.username }}{% if sp.is_removed %} (removed){% endif %}</a>{% endfor %}
     </div>
 
     <div class="tf-layer" data-tf-layer="contractor" hidden>
