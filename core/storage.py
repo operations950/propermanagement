@@ -59,5 +59,11 @@ class DocumentStorage:
         """Every upload field (documents, bills, statements, leases, attachments) names its file through here, so no name can be longer than the database column holds."""
         return clamp_stored_name(storages['documents'].generate_filename(filename))
 
+    def save(self, name, content, max_length=None):
+        """Store a file. A photo over about 10 MB (Cloudinary's limit) is shrunk to a JPEG that fits first (core/imaging.py); the name that comes back may end in .jpg for that reason."""
+        from core.imaging import shrink_photo
+        name, content = shrink_photo(name, content)
+        return storages['documents'].save(name, content, max_length=max_length)
+
     def __getattr__(self, name):
         return getattr(storages['documents'], name)

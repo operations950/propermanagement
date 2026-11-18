@@ -7,6 +7,8 @@ What stays exactly as it was: the order; a command that fails (any exception, or
 server is not started, just as `&&` did; each command's own output; and the system checks, which `manage.py` runs before every command, are run once here before the first one
 (`migrate` was the first command, and it ran them, the database ones included, before doing anything).
 """
+import os
+
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
@@ -47,3 +49,17 @@ class Command(BaseCommand):
         call_command('check', databases=['default'])
         for name, opts in STEPS:
             call_command(name, **opts)
+        self.media_cleanup()
+
+    def media_cleanup(self):
+        """A one-time switch for freeing the files volume when there is no shell on the server: set the variable MEDIA_CLEANUP to `report` (list what is on the volume, change nothing), `apply`
+        (delete what Cloudinary already holds, copying up what it does not) or `apply_orphans` (also delete files no database row names), redeploy, read the log, then remove the variable.
+        Never stops the site from starting, whatever it finds."""
+        mode = os.environ.get('MEDIA_CLEANUP', '').strip().lower()
+        if mode not in ('report', 'apply', 'apply_orphans'):
+            return
+        try:
+            self.stdout.write(f'MEDIA_CLEANUP={mode}: cleaning the files volume')
+            call_command('cleanup_local_media', apply=mode != 'report', orphans=mode == 'apply_orphans')
+        except BaseException as exc:                       # a failed clean-up must never keep the site down
+            self.stderr.write(f'MEDIA_CLEANUP failed: {exc!r}')
