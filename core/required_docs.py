@@ -26,6 +26,14 @@ def _assoc_kinds(prop):
     return kinds
 
 
+def _live_leases(prop, relation, select, prefetch=()):
+    """The leases of a property that have not ended: cut from what was prefetched when the caller read them for many properties at once (all_missing), else asked for."""
+    if relation in getattr(prop, '_prefetched_objects_cache', {}):
+        return [l for l in getattr(prop, relation).all() if l.status != 'ended']
+    qs = getattr(prop, relation).exclude(status='ended').select_related(*select)
+    return list(qs.prefetch_related(*prefetch) if prefetch else qs)
+
+
 def required_for(prop):
     """[{'key', 'label', 'have': bool, 'detail'}] for one property."""
     if not prop.is_active or prop.is_general or prop.property_type == Property.Type.GENERAL:
@@ -33,7 +41,7 @@ def required_for(prop):
     kinds = _assoc_kinds(prop)
     items = [{'key': MANAGEMENT, 'label': LABELS[MANAGEMENT], 'have': MANAGEMENT in kinds or _general(prop, ('management agreement', 'management contract', 'management')), 'detail': ''}]
     if prop.property_type == Property.Type.COMMERCIAL:
-        leases = [l for l in prop.leases.exclude(status='ended').select_related('tenant', 'unit').prefetch_related('documents')]
+        leases = _live_leases(prop, 'leases', ('tenant', 'unit'), ('documents',))
         if not leases:
             items.append({'key': LEASE, 'label': 'Lease', 'have': LEASE in kinds or _general(prop, ('lease',)), 'detail': 'No lease is set up yet.' if LEASE not in kinds else ''})
         for l in leases:
@@ -41,7 +49,7 @@ def required_for(prop):
             have = any(d.kind == 'lease' for d in l.documents.all()) or any(d.kind == 'lease' and first in d.name.lower() for d in prop.assoc_documents.all())                 or any(first in f'{d.name} {d.category}'.lower() and 'lease' in f'{d.name} {d.category}'.lower() for d in prop.documents.all())
             items.append({'key': LEASE, 'label': f'Lease: {l.tenant.name} ({l.unit.label})', 'have': have, 'detail': '', 'lease': l})
     elif prop.property_type == Property.Type.LONG_TERM_RENTAL:
-        leases = [l for l in prop.ltr_leases.exclude(status='ended').select_related('tenant')]
+        leases = _live_leases(prop, 'ltr_leases', ('tenant',))
         have = LEASE in kinds or _general(prop, ('lease',))
         if not leases:
             items.append({'key': LEASE, 'label': 'Lease', 'have': have, 'detail': '' if have else 'No tenant lease is set up yet.'})
@@ -57,8 +65,16 @@ def missing_for(prop):
 
 def all_missing():
     """[(property, [missing items])] for every active property that lacks a required document, by name."""
+    from django.db.models import Prefetch
+
+    from commercial.models import Lease, LongTermLease
     out = []
-    for prop in Property.objects.filter(is_active=True, is_general=False).prefetch_related('documents', 'assoc_documents').order_by('name'):
+    # The leases of every property come in two reads here, not two for each property.
+    props = (Property.objects.filter(is_active=True, is_general=False)
+             .prefetch_related('documents', 'assoc_documents', Prefetch('leases', queryset=Lease.objects.select_related('tenant', 'unit').prefetch_related('documents')),
+                               Prefetch('ltr_leases', queryset=LongTermLease.objects.select_related('tenant')))
+             .order_by('name'))
+    for prop in props:
         miss = missing_for(prop)
         if miss:
             out.append((prop, miss))

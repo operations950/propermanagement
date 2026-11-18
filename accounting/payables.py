@@ -312,13 +312,25 @@ def _words_fit(rec, description):
     return bool(rec.is_fixed and rec.pay_method == 'ach' and _words(rec.vendor.name) & _words(description))
 
 
+def _unlinked_bill_amounts(first, nxt):
+    out = {}
+    for vendor_id, amount in Bill.objects.filter(recurring__isnull=True, date__gte=first, date__lt=nxt).exclude(status=Bill.Status.VOID).values_list('vendor_id', 'amount'):
+        out.setdefault(vendor_id, []).append(amount)
+    return out
+
+
 def settled_outside(rec, month_first):
     """Whether this month's payment of a recurring bill is in the books although no bill of its own was made from it: a bill of the same vendor, about that amount, made some other way
     (the payables screen, say), or a statement line you put in the books yourself in the reconciliation (Add to books, Split) whose words and amount are this bill's."""
     from .models import BankLine, RecurringBill
     first, nxt = ledger.month_start(month_first), ledger.next_month(ledger.month_start(month_first))
-    for b in Bill.objects.filter(vendor=rec.vendor, recurring__isnull=True, date__gte=first, date__lt=nxt).exclude(status=Bill.Status.VOID):
-        if amount_fits(rec, b.amount):
+    if request_memo.active():
+        # While a page is being built (a GET: core/memo.py) the month's bills that were not made from a recurring bill are read once, grouped by vendor.
+        amounts = request_memo.get(('bills.unlinked', first), lambda: _unlinked_bill_amounts(first, nxt)).get(rec.vendor_id, [])
+    else:
+        amounts = [b.amount for b in Bill.objects.filter(vendor=rec.vendor, recurring__isnull=True, date__gte=first, date__lt=nxt).exclude(status=Bill.Status.VOID)]
+    for amount in amounts:
+        if amount_fits(rec, amount):
             return True
     if request_memo.active():
         # While a page is being built (a GET: core/memo.py) the fixed recurring bills of the association and the month's statement lines it put in the books are read once for all of its recurring bills.

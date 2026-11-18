@@ -317,8 +317,17 @@ def _lease_late_fee(charge):
         from commercial.models import Lease
     except ImportError:
         return None
-    # While a page is being built (a GET: core/memo.py) a unit's lease is read once, however many of its charges are looked at.
-    return request_memo.get(('lease_late_fee', unit_id), lambda: _read_lease_late_fee(Lease, unit_id))
+    if request_memo.active():
+        # While a page is being built (a GET: core/memo.py) every lease that sets its own late fee is read once, however many units and charges are looked at.
+        return request_memo.get(('lease_late_fees',), lambda: _lease_late_fees_by_unit(Lease)).get(unit_id)
+    return _read_lease_late_fee(Lease, unit_id)
+
+
+def _lease_late_fees_by_unit(Lease):
+    out = {}
+    for unit_id, flat, pct in Lease.objects.exclude(late_fee_flat__isnull=True, late_fee_percent__isnull=True).order_by('-start_date', '-id').values_list('unit_id', 'late_fee_flat', 'late_fee_percent'):
+        out.setdefault(unit_id, (flat, pct))              # the newest lease of the unit that sets one, as the one-unit read picks
+    return out
 
 
 def _read_lease_late_fee(Lease, unit_id):

@@ -6,6 +6,7 @@ from datetime import date
 
 from django.urls import reverse
 
+from core import memo as request_memo
 from core.models import Property
 
 from . import bankrec, board_send, charges, labels, ledger, owner_collections, payables, reserve_check, scheduled
@@ -18,7 +19,11 @@ def associations(commercial=True):
           .exclude(property__is_general=True).exclude(property__name__icontains='(general)'))     # a placeholder ('Commercial (general)', 'Short-Term Rentals (general)') is not a property with books
     if not commercial:
         qs = qs.filter(property__property_type=Property.Type.ASSOCIATION)
-    return list(qs.select_related('property').order_by('property__name'))
+    rows = list(qs.select_related('property').order_by('property__name'))
+    for prof in rows:
+        if request_memo.lookup(('profile_for', prof.property_id)) is None:
+            request_memo.put(('profile_for', prof.property_id), prof)       # during a page load: the settings row is already in hand, so ledger.profile_for does not read it again
+    return rows
 
 
 def _item(key, title, icon, status, detail, url, blocks=True):

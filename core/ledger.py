@@ -90,10 +90,12 @@ CLOSE_TYPES = (Property.Type.SHORT_TERM_RENTAL, Property.Type.LONG_TERM_RENTAL)
 
 def rentals():
     """The rentals that go through the close: active real short-term and long-term rentals."""
-    return list(
+    props = list(
         Property.objects.filter(is_active=True, is_general=False, financials_managed=True, property_type__in=CLOSE_TYPES)
         .select_related('qb_expense_account', 'qb_trust_account').order_by('name'),
     )
+    request_memo.put(('rental_ids',), [p.pk for p in props])         # during a page load: the rentals whose closes _closes() reads together
+    return props
 
 
 # --- books ---------------------------------------------------------------------------------------------
@@ -194,7 +196,17 @@ def month_level(prop, month):
 def _closes(prop):
     """Every close of a property, newest first (its frozen reconciliation left unread until something asks for it): one query
     per page load however many months and units are looked at."""
-    return request_memo.get(('closes', prop.pk), lambda: _load_closes([prop.pk])[prop.pk])
+    def load():
+        rental_ids = request_memo.lookup(('rental_ids',))
+        if rental_ids and prop.pk in rental_ids:
+            # the page is going through the rentals one after another: the closes of all of them are read together, once
+            todo = [pid for pid in rental_ids if request_memo.lookup(('closes', pid)) is None]
+            data = _load_closes(todo)
+            for pid in todo:
+                request_memo.put(('closes', pid), data[pid])
+            return data[prop.pk]
+        return _load_closes([prop.pk])[prop.pk]
+    return request_memo.get(('closes', prop.pk), load)
 
 
 def _load_closes(prop_ids):

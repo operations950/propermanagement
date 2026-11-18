@@ -306,8 +306,16 @@ def attention():
     links = ListingLink.objects.filter(property__is_active=True)
     unreadable = links.filter(failures__gte=MAX_FAILURES).exclude(rating_source=ListingLink.Source.MANUAL, rating_checked_at__gte=timezone.now() - CHECK_EVERY).count()
     dropped = 0
-    for link in links.filter(rating__isnull=False):
-        recent = list(link.history.all()[:2])
+    rated = list(links.filter(rating__isnull=False))
+    latest = {}                       # each link's last two readings, newest first: one read for all of them, not one for each link
+    if rated:
+        from django.db.models import F, Window
+        from django.db.models.functions import RowNumber
+        for reading in (ListingRating.objects.filter(link__in=rated)
+                        .annotate(_nth=Window(expression=RowNumber(), partition_by=[F('link_id')], order_by=[F('checked_at').desc(), F('pk').desc()])).filter(_nth__lte=2).order_by('link_id', '-checked_at', '-pk')):
+            latest.setdefault(reading.link_id, []).append(reading)
+    for link in rated:
+        recent = latest.get(link.pk, [])
         if len(recent) == 2 and recent[0].rating - recent[1].rating <= -DROP_ALERT and timezone.now() - recent[0].checked_at < CHECK_EVERY * 2:
             dropped += 1
     return {'places_without_links': without, 'missing': missing, 'unreadable': unreadable, 'dropped': dropped}

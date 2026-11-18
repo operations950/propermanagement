@@ -103,7 +103,15 @@ def finish_step(n, close_month, status):
 
 def finish_done_items(close_month, steps):
     """For the checklist, which has just worked out every step: close the item of each step that is done."""
-    return sum(finish_step(step['n'], close_month, step['status']) for step in steps)
+    done = [step['n'] for step in steps if step['status'] == 'done']
+    if not done:
+        return 0
+    from worksessions.models import Session
+    # The month's open items are read once and each done step's is picked from them (the same as finish_step does, one read for each step).
+    close_month = ledger.month_of(close_month)
+    prefixes = tuple(f'{PREFIX}{n}. ' for n in done)
+    sessions = Session.objects.filter(template__name__startswith=PREFIX, status=Session.Status.OPEN, notes=f'{NOTE_KEY}{close_month:%Y-%m}').select_related('template')
+    return sum(1 for session in sessions if session.template.name.startswith(prefixes) and finish_session(session))
 
 
 def sync(today=None):

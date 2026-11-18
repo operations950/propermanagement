@@ -1,4 +1,5 @@
 import itertools
+from collections import defaultdict
 
 from django.db import transaction
 from django.db.models import Count
@@ -6,7 +7,12 @@ from django.db.models import Count
 from .models import Contact, DuplicateDismissal
 
 
-def _group_survives(contacts):
+def _dismissed_pairs():
+    """Every pair that has been dismissed, as (lower id, higher id): one read for the whole scan."""
+    return set(DuplicateDismissal.objects.values_list('contact_a_id', 'contact_b_id'))
+
+
+def _group_survives(contacts, dismissed=None):
     """A group only disappears from the scan once every pair inside it has
     been explicitly dismissed — for the common 2-contact case that's one
     dismissal; a 3+ group (e.g. several people sharing one office line)
@@ -15,7 +21,10 @@ def _group_survives(contacts):
     if len(contacts) < 2:
         return False
     for c1, c2 in itertools.combinations(contacts, 2):
-        if not DuplicateDismissal.is_dismissed(c1, c2):
+        if dismissed is None:
+            if not DuplicateDismissal.is_dismissed(c1, c2):
+                return True
+        elif tuple(sorted([c1.pk, c2.pk])) not in dismissed:
             return True
     return False
 
@@ -27,23 +36,30 @@ def find_duplicate_groups():
     can appear in both a phone-match group and an email-match group if it
     duplicates different people on each axis."""
     groups = []
+    dismissed = _dismissed_pairs()      # read once, not once for each pair of each group
 
-    phones = (
+    phones = list(
         Contact.objects.exclude(phone='').values('phone')
         .annotate(n=Count('id')).filter(n__gt=1).values_list('phone', flat=True)
     )
+    by_phone = defaultdict(list)
+    for c in (Contact.objects.filter(phone__in=phones).order_by('created_at') if phones else ()):      # the people of every shared number in one read
+        by_phone[c.phone].append(c)
     for phone in phones:
-        contacts = list(Contact.objects.filter(phone=phone).order_by('created_at'))
-        if _group_survives(contacts):
+        contacts = by_phone[phone]
+        if _group_survives(contacts, dismissed):
             groups.append({'key_type': 'Phone', 'key': phone, 'contacts': contacts})
 
-    emails = (
+    emails = list(
         Contact.objects.exclude(email='').values('email')
         .annotate(n=Count('id')).filter(n__gt=1).values_list('email', flat=True)
     )
+    by_email = defaultdict(list)
+    for c in (Contact.objects.filter(email__in=emails).order_by('created_at') if emails else ()):
+        by_email[c.email].append(c)
     for email in emails:
-        contacts = list(Contact.objects.filter(email=email).order_by('created_at'))
-        if _group_survives(contacts):
+        contacts = by_email[email]
+        if _group_survives(contacts, dismissed):
             groups.append({'key_type': 'Email', 'key': email, 'contacts': contacts})
 
     return groups
