@@ -22,7 +22,7 @@
     </div>
     {% if task.notes %}<div class="pt-lab">Notes</div><div style="white-space: pre-line;" class="mb-2">{{ task.notes }}</div>{% endif %}
     {% if task.status == 'done' and task.closing_status %}
-    <div class="p-2 rounded mb-2" style="background: color-mix(in srgb, var(--status-good) 12%, white);"><div class="pt-lab">Closing status</div><div style="white-space: pre-line;">{{ task.closing_status }}</div></div>
+    <div class="p-2 rounded mb-2" style="background: color-mix(in srgb, var(--status-good) 12%, var(--surface-card));"><div class="pt-lab">Closing status</div><div style="white-space: pre-line;">{{ task.closing_status }}</div></div>
     {% endif %}
     <div class="d-flex flex-wrap gap-2 mt-2">
         {% if task.status == 'open' %}

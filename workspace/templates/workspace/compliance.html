@@ -1,98 +1,14 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Compliance{% endblock %}
+{% block extra_head %}<link href="{% static 'css/newspaper.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
-{% include 'workspace/_css.html' %}
-<style>
-    /* Compliance is the Tickets screen with only the table rows shaded pale green: no box around the screen. */
-    .ws-green-rows { --bs-table-bg: #eef4ee; --bs-table-hover-bg: #e4eee4; --bs-table-border-color: #d3e0d3; }
-    .ws-blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr)); gap: 0.7rem; margin: 0.4rem 0 0.8rem; }
-    .ws-block { display: flex; flex-direction: column; justify-content: space-between; gap: 0.6rem; min-height: 6.5rem; padding: 0.85rem 1rem; border-radius: 0.7rem; background: #fbfdfb; border: 1px solid #d3e0d3; text-decoration: none; color: var(--ink-primary); }
-    .ws-block:hover { border-color: #6f9a78; color: var(--ink-primary); }
-    .ws-block b { font-family: var(--font-serif, Georgia, serif); font-weight: 400; font-size: 1.25rem; }
-    .ws-block small { color: var(--ink-muted); font-size: 0.78rem; display: block; }
-    .ws-block.new { background: #6f9a78; border-color: #6f9a78; color: #fff; grid-column: 1 / -1; min-height: 4.2rem; flex-direction: row; align-items: center; }
-    .ws-block.new small { color: rgba(255,255,255,.85); font-size: 0.85rem; }
-    .ws-block.new:hover { background: #5f8a68; color: #fff; }
-    .ws-block.empty { opacity: .6; }
-</style>
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
-    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="calendar-check" class="icon-lg"></i> Compliance{% if tab == 'rules' and sel.frequency %} <span class="fs-6 text-muted">&middot; {{ sel.frequency_label }} rules</span>{% endif %}</h2>
-    <a href="{% url 'session_template_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New rule</a>
-</div>
-<div class="ws-sub">
-<a href="?tab=items" class="{% if tab == 'items' %}on{% endif %}">Items</a>
-<a href="?tab=rules" class="{% if tab == 'rules' %}on{% endif %}">Rules</a>
-</div>
-
-{% if tab == 'items' %}
-<div class="ws-note">Everything that happens on a schedule. A rule opens an item every period; tickets are the one-off requests.</div>
-<div class="row g-2 mb-3 align-items-center">
-    <div class="col-auto position-relative">
-        <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
-        <input type="text" id="compliance-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);" placeholder="Search item or property…" value="{{ sel.q }}" autocomplete="off">
-    </div>
-</div>
-<script>
-(function () {
-    var input = document.getElementById('compliance-search-input'), timer = null;
-    function runSearch() {
-        var params = new URLSearchParams(window.location.search);
-        if (input.value) params.set('q', input.value); else params.delete('q');
-        params.delete('page');
-        fetch('{% url "ws_compliance" %}?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function (r) { if (!r.ok) throw new Error('bad response'); return r.json(); })
-            .then(function (data) {
-                document.getElementById('compliance-table').innerHTML = data.desktop;
-                document.getElementById('compliance-mobile-cards').innerHTML = data.mobile;
-                var pager = document.getElementById('compliance-pager'); if (pager) pager.innerHTML = data.pager;
-                if (window.lucide) lucide.createIcons();
-                history.replaceState(null, '', '?' + params.toString());
-            })
-            .catch(function () { console.error('Compliance search failed to load.'); });
-    }
-    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(runSearch, 250); });
-})();
-</script>
-{% include 'workspace/_compliance_filters.html' %}
-<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
-<div class="table-responsive"><table class="table ws-green-rows align-middle mb-0" style="table-layout: fixed;" id="compliance-table">{% include 'workspace/_compliance_rows.html' %}</table></div>
-</div>
-<div class="d-md-none" id="compliance-mobile-cards">{% include 'workspace/_compliance_cards.html' %}</div>
-<div id="compliance-pager">{% include 'core/_pager.html' %}</div>
-
-{% elif not sel.frequency %}
-<div class="ws-note">A rule opens an item for its owner every period. Pick how often, or start a new rule.</div>
-<div class="ws-blocks">
-    <a class="ws-block new" href="{% url 'session_template_create' %}"><span><b>New rule</b><small>Something we have to do on a schedule, or once</small></span><i data-lucide="plus" class="icon-lg ms-auto"></i></a>
-    {% for b in blocks %}
-    <a class="ws-block{% if not b.on and not b.off %} empty{% endif %}" href="?tab=rules&frequency={{ b.value }}"><b>{{ b.label }}</b><span>
-        <small>{% if b.on %}{{ b.on }} rule{{ b.on|pluralize }}{% else %}No rules{% endif %}{% if b.off %} &middot; {{ b.off }} off{% endif %}</small>
-        <small>{% if b.next %}Next opens {{ b.next|date:'M j' }}{% else %}&nbsp;{% endif %}</small></span></a>
-    {% endfor %}
-</div>
-
-{% else %}
-<div class="mb-2"><a href="?tab=rules" class="ws-up">&lsaquo; All rules</a></div>
-<div class="row g-2 mb-3 align-items-center">
-    <div class="col-auto"><form method="get" class="d-flex gap-2"><input type="hidden" name="tab" value="rules"><input type="hidden" name="frequency" value="{{ sel.frequency }}">
-        <input type="text" name="q" class="form-control" style="min-width: min(280px, 100%);" placeholder="Search rules…" aria-label="Search rules" value="{{ sel.q }}"></form></div>
-    <div class="col-auto d-flex gap-2 align-items-center" role="group" aria-label="Which rules to show">
-        <a href="{% querystring state='on' %}" class="btn btn-sm {% if sel.state == 'on' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">On</a>
-        <a href="{% querystring state='off' %}" class="btn btn-sm {% if sel.state == 'off' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">Switched off</a>
-        <a href="{% querystring state='all' %}" class="btn btn-sm {% if sel.state == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">All</a>
-    </div>
-</div>
-<div class="d-md-none">
-{% for r in rows %}
-<a href="{{ r.url }}" class="card mb-2 text-decoration-none" style="color: inherit; background: #eef4ee; border-color: #d3e0d3;{% if not r.active %} opacity: 0.6;{% endif %}"><div class="card-body py-3 px-3">
-    <div class="fw-medium">{{ r.t.name }}{% if not r.active %} <span class="small text-muted fw-normal">&middot; Switched off</span>{% endif %}</div>
-    <div class="small text-muted">{{ r.how }} &middot; {{ r.where }}</div>
-    <div class="small">Next opens {{ r.next|date:'M j, Y'|default:'—' }}{% if r.who %} &middot; {{ r.who }}{% endif %}</div>
-</div></a>
-{% empty %}<div class="text-muted text-center py-4">No rules here.</div>{% endfor %}
-</div>
-<div class="card p-0 d-none d-md-block" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
-<div class="table-responsive"><table class="table ws-green-rows align-middle mb-0" style="table-layout: fixed;">{% include 'workspace/_rules_rows.html' %}</table></div>
-</div>
-{% endif %}
+{% comment %}Compliance in the newspaper look (the same header, tabs, control row and boxes as Tickets and Projects): the boxes are HOW OFTEN, the same on both tabs, so Monthly items and Monthly rules match.{% endcomment %}
+{% include 'core/_np_header.html' %}
+{% include 'core/_np_tabs.html' %}
+{% include 'core/_np_controls.html' %}
+<div class="np-filters" id="np-filters">{% include np_filters_template %}</div>
+<div id="np-paper">{% include 'core/_np_paper.html' %}</div>
+<div id="compliance-pager">{% if tab == 'items' %}{% include 'core/_pager.html' %}{% endif %}</div>
+<script src="{% static 'js/newspaper.js' %}"></script>
 {% endblock %}

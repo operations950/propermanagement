@@ -17,7 +17,7 @@
     .od-coll > summary { cursor: pointer; list-style: none; }
     .od-coll > summary::-webkit-details-marker { display: none; }
     .od-coll .od-chev { transition: transform 0.15s ease; } .od-coll[open] .od-chev { transform: rotate(90deg); }
-    .od-kpi { border: 1px solid var(--border-hairline); border-radius: 10px; padding: 9px 12px; background: var(--surface-page, #fafbfc); height: 100%; }
+    .od-kpi { border: 1px solid var(--border-hairline); border-radius: 10px; padding: 9px 12px; background: var(--surface-page, var(--b-fafbfc, #fafbfc)); height: 100%; }
     .od-kpi .l { font-size: 0.78rem; color: var(--ink-muted); } .od-kpi .v { font-size: 1.5rem; font-weight: 600; line-height: 1.2; } .od-kpi .d { font-size: 0.75rem; color: var(--ink-muted); }
     .od-bar { height: 6px; border-radius: 4px; background: #e6ebf3; margin-top: 5px; overflow: hidden; } .od-bar i { display: block; height: 100%; background: var(--brand-primary); }
 </style>
@@ -73,7 +73,7 @@
     <summary class="card-header bg-white py-3 d-flex align-items-center gap-2">
         <i data-lucide="chevron-right" class="icon od-chev"></i>
         <span class="fw-bold text-uppercase d-flex align-items-center gap-2 od-label"><i data-lucide="pencil-line" class="icon"></i> Updated today</span>
-        <span class="badge rounded-pill" style="background: var(--brand-soft, #e8f0fe); color: var(--brand-primary);">{{ movement.updated_notes|length }}</span>
+        <span class="badge rounded-pill" style="background: var(--brand-soft, var(--b-e8f0fe, #e8f0fe)); color: var(--brand-primary);">{{ movement.updated_notes|length }}</span>
     </summary>
     {% if movement.updated_notes %}
     <div class="list-group list-group-flush">
@@ -97,7 +97,7 @@
     <summary class="card-header bg-white py-3 d-flex align-items-center gap-2">
         <i data-lucide="chevron-right" class="icon od-chev"></i>
         <span class="fw-bold text-uppercase d-flex align-items-center gap-2 od-label"><i data-lucide="check-circle-2" class="icon"></i> Closed today</span>
-        <span class="badge rounded-pill" style="background: var(--brand-soft, #e8f0fe); color: var(--brand-primary);">{{ closed_total }}</span>
+        <span class="badge rounded-pill" style="background: var(--brand-soft, var(--b-e8f0fe, #e8f0fe)); color: var(--brand-primary);">{{ closed_total }}</span>
         <span class="small ms-auto" style="color: var(--ink-muted);">{{ movement.closed_reactive|length }} reactive · {{ movement.closed_recurring|length }} recurring</span>
     </summary>
     {% if movement.closed_reactive or movement.closed_recurring %}
@@ -106,7 +106,7 @@
         <a href="{% url 'ticket_detail' t.pk %}" class="list-group-item list-group-item-action py-2 px-3 text-decoration-none">
             <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
                 <span class="text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:60 }}</span>
-                <span class="badge rounded-pill flex-shrink-0" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good);">Reactive</span>
+                <span class="badge rounded-pill flex-shrink-0" style="background: color-mix(in srgb, var(--status-good) 15%, var(--surface-card)); color: var(--status-good);">Reactive</span>
             </div>
             {% if t.closing_note %}
             <div class="small" style="color: var(--ink-secondary);">{{ t.closing_note.get_status_display }} — {{ t.closing_note.body|truncatechars:160 }}</div>

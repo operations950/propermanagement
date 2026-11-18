@@ -1,8 +1,13 @@
-{% for box in boxes %}
-<section class="pl-box">
+{% if columns %}
+<div class="pl-cols">
+{% for col in columns %}<div class="pl-col">
+{% for box in col %}<section class="pl-box" style="order: {{ box.order }};">
     <h2><span>{{ box.title }}</span><span class="pl-count">{{ box.rows|length }}</span></h2>
     {% for p in box.rows %}<a class="pl-row{% if not p.is_active %} pl-off{% endif %}" href="{% url 'property_detail' p.pk %}"{% if p.address %} title="{{ p.address }}"{% endif %}><span class="pl-name">{{ p.name }}</span>{% if not p.is_active %}<span class="pl-tag">inactive</span>{% endif %}<span class="pl-go">&rsaquo;</span></a>{% endfor %}
 </section>
-{% empty %}
-<p class="text-muted text-center py-4"><i data-lucide="building-2" class="icon-lg d-block mx-auto mb-1"></i>No properties match.</p>
+{% endfor %}</div>
 {% endfor %}
+</div>
+{% else %}
+<p class="text-muted text-center py-4"><i data-lucide="building-2" class="icon-lg d-block mx-auto mb-1"></i>No properties match.</p>
+{% endif %}

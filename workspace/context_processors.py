@@ -21,4 +21,9 @@ def face(request):
             ctx['ws_req_count'], ctx['ws_req_prompt'] = services.request_state(request.session, want)
         except Exception:
             pass
+        try:
+            from core import permissions
+            ctx['ws_is_admin'] = permissions.has_admin(user)          # Cleaning payments is a tab for people with the Admin box
+        except Exception:
+            pass
     return ctx

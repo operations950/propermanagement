@@ -110,7 +110,7 @@ def close_sheet(association, month_first, today=None):
         items.append(_item('entries', 'Recurring journal entries', 'piggy-bank', 'attention', 'Every entry is posted or skipped. Look them over, then mark the step done.', entries_url, blocks=False))
 
     # 4. The bank reconciliations: owner payments are matched to cash here.
-    for bank in association.bank_accounts.filter(is_active=True):
+    for bank in association.bank_accounts.filter(is_active=True).select_related('account'):
         s = bankrec.summary(bank, month_first)
         detail = {'done': 'Reconciled and closed.', 'ready': 'Everything matches. Close the reconciliation.', 'not_started': 'Upload the bank statement.',
                   'attention': f'{s["need_count"]} thing{"s" if s["need_count"] != 1 else ""} to settle.'}[s['status']]

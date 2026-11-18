@@ -10,11 +10,11 @@
     .bt-big { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
     .bt-three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     @media (max-width: 640px) { .bt-three { grid-template-columns: 1fr; } }
-    .bt-box { border: 1px solid var(--border-hairline); border-radius: 10px; padding: 10px 14px; background: var(--surface-card, #fff); }
+    .bt-box { border: 1px solid var(--border-hairline); border-radius: 10px; padding: 10px 14px; background: var(--surface-card, var(--surface-card)); }
     .bt-box .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
     .bt-chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
-    .bt-ok { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
-    .bt-bad { background: color-mix(in srgb, var(--status-warning) 24%, white); color: #8a5a00; }
+    .bt-ok { background: color-mix(in srgb, var(--status-good) 16%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); }
+    .bt-bad { background: color-mix(in srgb, var(--status-warning) 24%, var(--surface-card)); color: var(--t-8a5a00, #8a5a00); }
     .bt table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); font-weight: 600; }
     .bt-memo { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
@@ -28,7 +28,7 @@
     </div>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>

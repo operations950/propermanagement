@@ -1,18 +1,10 @@
 {% comment %}The filter bubbles for Projects: the same box, bubbles and layers as the Tickets and Compliance lists (look and open/back script shared: tickets/_filter_box_style.html and _filter_box_script.html).{% endcomment %}
 {% include 'tickets/_filter_box_style.html' %}
-<form method="get" class="d-flex gap-2 mb-2">
-    <input type="hidden" name="tab" value="active">
-    {% if sel.property %}<input type="hidden" name="property" value="{{ sel.property.pk }}">{% endif %}
-    {% if sel.owner %}<input type="hidden" name="owner" value="{{ sel.owner }}">{% endif %}
-    {% if sel.due %}<input type="hidden" name="due" value="{{ sel.due }}">{% endif %}
-    {% if sel.due_on %}<input type="hidden" name="due_on" value="{{ sel.due_on }}">{% endif %}
-    <input type="text" name="q" class="form-control" style="min-width: min(280px, 100%);" placeholder="Search projects&hellip;" value="{{ sel.q }}">
-</form>
 <div class="tf-box" id="tf-box">
     <div class="tf-head">
         <i data-lucide="sliders-horizontal" class="icon"></i> Filters
-        {% if sel.q or sel.owner or sel.property or sel.due %}
-        <a href="{% querystring q=None property=None due=None due_on=None owner=None %}">Clear filters</a>
+        {% if sel.owner or sel.property or sel.due %}
+        <a href="{% querystring property=None due=None due_on=None owner=None %}">Clear filters</a>
         {% endif %}
     </div>
 

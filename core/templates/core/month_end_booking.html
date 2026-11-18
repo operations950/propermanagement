@@ -6,9 +6,9 @@
 {% include 'core/_phone_review.html' %}
 <style>
     .mb-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
-    .mb-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
-    .mb-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
-    .mb-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+    .mb-chip.good { background: color-mix(in srgb, var(--status-good) 16%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); }
+    .mb-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, var(--surface-card)); color: var(--t-8a5a00, #8a5a00); }
+    .mb-chip.progress { background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); color: var(--ink-muted); }
     .mb-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>
 {% up_link css="mb-1" %}

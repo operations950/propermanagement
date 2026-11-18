@@ -220,7 +220,11 @@ def budget_vs_actual(prop, end, basis=ACCRUAL):
         sums = ledger._sums(qs)
         # A reserve account's line in the opening entry is the fund's BALANCE carried from the old system, not what was put in this year: it is left out, and the contributions made
         # before our books are added for the year to date (the same rule the budget builder uses, budgeting._actuals).
-        opening = ledger._sums(qs.filter(entry__source=JournalEntry.Source.OPENING, account_id__in=[pk for pk, a in accts.items() if bg.is_reserve(a)]))
+        reserve_ids = [pk for pk, a in accts.items() if bg.is_reserve(a)]
+        opening = ledger._sums(qs.filter(entry__source=JournalEntry.Source.OPENING, account_id__in=reserve_ids))
+        moved = ledger._sums(qs.filter(account_id__in=reserve_ids, entry_id__in=bg.transfer_entry_ids(qs.exclude(entry__source=JournalEntry.Source.OPENING), reserve_ids)))      # fund-to-fund moves are not contributions
+        for pk, (d, c) in moved.items():
+            opening[pk] = [opening[pk][0] + d, opening[pk][1] + c] if pk in opening else [d, c]
         out = {}
         for pk, (d, c) in sums.items():
             a = accts[pk]

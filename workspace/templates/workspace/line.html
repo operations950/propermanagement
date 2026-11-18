@@ -38,7 +38,7 @@
 {% elif slug == 'short-term-rentals' %}
 <div class="ws-label" style="margin-top:0">Today</div>
 <div class="row g-2">
-<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_str_today' %}"><i data-lucide="sun" class="icon"></i><span>Today<small>Arrivals, departures and cleanings today</small></span></a></div>
+<div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_turnovers' %}"><i data-lucide="arrow-left-right" class="icon"></i><span>Turnovers<small>Check-ins, check-outs and what is clean</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i><span>On-Site visits<small>Cleanings and inspections</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_rentals_calendar' %}"><i data-lucide="calendar-range" class="icon"></i><span>Rentals calendar<small>Every rental, day by day</small></span></a></div>
 <div class="col-12 col-sm-6 col-lg-4"><a class="ws-tile" href="{% url 'onsite_reservation_list' %}"><i data-lucide="book-marked" class="icon"></i><span>Reservations<small>Stays and edits</small></span></a></div>

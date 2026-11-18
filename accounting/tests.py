@@ -1868,7 +1868,7 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
         import openpyxl
         self.client.post(self.url, {'action': 'start'})
         html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
-        self.assertIn('.bd-unitbox .t { background: #d9e1ec; color: #1c2430;', html)
+        self.assertIn('.bd-unitbox .t { background: #d9e1ec; color: var(--t-1c2430, #1c2430);', html)
         self.assertNotIn('.bd-unitbox .t { background: #1c2430', html)
         ws = openpyxl.load_workbook(io.BytesIO(self.client.get(self.url + '?stage=draft&export=xlsx').content)).active
         head = next(r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == 'By unit calculation')
@@ -1906,4 +1906,4 @@ class BudgetIncomeAndBoardSheetFormatTests(TestCase):
     def test_totals_have_a_line_above_and_a_double_line_below(self):
         self.client.post(self.url, {'action': 'start'})
         html = self.client.get(self.url + '?stage=draft&sheet=1').content.decode()
-        self.assertIn('.bd-sheet .bd-table tr.tot td, .bd-sheet .bd-table tr.grand td { border-top: 1px solid #1c2430; border-bottom: 3px double #1c2430; }', html)
+        self.assertIn('.bd-sheet .bd-table tr.tot td, .bd-sheet .bd-table tr.grand td { border-top: 1px solid var(--l-1c2430, #1c2430); border-bottom: 3px double var(--l-1c2430, #1c2430); }', html)

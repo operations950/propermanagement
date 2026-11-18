@@ -1,0 +1,2 @@
+{% comment %}The two-segment switch every newspaper screen has right under its header (Now / Later, Items / Rules, Active / Templates). Expects `np_tabs`: a list of {label, url, on, badge}.{% endcomment %}
+{% if np_tabs %}<nav class="np-seg" aria-label="View">{% for t in np_tabs %}<a href="{{ t.url }}" class="{% if t.on %}on{% endif %}"{% if t.on %} aria-current="page"{% endif %}>{{ t.label }}{% if t.badge %}<span class="np-seg-n">{{ t.badge }}</span>{% endif %}</a>{% endfor %}</nav>{% endif %}

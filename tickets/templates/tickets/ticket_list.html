@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static ticket_extras %}
 {% block title %}{% if selected_source == 'recurring' %}Earlier recurring tasks{% else %}Tickets{% endif %}{% endblock %}
-{% block extra_head %}<link href="{% static 'css/mobile-tickets.css' %}" rel="stylesheet">{% endblock %}
+{% block extra_head %}<link href="{% static 'css/mobile-tickets.css' %}" rel="stylesheet"><link href="{% static 'css/newspaper.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
 {# Phones: the heading with a New ticket button, then the property control FIRST, four one-tap chips (Mine, Urgent, Due today, Late), a search box and a More filters button (Open / Done live there; the list is the open tickets unless that is changed), then compact cards. Wide screens: everything below as it always was. #}
 <div class="m-tk d-md-none">
@@ -37,103 +37,20 @@
         </div>
     </div>
 </div>
-<div class="d-none d-md-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
-    <h2 class="page-title mb-0 d-flex align-items-center gap-2">
-        <i data-lucide="clipboard-list" class="icon-lg"></i>
-        {% if selected_source == 'recurring' %}Earlier recurring tasks{% elif selected_status == 'complete' %}Completed & cancelled{% else %}Tickets{% endif %}
-        {% if selected_role == 'none' %} — no department assigned{% elif selected_role %} — {{ selected_role_label }}{% endif %}
-    </h2>
-    {% if selected_source != 'recurring' %}
-    <a href="{% url 'ticket_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New ticket</a>
-    {% endif %}
-</div>
-
-{% if new_face and selected_status == 'active' and selected_source != 'recurring' %}
-{% include 'workspace/_css.html' %}
-<div class="ws-sub">
-<a href="{% querystring horizon='now' due=None %}" class="{% if ws_horizon == 'now' %}on{% endif %}">Now</a>
-<a href="{% querystring horizon='later' due=None %}" class="{% if ws_horizon == 'later' %}on{% endif %}">Later</a>
-</div>
-<div class="ws-note d-none d-md-block">Tickets are one-off requests. Due within {{ ws_now_days }} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>. A ticket you turn into a project moves to <a href="{% url 'ws_projects' %}">Projects</a>; one with just a process attached stays here.</div>
-{% endif %}
-
+{# Wide screens: the shared newspaper header (title, one line of words, New ticket), the Now / Later switch, ONE control row (search, Filters, Sort), then the boxes. Phones keep the heading above and the cards below. #}
+<div class="d-none d-md-block">{% include 'core/_np_header.html' %}</div>
+{% include 'core/_np_tabs.html' %}
 {% if selected_property %}
-<div class="d-none d-md-flex justify-content-between align-items-center py-2 px-3 mb-3 rounded"
-     style="background: color-mix(in srgb, var(--brand-primary) 8%, white); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);">
-    <span>Showing tickets & tasks for: <strong>{{ selected_property.name }}</strong></span>
-    <a href="{% url 'property_detail' selected_property.pk %}" class="small" style="color: var(--brand-primary);">View property</a>
+<div class="d-none d-md-flex justify-content-between align-items-center py-1 px-3 mb-2 rounded small"
+     style="background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-card)); border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, var(--surface-card));">
+    <span>Showing tickets &amp; tasks for: <strong>{{ selected_property.name }}</strong></span>
+    <a href="{% url 'property_detail' selected_property.pk %}" style="color: var(--brand-primary);">View property</a>
 </div>
 {% endif %}
-
-<div class="row g-2 mb-3 align-items-center d-none d-md-flex">
-    <div class="col-auto position-relative">
-        <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
-        <input type="text" id="ticket-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);"
-               placeholder="Search title or property…" value="{{ q }}" autocomplete="off">
-    </div>
-</div>
-<script>
-(function () {
-    // AJAX partial fetch + history.replaceState, matching Properties/
-    // Contacts search (see core/templates/core/property_list.html) —
-    // this used to be a full `window.location.search = ...` navigation
-    // per 500ms-debounced keystroke pause, which felt heavier than the
-    // rest of the app AND pushed a new history entry on every pause (Back
-    // only undid the last keystroke pause, not the whole search). Every
-    // OTHER filter (status/role/property/due/staff/contractor) preserves
-    // its own value automatically via {% querystring %} links, which
-    // don't touch this at all — only free-text search needed this fix.
-    var input = document.getElementById('ticket-search-input');
-    var timer = null;
-
-    function runSearch() {
-        // Looked up here, not at script-parse time — #ticket-table/
-        // #ticket-mobile-cards are defined further down the page than
-        // this script block (same as before this AJAX rewrite, when
-        // nothing here needed a DOM reference to them at all), so an
-        // outer-scope getElementById would always resolve to null.
-        var desktopTable = document.getElementById('ticket-table');
-        var mobileCards = document.getElementById('ticket-mobile-cards');
-        var params = new URLSearchParams(window.location.search);
-        if (input.value) params.set('q', input.value);
-        else params.delete('q');
-        params.delete('page');     // a new search starts at its first page
-        fetch('{% url "ticket_list" %}?' + params.toString(), {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('bad response');
-                return resp.json();
-            })
-            .then(function (data) {
-                desktopTable.innerHTML = data.desktop;
-                mobileCards.innerHTML = data.mobile;
-                var pager = document.getElementById('ticket-pager');
-                if (pager && data.pager !== undefined) pager.innerHTML = data.pager;
-                if (window.lucide) lucide.createIcons();
-                // Re-wire the freshly-injected rows — their old DOM nodes
-                // (and whatever listeners were attached to them) are gone,
-                // so the per-row edit toggle and every bubble-picker inside
-                // _ticket_row_edit_fields.html need to attach fresh. Both
-                // re-scans are safe to call repeatedly: they only ever
-                // find CURRENTLY-existing [data-row-edit]/[data-bubble-
-                // picker] elements, and the previous render's elements no
-                // longer exist to double-register.
-                if (window.RowEdit) window.RowEdit.init();
-                if (window.BubblePicker) window.BubblePicker.init();
-                history.replaceState(null, '', '?' + params.toString());
-            })
-            .catch(function () { console.error('Ticket search failed to load.'); });
-    }
-
-    input.addEventListener('input', function () {
-        clearTimeout(timer);
-        timer = setTimeout(runSearch, 250);
-    });
-})();
-</script>
+<div class="d-none d-md-block">{% include 'core/_np_controls.html' %}</div>
 
 {% include 'tickets/_filter_box_style.html' %}
+<div class="np-filters np-phone-sheet" id="np-filters">
 <div class="tf-box" id="tf-box">
     <div class="m-tf-sheethead d-md-none"><span>Filters</span><button type="button" class="m-tf-close" data-m-filters-close>Show tickets</button></div>
     <div class="tf-head">
@@ -223,30 +140,17 @@
     </div>
     {% endfor %}
 </div>
+</div>
 {% include 'tickets/_filter_box_script.html' %}
 
 {% comment %}
-Desktop/tablet: a real table, styled to match the compact, uniform-height
-rows on the Properties list — fixed column widths (via colgroup) plus
-text-truncate on the variable-length cells keep every row the same
-height instead of wrapping onto two lines.
+Wide screens: the newspaper boxes (by due date). Phones: the same boxes in one column, as compact cards (the full filter box above is the phone's "More filters" sheet).
 {% endcomment %}
-<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
-<div class="table-responsive">
-<table class="table bg-white align-middle mb-0" style="table-layout: fixed;" id="ticket-table">
-{% include 'tickets/_ticket_table_rows.html' %}
-</table>
-</div>
-</div>
-
-{% comment %}
-Mobile: a table can't fit this many editable fields readably at phone
-widths, so each ticket becomes a stacked card instead — same forms/views,
-just laid out top-to-bottom rather than in cells.
-{% endcomment %}
+<div class="d-none d-md-block" id="ticket-table">{% include 'core/_np_paper.html' %}</div>
 <div class="d-md-none" id="ticket-mobile-cards">
 {% include 'tickets/_ticket_mobile_cards.html' %}
 </div>
 <div id="ticket-pager">{% include 'core/_pager.html' %}</div>
+<script src="{% static 'js/newspaper.js' %}"></script>
 <script src="{% static 'js/mobile-tickets.js' %}"></script>
 {% endblock %}

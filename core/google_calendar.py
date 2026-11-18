@@ -14,6 +14,8 @@ Disconnect/reconnect once to pick up write access; Google returns a 403
 on the write call in the meantime, surfaced as a "reconnect" message
 rather than a silent failure (see the callers in core/views.py)."""
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta, timezone as dt_timezone
 
 from django.conf import settings
 from django.urls import reverse
@@ -67,21 +69,25 @@ def credentials_for(token):
         client_secret=settings.GOOGLE_OAUTH_CLIENT_SECRET,
         scopes=SCOPES,
     )
+    now = timezone.now()
     needs_refresh = (
         not token.access_token
         or not token.access_token_expires_at
-        or token.access_token_expires_at <= timezone.now()
+        or token.access_token_expires_at <= now + timedelta(minutes=5)         # a few minutes early: never hand out a token that dies mid-read
+        or token.access_token_expires_at > now + timedelta(hours=2)            # Google's access tokens last an hour, so this record was written in the wrong time zone (see below): the token is long dead
     )
     if needs_refresh:
         creds.refresh(GoogleRequest())
         token.access_token = creds.token
         if creds.expiry:
-            token.access_token_expires_at = timezone.make_aware(creds.expiry) if timezone.is_naive(creds.expiry) else creds.expiry
+            # google-auth's expiry is a naive UTC time. It used to be read as New York time (make_aware with the default zone), which put the recorded expiry five hours late: for most of
+            # every day the stored token was dead while the record called it good, so every read began with a refused call and a token refresh of its own, never saved.
+            token.access_token_expires_at = creds.expiry.replace(tzinfo=dt_timezone.utc) if timezone.is_naive(creds.expiry) else creds.expiry
         token.save(update_fields=['access_token', 'access_token_expires_at'])
     return creds
 
 
-def get_upcoming_events(token, days_ahead=2):
+def get_upcoming_events(token, days_ahead=2, first_day=None, last_day=None, max_results=50):
     """All of today's events (the ones already over too, so the day still reads as a whole) plus the next `days_ahead` days, from
     whichever of the staff member's own Google calendars they've chosen to
     pull in (token.enabled_calendar_ids — empty means "just the primary
@@ -96,7 +102,8 @@ def get_upcoming_events(token, days_ahead=2):
 
     Every calendar in `available_calendars` also carries `enabled` (it is one of the ones being pulled in), `access_role` and `hidden`, and `error` (a plain-words reason) when
     that calendar could not be read. Each calendar is read on its own, so one that Google refuses (shared as free/busy only, or no longer shared) never hides the others.
-    Hidden calendars and every page of the calendar list are included: Google leaves hidden ones out unless asked, and a long list of shared calendars comes in pages."""
+    Hidden calendars and every page of the calendar list are included: Google leaves hidden ones out unless asked, and a long list of shared calendars comes in pages.
+    `first_day` / `last_day` ask for a stretch of days instead (the month grid on Home), and `max_results` is how many events each calendar may return."""
     from datetime import timedelta
 
     from googleapiclient.discovery import build
@@ -104,12 +111,27 @@ def get_upcoming_events(token, days_ahead=2):
 
     try:
         creds = credentials_for(token)
-        service = build('calendar', 'v3', credentials=creds, cache_discovery=False)
-        start_of_today = timezone.make_aware(timezone.datetime.combine(timezone.localdate(), timezone.datetime.min.time()))
+        service = _timed_service(creds)
+        start_of_today = timezone.make_aware(timezone.datetime.combine(first_day or timezone.localdate(), timezone.datetime.min.time()))
         time_max = timezone.make_aware(
-            timezone.datetime.combine(timezone.localdate() + timedelta(days=days_ahead), timezone.datetime.max.time())
+            timezone.datetime.combine(last_day or (timezone.localdate() + timedelta(days=days_ahead)), timezone.datetime.max.time())
         )
 
+        def read_events(calendar_id):
+            """One calendar's events: (Google's answer, None), or (None, the error). Runs on its own service object, so several can run at once."""
+            try:
+                return _timed_service(creds).events().list(
+                    calendarId=calendar_id, timeMin=start_of_today.isoformat(), timeMax=time_max.isoformat(),
+                    singleEvents=True, orderBy='startTime', maxResults=max_results,
+                ).execute(), None
+            except Exception as exc:
+                return None, exc
+
+        # The chosen calendars are known up front (the person picked them), so their events are asked for at the same time as the calendar list and as each other: they used to be read
+        # one after another, about half a second each. What is asked and what is shown is exactly as before.
+        chosen = list(dict.fromkeys(token.enabled_calendar_ids or []))
+        pool = ThreadPoolExecutor(max_workers=min(8, len(chosen))) if chosen else None
+        futures = {cid: pool.submit(read_events, cid) for cid in chosen} if pool else {}
         calendar_list, page = [], None
         while True:
             result = service.calendarList().list(showHidden=True, maxResults=250, pageToken=page).execute()
@@ -148,26 +170,30 @@ def get_upcoming_events(token, days_ahead=2):
                 by_id[calendar_id] = entry
                 continue
             entry['enabled'] = True
-            try:
-                result = service.events().list(
-                    calendarId=calendar_id, timeMin=start_of_today.isoformat(), timeMax=time_max.isoformat(),
-                    singleEvents=True, orderBy='startTime', maxResults=50,
-                ).execute()
-            except HttpError as exc:
-                entry['error'] = _why_unreadable(exc)
-                logger.warning('Google Calendar: could not read %s (%s) for %s', entry['summary'], entry['error'], token.staff)
-                continue
-            except Exception:
-                entry['error'] = 'Google would not return its events'
-                logger.exception('Google Calendar: failed reading %s for %s', entry['summary'], token.staff)
+            result, exc = futures[calendar_id].result() if calendar_id in futures else read_events(calendar_id)
+            if exc is not None:
+                if isinstance(exc, HttpError):
+                    entry['error'] = _why_unreadable(exc)
+                    logger.warning('Google Calendar: could not read %s (%s) for %s', entry['summary'], entry['error'], token.staff)
+                else:
+                    entry['error'] = 'Google would not return its events'
+                    logger.error('Google Calendar: failed reading %s for %s', entry['summary'], token.staff, exc_info=exc)
                 continue
             for item in result.get('items', []):
                 item['_calendar_id'] = calendar_id
             events.extend(result.get('items', []))
+        if pool:
+            pool.shutdown(wait=False)
         return events, available_calendars
     except Exception:
         logger.exception('Google Calendar: failed to fetch events for %s', token.staff)
         return [], []
+
+
+def get_events_between(token, first_day, last_day):
+    """The events of every chosen calendar from `first_day` through `last_day` (dates, in the person's time zone), the same shape get_upcoming_events returns: (events, available_calendars).
+    Used by the month grid on Home, which needs a whole month in one read (up to 250 events from each calendar)."""
+    return get_upcoming_events(token, first_day=first_day, last_day=last_day, max_results=250)
 
 
 def _why_unreadable(exc):
@@ -229,6 +255,15 @@ def _event_body(summary, start, end, all_day, add_meet=False, description=None, 
             'createRequest': {'requestId': str(uuid.uuid4()), 'conferenceSolutionKey': {'type': 'hangoutsMeet'}},
         }
     return body
+
+
+def _timed_service(creds):
+    """A Calendar client for READING: its own HTTP object (the HTTP library is not safe to share between threads) and a 10 second limit on each call."""
+    import google_auth_httplib2
+    import httplib2
+    from googleapiclient.discovery import build
+
+    return build('calendar', 'v3', http=google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=10)), cache_discovery=False)
 
 
 def _service_for(token):

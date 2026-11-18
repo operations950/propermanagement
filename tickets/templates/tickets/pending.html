@@ -25,7 +25,7 @@
         </div>
 
         {% if t.duplicate_reasoning %}
-        <div class="mb-3 small p-2 rounded" style="background: var(--brand-surface, #f5f5f7); color: var(--ink-muted);">
+        <div class="mb-3 small p-2 rounded" style="background: var(--brand-surface, var(--b-f5f5f7, #f5f5f7)); color: var(--ink-muted);">
             <i data-lucide="sparkles" class="icon"></i> {{ t.duplicate_reasoning }}
         </div>
         {% endif %}
@@ -41,7 +41,7 @@
                 <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
             </button>
             <div class="collapse mt-1" id="dup-source-{{ t.pk }}">
-                <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+                <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, var(--b-f5f5f7, #f5f5f7));">{{ t.raw_context }}</p>
             </div>
         </div>
         {% endif %}
@@ -96,7 +96,7 @@
                     <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
                 </button>
                 <div class="collapse mt-1" id="ai-source-{{ t.pk }}">
-                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, var(--b-f5f5f7, #f5f5f7));">{{ t.raw_context }}</p>
                 </div>
             </div>
             {% endif %}
@@ -224,7 +224,7 @@
                     <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
                 </button>
                 <div class="collapse mt-1" id="needs-date-source-{{ t.pk }}">
-                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, var(--b-f5f5f7, #f5f5f7));">{{ t.raw_context }}</p>
                 </div>
             </div>
             {% endif %}
@@ -298,7 +298,7 @@
                     <i data-lucide="file-text" class="icon"></i> Original source text <i data-lucide="chevron-down" class="icon"></i>
                 </button>
                 <div class="collapse mt-1" id="pending-source-{{ t.pk }}">
-                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, #f5f5f7);">{{ t.raw_context }}</p>
+                    <p class="small text-muted p-2 rounded" style="white-space: pre-wrap; background: var(--brand-surface, var(--b-f5f5f7, #f5f5f7));">{{ t.raw_context }}</p>
                 </div>
             </div>
             {% endif %}

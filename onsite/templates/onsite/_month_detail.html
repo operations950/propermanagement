@@ -12,7 +12,7 @@ which reservations are counted for the others. m = a month row from performance.
     <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap border-top py-1">
         <span>{{ s.check_in|date:"M j" }} → {{ s.check_out|date:"M j" }} · {{ s.guest|default:"guest" }}{% if s.unit %} · {{ s.unit }}{% endif %}
             <span class="text-muted">· {{ s.source }} · {{ s.nights_here }} of its {{ s.nights }} night{{ s.nights|pluralize }} fall{{ s.nights_here|pluralize:"s," }} in this month</span>
-            {% if s.payment_only %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);" title="Known only from a payment report; the connected calendar doesn't show it. It could be an old or changed reservation.">payment report only</span>
+            {% if s.payment_only %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);" title="Known only from a payment report; the connected calendar doesn't show it. It could be an old or changed reservation.">payment report only</span>
             {% elif s.on_calendar %}<span class="badge text-bg-light border">on the calendar</span>{% endif %}
         </span>
         <a href="{% url 'onsite_reservation_edit' s.id %}" class="text-decoration-none">Open</a>

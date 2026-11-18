@@ -6,10 +6,10 @@
 {% include 'core/_phone_review.html' %}
 <style>
     .mp-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
-    .mp-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
-    .mp-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
-    .mp-ok { color: #0b6a0b; font-weight: 600; }
-    .mp-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+    .mp-chip.good { background: color-mix(in srgb, var(--status-good) 16%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); }
+    .mp-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, var(--surface-card)); color: var(--t-8a5a00, #8a5a00); }
+    .mp-ok { color: var(--t-0b6a0b, #0b6a0b); font-weight: 600; }
+    .mp-chip.progress { background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); color: var(--ink-muted); }
     .mp-total { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
     .mp-table td, .mp-table th { vertical-align: middle; }
     .mp-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -20,7 +20,7 @@
         {% include '_tip.html' with text='Tick the rentals you are paying. The ticked amounts add up to the one transfer in the bank, so type nothing different there: that total is what will be found in QuickBooks later and split across the rentals.' %}</h2>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
@@ -44,7 +44,7 @@
             {% for r in b.rows %}
             <tr>
                 <td>{% if r.state == 'payable' %}<input type="checkbox" class="form-check-input" name="pick" value="{{ r.property.pk }}" data-pick aria-label="Pay {{ r.property.name }}">{% endif %}</td>
-                <td class="fw-semibold">{{ r.property.name }}{% if r.timing %} <span class="mp-chip progress" title="{% if r.timing == 'Same month' %}Paid for {{ r.pay_month|date:'F' }}, the month it is collected: only once that rent is confirmed{% else %}Paid for {{ r.pay_month|date:'F' }}, the month that has closed{% endif %}">{{ r.timing }}: {{ r.pay_month|date:"F" }}</span>{% endif %}{% if b.owner %}<div class="small fw-normal {% if not r.property.owner_legal_name %}text-warning-emphasis{% else %}text-muted{% endif %}">{% if r.property.owner_legal_name %}Pay to {{ r.property.owner_legal_name }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#owner-legal-name" class="text-decoration-none" style="color: #8a5a00;">No legal name set</a>{% endif %}</div>{% endif %}</td>
+                <td class="fw-semibold">{{ r.property.name }}{% if r.timing %} <span class="mp-chip progress" title="{% if r.timing == 'Same month' %}Paid for {{ r.pay_month|date:'F' }}, the month it is collected: only once that rent is confirmed{% else %}Paid for {{ r.pay_month|date:'F' }}, the month that has closed{% endif %}">{{ r.timing }}: {{ r.pay_month|date:"F" }}</span>{% endif %}{% if b.owner %}<div class="small fw-normal {% if not r.property.owner_legal_name %}text-warning-emphasis{% else %}text-muted{% endif %}">{% if r.property.owner_legal_name %}Pay to {{ r.property.owner_legal_name }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#owner-legal-name" class="text-decoration-none" style="color: var(--t-8a5a00, #8a5a00);">No legal name set</a>{% endif %}</div>{% endif %}</td>
                 <td class="num">
                     {% if r.state == 'payable' %}<input type="text" inputmode="decimal" class="form-control form-control-sm text-end d-inline-block" style="width: 8rem;" name="amount_{{ r.property.pk }}" value="{{ r.amount }}" data-amount data-pid="{{ r.property.pk }}" aria-label="Amount for {{ r.property.name }}">
                     {% elif r.state == 'not_closed' or r.state == 'no_figures' %}<span class="text-muted">&mdash;</span>
@@ -83,7 +83,7 @@
     {% endfor %}
 
     {% if b.paid_rows %}
-    <details class="mt-3 border rounded" style="background: var(--surface-card, #fff);">
+    <details class="mt-3 border rounded" style="background: var(--surface-card, var(--surface-card));">
         <summary class="d-flex align-items-center flex-wrap gap-2 p-2" style="cursor: pointer;"><span class="mp-chip good"><i data-lucide="check" class="icon"></i> Paid</span><strong>{{ b.paid_rows|length }} rental{{ b.paid_rows|length|pluralize }}</strong><span class="text-muted small tabular-nums">{{ b.paid_total|money }}</span></summary>
         <table class="table table-sm mp-table mb-0 border-top"><tbody>
             {% for r in b.paid_rows %}<tr><td class="ps-3 fw-semibold">{{ r.property.name }}</td><td class="num">{{ r.paid_amount|money }}</td><td class="small text-muted">Paid {{ r.payment.paid_on|date:"M j" }}{% if r.payment.reference %} &middot; {{ r.payment.reference }}{% endif %}</td></tr>{% endfor %}
@@ -94,7 +94,7 @@
     {% if b.payments %}
     <h4 class="fs-6 mt-4 mb-2">Recorded payments</h4>
     {% for p in b.payments %}
-    <details class="border rounded mb-2" style="background: var(--surface-card, #fff);">
+    <details class="border rounded mb-2" style="background: var(--surface-card, var(--surface-card));">
         <summary class="d-flex align-items-center flex-wrap gap-2 p-2" style="cursor: pointer;">
             <strong class="tabular-nums">{{ p.total|money }}</strong>
             <span class="text-muted small">sent {{ p.paid_on|date:"M j, Y" }}{% if p.reference %} &middot; {{ p.reference }}{% endif %} &middot; {{ p.lines.all|length }} line{{ p.lines.all|length|pluralize }}</span>

@@ -4,21 +4,21 @@
 {% block content %}
 {% include 'workspace/_css.html' %}
 <style>
-    .it-head { background: #eef4ee; border: 1px solid #d3e0d3; border-left: 4px solid #6f9a78; border-radius: 0.6rem; padding: 0.7rem 0.9rem; margin-bottom: 0.9rem; }
-    .it-row { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) 9rem auto; align-items: center; gap: 0.6rem; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border-hairline); background: #fff; }
+    .it-head { background: var(--b-eef4ee, #eef4ee); border: 1px solid var(--l-d3e0d3, #d3e0d3); border-left: 4px solid #6f9a78; border-radius: 0.6rem; padding: 0.7rem 0.9rem; margin-bottom: 0.9rem; }
+    .it-row { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) 9rem auto; align-items: center; gap: 0.6rem; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border-hairline); background: var(--surface-card); }
     .it-row.closed { opacity: .55; }
     .it-row .nm { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .it-row small { color: var(--ink-muted); display: block; font-weight: 400; }
-    .it-box { width: 1.15rem; height: 1.15rem; border: 1.5px solid #8aa690; border-radius: 4px; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; line-height: 1; padding: 0; }
+    .it-box { width: 1.15rem; height: 1.15rem; border: 1.5px solid #8aa690; border-radius: 4px; background: var(--surface-card); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; line-height: 1; padding: 0; }
     .it-box.done { background: #6f9a78; color: #fff; border-color: #6f9a78; }
-    .gridw { overflow-x: auto; border: 1px solid var(--border-hairline); border-radius: 0.6rem; background: #fff; }
+    .gridw { overflow-x: auto; border: 1px solid var(--border-hairline); border-radius: 0.6rem; background: var(--surface-card); }
     .gridt { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
     .gridt th, .gridt td { border-bottom: 1px solid var(--border-hairline); border-left: 1px solid var(--border-hairline); padding: 0.3rem 0.5rem; text-align: center; }
-    .gridt th:first-child, .gridt td:first-child { border-left: 0; text-align: left; position: sticky; left: 0; background: #fff; min-width: 11rem; }
+    .gridt th:first-child, .gridt td:first-child { border-left: 0; text-align: left; position: sticky; left: 0; background: var(--surface-card); min-width: 11rem; }
     .gridt thead th { background: #f4f8f4; font-weight: 600; font-size: 0.78rem; vertical-align: bottom; }
-    .gcell { width: 1.5rem; height: 1.5rem; border: 1.5px solid #8aa690; border-radius: 4px; background: #fff; cursor: pointer; font-size: 0.7rem; line-height: 1; padding: 0; }
+    .gcell { width: 1.5rem; height: 1.5rem; border: 1.5px solid #8aa690; border-radius: 4px; background: var(--surface-card); cursor: pointer; font-size: 0.7rem; line-height: 1; padding: 0; }
     .gcell.done { background: #6f9a78; color: #fff; border-color: #6f9a78; }
-    .gcell.na { background: #ece9f4; color: var(--ink-secondary); border-color: #c9c6d0; }
+    .gcell.na { background: #ece9f4; color: var(--ink-secondary); border-color: var(--l-c9c6d0, #c9c6d0); }
     .gcell.link { border-style: dashed; }
     @media (max-width: 768px) {
         /* on a phone each line is a big row: the box, the whole name (it wraps instead of being cut off), and its buttons */

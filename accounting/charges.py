@@ -11,6 +11,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Q
 
+from core import memo as request_memo
 from core.models import Contact, Unit
 
 from . import ledger, owners
@@ -182,10 +183,22 @@ def void_charge(charge, user=None, day=None):
 def open_charges(unit, owner, loan=False):
     """What the owner still owes, in the order a payment pays it: interest, late fees, costs, then assessments, the oldest first within each. An owner loan is never in this list
     (a payment never pays it by itself); with loan=True it is the only thing in the list, for a payment the person says is for the loan."""
-    qs = Charge.objects.filter(unit=unit, owner=owner, is_void=False)
-    qs = qs.filter(kind=Charge.Kind.LOAN) if loan else qs.exclude(kind=Charge.Kind.LOAN)
-    rows = [c for c in qs.order_by('due_date', 'id').prefetch_related('applications') if c.balance > 0]
+    if request_memo.active() and unit.property_id:
+        # While a page is being built (a GET: core/memo.py) every charge of the unit's property is read once, with its payments, and each owner's list is cut from it.
+        mine = request_memo.get(('charges.by_owner', unit.property_id), lambda: _charges_by_owner(unit.property_id)).get((unit.pk, getattr(owner, 'pk', None)), [])
+        rows = [c for c in mine if (c.kind == Charge.Kind.LOAN) == bool(loan) and c.balance > 0]
+    else:
+        qs = Charge.objects.filter(unit=unit, owner=owner, is_void=False)
+        qs = qs.filter(kind=Charge.Kind.LOAN) if loan else qs.exclude(kind=Charge.Kind.LOAN)
+        rows = [c for c in qs.order_by('due_date', 'id').prefetch_related('applications') if c.balance > 0]
     return sorted(rows, key=lambda c: (PAY_ORDER.get(c.kind, 3), c.due_date, c.id))
+
+
+def _charges_by_owner(property_id):
+    out = defaultdict(list)
+    for c in Charge.objects.filter(unit__property_id=property_id, is_void=False).order_by('due_date', 'id').prefetch_related('applications'):
+        out[(c.unit_id, c.owner_id)].append(c)
+    return out
 
 
 def loan_balance(unit, owner=None):
@@ -304,6 +317,11 @@ def _lease_late_fee(charge):
         from commercial.models import Lease
     except ImportError:
         return None
+    # While a page is being built (a GET: core/memo.py) a unit's lease is read once, however many of its charges are looked at.
+    return request_memo.get(('lease_late_fee', unit_id), lambda: _read_lease_late_fee(Lease, unit_id))
+
+
+def _read_lease_late_fee(Lease, unit_id):
     lease = Lease.objects.filter(unit_id=unit_id).exclude(late_fee_flat__isnull=True, late_fee_percent__isnull=True).order_by('-start_date', '-id').first()
     return (lease.late_fee_flat, lease.late_fee_percent) if lease else None
 
@@ -350,12 +368,21 @@ def _late_fee_rows(association, today, units=None, as_of=None):
         qs = qs.filter(unit_id__in=units)
     for charge in qs.select_related('unit', 'owner').prefetch_related('applications'):
         open_ = balance_as_of(charge, as_of) if as_of is not None else charge.balance
-        if open_ <= 0 or Charge.objects.filter(parent=charge, kind=Charge.Kind.LATE_FEE).exists():
+        if open_ <= 0 or _has_late_fee(association, charge):
             continue
-        fee = late_fee_amount(profile, charge, open_ if charge.kind == Charge.Kind.OPENING else None)       # a balance forward is charged on what is still unpaid of it
+        fee = late_fee_amount(profile, charge, open_)       # the fee is on what is still unpaid of the installment (a part-paid one is charged on the rest, as a balance forward always was)
         if fee > 0:
             rows.append((charge, fee, max(charge.due_date + timedelta(days=grace + 1), books_start + timedelta(days=1) if charge.kind == Charge.Kind.OPENING and books_start else date.min)))
     return rows
+
+
+def _has_late_fee(association, charge):
+    """Whether a late fee has already been charged on this installment (a voided one still counts)."""
+    if request_memo.active():
+        # While a page is being built (a GET: core/memo.py) the installments of the association that carry a late fee are read once.
+        parents = request_memo.get(('late_fee_parents', association.pk), lambda: set(Charge.objects.filter(association=association, kind=Charge.Kind.LATE_FEE, parent__isnull=False).values_list('parent_id', flat=True)))
+        return charge.pk in parents
+    return Charge.objects.filter(parent=charge, kind=Charge.Kind.LATE_FEE).exists()
 
 
 def assess_late_fees(association, today, user=None, units=None, as_of=None, post_day=None):
@@ -393,7 +420,19 @@ def _interest_description(charge, month_first):
 
 def _interest_charged(charge, month_first, end):
     """Whether interest for this charge and month is already on the books (dated the month's end, or dated another day when a person chose the posting date)."""
+    if request_memo.active() and charge.association_id:
+        # While a page is being built (a GET: core/memo.py) the interest charges of the association are read once, grouped by the installment they are on.
+        by_parent = request_memo.get(('interest_by_parent', charge.association_id), lambda: _interest_by_parent(charge.association_id))
+        description = _interest_description(charge, month_first)
+        return any(due == end or desc == description for due, desc in by_parent.get(charge.pk, ()))
     return Charge.objects.filter(parent=charge, kind=Charge.Kind.INTEREST, is_void=False).filter(Q(due_date=end) | Q(description=_interest_description(charge, month_first))).exists()
+
+
+def _interest_by_parent(association_id):
+    out = defaultdict(list)
+    for parent_id, due, desc in Charge.objects.filter(association_id=association_id, kind=Charge.Kind.INTEREST, is_void=False, parent__isnull=False).values_list('parent_id', 'due_date', 'description'):
+        out[parent_id].append((due, desc))
+    return out
 
 
 def _interest_months(today, as_of=None):
@@ -490,6 +529,13 @@ def terms_sentences(profile, example=None):
 # ---------------------------------------------------------------- reading it back
 
 def accounts(association):
+    """One row per (unit, owner) of the association (see _accounts). While a page is being built (a GET: core/memo.py) the rows are worked out once and each caller gets its own copy; elsewhere it is
+    worked out every time, exactly as before."""
+    rows = request_memo.get(('charges.accounts', association.pk), lambda: _accounts(association))
+    return [dict(r) for r in rows]
+
+
+def _accounts(association):
     """One row per (unit, owner) that has ever been charged or has paid: what was charged, what came in, and the balance (owed is plus, paid ahead is minus)."""
     rows = {}
     new = lambda unit, owner: {'unit': unit, 'owner': owner, 'charged': ZERO, 'received': ZERO, 'loan_charged': ZERO, 'loan_paid': ZERO}

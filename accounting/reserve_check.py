@@ -10,7 +10,10 @@ def check(association, month_first):
     has acknowledged exactly this difference. `status` is 'done' when it matches or the difference is acknowledged, else 'attention'."""
     month_first = ledger.month_start(month_first)
     end = ledger.month_end(month_first)
-    banks = [{'bank': b, 'balance': ledger.cash_balance(b, end)} for b in BankAccount.objects.filter(association=association, kind=BankAccount.Kind.RESERVE, is_active=True).order_by('name', 'pk')]
+    reserve_banks = list(BankAccount.objects.filter(association=association, kind=BankAccount.Kind.RESERVE, is_active=True).select_related('account').order_by('name', 'pk'))
+    for b in reserve_banks:
+        b.association = association          # already in hand: cash_balance asks for it
+    banks = [{'bank': b, 'balance': ledger.cash_balance(b, end)} for b in reserve_banks]
     cash = sum((r['balance'] for r in banks), ZERO)
     funds = [{'account': r['account'], 'amount': r['amount']} for r in ledger.balance_sheet(association, end)['sections'].get('Reserve funds', [])]
     funds_total = sum((r['amount'] for r in funds), ZERO)

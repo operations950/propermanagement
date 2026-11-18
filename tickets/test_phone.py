@@ -167,8 +167,9 @@ class PhoneTicketListTests(TestCase):
         self.assertIn('id="ticket-table"', html)
         self.assertIn('id="tf-box"', html)
         self.assertIn('id="ticket-search-input"', html)
-        self.assertIn('d-none d-md-flex justify-content-between align-items-center flex-wrap gap-2 my-3', html)          # the wide header: hidden on phones only
-        self.assertIn('d-none d-md-block card p-0', html)                                                                   # the table: wide screens only
+        self.assertIn('<div class="d-none d-md-block">', html)                     # the wide header and control row: hidden on phones only
+        self.assertIn('class="np-head"', html)
+        self.assertIn('class="np-cols"', html.split('id="ticket-table"')[1])      # the boxes: wide screens only (the phone stacks them as cards)
 
     def test_the_filter_memory_still_works_with_chips(self):
         self.client.get(self.url + '?priority=urgent')

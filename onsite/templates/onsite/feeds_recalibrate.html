@@ -12,9 +12,9 @@
 </div>
 
 <div class="row row-cols-1 row-cols-md-3 g-2 mb-3">
-    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Unpaid, not on the calendar</div><div class="fs-4 fw-semibold">{{ plan.remove|length }}</div><div class="small text-muted">will be cleared out</div></div></div>
-    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Paid, not on the calendar</div><div class="fs-4 fw-semibold">{{ plan.keep|length }}</div><div class="small text-muted">kept as payment records</div></div></div>
-    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, #f8f9fa); border-radius: 10px;"><div class="small text-muted">Cleanings removed</div><div class="fs-4 fw-semibold">{{ plan.visits_to_remove }}</div><div class="small text-muted">quietly, no notices</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, var(--b-f8f9fa, #f8f9fa)); border-radius: 10px;"><div class="small text-muted">Unpaid, not on the calendar</div><div class="fs-4 fw-semibold">{{ plan.remove|length }}</div><div class="small text-muted">will be cleared out</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, var(--b-f8f9fa, #f8f9fa)); border-radius: 10px;"><div class="small text-muted">Paid, not on the calendar</div><div class="fs-4 fw-semibold">{{ plan.keep|length }}</div><div class="small text-muted">kept as payment records</div></div></div>
+    <div class="col"><div class="p-3 h-100" style="background: var(--bs-light, var(--b-f8f9fa, #f8f9fa)); border-radius: 10px;"><div class="small text-muted">Cleanings removed</div><div class="fs-4 fw-semibold">{{ plan.visits_to_remove }}</div><div class="small text-muted">quietly, no notices</div></div></div>
 </div>
 
 {% if plan.remove or plan.keep %}

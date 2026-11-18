@@ -8,26 +8,26 @@
     .st-wrap { overflow-x: auto; }
     .st-table { font-variant-numeric: tabular-nums; font-size: 0.82rem; white-space: nowrap; }
     .st-table th, .st-table td { padding: 4px 10px; text-align: right; }
-    .st-table th:first-child, .st-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--bs-body-bg, #fff); z-index: 1; width: 170px; min-width: 170px; max-width: 170px; white-space: normal; line-height: 1.25; padding-right: 6px; }
+    .st-table th:first-child, .st-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--bs-body-bg, var(--surface-card)); z-index: 1; width: 170px; min-width: 170px; max-width: 170px; white-space: normal; line-height: 1.25; padding-right: 6px; }
     .st-table td:first-child .text-muted { display: block; font-size: 0.66rem; line-height: 1.2; }
-    .st-table thead th { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); background: var(--bs-light, #f8f9fa); }
-    .st-table thead th:first-child { background: var(--bs-light, #f8f9fa); }
-    .st-table tr.sum td { font-weight: 700; border-top: 1px solid var(--border-hairline, #ccd); }
-    .st-table tr.section td { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); padding-top: 12px; border-bottom: 1px solid var(--border-hairline, #ccd); }
+    .st-table thead th { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); background: var(--bs-light, var(--b-f8f9fa, #f8f9fa)); }
+    .st-table thead th:first-child { background: var(--bs-light, var(--b-f8f9fa, #f8f9fa)); }
+    .st-table tr.sum td { font-weight: 700; border-top: 1px solid var(--border-hairline, var(--l-ccd, #ccd)); }
+    .st-table tr.section td { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); padding-top: 12px; border-bottom: 1px solid var(--border-hairline, var(--l-ccd, #ccd)); }
     .st-table tr.check td { font-size: 0.72rem; color: var(--ink-muted); }
-    .st-table td.tot, .st-table th.tot { border-left: 1px solid var(--border-hairline, #ccd); font-weight: 600; }
+    .st-table td.tot, .st-table th.tot { border-left: 1px solid var(--border-hairline, var(--l-ccd, #ccd)); font-weight: 600; }
     .st-table .zero { color: var(--ink-muted); }
-    .st-open { font-size: 0.62rem; font-weight: 500; text-transform: none; letter-spacing: 0; color: #9a6a00; display: block; }
+    .st-open { font-size: 0.62rem; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--t-9a6a00, #9a6a00); display: block; }
     .st-closed { font-size: 0.62rem; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink-muted); display: block; }
     .st-tog { border: 0; background: transparent; padding: 0 4px 0 0; color: var(--ink-muted); cursor: pointer; vertical-align: middle; }
     .st-tog svg { width: 14px; height: 14px; transition: transform 120ms; }
     .st-tog[aria-expanded="true"] svg { transform: rotate(90deg); }
-    .st-table td.st-detail-cell { position: static; min-width: 0; text-align: left; background: var(--bs-light, #f8f9fa); padding: 6px 10px 10px; white-space: normal; }
+    .st-table td.st-detail-cell { position: static; min-width: 0; text-align: left; background: var(--bs-light, var(--b-f8f9fa, #f8f9fa)); padding: 6px 10px 10px; white-space: normal; }
     .st-sub-box { position: sticky; left: 10px; max-width: 760px; }
     .st-sub { width: 100%; font-size: 0.78rem; }
     .st-sub td { padding: 2px 8px; text-align: left; background: transparent; position: static; min-width: 0; }
     .st-sub td.amt { text-align: right; white-space: nowrap; }
-    .st-sub tr.st-sub-month td { font-weight: 700; border-top: 1px solid var(--border-hairline, #ccd); padding-top: 5px; }
+    .st-sub tr.st-sub-month td { font-weight: 700; border-top: 1px solid var(--border-hairline, var(--l-ccd, #ccd)); padding-top: 5px; }
     @media print {
         nav, .navbar, .no-print, footer { display: none !important; }
         .st-table { font-size: 0.7rem; }
@@ -44,7 +44,7 @@
     <div class="d-flex gap-2 flex-wrap no-print">
         <div class="btn-group btn-group-sm">
             <a href="?year={{ earlier }}" class="btn btn-outline-secondary {% if not can_go_earlier %}disabled{% endif %}" aria-label="{{ earlier }}" title="{{ earlier }}"><i data-lucide="chevron-left" class="icon"></i></a>
-            <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ year }}</span>
+            <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ year }}</span>
             <a href="?year={{ later }}" class="btn btn-outline-secondary {% if not can_go_later %}disabled{% endif %}" aria-label="{{ later }}" title="{{ later }}"><i data-lucide="chevron-right" class="icon"></i></a>
         </div>
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print / save as PDF</button>
@@ -87,8 +87,8 @@
         <tr><td>Paid to Proper Realty <span class="text-muted">(reimbursement and commission)</span></td>{% for c in st.columns %}<td><span title="Reimbursement {{ c.t.reimbursement_trust|money }} and commission {{ c.t.commission|money }}">{{ c.t.taken_to_us|money }}</span></td>{% endfor %}<td class="tot">{{ st.total.taken_to_us|money }}</td></tr>
 
         <tr class="section"><td colspan="{{ st.columns|length|add:2 }}">Checks</td></tr>
-        <tr class="check"><td>Last month's payables cleared</td>{% for c in st.columns %}<td>{% if c.cleared is None %}<span title="Nothing to check against: last month is not in the books, or this month has no transactions">–</span>{% elif c.cleared %}<span style="color: var(--status-good);">✓ cleared</span>{% else %}<span style="color: #9a6a00;" title="What last month left to pay, less what was paid: owner {{ c.t.owner_carry|money }}, Proper Realty {{ c.t.us_carry|money }} (negative = paid more than was owed)">⚠ off</span>{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
-        <tr class="check"><td>All income accounted for <span class="text-muted">(reimbursable + paid from trust + commission + owner payment = deposits)</span></td>{% for c in st.columns %}<td>{% if c.accounted is None %}–{% elif c.accounted == 0 %}<span style="color: var(--status-good);">✓ 100%</span>{% else %}<span style="color: #a02020;">{{ c.accounted|money }} unaccounted</span>{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
+        <tr class="check"><td>Last month's payables cleared</td>{% for c in st.columns %}<td>{% if c.cleared is None %}<span title="Nothing to check against: last month is not in the books, or this month has no transactions">–</span>{% elif c.cleared %}<span style="color: var(--status-good);">✓ cleared</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);" title="What last month left to pay, less what was paid: owner {{ c.t.owner_carry|money }}, Proper Realty {{ c.t.us_carry|money }} (negative = paid more than was owed)">⚠ off</span>{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
+        <tr class="check"><td>All income accounted for <span class="text-muted">(reimbursable + paid from trust + commission + owner payment = deposits)</span></td>{% for c in st.columns %}<td>{% if c.accounted is None %}–{% elif c.accounted == 0 %}<span style="color: var(--status-good);">✓ 100%</span>{% else %}<span style="color: var(--t-a02020, #a02020);">{{ c.accounted|money }} unaccounted</span>{% endif %}</td>{% endfor %}<td class="tot"></td></tr>
         {% endif %}
     </tbody>
 </table></div>

@@ -20,6 +20,12 @@ def has_admin(user):
     return bool(profile and profile.is_company_admin and user.is_active)
 
 
+def can_use_dark_mode(user):
+    """Who is offered dark mode and ever sees it. For now only people with the Admin box (superusers count); everyone else, and anyone signed out, is always light whatever their system setting.
+    Widening it later is a change to this one function."""
+    return bool(getattr(user, 'is_authenticated', False) and has_admin(user))
+
+
 def has_financial(user):
     if getattr(user, 'is_superuser', False):
         return True

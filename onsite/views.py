@@ -1271,53 +1271,6 @@ def reservation_cancel(request, pk):
 
 
 @login_required
-def str_today(request):
-    """The short-term rental Today board — see onsite/services/str_board.py.
-    Open to any logged-in staff: it's what whoever is watching the rentals
-    that day keeps open. The only writes are the hand-logged guest requests
-    (early check-in / late checkout) and approving or declining them."""
-    from django.utils.dateparse import parse_time
-
-    today = timezone.localdate()
-    day = parse_date(request.GET.get('date', '') or request.POST.get('day', '')) or today
-
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        try:
-            if action == 'log_request':
-                booking = get_object_or_404(Booking, pk=request.POST.get('booking_id'))
-                requested = parse_time(request.POST.get('requested_time', '').strip() or '')
-                guest_request = str_board.record_request(
-                    booking, request.POST.get('kind', ''), requested, request.POST.get('note', ''), request.user,
-                )
-                t = guest_request.requested_time
-                messages.success(
-                    request,
-                    f'Logged: {guest_request.get_kind_display().lower()} at {t.hour % 12 or 12}:{t:%M} {"AM" if t.hour < 12 else "PM"}.'
-                    + (' It helps the turnover, so it is approved — the cleaner has been told.' if guest_request.status == GuestRequest.Status.APPROVED else ''),
-                )
-            elif action == 'decide_request':
-                guest_request = get_object_or_404(GuestRequest, pk=request.POST.get('request_id'))
-                decision = request.POST.get('decision', '')
-                str_board.decide_request(guest_request, decision, request.user)
-                messages.success(request, f'Request {"approved" if decision == "approve" else "declined"}.')
-            elif action == 'delete_request':
-                get_object_or_404(GuestRequest, pk=request.POST.get('request_id')).delete()
-                messages.success(request, 'Request removed.')
-        except str_board.RequestError as e:
-            messages.error(request, str(e))
-        target = reverse('onsite_str_today')
-        return redirect(f'{target}?date={day.isoformat()}' if day != today else target)
-
-    board = str_board.build_board(day)
-    return render(request, 'onsite/str_today.html', {
-        'board': board, 'day': day, 'today': today, 'review_count': sum(review_service.counts()),
-        'previous_day': day - timedelta(days=1), 'next_day': day + timedelta(days=1),
-        'is_admin': _is_admin(request.user),
-    })
-
-
-@login_required
 def visit_rule_list(request):
     """Staff-facing management screen for VisitRule — the recurring
     generation path for deep cleans/inspections (see

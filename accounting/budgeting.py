@@ -11,7 +11,7 @@ from django.db import transaction
 
 from . import ledger
 from . import standard_chart as sc
-from .models import ZERO, Account, Budget, BudgetLine, BudgetVersion, BudgetVersionLine, JournalEntry, MonthLock, PriorYearToDate
+from .models import ZERO, Account, Budget, BudgetLine, BudgetVersion, BudgetVersionLine, JournalEntry, JournalLine, MonthLock, PriorYearToDate
 
 STAGES = [BudgetVersion.Stage.DRAFT, BudgetVersion.Stage.BOARD, BudgetVersion.Stage.MEETING, BudgetVersion.Stage.APPROVED]
 STAGE_KEYS = [s.value for s in STAGES]
@@ -133,6 +133,16 @@ def prior_ytd(prop, fy_year):
     return {r.account_id: r.amount for r in PriorYearToDate.objects.filter(association=prop, year=fy_year)}
 
 
+def transfer_entry_ids(line_qs, reserve_ids):
+    """The entries among `line_qs` that only MOVE money from one fund to another (every debit in them is on an equity account): the credit they put on a reserve fund is not a contribution.
+    An entry that is paid for by cash, an expense (the reserve transfer), income or a liability is a contribution."""
+    ids = set(line_qs.filter(account_id__in=reserve_ids, credit__gt=0).values_list('entry_id', flat=True))
+    if not ids:
+        return set()
+    paid = set(JournalLine.objects.filter(entry_id__in=ids, debit__gt=0).exclude(account__kind=Account.Kind.EQUITY).values_list('entry_id', flat=True))
+    return ids - paid
+
+
 def _actuals(prop, start, end, accounts, include_opening=True, prior=None):
     """Per account, what happened in the window: expenses debits less credits, reserves what was put in. A reserve account's line in the opening entry is the fund's balance, not this
     year's contribution, so it is left out and the year's contributions before our books are added from `prior`. `include_opening=False` leaves the opening entry out altogether
@@ -144,6 +154,10 @@ def _actuals(prop, start, end, accounts, include_opening=True, prior=None):
     if include_opening:
         opening = opening.filter(account_id__in=reserve_ids)
     for pk, (d, c) in ledger._sums(opening).items():
+        sums[pk][0] -= d
+        sums[pk][1] -= c
+    moved = qs.filter(account_id__in=reserve_ids, entry_id__in=transfer_entry_ids(qs.exclude(entry__source=JournalEntry.Source.OPENING), reserve_ids))       # a move from one fund to another is not a contribution
+    for pk, (d, c) in ledger._sums(moved).items():
         sums[pk][0] -= d
         sums[pk][1] -= c
     out = {}

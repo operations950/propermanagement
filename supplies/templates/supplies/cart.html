@@ -21,7 +21,7 @@
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
             <h5 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="building-2" class="icon"></i> {{ entry.property.name }}</h5>
             {% if not entry.property.address %}
-            <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 15%, white); color: color-mix(in srgb, var(--status-warning) 60%, black); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">
+            <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 15%, var(--surface-card)); color: color-mix(in srgb, var(--status-warning) 60%, var(--mix-black, black)); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, var(--surface-card));">
                 <i data-lucide="alert-triangle" class="icon"></i> No delivery address on file
             </span>
             {% endif %}

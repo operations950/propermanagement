@@ -11,7 +11,7 @@
     </div>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
@@ -39,8 +39,8 @@
                 <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="clear_account"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><button class="btn btn-link btn-sm p-0 ms-1 small">change</button></form></div>
         </div>
         <span>
-            {% if s.status == 'done' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Matches</span>
-            {% elif s.status == 'attention' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">Does not match</span>
+            {% if s.status == 'done' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); border: 1px solid var(--status-good);">Matches</span>
+            {% elif s.status == 'attention' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">Does not match</span>
             {% else %}<span class="badge rounded-pill text-bg-light border">Not checked yet</span>{% endif %}
         </span>
     </div>
@@ -49,10 +49,10 @@
         <tr><td>QuickBooks {{ cfg.short }} at {{ month_end|date:"M j" }}
             {% if s.qb_balance is None %}<span class="text-muted small">— not pulled yet</span>{% elif s.em.qb_pulled_at %}<span class="text-muted small">— pulled {{ s.em.qb_pulled_at|date:"M j, g:i a" }}</span>{% endif %}</td>
             <td class="text-end fw-semibold">{% if s.qb_balance is not None %}{{ s.qb_balance|money }}{% else %}—{% endif %}</td></tr>
-        {% if s.qb_gap is not None %}<tr><td>Difference from QuickBooks</td><td class="text-end fw-semibold" style="{% if s.status != 'done' and s.qb_gap %}color: #9a6a00;{% endif %}">{{ s.qb_gap|money }}</td></tr>{% endif %}
+        {% if s.qb_gap is not None %}<tr><td>Difference from QuickBooks</td><td class="text-end fw-semibold" style="{% if s.status != 'done' and s.qb_gap %}color: var(--t-9a6a00, #9a6a00);{% endif %}">{{ s.qb_gap|money }}</td></tr>{% endif %}
         {% if kind == 'escrow' %}<tr><td>Escrow bank statement ending balance <span class="text-muted small">(optional)</span></td>
             <td class="text-end">{% if s.bank_balance is not None %}<strong>{{ s.bank_balance|money }}</strong>{% else %}—{% endif %}</td></tr>
-        {% if s.bank_gap is not None %}<tr><td>Difference from the bank</td><td class="text-end fw-semibold" style="{% if s.bank_gap %}color: #9a6a00;{% endif %}">{{ s.bank_gap|money }}</td></tr>{% endif %}{% endif %}
+        {% if s.bank_gap is not None %}<tr><td>Difference from the bank</td><td class="text-end fw-semibold" style="{% if s.bank_gap %}color: var(--t-9a6a00, #9a6a00);{% endif %}">{{ s.bank_gap|money }}</td></tr>{% endif %}{% endif %}
     </table></div>
     <div class="d-flex gap-2 flex-wrap align-items-center">
         <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="pull"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}">

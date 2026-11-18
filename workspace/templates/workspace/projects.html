@@ -1,33 +1,13 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Projects{% endblock %}
+{% block extra_head %}<link href="{% static 'css/newspaper.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
-{% include 'workspace/_css.html' %}
-<div class="ws-sub">
-<a href="?tab=active" class="{% if tab == 'active' %}on{% endif %}">Active</a>
-<a href="?tab=templates" class="{% if tab == 'templates' %}on{% endif %}">Templates</a>
-<span class="sp"></span>
-{% if tab == 'templates' %}<a href="{% url 'process_template_list' %}" class="btn btn-sm btn-dark mb-1" style="color:#fff;border-bottom:0;">New or edit templates</a>{% endif %}
-</div>
-<div class="ws-note">{% if tab == 'active' %}Projects are multi-day work. A ticket or a compliance item becomes one when it will run for days or weeks; it leaves its list and is tracked here, with a link back. A process (steps done in one sitting) stays on its ticket or item and is not listed here.{% else %}Where projects and processes are set up. A project template has steps over days; a process template is plain checkbox steps for one sitting, and is attached to a ticket or used by a compliance rule. Nothing is scheduled here: scheduling is done in <a href="{% url 'ws_compliance' %}?tab=rules">Compliance</a>.{% endif %}</div>
-{% if tab == 'active' %}
-{% include 'workspace/_project_filters.html' %}
-{% for r in rows %}
-<a class="ws-row k-project" href="{{ r.url }}" style="grid-template-columns: 8.5rem minmax(0,1fr) 6rem 3.6rem 0.9rem;"><span class="where">{{ r.where }}</span><span class="main"><b>{{ r.title }}</b><small>Step {{ r.done|add:1 }} of {{ r.total }}: {{ r.next }} &middot; {{ r.origin }}{% if r.who %} &middot; {{ r.who }}{% endif %}</small></span><span class="ws-pb"><i style="width: {{ r.pct }}%"></i></span><span class="due{% if r.late %} late{% endif %}">{{ r.due }}</span><span class="go">&rsaquo;</span></a>
-{% empty %}
-<div class="ws-empty">No projects running right now.</div>
-{% endfor %}
-{% else %}
-<div class="ws-kind">Projects</div>
-{% for t in project_templates %}
-<a class="ws-row k-project" href="{% url 'process_template_edit' t.t.pk %}" style="grid-template-columns: 8.5rem minmax(0,1fr) 5rem 4rem 0.9rem;{% if not t.t.is_active %}opacity:.55;{% endif %}"><span class="where">{{ t.t.category|default:'No group' }}</span><span class="main"><b>{{ t.t.name }}</b><small>{{ t.steps }} steps{% if not t.t.is_active %} &middot; switched off{% endif %}</small></span><span class="due">Used {{ t.used }}&times;</span><span class="due">{{ t.active }} active</span><span class="go">&rsaquo;</span></a>
-{% empty %}
-<div class="ws-empty">No project templates yet. Use "New or edit templates", then choose Project as its type.</div>
-{% endfor %}
-<div class="ws-kind">Processes</div>
-{% for t in process_templates %}
-<a class="ws-row k-compliance" href="{% url 'process_template_edit' t.t.pk %}" style="grid-template-columns: 8.5rem minmax(0,1fr) 5rem 4rem 0.9rem;{% if not t.t.is_active %}opacity:.55;{% endif %}"><span class="where">{{ t.t.category|default:'No group' }}</span><span class="main"><b>{{ t.t.name }}</b><small>{{ t.steps }} steps{% if not t.t.is_active %} &middot; switched off{% endif %}</small></span><span class="due">Used {{ t.used }}&times;</span><span class="due">{{ t.active }} open</span><span class="go">&rsaquo;</span></a>
-{% empty %}
-<div class="ws-empty">No process templates yet. Use "New or edit templates", then choose Process as its type.</div>
-{% endfor %}
-{% endif %}
+{% comment %}Projects in the newspaper look (the same header, tabs, control row and boxes as Tickets and Compliance): the boxes are the LINE OF BUSINESS, for the running projects and for the templates alike. Start project and Add new template stay on both tabs.{% endcomment %}
+{% include 'core/_np_header.html' %}
+{% include 'core/_np_tabs.html' %}
+{% include 'core/_np_controls.html' %}
+{% if tab == 'active' %}<div class="np-filters" id="np-filters">{% include 'workspace/_project_filters.html' %}</div>{% endif %}
+<div id="np-paper">{% include 'core/_np_paper.html' %}</div>
+<script src="{% static 'js/newspaper.js' %}"></script>
 {% endblock %}

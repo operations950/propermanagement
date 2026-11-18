@@ -1,0 +1,159 @@
+/* DARK MODE. The page is a dark GREY, never black. Everything here is inside @media screen, so a printout or a PDF (anything printed from a dark screen) always comes out light.
+   How it works: templates/base.html defines the light palette on :root; this file redefines the same named values under html[data-theme="dark"] (set before first paint by the <head> script),
+   flips Bootstrap with data-bs-theme="dark", and fixes the few things that cannot follow a variable. The dark value of every literal colour a template still uses is in dark-literals.css. */
+@media screen {
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* brand (lighter on a dark ground) */
+    --brand-primary: #8db4d1;
+    --brand-primary-light: #aac6db;
+    --brand-slate: #a3b3c5;
+    --brand-surface: #22262d;
+    --brand-ink: #eceef2;
+
+    /* the department ramp, lightened to read on the card */
+    --role-property_manager: #6f9bbd;
+    --role-admin: #7ba3c2;
+    --role-cleaner: #88acc8;
+    --role-maintenance: #a3b3c5;
+    --role-accounting: #8db4d1;
+    --role-contractor: #aac6db;
+
+    --status-critical: #f47370;
+    --status-warning: #f5b83d;
+    --status-good: #4cc76b;
+    --priority-urgent: #ff9d42;
+    --accent-contrast: #cf86b0;
+    --on-accent: #0f1318;          /* the words on a brand / status coloured button or chip: dark, because those colours are lighter here */
+
+    --surface-page: #22262d;
+    --surface-card: #2b3039;
+    --surface-raised: #353b46;
+    --ink-primary: #eceef2;
+    --ink-secondary: #bcc2cc;
+    --ink-muted: #98a0ac;
+    --border-hairline: rgba(255, 255, 255, 0.12);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 6px 20px rgba(0, 0, 0, 0.22);
+    --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.3);
+
+    /* Bootstrap's own named values */
+    --bs-body-bg: #22262d;
+    --bs-body-color: #eceef2;
+    --bs-emphasis-color: #ffffff;
+    --bs-secondary-color: rgba(236, 238, 242, 0.72);
+    --bs-secondary-bg: #353b46;
+    --bs-tertiary-color: rgba(236, 238, 242, 0.55);
+    --bs-tertiary-bg: #2b3039;
+    --bs-border-color: rgba(255, 255, 255, 0.14);
+    --bs-border-color-translucent: rgba(255, 255, 255, 0.10);
+    --bs-link-color: #8db4d1;
+    --bs-link-hover-color: #aac6db;
+    --bs-light: #353b46;
+    --bs-light-rgb: 53, 59, 70;
+    --bs-code-color: #f0b4b4;
+    --bs-heading-color: #eceef2;
+
+    /* the board chips (turnovers, the day blocks) */
+    --out-bg: #4a3f2a;
+    --out-ink: #e6cf9c;
+    --in-bg: #2f4358;
+    --in-ink: #a9cbe3;
+    --stay: #2e3c4b;
+    --cell: #2b3039;
+    --bad-bg: #543232;
+    --bad-ink: #f0b4b4;
+    --warn-bg: #4a4024;
+    --warn-ink: #f0d08a;
+    --good-bg: #27483a;
+    --good-ink: #9fdcb5;
+    --warn-bar: #e0a03a;
+    --good-bar: #4cc76b;
+    --bad-bar: #f47370;
+
+    /* local palettes defined by single stylesheets */
+    --m-tk-line: rgba(255, 255, 255, 0.14);
+    --m-tk-late: #ff8d8a;
+    --hair: #434a57;
+    --muted: #98a0ac;
+}
+
+/* the same chip colours for the components that define them locally */
+html[data-theme="dark"] .tn,
+html[data-theme="dark"] .pgw {
+    --out-bg: #4a3f2a; --out-ink: #e6cf9c; --in-bg: #2f4358; --in-ink: #a9cbe3; --stay: #2e3c4b; --cell: #2b3039;
+    --bad-bg: #543232; --bad-ink: #f0b4b4; --warn-bg: #4a4024; --warn-ink: #f0d08a; --good-bg: #27483a; --good-ink: #9fdcb5;
+    --warn-bar: #e0a03a; --good-bar: #4cc76b; --bad-bar: #f47370;
+}
+
+html[data-theme="dark"] body { background: var(--surface-page); color: var(--ink-primary); }
+
+/* buttons: the light brand blue and the orange carry dark words */
+html[data-theme="dark"] .btn-primary {
+    --bs-btn-color: #0f1318; --bs-btn-hover-color: #0f1318; --bs-btn-active-color: #0f1318; --bs-btn-disabled-color: #0f1318;
+    color: #0f1318;
+}
+html[data-theme="dark"] .btn-primary:hover, html[data-theme="dark"] .btn-primary:focus { background-color: #aac6db; border-color: #aac6db; color: #0f1318; }
+html[data-theme="dark"] .btn-alerts-on { background-color: var(--priority-urgent); border-color: var(--priority-urgent); color: #1a1004; }
+html[data-theme="dark"] .btn-alerts-on:hover, html[data-theme="dark"] .btn-alerts-on:focus { background-color: #ffb06b; border-color: #ffb06b; color: #1a1004; }
+html[data-theme="dark"] .btn-alerts-on .alerts-n { background: #1a1004; color: var(--priority-urgent); }
+/* Bootstrap's own blue / green / red / amber outlines and text colours are made for a light page: lighter versions here */
+html[data-theme="dark"] .btn-outline-primary { --bs-btn-color: #8db4d1; --bs-btn-border-color: #8db4d1; --bs-btn-hover-color: #0f1318; --bs-btn-hover-bg: #8db4d1; --bs-btn-hover-border-color: #8db4d1; --bs-btn-active-color: #0f1318; --bs-btn-active-bg: #aac6db; --bs-btn-active-border-color: #aac6db; --bs-btn-disabled-color: #8db4d1; --bs-btn-disabled-border-color: #8db4d1; }
+html[data-theme="dark"] .btn-outline-success { --bs-btn-color: #4cc76b; --bs-btn-border-color: #4cc76b; --bs-btn-hover-color: #0f1318; --bs-btn-hover-bg: #4cc76b; --bs-btn-hover-border-color: #4cc76b; --bs-btn-active-color: #0f1318; --bs-btn-active-bg: #7fdc9a; --bs-btn-active-border-color: #7fdc9a; --bs-btn-disabled-color: #4cc76b; --bs-btn-disabled-border-color: #4cc76b; }
+html[data-theme="dark"] .btn-outline-danger { --bs-btn-color: #f47370; --bs-btn-border-color: #f47370; --bs-btn-hover-color: #0f1318; --bs-btn-hover-bg: #f47370; --bs-btn-hover-border-color: #f47370; --bs-btn-active-color: #0f1318; --bs-btn-active-bg: #ff8d8a; --bs-btn-active-border-color: #ff8d8a; --bs-btn-disabled-color: #f47370; --bs-btn-disabled-border-color: #f47370; }
+html[data-theme="dark"] .btn-outline-warning { --bs-btn-color: #f5b83d; --bs-btn-border-color: #f5b83d; --bs-btn-hover-color: #0f1318; --bs-btn-hover-bg: #f5b83d; --bs-btn-hover-border-color: #f5b83d; --bs-btn-active-color: #0f1318; --bs-btn-active-bg: #f0c55a; --bs-btn-active-border-color: #f0c55a; --bs-btn-disabled-color: #f5b83d; --bs-btn-disabled-border-color: #f5b83d; }
+html[data-theme="dark"] .btn-outline-info { --bs-btn-color: #7ec3e6; --bs-btn-border-color: #7ec3e6; --bs-btn-hover-color: #0f1318; --bs-btn-hover-bg: #7ec3e6; --bs-btn-hover-border-color: #7ec3e6; --bs-btn-active-color: #0f1318; --bs-btn-active-bg: #a3d6ee; --bs-btn-active-border-color: #a3d6ee; }
+html[data-theme="dark"] .btn-success { --bs-btn-bg: #2f9e55; --bs-btn-border-color: #2f9e55; --bs-btn-hover-bg: #3bb363; --bs-btn-hover-border-color: #3bb363; --bs-btn-color: #ffffff; }
+html[data-theme="dark"] .btn-danger { --bs-btn-bg: #d4524f; --bs-btn-border-color: #d4524f; --bs-btn-hover-bg: #e2625f; --bs-btn-hover-border-color: #e2625f; --bs-btn-color: #ffffff; }
+html[data-theme="dark"] .btn-warning { --bs-btn-bg: #f5b83d; --bs-btn-border-color: #f5b83d; --bs-btn-color: #1a1306; --bs-btn-hover-bg: #f7c75f; --bs-btn-hover-border-color: #f7c75f; --bs-btn-hover-color: #1a1306; }
+html[data-theme="dark"] .text-primary { color: #8db4d1 !important; }
+html[data-theme="dark"] .text-success { color: #4cc76b !important; }
+html[data-theme="dark"] .text-danger { color: #f47370 !important; }
+html[data-theme="dark"] .text-warning { color: #f5b83d !important; }
+html[data-theme="dark"] .text-info { color: #7ec3e6 !important; }
+html[data-theme="dark"] .text-secondary { color: var(--ink-secondary) !important; }
+html[data-theme="dark"] .text-bg-light, html[data-theme="dark"] .badge.text-bg-light { background-color: var(--surface-raised) !important; color: var(--ink-primary) !important; }
+html[data-theme="dark"] .text-bg-secondary { background-color: #4a515d !important; color: #eceef2 !important; }
+html[data-theme="dark"] .badge.bg-secondary { background-color: #4a515d !important; color: #eceef2; }
+html[data-theme="dark"] .border, html[data-theme="dark"] .border-top, html[data-theme="dark"] .border-bottom { border-color: var(--bs-border-color) !important; }
+html[data-theme="dark"] .btn-outline-secondary { color: var(--ink-secondary); border-color: rgba(255, 255, 255, 0.22); }
+html[data-theme="dark"] .btn-outline-secondary:hover { background-color: var(--surface-raised); border-color: rgba(255, 255, 255, 0.3); color: var(--ink-primary); }
+
+/* the top bar, menus, cards, tables, forms */
+html[data-theme="dark"] .brand-bar { background: var(--surface-card); }
+html[data-theme="dark"] .navbar-toggler { border-color: rgba(255, 255, 255, 0.25); }
+html[data-theme="dark"] .dropdown-menu { background: var(--surface-card); border-color: var(--border-hairline); }
+html[data-theme="dark"] .dropdown-item { color: var(--ink-primary); }
+html[data-theme="dark"] .dropdown-item:hover, html[data-theme="dark"] .dropdown-item:focus, html[data-theme="dark"] .dropdown-item.active { background: var(--surface-raised); color: var(--ink-primary); }
+html[data-theme="dark"] .card { background: var(--surface-card); }
+html[data-theme="dark"] .modal-content { background: var(--surface-card); border-color: var(--border-hairline); }
+html[data-theme="dark"] .popover { --bs-popover-bg: #353b46; --bs-popover-body-color: #eceef2; --bs-popover-border-color: rgba(255, 255, 255, 0.14); --bs-popover-header-bg: #3d4450; --bs-popover-header-color: #eceef2; }
+html[data-theme="dark"] .table { --bs-table-bg: transparent; --bs-table-color: var(--ink-primary); --bs-table-border-color: rgba(255, 255, 255, 0.12); --bs-table-striped-bg: rgba(255, 255, 255, 0.04); --bs-table-hover-bg: rgba(255, 255, 255, 0.06); }
+html[data-theme="dark"] .table.bg-white, html[data-theme="dark"] .bg-white { background-color: var(--surface-card) !important; }
+html[data-theme="dark"] .bg-light { background-color: var(--surface-raised) !important; color: var(--ink-primary); }
+html[data-theme="dark"] .text-dark { color: var(--ink-primary) !important; }
+html[data-theme="dark"] .text-muted { color: var(--ink-muted) !important; }
+html[data-theme="dark"] .form-control, html[data-theme="dark"] .form-select, html[data-theme="dark"] .input-group-text { background-color: #22262d; border-color: rgba(255, 255, 255, 0.2); color: var(--ink-primary); }
+html[data-theme="dark"] .form-control::placeholder { color: #7d8591; }
+html[data-theme="dark"] .form-control:focus, html[data-theme="dark"] .form-select:focus { background-color: #22262d; border-color: var(--brand-primary); color: var(--ink-primary); }
+html[data-theme="dark"] .form-control:disabled, html[data-theme="dark"] .form-select:disabled { background-color: #2b3039; color: var(--ink-muted); }
+html[data-theme="dark"] .form-check-input { background-color: #22262d; border-color: rgba(255, 255, 255, 0.35); }
+html[data-theme="dark"] .form-check-input:checked { background-color: var(--brand-primary); border-color: var(--brand-primary); }
+html[data-theme="dark"] .list-group-item { background: var(--surface-card); color: var(--ink-primary); border-color: var(--border-hairline); }
+html[data-theme="dark"] .alert-warning { --bs-alert-bg: #4a4024; --bs-alert-color: #f0d08a; --bs-alert-border-color: #6b5a2a; }
+html[data-theme="dark"] .alert-danger { --bs-alert-bg: #543232; --bs-alert-color: #f0b4b4; --bs-alert-border-color: #7a4646; }
+html[data-theme="dark"] .alert-success { --bs-alert-bg: #27483a; --bs-alert-color: #9fdcb5; --bs-alert-border-color: #3c6a55; }
+html[data-theme="dark"] .alert-info { --bs-alert-bg: #2f4358; --bs-alert-color: #a9cbe3; --bs-alert-border-color: #44607c; }
+html[data-theme="dark"] .badge.bg-light { background-color: var(--surface-raised) !important; color: var(--ink-primary) !important; }
+html[data-theme="dark"] hr { border-color: rgba(255, 255, 255, 0.15); opacity: 1; }
+html[data-theme="dark"] code { color: #f0b4b4; }
+html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
+
+/* things that must stay light even in the dark theme: a signature has to be drawn in dark ink on white, pictures and file previews keep their own colours */
+html[data-theme="dark"] [data-signature-canvas] { background: #ffffff; }
+html[data-theme="dark"] .bubble.bubble-locked { color: #0f1318; }
+html[data-theme="dark"] .ac-pills input:checked + label, html[data-theme="dark"] .pk-size input:checked + label { color: #0f1318 !important; }
+html[data-theme="dark"] iframe, html[data-theme="dark"] embed, html[data-theme="dark"] object { color-scheme: light; background: #ffffff; }
+html[data-theme="dark"] .paper-light { background: #ffffff; color: #2b2b2e; }
+}

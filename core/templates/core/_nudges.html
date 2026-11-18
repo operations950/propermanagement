@@ -9,7 +9,7 @@
                 <i data-lucide="{{ n.icon }}" class="icon mt-1" style="color: {% if n.level == 'warn' %}#b07a00{% else %}var(--ink-muted){% endif %};"></i>
                 <span><span class="fw-medium">{{ n.text }}</span></span>
             </span>
-            <span class="badge rounded-pill flex-shrink-0" style="{% if n.level == 'warn' %}background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);{% else %}background: var(--bs-light, #f1f3f5); color: var(--ink-secondary); border: 1px solid var(--border-hairline);{% endif %}">{{ n.count }} <i data-lucide="arrow-right" class="icon"></i></span>
+            <span class="badge rounded-pill flex-shrink-0" style="{% if n.level == 'warn' %}background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);{% else %}background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); color: var(--ink-secondary); border: 1px solid var(--border-hairline);{% endif %}">{{ n.count }} <i data-lucide="arrow-right" class="icon"></i></span>
         </a>
         {% endfor %}
     </div>

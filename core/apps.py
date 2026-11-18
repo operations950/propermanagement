@@ -13,3 +13,7 @@ class CoreConfig(AppConfig):
         # `manage.py migrate` on a brand new database).
         from . import app_settings
         app_settings.apply_overrides()
+
+        # The contact interaction ticker (core/contact_activity.py): a few signals that note when somebody deals with a contact.
+        from . import contact_activity
+        contact_activity.connect()

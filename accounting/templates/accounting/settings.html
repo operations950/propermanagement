@@ -87,7 +87,7 @@
     <h6 class="card-title d-flex align-items-center gap-2"><i data-lucide="file-text" class="icon"></i> Documents &amp; rules</h6>
     <div class="mb-2">{% include 'accounting/_doc_tree.html' %}</div>
     <form method="post" enctype="multipart/form-data" id="doc-form" data-limit="{{ store_limit }}" class="ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="upload_many">
-        <div id="doc-drop" class="rounded p-3 text-center" style="border: 2px dashed var(--border-hairline); background: color-mix(in srgb, var(--brand-primary) 4%, white);">
+        <div id="doc-drop" class="rounded p-3 text-center" style="border: 2px dashed var(--border-hairline); background: color-mix(in srgb, var(--brand-primary) 4%, var(--surface-card));">
             <div class="small mb-2"><i data-lucide="upload-cloud" class="icon"></i> Drag files here, or choose them {% include '_tip.html' with text='One file or several, a binder or single documents, up to 50 MB each. Each is read once, then sorted into the declaration, articles, bylaws, rules, amendments, contract or budget it holds, and you confirm. A PDF over 10 MB is read as one file, sorted by what is in it, and saved as a separate file for each document, with second copies left out.' %}</div>
             <input type="file" name="files" id="doc-files" multiple class="form-control form-control-sm d-inline-block" style="max-width: 320px;" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv" required>
             <button class="btn btn-sm btn-primary" id="doc-go">Upload</button>
@@ -131,7 +131,7 @@
                     {% if f.state == 'failed' %}<button class="btn btn-sm btn-outline-secondary" name="action" value="read_again">Try again</button> {% endif %}
                     {% if not f.job %}<button class="btn btn-sm btn-outline-secondary" name="action" value="delete_doc" onclick="return confirm('Remove this file?')">Remove</button>{% endif %}</form></div>
             {% if f.state == 'needs_look' %}
-            <form method="post" class="mt-2 p-2 rounded" style="background: color-mix(in srgb, var(--status-warning) 12%, white);">{% csrf_token %}<input type="hidden" name="doc" value="{{ f.doc.pk }}">
+            <form method="post" class="mt-2 p-2 rounded" style="background: color-mix(in srgb, var(--status-warning) 12%, var(--surface-card));">{% csrf_token %}<input type="hidden" name="doc" value="{{ f.doc.pk }}">
                 <div class="small mb-1">{% if f.doc.sort_status == 'manual' %}This file could not be sorted automatically. Say what it holds.{% else %}This file holds {{ f.sections|length }} document{{ f.sections|length|pluralize }}. Is that right?{% endif %}{% if f.binder %} {% include '_tip.html' with text='Each document below will be saved as its own file. Exhibits and surveys stay with the document they belong to. A second copy is left out so nothing is stored twice: tick Keep it anyway if it is not really a copy.' %}{% endif %}</div>
                 {% for s in f.sections %}<div class="row g-1 align-items-center mb-1"><div class="col-auto small text-muted" style="width: 110px;">{% if s.start == s.end %}Page {{ s.start }}{% else %}Pages {{ s.start }}&ndash;{{ s.end }}{% endif %}</div>
                     <div class="col-md-3"><select class="form-select form-select-sm" name="kind_{{ forloop.counter0 }}">{% for k, label in doc_kinds %}<option value="{{ k }}" {% if k == s.kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
@@ -193,7 +193,7 @@
     <div class="mt-2 pt-2 border-top" id="signature">
         <div class="small fw-semibold d-flex align-items-center gap-2 mb-1">Signature on checks {% include '_tip.html' with text='An image of the authorized signature, printed on the signature line of every check from this association, so checks do not have to be signed by hand. Use a PNG with a clear background, or a JPEG on white. Print a test check to see how it sits.' %}</div>
         <form method="post" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">{% csrf_token %}
-            {% if profile.check_signature %}<img src="{% url 'accounting:check_signature' assoc.pk %}" alt="Signature on file" style="height: 38px; max-width: 170px; object-fit: contain; border: 1px solid var(--border-hairline); border-radius: 6px; padding: 2px; background: #fff;">{% endif %}
+            {% if profile.check_signature %}<img src="{% url 'accounting:check_signature' assoc.pk %}" alt="Signature on file" style="height: 38px; max-width: 170px; object-fit: contain; border: 1px solid var(--border-hairline); border-radius: 6px; padding: 2px; background: var(--surface-card);">{% endif %}
             <input type="file" name="signature" accept="image/png,image/jpeg" class="form-control form-control-sm w-auto" aria-label="Signature image" required>
             <label class="small mb-0"><input type="checkbox" class="form-check-input me-1" name="all_associations" value="1"> Every association</label>
             <button class="btn btn-sm btn-outline-primary" name="action" value="signature">{% if profile.check_signature %}Replace{% else %}Add the signature{% endif %}</button>

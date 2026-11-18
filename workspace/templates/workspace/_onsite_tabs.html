@@ -1,13 +1,28 @@
 {% include 'workspace/_css.html' %}
-<div class="ws-sub">
-<a href="{% url 'onsite_dashboard' %}" class="{% if request.resolver_match.url_name == 'onsite_dashboard' %}on{% endif %}">Visits</a>
-<a href="{% url 'ws_week' %}" class="{% if request.resolver_match.url_name == 'ws_week' or request.resolver_match.url_name == 'onsite_rentals_calendar' %}on{% endif %}">Properties</a>
-<a href="{% url 'onsite_str_today' %}" class="{% if request.resolver_match.url_name == 'onsite_str_today' %}on{% endif %}">Requests{% if ws_req_count %}<span class="ws-bub" title="{{ ws_req_count }} waiting for an answer">{{ ws_req_count }}</span>{% endif %}</a>
-<a href="{% url 'onsite_reservation_list' %}" class="{% if request.resolver_match.url_name == 'onsite_reservation_list' %}on{% endif %}">Reservations</a>
-<span class="sp"></span>
-<a href="{% url 'onsite_cleaner_activity' %}" style="font-size:0.82rem;">Cleaner activity</a>
-<a href="{% url 'onsite_performance' %}" style="font-size:0.82rem;">Performance</a>
+{% load onsite_alerts %}
+<style>
+.os-panel { background: var(--surface-card); border: 1px solid var(--border-hairline); border-left: 4px solid color-mix(in srgb, var(--priority-urgent) 90%, var(--mix-black, black)); border-radius: var(--bs-border-radius-lg); padding: 0.25rem 0.9rem; margin-bottom: 0.9rem; }
+.os-panel[hidden] { display: none; }
+.os-alert { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.5rem 0; border-top: 1px solid var(--border-hairline); }
+.os-alert:first-child { border-top: 0; }
+.ws-sub a.small { font-size: 0.82rem; }
+</style>
+{% load static %}<link rel="stylesheet" href="{% static 'css/newspaper.css' %}">
+<div class="np-head">
+    <h2 class="page-title np-title"><i data-lucide="spray-can" class="icon-lg"></i> On-Site</h2>
+    <span class="np-desc">Cleanings, check-ins and check-outs for the short-term rentals.</span>
+    <div class="np-actions">
+        {% onsite_alerts_button %}
+        <a href="{% url 'onsite_visit_create' %}" class="btn-action"><i data-lucide="plus" class="icon"></i><span class="np-btn-text"> New visit</span></a>
+    </div>
 </div>
+<nav class="np-seg" style="max-width: 44rem;" aria-label="On-Site">
+    <a href="{% url 'onsite_dashboard' %}" class="{% if request.resolver_match.url_name == 'onsite_dashboard' %}on{% endif %}"{% if request.resolver_match.url_name == 'onsite_dashboard' %} aria-current="page"{% endif %}>Visits</a>
+    <a href="{% url 'onsite_turnovers' %}" class="{% if request.resolver_match.url_name == 'onsite_turnovers' %}on{% endif %}"{% if request.resolver_match.url_name == 'onsite_turnovers' %} aria-current="page"{% endif %}>Turnovers{% if ws_req_count %}<span class="np-seg-n" title="{{ ws_req_count }} waiting for an answer">{{ ws_req_count }}</span>{% endif %}</a>
+    <a href="{% url 'onsite_rentals_calendar' %}" class="{% if request.resolver_match.url_name == 'onsite_rentals_calendar' %}on{% endif %}"{% if request.resolver_match.url_name == 'onsite_rentals_calendar' %} aria-current="page"{% endif %}>Calendar</a>
+    <a href="{% url 'onsite_performance' %}" class="{% if request.resolver_match.url_name == 'onsite_performance' or request.resolver_match.url_name == 'onsite_performance_property' or request.resolver_match.url_name == 'onsite_performance_calendar' %}on{% endif %}"{% if request.resolver_match.url_name == 'onsite_performance' %} aria-current="page"{% endif %}>Performance</a>
+</nav>
+{% onsite_alerts_panel %}
 {% if ws_req_prompt %}{% with q=ws_req_prompt %}
 <div class="modal fade" id="wsReqModal" tabindex="-1" aria-labelledby="wsReqTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-dialog-centered"><div class="modal-content">

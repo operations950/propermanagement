@@ -7,6 +7,8 @@ import logging
 
 from django.conf import settings
 from django.urls import reverse
+from datetime import timezone as dt_timezone
+
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,6 @@ def credentials_for(token):
         creds.refresh(GoogleRequest())
         token.access_token = creds.token
         if creds.expiry:
-            token.access_token_expires_at = timezone.make_aware(creds.expiry) if timezone.is_naive(creds.expiry) else creds.expiry
+            token.access_token_expires_at = timezone.make_aware(creds.expiry, dt_timezone.utc) if timezone.is_naive(creds.expiry) else creds.expiry
         token.save(update_fields=['access_token', 'access_token_expires_at'])
     return creds

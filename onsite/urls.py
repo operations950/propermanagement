@@ -1,11 +1,14 @@
 from django.urls import path
 
-from . import views
+from . import views, views_turnovers
 
 urlpatterns = [
     path('', views.dashboard, name='onsite_dashboard'),
     path('cleaner-activity/', views.cleaner_activity, name='onsite_cleaner_activity'),
-    path('today/', views.str_today, name='onsite_str_today'),
+    path('turnovers/', views_turnovers.turnovers_screen, name='onsite_turnovers'),
+    path('turnovers/time/', views_turnovers.turnovers_time, name='onsite_turnovers_time'),
+    path('turnovers/clean/', views_turnovers.turnovers_clean, name='onsite_turnovers_clean'),
+    path('today/', views_turnovers.old_today, name='onsite_str_today'),       # the old Rentals today address: the Turnovers Day view
     path('performance/', views.performance, name='onsite_performance'),
     path('performance/<int:property_id>/', views.performance_property, name='onsite_performance_property'),
     path('performance/<int:property_id>/calendar/', views.performance_calendar, name='onsite_performance_calendar'),

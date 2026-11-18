@@ -1,7 +1,7 @@
 {# Ask the documents: answers already given are filtered and ranked as you type, free; a new question is the only thing that uses credits #}
 <style>.qa-item { border-top: 1px solid var(--border-hairline); } .qa-item > summary { list-style: none; cursor: pointer; padding: 6px 0; } .qa-item > summary::-webkit-details-marker { display: none; }
-    .qa-score { display: inline-block; min-width: 3.4em; text-align: center; border-radius: 999px; background: #e8f0fe; color: #1f4fb4; font-size: .72rem; font-weight: 700; padding: 0 7px; }
-    .qa-meta { font-size: .72rem; color: var(--ink-muted); } .qa-ans { white-space: pre-wrap; font-size: .88rem; background: var(--bs-light, #f1f3f5); border-radius: 8px; padding: 8px 10px; }</style>
+    .qa-score { display: inline-block; min-width: 3.4em; text-align: center; border-radius: 999px; background: var(--b-e8f0fe, #e8f0fe); color: #1f4fb4; font-size: .72rem; font-weight: 700; padding: 0 7px; }
+    .qa-meta { font-size: .72rem; color: var(--ink-muted); } .qa-ans { white-space: pre-wrap; font-size: .88rem; background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); border-radius: 8px; padding: 8px 10px; }</style>
 <div class="doc-ask" id="docask">
     <form method="post" action="{% url 'accounting:settings' ask_pk %}" class="d-flex gap-2" id="qa-form">{% csrf_token %}<input type="hidden" name="action" value="ask">{% if ask_next %}<input type="hidden" name="next" value="{{ ask_next }}">{% endif %}
         <input class="form-control form-control-sm" name="question" id="qa-input" autocomplete="off" placeholder="Ask the documents, for example: Can an owner rent a unit for a week at a time?" required><button class="btn btn-sm btn-primary text-nowrap" id="qa-ask">Ask</button></form>

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
+{% load theme_tags %}
 {% block title %}Menu{% endblock %}
-{% comment %}The phone's first screen: six big tiles. See core/mobile.py. Below them, small but easy to tap: quick add, the full site, the install tip, log out.{% endcomment %}
+{% comment %}The phone's first screen: a big Home tile and six medium tiles. See core/mobile.py. Below them: quick add (four things), the appearance control (admins), the full site, the install tip, log out.{% endcomment %}
 {% block content %}
 <div class="m-launch">
     <div class="m-greet">
@@ -10,7 +11,7 @@
 
     <nav class="m-tiles" aria-label="The app">
         {% for t in tiles %}
-        <a class="m-tile m-tile-{{ t.key }}" href="{{ t.url }}"{% if t.state %} data-state="{{ t.state }}"{% endif %}>
+        <a class="m-tile m-tile-{{ t.key }}{% if t.big %} m-tile-big{% endif %}" href="{{ t.url }}"{% if t.state %} data-state="{{ t.state }}"{% endif %}>
             <i data-lucide="{{ t.icon }}" class="m-tile-icon"></i>
             <span>
                 <span class="m-tile-label">{{ t.label }}</span>
@@ -21,14 +22,23 @@
     </nav>
 
     <div class="m-label">Quick add</div>
-    <div class="m-quick">
-        <a class="m-row" href="{% url 'ticket_create' %}"><i data-lucide="ticket" class="icon"></i>New ticket</a>
-        <a class="m-row" href="{% url 'property_create' %}"><i data-lucide="building-2" class="icon"></i>New property</a>
-        <a class="m-row" href="{% url 'contact_create' %}"><i data-lucide="contact" class="icon"></i>New contact</a>
+    <div class="m-quick m-quick-2" data-m-quick>
+        {% for q in quick_add %}<a class="m-row" href="{{ q.url }}"><i data-lucide="{{ q.icon }}" class="icon"></i>{{ q.label }}</a>
+        {% endfor %}
     </div>
 
+    {% dark_mode_allowed as can_dark_here %}{% if can_dark_here %}
+    <div class="m-label">Appearance</div>
+    <div class="m-seg" role="group" aria-label="Appearance" data-m-appearance>
+        <button type="button" data-theme-choice="light" aria-pressed="false"><i data-lucide="sun" class="icon"></i>Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false"><i data-lucide="moon" class="icon"></i>Dark</button>
+        <button type="button" data-theme-choice="auto" aria-pressed="false"><i data-lucide="monitor" class="icon"></i>Automatic</button>
+    </div>
+    <p class="m-seg-note">One choice for your phone and the web version.</p>
+    {% endif %}
+
     <div class="m-label">More</div>
-    <a class="m-row" href="{{ full_site_url }}" data-m-full><i data-lucide="monitor" class="icon"></i><span>Open the full site<small>The complete menu: compliance, projects, financials, admin</small></span></a>
+    <a class="m-row" href="{{ full_site_url }}" data-m-full><i data-lucide="monitor" class="icon"></i><span>Open the full site<small>The complete menu: financials, time, admin and the rest</small></span></a>
     <a class="m-row" href="#" data-pwa-install hidden><i data-lucide="smartphone" class="icon"></i><span>Install the app<small>Put it on your home screen</small></span></a>
     <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}

@@ -26,13 +26,13 @@
 .imessage-out {
   align-self: flex-end;
   background: var(--brand-primary);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-bottom-right-radius: 6px;
 }
 
 .imessage-in {
   align-self: flex-start;
-  background: color-mix(in srgb, var(--ink-muted) 16%, white);
+  background: color-mix(in srgb, var(--ink-muted) 16%, var(--surface-card));
   color: var(--ink-primary);
   border-bottom-left-radius: 6px;
 }

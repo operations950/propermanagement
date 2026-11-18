@@ -22,7 +22,9 @@ def person(username, role='', new_face=False, menu_role='', first='Pat'):
 
 
 @STATIC
-class TheSixTilesTests(TestCase):
+class TheTilesTests(TestCase):
+    """A manager or admin: a big Home tile and six medium ones (Tickets, Compliance, Projects, On-Site, Properties, Contacts). A cleaner keeps her own six."""
+
     def labels(self, user):
         return [t['label'] for t in mobile.tiles(user)]
 
@@ -31,13 +33,29 @@ class TheSixTilesTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response['Location'])
 
-    def test_a_staffer_sees_six_tiles_in_the_usual_order_and_the_sixth_is_new_ticket(self):
+    def test_a_staffer_sees_a_big_home_tile_then_the_six_in_the_order_of_importance(self):
         user, _ = person('pm')
-        self.assertEqual(self.labels(user), ['Home', 'Tickets', 'On-Site', 'Properties', 'Contacts', 'New ticket'])
+        self.assertEqual(self.labels(user), ['Home', 'Tickets', 'Compliance', 'Projects', 'On-Site', 'Properties', 'Contacts'])
+        self.assertEqual([t['key'] for t in mobile.tiles(user) if t.get('big')], ['home'])
         self.client.force_login(user)
         html = self.client.get(reverse('mobile_menu')).content.decode()
-        self.assertEqual(html.count('class="m-tile '), 6)
+        self.assertEqual(html.count('class="m-tile '), 7)
+        self.assertEqual(html.count('m-tile-big'), 1)
+        self.assertLess(html.index('m-tile-home'), html.index('m-tile-tickets'))
+        order = [html.index(f'm-tile-{k}') for k in ('home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts')]
+        self.assertEqual(order, sorted(order))
         self.assertIn('Hi, Pat', html)
+
+    def test_there_is_no_new_ticket_tile_and_no_financials_or_time_tile_for_a_manager(self):
+        user, staff = person('pm1', new_face=True)
+        staff.can_financial = True
+        staff.save()
+        TimeProfile.objects.create(staff=staff, applies=True)
+        self.client.force_login(user)
+        html = self.client.get(reverse('mobile_menu')).content.decode()
+        for gone in ('m-tile-new_ticket', 'm-tile-clock', 'm-tile-financials', 'm-tile-time'):
+            self.assertNotIn(gone, html)
+        self.assertNotIn('New ticket</span>', html.split('data-m-quick')[0])             # the only New ticket on this screen is in Quick add
 
     def test_every_tile_links_to_a_real_screen(self):
         for new_face in (False, True):
@@ -58,6 +76,13 @@ class TheSixTilesTests(TestCase):
         self.assertEqual(mobile.tiles(new)[1]['url'], reverse('ticket_list'))
         self.assertEqual(mobile.tiles(old)[1]['url'], reverse('ticket_list') + '?source=reactive')
 
+    def test_compliance_and_projects_open_their_screens(self):
+        new, _ = person('newc', new_face=True)
+        old, _ = person('oldc')
+        by = {t['key']: t['url'] for t in mobile.tiles(new)}
+        self.assertEqual((by['compliance'], by['projects']), (reverse('ws_compliance'), reverse('ws_projects')))
+        self.assertEqual({t['key']: t['url'] for t in mobile.tiles(old)}['compliance'], reverse('my_sessions'))
+
     def test_a_cleaner_gets_on_site_first_on_either_layout_and_still_has_six(self):
         old, _ = person('cl_old', role='cleaner')
         new, _ = person('cl_new', new_face=True, role='cleaner')
@@ -66,37 +91,62 @@ class TheSixTilesTests(TestCase):
             self.assertEqual(tiles[0], 'On-Site')
             self.assertEqual(len(tiles), 6)
             self.assertEqual(sorted(tiles), sorted(['Home', 'Tickets', 'On-Site', 'Properties', 'Contacts', 'New ticket']))
+            self.assertFalse([t for t in mobile.tiles(user) if t.get('big')])             # her menu is exactly as it was
 
     def test_everyone_gets_properties_and_contacts_whatever_the_menu_role(self):
         user, _ = person('maint', new_face=True, menu_role='maintenance')
         self.assertIn('Properties', self.labels(user))
         self.assertIn('Contacts', self.labels(user))
 
-    def test_the_time_clock_takes_the_sixth_place_for_someone_on_it_and_says_where_they_stand(self):
+    def test_the_time_clock_rides_on_the_home_tile_for_someone_on_it_and_says_where_they_stand(self):
         user, staff = person('clock')
         profile = TimeProfile.objects.create(staff=staff, applies=True)
-        sixth = mobile.tiles(user)[5]
-        self.assertEqual((sixth['label'], sixth['hint'], sixth['url']), ('Time clock', 'Not clocked in', reverse('timeclock_home')))
+        home = mobile.tiles(user)[0]
+        self.assertTrue(home['hint'].endswith('Not clocked in'), home['hint'])
+        self.assertNotIn('Time clock', self.labels(user))                                 # no tile of its own: the clock card is on Home
         today = timezone.localdate()
         started = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time())) + timedelta(hours=8, minutes=5)
         punch = Punch.objects.create(profile=profile, day=today, clock_in=started)
-        self.assertEqual(mobile.tiles(user)[5]['hint'], 'Clocked in 8:05 AM')
+        self.assertTrue(mobile.tiles(user)[0]['hint'].endswith('Clocked in 8:05 AM'))
         punch.clock_out = started + timedelta(hours=8)
         punch.lunch_minutes = 30
         punch.save()
-        self.assertEqual(mobile.tiles(user)[5]['hint'], 'Done for today')
+        self.assertTrue(mobile.tiles(user)[0]['hint'].endswith('Done for today'))
+
+    def test_a_cleaner_on_the_clock_still_gets_the_time_clock_tile_second(self):
+        user, staff = person('clock_cl', role='cleaner')
+        TimeProfile.objects.create(staff=staff, applies=True)
+        sixth = mobile.tiles(user)[1]
+        self.assertEqual((sixth['label'], sixth['hint'], sixth['url']), ('Time clock', 'Not clocked in', reverse('timeclock_home')))
         self.assertNotIn('New ticket', self.labels(user))
 
     def test_someone_not_on_the_clock_does_not_see_it(self):
         user, staff = person('off')
         TimeProfile.objects.create(staff=staff, applies=False)
         self.assertNotIn('Time clock', self.labels(user))
+        self.assertNotIn('Clocked', mobile.tiles(user)[0]['hint'])
 
-    def test_the_menu_offers_quick_add_the_full_site_the_install_tip_and_log_out(self):
+    def test_phone_quick_add_is_exactly_ticket_compliance_rule_on_site_visit_and_contact(self):
         user, _ = person('pm2', new_face=True)
         self.client.force_login(user)
         html = self.client.get(reverse('mobile_menu')).content.decode()
-        for needle in (reverse('ticket_create'), reverse('property_create'), reverse('contact_create'), 'data-m-full', 'data-pwa-install', reverse('logout')):
+        quick = html.split('data-m-quick')[1].split('</div>')[0]
+        for name, label in (('ticket_create', 'New ticket'), ('session_template_create', 'New compliance rule'), ('onsite_visit_create', 'New on-site visit'), ('contact_create', 'New contact')):
+            self.assertIn(f'href="{reverse(name)}"', quick, name)
+            self.assertIn(label, quick)
+        self.assertEqual(quick.count('class="m-row"'), 4)
+        phone_part = html.split('class="m-launch"')[1]                                    # the desktop menu (hidden on a phone) has the fuller Quick add
+        for name in ('property_create', 'process_template_create'):
+            self.assertNotIn(reverse(name), phone_part, name)                             # not on a phone: no new properties, no project templates
+        self.assertNotIn('?start=1', phone_part)
+        self.assertNotIn('New property', phone_part)
+        self.assertEqual([q['label'] for q in mobile.quick_add()], ['New ticket', 'New compliance rule', 'New on-site visit', 'New contact'])
+
+    def test_the_menu_offers_the_full_site_the_install_tip_and_log_out(self):
+        user, _ = person('pm4', new_face=True)
+        self.client.force_login(user)
+        html = self.client.get(reverse('mobile_menu')).content.decode()
+        for needle in ('data-m-full', 'data-pwa-install', reverse('logout')):
             self.assertIn(needle, html)
         self.assertIn(f'href="{reverse("ws_home")}" data-m-full', html)
 
@@ -106,6 +156,94 @@ class TheSixTilesTests(TestCase):
         with mock.patch('workspace.services.home', side_effect=RuntimeError('boom')):
             response = self.client.get(reverse('mobile_menu'))
         self.assertEqual(response.status_code, 200)
+
+
+@STATIC
+class ThePhoneAppearanceControlTests(TestCase):
+    """Light / Dark / Automatic on the phone menu for people allowed dark mode (Admin for now): one stored choice that applies on the phone and on the web version."""
+
+    def admin(self, name='adm'):
+        user, staff = person(name, new_face=True)
+        staff.is_company_admin = True
+        staff.save()
+        return user, staff
+
+    def test_an_admin_sees_a_prominent_three_way_control_and_a_plain_user_does_not(self):
+        admin, _ = self.admin()
+        self.client.force_login(admin)
+        html = self.client.get(reverse('mobile_menu')).content.decode()
+        self.assertIn('data-m-appearance', html)
+        group = html.split('data-m-appearance')[1].split('</div>')[0]
+        for choice in ('light', 'dark', 'auto'):
+            self.assertIn(f'data-theme-choice="{choice}"', group)
+        self.assertIn('class="m-seg"', html)                                              # a segmented control, not three tiny links
+        plain, _ = person('plain', new_face=True)
+        self.client.force_login(plain)
+        html = self.client.get(reverse('mobile_menu')).content.decode()
+        self.assertNotIn('data-m-appearance', html)
+        self.assertNotIn('data-theme-choice="', html)                                     # (the bare attribute name is also in a CSS rule)
+
+    def test_choosing_dark_saves_on_the_profile_and_both_the_phone_and_the_web_pages_carry_it(self):
+        admin, staff = self.admin('adm2')
+        self.client.force_login(admin)
+        r = self.client.post(reverse('theme_set'), {'theme': 'dark'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(r.status_code, 200)
+        staff.refresh_from_db()
+        self.assertEqual(staff.theme, 'dark')
+        for name in ('mobile_menu', 'ws_home', 'property_list'):                          # the phone menu and two web pages: one stored preference
+            html = self.client.get(reverse(name)).content.decode()
+            self.assertIn('data-theme-pref="dark"', html, name)
+
+    def test_a_non_admin_cannot_set_it(self):
+        plain, staff = person('plain2', new_face=True)
+        self.client.force_login(plain)
+        r = self.client.post(reverse('theme_set'), {'theme': 'dark'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(r.status_code, 403)
+        staff.refresh_from_db()
+        self.assertNotEqual(staff.theme, 'dark')
+
+
+@STATIC
+class TheMenuOrderTests(TestCase):
+    """The order of importance on every menu: Home, Tickets, Compliance, Projects, On-Site, Properties, Contacts, Financials, then Time."""
+
+    def keys(self, user, staff):
+        from workspace import menu
+        self.client.force_login(user)
+
+        class R:
+            pass
+        r = R()
+        r.user, r.path = user, '/w/home'
+        return [i['key'] for i in menu.build(r, staff)]
+
+    def test_financials_comes_after_contacts_and_before_time(self):
+        user, staff = person('fin', new_face=True)
+        staff.can_financial = True
+        staff.save()
+        keys = self.keys(user, staff)
+        self.assertEqual(keys, ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts', 'financials', 'time'])
+
+    def test_a_plain_user_has_the_same_order_without_financials(self):
+        user, staff = person('plainm', new_face=True)
+        self.assertEqual(self.keys(user, staff), ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts', 'time'])
+
+    def test_an_admin_has_the_dashboard_after_home_and_admin_last(self):
+        user, staff = person('admm', new_face=True)
+        staff.is_company_admin = True
+        staff.save()
+        keys = self.keys(user, staff)
+        self.assertEqual(keys[:3], ['home', 'dashboard', 'tickets'])
+        self.assertEqual(keys[-1], 'admin')
+        self.assertLess(keys.index('contacts'), keys.index('financials') if 'financials' in keys else 99)
+
+    def test_the_original_layout_menu_has_the_same_importance_order(self):
+        user, _ = person('oldlayout')
+        self.client.force_login(user)
+        html = self.client.get(reverse('property_list')).content.decode()
+        nav = html.split('id="navMain"')[1].split('Quick add')[0]
+        order = [nav.index(x) for x in ('> Dashboard', '> Tickets', '> Recurring', '> On-Site', '> Properties', '> Contacts')]
+        self.assertEqual(order, sorted(order))
 
 
 @STATIC
@@ -182,7 +320,8 @@ class HomeOnAPhoneTests(TestCase):
         from core.models import GoogleCalendarToken
         raw, _ = self._days()
         GoogleCalendarToken.objects.create(staff=self.staff, access_token='x', refresh_token='y', google_email='pat@example.com')
-        with mock.patch('core.google_calendar.is_configured', return_value=True), mock.patch('core.google_calendar.get_upcoming_events', return_value=(raw, [])) as read:
+        with mock.patch('core.google_calendar.is_configured', return_value=True), mock.patch('core.google_calendar.get_upcoming_events', return_value=(raw, [])) as read, \
+                mock.patch('core.google_calendar.get_events_between', return_value=(raw, [])):
             response = self.client.get(reverse('ws_home'), {'h': horizon})
         return response, read
 

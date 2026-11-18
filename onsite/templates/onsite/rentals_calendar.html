@@ -12,7 +12,6 @@
 
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div>
-        <h2 class="page-title mb-0">Rentals calendar</h2>
         <p class="text-muted small mb-0">{{ cal.start|date:"M j" }} → {{ cal.end|date:"M j, Y" }} · {{ shown }} of {{ total }} rental{{ total|pluralize }}{% if cal.occupancy is not None %} · <strong>{{ cal.occupancy|floatformat:0 }}% occupied</strong> ({{ cal.booked }} of {{ cal.available }} nights booked){% endif %}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -46,7 +45,7 @@
 <div class="cal-legend mb-2">
     <span><i class="cal-airbnb"></i>Airbnb</span><span><i class="cal-vrbo"></i>VRBO</span><span><i class="cal-manual"></i>In-house</span>
     <span><i style="border: 1.5px dashed rgba(43,43,46,0.4); background: transparent;"></i>Open nights</span>
-    <span><i style="border: 1.5px dashed var(--status-warning); background: color-mix(in srgb, var(--status-warning) 15%, white);"></i>Short gap between stays (1–2 nights)</span>
+    <span><i style="border: 1.5px dashed var(--status-warning); background: color-mix(in srgb, var(--status-warning) 15%, var(--surface-card));"></i>Short gap between stays (1–2 nights)</span>
 </div>
 
 <div class="cal-scroll mb-3" style="--days: {{ cal.days }}; --cal-label: 170px;">
@@ -56,7 +55,7 @@
         <div class="cal-body">
             {% for row in cal.rows %}
             {% if row.has_units and row.first_in_group %}
-            <div class="cal-row" style="background: var(--bs-light, #f8f9fa);"><div class="cal-label" style="background: var(--bs-light, #f8f9fa);"><a href="{% url 'onsite_performance_calendar' row.property.pk %}" class="fw-semibold text-decoration-none">{{ row.property.name }}</a></div><div class="cal-track" style="height: 26px; background-image: none;"></div></div>
+            <div class="cal-row" style="background: var(--bs-light, var(--b-f8f9fa, #f8f9fa));"><div class="cal-label" style="background: var(--bs-light, var(--b-f8f9fa, #f8f9fa));"><a href="{% url 'onsite_performance_calendar' row.property.pk %}" class="fw-semibold text-decoration-none">{{ row.property.name }}</a></div><div class="cal-track" style="height: 26px; background-image: none;"></div></div>
             {% endif %}
             <div class="cal-row">
                 <div class="cal-label">

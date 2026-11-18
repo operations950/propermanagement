@@ -9,7 +9,7 @@
             {% if target.bedroom_count is not None or target.bed_count is not None or target.bathroom_count is not None or target.square_footage is not None %}
             <span class="text-muted small">{% if target.bedroom_count is not None %}{{ target.bedroom_count }} bd{% endif %}{% if target.bed_count is not None %} · {{ target.bed_count }} bed{{ target.bed_count|pluralize }}{% endif %}{% if target.bathroom_count is not None %} · {{ target.bathroom_count|floatformat:"-1" }} ba{% endif %}{% if target.square_footage is not None %} · {{ target.square_footage|floatformat:"0g" }} sq ft{% endif %}</span>
             {% endif %}
-            {% if c.missing_size %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">size needed</span>{% endif %}
+            {% if c.missing_size %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">size needed</span>{% endif %}
             {% if u and u.exclude_from_stats %}<span class="badge rounded-pill text-bg-light border" title="Left out of the rental performance statistics">not in statistics</span>{% endif %}
         </span>
         <span class="d-flex align-items-center gap-2 small">
@@ -91,14 +91,14 @@
                 <div>
                     <strong>{{ s.link.get_platform_display }}</strong> · <span class="fs-6 fw-semibold">★ {{ s.link.rating }}</span>{% if s.link.review_count is not None %} <span class="text-muted">({{ s.link.review_count }} review{{ s.link.review_count|pluralize }})</span>{% endif %}
                     {% if s.change %}<span style="color: {% if s.change > 0 %}#0b6a0b{% else %}#a02020{% endif %}; font-weight: 600;">{% if s.change > 0 %}▲ +{{ s.change }}{% else %}▼ {{ s.change }}{% endif %} since last time</span>{% endif %}
-                    <span class="text-muted">· {{ s.link.get_rating_source_display|lower }} {{ s.link.rating_checked_at|date:"M j, Y" }}{% if s.stale %} — <span style="color: #b07a00;">out of date</span>{% endif %}</span>
+                    <span class="text-muted">· {{ s.link.get_rating_source_display|lower }} {{ s.link.rating_checked_at|date:"M j, Y" }}{% if s.stale %} — <span style="color: var(--t-b07a00, #b07a00);">out of date</span>{% endif %}</span>
                 </div>
                 <form method="post">{% csrf_token %}<input type="hidden" name="action" value="check_listing_rating"><input type="hidden" name="link_id" value="{{ s.link.pk }}"><button class="btn btn-link btn-sm p-0">Check now</button></form>
             </div>
         </div>
         {% endfor %}
         {% for s in c.unread %}
-        <div class="border rounded p-2 mb-2 small" style="border-color: color-mix(in srgb, var(--status-warning) 60%, white) !important;">
+        <div class="border rounded p-2 mb-2 small" style="border-color: color-mix(in srgb, var(--status-warning) 60%, var(--surface-card)) !important;">
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                 <div><strong>{{ s.link.get_platform_display }}</strong> · no rating yet{% if s.link.check_error %}<div class="text-muted">{{ s.link.check_error }}{% if s.gave_up %} It won't be tried again automatically until you check it or enter it.{% endif %}</div>{% else %}<div class="text-muted">Not read yet — it will be picked up automatically, or check it now.</div>{% endif %}</div>
                 <form method="post">{% csrf_token %}<input type="hidden" name="action" value="check_listing_rating"><input type="hidden" name="link_id" value="{{ s.link.pk }}"><button class="btn btn-outline-secondary btn-sm">Check now</button></form>

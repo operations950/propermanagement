@@ -33,7 +33,7 @@
     <div class="border-top pt-2 mt-2">
         <div class="fw-semibold">{{ c.label }}</div>
         {% for b in c.pair %}
-        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-1 {% if c.likely_real and c.likely_real.pk == b.pk %}p-1 rounded{% endif %}" {% if c.likely_real and c.likely_real.pk == b.pk %}style="background: color-mix(in srgb, var(--status-good) 12%, white);"{% endif %}>
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-1 {% if c.likely_real and c.likely_real.pk == b.pk %}p-1 rounded{% endif %}" {% if c.likely_real and c.likely_real.pk == b.pk %}style="background: color-mix(in srgb, var(--status-good) 12%, var(--surface-card));"{% endif %}>
             <span class="small">{{ b.guest_name|default:"Guest" }} · {{ b.check_in|date:"D M j" }} → {{ b.check_out|date:"D M j" }} · {{ b.get_source_display }}
                 {% if b.payout_amount is not None %}<span class="badge text-bg-success">payout{% if b.payout_date %} {{ b.payout_status|default:"on" }} {{ b.payout_date|date:"M j" }}{% endif %}{% if is_admin %} · ${{ b.payout_amount }}{% endif %}</span>{% else %}<span class="badge text-bg-light border">no payout</span>{% endif %}
                 {% if c.likely_real and c.likely_real.pk == b.pk %}<span class="text-muted">— likelier real</span>{% endif %}</span>

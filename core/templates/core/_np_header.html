@@ -1,0 +1,11 @@
+{% comment %}The header every newspaper screen shares: icon and title on the left with ONE short line of words (and an optional (i) bubble for the longer explanation), the persistent buttons on the right.
+Expects `np_icon`, `np_title`, `np_desc`, optionally `np_tip` (the longer words, kept behind the bubble), `np_suffix`, and `np_buttons` (a list of {url, label, icon, primary}) plus optionally `np_extra` (an html snippet drawn
+after the buttons, e.g. the Start project form).{% endcomment %}
+<div class="np-head">
+    <h2 class="page-title np-title"><i data-lucide="{{ np_icon }}" class="icon-lg"></i> {{ np_title }}{% if np_suffix %} <span class="np-suffix">{{ np_suffix }}</span>{% endif %}</h2>
+    <span class="np-desc">{{ np_desc }}{% if np_tip %} {% include '_tip.html' with text=np_tip %}{% endif %}</span>
+    <div class="np-actions">
+        {% for b in np_buttons %}{% if b.html %}{{ b.html }}{% else %}<a href="{{ b.url }}" class="btn-action{% if not b.primary %} btn-action-outline{% endif %}"><i data-lucide="{{ b.icon }}" class="icon"></i><span class="np-btn-text"> {{ b.label }}</span></a>{% endif %}{% endfor %}
+        {{ np_extra }}
+    </div>
+</div>

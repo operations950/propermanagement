@@ -9,7 +9,7 @@
     .ad-tile .go { margin-left: auto; color: var(--ink-muted); width: 1em; height: 1em; }
     .ad-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-secondary); margin: 1.4rem 0 0.5rem; }
     .ad-status { margin-left: auto; font-size: 0.82rem; font-weight: 400; color: var(--ink-muted); white-space: nowrap; }
-    .ad-status.warn { color: #8a5a00; } .ad-status.good { color: #0b6a0b; }
+    .ad-status.warn { color: var(--t-8a5a00, #8a5a00); } .ad-status.good { color: var(--t-0b6a0b, #0b6a0b); }
     .ad-head { cursor: pointer; }
 </style>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
@@ -159,7 +159,7 @@
                 <td class="text-muted small">{{ token.connected_at|date:"M j, Y" }}</td>
                 <td>
                     {% if token.is_send_from %}
-                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">
+                    <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, var(--surface-card)); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, var(--surface-card));">
                         <i data-lucide="check" class="icon" style="width: 0.7rem; height: 0.7rem;"></i> Primary
                     </span>
                     {% else %}
@@ -269,7 +269,7 @@
                 <td>{{ p.get_property_type_display }}</td>
                 <td>
                     {% if p.is_active %}
-                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);">Active</span>
+                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 15%, var(--surface-card)); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, var(--surface-card));">Active</span>
                     {% else %}
                         <span class="badge rounded-pill bg-light text-dark border">Inactive</span>
                     {% endif %}

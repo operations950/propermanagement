@@ -1,8 +1,9 @@
-"""The phone's first screen: six big tiles, and everything else is one tap down from it.
+"""The phone's first screen: one big Home tile and six medium tiles, and everything else is one tap down from it.
 
 The installed app opens here (the manifest's start_url points at /m/). A person taps a tile, works in that area, and the Menu button in the phone top bar (templates/_mobile_bar.html)
-brings them straight back up. The six tiles are the same for everyone: the menu role limits what the desktop menu *shows*, but it never blocked an address, and on a phone
-everybody needs to find a property or a contact. A cleaner gets On-Site first. The sixth tile is the time clock for people on it, and "New ticket" for everyone else.
+brings them straight back up. For a manager or an admin the tiles are, in the order of importance: Home (big, two columns wide), then Tickets, Compliance, Projects, On-Site, Properties and
+Contacts. The time clock card stays on the phone's Home screen (the Home tile says where the clock stands), so clocking in and out never needs a tile of its own. A cleaner keeps her own
+set: On-Site first, then the time clock for people on it (or "New ticket"), then the rest. The menu role limits what the desktop menu *shows*, but it never blocked an address.
 """
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -66,8 +67,14 @@ def _clock_tile(user):
         return None
 
 
+def _clock_hint(user):
+    """Where the clock stands, in a few words, for people on the time clock (None for everyone else): it rides on the Home tile because the clock card lives on Home."""
+    tile = _clock_tile(user)
+    return tile['hint'] if tile else None
+
+
 def tiles(user):
-    """The six tiles, in order, for this person."""
+    """The tiles, in order, for this person: Home (big) and the six medium ones for a manager or admin; a cleaner's own six."""
     profile = getattr(user, 'staff_profile', None)
     new_face = bool(profile and profile.new_face)
     todo, visits = _today_counts(profile) if profile else (None, None)
@@ -83,13 +90,32 @@ def tiles(user):
               'hint': (_plural(visits, 'visit') + ' today' if visits else 'No visits today') if visits is not None else 'Visits and cleanings'}
     properties = {'key': 'properties', 'label': 'Properties', 'icon': 'building-2', 'url': reverse('property_list'), 'hint': 'Look one up'}
     contacts = {'key': 'contacts', 'label': 'Contacts', 'icon': 'contact', 'url': reverse('contact_list'), 'hint': 'Call or email someone'}
-    sixth = _clock_tile(user) or {'key': 'new_ticket', 'label': 'New ticket', 'icon': 'plus-circle', 'url': reverse('ticket_create'), 'hint': 'Report something'}
-
-    out = [home, tickets, onsite, properties, contacts, sixth]
-    if is_cleaner(profile):                       # her work first: On-Site, then the clock, then the rest in their usual order
+    if is_cleaner(profile):                       # her work first: On-Site, then the clock (or New ticket), then the rest in their usual order: unchanged
+        sixth = _clock_tile(user) or {'key': 'new_ticket', 'label': 'New ticket', 'icon': 'plus-circle', 'url': reverse('ticket_create'), 'hint': 'Report something'}
         first = [onsite, sixth]
-        out = first + [t for t in (home, tickets, properties, contacts) if t not in first]
-    return out
+        return first + [t for t in (home, tickets, properties, contacts) if t not in first]
+
+    compliance_url = reverse('ws_compliance') if new_face else reverse('my_sessions')
+    compliance = {'key': 'compliance', 'label': 'Compliance', 'icon': 'calendar-check', 'url': compliance_url, 'hint': 'Recurring work and rules'}
+    projects = {'key': 'projects', 'label': 'Projects', 'icon': 'layers', 'url': reverse('ws_projects'), 'hint': 'Longer jobs with steps'}
+    clock = _clock_hint(user)
+    if clock:                                     # the clock card is on Home: the big tile says where the clock stands
+        home['hint'] = f"{home['hint']} \u00b7 {clock}"
+    home['big'] = True
+    return [home, tickets, compliance, projects, onsite, properties, contacts]
+
+
+# The phone's Quick add (a phone is for doing, not setting up: no new properties, project starts or templates here). The desktop Quick add (templates/base.html) has the fuller list.
+QUICK_ADD = [
+    ('ticket_create', 'New ticket', 'ticket'),
+    ('session_template_create', 'New compliance rule', 'calendar-check'),
+    ('onsite_visit_create', 'New on-site visit', 'spray-can'),
+    ('contact_create', 'New contact', 'contact'),
+]
+
+
+def quick_add():
+    return [{'url': reverse(name), 'label': label, 'icon': icon} for name, label, icon in QUICK_ADD]
 
 
 @login_required
@@ -101,7 +127,7 @@ def menu(request):
     new_face = bool(profile and profile.new_face)
     today = timezone.localdate()
     return render(request, 'core/mobile_menu.html', {
-        'tiles': tiles(request.user), 'first_name': _first_name(request.user), 'today_label': f'{today:%A, %B} {today.day}',
+        'tiles': tiles(request.user), 'quick_add': quick_add(), 'first_name': _first_name(request.user), 'today_label': f'{today:%A, %B} {today.day}',
         'full_site_url': reverse('ws_home') if new_face else reverse('dashboard'),
         'mobile_top_level': True,
     })

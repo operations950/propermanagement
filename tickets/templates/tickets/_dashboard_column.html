@@ -8,11 +8,11 @@ empty_today_text, empty_soon_text, now, role (all passed in via
 {% include ... with %}).
 {% endcomment %}
 {% if needs_date_items %}
-<div class="mb-3 p-2 rounded" style="background: color-mix(in srgb, var(--status-warning) 12%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, white);">
+<div class="mb-3 p-2 rounded" style="background: color-mix(in srgb, var(--status-warning) 12%, var(--surface-card)); border: 1px solid color-mix(in srgb, var(--status-warning) 35%, var(--surface-card));">
     <h6 class="text-uppercase small fw-bold mb-2 d-flex align-items-center gap-2" style="letter-spacing: 0.06em; color: var(--ink-secondary);">
         <i data-lucide="calendar-plus" class="icon" style="color: var(--status-warning);"></i>
         Needs a due date
-        <span class="badge rounded-pill" style="background: var(--status-warning); color: #fff;">{{ needs_date_items|length }}</span>
+        <span class="badge rounded-pill" style="background: var(--status-warning); color: var(--on-accent, #fff);">{{ needs_date_items|length }}</span>
     </h6>
     <div class="list-group list-group-flush">
     {% for t in needs_date_items %}

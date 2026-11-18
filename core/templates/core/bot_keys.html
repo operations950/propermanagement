@@ -40,8 +40,8 @@
             <div class="d-flex gap-1 flex-wrap my-1">
                 <span class="badge text-bg-light border">everyday facts</span>
                 {% if k.allow_faq_write %}<span class="badge text-bg-light border">writes FAQ</span>{% endif %}
-                {% if k.allow_access_info %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">reads access codes</span>{% endif %}
-                {% if k.allow_internal_info %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">reads internal info</span>{% endif %}
+                {% if k.allow_access_info %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">reads access codes</span>{% endif %}
+                {% if k.allow_internal_info %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">reads internal info</span>{% endif %}
             </div>
             <div class="text-muted">Made {{ k.created_at|date:"M j, Y" }}{% if k.created_by %} by {{ k.created_by.get_full_name|default:k.created_by.username }}{% endif %} · {% if k.last_used_at %}last used {{ k.last_used_at|timesince }} ago · {{ k.use_count }} request{{ k.use_count|pluralize }}{% else %}never used{% endif %}</div>
         </div>

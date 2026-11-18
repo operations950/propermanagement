@@ -243,7 +243,7 @@
     /* Briefly highlights a row right after it's been moved — the visible
        confirmation that a click/drag actually did something, since these
        reorder actions no longer reload the page (see the script below). */
-    .checklist-item-row.just-moved { background-color: color-mix(in srgb, var(--brand-primary, #0d6efd) 12%, white); }
+    .checklist-item-row.just-moved { background-color: color-mix(in srgb, var(--brand-primary, #0d6efd) 12%, var(--surface-card)); }
     .checklist-item-row { transition: background-color 1.4s ease; }
     [data-move-up]:disabled, [data-move-down]:disabled { opacity: 0.35; }
 </style>

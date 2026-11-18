@@ -4,18 +4,18 @@
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="refresh-cw" class="icon-lg"></i> Recurring {% include '_tip.html' with text="Everything that happens on a schedule. Bills and charges post by themselves on their dates when automatic posting is on. A bill whose amount changes waits for the bank statement. The close sheet only asks you to check that all of it worked." %}</h2>
-        <div class="small text-muted">{{ assoc.name }} &middot; Automatic posting is {% if profile.auto_post %}<strong>on</strong>{% else %}<strong style="color: #8a5a00;">off</strong>{% endif %}
+        <div class="small text-muted">{{ assoc.name }} &middot; Automatic posting is {% if profile.auto_post %}<strong>on</strong>{% else %}<strong style="color: var(--t-8a5a00, #8a5a00);">off</strong>{% endif %}
             <form method="post" class="d-inline ac-noprint">{% csrf_token %}<input type="hidden" name="action" value="auto_post"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="auto" value="{% if profile.auto_post %}off{% else %}on{% endif %}"><button class="btn btn-link btn-sm p-0 align-baseline">{% if profile.auto_post %}Turn it off{% else %}Turn it on{% endif %}</button></form>
             {% include '_tip.html' with text="Automatic posting posts the owner charges (a few days early) and the fixed recurring bills by themselves on their dates. Each recurring journal entry has its own switch as well. Turn it off to post everything by hand." %}</div></div>
     <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">{% include 'accounting/_step_done_bar.html' %}
     <div class="btn-group btn-group-sm ac-noprint">
         <a href="?tab={{ tab }}&month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ month|date:"F Y" }}</span>
         <a href="?tab={{ tab }}&month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div></div>
 </div>
-<style>.rc-tabs { display: flex; gap: 6px; margin: 10px 0 12px; flex-wrap: wrap; } .rc-tab { padding: 7px 16px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, #fff); color: inherit; text-decoration: none; font-weight: 600; }
-    .rc-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; } .rc-tab .n { display: inline-block; min-width: 1.3em; text-align: center; border-radius: 999px; background: #b45309; color: #fff; font-size: .72rem; margin-left: 6px; padding: 0 5px; }</style>
+<style>.rc-tabs { display: flex; gap: 6px; margin: 10px 0 12px; flex-wrap: wrap; } .rc-tab { padding: 7px 16px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, var(--surface-card)); color: inherit; text-decoration: none; font-weight: 600; }
+    .rc-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--on-accent, #fff); } .rc-tab .n { display: inline-block; min-width: 1.3em; text-align: center; border-radius: 999px; background: #b45309; color: #fff; font-size: .72rem; margin-left: 6px; padding: 0 5px; }</style>
 <div class="rc-tabs ac-noprint">
     <a class="rc-tab {% if tab == 'bills' %}on{% endif %}" href="?tab=bills&month={{ month|date:'Y-m' }}">Bills{% if counts.bills %}<span class="n">{{ counts.bills }}</span>{% endif %}</a>
     <a class="rc-tab {% if tab == 'charges' %}on{% endif %}" href="?tab=charges&month={{ month|date:'Y-m' }}">Charges to owners{% if counts.charges %}<span class="n">{{ counts.charges }}</span>{% endif %}</a>

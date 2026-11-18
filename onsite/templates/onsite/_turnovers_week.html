@@ -1,0 +1,75 @@
+{# The Turnovers week board: seven days from a day (today unless moved a week at a time), one list, units with nothing checking in or out hidden, a status square beside every name. #}
+{% if w.without_cleaning or w.open_cleanings %}<div class="wn warn">{% if w.without_cleaning %}{{ w.without_cleaning }} check-out{{ w.without_cleaning|pluralize }} {{ w.without_cleaning|pluralize:"has,have" }} no cleaning scheduled{% endif %}{% if w.without_cleaning and w.open_cleanings %} and {% endif %}{% if w.open_cleanings %}{{ w.open_cleanings }} cleaning{{ w.open_cleanings|pluralize }} {{ w.open_cleanings|pluralize:"needs,need" }} someone{% endif %}. Click the marks to set {{ w.without_cleaning|add:w.open_cleanings|pluralize:"it,them" }} up.</div>
+{% elif w.outs %}<div class="wn ok">Every check-out has a cleaning, and someone is on each one.</div>{% endif %}
+<div class="top">
+  <span class="seg"><a href="{% url 'onsite_turnovers' %}" class="on">Week</a><a href="{% url 'onsite_turnovers' %}?day={{ today|date:'Y-m-d' }}">Day</a></span>
+  <a class="nv" href="?start={{ w.previous|date:'Y-m-d' }}" aria-label="Back a week" title="Back a week">&lsaquo;</a>
+  <a class="nv" href="{% url 'onsite_turnovers' %}"{% if w.is_current %} style="font-weight:600"{% endif %}>This week</a>
+  <a class="nv" href="?start={{ w.next|date:'Y-m-d' }}" aria-label="Forward a week" title="Forward a week">&rsaquo;</a>
+  <span>{{ w.start|date:"M j" }} &ndash; {{ w.end|date:"M j" }}{% if w.is_current %} (starts today){% endif %}{% if w.pending %} &middot; <b style="color:var(--warn-bar)">! {{ w.pending }} waiting for a yes</b>{% endif %}</span>
+</div>
+<div class="sts">Right now:
+  {% for key, label in status_links %}<a href="?start={{ w.start|date:'Y-m-d' }}&amp;status={{ key }}" class="{% if w.filter == key %}on{% endif %}"><i class="st {{ key }}"></i>{{ label }}</a>{% endfor %}
+  {% if w.filter %}<a href="?start={{ w.start|date:'Y-m-d' }}">Show the board</a>{% endif %}
+  <span>The square beside each name is how that property stands now. Click one to see only those.</span>
+</div>
+<div class="pg-phone">
+{# Phones: one day at a time. A strip of the days stays at the top; swipe sideways (or tap a day) to move to the next one. Each day lists only the properties that have something on it. #}
+{% if w.all_rows %}
+<div class="pd-strip" id="pdStrip">{% for d in w.phone_days %}<a href="#pd-{{ d.date|date:'Y-m-d' }}" class="pd-chip{% if d.today %} today{% endif %}{% if forloop.first %} on{% endif %}"><span class="pd-dow">{% if d.today %}Today{% else %}{{ d.date|date:"D" }}{% endif %}</span><span class="pd-num">{{ d.date.day }}</span>{% if d.count %}<span class="pd-n">{{ d.count }}</span>{% endif %}</a>{% endfor %}</div>
+<div class="pd-pager" id="pdPager">
+{% for d in w.phone_days %}
+<section class="pd-page" id="pd-{{ d.date|date:'Y-m-d' }}" aria-label="{{ d.date|date:'l, F j' }}">
+  <h3 class="pd-h"><a href="?day={{ d.date|date:'Y-m-d' }}" style="color:inherit;text-decoration:none">{{ d.date|date:"l, M j" }}</a>{% if d.today %}<span class="tag">Today</span>{% endif %}<span class="pd-count">{{ d.count }} propert{{ d.count|pluralize:"y,ies" }}</span></h3>
+  {% for it in d.items %}
+  {% with r=it.row c=it.c %}
+  {% if c.kind == 'stay' %}
+  <div class="pcard pcard-stay"><a class="pname" href="{% url 'property_detail' r.property.pk %}">{{ r.property.name }}{% if r.unit %}<small>{{ r.unit }}</small>{% endif %}</a><div class="staybar">Guest in house</div></div>
+  {% else %}
+  <div class="pcard">
+    <a class="pname" href="{% url 'property_detail' r.property.pk %}">{{ r.property.name }}{% if r.unit %}<small>{{ r.unit }}</small>{% endif %}</a>
+    {% if c.kind == 'both' %}<div class="small fw-semibold" style="color:var(--bad-ink)">Same-day turnover</div>{% endif %}
+    <div class="evs">
+      {% for e in c.outs %}
+      <button type="button" class="evbtn {% if c.kind == 'both' %}both{% else %}out{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkout" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }}"><span>Check-out {{ e.time }}</span><span class="hint">{% if e.state == 'pending' %}Waiting for a yes{% elif e.state == 'approved' %}Agreed &#10003;{% else %}Tap to change{% endif %}</span></button>
+      <button type="button" class="cleanbtn {{ e.cleaning.mark }}" data-wk-clean data-booking="{{ e.booking.pk }}" data-state="{{ e.cleaning.code }}" data-text="{{ e.cleaning.text }}" data-visit="{{ e.cleaning.visit }}" data-who="{{ e.cleaning.who }}" data-label="{{ r.label }}" data-out="{{ e.normal }}"><span class="dot"></span><span>{{ e.cleaning.label }}{% if e.cleaning.who %}: {{ e.cleaning.who }}{% endif %}</span></button>
+      {% endfor %}
+      {% for e in c.ins %}
+      <button type="button" class="evbtn {% if c.kind == 'both' %}both{% else %}in{% endif %} {{ e.state }}" data-wk-time data-booking="{{ e.booking.pk }}" data-kind="checkin" data-value="{{ e.value }}" data-min="{{ e.minutes }}" data-normal="{{ e.normal }}" data-normalmin="{{ e.normal_minutes }}" data-other="{{ e.other }}" data-est="{{ e.est }}" data-buffer="{{ e.buffer }}" data-has="{% if e.req %}1{% endif %}" data-label="{{ r.label }}"><span>Check-in {{ e.time }}</span><span class="hint">{% if e.state == 'pending' %}Waiting for a yes{% elif e.state == 'approved' %}Agreed &#10003;{% else %}Tap to change{% endif %}</span></button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% endwith %}
+  {% empty %}<div class="mo-empty">Nothing on this day.</div>{% endfor %}
+</section>
+{% endfor %}
+</div>
+{% else %}
+<div class="text-muted p-3">No short-term rentals yet.</div>
+{% endif %}
+</div>
+<div class="pgscroll"><div class="pgin">
+{% if w.rows %}
+<div class="pg"><span></span>{% for d in w.days %}<a class="h{% if d.today %} td{% endif %}" href="?day={{ d.date|date:'Y-m-d' }}" title="Open this day">{{ d.date|date:"D j" }}</a>{% endfor %}</div>
+{% for r in w.rows %}
+<div class="pg"><span class="nm"><a href="{% url 'property_detail' r.property.pk %}" title="{{ r.status|capfirst }} now &middot; {{ r.label }}"><i class="st {{ r.status }}"></i>{{ r.property.name }}</a>{% if r.unit %}<span class="un">{{ r.unit }}</span>{% endif %}</span>
+  {% for c in r.cells %}
+  <div class="cell{% if c.kind == 'stay' %} stay{% elif not c.kind %} empty{% endif %}{% if c.today %} td{% endif %}{% if c.outs %} has-cl{% endif %}"{% if c.stay %} title="A guest is staying"{% endif %}>
+    {% for e in c.outs %}
+    {% if c.kind == 'both' %}{% include 'onsite/_tn_time.html' with e=e r=r word='OUT' cls='t both' %}{% else %}{% include 'onsite/_tn_time.html' with e=e r=r word='OUT' cls='t out' %}{% endif %}
+    {% include 'onsite/_tn_dot.html' with e=e r=r cls='cl cl-top '|add:e.cleaning.mark %}
+    {% endfor %}
+    {% for e in c.ins %}
+    {% if c.kind == 'both' %}{% include 'onsite/_tn_time.html' with e=e r=r word='IN' cls='t both' %}{% else %}{% include 'onsite/_tn_time.html' with e=e r=r word='IN' cls='t in' %}{% endif %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% else %}
+<div class="text-muted p-3">{% if w.filter %}No properties are {{ w.filter }} right now.{% elif w.total %}Nothing checks in or out in these seven days.{% else %}No short-term rentals yet.{% endif %}</div>
+{% endif %}
+</div></div>
+{% if not w.filter %}<div class="foot">{% if w.show_all %}Showing every unit. <a href="?start={{ w.start|date:'Y-m-d' }}">Hide the ones with nothing checking in or out</a>{% elif w.hidden %}{{ w.hidden }} unit{{ w.hidden|pluralize }} with no check-in or check-out in these seven days {{ w.hidden|pluralize:"is,are" }} hidden. <a href="?start={{ w.start|date:'Y-m-d' }}&amp;all=1">Show all units</a>{% endif %}</div>{% endif %}
+<div class="lg"><span><i class="sw" style="background:var(--out-bg)"></i>Check-out</span><span><i class="sw" style="background:var(--in-bg)"></i>Check-in</span><span><i class="sw" style="background:var(--bad-bg)"></i>Same-day turnover</span><span><i class="sw" style="background:var(--stay)"></i>Guest in house</span><span><b style="color:var(--warn-bar)">!</b> waiting for a yes</span><span><b style="color:var(--good-bar)">&#10003;</b> approved</span><span>Cleaning on each check-out:</span><span><i class="sw" style="background:var(--good-bar);border-radius:50%"></i>assigned or done</span><span><i class="sw" style="background:var(--warn-bar);border-radius:50%"></i>needs someone</span><span><i class="sw" style="border:1.5px solid var(--bad-bar);border-radius:50%;background:var(--surface-card)"></i>none yet</span></div>

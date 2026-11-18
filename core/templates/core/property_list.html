@@ -9,27 +9,35 @@
     .pl-search input { padding-left: 2.1rem; }
     .pl-search .icon { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none; }
     .pl-spacer { flex: 1 1 auto; }
-    /* The alerts button: the theme's one contrast colour (plum) when something needs a look, an ordinary outline when nothing does. */
-    .pl-alerts-on { background: var(--accent-contrast); border-color: var(--accent-contrast); color: #fff; font-weight: 600; }
-    .pl-alerts-on:hover, .pl-alerts-on:focus { background: #763a5d; border-color: #763a5d; color: #fff; }
-    .pl-alerts-on .pl-n { background: #fff; color: var(--accent-contrast); border-radius: 999px; padding: 0 .5rem; margin-left: .4rem; font-weight: 700; }
-    .pl-panel { background: var(--surface-card); border: 1px solid var(--border-hairline); border-left: 4px solid var(--accent-contrast); border-radius: var(--bs-border-radius-lg); padding: .25rem .9rem; margin-bottom: .9rem; }
+    .pl-panel { background: var(--surface-card); border: 1px solid var(--border-hairline); border-left: 4px solid color-mix(in srgb, var(--priority-urgent) 90%, var(--mix-black, black)); border-radius: var(--bs-border-radius-lg); padding: .25rem .9rem; margin-bottom: .9rem; }
     .pl-panel[hidden] { display: none; }
     .pl-alert { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .55rem 0; border-top: 1px solid var(--border-hairline); }
     .pl-alert:first-child { border-top: 0; }
-    .pl-paper { column-count: 3; column-gap: .9rem; }
+    /* three columns dealt out so they come out about the same height, the extra length in the first (core/property_layout.py); on a tablet or phone the columns fold into 2 or 1 */
+    .pl-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .9rem; align-items: start; }
+    .pl-col { min-width: 0; }
     .pl-box { break-inside: avoid; background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); margin: 0 0 .9rem; overflow: hidden; }
-    .pl-box h2 { margin: 0; padding: .3rem .7rem; font-size: .68rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-secondary); background: color-mix(in srgb, var(--brand-primary) 8%, white);
+    .pl-box h2 { margin: 0; padding: .3rem .7rem; font-size: .76rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-secondary); background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-card));
                  border-bottom: 1px solid var(--border-hairline); display: flex; justify-content: space-between; font-family: inherit; font-weight: 600; }
-    .pl-row { display: flex; align-items: center; gap: .4rem; padding: .18rem .7rem; color: var(--ink-primary); text-decoration: none; border-top: 1px solid var(--border-hairline); font-size: .8125rem; line-height: 1.25; }
+    .pl-row { display: flex; align-items: center; gap: .4rem; padding: .18rem .7rem; color: var(--ink-primary); text-decoration: none; border-top: 1px solid var(--border-hairline); font-size: .8875rem; line-height: 1.25; }
     .pl-row:first-of-type { border-top: 0; }
-    .pl-row:hover { background: color-mix(in srgb, var(--brand-primary) 10%, white); color: var(--ink-primary); }
+    .pl-row:hover { background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-card)); color: var(--ink-primary); }
     .pl-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pl-go { color: var(--ink-muted); }
     .pl-off .pl-name { color: var(--ink-muted); }
-    .pl-tag { font-size: .68rem; color: var(--ink-muted); border: 1px solid var(--border-hairline); border-radius: 999px; padding: 0 .4rem; }
-    @media (max-width: 991px) { .pl-paper { column-count: 2; } }
-    @media (max-width: 575px) { .pl-paper { column-count: 1; } .pl-row { padding: .45rem .7rem; font-size: .9rem; } }
+    .pl-tag { font-size: .74rem; color: var(--ink-muted); border: 1px solid var(--border-hairline); border-radius: 999px; padding: 0 .4rem; }
+    @media (max-width: 991px) { .pl-cols { display: block; column-count: 2; column-gap: .9rem; } .pl-col { display: contents; } }
+    /* A phone: no title (the top bar names the page), no alerts, no inactive switch, just the search and a small +; every property on its own line, in the newspaper boxes. The rows are thumb-sized
+       buttons (static/css/thumb-rows.css); a name that does not fit ends in ... */
+    @media (max-width: 575px) {
+        .pl-cols { display: flex; flex-direction: column; column-count: auto; }          /* one column, the boxes in their usual order (Associations first) whatever column they were dealt to */
+        .pl-top { margin: .5rem 0 .6rem; gap: .5rem; }
+        .pl-top .page-title, .pl-inactive, #pl-alerts-btn, #pl-alerts-panel { display: none !important; }
+        .pl-search { flex: 1 1 auto; max-width: none; }
+        .pl-new .pl-new-text { display: none; }
+        .pl-box { margin-bottom: .7rem; }
+        .pl-tag { display: none; }
+    }
 </style>
 {% endblock %}
 {% block content %}
@@ -39,22 +47,22 @@
         <i data-lucide="search" class="icon"></i>
         <input type="text" name="q" id="property-search-input" class="form-control form-control-sm" placeholder="Search name or address…" value="{{ q }}" autocomplete="off">
     </form>
-    <div class="form-check mb-0">
+    <div class="form-check mb-0 pl-inactive">
         <input class="form-check-input" type="checkbox" id="showInactive" {% if show_inactive %}checked{% endif %}>
         <label class="form-check-label small" for="showInactive">Show inactive</label>
     </div>
     <span class="pl-spacer"></span>
-    <button type="button" id="pl-alerts-btn" class="btn btn-sm {% if alerts %}pl-alerts-on{% else %}btn-outline-secondary{% endif %}" aria-expanded="false" aria-controls="pl-alerts-panel">
-        <i data-lucide="bell{% if alerts %}-ring{% endif %}" class="icon"></i> Alerts{% if alerts %}<span class="pl-n">{{ alerts|length }}</span>{% endif %}
+    <button type="button" id="pl-alerts-btn" class="btn btn-sm {% if alerts %}btn-alerts-on{% else %}btn-outline-secondary{% endif %}" aria-expanded="false" aria-controls="pl-alerts-panel">
+        <i data-lucide="bell{% if alerts %}-ring{% endif %}" class="icon"></i> Alerts{% if alerts %}<span class="alerts-n">{{ alerts|length }}</span>{% endif %}
     </button>
-    <a href="{% url 'property_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New property</a>
+    <a href="{% url 'property_create' %}" class="btn-action pl-new" title="New property" aria-label="New property"><i data-lucide="plus" class="icon"></i><span class="pl-new-text"> New property</span></a>
 </div>
 
 <div class="pl-panel" id="pl-alerts-panel" hidden>
     {% for n in alerts %}
     <div class="pl-alert">
         <div style="min-width: 0;">
-            <div class="fw-medium d-flex align-items-center gap-2"><i data-lucide="{{ n.icon }}" class="icon" style="color: {% if n.level == 'warn' %}var(--accent-contrast){% else %}var(--ink-muted){% endif %};"></i> {{ n.text }}</div>
+            <div class="fw-medium d-flex align-items-center gap-2"><i data-lucide="{{ n.icon }}" class="icon" style="color: {% if n.level == 'warn' %}color-mix(in srgb, var(--priority-urgent) 90%, black){% else %}var(--ink-muted){% endif %};"></i> {{ n.text }}</div>
             {% if n.detail %}<div class="small" style="color: var(--ink-muted);">{{ n.detail }}</div>{% endif %}
         </div>
         <a href="{{ n.url }}" class="btn btn-outline-secondary btn-sm flex-shrink-0">Open <i data-lucide="arrow-right" class="icon"></i></a>
@@ -68,7 +76,7 @@
 <p class="small text-muted mb-2"><i data-lucide="ruler" class="icon"></i> Showing only the short-term rentals missing size details (bedrooms, beds, baths, square feet). <a href="{% url 'property_list' %}">Show all</a></p>
 {% endif %}
 
-<div class="pl-paper" id="property-paper">
+<div id="property-paper">
 {% include 'core/_property_paper.html' %}
 </div>
 <script>

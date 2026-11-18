@@ -1,0 +1,13 @@
+{% load core_extras %}{% comment %}One line of a Contacts box (core/contact_boxes.py): the name (ellipsis) with when you last dealt with them, a small second line (type and property, unit, trade, phone), the whole left part a link to the person, and tiny call / text / email / new-ticket links at the right (always on a phone, on hover with a mouse). The last row of a short box is "All 245 owners".{% endcomment %}
+{% if r.kind == 'more' %}
+<div class="np-row cl-more"><a href="?type={{ r.type }}{% if r.q %}&amp;q={{ r.q|urlencode }}{% endif %}"><span class="np-l1"><span class="np-name">{{ r.label }}</span><span class="np-when">&rsaquo;</span></span></a></div>
+{% else %}
+<div class="np-row cl-row">
+    <a class="cl-main" href="{% url 'contact_detail' r.pk %}"><span class="np-l1"><span class="np-name">{{ r.name }}</span>{% if r.ago %}<span class="np-when">{{ r.ago }}</span>{% endif %}</span>{% if r.line2 %}<span class="np-l2">{{ r.line2 }}</span>{% endif %}</a>
+    <span class="cl-acts">
+        {% if r.phone %}<a href="tel:{{ r.phone|tel_href }}"{% with q=r.phone|quo_dial_url %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="cl-act" title="Call" aria-label="Call {{ r.name }}"><i data-lucide="phone" class="icon"></i></a><a href="sms:{{ r.phone|tel_href }}"{% with q=r.phone|quo_text_url %}{% if q %} data-quo="{{ q }}"{% endif %}{% endwith %} class="cl-act" title="Text" aria-label="Text {{ r.name }}"><i data-lucide="message-circle" class="icon"></i></a>{% endif %}
+        {% if r.email %}<a href="mailto:{{ r.email }}" class="cl-act" title="Email" aria-label="Email {{ r.name }}"><i data-lucide="mail" class="icon"></i></a>{% endif %}
+        <a href="{% url 'ticket_create' %}?contact={{ r.pk }}" class="cl-act" title="New ticket with {{ r.name }}" aria-label="New ticket with {{ r.name }}"><i data-lucide="plus" class="icon"></i></a>
+    </span>
+</div>
+{% endif %}

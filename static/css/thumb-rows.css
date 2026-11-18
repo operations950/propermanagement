@@ -1,0 +1,26 @@
+/* Thumb-sized rows for the newspaper screens on a phone (Properties .pl-row, and the shared newspaper rows .np-row of Tickets, Compliance, Projects and Contacts).
+ *
+ * Every row is its own soft button inside its box: about 3rem tall, a little room between rows, and a pressed / selected state that tints the row the moment a thumb lands (no delay), so a tap
+ * feels answered. A name that does not fit ends in ... . Colours are named theme values only, so dark mode themes it with no rules of its own. Desktop is untouched: all of this is phone width.
+ * The doubled class names (.pl-row.pl-row) only raise the weight above the screens' own single-class rules whatever order the stylesheets load in. */
+@media (max-width: 575px) {
+    .pl-box, .np-box { padding-bottom: .4rem; }
+    .pl-box .pl-row.pl-row, .np-box .np-row.np-row, .np-thumb-row {
+        display: flex; align-items: center; gap: .5rem; min-height: 3rem; margin: .35rem .45rem 0; padding: .5rem .8rem; min-width: 0;
+        border: 1px solid var(--border-hairline); border-radius: 12px; font-size: 1rem; line-height: 1.3;
+        background: color-mix(in srgb, var(--brand-primary) 4%, var(--surface-card));
+        color: var(--ink-primary); text-decoration: none; transition: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    }
+    .pl-box .pl-row.pl-row:first-of-type, .np-box .np-row.np-row:first-of-type { border-top: 1px solid var(--border-hairline); }
+    .pl-box .pl-row.pl-row:active, .pl-box .pl-row.pl-row:focus-visible,
+    .np-box .np-row.np-row:active, .np-box .np-row.np-row:focus-visible, .np-thumb-row:active, .np-thumb-row:focus-visible {
+        background: color-mix(in srgb, var(--brand-primary) 18%, var(--surface-card)); border-color: var(--brand-primary); color: var(--ink-primary); outline: 0;
+    }
+    .pl-box .pl-row.pl-row:hover, .np-box .np-row.np-row:hover { color: var(--ink-primary); }
+    .pl-box .pl-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1rem; }
+    .pl-box .pl-go { flex: none; font-size: 1.5rem; line-height: 1; color: var(--ink-muted); }
+    /* the shared rows have two lines (what it is, then the small facts): stack them inside the thumb-sized button */
+    .np-box .np-row.np-row { flex-direction: column; align-items: stretch; justify-content: center; gap: .1rem; }
+    .np-box .np-row .np-l1 { font-size: 1rem; }
+    .np-box .np-row .np-l2 { font-size: .85rem; }
+}

@@ -1,3 +1,5 @@
+import json
+from datetime import date, timedelta
 from functools import wraps
 
 from django.contrib import messages
@@ -11,12 +13,12 @@ from django.utils.dateparse import parse_date, parse_time
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from core import nav
+from core import nav, newspaper
 from core.models import Property, StaffProfile
 from core.people import active_staff
 from worksessions.models import Frequency
 
-from . import menu, services, week as week_service
+from . import menu, services
 
 
 def new_face_only(view=None, *, admins_too=False):
@@ -47,21 +49,56 @@ def _is_boss(request):
 PHONE_DAYS_AHEAD = 13          # the phone's calendar agenda: today and the next two weeks
 
 
+def _month_param(raw, today):
+    """The first day of the month the grid shows: ?m=YYYY-MM, else this month (anything that is not a month is this month)."""
+    try:
+        year, month = (int(x) for x in (raw or '').split('-'))
+        return date(year, month, 1)
+    except (ValueError, TypeError):
+        return today.replace(day=1)
+
+
+def _month_nav(grid, request, today):
+    """The month grid with its previous / this month / next links (they keep the rest of the address: who the list is for, the horizon)."""
+    first = grid['first']
+
+    def link(day):
+        q = request.GET.copy()
+        q['h'] = 'month'
+        if day == today.replace(day=1):
+            q.pop('m', None)
+        else:
+            q['m'] = f'{day:%Y-%m}'
+        return '?' + q.urlencode()
+    prev_month = (first - timedelta(days=1)).replace(day=1)
+    next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    grid.update(prev_url=link(prev_month), next_url=link(next_month), today_url=link(today.replace(day=1)), is_current=first == today.replace(day=1))
+    return grid
+
+
 def _calendar(request, horizon):
     """Your Google Calendar for the range on screen, built the way the owner dashboard builds it."""
-    from tickets.views import _calendar_color, _format_calendar_events
-    from core.google_calendar import get_upcoming_events, is_configured
+    from tickets.views import _calendar_color, _format_calendar_events, _month_grid, month_bounds
+    from core.google_calendar import get_events_between, get_upcoming_events, is_configured
     staff = _profile(request)
     if not staff:
         return {}
     token = getattr(staff, 'google_calendar_token', None)
     ctx = {'calendar_configured': is_configured(), 'calendar_token': token, 'calendar_days': [], 'calendar_days_all': [], 'available_calendars': [], 'enabled_calendar_ids': '',
-           'current_timezone': getattr(staff, 'timezone', ''), 'timezone_choices': StaffProfile.Timezone.choices}
+           'current_timezone': getattr(staff, 'timezone', ''), 'timezone_choices': StaffProfile.Timezone.choices, 'calendar_mode': horizon}
     if token:
         try:
             days_ahead = {'today': 0, 'week': 6, 'month': 13}[horizon]
-            # One read of Google covers the phone's two-week agenda too (calendar_days_all); the desktop column still gets exactly the days the screen's range asks for.
-            raw, available = get_upcoming_events(token, days_ahead=max(days_ahead, PHONE_DAYS_AHEAD))
+            if horizon == 'month':
+                # The month grid: one read covers the whole visible grid AND the phone's two-week agenda (calendar_days_all), whichever way the person has paged.
+                today = timezone.localdate()
+                month_first = _month_param(request.GET.get('m'), today)
+                grid_first, grid_last = month_bounds(month_first)
+                raw, available = get_events_between(token, min(grid_first, today), max(grid_last, today + timedelta(days=PHONE_DAYS_AHEAD)))
+                ctx['calendar_month'] = _month_nav(_month_grid(raw, month_first, today), request, today)
+            else:
+                # One read of Google covers the phone's two-week agenda too (calendar_days_all); the desktop column still gets exactly the days the screen's range asks for.
+                raw, available = get_upcoming_events(token, days_ahead=max(days_ahead, PHONE_DAYS_AHEAD))
             ctx['calendar_days_all'] = _format_calendar_events(raw, days_ahead=max(days_ahead, PHONE_DAYS_AHEAD))
             ctx['calendar_days'] = ctx['calendar_days_all'][:days_ahead + 1]
             primary = next((c['id'] for c in available if c['is_primary']), 'primary')
@@ -103,25 +140,55 @@ def compliance(request):
     freq_labels = dict(Frequency.choices)
     ctx = {'tab': tab, 'staff_list': staff_list, 'frequencies': Frequency.choices, 'status_options': services.COMPLIANCE_STATUS,
            'due_options': DUE_OPTIONS, 'properties_by_type': properties_by_type()}
+    sort_now = params.get('sort', '')
     if tab == 'items':
         qs, sel = services.compliance_items(params)
         page = Paginator(qs, services.COMPLIANCE_PER_PAGE).get_page(params.get('page'))
         today = timezone.localdate()
         sel.update(frequency_label=freq_labels.get(sel['frequency'], ''), due_label=dict(DUE_OPTIONS).get(sel['due'], 'Custom date' if sel['due'] == 'custom' else ''),
                    owner_name=next((str(s) for s in staff_list if str(s.pk) == sel['owner']), ''))
-        ctx.update(sel=sel, page_obj=page, rows=[services.compliance_row(s, today) for s in page], sort_columns=services.sort_columns(services.COMPLIANCE_COLUMNS, params.get('sort')))
-        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-            return JsonResponse({'desktop': render_to_string('workspace/_compliance_rows.html', ctx, request), 'mobile': render_to_string('workspace/_compliance_cards.html', ctx, request),
-                                 'pager': render_to_string('core/_pager.html', ctx, request)})
+        rows = [services.compliance_row(s, today) for s in page]
+        boxes = services.frequency_boxes(rows, lambda r: r['s'].template.frequency)
+        ctx.update(sel=sel, page_obj=page, rows=rows, boxes=boxes, columns=newspaper.deal(boxes), row_template='workspace/_np_item_row.html', empty_text='No items here.',
+                   sort_columns=services.sort_columns(services.COMPLIANCE_COLUMNS, sort_now))
+        filter_count = sum([sel['status'] != 'open', bool(sel['frequency']), bool(sel['owner']), bool(sel['property']), bool(sel['due'])])
+        columns_for_sort, search_text, filters_template = services.COMPLIANCE_COLUMNS, 'Search item or property\u2026', 'workspace/_compliance_filters.html'
+        pager = True
     else:
         rows, sel = services.compliance_rules(params)
         sel['frequency_label'] = freq_labels.get(sel['frequency'], '')
-        ctx.update(sel=sel, rows=rows, blocks=services.rule_blocks(), sort_columns=services.sort_columns(services.RULE_COLUMNS, params.get('sort')))
+        boxes = services.frequency_boxes(rows, lambda r: r['t'].frequency)
+        ctx.update(sel=sel, rows=rows, boxes=boxes, columns=newspaper.deal(boxes), row_template='workspace/_np_rule_row.html', empty_text='No rules here.',
+                   sort_columns=services.sort_columns(services.RULE_COLUMNS, sort_now), state_options=[('on', 'On'), ('off', 'Switched off'), ('all', 'All')])
+        filter_count = sum([sel['state'] != 'on', bool(sel['frequency']), bool(sel['owner'])])
+        columns_for_sort, search_text, filters_template = services.RULE_COLUMNS, 'Search rules\u2026', 'workspace/_rules_filters.html'
+        pager = False
+    np_ctx = {
+        'np_icon': 'calendar-check', 'np_title': 'Compliance', 'np_desc': 'Everything that happens on a schedule, by how often.',
+        'np_tip': 'A rule opens an item every period (daily, weekly, monthly ...). The Items tab is what is open now; the Rules tab is where they come from. Tickets are the one-off requests.',
+        'np_buttons': [{'url': reverse('session_template_create'), 'label': 'New rule', 'icon': 'plus', 'primary': True}],
+        'np_tabs': [{'label': 'Items', 'url': '?tab=items', 'on': tab == 'items'}, {'label': 'Rules', 'url': '?tab=rules', 'on': tab == 'rules'}],
+        'np_search_id': 'compliance-search-input', 'np_search_placeholder': search_text, 'np_q': sel['q'],
+        'np_search_map': json.dumps({'paper': 'np-paper', 'pager': 'compliance-pager'}),
+        'np_hidden': [(k, v) for k, values in params.lists() if k not in ('q', 'page') for v in values] or [('tab', tab)],
+        'np_filters_id': 'np-filters', 'np_filters_template': filters_template, 'np_filter_count': filter_count,
+        'np_sort_options': [{'value': '', 'label': 'Due date' if tab == 'items' else 'Name'}] + [{'value': k, 'label': label} for k, label in columns_for_sort]
+                           + [{'value': f'-{k}', 'label': f'{label}, reversed'} for k, label in columns_for_sort],
+        'np_sort': sort_now,
+        'np_clear_url': f'?tab={tab}' if filter_count else '',
+    }
+    ctx.update(np_ctx)
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        out = {'paper': render_to_string('core/_np_paper.html', ctx, request)}
+        out['pager'] = render_to_string('core/_pager.html', ctx, request) if pager else ''
+        return JsonResponse(out)
     return render(request, 'workspace/compliance.html', ctx)
 
 
 @new_face_only
 def projects(request):
+    from django.http import JsonResponse
+    from django.template.loader import render_to_string
     tab = 'templates' if request.GET.get('tab') == 'templates' else 'active'
     params = request.GET
     ctx = {'tab': tab, 'params': params}
@@ -129,13 +196,63 @@ def projects(request):
         from core.models import properties_by_type
         from tickets.views import DUE_OPTIONS
         staff_list = active_staff(also=[params.get('owner')])
-        sel, ctx['rows'] = services.project_runs(params)
+        sel, rows = services.project_runs(params)
         sel.update(due_label=dict(DUE_OPTIONS).get(sel['due'], 'Custom date' if sel['due'] == 'custom' else ''),
                    owner_name=next((str(s) for s in staff_list if str(s.pk) == sel['owner']), ''))
-        ctx.update(sel=sel, staff_list=staff_list, due_options=DUE_OPTIONS, properties_by_type=properties_by_type())
+        boxes = services.line_boxes(rows, lambda r: r['ptype'])
+        ctx.update(sel=sel, rows=rows, staff_list=staff_list, due_options=DUE_OPTIONS, properties_by_type=properties_by_type(), boxes=boxes, columns=newspaper.deal(boxes),
+                   row_template='workspace/_np_project_row.html', empty_text='No projects running right now.')
+        filter_count = sum([bool(sel['owner']), bool(sel['property']), bool(sel['due'])])
+        search_text, q = 'Search projects\u2026', sel['q']
     else:
-        ctx['project_templates'], ctx['process_templates'] = services.project_templates(params)
+        rows = services.template_rows(params)
+        boxes = services.line_boxes(rows, lambda r: r['line'])
+        q = (params.get('q') or '').strip()
+        ctx.update(rows=rows, boxes=boxes, columns=newspaper.deal(boxes), row_template='workspace/_np_template_row.html', empty_text='No templates yet.', sel={'q': q})
+        filter_count, search_text = 0, 'Search templates\u2026'
+    np_ctx = {
+        'np_icon': 'layers', 'np_title': 'Projects', 'np_desc': 'Work that runs for days or weeks, by line of business.',
+        'np_tip': ('A ticket or a compliance item becomes a project when it will run for days or weeks: it leaves its list and is tracked here, with a link back. A process (steps done in one sitting) stays on its ticket or item. '
+                   'A project template has steps over days; a process template is plain checkbox steps. Scheduling is done in Compliance.'),
+        'np_buttons': [{'html': render_to_string('workspace/_start_project.html', {'project_templates': services.startable_templates(), 'properties': Property.objects.filter(is_active=True, is_general=False).order_by('name'),
+                                                                                    'start_staff': active_staff()}, request)},
+                       {'url': reverse('process_template_create'), 'label': 'Add new template', 'icon': 'plus', 'primary': False}],
+        'np_tabs': [{'label': 'Active', 'url': '?tab=active', 'on': tab == 'active'}, {'label': 'Templates', 'url': '?tab=templates', 'on': tab == 'templates'}],
+        'np_search_id': 'project-search-input', 'np_search_placeholder': search_text, 'np_q': q, 'np_search_map': json.dumps({'paper': 'np-paper'}),
+        'np_hidden': [(k, v) for k, values in params.lists() if k not in ('q', 'page') for v in values] or [('tab', tab)],
+        'np_filters_id': 'np-filters' if tab == 'active' else '', 'np_filter_count': filter_count, 'np_clear_url': '?tab=active' if filter_count else '',
+    }
+    ctx.update(np_ctx)
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({'paper': render_to_string('core/_np_paper.html', ctx, request)})
     return render(request, 'workspace/projects.html', ctx)
+
+
+@require_POST
+@new_face_only
+def start_project_new(request):
+    """Start a project from the Projects screen: choose the project template, and optionally the property, a title and who runs it. A ticket is made for it (that is what a project hangs from) and the project begins
+    on its first step; it appears under Projects, not in the Tickets list."""
+    from processes.models import ProcessTemplate
+    from processes.projects import start_project
+    from tickets.models import Ticket
+
+    template = ProcessTemplate.objects.filter(pk=_int(request.POST.get('template')), kind=ProcessTemplate.Kind.PROJECT, is_active=True).first()
+    if template is None:
+        messages.error(request, 'Choose a project template.')
+        return redirect('ws_projects')
+    prop = Property.objects.filter(pk=_int(request.POST.get('project_property')), is_active=True).first()
+    assignee = StaffProfile.objects.filter(pk=_int(request.POST.get('assignee')), user__is_active=True).first() or getattr(request.user, 'staff_profile', None)
+    ticket = Ticket.objects.create(title=(request.POST.get('title') or '').strip()[:200] or template.name, property=prop, created_by=request.user, source=Ticket.Source.MANUAL,
+                                   assigned_staff=assignee, assignment_source=Ticket.AssignmentSource.MANUAL if assignee else Ticket.AssignmentSource.AUTO)
+    try:
+        run = start_project(template, user=request.user, assigned_to=assignee, ticket=ticket)
+    except ValueError as e:
+        ticket.delete()
+        messages.error(request, str(e))
+        return redirect('ws_projects')
+    messages.success(request, f'Project started: {ticket.title}.')
+    return redirect(services.run_url(run))
 
 
 @new_face_only
@@ -252,83 +369,6 @@ def request_decide(request):
     if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):
         target = reverse('onsite_dashboard')
     return redirect(target)
-
-
-@new_face_only
-def week(request):
-    """On-Site > Properties: every short-term rental by city, seven days across, with the check-out and check-in times you can change right there."""
-    return render(request, 'workspace/week.html', {'w': week_service.week(parse_date(request.GET.get('start', '') or ''))})
-
-
-@require_POST
-@new_face_only
-def week_time(request):
-    """Change one stay's check-out or check-in time (or put it back to normal). A change that helps the cleaning is simply agreed and the cleaner told; one that takes time away waits for a yes (see str_board.record_request)."""
-    from onsite.models import Booking, GuestRequest
-    from onsite.services import str_board
-
-    booking = get_object_or_404(Booking, pk=request.POST.get('booking_id'))
-    kind = request.POST.get('kind')
-    start = request.POST.get('start', '')
-    if kind in ('checkout', 'checkin'):
-        kinds = GuestRequest.CHECKOUT_KINDS if kind == 'checkout' else GuestRequest.CHECKIN_KINDS
-        word = 'Check-out' if kind == 'checkout' else 'Check-in'
-        try:
-            with transaction.atomic():
-                live = GuestRequest.objects.filter(booking=booking, kind__in=kinds).exclude(status=GuestRequest.Status.DECLINED)
-                if request.POST.get('action') == 'remove':
-                    live.delete()
-                    messages.success(request, f'{word} time is back to normal.')
-                else:
-                    requested = parse_time((request.POST.get('time') or '').strip())
-                    live.delete()           # changing a change: the old one is replaced, and put back if the new one is refused
-                    made = str_board.record_request(booking, kind, requested, request.POST.get('note', ''), request.user)
-                    messages.success(request, f'{word} time changed.' + (' It helps the cleaning, so it is agreed and the cleaner has been told.' if made.status == GuestRequest.Status.APPROVED
-                                                                      else ' It waits for a yes or no (the ! on the board).'))
-        except str_board.RequestError as e:
-            messages.error(request, str(e))
-    target = reverse('ws_week')
-    return redirect(f'{target}?start={start}' if parse_date(start) else target)
-
-
-@require_POST
-@new_face_only
-def week_clean(request):
-    """From the round mark on a checkout: schedule the cleaning if there is none, and put a cleaner on it if one was picked. Handled the way the visit screen does it (the cleaner is sent their link)."""
-    from core.models import Contact
-    from onsite.models import Booking, Visit
-    from onsite.services import notify as notify_service
-    from onsite.services import reservations as reservation_service
-
-    booking = get_object_or_404(Booking, pk=request.POST.get('booking_id'))
-    start = request.POST.get('start', '')
-    visit = booking.visits.exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED]).order_by('-pk').first()
-    if visit is None:
-        reservation_service._visit_for(booking)
-        visit = booking.visits.exclude(status__in=[Visit.Status.CANCELLED, Visit.Status.SKIPPED]).order_by('-pk').first()
-        if visit is None:
-            messages.error(request, 'A cleaning could not be scheduled: there is no turnover visit type set up for it.')
-        else:
-            messages.success(request, 'Cleaning scheduled.')
-    kind, _, raw_id = request.POST.get('assignee', '').partition('-')
-    if visit is not None and kind in ('staff', 'contact') and raw_id.isdigit():
-        if kind == 'staff' and StaffProfile.objects.filter(pk=raw_id).exists():
-            visit.assigned_staff_id, visit.assigned_contact = int(raw_id), None
-        elif kind == 'contact' and Contact.objects.filter(pk=raw_id).exists():
-            visit.assigned_contact_id, visit.assigned_staff = int(raw_id), None
-        else:
-            visit = None
-        if visit is not None:
-            if visit.status == Visit.Status.UNASSIGNED:
-                visit.status = Visit.Status.SCHEDULED
-            visit.full_clean()
-            visit.save()
-            link_note = ''
-            if notify_service.dispatch_link(visit, request) == notify_service.SCHEDULED:
-                link_note = f' The cleaner will be sent the link {notify_service.link_send_description(visit)}.'
-            messages.success(request, f'Cleaning is with {visit.assignee_label()}.{link_note}')
-    target = reverse('ws_week')
-    return redirect(f'{target}?start={start}' if parse_date(start) else target)
 
 
 def _int(raw):

@@ -490,8 +490,9 @@ class OwnerDashboardAndRemindersTests(TestCase):
         ContactImportCandidate.objects.create(source='quo', name='Someone New', phone='5615550100')
         self.assertEqual(nudges.nav_counts(self.user), {'contacts': 1})
         page = self.client.get(reverse('contact_list'))
-        self.assertContains(page, 'waiting for a yes or no')
-        self.assertContains(page, '1 thing needs attention in Contacts')
+        self.assertContains(page, 'waiting for a yes or no')                    # in the Alerts panel (the strip at the top of the page is gone)
+        self.assertContains(page, '<span class="alerts-n">1</span>')
+        self.assertNotContains(page, 'need attention in Contacts')
         self.assertContains(page, 'class="nav-pip"')
         self.assertNotContains(self.client.get(reverse('dashboard') + '?stats=1'), 'waiting for a yes or no')
         self.assertNotContains(self.client.get(reverse('property_list')), 'waiting for a yes or no')
@@ -504,10 +505,11 @@ class OwnerDashboardAndRemindersTests(TestCase):
         self.assertIn('specs', keys)
         self.assertIn('trash', keys)
         self.assertEqual(nudges.nav_counts(self.user)['onsite'], len(keys))        # the number counts reminders, not units
-        page = self.client.get(reverse('onsite_dashboard'))
-        self.assertContains(page, 'need attention in On-Site')
+        # these are about the properties, so they live behind the Alerts button on the Properties screen (the On-Site screen has its own Alerts for the day's work)
+        page = self.client.get(reverse('property_list'))
         self.assertContains(page, '1 unit with no Airbnb or VRBO listing link')
         self.assertContains(page, '12 Palm Way')
+        self.assertNotContains(self.client.get(reverse('onsite_dashboard')), 'need attention in On-Site')
 
     def test_marking_a_unit_not_on_airbnb_or_vrbo_stops_the_reminder_counting_it(self):
         prop = Property.objects.create(name='12 Palm Way', property_type=Property.Type.SHORT_TERM_RENTAL)
@@ -544,13 +546,13 @@ class OwnerDashboardAndRemindersTests(TestCase):
 
 @override_settings(STORAGES=NO_MANIFEST)
 class WeekBoardNameColumnTests(TestCase):
-    """On-Site > Properties: the first column is twice as wide and shows the property name with its unit under it, not a squeezed one-line label."""
+    """On-Site > Turnovers: the first column shows the property name with its unit under it, not a squeezed one-line label."""
     def test_the_name_and_the_unit_are_both_there(self):
         user = get_user_model().objects.create_user('owner2', password='pw12345678')
         _Staff.objects.create(user=user, is_company_admin=True, new_face=True)
         self.client.force_login(user)
         prop = Property.objects.create(name="Joe's", property_type=Property.Type.SHORT_TERM_RENTAL, city='Delray Beach')
         Unit.objects.create(property=prop, label='Blue Ocean (710 NE 7th Ct)')
-        r = self.client.get(reverse('ws_week'))
-        self.assertContains(r, 'grid-template-columns: 17rem')
-        self.assertContains(r, '>Joe&#x27;s</a><span class="un">Blue Ocean (710 NE 7th Ct)</span>')
+        r = self.client.get(reverse('onsite_turnovers') + '?all=1')           # a quiet unit is hidden unless asked for
+        self.assertContains(r, 'grid-template-columns: 13.5rem')
+        self.assertContains(r, 'Joe&#x27;s</a><span class="un">Blue Ocean (710 NE 7th Ct)</span>')

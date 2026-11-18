@@ -47,14 +47,14 @@
     {% endif %}
 
 {% if specs_summary %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, var(--surface-card)); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, var(--surface-card));">
     <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>Size needed for cleaning estimates:</strong> {{ specs_summary }}.</span>
     <a href="#property-size" class="btn btn-outline-secondary btn-sm">Go to the size fields</a>
 </div>
 {% endif %}
 
 {% if ap and ap_todo %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, var(--surface-card)); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, var(--surface-card));">
     <span class="small"><i data-lucide="triangle-alert" class="icon"></i> <strong>{{ ap_todo|length }} thing{{ ap_todo|length|pluralize }} to finish:</strong> {{ ap_todo|join:" &middot; " }}</span>
     <a href="#settings" class="btn btn-outline-secondary btn-sm">Go to the settings</a>
 </div>
@@ -423,7 +423,7 @@
     <summary class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2" style="cursor: pointer; list-style: none;">
         <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="messages-square" class="icon"></i> FAQ — what the message assistant knows <span class="text-muted fw-normal small">· {{ faqs|length }} answer{{ faqs|length|pluralize }}</span></h6>
         <span class="d-flex align-items-center gap-2">
-            {% if faq_unreviewed_count %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{{ faq_unreviewed_count }} to review</span>{% endif %}
+            {% if faq_unreviewed_count %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">{{ faq_unreviewed_count }} to review</span>{% endif %}
             <i data-lucide="chevron-down" class="icon faq-chevron"></i>
         </span>
     </summary>
@@ -439,7 +439,7 @@
                     <div class="d-flex gap-1 flex-wrap align-items-center mt-1" style="font-size: 0.75rem;">
                         {% if f.origin == 'staff' %}<span class="badge text-bg-light border">Written by staff</span>
                         {% elif f.reviewed %}<span class="badge text-bg-light border" style="color: var(--status-good);">Assistant-written · reviewed</span>
-                        {% else %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">Assistant-written · not reviewed</span>{% endif %}
+                        {% else %}<span class="badge" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">Assistant-written · not reviewed</span>{% endif %}
                         {% if f.origin == 'bot' %}<span class="text-muted">{{ f.get_basis_display }}</span>{% endif %}
                         {% if f.unit %}<span class="badge text-bg-light border">{{ f.unit.label }} only</span>{% endif %}
                         <span class="text-muted">{% if f.times_used %}used {{ f.times_used }} time{{ f.times_used|pluralize }}{% else %}not used yet{% endif %} · updated {{ f.updated_at|date:"M j, Y" }}</span>
@@ -662,8 +662,8 @@
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
             <h6 class="card-title d-flex align-items-center gap-2 mb-0"><i data-lucide="landmark" class="icon"></i> QuickBooks accounts</h6>
-            {% if qb.status == 'mapped' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Both accounts tied</span>
-            {% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{% if qb.status == 'partial' %}One account still needed{% else %}Not tied to QuickBooks yet{% endif %}</span>{% endif %}
+            {% if qb.status == 'mapped' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); border: 1px solid var(--status-good);">Both accounts tied</span>
+            {% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">{% if qb.status == 'partial' %}One account still needed{% else %}Not tied to QuickBooks yet{% endif %}</span>{% endif %}
         </div>
         <p class="small text-muted mb-3">Two accounts per rental {% include '_tip.html' with text='The income-statement account is its reimbursable-expense account: expenses we pay are coded to it and the monthly reimbursement comes back into it, so it is not all expense. The balance-sheet account is the owner’s trust account: deposits come in, and out go direct expenses, reimbursements to us, commission and the owner’s payment.' %}</p>
 
@@ -724,7 +724,7 @@
                 <label class="small fw-semibold mb-0" for="monthly-rent-in">Monthly rent {% include '_tip.html' with text='The rent we expect to come in each month. Long-term rent collection in the month-end close compares what QuickBooks shows with it. Change it here when the rent changes; leave it blank to clear it.' %}</label>
                 <div class="input-group input-group-sm" style="max-width: 170px;"><span class="input-group-text">$</span><input type="number" name="monthly_rent" id="monthly-rent-in" class="form-control" step="0.01" min="0" value="{{ property.monthly_rent|floatformat:'2u' }}" placeholder="Not set"></div>
                 <button class="btn btn-outline-secondary btn-sm">Save</button>
-                {% if property.monthly_rent is None %}<span class="small" style="color: #8a5a00;">Not set</span>{% endif %}
+                {% if property.monthly_rent is None %}<span class="small" style="color: var(--t-8a5a00, #8a5a00);">Not set</span>{% endif %}
             </div>
         </form>
         {% endif %}
@@ -735,7 +735,7 @@
                 <label class="small fw-semibold mb-0" for="owner-legal-name-in">Pay owner to {% include '_tip.html' with text='The legal name of the person or company we pay this rental’s owner, exactly as it is on their W-9 and ACH form. Pay owners shows it beside the rental and warns when it is missing; it never blocks a payment.' %}</label>
                 <input type="text" name="owner_legal_name" id="owner-legal-name-in" class="form-control form-control-sm" style="max-width: 340px;" maxlength="200" value="{{ property.owner_legal_name }}" placeholder="Legal name on the W-9">
                 <button class="btn btn-outline-secondary btn-sm">Save</button>
-                {% if not property.owner_legal_name %}<span class="small" style="color: #8a5a00;">Not set</span>{% endif %}
+                {% if not property.owner_legal_name %}<span class="small" style="color: var(--t-8a5a00, #8a5a00);">Not set</span>{% endif %}
             </div>
         </form>
 
@@ -752,9 +752,9 @@
                 <label class="small fw-semibold mb-0" for="tax-renews">Renew by {% include '_tip.html' with text='The date the business tax receipt must be renewed. A reminder only: it turns amber 60 days before and red once it has passed, and nothing is blocked.' %}</label>
                 <input type="date" name="business_tax_receipt_renews_on" id="tax-renews" class="form-control form-control-sm" style="max-width: 170px;" value="{{ property.business_tax_receipt_renews_on|date:'Y-m-d' }}">
                 <button class="btn btn-outline-secondary btn-sm">Save</button>
-                {% if btr_state == 'overdue' %}<span class="small fw-semibold" style="color: var(--status-critical, #b42318);">Renewal date passed {{ btr_days_over }} day{{ btr_days_over|pluralize }} ago</span>
-                {% elif btr_state == 'soon' %}<span class="small" style="color: #8a5a00;">Renew in {{ btr_days }} day{{ btr_days|pluralize }}</span>{% endif %}
-                {% if not property.tdt_account_number %}<span class="small" style="color: #8a5a00;">No tourist tax account number yet</span>{% endif %}
+                {% if btr_state == 'overdue' %}<span class="small fw-semibold" style="color: var(--status-critical, var(--t-b42318, #b42318));">Renewal date passed {{ btr_days_over }} day{{ btr_days_over|pluralize }} ago</span>
+                {% elif btr_state == 'soon' %}<span class="small" style="color: var(--t-8a5a00, #8a5a00);">Renew in {{ btr_days }} day{{ btr_days|pluralize }}</span>{% endif %}
+                {% if not property.tdt_account_number %}<span class="small" style="color: var(--t-8a5a00, #8a5a00);">No tourist tax account number yet</span>{% endif %}
             </div>
         </form>
         {% endif %}

@@ -7,7 +7,7 @@
 <div class="m-home">
 <div class="ws-tabs">{% for key, label in horizons %}<a href="?h={{ key }}{% if everyone %}&scope=all{% endif %}" class="{% if horizon == key %}on{% endif %}">{{ label }}</a>{% endfor %}</div>
 <div class="row g-4">
-<div class="{% if calendar_configured %}col-lg-8{% else %}col-12{% endif %}">
+<div class="{% if calendar_configured %}{% if calendar_mode == 'month' %}col-lg-5{% else %}col-lg-8{% endif %}{% else %}col-12{% endif %}">
 <div class="ws-head">
 <h2 class="page-title mb-0">{{ heading }}</h2>
 <span class="meta">{% if can_everyone %}<a href="?h={{ horizon }}" class="{% if not everyone %}on{% endif %}">Mine</a><a href="?h={{ horizon }}&scope=all" class="{% if everyone %}on{% endif %}">Everyone</a>{% endif %}<span class="ms-3">{{ data.count }} to do</span></span>
@@ -23,15 +23,14 @@
 {% endfor %}
 </div>
 {% if calendar_configured %}
-<div class="col-lg-4 ws-cal-col">
-<div class="card ws-calendar" style="border-radius: var(--bs-border-radius-lg);"><div class="card-body">
-<h6 class="mb-3 d-flex align-items-center gap-2"><i data-lucide="calendar-days" class="icon"></i> Your calendar</h6>
+<div class="{% if calendar_mode == 'month' %}col-lg-7{% else %}col-lg-4{% endif %} ws-cal-col">
+{# The calendar card: square like the rows, a hairline border, and it grows to fit what is in it (no sticky, no inner scroll). #}
+<div class="ws-calendar" style="border: 1px solid var(--border-hairline); border-radius: 6px; background: var(--surface-card);">
 {% include 'tickets/_dashboard_calendar.html' %}
-</div></div>
+</div>
 </div>
 {% endif %}
 </div>
 {% if calendar_configured %}{% include 'workspace/_mobile_agenda.html' %}{% endif %}
 </div>
-<style>@media (min-width: 992px) { .ws-calendar { position: sticky; top: 0.75rem; max-height: calc(100vh - 1.5rem); overflow-y: auto; } }</style>
 {% endblock %}

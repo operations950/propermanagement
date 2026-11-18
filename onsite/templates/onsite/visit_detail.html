@@ -10,7 +10,7 @@
 
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
-        <h2 class="page-title mb-1">{{ visit.property.name }}{% if visit.unit %} — {{ visit.unit.label }}{% endif %} — {{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.55em; vertical-align: middle;">+ Deep clean</span>{% endif %}{% if visit.no_checklist %} <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.55em; vertical-align: middle;">No checklist</span>{% endif %}{% if visit.is_same_day_checkin %} <span class="badge rounded-pill" style="font-size: 0.55em; vertical-align: middle; background: color-mix(in srgb, var(--priority-urgent) 15%, white); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, white);" title="Next guest checks in the same day"><i data-lucide="log-in" class="icon"></i> Same-day check-in</span>{% elif visit.vacancy_days %} <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.55em; vertical-align: middle;" title="Days until the next guest checks in"><i data-lucide="calendar-x" class="icon"></i> {{ visit.vacancy_days }}{% if visit.vacancy_days == 30 %}+{% endif %} day{{ visit.vacancy_days|pluralize }} vacant</span>{% endif %}</h2>
+        <h2 class="page-title mb-1">{{ visit.property.name }}{% if visit.unit %} — {{ visit.unit.label }}{% endif %} — {{ visit.visit_type }}{% if visit.is_deep_clean %} <span class="badge rounded-pill bg-info-subtle text-info-emphasis border" style="font-size: 0.55em; vertical-align: middle;">+ Deep clean</span>{% endif %}{% if visit.no_checklist %} <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.55em; vertical-align: middle;">No checklist</span>{% endif %}{% if visit.is_same_day_checkin %} <span class="badge rounded-pill" style="font-size: 0.55em; vertical-align: middle; background: color-mix(in srgb, var(--priority-urgent) 15%, var(--surface-card)); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, var(--surface-card));" title="Next guest checks in the same day"><i data-lucide="log-in" class="icon"></i> Same-day check-in</span>{% elif visit.vacancy_days %} <span class="badge rounded-pill bg-light text-muted border" style="font-size: 0.55em; vertical-align: middle;" title="Days until the next guest checks in"><i data-lucide="calendar-x" class="icon"></i> {{ visit.vacancy_days }}{% if visit.vacancy_days == 30 %}+{% endif %} day{{ visit.vacancy_days|pluralize }} vacant</span>{% endif %}</h2>
         <p class="text-muted mb-0">
             {% if visit.scheduled_date %}{{ visit.scheduled_date|date:"l, M j" }}{% else %}No date set{% endif %}
             {% if visit.ready_by %} · Ready by {{ visit.ready_by|date:"M j, g:i A" }}{% endif %}
@@ -33,17 +33,17 @@
 </div>
 
 {% if visit.booking.listing_name %}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--brand-primary, #0d6efd) 35%, white); background: color-mix(in srgb, var(--brand-primary, #0d6efd) 6%, white);">
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--brand-primary, #0d6efd) 35%, var(--surface-card)); background: color-mix(in srgb, var(--brand-primary, #0d6efd) 6%, var(--surface-card));">
     <div class="card-body py-2 d-flex align-items-center gap-2">
-        <i data-lucide="door-open" class="icon" style="color: var(--brand-primary, #0d6efd);"></i>
+        <i data-lucide="door-open" class="icon" style="color: var(--brand-primary, var(--t-0d6efd, #0d6efd));"></i>
         <div>
-            <div class="small text-uppercase fw-bold" style="letter-spacing: 0.04em; color: var(--brand-primary, #0d6efd);">{{ visit.booking.get_source_display }} listing</div>
+            <div class="small text-uppercase fw-bold" style="letter-spacing: 0.04em; color: var(--brand-primary, var(--t-0d6efd, #0d6efd));">{{ visit.booking.get_source_display }} listing</div>
             <div class="fw-medium">{{ visit.booking.listing_name }}</div>
         </div>
     </div>
 </div>
 {% elif visit.property.listing_names.exists %}
-<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-warning) 35%, white);">
+<div class="card mb-3" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-warning) 35%, var(--surface-card));">
     <div class="card-body py-2 d-flex align-items-center gap-2">
         <i data-lucide="alert-triangle" class="icon" style="color: var(--status-warning);"></i>
         <div class="small">This property has {{ visit.property.listing_names.count }} known listing name{{ visit.property.listing_names.count|pluralize }} (multiple units share this address) but this visit isn't tied to a specific one — double-check which unit before heading out.</div>
@@ -415,7 +415,7 @@
     </div>
 </div>
 
-<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-critical) 35%, white);">
+<div class="card mb-4" style="border-radius: var(--bs-border-radius-lg); border-color: color-mix(in srgb, var(--status-critical) 35%, var(--surface-card));">
     <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h6 class="mb-1" style="color: var(--status-critical);">Delete this visit</h6>

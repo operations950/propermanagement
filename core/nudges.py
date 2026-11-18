@@ -45,7 +45,9 @@ def _close_items(today):
     from . import ledger
     month = ledger.previous_month(today)
     open_count = mapped = 0
-    for prop in ledger.rentals():
+    props = ledger.rentals()
+    ledger.preload_closes(props)
+    for prop in props:
         if qb_accounts.status(prop) != 'mapped':
             continue
         mapped += 1

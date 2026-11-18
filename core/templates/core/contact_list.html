@@ -1,95 +1,39 @@
 {% extends 'base.html' %}
-{% load alerts %}
 {% load static %}
 {% block title %}Contacts{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}"><script src="{% static 'js/quo-links.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/newspaper.css' %}"><link rel="stylesheet" href="{% static 'css/contacts.css' %}"><script src="{% static 'js/quo-links.js' %}" defer></script>{% endblock %}
 {% block content %}
-<div class="ml-scope">
-{# what needs attention (alerts, contacts to review, possible duplicates, import) is back-office work: on a phone it is left out #}
-<div class="d-none d-md-block">{% page_alerts 'contacts' %}</div>
-<div class="ml-title-row ml-title-one d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
-    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="contact" class="icon-lg"></i> Contacts</h2>
-    <div class="ml-title-actions d-flex flex-wrap gap-2">
-        {% if pending_review_count %}
-        <a href="{% url 'contact_review' %}" class="btn btn-outline-warning d-none d-md-flex align-items-center gap-1">
-            <i data-lucide="circle-alert" class="icon"></i> {{ pending_review_count }} to review
-        </a>
-        {% endif %}
-        {% if duplicate_group_count %}
-        <a href="{% url 'contact_duplicates' %}" class="btn btn-outline-danger d-none d-md-flex align-items-center gap-1">
-            <i data-lucide="copy" class="icon"></i> {{ duplicate_group_count }} possible duplicate{{ duplicate_group_count|pluralize }}
-        </a>
-        {% endif %}
-        <button type="button" class="btn btn-outline-secondary d-none d-md-inline-block" data-bs-toggle="modal" data-bs-target="#importContactsModal">
-            <i data-lucide="upload" class="icon"></i> Import contacts
-        </button>
-        <a href="{% url 'contact_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New contact</a>
+{# The newspaper header (icon, title, one line of words, Alerts, Import, New contact), the Alerts panel (closed until pressed), ONE control row (search and the type pills), then the boxes. #}
+{% include 'core/_np_header.html' %}
+<div class="cl-panel" id="cl-alerts-panel" hidden>
+    {% for n in alerts %}
+    <div class="cl-alert cl-{{ n.level }}">
+        <div style="min-width: 0;">
+            <div class="fw-medium d-flex align-items-center gap-2"><i data-lucide="{{ n.icon }}" class="icon"></i> {{ n.text }}</div>
+            {% if n.detail %}<div class="small" style="color: var(--ink-muted);">{{ n.detail }}</div>{% endif %}
+        </div>
+        <a href="{{ n.url }}" class="btn btn-outline-secondary btn-sm flex-shrink-0">Open <i data-lucide="arrow-right" class="icon"></i></a>
     </div>
-</div>
-
-<div class="ml-search-form row g-2 mb-3 align-items-center">
-    <div class="col-auto position-relative">
-        <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
-        <input type="text" id="contact-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);"
-               placeholder="Search name, phone, email, or trade…" value="{{ q }}" autocomplete="off">
-    </div>
-</div>
-
-<div class="ml-chips d-flex flex-wrap gap-2 mb-3">
-    <a href="?{% if q %}q={{ q|urlencode }}{% endif %}" class="bubble{% if not selected_type %} bubble-locked{% endif %}">All types</a>
-    {% for value, label in type_choices %}
-        <a href="?type={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="bubble{% if value == 'guest' or value == 'lead' or value == 'association_member' or value == 'on_site_staff' %} ml-chip-minor{% endif %}{% if value == selected_type %} bubble-locked{% endif %}">{{ label }}</a>
+    {% empty %}
+    <div class="cl-alert small text-muted"><span><i data-lucide="check" class="icon"></i> Nothing about the contacts needs attention.</span></div>
     {% endfor %}
 </div>
 
-<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
-<div class="table-responsive">
-<table class="table bg-white align-middle mb-0">
-    <thead><tr><th>Name</th><th>Type</th><th>Phone</th><th>Email</th><th>Property</th><th></th></tr></thead>
-    <tbody id="contact-table-body">
-    {% include 'core/_contact_table_rows.html' %}
-    </tbody>
-</table>
-</div>
-</div>
-
-<div class="d-md-none" id="contact-mobile-cards">
-{% include 'core/_contact_mobile_cards.html' %}
-</div>
+<form method="get" class="np-controls cl-controls" role="search" data-np-controls>
+    {% if selected_type %}<input type="hidden" name="type" value="{{ selected_type }}">{% endif %}
+    <div class="np-search">
+        <i data-lucide="search" class="icon"></i>
+        <input type="search" name="q" id="contact-search-input" class="form-control form-control-sm" placeholder="Search name, phone, email or type&hellip;" value="{{ q }}" autocomplete="off" aria-label="Search contacts" data-np-search data-np-map='{"paper": "contact-paper", "note": "contact-note"}'>
+    </div>
+    <nav class="cl-pills" aria-label="Type">{% for p in pills %}<a href="{{ p.url }}" class="cl-pill{% if p.on %} on{% endif %}"{% if p.on %} aria-current="true"{% endif %}>{{ p.label }}<small>{{ p.n }}</small></a>{% endfor %}</nav>
+</form>
+<p class="np-note" id="contact-note">{{ note }}</p>
+<div id="contact-paper">{% include 'core/_np_paper.html' %}</div>
+<script src="{% static 'js/newspaper.js' %}"></script>
 <script>
 (function () {
-    var input = document.getElementById('contact-search-input');
-    var tbody = document.getElementById('contact-table-body');
-    var mobileCards = document.getElementById('contact-mobile-cards');
-    var selectedType = '{{ selected_type|escapejs }}';
-    var timer = null;
-
-    function runSearch() {
-        var params = new URLSearchParams();
-        if (input.value) params.set('q', input.value);
-        if (selectedType) params.set('type', selectedType);
-        fetch('{% url "contact_list" %}?' + params.toString(), {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('bad response');
-                return resp.json();
-            })
-            .then(function (data) {
-                tbody.innerHTML = data.desktop;
-                mobileCards.innerHTML = data.mobile;
-                if (window.lucide) lucide.createIcons();
-                history.replaceState(null, '', '?' + params.toString());
-            })
-            .catch(function () {
-                console.error('Contact search failed');
-            });
-    }
-
-    input.addEventListener('input', function () {
-        clearTimeout(timer);
-        timer = setTimeout(runSearch, 250);
-    });
+    var btn = document.getElementById('cl-alerts-btn'), panel = document.getElementById('cl-alerts-panel');
+    if (btn && panel) btn.addEventListener('click', function () { var open = panel.hidden; panel.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); });
 })();
 </script>
 

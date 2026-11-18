@@ -6,10 +6,10 @@
 <style>
     .mini-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; color: var(--ink-secondary); margin-bottom: 6px; }
     .mini-chart-legend i, .mini-chart-tip i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
-    .mini-chart-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--surface-card); border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); padding: 6px 10px; font-size: 0.8rem; white-space: nowrap; }
+    .mini-chart-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--surface-card); border: 1px solid var(--bs-border-color, var(--l-dee2e6, #dee2e6)); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); padding: 6px 10px; font-size: 0.8rem; white-space: nowrap; }
     .mini-chart-tip-title { font-weight: 600; margin-bottom: 2px; }
-    .mini-chart-total { border-top: 1px solid var(--bs-border-color, #dee2e6); margin-top: 3px; padding-top: 3px; }
-    .kpi { background: var(--bs-light, #f8f9fa); border-radius: 10px; padding: 12px 14px; height: 100%; }
+    .mini-chart-total { border-top: 1px solid var(--bs-border-color, var(--l-dee2e6, #dee2e6)); margin-top: 3px; padding-top: 3px; }
+    .kpi { background: var(--bs-light, var(--b-f8f9fa, #f8f9fa)); border-radius: 10px; padding: 12px 14px; height: 100%; }
     .kpi .lbl { font-size: 0.78rem; color: var(--ink-muted); }
     .kpi .val { font-size: 1.5rem; font-weight: 600; line-height: 1.2; }
     .kpi .sub { font-size: 0.75rem; color: var(--ink-muted); }
@@ -19,11 +19,11 @@
     .kpi-card .spark { margin: 6px 0 4px; }
     .kpi-card .sub { font-size: 0.72rem; color: var(--ink-muted); }
     .delta { font-size: 0.72rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
-    .delta-good { background: #e3f4e3; color: #0b6a0b; }
-    .delta-bad { background: #fbe4e4; color: #a02020; }
+    .delta-good { background: #e3f4e3; color: var(--t-0b6a0b, #0b6a0b); }
+    .delta-bad { background: var(--b-fbe4e4, #fbe4e4); color: var(--t-a02020, #a02020); }
     .delta-flat { background: #eceef1; color: #5b5f66; }
     .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-    .partial-data { color: #9a6a00; font-weight: 600; }
+    .partial-data { color: var(--t-9a6a00, #9a6a00); font-weight: 600; }
 </style>
 {% up_link css="mb-2" %}
 
@@ -102,15 +102,15 @@
                     <div style="width: 58px; flex: 0 0 58px;">{% ring w.occupancy 58 'Booked' %}</div>
                 </div>
                 <div class="spark">{% stackbar w.booked w.gap_nights w.open_nights %}</div>
-                <div class="sub">{{ w.booked }} of {{ w.available }} nights booked{% if w.gaps %} · <span style="color: #9a6a00; font-weight: 600;">{{ w.gaps }} gap{{ w.gaps|pluralize }} to fill</span>{% endif %} · <span style="color: var(--brand-primary);">see calendar</span></div>
+                <div class="sub">{{ w.booked }} of {{ w.available }} nights booked{% if w.gaps %} · <span style="color: var(--t-9a6a00, #9a6a00); font-weight: 600;">{{ w.gaps }} gap{{ w.gaps|pluralize }} to fill</span>{% endif %} · <span style="color: var(--brand-primary);">see calendar</span></div>
             </div>
         </a></div>
         {% endfor %}
     </div>
     <div class="d-flex flex-wrap gap-3 small text-muted mb-2">
         <span><i class="legend-dot" style="background: #3d6178;"></i>booked</span>
-        <span><i class="legend-dot" style="background: repeating-linear-gradient(45deg, #fab219 0 2px, #fde9b3 2px 4px);"></i>empty between two stays — fill these</span>
-        <span><i class="legend-dot" style="background: #e3e7ec;"></i>open</span>
+        <span><i class="legend-dot" style="background: repeating-linear-gradient(45deg, #fab219 0 2px, var(--b-fde9b3, #fde9b3) 2px 4px);"></i>empty between two stays — fill these</span>
+        <span><i class="legend-dot" style="background: var(--b-e3e7ec, #e3e7ec);"></i>open</span>
     </div>
     {% for strip in data.strips %}
     <div class="mb-2">
@@ -124,7 +124,7 @@
     <div class="border-top py-2 small">
         <div class="d-flex justify-content-between gap-2 flex-wrap">
             <span>{{ g.label }}</span>
-            <span>{{ g.start|date:"D M j" }} → {{ g.end|date:"D M j" }} · <strong>{{ g.length }} night{{ g.length|pluralize }}</strong>{% if g.short %} <span style="color: #9a6a00;">· hard to fill</span>{% endif %}</span>
+            <span>{{ g.start|date:"D M j" }} → {{ g.end|date:"D M j" }} · <strong>{{ g.length }} night{{ g.length|pluralize }}</strong>{% if g.short %} <span style="color: var(--t-9a6a00, #9a6a00);">· hard to fill</span>{% endif %}</span>
         </div>
         <div class="mt-1">{% gap_track g data.as_of %}</div>
     </div>

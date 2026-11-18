@@ -301,3 +301,5 @@ def email_document(doc, to, subject, message):
         raise FormError('The email could not be sent. Nothing was recorded; try again.')
     doc.emailed_to, doc.emailed_at = to, timezone.now()
     doc.save(update_fields=['emailed_to', 'emailed_at'])
+    from core import contact_activity
+    contact_activity.touch_by_email(to)           # the contact with that address was just dealt with

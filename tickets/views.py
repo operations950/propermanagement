@@ -1,3 +1,4 @@
+import json
 import logging
 import zlib
 from datetime import date, datetime, timedelta
@@ -18,7 +19,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.dateparse import parse_date, parse_datetime
 
 from core.google_calendar import get_upcoming_events, is_configured as calendar_is_configured
-from core import nav, nudges
+from core import nav, newspaper, nudges
 from core.json_utils import dumps_for_script
 from core.people import active_staff
 from core.models import (
@@ -35,6 +36,7 @@ from .models import (
     TicketAssignmentLog, TicketAttachment, TicketClosingNote, TicketContact, TicketStatusNote,
     TicketPush, TicketView,
 )
+from .boxes import ticket_boxes
 from .services import owner_dashboard as owner_dashboard_queries
 from .services.process_gate import incomplete_process_instances, process_gate_error_message
 
@@ -280,16 +282,10 @@ def _layout_timeline(timed_events):
     return timed_events, hours, (range_end - range_start) * TIMELINE_PX_PER_HOUR, now_top_pct
 
 
-def _format_calendar_events(events, days_ahead=2):
-    """Google Calendar API event dicts -> one box per day (today plus
-    `days_ahead` more), each split into all-day events (shown first,
-    every day) and timed events. Today additionally gets a Google-
-    Calendar-day-view-style hour timeline (see _layout_timeline); the
-    other days are just a simple chronological list — see
-    _dashboard_calendar.html."""
-    today = timezone.localdate()
+def _events_by_day(events, days):
+    """Google Calendar API event dicts -> {day: {'all_day': [...], 'timed': [...]}} for exactly the `days` asked for (an all-day event that spans several days is on each of them; a
+    timed event is on the day it starts, in the person's time zone). The day boxes and the month grid on Home both read from this."""
     now = timezone.now()
-    days = [today + timedelta(days=i) for i in range(days_ahead + 1)]
     by_day = {d: {'all_day': [], 'timed': []} for d in days}
 
     for e in events:
@@ -331,7 +327,19 @@ def _format_calendar_events(events, days_ahead=2):
             'event_id': e.get('id', ''), 'calendar_id': e.get('_calendar_id', ''),
             'date': start_dt.date(), 'start_time': start_dt.strftime('%H:%M'), 'end_time': end_dt.strftime('%H:%M'),
         })
+    return by_day
 
+
+def _format_calendar_events(events, days_ahead=2):
+    """Google Calendar API event dicts -> one box per day (today plus
+    `days_ahead` more), each split into all-day events (shown first,
+    every day) and timed events. Today additionally gets a Google-
+    Calendar-day-view-style hour timeline (see _layout_timeline); the
+    other days are just a simple chronological list — see
+    _dashboard_calendar.html."""
+    today = timezone.localdate()
+    days = [today + timedelta(days=i) for i in range(days_ahead + 1)]
+    by_day = _events_by_day(events, days)
     day_boxes = []
     for i, d in enumerate(days):
         timed = sorted(by_day[d]['timed'], key=lambda t: t['start'])
@@ -351,6 +359,42 @@ def _format_calendar_events(events, days_ahead=2):
             'now_top_pct': now_top_pct,
         })
     return day_boxes
+
+
+MONTH_CHIPS = 2          # events written out in a day cell of the month grid; the rest are "+N more"
+
+
+def month_bounds(month_first):
+    """(first, last) day of the grid for the month beginning `month_first`: weeks run Sunday to Saturday, so it starts on the Sunday on or before the 1st and ends on the Saturday on or
+    after the last day."""
+    last = (month_first.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    first = month_first - timedelta(days=(month_first.weekday() + 1) % 7)
+    end = last + timedelta(days=(5 - last.weekday()) % 7)
+    return first, end
+
+
+def _short_time(label):
+    return label.replace(' AM', 'a').replace(' PM', 'p')
+
+
+def _month_grid(events, month_first, today=None):
+    """The month grid on Home: {'label', 'weeks': [[cell x 7]]}. A cell is {'date', 'iso', 'num', 'label', 'in_month', 'is_today', 'events' (every event that day, all-day ones first, then by start time),
+    'shown' (the first MONTH_CHIPS of them), 'extra' (how many more), 'total'}; an event carries what the edit form needs (id, calendar, date, times). Days of the months on either side are
+    in the grid too (they are faded on the page)."""
+    today = today or timezone.localdate()
+    first, last = month_bounds(month_first)
+    days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
+    by_day = _events_by_day(events, days)
+    cells = []
+    for d in days:
+        items = []
+        for a in by_day[d]['all_day']:
+            items.append({**a, 'time': '', 'start_time': '', 'end_time': '', 'past': False})
+        for t in sorted(by_day[d]['timed'], key=lambda t: t['start']):
+            items.append({**t, 'time': _short_time(t['start_label'])})
+        cells.append({'date': d, 'iso': d.isoformat(), 'num': d.day, 'label': f'{d:%A, %B} {d.day}', 'in_month': d.month == month_first.month, 'is_today': d == today,
+                      'events': items, 'shown': items[:MONTH_CHIPS], 'extra': max(0, len(items) - MONTH_CHIPS), 'total': len(items)})
+    return {'label': f'{month_first:%B %Y}', 'first': month_first, 'weeks': [cells[i:i + 7] for i in range(0, len(cells), 7)]}
 
 
 def _tickets_with_new_activity(tickets, user):
@@ -738,6 +782,7 @@ DUE_OPTIONS = [('overdue', 'Overdue'), ('today', 'Today'), ('tomorrow', 'Tomorro
 
 
 TICKETS_PER_PAGE = 50     # each row carries its own edit form (twice, for table and phone cards): fifty a page keeps the page light
+TICKETS_PER_PAGE_BOXES = 400     # the newspaper boxes show every open ticket at once (they are cut by date, not by page): a page is only a safety cap
 
 
 LIST_QS_KEY = 'ticket_list_qs'
@@ -941,10 +986,35 @@ def ticket_list(request):
         qs = qs.annotate(push_n=Coalesce(Subquery(
             TicketPush.objects.filter(ticket=OuterRef('pk')).order_by().values('ticket').annotate(c=Count('pk')).values('c')[:1]), 0))
     qs = qs.order_by(*_ticket_sort_order(request.GET.get('sort', '')))
-    page_obj = Paginator(qs, TICKETS_PER_PAGE).get_page(request.GET.get('page'))
+    page_obj = Paginator(qs, TICKETS_PER_PAGE_BOXES).get_page(request.GET.get('page'))
+    page_tickets = list(page_obj.object_list)
+    boxes = ticket_boxes(page_tickets, today, done_statuses=COMPLETE_STATUSES, keep_order=bool(request.GET.get('sort')))
+    columns = newspaper.deal(boxes)
+    # the header, tabs and control row every newspaper screen shares (core/_np_*.html)
+    title = 'Earlier recurring tasks' if source == 'recurring' else 'Completed & cancelled' if status == 'complete' else 'Tickets'
+    sort_now = request.GET.get('sort', '')
+    np = {
+        'np_icon': 'ticket', 'np_title': title,
+        'np_suffix': ('\u2014 no department assigned' if role == 'none' else f'\u2014 {dict(StaffProfile.Role.choices).get(role, "")}') if role else '',
+        'np_desc': 'One-off requests, grouped by when they are due.',
+        'np_tip': (f'Tickets are one-off requests. Due within {WS_NOW_DAYS} days is Now; anything further out waits in Later and moves into Now by itself. Anything that repeats or runs on a schedule is set up in '
+                   'Compliance. A ticket you turn into a project moves to Projects; one with just a process attached stays here.') if status == 'active' and source != 'recurring' else '',
+        'np_buttons': [] if source == 'recurring' else [{'url': reverse('ticket_create'), 'label': 'New ticket', 'icon': 'plus', 'primary': True}],
+        'np_tabs': [{'label': label, 'url': _phone_link(request, {'horizon': value}, drop=('due', 'due_on')), 'on': ws_horizon == value} for label, value in (('Now', 'now'), ('Later', 'later'))]
+                   if profile and profile.new_face and status == 'active' and source != 'recurring' else [],
+        'np_search_id': 'ticket-search-input', 'np_search_placeholder': 'Search title or property\u2026', 'np_q': q,
+        'np_search_map': json.dumps({'desktop': 'ticket-table', 'mobile': 'ticket-mobile-cards', 'pager': 'ticket-pager'}),
+        'np_hidden': [(k, v) for k, values in request.GET.lists() if k not in ('q', 'page') for v in values],
+        'np_filters_id': 'np-filters',
+        'np_filter_count': sum([bool(role), bool(property_id), bool(due), bool(assigned_staff_id), bool(assigned_contact_id), status != 'active', bool(priority)]),
+        'np_sort_options': [{'value': '', 'label': 'Urgent, then due date'}] + [{'value': key, 'label': label} for key, _, label in TICKET_SORT_FIELDS]
+                           + [{'value': f'-{key}', 'label': f'{label}, reversed'} for key, _, label in TICKET_SORT_FIELDS],
+        'np_sort': sort_now,
+        'np_clear_url': _phone_link(request, drop=('role', 'property', 'due', 'due_on', 'assigned_staff', 'assigned_contact', 'priority', 'status')) if (role or property_id or due or assigned_staff_id or assigned_contact_id or priority or status != 'active') else '',
+    }
 
     context = {
-        'tickets': page_obj.object_list, 'page_obj': page_obj,
+        'tickets': page_tickets, 'page_obj': page_obj, 'boxes': boxes, 'columns': columns, 'row_template': 'tickets/_np_ticket_row.html', 'empty_text': 'No tickets.', **np,
         'now': timezone.now(),
         'status_choices': Ticket.selectable_statuses(),
         'complete_statuses': [s.value for s in COMPLETE_STATUSES],
@@ -989,7 +1059,7 @@ def ticket_list(request):
         # one, since ticket_list keeps its own responsive split rather
         # than sharing one queryset-to-markup path.
         return JsonResponse({
-            'desktop': render_to_string('tickets/_ticket_table_rows.html', context, request=request),
+            'desktop': render_to_string('core/_np_paper.html', context, request=request),
             'mobile': render_to_string('tickets/_ticket_mobile_cards.html', context, request=request),
             'pager': render_to_string('core/_pager.html', context, request=request),
         })

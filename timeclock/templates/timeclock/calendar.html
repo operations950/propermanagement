@@ -8,10 +8,10 @@
     .tc-cell { border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius); min-height: 5.6rem; padding: 0.25rem 0.3rem; background: var(--surface-card); font-size: 0.78rem; }
     .tc-cell.out { opacity: 0.45; }
     .tc-cell.today { border: 2px solid var(--brand-slate); }
-    .tc-cell.closed { background: color-mix(in srgb, var(--status-warning) 16%, white); }
+    .tc-cell.closed { background: color-mix(in srgb, var(--status-warning) 16%, var(--surface-card)); }
     .tc-cell .n { font-weight: 700; font-size: 0.82rem; }
-    .tc-chip { display: block; border-radius: 6px; padding: 1px 5px; margin-top: 3px; background: color-mix(in srgb, var(--brand-primary) 24%, white); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .tc-chip.vacation { background: color-mix(in srgb, var(--accent-contrast) 22%, white); white-space: normal; }
+    .tc-chip { display: block; border-radius: 6px; padding: 1px 5px; margin-top: 3px; background: color-mix(in srgb, var(--brand-primary) 24%, var(--surface-card)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tc-chip.vacation { background: color-mix(in srgb, var(--accent-contrast) 22%, var(--surface-card)); white-space: normal; }
     .tc-chip.pending { background: transparent; border: 1px dashed var(--ink-muted); color: var(--ink-secondary); }
     .tc-hol { color: var(--ink-secondary); font-size: 0.72rem; margin-top: 2px; }
     .tc-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--ink-secondary); }
@@ -42,9 +42,9 @@
         {% endfor %}{% endfor %}
     </div>
     <div class="tc-legend mt-3">
-        <span><i style="background: color-mix(in srgb, var(--brand-primary) 40%, white);"></i>Working</span>
-        <span><i style="background: color-mix(in srgb, var(--accent-contrast) 40%, white);"></i>Vacation</span>
-        <span><i style="background: color-mix(in srgb, var(--status-warning) 30%, white);"></i>Office closed</span>
+        <span><i style="background: color-mix(in srgb, var(--brand-primary) 40%, var(--surface-card));"></i>Working</span>
+        <span><i style="background: color-mix(in srgb, var(--accent-contrast) 40%, var(--surface-card));"></i>Vacation</span>
+        <span><i style="background: color-mix(in srgb, var(--status-warning) 30%, var(--surface-card));"></i>Office closed</span>
         {% if manager %}<span><i style="border: 1px dashed var(--ink-muted);"></i>Asked, not decided</span>{% endif %}
     </div>
 </div></div>

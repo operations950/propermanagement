@@ -12,6 +12,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from core import memo as request_memo
 from core.models import Contact
 
 from . import ledger
@@ -319,9 +320,15 @@ def settled_outside(rec, month_first):
     for b in Bill.objects.filter(vendor=rec.vendor, recurring__isnull=True, date__gte=first, date__lt=nxt).exclude(status=Bill.Status.VOID):
         if amount_fits(rec, b.amount):
             return True
-    fixed_siblings = list(RecurringBill.objects.filter(association=rec.association, is_active=True, amount__isnull=False).exclude(pk=rec.pk).select_related('vendor'))
-    lines = BankLine.objects.filter(statement__bank_account__association=rec.association, date__gte=first, date__lt=nxt, amount__lt=0,
-                                    match__ledger_items__line__entry__source=JournalEntry.Source.BANK).distinct()
+    if request_memo.active():
+        # While a page is being built (a GET: core/memo.py) the fixed recurring bills of the association and the month's statement lines it put in the books are read once for all of its recurring bills.
+        fixed_siblings = [o for o in request_memo.get(('recurring.fixed', rec.association_id), lambda: list(RecurringBill.objects.filter(association_id=rec.association_id, is_active=True, amount__isnull=False).select_related('vendor'))) if o.pk != rec.pk]
+        lines = request_memo.get(('recurring.lines', rec.association_id, first), lambda: list(BankLine.objects.filter(statement__bank_account__association_id=rec.association_id, date__gte=first, date__lt=nxt, amount__lt=0,
+                                                                                                                     match__ledger_items__line__entry__source=JournalEntry.Source.BANK).distinct()))
+    else:
+        fixed_siblings = list(RecurringBill.objects.filter(association=rec.association, is_active=True, amount__isnull=False).exclude(pk=rec.pk).select_related('vendor'))
+        lines = BankLine.objects.filter(statement__bank_account__association=rec.association, date__gte=first, date__lt=nxt, amount__lt=0,
+                                        match__ledger_items__line__entry__source=JournalEntry.Source.BANK).distinct()
     for line in lines:
         amount = -line.amount
         if not (_words_fit(rec, line.description) and amount_fits(rec, amount)):
@@ -378,8 +385,10 @@ def recurring_status(association, month_first):
     rows = []
     nxt = ledger.next_month(month_first)
     skipped_ids = set(RecurringBillSkip.objects.filter(recurring__association=association, month=month_first).values_list('recurring_id', flat=True))
+    billed_ids = set(Bill.objects.filter(recurring__association=association, date__gte=month_first, date__lt=nxt).exclude(status=Bill.Status.VOID).values_list('recurring_id', flat=True))      # one read, not one per recurring bill
     for rec in RecurringBill.objects.filter(association=association, is_active=True).select_related('vendor'):
-        posted = Bill.objects.filter(recurring=rec, date__gte=month_first, date__lt=nxt).exclude(status=Bill.Status.VOID).exists() or settled_outside(rec, month_first)
+        rec.association = association           # already in hand: settled_outside asks for it
+        posted = rec.pk in billed_ids or settled_outside(rec, month_first)
         skipped = rec.pk in skipped_ids and not posted
         due_this_month = rec.next_date < nxt or posted or skipped
         rows.append({'rec': rec, 'posted': posted, 'skipped': skipped, 'due': due_this_month, 'fixed': rec.is_fixed})

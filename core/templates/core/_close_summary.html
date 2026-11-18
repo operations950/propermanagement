@@ -10,7 +10,7 @@
     .cl-calc th, .cl-calc td { width: 20%; }
     .cl-settle { table-layout: fixed; width: 100%; max-width: 620px; }
     .cl-settle th:first-child, .cl-settle td:first-child { width: 28%; text-align: left; }
-    .cl-settle tr.diff td { border-top: 2px solid var(--border-hairline, #ccd); }
+    .cl-settle tr.diff td { border-top: 2px solid var(--border-hairline, var(--l-ccd, #ccd)); }
 </style>
 {% if totals.owner_collects %}
 <div class="table-responsive mb-2"><table class="table table-sm table-bordered text-center mb-0 cl-sum cl-calc">
@@ -45,15 +45,15 @@
             <tr><td>Paid in {{ month|date:"F" }}</td><td>{{ totals.reimbursement_trust|money }}</td><td>{{ totals.commission|money }}</td><td>{{ totals.owner_payment|money }}</td></tr>
             {% if property.owner_paid_in == 'same_month' and totals|same_month_settle %}{% with sm=totals|same_month_settle %}
             <tr class="diff"><td>Difference</td>
-                <td>{% if sm.diff.reimb == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ sm.diff.reimb|money }}</span>{% endif %}</td>
-                <td>{% if sm.diff.comm == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ sm.diff.comm|money }}</span>{% endif %}</td>
-                <td>{% if sm.diff.owner is None %}–{% elif sm.diff.owner == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ sm.diff.owner|money }}</span>{% endif %}</td></tr>
+                <td>{% if sm.diff.reimb == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">{{ sm.diff.reimb|money }}</span>{% endif %}</td>
+                <td>{% if sm.diff.comm == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">{{ sm.diff.comm|money }}</span>{% endif %}</td>
+                <td>{% if sm.diff.owner is None %}–{% elif sm.diff.owner == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">{{ sm.diff.owner|money }}</span>{% endif %}</td></tr>
             {% endwith %}
             {% elif totals.prior_status == 'ok' %}
             <tr class="diff"><td>Difference</td>
-                <td>{% if totals.reimbursement_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.reimbursement_diff|money }}</span>{% endif %}</td>
-                <td>{% if totals.commission_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.commission_diff|money }}</span>{% endif %}</td>
-                <td>{% if totals.owner_diff is None %}–{% elif totals.owner_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: #9a6a00;">{{ totals.owner_diff|money }}</span>{% endif %}</td></tr>
+                <td>{% if totals.reimbursement_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">{{ totals.reimbursement_diff|money }}</span>{% endif %}</td>
+                <td>{% if totals.commission_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">{{ totals.commission_diff|money }}</span>{% endif %}</td>
+                <td>{% if totals.owner_diff is None %}–{% elif totals.owner_diff == 0 %}<span style="color: var(--status-good);">✓ 0.00</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">{{ totals.owner_diff|money }}</span>{% endif %}</td></tr>
             {% endif %}
         </tbody>
     </table>

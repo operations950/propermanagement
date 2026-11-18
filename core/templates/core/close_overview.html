@@ -5,16 +5,16 @@
 {% include 'core/_phone_review.html' %}
 <style>
     .cl-ov { font-size: 0.84rem; }
-    .cl-ov thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); background: var(--surface-card, #fff); }
+    .cl-ov thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); white-space: nowrap; padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); background: var(--surface-card, var(--surface-card)); }
     .cl-ov td { padding: 4px 8px; vertical-align: middle; }
     .cl-ov td.num, .cl-ov th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .cl-ov tr.cl-group td { background: var(--bs-light, #f4f6f8); border-top: 2px solid var(--border-hairline); }
+    .cl-ov tr.cl-group td { background: var(--bs-light, var(--b-f4f6f8, #f4f6f8)); border-top: 2px solid var(--border-hairline); }
     .cl-ov tr.cl-unit td { background: #fbfcfd; }
-    .cl-ov th.ap, .cl-ov td.ap { background: color-mix(in srgb, var(--bs-light, #f4f6f8) 55%, white); }
+    .cl-ov th.ap, .cl-ov td.ap { background: color-mix(in srgb, var(--bs-light, #f4f6f8) 55%, var(--surface-card)); }
     .cl-ov th.cl-grp, .cl-ov tr.cl-grp th { border-bottom: 1px solid var(--border-hairline); padding-bottom: 2px; }
-    .cl-ov tfoot td { font-weight: 700; border-top: 2px solid var(--border-hairline); background: var(--bs-light, #f4f6f8); }
+    .cl-ov tfoot td { font-weight: 700; border-top: 2px solid var(--border-hairline); background: var(--bs-light, var(--b-f4f6f8, #f4f6f8)); }
     .cl-ov thead th { white-space: normal; vertical-align: bottom; }
-    .cl-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 10px; border-radius: 999px; background: var(--bs-light, #f1f3f5); font-size: 0.8rem; }
+    .cl-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 10px; border-radius: 999px; background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); font-size: 0.8rem; }
     .cl-stat strong { font-size: 0.95rem; }
 </style>
 {% up_link css="mb-1" %}
@@ -25,7 +25,7 @@
     </div>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
@@ -46,7 +46,7 @@
     {% if o.all_released %}
     <span style="color: var(--status-good);"><i data-lucide="check-circle" class="icon"></i> {{ month|date:"F Y" }} is released to owners{% if o.released_at %} ({{ o.released_at|date:"M j" }}{% if o.released_by %} by {{ o.released_by.get_full_name|default:o.released_by.username }}{% endif %}){% endif %}.</span>
     {% elif o.blockers %}
-    <span style="color: #9a6a00;">{{ o.ready }} of {{ o.open }} ready to release for {{ month|date:"F Y" }} {% include '_tip.html' with text=o.blocker_text %}</span>
+    <span style="color: var(--t-9a6a00, #9a6a00);">{{ o.ready }} of {{ o.open }} ready to release for {{ month|date:"F Y" }} {% include '_tip.html' with text=o.blocker_text %}</span>
     {% elif o.pending %}
     <form method="post" class="ms-auto d-flex gap-2 align-items-center" onsubmit="return confirm('Release {% if o.pending_months|length > 1 %}{{ o.pending_months.0|date:"F" }} through {{ o.pending_months|last|date:"F Y" }}{% else %}{{ month|date:"F Y" }}{% endif %} to owners now?\n\nThis emails {{ o.recipients|length }} owner address{{ o.recipients|length|pluralize:"es" }} right away:\n{% for e in o.recipients %}{{ e }}\n{% endfor %}\nAfter this, any change to a released month emails the owners it affects.');">
         {% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="release_owners">
@@ -54,7 +54,7 @@
         <button class="btn btn-primary btn-sm py-0"><i data-lucide="send" class="icon"></i> Release {% if o.pending_months|length > 1 %}{{ o.pending_months.0|date:"F" }} – {{ o.pending_months|last|date:"F Y" }}{% else %}{{ month|date:"F Y" }}{% endif %} to owners</button>
     </form>
     {% endif %}
-    {% if o.no_email %}<span style="color: #9a6a00;">No email on file for: {{ o.no_email|join:", " }}.</span>{% endif %}
+    {% if o.no_email %}<span style="color: var(--t-9a6a00, #9a6a00);">No email on file for: {{ o.no_email|join:", " }}.</span>{% endif %}
     <a href="{% url 'owner_portal_admin' %}" class="small ms-auto">Owner logins</a>
 </div></div>
 {% endif %}
@@ -62,9 +62,9 @@
 
 <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
     <span class="cl-stat"><strong>{{ counts.closed }}</strong> closed</span>
-    <span class="cl-stat" {% if counts.ready %}style="background: color-mix(in srgb, var(--status-good) 16%, white);"{% endif %}><strong>{{ counts.ready }}</strong> ready to close</span>
+    <span class="cl-stat" {% if counts.ready %}style="background: color-mix(in srgb, var(--status-good) 16%, var(--surface-card));"{% endif %}><strong>{{ counts.ready }}</strong> ready to close</span>
     <span class="cl-stat"><strong>{{ counts.open }}</strong> still being coded</span>
-    <span class="cl-stat" {% if counts.needs_accounts %}style="background: color-mix(in srgb, var(--status-warning) 20%, white);"{% endif %}><strong>{{ counts.needs_accounts }}</strong> need QuickBooks accounts</span>
+    <span class="cl-stat" {% if counts.needs_accounts %}style="background: color-mix(in srgb, var(--status-warning) 20%, var(--surface-card));"{% endif %}><strong>{{ counts.needs_accounts }}</strong> need QuickBooks accounts</span>
     <span class="ms-auto d-flex gap-2 align-items-center flex-wrap">
         <span class="small text-muted">{% if synced_at %}Synced {{ synced_at|timesince }} ago{% else %}Not synced yet{% endif %}</span>
         <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="sync">
@@ -96,7 +96,7 @@
     {% with c=g.consolidated %}
     <tr class="cl-group">
         <td><a href="{% url 'close_property' month|date:'Y-m' g.property.pk %}" class="fw-semibold text-decoration-none">{{ g.property.name }}</a> <span class="badge rounded-pill text-bg-light border">unit by unit</span></td>
-        <td>{% if c.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>{% elif c.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready</span>{% elif c.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">Units need accounts</span>{% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}</td>
+        <td>{% if c.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>{% elif c.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); border: 1px solid var(--status-good);">Ready</span>{% elif c.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">Units need accounts</span>{% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}</td>
         {% include 'core/_close_ov_cells.html' with t=c.totals %}
         <td class="small text-muted">{% if c.units %}{{ c.closed_units }} of {{ c.units }} unit{{ c.units|pluralize }} closed · the units added up{% else %}No active units yet — add its units on the property page.{% endif %}</td>
     </tr>

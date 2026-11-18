@@ -8,6 +8,7 @@ from decimal import ROUND_DOWN, Decimal
 
 from django.db import transaction
 
+from core import memo as request_memo
 from core.models import Contact, Unit
 
 from .models import BoardTerm, OwnerProfile, Ownership, ShareKind, UnitProfile, UnitShare
@@ -92,7 +93,19 @@ def split_by_share(total, share_rows):
 
 # ---------------------------------------------------------------- who owns what
 
+def _load_current_ownerships(property_id):
+    out = defaultdict(list)
+    for own in Ownership.objects.filter(unit__property_id=property_id, end_date__isnull=True).select_related('person'):          # the model's own ordering, so each unit's list is in the same order
+        out[own.unit_id].append(own)
+    return out
+
+
 def current_ownerships(unit):
+    """Who owns the unit now. While a page is being built (a GET: core/memo.py) every current ownership of the unit's property is read in one query and handed out from memory, so a screen that
+    asks for each unit in turn does not make a query per unit. Outside a page load (a POST, a command, the scheduler) it is the unit's own query, exactly as before."""
+    if request_memo.active() and unit.property_id:
+        by_unit = request_memo.get(('current_ownerships', unit.property_id), lambda: _load_current_ownerships(unit.property_id))
+        return list(by_unit.get(unit.pk, []))
     return list(unit.ownerships.filter(end_date__isnull=True).select_related('person'))
 
 

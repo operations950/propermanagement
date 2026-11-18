@@ -1,0 +1,44 @@
+/* The Contacts screen (a newspaper, see newspaper.css): the type pills, a row's little action links, the Alerts panel, and the phone. Every colour is a named theme value. */
+
+.cl-controls { gap: .45rem .6rem; }
+.cl-pills { display: flex; flex-wrap: wrap; gap: .3rem; flex: 1 1 auto; min-width: 0; }
+.cl-pill { display: inline-flex; align-items: center; gap: .35rem; padding: .18rem .7rem; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card); color: var(--brand-slate);
+           font-size: .82rem; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.cl-pill small { font-size: .72rem; color: var(--ink-muted); font-weight: 500; }
+.cl-pill:hover { border-color: var(--brand-slate); color: var(--ink-primary); }
+.cl-pill.on { background: var(--brand-slate); border-color: var(--brand-slate); color: var(--surface-card); font-weight: 600; }
+.cl-pill.on small { color: inherit; opacity: .85; }
+
+/* a row: the left part is the link, the little links sit at the right */
+.cl-row { display: flex; align-items: center; gap: .4rem; }
+.cl-main { flex: 1 1 auto; min-width: 0; display: block; color: inherit; text-decoration: none; }
+.cl-main:hover { color: var(--ink-primary); }
+.cl-acts { flex: none; display: inline-flex; gap: .1rem; opacity: 0; transition: opacity .12s; }
+.cl-row:hover .cl-acts, .cl-row:focus-within .cl-acts { opacity: 1; }
+.cl-act { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 5px; color: var(--ink-muted); text-decoration: none; }
+.cl-act:hover { background: color-mix(in srgb, var(--brand-primary) 14%, var(--surface-card)); color: var(--ink-primary); }
+.cl-act .icon { width: 1rem; height: 1rem; }
+.cl-more { padding: 0; }
+.cl-more a { display: block; padding: .3rem .7rem; color: var(--brand-primary); text-decoration: none; font-size: .84rem; }
+.cl-more a:hover { background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-card)); }
+.np-box.np-late h2 { background: color-mix(in srgb, var(--status-warning) 18%, var(--surface-card)); }
+
+/* the Alerts panel: closed until the button is pressed */
+.cl-panel { background: var(--surface-card); border: 1px solid var(--border-hairline); border-left: 4px solid color-mix(in srgb, var(--priority-urgent) 90%, var(--mix-black, black)); border-radius: 8px; padding: .25rem .9rem; margin: 0 0 .8rem; }
+.cl-panel[hidden] { display: none; }
+.cl-alert { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .5rem 0; border-top: 1px solid var(--border-hairline); }
+.cl-alert:first-child { border-top: 0; }
+.cl-alert .icon { color: var(--ink-muted); }
+.cl-alert.cl-warn .icon { color: color-mix(in srgb, var(--priority-urgent) 90%, var(--mix-black, black)); }
+
+/* a phone: no alerts, no import, the pills scroll sideways in one row, bigger targets, the little links always there */
+@media (max-width: 575px) {
+    .cl-alerts-btn, .cl-import, .cl-panel { display: none !important; }
+    .cl-pills { flex-wrap: nowrap; overflow-x: auto; flex: 1 1 100%; padding-bottom: .15rem; -webkit-overflow-scrolling: touch; }
+    .cl-pill { padding: .3rem .8rem; font-size: .9rem; }
+    .cl-acts { opacity: 1; }
+    .cl-act { width: 2.2rem; height: 2.2rem; }
+    .cl-row { min-height: 3rem; }
+    .cl-more a { padding: .6rem .75rem; font-size: .95rem; }
+}
+@media (hover: none) { .cl-acts { opacity: 1; } }

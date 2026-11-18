@@ -13,6 +13,8 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Max, Q, Sum
 
+from core import memo as request_memo
+
 from . import standard_chart as sc
 from .models import ZERO, Account, AssociationProfile, JournalEntry, JournalLine, MasterAccount, MonthLock
 
@@ -48,7 +50,8 @@ def is_locked(association, day):
 
 
 def profile_for(association):
-    return AssociationProfile.objects.get_or_create(property=association)[0]
+    # While a page is being built (a GET: core/memo.py) the settings row is read once for the page; elsewhere it is read every time, as before.
+    return request_memo.get(('profile_for', association.pk), lambda: AssociationProfile.objects.get_or_create(property=association)[0])
 
 
 # ---------------------------------------------------------------- accounts

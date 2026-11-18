@@ -3,18 +3,18 @@
 {% block acc_title %}{{ year }} budget project - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <style>
-    .bp-step { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); margin-bottom: 8px; }
+    .bp-step { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, var(--surface-card)); margin-bottom: 8px; }
     .bp-row { display: flex; gap: 12px; align-items: center; padding: 12px 16px; flex-wrap: wrap; }
     .bp-step.off { opacity: .62; }
-    .bp-n { flex: none; width: 30px; height: 30px; border-radius: 50%; background: #e9edf3; color: #394456; display: grid; place-items: center; font-weight: 700; font-size: .9rem; }
-    .bp-step.done .bp-n { background: color-mix(in srgb, var(--status-good) 20%, white); color: #0b6a0b; }
+    .bp-n { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--b-e9edf3, #e9edf3); color: var(--t-394456, #394456); display: grid; place-items: center; font-weight: 700; font-size: .9rem; }
+    .bp-step.done .bp-n { background: color-mix(in srgb, var(--status-good) 20%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); }
     .bp-step.doing { border-color: var(--brand-primary); }
-    .bp-step.doing .bp-n { background: var(--brand-primary); color: #fff; }
+    .bp-step.doing .bp-n { background: var(--brand-primary); color: var(--on-accent, #fff); }
     .bp-txt { flex: 1 1 220px; min-width: 0; }
     .bp-act { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-    .bp-more { border-top: 1px solid var(--border-hairline); padding: 10px 16px 14px 58px; background: #fafbfc; border-radius: 0 0 12px 12px; }
+    .bp-more { border-top: 1px solid var(--border-hairline); padding: 10px 16px 14px 58px; background: var(--b-fafbfc, #fafbfc); border-radius: 0 0 12px 12px; }
     .bp-more summary { cursor: pointer; font-weight: 600; color: var(--brand-primary); }
-    .bp-meet { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); padding: 10px 14px; margin-bottom: 12px; }
+    .bp-meet { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, var(--surface-card)); padding: 10px 14px; margin-bottom: 12px; }
     @media (max-width: 575px) { .bp-more { padding-left: 16px; } .bp-act { justify-content: flex-start; width: 100%; } }
 </style>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
@@ -109,7 +109,7 @@
                 <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Posted on the property (optional)</label><input type="date" name="posted_on" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-auto"><button class="btn btn-primary btn-sm">Record it and make the affidavit</button></div>
             </form>
-            {% if days_before is not None and days_before < 14 %}<div class="small mt-2" style="color: #8a5a00;">Mailed {{ days_before }} day{{ days_before|pluralize }} before the meeting: the statute asks for not less than 14.</div>{% endif %}
+            {% if days_before is not None and days_before < 14 %}<div class="small mt-2" style="color: var(--t-8a5a00, #8a5a00);">Mailed {{ days_before }} day{{ days_before|pluralize }} before the meeting: the statute asks for not less than 14.</div>{% endif %}
         </details>
     </div>
     {% endif %}

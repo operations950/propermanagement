@@ -20,7 +20,8 @@ ITEMS = {
     'admin': ('Admin', 'shield'),
 }
 
-# Everyone on the team gets these. Financials, the statistics dashboard, Portfolio and Admin are added by the person's switches on People and roles (core/permissions.py).
+# Everyone on the team gets these, in the order of importance: Home, Tickets, Compliance, Projects, On-Site, Properties, Contacts, (Financials), Time, (Portfolio), (Admin). Financials, the statistics
+# dashboard, Portfolio and Admin are added by the person's switches on People and roles (core/permissions.py).
 BASE_MENU = ['home', 'tickets', 'compliance', 'projects', 'onsite', 'properties', 'contacts', 'time']       # Legal forms is a card on the Associations page, not a menu item
 
 LINES = [
@@ -63,7 +64,7 @@ def build(request, profile):
     path = request.path
     keys = list(BASE_MENU)
     if permissions.has_financial(user):
-        keys.insert(keys.index('contacts'), 'financials')
+        keys.insert(keys.index('contacts') + 1, 'financials')           # the order of importance: ... Properties, Contacts, Financials, then Time
     if admin:
         keys.insert(1, 'dashboard')
     if permissions.has_portfolio(user):
@@ -107,5 +108,33 @@ def build(request, profile):
     return out
 
 
+LINE_ICONS = {'associations': 'landmark', 'short-term-rentals': 'home', 'long-term-rentals': 'key-round', 'commercial': 'store'}
+LINE_COUNTS_SECONDS = 120
+
+
+def line_counts():
+    """{line slug: how many properties it has} for the strip under the main bar: active properties of that kind, not the placeholders ("Commercial (general)", "No specific property"). One query,
+    kept for a couple of minutes so the strip does not cost anything on every page; a problem here must never take a page down."""
+    from django.core.cache import cache
+    cached = cache.get('ws:line_counts')
+    if cached is not None:
+        return cached
+    counts = {}
+    try:
+        from core.models import Property
+        from core.views import _is_placeholder
+        from . import services
+        by_type = {ptype: slug for slug, (ptype, _label) in services.LINE_TYPES.items()}
+        for p in Property.objects.filter(is_active=True).only('name', 'property_type', 'is_general'):
+            if p.property_type in by_type and not _is_placeholder(p):
+                counts[by_type[p.property_type]] = counts.get(by_type[p.property_type], 0) + 1
+    except Exception:
+        return {}
+    cache.set('ws:line_counts', counts, LINE_COUNTS_SECONDS)
+    return counts
+
+
 def lines(request, profile):
-    return [{'slug': slug, 'label': label, 'url': reverse('ws_line', args=[slug]), 'active': request.path.startswith(f'/w/lines/{slug}')} for slug, label in LINES]
+    counts = line_counts()
+    return [{'slug': slug, 'label': label, 'url': reverse('ws_line', args=[slug]), 'active': request.path.startswith(f'/w/lines/{slug}'), 'icon': LINE_ICONS.get(slug, 'building-2'), 'count': counts.get(slug, 0)}
+            for slug, label in LINES]

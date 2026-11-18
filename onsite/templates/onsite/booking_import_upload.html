@@ -32,14 +32,14 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px;
 }
 .upload-slot {
-    border: 2px dashed var(--bs-border-color, #cbd5e1); border-radius: var(--bs-border-radius-lg, 12px);
+    border: 2px dashed var(--bs-border-color, var(--l-cbd5e1, #cbd5e1)); border-radius: var(--bs-border-radius-lg, 12px);
     padding: 18px 12px; text-align: center; cursor: pointer; transition: background-color .15s ease, border-color .15s ease;
     display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
 .upload-slot:hover, .upload-slot-hover {
-    border-color: var(--bs-primary); background: color-mix(in srgb, var(--bs-primary) 6%, white);
+    border-color: var(--bs-primary); background: color-mix(in srgb, var(--bs-primary) 6%, var(--surface-card));
 }
-.upload-slot-icon { color: var(--ink-muted, #6b7280); }
+.upload-slot-icon { color: var(--ink-muted, var(--t-6b7280, #6b7280)); }
 .upload-slot-label { line-height: 1.25; }
 </style>
 <script src="{% static 'js/upload-slots.js' %}"></script>

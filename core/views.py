@@ -19,6 +19,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from django.core.paginator import Paginator
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_POST
 
 from messaging.services import _followup_result_message, _group_followups, _to_dash_format, _to_e164, fetch_quo_conversation, send_followup_bulk
 from processes.models import ProcessTemplate
@@ -452,6 +453,23 @@ def missing_documents(request):
     return render(request, 'core/missing_documents.html', {'rows': required_docs.all_missing()})
 
 
+@login_required
+@require_POST
+def theme_set(request):
+    """Save this person's Light / Dark / Automatic choice (the menu switch posts here). A login with no staff profile (a bare superuser) is answered too, but only this browser remembers it."""
+    if not permissions.can_use_dark_mode(request.user):
+        return JsonResponse({'ok': False, 'error': 'Dark mode is not available to you yet.'}, status=403)
+    choice = (request.POST.get('theme') or '').strip()
+    if choice not in StaffProfile.Theme.values:
+        return JsonResponse({'ok': False, 'error': 'Choose light, dark or automatic.'}, status=400)
+    profile = getattr(request.user, 'staff_profile', None)
+    if profile is None:
+        return JsonResponse({'ok': True, 'saved': False, 'theme': choice})
+    profile.theme = choice
+    profile.save(update_fields=['theme'])
+    return JsonResponse({'ok': True, 'saved': True, 'theme': choice})
+
+
 # The Properties screen is a newspaper: one little box for each line of business, only as tall as its own list, flowing down three columns. Placeholders ("Commercial (general)", "No specific
 # property") are not listed: they exist so a ticket can be about a whole line of business, not to be looked at here.
 PROPERTY_BOXES = [
@@ -476,16 +494,16 @@ def property_boxes(properties):
     boxes, known = [], {t for t, _ in PROPERTY_BOXES}
     for ptype, title in PROPERTY_BOXES:
         if by_type.get(ptype):
-            boxes.append({'title': title, 'rows': sorted(by_type[ptype], key=lambda p: p.name.lower())})
+            boxes.append({'title': title, 'rows': sorted(by_type[ptype], key=lambda p: p.name.lower()), 'order': len(boxes)})
     other = sorted((p for t, rows in by_type.items() if t not in known for p in rows), key=lambda p: p.name.lower())
     if other:
-        boxes.append({'title': 'Other', 'rows': other})
+        boxes.append({'title': 'Other', 'rows': other, 'order': len(boxes)})
     return boxes
 
 
 @login_required
 def property_list(request):
-    from . import property_alerts
+    from . import property_alerts, property_layout
     qs = Property.objects.all()
     q = request.GET.get('q', '').strip()
     if q:
@@ -498,13 +516,15 @@ def property_list(request):
     if needs_details:
         properties = [p for p in properties if property_specs.missing_specs(p)]
     boxes = property_boxes(properties)
+    columns = property_layout.pack_columns(boxes, 3)
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse({'paper': render_to_string('core/_property_paper.html', {'boxes': boxes}, request=request)})
+        return JsonResponse({'paper': render_to_string('core/_property_paper.html', {'boxes': boxes, 'columns': columns}, request=request)})
 
     alerts = property_alerts.collect(request.user)
     return render(request, 'core/property_list.html', {
         'boxes': boxes,
+        'columns': columns,
         'alerts': alerts,
         'alert_warn': any(a['level'] == 'warn' for a in alerts),
         'needs_details': needs_details,
@@ -1537,7 +1557,7 @@ def property_detail(request, pk):
             return redirect(reverse('property_detail', args=[prop.pk]) + '#quickbooks')
         return redirect('property_detail', pk=prop.pk)
 
-    contacts = list(prop.contacts.all())
+    contacts = list(prop.contacts.all().prefetch_related('units'))       # the card names each person's units: read for everyone at once, not one query per person
     contacts_by_type = {}
     for c in contacts:
         contacts_by_type.setdefault(c.contact_type, []).append(c)
@@ -1576,31 +1596,34 @@ def property_detail(request, pk):
     from supplies import services as supply_services
     from supplies.models import PropertySupplyOverride, SupplyItem
 
+    # The supplies card is only drawn for the property types that have it (the template checks the same list), so the work for it is only done for them.
+    wants_supplies = 'supplies' in PROPERTY_SECTIONS.get(prop.property_type, PROPERTY_SECTIONS_COMMON)
     # "Following the standard list (N items)" + a short Exceptions list,
     # per unit (or once for the property itself if it has none) — see
     # resolve_supplies's own docstring for the resolution rule this
     # mirrors. Property-wide exceptions (unit=None) are shown once,
     # separately, since they apply underneath every unit's own scope.
-    property_wide_overrides = list(
+    property_wide_overrides = [] if not wants_supplies else list(
         PropertySupplyOverride.objects.filter(property=prop, unit__isnull=True, is_active=True)
         .select_related('supply_item').order_by('display_order', 'supply_item__name')
     )
-    supply_units = list(prop.units.filter(is_active=True))
+    supply_units = list(prop.units.filter(is_active=True)) if wants_supplies else []
     supply_unit_scopes = []
+    if supply_units:
+        # The standard list and every exception of the property are read once and each unit's share is cut from them (the same resolution, not one set of queries per unit).
+        standard_items = supply_services._fetch_standard_items()
+        overrides_by_unit = supply_services._fetch_overrides_by_property_unit([prop.pk])
     for unit in supply_units:
-        unit_overrides = list(
-            PropertySupplyOverride.objects.filter(property=prop, unit=unit, is_active=True)
-            .select_related('supply_item').order_by('display_order', 'supply_item__name')
-        )
+        unit_overrides = sorted(overrides_by_unit.get((prop.pk, unit.pk), {}).values(), key=lambda o: (o.display_order, o.supply_item.name))
         supply_unit_scopes.append({
             'unit': unit,
-            'resolved_count': len(supply_services.resolve_supplies(prop, unit)),
+            'resolved_count': len(supply_services._resolve_for_property_unit(prop, unit, standard_items, overrides_by_unit)),
             'overrides': unit_overrides,
         })
     # Single-unit property (no Unit rows) — its own resolved count, so the
     # template can show "Following the standard list (N items)" the same
     # way a unit-scoped property does.
-    property_resolved_count = None if supply_units else len(supply_services.resolve_supplies(prop, None))
+    property_resolved_count = None if (supply_units or not wants_supplies) else len(supply_services.resolve_supplies(prop, None))
 
     # Deliberately NOT pre-excluding items already overridden here — now
     # that an exception can be scoped to one specific unit, "already has
@@ -1643,7 +1666,7 @@ def property_detail(request, pk):
         'vrbo_listing_names': prop.listing_names.filter(platform=PropertyListingName.Platform.VRBO).select_related('unit'),
         'documents': prop.documents.all(),
         'required_docs': required_docs.required_for(prop),
-        'supply_standard_count': SupplyItem.objects.filter(is_standard=True, is_active=True).count(),
+        'supply_standard_count': SupplyItem.objects.filter(is_standard=True, is_active=True).count() if wants_supplies else 0,
         'property_wide_supply_overrides': property_wide_overrides,
         'supply_unit_scopes': supply_unit_scopes,
         'property_resolved_supply_count': property_resolved_count,
@@ -1727,35 +1750,63 @@ def property_contact_thread(request, pk, contact_pk):
 
 @login_required
 def contact_list(request):
-    qs = Contact.objects.prefetch_related('properties')
+    """Contacts as a newspaper (core/contact_boxes.py): no type chosen, "Recent" and a few of each type; a type chosen, everyone of it grouped by property, trade or alphabet."""
+    from urllib.parse import quote
+
+    from . import contact_boxes, newspaper
     q = request.GET.get('q', '').strip()
-    if q:
-        qs = qs.filter(
-            Q(name__icontains=q) | Q(phone__icontains=q) | Q(email__icontains=q) | Q(trade__icontains=q)
-            | Q(contact_type__icontains=q)
-        )
     selected_type = request.GET.get('type', '')
+    if selected_type not in Contact.ContactType.values:
+        selected_type = ''
+    counts = contact_boxes.type_counts(q)
     if selected_type:
-        qs = qs.filter(contact_type=selected_type)
-    qs = qs.order_by('name')
+        boxes, found = contact_boxes.filtered(selected_type, q)
+    else:
+        boxes, found = contact_boxes.unfiltered(q, counts)
+    columns = newspaper.deal(boxes)       # dealt IN ORDER (Recent first; properties, trades and letters A to Z), reading down the first column and on to the next, as even as that allows
+    if not boxes:
+        columns = []                      # nothing found: the empty message, not three empty columns
+    if selected_type:
+        note = f'{found} {contact_boxes.plural_label(selected_type, found)}'
+        if selected_type == 'vendor':
+            missing = sum(1 for one in boxes if one['key'] == 'no-type-set' for _ in one['rows'])
+            if missing:
+                note += f' \u00b7 {missing} with no type set'
+    else:
+        note = f'{found} contact{"" if found == 1 else "s"}'
+    if q:
+        note += f' matching \u201c{q}\u201d'
+    paper = {'columns': columns, 'row_template': 'core/_np_contact_row.html', 'empty_text': 'No contacts match.'}
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse({
-            'desktop': render_to_string('core/_contact_table_rows.html', {'contacts': qs}, request=request),
-            'mobile': render_to_string('core/_contact_mobile_cards.html', {'contacts': qs}, request=request),
-        })
+        return JsonResponse({'paper': render_to_string('core/_np_paper.html', paper, request=request), 'note': note})
 
+    alerts = contact_boxes.alerts(request.user)
+
+    def pill_url(value):
+        parts = []
+        if value:
+            parts.append(f'type={value}')
+        if q:
+            parts.append(f'q={quote(q)}')
+        return '?' + '&'.join(parts) if parts else '?'
+
+    pills = [{'label': 'All', 'url': pill_url(''), 'on': not selected_type, 'n': sum(counts.values())}]
+    for value in contact_boxes.TYPE_ORDER + sorted(set(counts) - set(contact_boxes.TYPE_ORDER)):
+        if counts.get(value):
+            pills.append({'label': contact_boxes.type_label(value), 'url': pill_url('' if value == selected_type else value), 'on': value == selected_type, 'n': counts[value]})
+    header_html = render_to_string('core/_contact_header_buttons.html', {'alerts': alerts}, request=request)
     return render(request, 'core/contact_list.html', {
-        'contacts': qs,
-        'type_choices': Contact.ContactType.choices,
-        'creatable_type_choices': creatable_contact_types(),
-        'q': q,
+        **paper,
+        'note': note,
+        'alerts': alerts,
+        'pills': pills,
         'selected_type': selected_type,
-        'pending_review_count': (
-            ContactImportCandidate.objects.filter(status=ContactImportCandidate.Status.PENDING).count()
-            + ContactUpdateCandidate.objects.filter(status=ContactUpdateCandidate.Status.PENDING).count()
-        ),
-        'duplicate_group_count': len(find_duplicate_groups()),
+        'q': q,
+        'np_icon': 'contact', 'np_title': 'Contacts', 'np_desc': 'The people you deal with, most recent first.',
+        'np_tip': 'Recent shows who you last dealt with (tickets, messages, bills). Pick a type to see everyone of that type: owners, tenants and board members by property, vendors by type.',
+        'np_buttons': [{'html': header_html}, {'url': reverse('contact_create'), 'label': 'New contact', 'icon': 'plus', 'primary': True}],
+        'creatable_type_choices': creatable_contact_types(),
         'active_properties': Property.objects.filter(is_active=True).order_by('name'),
     })
 

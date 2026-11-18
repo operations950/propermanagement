@@ -1,0 +1,33 @@
+{% comment %}The filter bubbles for Compliance rules: the same box, bubbles and layers as the items (look and open/back script shared: tickets/_filter_box_style.html and _filter_box_script.html). Which rules (on / switched off / all), how often, who owns them.{% endcomment %}
+{% include 'tickets/_filter_box_style.html' %}
+<div class="tf-box" id="tf-box">
+    <div class="tf-head">
+        <i data-lucide="sliders-horizontal" class="icon"></i> Filters
+        {% if sel.frequency or sel.owner or sel.state != 'on' %}
+        <a href="{% querystring state=None frequency=None owner=None %}">Clear filters</a>
+        {% endif %}
+    </div>
+
+    <div class="tf-layer" data-tf-layer="root">
+        <button type="button" class="bubble{% if sel.state != 'on' %} bubble-locked{% endif %}" data-tf-open="state">Show: {% if sel.state == 'on' %}On{% elif sel.state == 'off' %}Switched off{% else %}All{% endif %}</button>
+        <span class="tf-pair"><button type="button" class="bubble{% if sel.frequency %} bubble-locked{% endif %}" data-tf-open="frequency">How often{% if sel.frequency %}: {{ sel.frequency_label }}{% endif %}</button>{% if sel.frequency %}<a class="tf-x" href="{% querystring frequency=None %}" title="Clear">&times;</a>{% endif %}</span>
+        <span class="tf-pair"><button type="button" class="bubble{% if sel.owner %} bubble-locked{% endif %}" data-tf-open="staff">Owner{% if sel.owner == 'none' %}: Unassigned{% elif sel.owner %}: selected{% endif %}</button>{% if sel.owner %}<a class="tf-x" href="{% querystring owner=None %}" title="Clear">&times;</a>{% endif %}</span>
+    </div>
+
+    <div class="tf-layer" data-tf-layer="state" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        {% for value, label in state_options %}<a href="{% querystring state=value %}" class="bubble{% if sel.state == value %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
+    </div>
+
+    <div class="tf-layer" data-tf-layer="frequency" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        {% for value, label in frequencies %}<a href="{% querystring frequency=value %}" class="bubble{% if sel.frequency == value %} bubble-locked{% endif %}">{{ label }}</a>{% endfor %}
+    </div>
+
+    <div class="tf-layer" data-tf-layer="staff" hidden>
+        <button type="button" class="bubble tf-back" data-tf-open="root">&larr; Back</button>
+        <a href="{% querystring owner='none' %}" class="bubble{% if sel.owner == 'none' %} bubble-locked{% endif %}">Unassigned</a>
+        {% for sp in staff_list %}<a href="{% querystring owner=sp.id %}" class="bubble{% if sel.owner == sp.id|stringformat:'s' %} bubble-locked{% endif %}">{{ sp.user.get_full_name|default:sp.user.username }}{% if sp.is_removed %} (removed){% endif %}</a>{% endfor %}
+    </div>
+</div>
+{% include 'tickets/_filter_box_script.html' %}

@@ -28,7 +28,7 @@
 {% else %}
 <div class="op-card"><div class="table-responsive">
 <table class="table table-sm mb-0" style="font-size: 0.9rem;">
-    <thead><tr><th></th>{% for r in table.releases %}<th class="amt"><a href="{% url 'owner_month' prop.pk r.month|date:'Y-m' %}{% if unit %}?unit={{ unit|urlencode }}{% endif %}">{{ r.month|date:"M" }}</a>{% if r.revised_at %}<span title="Revised {{ r.revised_at|date:'M j' }}" style="color: #9a6a00;"> ●</span>{% endif %}</th>{% endfor %}<th class="amt">Total</th></tr></thead>
+    <thead><tr><th></th>{% for r in table.releases %}<th class="amt"><a href="{% url 'owner_month' prop.pk r.month|date:'Y-m' %}{% if unit %}?unit={{ unit|urlencode }}{% endif %}">{{ r.month|date:"M" }}</a>{% if r.revised_at %}<span title="Revised {{ r.revised_at|date:'M j' }}" style="color: var(--t-9a6a00, #9a6a00);"> ●</span>{% endif %}</th>{% endfor %}<th class="amt">Total</th></tr></thead>
     <tbody>
     {% for row in table.rows %}
     <tr><td>{{ row.label }}</td>{% for v in row.values %}<td class="amt">{{ v|money }}</td>{% endfor %}<td class="amt fw-semibold">{% if row.total is not None %}{{ row.total|money }}{% endif %}</td></tr>
@@ -36,7 +36,7 @@
     </tbody>
 </table>
 </div></div>
-<p class="muted mt-2" style="font-size: 0.75rem;">Click a month to see its full statement, with the transactions behind every line.{% if table.releases|length %} A <span style="color: #9a6a00;">●</span> marks a month that was revised after it was first released.{% endif %}</p>
+<p class="muted mt-2" style="font-size: 0.75rem;">Click a month to see its full statement, with the transactions behind every line.{% if table.releases|length %} A <span style="color: var(--t-9a6a00, #9a6a00);">●</span> marks a month that was revised after it was first released.{% endif %}</p>
 {% endif %}
 {% endif %}
 {% endblock %}

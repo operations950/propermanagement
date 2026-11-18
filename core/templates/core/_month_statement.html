@@ -3,19 +3,19 @@
     .ms-table { width: 100%; table-layout: fixed; font-size: 0.95rem; }
     .ms-table td.amt { width: 108px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .ms-table td { overflow-wrap: anywhere; }
-    .ms-table > tbody > tr > td { padding: 9px 4px; border-bottom: 1px solid var(--hair, #dde2e8); vertical-align: top; }
-    .ms-table .ms-sum > td { font-weight: 700; border-top: 2px solid #aab4c0; border-bottom: 2px solid #aab4c0; }
-    .ms-table .ms-head > td { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted, #6b7280); padding-top: 18px; border-bottom: 1px solid #aab4c0; }
+    .ms-table > tbody > tr > td { padding: 9px 4px; border-bottom: 1px solid var(--hair, var(--l-dde2e8, #dde2e8)); vertical-align: top; }
+    .ms-table .ms-sum > td { font-weight: 700; border-top: 2px solid var(--l-aab4c0, #aab4c0); border-bottom: 2px solid var(--l-aab4c0, #aab4c0); }
+    .ms-table .ms-head > td { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted, var(--t-6b7280, #6b7280)); padding-top: 18px; border-bottom: 1px solid var(--l-aab4c0, #aab4c0); }
     .ms-table summary { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; cursor: pointer; list-style: none; }
     .ms-table summary::-webkit-details-marker { display: none; }
     .ms-table summary > span:first-child::before { content: '\25B8'; display: inline-block; width: 1.1em; color: #8a97a6; transition: transform .12s; }
     .ms-table details[open] > summary > span:first-child::before { transform: rotate(90deg); }
-    .ms-table .muted { color: var(--muted, #6b7280); font-size: 0.82rem; }
+    .ms-table .muted { color: var(--muted, var(--t-6b7280, #6b7280)); font-size: 0.82rem; }
     .ms-sub { width: 100%; margin: 8px 0 4px; font-size: 0.85rem; background: #f6f7f9; border-radius: 8px; }
     .ms-sub { table-layout: fixed; }
     .ms-sub td { padding: 4px 8px; border-bottom: 1px solid #e6e9ee; overflow-wrap: anywhere; }
     .ms-sub tr:last-child td { border-bottom: 0; }
-    .ms-sub td.d { width: 52px; color: var(--muted, #6b7280); white-space: nowrap; }
+    .ms-sub td.d { width: 52px; color: var(--muted, var(--t-6b7280, #6b7280)); white-space: nowrap; }
     .ms-sub td.amt { width: 92px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 </style>
 <table class="ms-table"><colgroup><col><col style="width: 108px;"></colgroup><tbody>

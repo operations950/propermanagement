@@ -28,7 +28,7 @@
 .bubble-slot.has-value {
   border-style: solid;
   border-color: transparent;
-  background: color-mix(in srgb, var(--brand-primary) 8%, white);
+  background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-card));
 }
 
 .bubble-pool {
@@ -64,8 +64,8 @@
   gap: 0.35rem;
   padding: 0.4rem 0.9rem;
   border-radius: var(--bs-border-radius-xl);
-  border: 1.5px solid color-mix(in srgb, var(--bubble-color) 45%, white);
-  background: color-mix(in srgb, var(--bubble-color) 8%, white);
+  border: 1.5px solid color-mix(in srgb, var(--bubble-color) 45%, var(--surface-card));
+  background: color-mix(in srgb, var(--bubble-color) 8%, var(--surface-card));
   color: var(--ink-primary);
   font-size: 0.9rem;
   font-weight: 500;
@@ -83,13 +83,13 @@
 .bubble:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-card);
-  background: color-mix(in srgb, var(--bubble-color) 16%, white);
+  background: color-mix(in srgb, var(--bubble-color) 16%, var(--surface-card));
 }
 
 .bubble.bubble-locked {
   background: var(--bubble-color);
   border-color: var(--bubble-color);
-  color: #fff;
+  color: var(--on-accent, #fff);
   cursor: pointer;
 }
 
@@ -196,7 +196,7 @@
 }
 
 .contact-filter-item:hover {
-  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+  background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-card));
 }
 
 .contact-filter-addnew-btn {
@@ -212,7 +212,7 @@
   padding: 0.6rem;
   border: 1px solid var(--border-hairline);
   border-radius: var(--bs-border-radius);
-  background: color-mix(in srgb, var(--brand-surface) 60%, white);
+  background: color-mix(in srgb, var(--brand-surface) 60%, var(--surface-card));
   display: flex;
   flex-direction: column;
   gap: 0.4rem;

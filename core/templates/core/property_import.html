@@ -66,7 +66,7 @@
                 </select>
             </div>
             {% endif %}
-            {% for w in item.warnings %}<div class="small mt-1" style="color: #8a5d00;"><i data-lucide="triangle-alert" class="icon"></i> {{ w }}</div>{% endfor %}
+            {% for w in item.warnings %}<div class="small mt-1" style="color: var(--t-8a5d00, #8a5d00);"><i data-lucide="triangle-alert" class="icon"></i> {{ w }}</div>{% endfor %}
             {% if item.changes %}{% include 'core/_import_changes.html' with changes=item.changes %}{% else %}<div class="small text-muted mt-1">Nothing to change for this record{% if not item.warnings %} — it's already up to date{% endif %}.</div>{% endif %}
         </div>
         {% endfor %}

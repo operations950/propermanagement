@@ -1,0 +1,88 @@
+/* The newspaper screens (Tickets, Compliance, Projects): one look. Every colour is a named theme value, so dark mode (core/static dark.css) themes it without a line of its own. */
+
+/* ---- header: icon and title, ONE line of words, the persistent buttons on the right ---- */
+.np-head { display: flex; align-items: center; gap: .35rem .8rem; flex-wrap: wrap; margin: .9rem 0 .6rem; }
+.np-title { display: flex; align-items: center; gap: .5rem; margin: 0; font-size: 1.45rem; }
+.np-suffix { font-size: .9rem; color: var(--ink-muted); font-family: var(--font-ui); font-weight: 500; }
+.np-desc { flex: 1 1 14rem; min-width: 0; color: var(--ink-muted); font-size: .84rem; }
+.np-actions { display: flex; gap: .4rem; margin-left: auto; align-items: center; flex-wrap: wrap; }
+.np-actions .btn, .np-actions .btn-action { white-space: nowrap; }
+.np-actions summary.btn-action { cursor: pointer; }
+
+/* ---- the two-segment switch under the header: wider than the old text tabs, still quiet ---- */
+.np-seg { display: flex; width: 100%; max-width: 30rem; margin: .15rem 0 .75rem; border: 1px solid var(--border-hairline); border-radius: 8px; overflow: hidden; background: var(--surface-card); }
+.np-seg a { flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: .4rem; padding: .5rem .5rem; text-align: center; text-decoration: none; font-size: .95rem; font-weight: 500; color: var(--brand-slate); border-right: 1px solid var(--border-hairline); }
+.np-seg a:last-child { border-right: 0; }
+.np-seg a:hover:not(.on) { background: color-mix(in srgb, var(--brand-primary) 9%, var(--surface-card)); color: var(--ink-primary); }
+.np-seg a.on { background: var(--brand-slate); color: var(--surface-card); font-weight: 600; }
+.np-seg-n { display: inline-block; min-width: 1.2rem; padding: 0 .35rem; border-radius: 999px; background: var(--status-warning); color: var(--brand-ink); font-size: .72rem; font-weight: 700; line-height: 1.2rem; }
+
+/* ---- the ONE control row: search, Filters, Sort, Clear ---- */
+.np-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: 0 0 .7rem; }
+.np-search { position: relative; flex: 1 1 14rem; max-width: 22rem; }
+.np-search .icon { position: absolute; left: .65rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none; width: 1em; height: 1em; }
+.np-search input { padding-left: 2rem; }
+.np-filter-btn .np-n { display: inline-block; min-width: 1.15rem; margin-left: .35rem; padding: 0 .3rem; border-radius: 999px; background: var(--brand-slate); color: var(--surface-card); font-size: .72rem; font-weight: 700; line-height: 1.15rem; }
+.np-filter-btn.np-on { border-color: var(--brand-slate); color: var(--ink-primary); }
+.np-sort { display: inline-flex; align-items: center; gap: .35rem; margin: 0; font-size: .8rem; color: var(--ink-muted); }
+.np-sort select { height: 1.95rem; border: 1px solid var(--border-hairline); border-radius: 6px; background: var(--surface-card); color: var(--ink-primary); font-size: .85rem; padding: 0 .4rem; }
+.np-clear { font-size: .82rem; color: var(--brand-primary); text-decoration: none; }
+.np-note { font-size: .82rem; color: var(--ink-muted); margin: -.2rem 0 .6rem; }
+
+/* the filter box (the same bubbles and layers as before) lives behind the Filters button */
+.np-filters:not(.open) { display: none; }
+@media (max-width: 767px) { .np-filters.np-phone-sheet { display: contents; } }    /* the Tickets filter box is the phone's own full-screen sheet (mobile-tickets.css): never hidden by the button here */
+.np-filters .tf-box { margin-bottom: .7rem; border-radius: 8px; padding: .45rem .7rem .6rem; }
+
+/* ---- the boxes ---- */
+.np-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .9rem; align-items: start; }
+.np-col { min-width: 0; }
+.np-box { background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: 8px; margin: 0 0 .9rem; overflow: hidden; }
+.np-box h2 { margin: 0; padding: .3rem .7rem; font-family: var(--font-ui); font-size: .76rem; letter-spacing: .07em; text-transform: uppercase; font-weight: 600; color: var(--ink-secondary);
+             background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-card)); border-bottom: 1px solid var(--border-hairline); display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
+.np-box h2 small { margin-left: .5rem; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink-muted); font-size: .74rem; }
+.np-box.np-urgent h2 { background: color-mix(in srgb, var(--status-critical) 14%, var(--surface-card)); color: var(--status-critical); }
+.np-box.np-late h2 { background: color-mix(in srgb, var(--status-warning) 18%, var(--surface-card)); }
+.np-count { flex: none; color: var(--ink-muted); }
+.np-empty { text-align: center; color: var(--ink-muted); padding: 2rem 0; }
+.np-empty .icon-lg { display: block; margin: 0 auto .35rem; }
+
+/* a row: two compact lines (what it is, then the small facts), the whole row a link */
+.np-row { display: block; padding: .28rem .7rem .3rem; color: var(--ink-primary); text-decoration: none; border-top: 1px solid var(--border-hairline); min-width: 0; }
+.np-row:first-of-type { border-top: 0; }
+.np-row:hover { background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-card)); color: var(--ink-primary); }
+.np-l1 { display: flex; align-items: baseline; gap: .45rem; min-width: 0; font-size: .875rem; line-height: 1.3; }
+.np-l1 .np-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.np-l1 .np-when { flex: none; font-size: .78rem; color: var(--ink-secondary); white-space: nowrap; }
+.np-l1 .np-when.np-late { color: var(--status-critical); font-weight: 600; }
+.np-l2 { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; line-height: 1.25; color: var(--ink-muted); }
+.np-flag { flex: none; font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 0 .35rem; border-radius: 3px; line-height: 1.35; }
+.np-flag-urgent { background: color-mix(in srgb, var(--status-critical) 16%, var(--surface-card)); color: var(--status-critical); }
+.np-flag-high { background: color-mix(in srgb, var(--priority-urgent) 16%, var(--surface-card)); color: color-mix(in srgb, var(--priority-urgent) 85%, var(--ink-primary)); }
+.np-off { opacity: .6; }
+.np-bar { display: inline-block; vertical-align: middle; width: 2.6rem; height: 4px; margin-left: .35rem; border-radius: 3px; background: color-mix(in srgb, var(--brand-primary) 22%, var(--surface-card)); overflow: hidden; }
+.np-bar i { display: block; height: 4px; background: var(--brand-primary); }
+
+/* a form folded into the header (Start project) */
+.np-start { position: relative; }
+.np-start > summary { list-style: none; cursor: pointer; }
+.np-start > summary::-webkit-details-marker { display: none; }
+.np-start-form { position: absolute; right: 0; top: 2.4rem; z-index: 30; width: min(22rem, 92vw); padding: .8rem .9rem; background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: 8px; box-shadow: 0 10px 28px rgba(0, 0, 0, .18); }
+.np-start-form label { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-muted); margin: .4rem 0 .15rem; }
+
+/* tablet: two columns (the boxes fold in order); phone: one stack in the natural order */
+@media (max-width: 991px) { .np-cols { display: block; column-count: 2; column-gap: .9rem; } .np-col { display: contents; } .np-box { break-inside: avoid; } }
+@media (max-width: 575px) {
+    .np-cols { display: flex; flex-direction: column; align-items: stretch; column-count: auto; }
+    .np-head { margin: .5rem 0 .4rem; gap: .35rem .5rem; }
+    .np-desc { display: none; }
+    .np-title { font-size: 1.25rem; }
+    .np-btn-text { display: none; }
+    .np-actions .btn { padding-left: .65rem; padding-right: .65rem; }
+    .np-seg { max-width: none; }
+    .np-seg a { min-height: 2.75rem; }
+    .np-search { flex: 1 1 100%; max-width: none; }
+    .np-row { padding: .45rem .75rem; }
+    .np-l1 { font-size: .95rem; }
+    .np-l2 { font-size: .82rem; }
+}

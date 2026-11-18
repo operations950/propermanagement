@@ -12,7 +12,7 @@ User = get_user_model()
 MUST = {
     'associations': ['legalforms:list', 'ws_compliance', 'ws_projects', 'ticket_list', 'faq_review_queue', 'missing_documents', 'accounting:home', 'accounting:collections_home', 'accounting:receipt_pick',
                      'accounting:budgets', 'accounting:master_chart', 'accounting:payables_home', 'accounting:payables_print_checks', 'accounting:payables_print_envelopes'],
-    'short-term-rentals': ['onsite_str_today', 'onsite_dashboard', 'onsite_rentals_calendar', 'onsite_reservation_list', 'onsite_reservation_review', 'onsite_block_review', 'onsite_booking_feeds',
+    'short-term-rentals': ['onsite_turnovers', 'onsite_dashboard', 'onsite_rentals_calendar', 'onsite_reservation_list', 'onsite_reservation_review', 'onsite_block_review', 'onsite_booking_feeds',
                            'onsite_performance', 'onsite_cleaner_activity', 'onsite_cleaning_payments', 'supplies:cart', 'close_home', 'close_overview', 'close_bank_tieout', 'close_payouts',
                            'tourist_tax', 'close_sales_tax', 'close_escrow', 'close_misc', 'owner_portal_admin'],
     'long-term-rentals': ['ticket_list', 'ws_compliance', 'ws_projects', 'missing_documents', 'close_home', 'close_rent_collection', 'close_pay_ltr_owners', 'commercial:renewals', 'close_overview',

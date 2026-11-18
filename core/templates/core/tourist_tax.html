@@ -23,11 +23,11 @@
     .tt-return > div { background: var(--surface-page); border-radius: var(--bs-border-radius-sm); padding: 0.4rem 0.7rem; }
     .tt-return span { display: block; font-size: 0.72rem; color: var(--ink-secondary); }
     .tt-return b { font-variant-numeric: tabular-nums; }
-    .tt-return .due { background: color-mix(in srgb, var(--brand-primary) 14%, white); }
+    .tt-return .due { background: color-mix(in srgb, var(--brand-primary) 14%, var(--surface-card)); }
     .tt-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
-    .tt-chip.good { background: color-mix(in srgb, var(--status-good) 16%, white); color: #0b6a0b; }
-    .tt-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, white); color: #8a5a00; }
-    .tt-chip.progress { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
+    .tt-chip.good { background: color-mix(in srgb, var(--status-good) 16%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); }
+    .tt-chip.attention { background: color-mix(in srgb, var(--status-warning) 22%, var(--surface-card)); color: var(--t-8a5a00, #8a5a00); }
+    .tt-chip.progress { background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); color: var(--ink-muted); }
     .tt-id-row { display: grid; grid-template-columns: minmax(9rem, 1.2fr) repeat(3, minmax(0, 1fr)); gap: 0.5rem 0.75rem; align-items: end; padding: 0.6rem 0; border-top: 1px solid var(--border-hairline); }
     .tt-id-row label span { display: block; font-size: 0.7rem; color: var(--ink-secondary); }
     @media (max-width: 767.98px) { .tt-id-row { grid-template-columns: 1fr 1fr; } .tt-id-row > .fw-semibold { grid-column: 1 / -1; } }
@@ -38,7 +38,7 @@
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="receipt" class="icon-lg"></i> Tourist tax</h2>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ rep.month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ rep.month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
@@ -57,14 +57,14 @@
 </div></div>
 
 {% if rep.pay_state == 'unpaid' or rep.pay_state == 'paid_changed' %}
-<a href="#pay-county" class="d-flex align-items-center gap-2 mb-3 px-3 py-2 rounded small text-decoration-none" style="background: color-mix(in srgb, var(--status-warning) 22%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 60%, white); color: #5c3b00;">
+<a href="#pay-county" class="d-flex align-items-center gap-2 mb-3 px-3 py-2 rounded small text-decoration-none" style="background: color-mix(in srgb, var(--status-warning) 22%, var(--surface-card)); border: 1px solid color-mix(in srgb, var(--status-warning) 60%, var(--surface-card)); color: #5c3b00;">
     <i data-lucide="triangle-alert" class="icon"></i>
     <span><strong>{% if rep.pay_state == 'unpaid' %}Filed but not paid.{% else %}The amount due changed after the payment was recorded.{% endif %}</strong> {% if rep.pay_state == 'unpaid' %}Filing and adding the returns to the cart does not pay the county. Pay it, then record the payment and its confirmation number at the bottom of this page.{% else %}Check what the county was paid and record the payment again below.{% endif %}</span>
 </a>
 {% endif %}
 
 {% if rep.flags %}
-<div class="d-flex flex-column gap-1 mb-3 px-3 py-2 rounded small" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
+<div class="d-flex flex-column gap-1 mb-3 px-3 py-2 rounded small" style="background: color-mix(in srgb, var(--status-warning) 14%, var(--surface-card)); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, var(--surface-card));">
     {% for f in rep.flags %}<span><i data-lucide="triangle-alert" class="icon"></i> {{ f }}</span>{% endfor %}
 </div>
 {% endif %}
@@ -76,7 +76,7 @@
     <summary><div class="tt-sum"><span class="fw-semibold">{{ r.property.name }}{% if r.property.tdt_account_number %} <span class="text-muted fw-normal small">TDT {{ r.property.tdt_account_number }}</span>{% endif %}{% if r.unmatched or r.missing_fee %} <i data-lucide="triangle-alert" class="icon" style="color: var(--status-warning);"></i>{% endif %} {% if r.state == 'filed' %}<span class="tt-chip good"><i data-lucide="check" class="icon"></i> Filed</span>{% elif r.state == 'changed' %}<span class="tt-chip attention">Changed</span>{% endif %}</span><span class="n">{{ r.days }}</span><span class="n">${{ r.taxable|floatformat:"2g" }}</span><span class="n fw-semibold">${{ r.due|floatformat:"2g" }}</span><i data-lucide="chevron-right" class="icon tt-chev"></i></div></summary>
     <div class="px-3 pb-3 pt-2 border-top">
         <div class="tt-return mb-3">
-            <div><span>Tourist tax account</span><b>{% if r.property.tdt_account_number %}{{ r.property.tdt_account_number }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#tax-ids" class="small fw-normal" style="color: #8a5a00;">Not entered</a>{% endif %}</b></div>
+            <div><span>Tourist tax account</span><b>{% if r.property.tdt_account_number %}{{ r.property.tdt_account_number }}{% else %}<a href="{% url 'property_detail' r.property.pk %}#tax-ids" class="small fw-normal" style="color: var(--t-8a5a00, #8a5a00);">Not entered</a>{% endif %}</b></div>
             <div><span>Number of nights</span><b>{{ r.days }}</b></div>
             <div><span>Gross rental receipts</span><b>${{ r.taxable|floatformat:"2g" }}</b></div>
             <div><span>Tax collected, 6%</span><b>${{ r.tax|floatformat:"2g" }}</b></div>

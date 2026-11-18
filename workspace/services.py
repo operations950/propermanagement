@@ -163,7 +163,20 @@ def rule_sentence(t):
     return f'{t.name}: {freq}, {due}, {scope}, owned by {_person(t.owner)}'
 
 
-COMPLIANCE_PER_PAGE = 50
+COMPLIANCE_PER_PAGE = 200      # the newspaper boxes show the open items by how often they come; a page is only a safety cap
+
+# The boxes of Compliance, items and rules alike (so a frequency is the same box on both tabs): from the most frequent to the least.
+FREQ_BOX_ORDER = [Frequency.DAILY, Frequency.WEEKDAYS, Frequency.WEEKLY, Frequency.BIWEEKLY, Frequency.MONTHLY, Frequency.MONTHLY_WORKDAY, Frequency.QUARTERLY, Frequency.SEMIANNUAL, Frequency.YEARLY, Frequency.ONCE]
+
+
+def frequency_boxes(rows, frequency_of):
+    """Newspaper boxes by how often, one for each frequency that has something (any frequency not in FREQ_BOX_ORDER goes last): `rows` are the item or rule rows, `frequency_of` says which frequency a row is."""
+    from core.newspaper import box
+    found = {}
+    for row in rows:
+        found.setdefault(frequency_of(row), []).append(row)
+    ordered = [f for f in FREQ_BOX_ORDER if f in found] + sorted(f for f in found if f not in FREQ_BOX_ORDER)
+    return [box(Frequency(f).label if f in Frequency.values else str(f), found[f], key=f'freq-{f}') for f in ordered]
 # Column key -> label, in the order the table draws them: the same five columns as the Tickets list (how often takes the place of priority).
 COMPLIANCE_COLUMNS = [('how', 'How often'), ('property', 'Property'), ('item', 'Item'), ('due', 'Due'), ('assigned', 'Assigned to')]
 COMPLIANCE_STATUS = [('open', 'Open items'), ('done', 'Done'), ('all', 'All')]
@@ -333,6 +346,11 @@ def _due_matches(due, params, today):
     return True
 
 
+def startable_templates():
+    """The project templates a project can be started from (active ones, by name)."""
+    return list(ProcessTemplate.objects.filter(kind=ProcessTemplate.Kind.PROJECT, is_active=True).order_by('name'))
+
+
 def project_runs(params):
     """The running projects, and only projects: a ticket or compliance line that just has a process attached is not listed here. Returns (the selected filters, the rows)."""
     today = timezone.localdate()
@@ -358,12 +376,57 @@ def project_runs(params):
         due = _local_date(run.ticket.due_date) if run.ticket_id and run.ticket.due_date else None
         if not _due_matches(due, params, today):
             continue
+        where_prop = run.ticket.property if run.ticket_id and run.ticket.property_id else run.property if run.property_id else None
         rows.append({'origin': run.origin_text(), 'who': _person(run.assigned_to) if run.assigned_to_id else '',
                      'title': run.ticket.title if run.ticket_id else (run.session_line.session.template.name if run.session_line_id else run.process_template.name), 'template': run.process_template.name,
                      'where': (run.ticket.property.name if run.ticket_id and run.ticket.property_id else run.property.name if run.property_id else run.contact.name if run.contact_id else ''),
                      'done': done, 'total': len(steps), 'pct': int(100 * done / len(steps)) if steps else 0, 'next': cur.label if cur else 'All steps done',
-                     'due': due_label(due, today) if due else '', 'late': bool(due and due < today), 'from_ticket': run.ticket_id is not None, 'url': run_url(run)})
+                     'due': due_label(due, today) if due else '', 'late': bool(due and due < today), 'from_ticket': run.ticket_id is not None, 'url': run_url(run),
+                     'ptype': where_prop.property_type if where_prop else ''})
     return sel, rows
+
+
+# The boxes of Projects (active projects and templates alike): one for each line of business, in this order, then "Other".
+LINE_BOX_ORDER = [(Property.Type.ASSOCIATION, 'Associations'), (Property.Type.SHORT_TERM_RENTAL, 'Short-term rentals'), (Property.Type.LONG_TERM_RENTAL, 'Long-term rentals'),
+                  (Property.Type.SNOWBIRD, 'Snowbird oversight'), (Property.Type.COMMERCIAL, 'Commercial')]
+
+
+def template_line(template):
+    """The line of business a template is for, from its category (freeform text such as "Association" or "Short-Term Rental"); a template with none of those words is "Other"."""
+    words = (template.category or '').lower()
+    for key, word in ((Property.Type.ASSOCIATION, 'association'), (Property.Type.SHORT_TERM_RENTAL, 'short'), (Property.Type.LONG_TERM_RENTAL, 'long'),
+                      (Property.Type.SNOWBIRD, 'snowbird'), (Property.Type.COMMERCIAL, 'commercial')):
+        if word in words:
+            return key
+    return ''
+
+
+def line_boxes(rows, line_of):
+    """Newspaper boxes by line of business (Associations, Short-term rentals, Long-term rentals, Snowbird oversight, Commercial, then Other): `line_of` says which line a row belongs to ('' for none)."""
+    from core.newspaper import box
+    found = {}
+    for row in rows:
+        found.setdefault(line_of(row), []).append(row)
+    boxes = [box(title, found[key], key=f'line-{key}') for key, title in LINE_BOX_ORDER if key in found]
+    known = {key for key, _ in LINE_BOX_ORDER}
+    other = [row for key, rows_ in found.items() if key not in known for row in rows_]
+    if other:
+        boxes.append(box('Other', other, key='line-other'))
+    return boxes
+
+
+def template_rows(params):
+    """Every template (projects and processes) as one row each, filtered by the search words: [{'t', 'kind_label', 'steps', 'used', 'active', 'line', 'is_project'}]."""
+    q = (params.get('q') or '').strip().lower()
+    rows = []
+    for t in ProcessTemplate.objects.prefetch_related('steps', 'runs'):
+        if q and q not in t.name.lower() and q not in (t.category or '').lower():
+            continue
+        runs = list(t.runs.all())
+        is_project = t.kind == ProcessTemplate.Kind.PROJECT
+        rows.append({'t': t, 'kind_label': 'Project' if is_project else 'Process', 'is_project': is_project, 'steps': len(t.steps.all()), 'used': len(runs),
+                     'active': sum(1 for r in runs if r.status == ProcessRun.Status.ACTIVE), 'line': template_line(t)})
+    return rows
 
 
 def project_templates(params):

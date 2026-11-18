@@ -9,14 +9,14 @@
     .po td { padding: 5px 8px; vertical-align: middle; }
     .po td.num, .po th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .po-chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
-    .po-received { background: color-mix(in srgb, var(--status-good) 16%, white); color: var(--status-good); }
-    .po-waiting, .po-scheduled { background: var(--bs-light, #f1f3f5); color: var(--ink-muted); }
-    .po-lingering { background: color-mix(in srgb, var(--status-critical, #c0392b) 15%, white); color: var(--status-critical, #c0392b); }
+    .po-received { background: color-mix(in srgb, var(--status-good) 16%, var(--surface-card)); color: var(--status-good); }
+    .po-waiting, .po-scheduled { background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); color: var(--ink-muted); }
+    .po-lingering { background: color-mix(in srgb, var(--status-critical, #c0392b) 15%, var(--surface-card)); color: var(--status-critical, var(--t-c0392b, #c0392b)); }
     .po details summary { cursor: pointer; list-style: none; }
     .po details summary::-webkit-details-marker { display: none; }
     .po-items { margin: 6px 0 4px; width: 100%; max-width: 620px; }
     .po-items td { padding: 2px 8px; border-top: 1px solid var(--border-hairline); font-size: 0.8rem; }
-    .po-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 10px; border-radius: 999px; background: var(--bs-light, #f1f3f5); font-size: 0.8rem; text-decoration: none; color: inherit; }
+    .po-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 10px; border-radius: 999px; background: var(--bs-light, var(--b-f1f3f5, #f1f3f5)); font-size: 0.8rem; text-decoration: none; color: inherit; }
     .po-stat.on { outline: 2px solid var(--brand, #6c8ebf); }
 </style>
 {% up_link css="mb-1" %}
@@ -61,7 +61,7 @@
 {% if owner_collected %}<div class="small text-muted mb-1">{{ owner_collected }} payout{{ owner_collected|pluralize }} for rentals whose owner collects the income {% if owner_collected == 1 %}is{% else %}are{% endif %} left out: {% if owner_collected == 1 %}it never reaches{% else %}they never reach{% endif %} our bank.</div>{% endif %}
 <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
     <a class="po-stat {% if show == 'open' %}on{% endif %}" href="?show=open&source={{ source }}"><strong>{{ counts.waiting|add:counts.scheduled|add:counts.lingering }}</strong> not received yet</a>
-    <a class="po-stat {% if show == 'lingering' %}on{% endif %}" href="?show=lingering&source={{ source }}" {% if counts.lingering %}style="background: color-mix(in srgb, var(--status-critical, #c0392b) 15%, white);"{% endif %}><strong>{{ counts.lingering }}</strong> waiting {{ lingering_after }}+ days</a>
+    <a class="po-stat {% if show == 'lingering' %}on{% endif %}" href="?show=lingering&source={{ source }}" {% if counts.lingering %}style="background: color-mix(in srgb, var(--status-critical, #c0392b) 15%, var(--surface-card));"{% endif %}><strong>{{ counts.lingering }}</strong> waiting {{ lingering_after }}+ days</a>
     <a class="po-stat {% if show == 'received' %}on{% endif %}" href="?show=received&source={{ source }}"><strong>{{ counts.received }}</strong> received</a>
     <a class="po-stat {% if show == 'all' %}on{% endif %}" href="?show=all&source={{ source }}">All</a>
     <span class="ms-auto btn-group btn-group-sm">

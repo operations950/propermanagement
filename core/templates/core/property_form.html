@@ -34,7 +34,7 @@
                     Address
                     {% if not is_new %}
                         {% if property.address_verified %}
-                        <span class="badge rounded-pill fs-6 align-middle" style="background: color-mix(in srgb, var(--status-good) 15%, white); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, white);"><i data-lucide="check" class="icon"></i> USPS verified</span>
+                        <span class="badge rounded-pill fs-6 align-middle" style="background: color-mix(in srgb, var(--status-good) 15%, var(--surface-card)); color: var(--status-good); border: 1px solid color-mix(in srgb, var(--status-good) 35%, var(--surface-card));"><i data-lucide="check" class="icon"></i> USPS verified</span>
                         {% else %}
                         <span class="badge rounded-pill fs-6 align-middle bg-light text-muted border">Not verified yet</span>
                         {% endif %}

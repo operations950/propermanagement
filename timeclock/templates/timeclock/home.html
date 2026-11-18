@@ -10,9 +10,9 @@
     .tc-day { border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius); padding: 0.4rem 0.3rem; text-align: center; font-size: 0.8rem; background: var(--surface-card); min-height: 4.2rem; }
     .tc-day.today { border: 2px solid var(--brand-slate); }
     .tc-day .d { font-weight: 700; }
-    .tc-day.on { background: color-mix(in srgb, var(--brand-primary) 14%, white); }
-    .tc-day.vac { background: color-mix(in srgb, var(--accent-contrast) 14%, white); }
-    .tc-day.closed { background: color-mix(in srgb, var(--status-warning) 16%, white); }
+    .tc-day.on { background: color-mix(in srgb, var(--brand-primary) 14%, var(--surface-card)); }
+    .tc-day.vac { background: color-mix(in srgb, var(--accent-contrast) 14%, var(--surface-card)); }
+    .tc-day.closed { background: color-mix(in srgb, var(--status-warning) 16%, var(--surface-card)); }
     .tc-neg { color: var(--status-critical); }
     .tc-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.45rem 0; border-bottom: 1px solid var(--border-hairline); flex-wrap: wrap; }
     .tc-row:last-child { border-bottom: 0; }
@@ -142,7 +142,7 @@
         <div class="tc-day {% if d.today %}today{% endif %} {% if d.kind == 'working' or d.kind == 'pending_add' %}on{% elif d.kind == 'vacation' %}vac{% elif d.kind == 'closed' %}closed{% endif %}">
             <div class="tc-sub">{{ d.date|date:"D" }}</div>
             <div class="d">{{ d.date|date:"j" }}</div>
-            {% if d.late %}<div class="fw-semibold" style="color: #8a5a00;">late</div>{% endif %}
+            {% if d.late %}<div class="fw-semibold" style="color: var(--t-8a5a00, #8a5a00);">late</div>{% endif %}
             <div>{% if d.kind == 'working' %}{{ profile.day_start|time:"g" }}–{{ profile.day_end|time:"g" }}{% elif d.kind == 'vacation' %}Vacation{% elif d.kind == 'closed' %}Closed{% elif d.kind == 'pending_add' %}<span class="tc-sub">asked</span>{% elif d.kind == 'pending_drop' %}<span class="tc-sub">asked off</span>{% elif d.kind == 'pending_off' %}<span class="tc-sub">asked off</span>{% else %}<span class="tc-sub">—</span>{% endif %}</div>
             {% if d.punch.clock_out %}<div class="tc-sub">{{ d.punch.minutes|mins }}</div>{% endif %}
         </div>

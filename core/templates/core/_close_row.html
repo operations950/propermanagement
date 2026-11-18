@@ -6,7 +6,7 @@
     </td>
     <td>
         {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>
-        {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready to close</span>
+        {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); border: 1px solid var(--status-good);">Ready to close</span>
         {% elif r.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">No accounts</span>
         {% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
     </td>
@@ -14,7 +14,7 @@
     <td colspan="5" class="text-muted small">Tie it to its QuickBooks accounts first</td>
     {% else %}
     <td class="num">{{ r.lines }}</td>
-    <td class="num">{% if r.state == 'closed' %}<span class="text-muted">—</span>{% elif r.unreviewed %}<strong style="color: #9a6a00;">{{ r.unreviewed }}</strong>{% else %}0{% endif %}</td>
+    <td class="num">{% if r.state == 'closed' %}<span class="text-muted">—</span>{% elif r.unreviewed %}<strong style="color: var(--t-9a6a00, #9a6a00);">{{ r.unreviewed }}</strong>{% else %}0{% endif %}</td>
     <td class="num">{% if r.totals.owner_collects %}<span class="text-muted" title="The owner collects the booking income">owner collects</span>{% elif r.totals %}${{ r.totals.deposits|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
     <td class="num">{% if r.totals %}${{ r.totals.expenses_total|floatformat:"2g" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
     <td class="num">{% if r.totals.owner_collects %}<span class="text-muted" title="No owner payment: the owner pays us our expenses and commission">owes us ${{ r.totals.owner_owes_us|floatformat:"2g" }}</span>{% elif r.totals %}${% if r.totals.calc %}{{ r.totals.owner_due|floatformat:"2g" }}{% else %}{{ r.totals.owner_payment|floatformat:"2g" }}{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>

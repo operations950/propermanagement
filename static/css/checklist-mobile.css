@@ -115,7 +115,7 @@
 }
 
 .checklist-item-required {
-  color: var(--status-critical, #c0392b);
+  color: var(--status-critical, var(--t-c0392b, #c0392b));
   font-weight: 700;
 }
 
@@ -167,9 +167,9 @@ summary.chip-btn::-webkit-details-marker {
 }
 
 .chip-btn-done {
-  background: color-mix(in srgb, var(--status-good, #0ca30c) 12%, white);
-  border-color: color-mix(in srgb, var(--status-good, #0ca30c) 45%, white);
-  color: color-mix(in srgb, var(--status-good, #0ca30c) 70%, black);
+  background: color-mix(in srgb, var(--status-good, #0ca30c) 12%, var(--surface-card));
+  border-color: color-mix(in srgb, var(--status-good, #0ca30c) 45%, var(--surface-card));
+  color: color-mix(in srgb, var(--status-good, #0ca30c) 70%, var(--mix-black, black));
 }
 
 .chip-btn-skip {
@@ -336,8 +336,8 @@ summary.chip-btn::-webkit-details-marker {
   margin-top: 0.6rem;
   padding: 0.85rem;
   border-radius: var(--bs-border-radius-lg);
-  background: color-mix(in srgb, var(--status-warning, #fab219) 10%, white);
-  border: 1.5px solid color-mix(in srgb, var(--status-warning, #fab219) 45%, white);
+  background: color-mix(in srgb, var(--status-warning, #fab219) 10%, var(--surface-card));
+  border: 1.5px solid color-mix(in srgb, var(--status-warning, #fab219) 45%, var(--surface-card));
 }
 
 .skip-panel-label {
@@ -403,7 +403,7 @@ summary.chip-btn::-webkit-details-marker {
   max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
-  background: var(--surface-card, #fff);
+  background: var(--surface-card, var(--surface-card));
   border-radius: var(--bs-border-radius-lg);
   box-shadow: var(--shadow-card);
   padding: 1.25rem;

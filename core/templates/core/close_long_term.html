@@ -6,11 +6,11 @@
 {% include 'core/_phone_review.html' %}
 <style>
     .cl-ov { font-size: 0.86rem; }
-    .cl-ov thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); background: var(--surface-card, #fff); vertical-align: bottom; }
+    .cl-ov thead th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); padding: 6px 8px; border-bottom: 2px solid var(--border-hairline); background: var(--surface-card, var(--surface-card)); vertical-align: bottom; }
     .cl-ov td { padding: 7px 8px; vertical-align: middle; }
     .cl-ov td.num, .cl-ov th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .cl-ov tfoot td { font-weight: 700; border-top: 2px solid var(--border-hairline); background: var(--bs-light, #f4f6f8); }
-    .cl-ov td.end { font-weight: 700; background: color-mix(in srgb, var(--bs-light, #f4f6f8) 60%, white); }
+    .cl-ov tfoot td { font-weight: 700; border-top: 2px solid var(--border-hairline); background: var(--bs-light, var(--b-f4f6f8, #f4f6f8)); }
+    .cl-ov td.end { font-weight: 700; background: color-mix(in srgb, var(--bs-light, #f4f6f8) 60%, var(--surface-card)); }
 </style>
 {% up_link css="mb-1" %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
@@ -20,7 +20,7 @@
     </div>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
@@ -51,11 +51,11 @@
         <td>{{ r.timing }} {% if r.timing == 'Same month' %}{% include '_tip.html' with text='Rent is collected about the 5th and the owner is paid about the 15th, so each payment is checked against what was owed at the start plus what this month earned.' %}{% else %}{% include '_tip.html' with text='The owner is paid early the month after, for the month that just ended.' %}{% endif %}</td>
         <td>
             {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>
-            {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready</span>
+            {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); border: 1px solid var(--status-good);">Ready</span>
             {% elif r.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">No accounts</span>
             {% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
-            {% if r.warnings %}<span class="small" style="color: #9a6a00;" title="Open it to see what needs a look">· {{ r.warnings }} to check</span>{% endif %}
-            {% if r.unreviewed and r.state != 'closed' %}<span class="small" style="color: #9a6a00;">· {{ r.unreviewed }} to review</span>{% endif %}
+            {% if r.warnings %}<span class="small" style="color: var(--t-9a6a00, #9a6a00);" title="Open it to see what needs a look">· {{ r.warnings }} to check</span>{% endif %}
+            {% if r.unreviewed and r.state != 'closed' %}<span class="small" style="color: var(--t-9a6a00, #9a6a00);">· {{ r.unreviewed }} to review</span>{% endif %}
         </td>
         {% if r.state == 'needs_accounts' %}
         <td colspan="6" class="small text-muted"><a href="{% url 'property_detail' r.property.pk %}#quickbooks" class="text-muted">{{ r.note }}</a></td>

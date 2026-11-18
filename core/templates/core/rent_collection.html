@@ -10,7 +10,7 @@
         <div class="small text-muted">{{ rent_month|date:"F Y" }} rent &middot; {{ summary.detail }}</div></div>
     <div class="btn-group btn-group-sm">
         <a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, #fff);">{{ rent_month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ rent_month|date:"F Y" }}</span>
         <a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary" aria-label="Later month"><i data-lucide="chevron-right" class="icon"></i></a>
     </div>
 </div>
@@ -25,7 +25,7 @@
         <td style="text-align: right;">{% if r.expected is not None %}{{ r.expected|money }} <a href="{% url 'property_detail' r.property.pk %}#monthly-rent" class="small text-decoration-none ms-1" title="Change this rental's monthly rent on its property page">Change</a>{% else %}
             <form method="post" class="d-inline-flex gap-1">{% csrf_token %}<input type="hidden" name="month" value="{{ month|date:'Y-m' }}"><input type="hidden" name="action" value="set_rent"><input type="hidden" name="property" value="{{ r.property.pk }}"><input aria-label="Monthly rent" class="form-control form-control-sm text-end" style="width: 7rem;" name="monthly_rent" placeholder="Monthly rent"><button class="btn btn-sm btn-outline-secondary">Set</button></form>{% endif %}</td>
         <td style="text-align: right;">{{ r.seen|money }}</td>
-        <td style="text-align: right;">{% if r.diff is None %}&mdash;{% elif r.kind == 'matches' %}<span style="color: var(--status-good);">&#10003; 0.00</span>{% else %}<span style="color: #9a6a00;">{{ r.diff|money }}</span>{% endif %}</td>
+        <td style="text-align: right;">{% if r.diff is None %}&mdash;{% elif r.kind == 'matches' %}<span style="color: var(--status-good);">&#10003; 0.00</span>{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">{{ r.diff|money }}</span>{% endif %}</td>
         <td>
             {% if r.check %}<span class="badge rounded-pill {% if r.check.status == 'received' %}text-bg-success{% elif r.check.status == 'partial' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{{ r.check.get_status_display }}</span>
                 {% if r.check.note %}<span class="small text-muted">{{ r.check.note }}</span>{% endif %}

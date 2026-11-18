@@ -6,7 +6,7 @@
     </td>
     <td>
         {% if r.state == 'closed' %}<span class="badge rounded-pill text-bg-secondary"><i data-lucide="lock" class="icon"></i> Closed</span>
-        {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Ready</span>
+        {% elif r.state == 'ready' %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); border: 1px solid var(--status-good);">Ready</span>
         {% elif r.state == 'needs_accounts' %}<span class="badge rounded-pill text-bg-light border">No accounts</span>
         {% else %}<span class="badge rounded-pill text-bg-light border">Open</span>{% endif %}
     </td>
@@ -20,7 +20,7 @@
         {% elif r.state == 'closed' %}<span class="text-muted">Closed {{ r.close.closed_at|date:"M j" }}{% if r.close.closed_by %} · {{ r.close.closed_by.get_full_name|default:r.close.closed_by.username }}{% endif %}</span>
         {% elif r.recon_ok is False %}<span style="color: var(--status-critical);">income doesn't reconcile yet</span>
         {% elif r.recon_ok %}<span style="color: var(--status-good);">income reconciles</span>{% endif %}
-        {% if r.unreviewed and r.state != 'closed' and r.state != 'needs_accounts' %}<span style="color: #9a6a00;"> · {{ r.unreviewed }} to review</span>{% endif %}
+        {% if r.unreviewed and r.state != 'closed' and r.state != 'needs_accounts' %}<span style="color: var(--t-9a6a00, #9a6a00);"> · {{ r.unreviewed }} to review</span>{% endif %}
         {% if r.changed %}<span style="color: var(--status-warning);"> · {{ r.changed }} changed in QuickBooks</span>{% endif %}
         {% if r.drift %}<span style="color: var(--status-critical);"> · {{ r.drift }} QuickBooks change{{ r.drift|pluralize }} to this closed month were not applied</span>{% endif %}
     </td>

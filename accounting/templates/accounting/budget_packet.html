@@ -3,13 +3,13 @@
 {% block acc_title %}Mailing packet - {{ assoc.name }} {{ year }}{% endblock %}
 {% block acc_body %}
 <style>
-    .pk-item { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, #fff); padding: 12px 16px; margin-bottom: 8px; }
+    .pk-item { border: 1px solid var(--border-hairline); border-radius: 12px; background: var(--surface-card, var(--surface-card)); padding: 12px 16px; margin-bottom: 8px; }
     .pk-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .pk-head .ico { color: var(--brand-slate); flex: none; }
     .pk-act { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
-    .pk-size label { border: 1px solid var(--border-hairline); border-radius: 999px; padding: 4px 14px; cursor: pointer; background: var(--surface-card, #fff); font-size: .88rem; }
+    .pk-size label { border: 1px solid var(--border-hairline); border-radius: 999px; padding: 4px 14px; cursor: pointer; background: var(--surface-card, var(--surface-card)); font-size: .88rem; }
     .pk-size input { position: absolute; opacity: 0; pointer-events: none; }
-    .pk-size input:checked + label { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; font-weight: 600; }
+    .pk-size input:checked + label { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--on-accent, #fff); font-weight: 600; }
 </style>
 <div class="mb-3">
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> {{ assoc.name }} &mdash; final draft for mailing {% include '_tip.html' with text="Everything that goes to the owners and everything that proves it went out, made from the Board draft. Each piece opens as a PDF in your browser: print it from there." %}</h2>
@@ -33,7 +33,7 @@
 <div class="pk-item">
     <div class="pk-head"><i data-lucide="file-text" class="icon ico"></i><span class="fw-semibold">Notice of the budget meeting {% include '_tip.html' with text="The notice that goes to every owner: when and where the board meets, that the budget and the assessments will be considered, what the assessments are for, and that the proposed budget is enclosed. Not less than 14 days before the meeting. Made from the meeting details and the Board draft; the wording is saved as it was made." %}</span>
         <span class="ms-auto">{% if notice %}<span class="ac-chip done">Made {{ notice.created_at|date:"M j" }}</span>{% else %}<span class="ac-chip">Not made</span>{% endif %}</span></div>
-    {% if changed %}<div class="small mt-1" style="color: #8a5a00;"><i data-lucide="triangle-alert" class="icon"></i> The budget changed after this notice was made. Make a new one before you mail it.</div>{% endif %}
+    {% if changed %}<div class="small mt-1" style="color: var(--t-8a5a00, #8a5a00);"><i data-lucide="triangle-alert" class="icon"></i> The budget changed after this notice was made. Make a new one before you mail it.</div>{% endif %}
     <div class="pk-act">
         {% if notice %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.notice }}"><i data-lucide="eye" class="icon"></i> View and print</a>{% endif %}
         {% if meeting_ready %}
@@ -56,7 +56,7 @@
         <span class="ms-auto"><span class="ac-chip {% if flags %}warn{% else %}done{% endif %}">{{ sent }} of {{ owner_total }} unit{{ owner_total|pluralize }}</span></span></div>
     {% if from_list %}<div class="small text-muted mt-1">As it went out on {{ project.mailed_on|date:"M j, Y" }}.</div>{% endif %}
     {% if flags %}
-    <div class="small mt-2"><div class="fw-semibold mb-1" style="color: #8a5a00;">{{ flags|length }} to look at</div>
+    <div class="small mt-2"><div class="fw-semibold mb-1" style="color: var(--t-8a5a00, #8a5a00);">{{ flags|length }} to look at</div>
         {% for r in flags|slice:":10" %}<div class="mb-1"><span class="fw-semibold">{{ r.unit }}</span> &nbsp;{{ r.owner|default:"&mdash;" }}<span class="text-muted d-block d-sm-inline ms-sm-2">{{ r.note }}</span></div>{% endfor %}
         {% if flags|length > 10 %}<div class="text-muted">and {{ flags|length|add:"-10" }} more in the list.</div>{% endif %}</div>
     {% endif %}

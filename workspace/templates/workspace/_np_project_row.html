@@ -1,0 +1,5 @@
+{% comment %}One running project in a newspaper box: the project and its due date (late in red), then the property, the step it is on, who runs it and a small progress bar. Expects r (a row from services.project_runs).{% endcomment %}
+<a class="np-row" href="{{ r.url }}" title="{{ r.origin }}">
+    <span class="np-l1"><span class="np-name">{{ r.title }}</span><span class="np-when{% if r.late %} np-late{% endif %}">{{ r.due }}</span></span>
+    <span class="np-l2">{% if r.where %}{{ r.where }} &middot; {% endif %}Step {{ r.done|add:1 }} of {{ r.total }}: {{ r.next }}{% if r.who %} &middot; {{ r.who }}{% endif %}<span class="np-bar" aria-hidden="true"><i style="width: {{ r.pct }}%"></i></span></span>
+</a>

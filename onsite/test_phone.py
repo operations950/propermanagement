@@ -78,19 +78,17 @@ class PhoneOnSiteTests(TestCase):
     def test_the_phone_visits_screen_has_no_alert_cards_no_more_menu_and_no_shortcut_buttons(self):
         Visit.objects.create(property=self.prop, visit_type=self.vt, scheduled_date=self.today, status=Visit.Status.UNASSIGNED)
         html = self.client.get(reverse('onsite_dashboard')).content.decode()
-        i = html.index('Needs attention today')
-        self.assertNotEqual(html.rfind('<div class="d-none d-md-block">', 0, i), -1)       # the alert card sits inside a wide-screens-only wrapper ...
-        self.assertLess(i, html.index('class="mo-chiprow'))                                 # ... that closes before the phone controls begin
+        self.assertNotIn('Needs attention today', html)                                     # the alert cards are gone: they live behind the Alerts button now
         for gone in ('mo-more', 'mo-actions', 'class="mo-btn" href="'):
             self.assertNotIn(gone, html, gone)
         phone_part = html.split('class="mo-chiprow')[1]
-        self.assertNotIn('Rentals today', phone_part.split('d-none d-md-flex')[0])
+        self.assertNotIn('Turnovers', phone_part.split('d-none d-md-flex')[0])
         self.assertIn(f'<a href="{reverse("onsite_visit_create")}" class="mo-fab d-md-none">', html)      # New visit: the one big floating button
 
     def test_the_desktop_toolbar_still_has_every_shortcut(self):
         html = self.client.get(reverse('onsite_dashboard')).content.decode()
         toolbar = html.split('Wide screens: every shortcut as a button.')[1].split('<div class="d-none d-md-block">')[0] if 'Wide screens: every shortcut' in html else html
-        for name in ('onsite_str_today', 'onsite_rentals_calendar', 'onsite_reservation_list', 'onsite_performance', 'onsite_checklist_templates', 'onsite_visit_rule_list', 'onsite_visit_create',
+        for name in ('onsite_turnovers', 'onsite_rentals_calendar', 'onsite_reservation_list', 'onsite_performance', 'onsite_checklist_templates', 'onsite_visit_rule_list', 'onsite_visit_create',
                      'onsite_checklist_custom_items', 'onsite_cleaning_payments', 'onsite_booking_feeds'):
             self.assertIn(f'href="{reverse(name)}"', html, name)
 
@@ -105,7 +103,7 @@ class PhoneOnSiteTests(TestCase):
         self.client.force_login(plain)
         html = self.client.get(reverse('onsite_dashboard')).content.decode()
         self.assertIn('class="mo-sections d-md-none"', html)
-        for name in ('onsite_dashboard', 'ws_week', 'onsite_str_today', 'onsite_reservation_list', 'onsite_performance'):
+        for name in ('onsite_dashboard', 'onsite_turnovers', 'onsite_rentals_calendar', 'onsite_performance'):
             self.assertIn(f'href="{reverse(name)}"', html.split('class="mo-sections')[1].split('</div>')[0], name)
 
     def test_a_drilled_in_day_has_a_way_back_up_in_the_chip_row(self):
@@ -202,7 +200,7 @@ class PhoneOnSiteTests(TestCase):
 
     def test_the_week_board_on_a_phone_is_one_page_per_day_with_the_same_buttons_as_the_grid(self):
         self._stay()
-        html = self.client.get(reverse('ws_week')).content.decode()
+        html = self.client.get(reverse('onsite_turnovers')).content.decode()
         self.assertIn('class="pg-phone"', html)
         self.assertIn('class="pgscroll"', html)                               # the desktop grid is still there
         phone = html.split('class="pg-phone"')[1].split('class="pgscroll"')[0]
@@ -218,7 +216,7 @@ class PhoneOnSiteTests(TestCase):
 
     def test_each_day_lists_only_the_properties_that_have_something_that_day(self):
         self._stay()
-        response = self.client.get(reverse('ws_week'))
+        response = self.client.get(reverse('onsite_turnovers'))
         by_day = response.context['w']['phone_days']
         self.assertEqual(len(by_day), 7)
         for day in by_day:
@@ -231,14 +229,14 @@ class PhoneOnSiteTests(TestCase):
 
     def test_a_property_with_only_a_guest_in_house_is_one_slim_row(self):
         self._stay()
-        phone = self.client.get(reverse('ws_week')).content.decode().split('class="pg-phone"')[1].split('class="pgscroll"')[0]
+        phone = self.client.get(reverse('onsite_turnovers')).content.decode().split('class="pg-phone"')[1].split('class="pgscroll"')[0]
         self.assertIn('class="pcard pcard-stay"', phone)
         stay_row = phone.split('class="pcard pcard-stay"')[1].split('</div></div>')[0]
         self.assertNotIn('data-wk-time', stay_row)                           # nothing to change on a day with no check-in or check-out
         self.assertIn('Guest in house', stay_row)
 
     def test_the_day_strip_and_pager_have_the_script_that_links_them(self):
-        html = self.client.get(reverse('ws_week')).content.decode()
+        html = self.client.get(reverse('onsite_turnovers')).content.decode()
         self.assertIn("document.getElementById('pdPager')", html)
         css = (Path(settings.BASE_DIR) / 'static' / 'css' / 'mobile-onsite.css').read_text(encoding='utf-8')
         self.assertIn('scroll-snap-type: x mandatory', css)
@@ -246,7 +244,7 @@ class PhoneOnSiteTests(TestCase):
 
     # ---------------------------------------------------------------- the other On-Site pages and the stylesheet
     def test_the_other_onsite_pages_get_the_same_phone_treatment(self):
-        for name in ('onsite_str_today', 'onsite_reservation_list', 'onsite_rentals_calendar', 'onsite_calendar', 'onsite_visit_create', 'onsite_cleaner_activity'):
+        for name in ('onsite_turnovers', 'onsite_reservation_list', 'onsite_rentals_calendar', 'onsite_calendar', 'onsite_visit_create', 'onsite_cleaner_activity'):
             html = self.client.get(reverse(name)).content.decode()
             self.assertIn(CSS, html, name)
             self.assertIn('class="mo-page"', html, name)
@@ -262,5 +260,5 @@ class PhoneOnSiteTests(TestCase):
     def test_the_section_tabs_are_still_the_same_links(self):
         self.client.force_login(self.cleaner.user)
         html = self.client.get(reverse('onsite_dashboard')).content.decode()
-        for name in ('onsite_dashboard', 'ws_week', 'onsite_str_today', 'onsite_reservation_list', 'onsite_cleaner_activity', 'onsite_performance'):
+        for name in ('onsite_dashboard', 'onsite_turnovers', 'onsite_rentals_calendar', 'onsite_performance', 'onsite_reservation_list'):
             self.assertIn(f'href="{reverse(name)}"', html, name)

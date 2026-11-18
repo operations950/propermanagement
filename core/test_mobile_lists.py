@@ -83,26 +83,26 @@ class PhoneLists(TestCase):
         self.assertEqual(parts[3], '')
 
     # ---------------------------------------------------------------- the contacts list
-    def test_a_contact_is_one_card_the_name_opens_it_and_call_text_and_email_are_their_own_buttons(self):
+    def test_a_contact_is_one_row_the_name_opens_it_and_call_text_and_email_are_their_own_links(self):
         html = self.client.get(reverse('contact_list')).content.decode()
-        self.assertEqual(html.count('class="ml-card ml-contact"'), 3)
-        self.assertIn(f'href="{reverse("contact_detail", args=[self.board.pk])}" class="ml-card-main"', html)
-        self.assertIn('href="tel:5615550110" data-quo="openphone://dial?number=%2B15615550110&amp;action=call" class="ml-act"', html)
-        self.assertIn('href="mailto:dana@example.com" class="ml-act"', html)
-        self.assertIn('Vendor / Contractor &middot; Plumbing', html)
-        card = html.split('Quick Plumbing')[-1].split('class="ml-card ml-contact"')[0]
-        self.assertNotIn('Call</a>', card)                                                 # no phone, no Call button
+        self.assertEqual(html.count('class="np-row cl-row"'), 3)                           # each of the three people is one row in their type's box
+        self.assertIn(f'class="cl-main" href="{reverse("contact_detail", args=[self.board.pk])}"', html)
+        self.assertIn('href="tel:5615550110" data-quo="openphone://dial?number=%2B15615550110&amp;action=call" class="cl-act"', html)
+        self.assertIn('href="mailto:dana@example.com" class="cl-act"', html)
+        self.assertIn('Gutters', html)
+        row = html.split('Quick Plumbing')[-1].split('class="np-row cl-row"')[0]
+        self.assertNotIn('href="tel:', row)                                                # no phone, no Call link
 
     def test_the_contact_search_and_type_filters_still_work(self):
         j = self.client.get(reverse('contact_list') + '?q=gutters', HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
-        self.assertIn('Rainsaver Gutters', j['mobile'])
-        self.assertNotIn('Dana Whitfield', j['mobile'])
-        self.assertIn('Rainsaver Gutters', j['desktop'])
+        self.assertIn('Rainsaver Gutters', j['paper'])
+        self.assertNotIn('Dana Whitfield', j['paper'])
         resp = self.client.get(reverse('contact_list') + '?type=board_member')
-        self.assertEqual([c.name for c in resp.context['contacts']], ['Dana Whitfield'])
+        names = [row['name'] for col in resp.context['columns'] for box in col for row in box['rows'] if row['kind'] == 'person']
+        self.assertEqual(names, ['Dana Whitfield'])
         html = resp.content.decode()
-        self.assertIn('ml-chips', html)
-        self.assertIn('ml-chip-minor', html)
+        self.assertIn('cl-pills', html)
+        self.assertIn('St Andrews Grand', html)                                            # a board member is in the box of the property they sit on
 
     # ---------------------------------------------------------------- a contact
     def test_the_contact_page_has_call_text_email_and_a_new_ticket_button(self):

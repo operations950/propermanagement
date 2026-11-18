@@ -36,7 +36,7 @@
                     <span class="fw-semibold" style="font-size: 0.8rem; color: var(--status-critical);">{{ box.overdue_count }} overdue</span>
                     {% endif %}
                     {% if box.delayed_count %}
-                    <span class="fw-semibold" style="font-size: 0.8rem; color: color-mix(in srgb, var(--status-warning) 60%, black);">{{ box.delayed_count }} delayed</span>
+                    <span class="fw-semibold" style="font-size: 0.8rem; color: color-mix(in srgb, var(--status-warning) 60%, var(--mix-black, black));">{{ box.delayed_count }} delayed</span>
                     {% endif %}
                     <span class="badge rounded-pill" style="background: var(--surface-page); color: var(--ink-secondary);">{{ box.total }}</span>
                 </span>
@@ -48,7 +48,7 @@
                     <div style="min-width: 0; overflow: hidden;">
                         <div class="d-flex align-items-center gap-1" style="min-width: 0;">
                             <span class="fw-medium text-truncate" style="color: var(--ink-primary);">{{ t.title|truncatechars:52 }}</span>
-                            {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: #fff;">Urgent</span>{% endif %}
+                            {% if t.priority == 'urgent' %}<span class="badge flex-shrink-0" style="font-size: 0.7rem; background: var(--priority-urgent); color: var(--on-accent, #fff);">Urgent</span>{% endif %}
                         </div>
                         <div class="text-truncate" style="font-size: 0.8rem; color: var(--ink-muted);">{{ t.property.name|default:'—' }}</div>
                     </div>

@@ -4,22 +4,22 @@
 {% block acc_body %}
 <style>
     .pay-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 16px; -webkit-overflow-scrolling: touch; }
-    .pay-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, #fff); color: inherit; text-decoration: none; font-weight: 500; font-size: .9rem; min-height: 40px; }
+    .pay-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, var(--surface-card)); color: inherit; text-decoration: none; font-weight: 500; font-size: .9rem; min-height: 40px; }
     .pay-tab:hover { border-color: var(--brand-primary); color: inherit; }
-    .pay-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+    .pay-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--on-accent, #fff); }
     .pay-tab .n { font-size: 0.78rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(0,0,0,.08); }
     .pay-tab.on .n { background: rgba(255,255,255,.25); }
-    .pay-drop { border: 2px dashed var(--border-hairline); background: color-mix(in srgb, var(--brand-primary) 4%, white); }
-    .pay-drop.over { border-color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 12%, white); }
+    .pay-drop { border: 2px dashed var(--border-hairline); background: color-mix(in srgb, var(--brand-primary) 4%, var(--surface-card)); }
+    .pay-drop.over { border-color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 12%, var(--surface-card)); }
     .pay-file { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 0.92rem; }
     .pay-card .form-control, .pay-card .form-select { font-size: .95rem; }
     .min-w-0 { min-width: 0; }
     .combo { position: relative; }
-    .combo-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin: 4px 0 0; padding: 4px; list-style: none; max-height: 280px; overflow-y: auto; background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.14); -webkit-overflow-scrolling: touch; }
+    .combo-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin: 4px 0 0; padding: 4px; list-style: none; max-height: 280px; overflow-y: auto; background: var(--surface-card, var(--surface-card)); border: 1px solid var(--border-hairline); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.14); -webkit-overflow-scrolling: touch; }
     .combo-list li { padding: 10px 12px; border-radius: 8px; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
-    .combo-list li.active { background: color-mix(in srgb, var(--brand-primary) 12%, white); }
+    .combo-list li.active { background: color-mix(in srgb, var(--brand-primary) 12%, var(--surface-card)); }
     .combo-list li.chosen { font-weight: 700; }
-    .combo-list li.combo-none { cursor: default; color: var(--text-muted, #6b7280); }
+    .combo-list li.combo-none { cursor: default; color: var(--text-muted, var(--t-6b7280, #6b7280)); }
     @media (max-width: 768px) { .pay-card .btn { width: 100%; } }
 </style>
 <div class="mb-3">

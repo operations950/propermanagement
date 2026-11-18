@@ -1,10 +1,13 @@
 {% load ticket_extras %}
 {% comment %}
-The phone list: one compact card per ticket, and the whole card is the tap target (a plain link to the ticket). Two lines: the title (with a small Urgent or High tag in
-front of it) and "property · due date" (late in red). Who has it, the status and the latest update are on the ticket itself. Expects: tickets, now.
-Phones only (the list page shows this inside d-md-none); the full table keeps the inline editing.
+The phone list: the same newspaper boxes (Urgent, Overdue, Today ... by due date) stacked in one column, one compact card per ticket, and the whole card is the tap target (a plain link to the ticket). Two lines: the title (with a small Urgent or High tag in
+front of it) and "property · due date" (late in red). Who has it, the status and the latest update are on the ticket itself. Expects: boxes, now.
+Phones only (the list page shows this inside d-md-none).
 {% endcomment %}
-{% for t in tickets %}
+{% for box in boxes %}
+<section class="np-box{% if box.tone %} np-{{ box.tone }}{% endif %}" style="order: {{ box.order }};" data-np-box="{{ box.key }}">
+    <h2><span class="np-box-title">{{ box.title }}{% if box.hint %}<small>{{ box.hint }}</small>{% endif %}</span><span class="np-count">{{ box.rows|length }}</span></h2>
+{% for t in box.rows %}
 {% with late=t|is_overdue:now %}
 <a class="m-tk-card{% if t.priority == 'urgent' %} is-urgent{% elif t.priority == 'high' %} is-high{% endif %}{% if late %} is-late{% endif %}" href="{% url 'ticket_detail' t.pk %}">
     <span class="m-tk-title">{% if t.priority == 'urgent' %}<span class="m-tk-flag m-tk-flag-urgent">Urgent</span> {% elif t.priority == 'high' %}<span class="m-tk-flag m-tk-flag-high">High</span> {% endif %}{{ t.title }}</span>
@@ -14,6 +17,8 @@ Phones only (the list page shows this inside d-md-none); the full table keeps th
     </span>
 </a>
 {% endwith %}
+{% endfor %}
+</section>
 {% empty %}
 <div class="m-tk-empty">
     <p class="m-tk-empty-title">No tickets here</p>

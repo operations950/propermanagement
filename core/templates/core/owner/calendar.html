@@ -4,19 +4,19 @@
 <style>
     .oc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
     .oc-dow { text-align: center; font-size: 0.68rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; padding-bottom: 2px; }
-    .oc-day { min-height: 3.1rem; border: 1px solid var(--hair); border-radius: 8px; padding: 3px 4px; background: #fff; font-size: 0.78rem; line-height: 1.15; overflow: hidden; }
+    .oc-day { min-height: 3.1rem; border: 1px solid var(--hair); border-radius: 8px; padding: 3px 4px; background: var(--surface-card); font-size: 0.78rem; line-height: 1.15; overflow: hidden; }
     .oc-day .num { font-weight: 600; font-variant-numeric: tabular-nums; }
     .oc-day .tag { display: block; font-size: 0.6rem; font-weight: 600; margin-top: 2px; }
     .oc-day.out { visibility: hidden; }
     .oc-day.past { opacity: 0.55; }
     .oc-day.today { box-shadow: inset 0 0 0 2px var(--slate); }
-    .oc-day.booked { background: #d8e6f0; border-color: #9fbdd3; color: #24465e; }
-    .oc-day.owner { background: #e7def0; border-color: #bba6d0; color: #4a2f6b; }
-    .oc-day.blocked { background: repeating-linear-gradient(45deg, #f1f1f3, #f1f1f3 5px, #e4e5e9 5px, #e4e5e9 10px); border-color: #c4c7ce; color: #4d5260; }
+    .oc-day.booked { background: var(--b-d8e6f0, #d8e6f0); border-color: var(--l-9fbdd3, #9fbdd3); color: #24465e; }
+    .oc-day.owner { background: var(--b-e7def0, #e7def0); border-color: var(--l-bba6d0, #bba6d0); color: #4a2f6b; }
+    .oc-day.blocked { background: repeating-linear-gradient(45deg, var(--b-f1f1f3, #f1f1f3), var(--b-f1f1f3, #f1f1f3) 5px, var(--b-e4e5e9, #e4e5e9) 5px, var(--b-e4e5e9, #e4e5e9) 10px); border-color: var(--l-c4c7ce, #c4c7ce); color: #4d5260; }
     .oc-key { display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 4px; border: 1px solid var(--hair); vertical-align: -2px; margin-right: 0.3rem; }
-    .oc-key.booked { background: #d8e6f0; border-color: #9fbdd3; }
-    .oc-key.owner { background: #e7def0; border-color: #bba6d0; }
-    .oc-key.blocked { background: repeating-linear-gradient(45deg, #f1f1f3, #f1f1f3 3px, #e4e5e9 3px, #e4e5e9 6px); border-color: #c4c7ce; }
+    .oc-key.booked { background: var(--b-d8e6f0, #d8e6f0); border-color: var(--l-9fbdd3, #9fbdd3); }
+    .oc-key.owner { background: var(--b-e7def0, #e7def0); border-color: var(--l-bba6d0, #bba6d0); }
+    .oc-key.blocked { background: repeating-linear-gradient(45deg, var(--b-f1f1f3, #f1f1f3), var(--b-f1f1f3, #f1f1f3) 3px, var(--b-e4e5e9, #e4e5e9) 3px, var(--b-e4e5e9, #e4e5e9) 6px); border-color: var(--l-c4c7ce, #c4c7ce); }
     @media (max-width: 575.98px) { .oc-day { min-height: 2.7rem; padding: 2px 3px; font-size: 0.72rem; } .oc-day .tag { font-size: 0.55rem; } }
 </style>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
@@ -33,7 +33,7 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 no-print">
     <div class="btn-group btn-group-sm" role="group" aria-label="Month">
         {% if cal.previous %}<a class="btn btn-outline-secondary" href="?month={{ cal.previous|date:'Y-m' }}" aria-label="Earlier month">&lsaquo;</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-hidden="true">&lsaquo;</span>{% endif %}
-        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink); background: #fff;">{{ cal.month|date:"F Y" }}</span>
+        <span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink); background: var(--surface-card);">{{ cal.month|date:"F Y" }}</span>
         {% if cal.next %}<a class="btn btn-outline-secondary" href="?month={{ cal.next|date:'Y-m' }}" aria-label="Later month">&rsaquo;</a>{% else %}<span class="btn btn-outline-secondary disabled" aria-hidden="true">&rsaquo;</span>{% endif %}
     </div>
     <select class="form-select form-select-sm" style="max-width: 11rem;" aria-label="Jump to a month" onchange="location.href='?month=' + this.value">

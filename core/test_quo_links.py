@@ -77,26 +77,25 @@ class QuoButtonsOnTheContactScreensTests(TestCase):
         self.nophone = Contact.objects.create(name='No Phone', contact_type='vendor', email='n@example.com')
 
     def card(self, html, name):
-        mobile = html.split('id="contact-mobile-cards"')[1]                           # the phone cards (the name is also in the desktop table above)
-        return mobile.split(name)[1].split('class="ml-card ml-contact"')[0]
+        return html.split(name, 1)[1].split('class="np-row cl-row"')[0]                   # the one row of that person (from their name to the next row)
 
     def test_a_card_has_call_text_and_email_with_the_quo_links_beside_the_ordinary_ones(self):
         html = self.client.get(reverse('contact_list')).content.decode()
-        self.assertEqual(html.count('class="ml-card ml-contact"'), 4)
+        self.assertEqual(html.count('class="np-row cl-row"'), 4)
         card = self.card(html, 'Dana Whitfield')
-        self.assertIn('href="tel:5615550110" data-quo="openphone://dial?number=%2B15615550110&amp;action=call" class="ml-act"', card)
-        self.assertIn('href="sms:5615550110" data-quo="openphone://message?number=%2B15615550110" class="ml-act"', card)
-        self.assertIn('href="mailto:dana@example.com" class="ml-act"', card)
+        self.assertIn('href="tel:5615550110" data-quo="openphone://dial?number=%2B15615550110&amp;action=call" class="cl-act"', card)
+        self.assertIn('href="sms:5615550110" data-quo="openphone://message?number=%2B15615550110" class="cl-act"', card)
+        self.assertIn('href="mailto:dana@example.com" class="cl-act"', card)
         self.assertIn('js/quo-links.js', html)
 
     def test_a_number_without_a_quo_form_keeps_the_plain_phone_links_only(self):
         html = self.client.get(reverse('contact_list')).content.decode()
         for name in ('Front Office', 'Short Number'):
             card = self.card(html, name)
-            self.assertIn('class="ml-act"><i data-lucide="phone"', card)
+            self.assertIn('class="cl-act" title="Call"', card)
             self.assertNotIn('data-quo', card)
             self.assertIn('href="sms:', card)
-        self.assertNotIn('Call</a>', self.card(html, 'No Phone'))
+        self.assertNotIn('href="tel:', self.card(html, 'No Phone'))
 
     def test_the_contact_page_buttons_do_the_same(self):
         html = self.client.get(reverse('contact_detail', args=[self.dana.pk])).content.decode()
@@ -121,11 +120,10 @@ class QuoButtonsOnTheContactScreensTests(TestCase):
     def test_the_back_office_alerts_are_left_off_the_phone_screen_but_kept_for_a_computer(self):
         ContactImportCandidate.objects.create(source=Contact.Source.choices[0][0], name='Someone New', phone='561-555-0000')
         html = self.client.get(reverse('contact_list')).content.decode()
-        self.assertIn('<div class="d-none d-md-block">', html)                          # the page's alert strip sits in a block that only shows on wide screens
-        review = html.split('to review')[0].rsplit('<a ', 1)[1]
-        self.assertIn('d-none d-md-flex', review)                                       # the "to review" button only shows on wide screens
-        imp = html.split('data-bs-target="#importContactsModal"')[0].rsplit('<button', 1)[1]
-        self.assertIn('d-none d-md-inline-block', imp)                                  # and so does Import contacts
-        self.assertIn('ml-title-one', html)
-        self.assertIn('New contact', html)                                              # the one thing left in the title row on a phone
-        self.assertIn('id="contact-table-body"', html)                                  # the desktop table is untouched
+        self.assertIn('id="cl-alerts-panel" hidden', html)                              # the alerts sit behind the Alerts button, closed until it is pressed
+        css = open('static/css/contacts.css', encoding='utf-8').read().split('@media (max-width: 575px)')[1]
+        for hidden in ('.cl-alerts-btn', '.cl-import', '.cl-panel'):
+            self.assertIn(hidden, css)                                                  # and the phone leaves the button, the panel and Import out
+        self.assertIn('display: none !important', css)
+        self.assertIn('New contact', html)                                              # the one thing left in the header on a phone
+        self.assertIn('id="contact-paper"', html)                                       # the boxes are the page now

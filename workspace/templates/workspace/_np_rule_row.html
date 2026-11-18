@@ -1,0 +1,5 @@
+{% comment %}One compliance rule in a newspaper box: the rule and when it next opens an item, then what it applies to and who owns it. Expects r (a row from services.compliance_rules).{% endcomment %}
+<a class="np-row{% if not r.active %} np-off{% endif %}" href="{{ r.url }}">
+    <span class="np-l1"><span class="np-name">{{ r.t.name }}</span><span class="np-when" title="Next opens">{% if r.next %}{{ r.next|date:'M j' }}{% endif %}</span></span>
+    <span class="np-l2">{{ r.where }}{% if r.who %} &middot; {{ r.who }}{% endif %}{% if not r.active %} &middot; Switched off{% endif %}</span>
+</a>

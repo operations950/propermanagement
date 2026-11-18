@@ -1,0 +1,15 @@
+{% comment %}The newspaper: the boxes dealt into columns (core/newspaper.py deal). Expects `columns` (a list of lists of boxes), `row_template` (the template that draws one row, handed `r`) and optionally `empty_text`.
+On a phone the columns fold into one stack, each box in its natural order (the `order` style).{% endcomment %}
+{% if columns %}
+<div class="np-cols">
+{% for col in columns %}<div class="np-col">
+{% for box in col %}<section class="np-box{% if box.tone %} np-{{ box.tone }}{% endif %}" style="order: {{ box.order }};" data-np-box="{{ box.key }}">
+    <h2><span class="np-box-title">{{ box.title }}{% if box.hint %}<small>{{ box.hint }}</small>{% endif %}</span><span class="np-count">{% if box.count %}{{ box.count }}{% else %}{{ box.rows|length }}{% endif %}</span></h2>
+    {% for row in box.rows %}{% include row_template with r=row %}{% endfor %}
+</section>
+{% endfor %}</div>
+{% endfor %}
+</div>
+{% else %}
+<p class="np-empty"><i data-lucide="check-circle-2" class="icon-lg"></i>{{ empty_text|default:"Nothing here." }}</p>
+{% endif %}

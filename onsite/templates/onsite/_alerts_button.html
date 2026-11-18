@@ -1,0 +1,1 @@
+<button type="button" id="os-alerts-btn" class="btn btn-sm {% if alerts %}btn-alerts-on{% else %}btn-outline-secondary{% endif %}" style="margin-bottom: 0.3rem;" aria-expanded="false" aria-controls="os-alerts-panel"><i data-lucide="bell{% if alerts %}-ring{% endif %}" class="icon"></i> Alerts{% if alerts %}<span class="alerts-n">{{ alerts|length }}</span>{% endif %}</button>

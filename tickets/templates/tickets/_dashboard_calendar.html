@@ -1,168 +1,230 @@
-{% comment %}Your Google Calendar — reused in the desktop column and the mobile accordion (both render into the DOM at once, one hidden via responsive classes — see department_dashboard.html), so New/Edit event panels are toggled by JS scoped to this .calendar-widget instance (bootstrap.Collapse on the element itself) rather than by id, which would resolve to whichever copy comes first in the DOM regardless of which one is visible. One box per day: today gets a full Google-Calendar-day-view-style hour timeline, the next two days are a simple chronological list — see _layout_timeline in tickets/views.py. Each event is shaded by which of the staff member's calendars it came from (see _calendar_color) — pick which calendars pull in via the "Calendars" bubble-lock picker below.{% endcomment %}
-<div class="calendar-widget">
-<div class="d-flex justify-content-between align-items-center mb-2">
-    {% if calendar_token and calendar_token.google_email %}
-        <span class="small text-muted">{{ calendar_token.google_email }}</span>
-    {% else %}
-        <span></span>
+{% comment %}Your Google Calendar: a square, bordered card (header strip with a + icon for a new event and one Settings button that holds the time zone, the calendars shown and Disconnect), then the day boxes (Today, This week: every day shown, the card grows) or a month grid (This month). Reused in the desktop column and the mobile accordion (both render into the DOM at once, one hidden via responsive classes), so the popovers are driven by classes and a script scoped to each .calendar-widget, never by ids.
+Context: calendar_mode ('today', 'week', 'month' or nothing), calendar_days, calendar_month (the grid, month mode), calendar_token, available_calendars, enabled_calendar_ids, current_timezone, timezone_choices.{% endcomment %}
+<div class="calendar-widget cal-w">
+<style>
+.cal-w { position: relative; }
+.cal-head { display: flex; align-items: center; gap: .4rem; padding: .45rem .7rem; border-bottom: 1px solid var(--border-hairline); background: color-mix(in srgb, var(--brand-primary) 9%, var(--surface-card)); border-radius: 6px 6px 0 0; }
+.cal-head h6 { margin: 0; flex: 1; font-size: .74rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-secondary); font-family: inherit; font-weight: 600; }
+.cal-ib { width: 30px; height: 30px; border: 1px solid var(--border-hairline); background: var(--surface-card); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--brand-slate); padding: 0; }
+.cal-ib:hover { color: var(--ink-primary); border-color: var(--brand-slate); }
+.cal-sbtn { border: 1px solid var(--border-hairline); background: var(--surface-card); border-radius: 6px; padding: 3px 10px; font-size: .8rem; color: var(--brand-slate); display: inline-flex; gap: .35rem; align-items: center; height: 30px; }
+.cal-sbtn:hover { color: var(--ink-primary); border-color: var(--brand-slate); }
+.cal-pop { position: absolute; right: .6rem; top: 2.8rem; width: min(330px, 94%); max-height: 80vh; overflow-y: auto; background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); padding: .7rem .8rem; z-index: 30; display: none; }
+.cal-pop.on { display: block; }
+.cal-pop h6 { margin: .5rem 0 .3rem; font-size: .68rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-muted); font-family: inherit; }
+.cal-pop h6:first-child { margin-top: 0; }
+.cal-email { font-size: .78rem; color: var(--ink-muted); margin-bottom: .2rem; overflow-wrap: anywhere; }
+.cal-danger { color: var(--status-critical); background: none; border: 0; padding: .4rem 0 0; font-size: .85rem; }
+.cal-body { padding: .55rem .7rem .7rem; }
+.cal-day { border: 1px solid var(--border-hairline); border-radius: 6px; padding: .4rem .55rem; margin-bottom: .45rem; background: var(--surface-card); }
+.cal-day.today { background: color-mix(in srgb, var(--brand-primary) 9%, var(--surface-card)); }
+.cal-day h6 { margin: 0 0 .3rem; font-size: .7rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-muted); display: flex; justify-content: space-between; font-family: inherit; font-weight: 700; }
+.cal-mnav { display: flex; align-items: center; gap: .4rem; margin-bottom: .45rem; }
+.cal-mnav b { flex: 1; font-size: .95rem; }
+.cal-mnav a { text-decoration: none; border: 1px solid var(--border-hairline); border-radius: 6px; min-width: 30px; height: 30px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; font-size: .8rem; color: var(--brand-slate); }
+.cal-mnav a:hover { color: var(--ink-primary); border-color: var(--brand-slate); }
+.cal-mg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--border-hairline); border-left: 1px solid var(--border-hairline); }
+.cal-mg .h { padding: 2px 4px; font-size: .68rem; text-transform: uppercase; color: var(--ink-muted); border-right: 1px solid var(--border-hairline); border-bottom: 1px solid var(--border-hairline); text-align: center; background: var(--surface-page); }
+.cal-mg .d { min-width: 0; overflow: hidden; min-height: 82px; padding: 2px 3px; border-right: 1px solid var(--border-hairline); border-bottom: 1px solid var(--border-hairline); cursor: pointer; font-size: .72rem; }
+.cal-mg .d:hover { background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-card)); }
+.cal-mg .d.out { opacity: .45; }
+.cal-mg .d.today { background: color-mix(in srgb, var(--brand-primary) 11%, var(--surface-card)); }
+.cal-mg .num { display: inline-block; font-size: .74rem; min-width: 1.3rem; height: 1.3rem; line-height: 1.3rem; text-align: center; border-radius: 50%; }
+.cal-mg .d.today .num { background: var(--brand-primary); color: var(--surface-card); font-weight: 700; }
+.cal-chip { display: block; padding: 0 3px; border-radius: 3px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-primary); font-size: .69rem; line-height: 1.35; cursor: pointer; }
+.cal-more { color: var(--ink-muted); font-size: .68rem; margin-top: 1px; }
+.cal-dots { display: none; gap: 2px; flex-wrap: wrap; margin-top: 2px; }
+.cal-dots i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.cal-dayev { display: none; }
+.cal-daypop { position: absolute; z-index: 40; width: 250px; background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); padding: .6rem .7rem; }
+.cal-daypop h6 { margin: 0 1.2rem .35rem 0; font-size: .8rem; font-family: inherit; text-transform: none; letter-spacing: 0; color: var(--ink-primary); }
+.cal-daypop .x { position: absolute; right: 6px; top: 3px; border: 0; background: none; color: var(--ink-muted); font-size: 1.1rem; line-height: 1; }
+.cal-legend { font-size: .76rem; color: var(--ink-muted); margin-top: .5rem; }
+@media (max-width: 575px) {
+    .cal-mg .d { min-height: 52px; }
+    .cal-mg .cal-chip, .cal-mg .cal-more { display: none; }
+    .cal-mg .cal-dots { display: flex; }
+}
+</style>
+
+<div class="cal-head">
+    <h6>{{ calendar_title|default:"Your calendar" }}</h6>
+    {% if calendar_token %}<button type="button" class="cal-ib calendar-new-event-btn" data-cal-pop="new" title="New event" aria-label="New event"><i data-lucide="plus" class="icon"></i></button>{% endif %}
+    {% if calendar_token or calendar_configured %}<button type="button" class="cal-sbtn" data-cal-pop="settings" aria-label="Calendar settings"><i data-lucide="settings" class="icon"></i> Settings</button>{% endif %}
+</div>
+
+{% if calendar_token or calendar_configured %}
+<div class="cal-pop" data-cal-panel="settings">
+    {% if calendar_token and calendar_token.google_email %}<div class="cal-email">{{ calendar_token.google_email }}</div>{% endif %}
+    <h6>Time zone</h6>
+    <form method="post" action="{% url 'timezone_select' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <p class="small mb-2" style="color: var(--ink-muted);">Which timezone should your due dates and calendar show in?</p>
+        <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="timezone">
+            <input type="hidden" name="timezone" data-bubble-input value="{{ current_timezone }}">
+            <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a timezone"></div>
+            <div class="bubble-pool" data-bubble-pool>
+                {% for value, label in timezone_choices %}
+                <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+    </form>
+    {% if calendar_token %}
+    <h6>Calendars shown</h6>
+    <form method="post" action="{% url 'calendar_select' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <p class="small mb-2" style="color: var(--ink-muted);">Which of your Google calendars should show here?</p>
+        <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="calendar_ids" data-initial-values="{{ enabled_calendar_ids }}">
+            <div class="bubble-slot" data-bubble-slot data-empty-text="No calendars selected"></div>
+            <div class="bubble-pool" data-bubble-pool>
+                {% for c in available_calendars %}
+                <button type="button" class="bubble" data-value="{{ c.id }}" data-label="{{ c.summary }}" style="border-color: {{ c.color }}; color: {{ c.color }};">{{ c.summary }}{% if c.is_primary %} (primary){% endif %}{% if c.access_role == 'freeBusyReader' %} (free/busy only){% endif %}{% if c.error %} (can't read){% endif %}</button>
+                {% endfor %}
+            </div>
+        </div>
+        <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+    </form>
+    <form method="post" action="{% url 'calendar_disconnect' %}" onsubmit="return confirm('Disconnect Google Calendar?');">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button type="submit" class="cal-danger">Disconnect Google Calendar</button>
+    </form>
     {% endif %}
-    <div class="d-flex align-items-center gap-2">
-        <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#timezonePicker">Timezone</button>
-        {% if calendar_token %}
-        <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="collapse" data-bs-target="#calendarPicker">Calendars</button>
-        <button type="button" class="btn btn-link btn-sm p-0 calendar-new-event-btn">+ New event</button>
-        <form method="post" action="{% url 'calendar_disconnect' %}" class="d-inline" onsubmit="return confirm('Disconnect Google Calendar?');">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.path }}">
-            <button type="submit" class="btn btn-link btn-sm text-danger p-0">Disconnect</button>
-        </form>
-        {% endif %}
-    </div>
-</div>
-
-{% for c in available_calendars %}{% if c.enabled and c.error %}<div class="small mb-1" style="color: var(--status-critical, #b42318);"><i data-lucide="alert-triangle" class="icon"></i> Can't show <strong>{{ c.summary }}</strong>: {{ c.error }}.</div>{% endif %}{% endfor %}
-
-<div class="collapse mb-2" id="timezonePicker">
-    <div class="card card-body p-2">
-        <form method="post" action="{% url 'timezone_select' %}">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.path }}">
-            <p class="small mb-2" style="color: var(--ink-muted);">Which timezone should your due dates and calendar show in?</p>
-            <div class="bubble-picker mb-2" data-bubble-picker data-mode="single" data-name="timezone">
-                <input type="hidden" name="timezone" data-bubble-input value="{{ current_timezone }}">
-                <div class="bubble-slot" data-bubble-slot data-empty-text="Choose a timezone"></div>
-                <div class="bubble-pool" data-bubble-pool>
-                    {% for value, label in timezone_choices %}
-                    <button type="button" class="bubble" data-value="{{ value }}" data-label="{{ label }}">{{ label }}</button>
-                    {% endfor %}
-                </div>
-            </div>
-            <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
-        </form>
-    </div>
-</div>
-
-{% if calendar_token %}
-<div class="collapse mb-2" id="calendarPicker">
-    <div class="card card-body p-2">
-        <form method="post" action="{% url 'calendar_select' %}">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.path }}">
-            <p class="small mb-2" style="color: var(--ink-muted);">Which of your Google calendars should show here?</p>
-            <div class="bubble-picker mb-2" data-bubble-picker data-mode="multi" data-name="calendar_ids" data-initial-values="{{ enabled_calendar_ids }}">
-                <div class="bubble-slot" data-bubble-slot data-empty-text="No calendars selected"></div>
-                <div class="bubble-pool" data-bubble-pool>
-                    {% for c in available_calendars %}
-                    <button type="button" class="bubble" data-value="{{ c.id }}" data-label="{{ c.summary }}" style="border-color: {{ c.color }}; color: {{ c.color }};">{{ c.summary }}{% if c.is_primary %} (primary){% endif %}{% if c.access_role == 'freeBusyReader' %} (free/busy only){% endif %}{% if c.error %} (can't read){% endif %}</button>
-                    {% endfor %}
-                </div>
-            </div>
-            <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
-        </form>
-    </div>
-</div>
-
-<div class="collapse mb-2 calendar-new-event-panel">
-    <div class="card card-body p-2">
-        <form method="post" action="{% url 'calendar_event_create' %}">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.path }}">
-            <p class="small mb-2" style="color: var(--ink-muted);">New event</p>
-            {% include 'tickets/_calendar_event_fields.html' %}
-            <button class="btn btn-outline-primary btn-sm mt-2" type="submit">Add event</button>
-        </form>
-    </div>
-</div>
-
-<div class="collapse mb-2 calendar-edit-event-panel">
-    <div class="card card-body p-2">
-        <form method="post" action="{% url 'calendar_event_update' %}" class="calendar-edit-event-form">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.path }}">
-            <input type="hidden" name="event_id" class="calendar-event-id-field">
-            <p class="small mb-2" style="color: var(--ink-muted);">Edit event</p>
-            {% include 'tickets/_calendar_event_fields.html' %}
-            <div class="d-flex gap-2 mt-2">
-                <button class="btn btn-outline-primary btn-sm" type="submit">Save changes</button>
-                <button class="btn btn-outline-danger btn-sm" type="submit" formaction="{% url 'calendar_event_delete' %}" formnovalidate onclick="return confirm('Delete this event?');">Delete</button>
-            </div>
-        </form>
-    </div>
 </div>
 {% endif %}
 
 {% if calendar_token %}
-    <div class="calendar-days-scroll">
-    {% for day in calendar_days %}
-    <div class="card mb-2">
-        <div class="card-body p-2">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h6 class="mb-0 small fw-bold text-uppercase" style="letter-spacing: 0.04em; color: var(--ink-muted);">{{ day.label }}</h6>
-                <span class="small" style="color: var(--ink-muted);">{{ day.date_label }}</span>
-            </div>
+<div class="cal-pop calendar-new-event-panel" data-cal-panel="new">
+    <form method="post" action="{% url 'calendar_event_create' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <h6>New event</h6>
+        {% include 'tickets/_calendar_event_fields.html' %}
+        <button class="btn btn-outline-primary btn-sm mt-2" type="submit">Add event</button>
+    </form>
+</div>
+<div class="cal-pop calendar-edit-event-panel" data-cal-panel="edit">
+    <form method="post" action="{% url 'calendar_event_update' %}" class="calendar-edit-event-form">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <input type="hidden" name="event_id" class="calendar-event-id-field">
+        <h6>Edit event</h6>
+        {% include 'tickets/_calendar_event_fields.html' %}
+        <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-outline-primary btn-sm" type="submit">Save changes</button>
+            <button class="btn btn-outline-danger btn-sm" type="submit" formaction="{% url 'calendar_event_delete' %}" formnovalidate onclick="return confirm('Delete this event?');">Delete</button>
+        </div>
+    </form>
+</div>
+{% endif %}
 
-            {% if day.all_day %}
-            <div class="mb-2">
-                {% for a in day.all_day %}
-                <div class="small rounded px-2 py-1 mb-1 d-flex align-items-center gap-2 calendar-event-clickable" style="background: color-mix(in srgb, {{ a.color }} 14%, white); color: var(--ink-secondary); cursor: pointer;"
-                     data-event-id="{{ a.event_id }}" data-calendar-id="{{ a.calendar_id }}" data-title="{{ a.title }}" data-date="{{ a.date|date:'Y-m-d' }}" data-all-day="1">
-                    <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ a.color }};"></span>
-                    {{ a.title }}
+<div class="cal-body">
+{% for c in available_calendars %}{% if c.enabled and c.error %}<div class="small mb-1" style="color: var(--status-critical, #b42318);"><i data-lucide="alert-triangle" class="icon"></i> Can't show <strong>{{ c.summary }}</strong>: {{ c.error }}.</div>{% endif %}{% endfor %}
+
+{% if calendar_token and calendar_mode == 'month' and calendar_month %}
+    <div class="cal-mnav">
+        <a href="{{ calendar_month.prev_url }}" aria-label="Previous month">&lsaquo;</a>
+        <b>{{ calendar_month.label }}</b>
+        {% if not calendar_month.is_current %}<a href="{{ calendar_month.today_url }}">Today</a>{% endif %}
+        <a href="{{ calendar_month.next_url }}" aria-label="Next month">&rsaquo;</a>
+    </div>
+    <div class="cal-mg">
+        <div class="h">Sun</div><div class="h">Mon</div><div class="h">Tue</div><div class="h">Wed</div><div class="h">Thu</div><div class="h">Fri</div><div class="h">Sat</div>
+        {% for week in calendar_month.weeks %}{% for cell in week %}
+        <div class="d{% if not cell.in_month %} out{% endif %}{% if cell.is_today %} today{% endif %}" data-cal-day="{{ cell.iso }}" data-cal-label="{{ cell.label }}">
+            <span class="num">{{ cell.num }}</span>
+            {% for e in cell.shown %}
+            <span class="cal-chip calendar-event-clickable" style="background: color-mix(in srgb, {{ e.color }} 26%, var(--surface-card));"
+                  data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
+                  data-all-day="{% if e.all_day %}1{% else %}0{% endif %}" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">{% if e.time %}{{ e.time }} {% endif %}{{ e.title }}</span>
+            {% endfor %}
+            {% if cell.extra %}<div class="cal-more">+{{ cell.extra }} more</div>{% endif %}
+            {% if cell.total %}<div class="cal-dots">{% for e in cell.events|slice:":3" %}<i style="background: {{ e.color }};"></i>{% endfor %}{% if cell.total > 3 %}<span class="cal-more">+{{ cell.total|add:"-3" }}</span>{% endif %}</div>{% endif %}
+            <div class="cal-dayev">
+                {% for e in cell.events %}
+                <div class="ev calendar-event-clickable d-flex align-items-center gap-2 small mb-1" style="cursor: pointer;"
+                     data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
+                     data-all-day="{% if e.all_day %}1{% else %}0{% endif %}" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
+                    <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ e.color }};"></span>
+                    <span style="color: var(--ink-muted); min-width: 3rem;">{% if e.time %}{{ e.time }}{% else %}all day{% endif %}</span><span class="text-truncate">{{ e.title }}</span>
                 </div>
                 {% endfor %}
             </div>
-            {% endif %}
-
-            {% if day.is_today %}
-                {% if day.timeline_hours %}
-                <div class="position-relative" style="height: {{ day.timeline_height_px }}px; margin-left: 44px;">
-                    {% for h in day.timeline_hours %}
-                    <div class="position-absolute w-100" style="top: {{ h.top_pct }}%; border-top: 1px solid var(--bs-border-color, #e5e5e5);">
-                        <span class="position-absolute small" style="left: -44px; top: -7px; width: 40px; color: var(--ink-muted); font-size: 0.7rem;">{{ h.label }}</span>
-                    </div>
-                    {% endfor %}
-                    {% if day.now_top_pct != None %}
-                    <div class="position-absolute w-100" style="top: {{ day.now_top_pct }}%; border-top: 2px solid var(--status-critical, #dc3545); z-index: 3;">
-                        <span class="position-absolute rounded-circle" style="left: -4px; top: -4px; width: 8px; height: 8px; background: var(--status-critical, #dc3545);"></span>
-                    </div>
-                    {% endif %}
-                    {% for e in day.timed %}
-                    <div class="position-absolute rounded px-1 overflow-hidden calendar-event-clickable" style="
-                        top: {{ e.top_pct }}%; height: {{ e.height_pct }}%;
-                        left: {{ e.left_pct }}%; width: {{ e.width_pct }}%;
-                        {% if e.past %}background: color-mix(in srgb, {{ e.color }} 22%, white); color: var(--ink-muted);{% else %}background: color-mix(in srgb, {{ e.color }} 85%, black); color: #fff;{% endif %}
-                        font-size: 0.72rem; line-height: 1.15; z-index: 2; cursor: pointer;
-                    "
-                        data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
-                        data-all-day="0" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
-                        <div class="fw-medium text-truncate">{{ e.title }}</div>
-                        <div class="text-truncate" style="opacity: 0.85;">{{ e.start_label }}{% if e.past %} · done{% endif %}</div>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="text-muted small mb-0">Nothing on your calendar today.</p>
-                {% endif %}
-            {% else %}
-                {% if day.timed %}
-                <ul class="list-unstyled mb-0">
-                    {% for e in day.timed %}
-                    <li class="small mb-1 d-flex justify-content-between align-items-center gap-2 calendar-event-clickable" style="cursor: pointer;"
-                        data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
-                        data-all-day="0" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
-                        <span class="d-flex align-items-center gap-2 text-truncate">
-                            <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ e.color }};"></span>
-                            <span class="text-truncate">{{ e.title }}</span>
-                        </span>
-                        <span class="text-nowrap" style="color: var(--ink-muted);">{{ e.start_label }}</span>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% elif not day.all_day %}
-                <p class="text-muted small mb-0">Nothing scheduled.</p>
-                {% endif %}
-            {% endif %}
         </div>
+        {% endfor %}{% endfor %}
+    </div>
+    <div class="cal-legend">Click a day to see its events.</div>
+{% elif calendar_token %}
+    <div class="cal-days">
+    {% for day in calendar_days %}
+    <div class="cal-day{% if day.is_today %} today{% endif %}">
+        <h6><span>{{ day.label }}</span><span>{{ day.date_label }}</span></h6>
+
+        {% if day.all_day %}
+        <div class="mb-2">
+            {% for a in day.all_day %}
+            <div class="small rounded px-2 py-1 mb-1 d-flex align-items-center gap-2 calendar-event-clickable" style="background: color-mix(in srgb, {{ a.color }} 14%, var(--surface-card)); color: var(--ink-secondary); cursor: pointer;"
+                 data-event-id="{{ a.event_id }}" data-calendar-id="{{ a.calendar_id }}" data-title="{{ a.title }}" data-date="{{ a.date|date:'Y-m-d' }}" data-all-day="1">
+                <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ a.color }};"></span>
+                {{ a.title }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if day.is_today %}
+            {% if day.timeline_hours %}
+            <div class="position-relative" style="height: {{ day.timeline_height_px }}px; margin-left: 44px;">
+                {% for h in day.timeline_hours %}
+                <div class="position-absolute w-100" style="top: {{ h.top_pct }}%; border-top: 1px solid var(--border-hairline);">
+                    <span class="position-absolute small" style="left: -44px; top: -7px; width: 40px; color: var(--ink-muted); font-size: 0.7rem;">{{ h.label }}</span>
+                </div>
+                {% endfor %}
+                {% if day.now_top_pct != None %}
+                <div class="position-absolute w-100" style="top: {{ day.now_top_pct }}%; border-top: 2px solid var(--status-critical, #dc3545); z-index: 3;">
+                    <span class="position-absolute rounded-circle" style="left: -4px; top: -4px; width: 8px; height: 8px; background: var(--status-critical, #dc3545);"></span>
+                </div>
+                {% endif %}
+                {% for e in day.timed %}
+                <div class="position-absolute rounded px-1 overflow-hidden calendar-event-clickable" style="
+                    top: {{ e.top_pct }}%; height: {{ e.height_pct }}%;
+                    left: {{ e.left_pct }}%; width: {{ e.width_pct }}%;
+                    {% if e.past %}background: color-mix(in srgb, {{ e.color }} 22%, var(--surface-card)); color: var(--ink-muted);{% else %}background: color-mix(in srgb, {{ e.color }} 85%, black); color: #fff;{% endif %}
+                    font-size: 0.72rem; line-height: 1.15; z-index: 2; cursor: pointer;
+                "
+                    data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
+                    data-all-day="0" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
+                    <div class="fw-medium text-truncate">{{ e.title }}</div>
+                    <div class="text-truncate" style="opacity: 0.85;">{{ e.start_label }}{% if e.past %} · done{% endif %}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted small mb-0">Nothing on your calendar today.</p>
+            {% endif %}
+        {% else %}
+            {% if day.timed %}
+            <ul class="list-unstyled mb-0">
+                {% for e in day.timed %}
+                <li class="small mb-1 d-flex justify-content-between align-items-center gap-2 calendar-event-clickable" style="cursor: pointer;"
+                    data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
+                    data-all-day="0" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">
+                    <span class="d-flex align-items-center gap-2 text-truncate">
+                        <span class="rounded-circle flex-shrink-0" style="width: 8px; height: 8px; background: {{ e.color }};"></span>
+                        <span class="text-truncate">{{ e.title }}</span>
+                    </span>
+                    <span class="text-nowrap" style="color: var(--ink-muted);">{{ e.start_label }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% elif not day.all_day %}
+            <p class="text-muted small mb-0">Nothing scheduled.</p>
+            {% endif %}
+        {% endif %}
     </div>
     {% endfor %}
     </div>
@@ -173,58 +235,98 @@
     <p class="text-muted small mb-0">Google Calendar isn't configured yet — ask an admin.</p>
 {% endif %}
 </div>
+</div>
 
 <script>
 (function () {
-    // This partial (and this script tag with it) renders twice per page —
-    // once for the desktop column, once for the mobile accordion (see
-    // department_dashboard.html) — so guard each widget against being
-    // wired up twice, which would double-bind every listener below.
+    // This partial (and this script tag with it) renders twice per page (the desktop column and the mobile accordion), so each widget is wired up once and everything is found from
+    // the widget itself, never by id.
     document.querySelectorAll('.calendar-widget').forEach(function (widget) {
         if (widget.dataset.calendarWidgetInit) return;
         widget.dataset.calendarWidgetInit = '1';
-
-        var newBtn = widget.querySelector('.calendar-new-event-btn');
+        var panels = widget.querySelectorAll('[data-cal-panel]');
         var newPanel = widget.querySelector('.calendar-new-event-panel');
         var editPanel = widget.querySelector('.calendar-edit-event-panel');
-        if (newBtn && newPanel) {
-            newBtn.addEventListener('click', function () {
-                var form = newPanel.querySelector('form');
-                form.querySelector('.calendar-event-title').value = '';
-                form.querySelector('.calendar-event-date').value = new Date().toISOString().slice(0, 10);
-                form.querySelector('.calendar-event-all-day').checked = false;
-                form.querySelector('.calendar-event-time-row').classList.remove('d-none');
-                bootstrap.Collapse.getOrCreateInstance(newPanel).toggle();
-            });
+
+        function closeDay() { widget.querySelectorAll('.cal-daypop').forEach(function (p) { p.remove(); }); }
+        function show(name) { closeDay(); panels.forEach(function (p) { p.classList.toggle('on', p.dataset.calPanel === name); }); }
+        function toggle(name) { var open = widget.querySelector('[data-cal-panel].on'); show(open && open.dataset.calPanel === name ? '' : name); }
+        function openNew(day) {
+            if (!newPanel) return;
+            var form = newPanel.querySelector('form');
+            form.querySelector('.calendar-event-title').value = '';
+            form.querySelector('.calendar-event-date').value = day || new Date().toISOString().slice(0, 10);
+            form.querySelector('.calendar-event-all-day').checked = false;
+            form.querySelector('.calendar-event-time-row').classList.remove('d-none');
+            show('new');
         }
-        widget.querySelectorAll('.calendar-event-clickable').forEach(function (el) {
-            el.addEventListener('click', function () {
-                if (!editPanel) return;
-                var form = editPanel.querySelector('form');
-                form.querySelector('.calendar-event-id-field').value = el.dataset.eventId;
-                var bubbleRoot = form.querySelector('[data-bubble-picker]');
-                // Always set the underlying hidden input directly, not just
-                // via the bubble-picker's lock() — lock() only fires when a
-                // matching bubble exists in the pool, so relying on it alone
-                // left calendar_id holding whichever event was clicked last
-                // (silently pairing a new event_id with a stale calendar_id)
-                // whenever a match wasn't found, which could delete/edit
-                // the wrong calendar's event entirely.
-                var calendarIdInput = form.querySelector('[name="calendar_id"]');
-                if (calendarIdInput) calendarIdInput.value = el.dataset.calendarId;
-                var matchingBubble = bubbleRoot && bubbleRoot.querySelector('.bubble[data-value="' + el.dataset.calendarId + '"]');
-                if (matchingBubble && bubbleRoot._bubbleApi) bubbleRoot._bubbleApi.lock(matchingBubble, 0);
-                form.querySelector('.calendar-event-title').value = el.dataset.title;
-                form.querySelector('.calendar-event-date').value = el.dataset.date;
-                var allDay = el.dataset.allDay === '1';
-                form.querySelector('.calendar-event-all-day').checked = allDay;
-                form.querySelector('.calendar-event-time-row').classList.toggle('d-none', allDay);
-                if (!allDay) {
-                    form.querySelector('.calendar-event-start-time').value = el.dataset.startTime || '';
-                    form.querySelector('.calendar-event-end-time').value = el.dataset.endTime || '';
-                }
-                bootstrap.Collapse.getOrCreateInstance(editPanel).show();
-            });
+        function openEdit(el) {
+            if (!editPanel) return;
+            var form = editPanel.querySelector('form');
+            form.querySelector('.calendar-event-id-field').value = el.dataset.eventId;
+            var bubbleRoot = form.querySelector('[data-bubble-picker]');
+            // Always set the underlying hidden input directly, not just via the bubble-picker's lock(): lock() only fires when a matching bubble exists in the pool, so relying on it
+            // alone could pair a new event_id with a stale calendar_id and edit or delete the wrong calendar's event.
+            var calendarIdInput = form.querySelector('[name="calendar_id"]');
+            if (calendarIdInput) calendarIdInput.value = el.dataset.calendarId;
+            var matchingBubble = bubbleRoot && bubbleRoot.querySelector('.bubble[data-value="' + el.dataset.calendarId + '"]');
+            if (matchingBubble && bubbleRoot._bubbleApi) bubbleRoot._bubbleApi.lock(matchingBubble, 0);
+            form.querySelector('.calendar-event-title').value = el.dataset.title;
+            form.querySelector('.calendar-event-date').value = el.dataset.date;
+            var allDay = el.dataset.allDay === '1';
+            form.querySelector('.calendar-event-all-day').checked = allDay;
+            form.querySelector('.calendar-event-time-row').classList.toggle('d-none', allDay);
+            if (!allDay) {
+                form.querySelector('.calendar-event-start-time').value = el.dataset.startTime || '';
+                form.querySelector('.calendar-event-end-time').value = el.dataset.endTime || '';
+            }
+            show('edit');
+        }
+        function openDay(cell) {
+            closeDay();
+            panels.forEach(function (p) { p.classList.remove('on'); });
+            var list = cell.querySelector('.cal-dayev');
+            var pop = document.createElement('div');
+            pop.className = 'cal-daypop';
+            var title = document.createElement('h6');
+            title.textContent = cell.dataset.calLabel;
+            var x = document.createElement('button');
+            x.type = 'button'; x.className = 'x'; x.setAttribute('data-cal-closeday', ''); x.innerHTML = '&times;';
+            pop.appendChild(x); pop.appendChild(title);
+            if (list && list.children.length) {
+                Array.prototype.forEach.call(list.children, function (c) { pop.appendChild(c.cloneNode(true)); });
+            } else {
+                var none = document.createElement('div');
+                none.className = 'small'; none.style.color = 'var(--ink-muted)'; none.textContent = 'No events.';
+                pop.appendChild(none);
+            }
+            if (newPanel) {
+                var add = document.createElement('button');
+                add.type = 'button'; add.className = 'btn btn-outline-secondary btn-sm mt-1'; add.setAttribute('data-cal-newday', cell.dataset.calDay); add.textContent = '+ New event on this day';
+                pop.appendChild(add);
+            }
+            var w = widget.getBoundingClientRect(), r = cell.getBoundingClientRect();
+            pop.style.left = Math.max(4, Math.min(r.left - w.left, w.width - 256)) + 'px';
+            pop.style.top = (r.bottom - w.top + 4) + 'px';
+            widget.appendChild(pop);
+        }
+
+        widget.addEventListener('click', function (e) {
+            var t = e.target;
+            var pop = t.closest('[data-cal-pop]');
+            if (pop) { closeDay(); if (pop.dataset.calPop === 'new' && !(newPanel && newPanel.classList.contains('on'))) { openNew(); } else { toggle(pop.dataset.calPop); } return; }
+            if (t.closest('[data-cal-closeday]')) { closeDay(); return; }
+            var nd = t.closest('[data-cal-newday]');
+            if (nd) { openNew(nd.dataset.calNewday); return; }
+            var ev = t.closest('.calendar-event-clickable');
+            if (ev) { openEdit(ev); return; }
+            var cell = t.closest('[data-cal-day]');
+            if (cell) { openDay(cell); return; }
+        });
+        // Clicking anywhere outside the widget closes whatever popover is open.
+        document.addEventListener('click', function (e) {
+            // (a click on something this script just removed, like the day popover's own buttons, is not outside)
+            if (e.target.isConnected && !widget.contains(e.target)) show('');
         });
     });
 })();

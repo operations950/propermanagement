@@ -6,6 +6,7 @@
 {% block extra_head %}<link href="{% static 'css/mobile-onsite.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
 <div class="mo-page">
+{% if new_face %}{% include 'workspace/_onsite_tabs.html' %}{% endif %}
 <style>
     .kpi-card { background: var(--surface-card); border: 1px solid var(--border-hairline); box-shadow: var(--shadow-card); border-radius: 14px; padding: 12px 14px; height: 100%; }
     .kpi-card .lbl { font-size: 0.78rem; color: var(--ink-muted); }
@@ -23,7 +24,6 @@
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
-        <h2 class="page-title mb-0">Rental performance</h2>
         <p class="text-muted small mb-0">As of {{ report.as_of|date:"F j, Y" }} · {{ report.scope.units }} unit{{ report.scope.units|pluralize }} across {{ report.scope.properties }} propert{{ report.scope.properties|pluralize:"y,ies" }}{% if report.scope.data_from %} · reservations on record since {{ report.scope.data_from|date:"M j, Y" }}{% endif %}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap align-items-center">
@@ -58,14 +58,14 @@
                 <div class="spark">{% stackbar w.booked w.gap_nights w.open_nights %}</div>
                 <div class="sub">{{ w.booked }} of {{ w.available }} nights booked · {{ w.open_nights }} open</div>
                 <div class="stat mt-2"><span>Vacancy gaps</span><span><strong>{{ w.gaps }}</strong>{% if w.gap_nights %} <span class="text-muted">({{ w.gap_nights }} nights)</span>{% endif %}</span></div>
-                <div class="stat"><span>Short, hard to fill</span><span>{% if w.short_gaps %}<strong style="color: #9a6a00;">{{ w.short_gaps }}</strong>{% else %}0{% endif %}</span></div>
+                <div class="stat"><span>Short, hard to fill</span><span>{% if w.short_gaps %}<strong style="color: var(--t-9a6a00, #9a6a00);">{{ w.short_gaps }}</strong>{% else %}0{% endif %}</span></div>
             </div></div>
             {% endfor %}
         </div>
         <div class="d-flex flex-wrap gap-3 small text-muted mt-2">
             <span><i class="legend-dot" style="background: #3d6178;"></i>booked</span>
-            <span><i class="legend-dot" style="background: repeating-linear-gradient(45deg, #fab219 0 2px, #fde9b3 2px 4px);"></i>empty between two stays</span>
-            <span><i class="legend-dot" style="background: #e3e7ec;"></i>open</span>
+            <span><i class="legend-dot" style="background: repeating-linear-gradient(45deg, #fab219 0 2px, var(--b-fde9b3, #fde9b3) 2px 4px);"></i>empty between two stays</span>
+            <span><i class="legend-dot" style="background: var(--b-e3e7ec, #e3e7ec);"></i>open</span>
         </div>
         <p class="text-muted small mt-2 mb-0">Vacancy gap: empty nights between two reservations.</p>
     </div>
@@ -101,7 +101,7 @@
         <p class="text-muted small mb-2">Share of nights booked. Click a number for that property's calendar.</p>
         <div class="d-flex flex-wrap gap-3 small text-muted mb-2">
             <span><i class="legend-dot" style="background: #3d6178;"></i>booked (darker = more of the units booked)</span>
-            <span><i class="legend-dot" style="background: #e3e7ec;"></i>open</span>
+            <span><i class="legend-dot" style="background: var(--b-e3e7ec, #e3e7ec);"></i>open</span>
             <span>The strip is the next 90 days, one cell a day.</span>
         </div>
         <div class="table-responsive"><table class="table table-sm align-middle mb-0 perf-table">
@@ -114,7 +114,7 @@
                 <td class="text-end text-nowrap">{% if r.occ30 is not None %}<a class="pct" href="{% url 'onsite_performance_calendar' r.property.pk %}?days=30" title="Open the 30-day calendar">{{ r.occ30|floatformat:0 }}%</a>{% else %}<span class="pct pct-none">—</span>{% endif %}</td>
                 <td class="text-end text-nowrap">{% if r.occ60 is not None %}<a class="pct" href="{% url 'onsite_performance_calendar' r.property.pk %}?days=60" title="Open the 60-day calendar">{{ r.occ60|floatformat:0 }}%</a>{% else %}<span class="pct pct-none">—</span>{% endif %}</td>
                 <td class="text-end text-nowrap">{% if r.occ90 is not None %}<a class="pct" href="{% url 'onsite_performance_calendar' r.property.pk %}?days=90" title="Open the 90-day calendar">{{ r.occ90|floatformat:0 }}%</a>{% else %}<span class="pct pct-none">—</span>{% endif %}</td>
-                <td class="text-end">{{ r.gaps90 }}{% if r.short_gaps90 %} <span style="color: #9a6a00;" class="small">({{ r.short_gaps90 }} short)</span>{% endif %}</td>
+                <td class="text-end">{{ r.gaps90 }}{% if r.short_gaps90 %} <span style="color: var(--t-9a6a00, #9a6a00);" class="small">({{ r.short_gaps90 }} short)</span>{% endif %}</td>
             </tr>
             {% empty %}<tr><td colspan="5" class="text-muted small">No data yet.</td></tr>{% endfor %}
             </tbody>
@@ -129,7 +129,7 @@
         <div class="border-top py-2 small">
             <div class="d-flex justify-content-between gap-2 flex-wrap">
                 <span>{{ g.label }}</span>
-                <span>{{ g.start|date:"D M j" }} → {{ g.end|date:"D M j" }} · <strong>{{ g.length }} night{{ g.length|pluralize }}</strong>{% if g.short %} <span style="color: #9a6a00;">· hard to fill</span>{% endif %}</span>
+                <span>{{ g.start|date:"D M j" }} → {{ g.end|date:"D M j" }} · <strong>{{ g.length }} night{{ g.length|pluralize }}</strong>{% if g.short %} <span style="color: var(--t-9a6a00, #9a6a00);">· hard to fill</span>{% endif %}</span>
             </div>
             <div class="mt-1">{% gap_track g report.as_of %}</div>
         </div>

@@ -1,0 +1,5 @@
+{% comment %}One compliance item in a newspaper box: the item and its due date (late in red), then where, which period, how far along, who. Expects r (a row from services.compliance_row).{% endcomment %}
+<a class="np-row" href="{{ r.url }}">
+    <span class="np-l1"><span class="np-name">{{ r.title }}</span><span class="np-when{% if r.late %} np-late{% endif %}" title="Due">{% if r.due %}{{ r.due|date:'M j' }}{% endif %}</span></span>
+    <span class="np-l2">{{ r.where }}{% if r.period %} &middot; {{ r.period }}{% endif %}{% if r.progress %} &middot; {{ r.progress }}{% endif %}{% if r.done %} &middot; done{% endif %}{% if r.who %} &middot; {{ r.who }}{% endif %}</span>
+</a>

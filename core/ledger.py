@@ -204,6 +204,17 @@ def _load_closes(prop_ids):
     return out
 
 
+def preload_closes(props):
+    """Read the closes of every property in `props` in one query and remember them for this page load (the shape _closes() would have
+    read them in, one property at a time). Does nothing outside a page load."""
+    if not request_memo.active() or not props:
+        return
+    ids = [p.pk for p in props]
+    data = _load_closes(ids)
+    for pid in ids:
+        request_memo.put(('closes', pid), data[pid])
+
+
 def close_of(book, month):
     """The close of this set of books' month, or None."""
     book = _book(book)

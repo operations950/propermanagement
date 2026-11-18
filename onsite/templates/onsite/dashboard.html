@@ -7,15 +7,10 @@
 <div class="mo-page">
 {% if new_face %}{% include 'workspace/_onsite_tabs.html' %}{% else %}{% include 'onsite/_phone_sections.html' %}{% endif %}
 {# Phones: no alert cards, no shortcut buttons and no heading here (the top bar names the page): the sections row, the day chips and the visits are what a phone needs. #}
-<div class="d-none d-md-block">{% page_alerts 'onsite' %}</div>
 <div class="d-none d-md-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h2 class="page-title mb-0">On-Site Visits</h2>
     {# Wide screens: every shortcut as a button. #}
     <div class="d-none d-md-flex gap-2 flex-wrap">
-        <a href="{% url 'onsite_str_today' %}" class="btn btn-primary btn-sm"><i data-lucide="sun" class="icon"></i> Rentals today</a>
-        <a href="{% url 'onsite_rentals_calendar' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-range" class="icon"></i> Rentals calendar</a>
         <a href="{% url 'onsite_reservation_list' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="book-open" class="icon"></i> Reservations</a>
-        <a href="{% url 'onsite_performance' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="chart-no-axes-column" class="icon"></i> Performance</a>
         <a href="{% url 'onsite_checklist_templates' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="clipboard-list" class="icon"></i> Checklist templates</a>
         {% if is_admin %}
         <a href="{% url 'onsite_checklist_custom_items' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="list-checks" class="icon"></i> Custom checklist items</a>
@@ -24,56 +19,9 @@
         <a href="{% url 'onsite_booking_feeds' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="calendar-sync" class="icon"></i> Booking calendars</a>
         {% endif %}
         <a href="{% url 'onsite_visit_rule_list' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="repeat" class="icon"></i> {% if new_face %}Scheduled visits{% else %}Recurring visits{% endif %}</a>
-        <a href="{% url 'onsite_visit_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New visit</a>
     </div>
 </div>
 
-<div class="d-none d-md-block">
-{% if calendar_status and not calendar_status.ok %}
-<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
-    <i data-lucide="calendar-x" class="icon mt-1"></i>
-    <div class="small">
-        <strong>Google Calendar isn't updating.</strong> <a href="{% url 'admin_tools' %}" class="alert-link ms-1">Fix in Admin Tools</a>
-    </div>
-</div>
-{% endif %}
-
-{% if feeds_attention %}
-<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
-    <i data-lucide="calendar-sync" class="icon mt-1"></i>
-    <div class="small">
-        <strong>{{ feeds_attention|length }} booking calendar line{{ feeds_attention|length|pluralize }} need{{ feeds_attention|length|pluralize:"s," }} attention.</strong>
-        <a href="{% url 'onsite_booking_feeds' %}" class="alert-link ms-1">Open Booking calendars</a>
-    </div>
-</div>
-{% endif %}
-
-{% if checkouts_missing_visit or unassigned_visits or at_risk_visits %}
-<div class="card mb-4" style="border-left: 4px solid var(--status-critical);">
-    <div class="card-body">
-        <h6 class="card-title d-flex align-items-center gap-2" style="color: var(--status-critical);"><i data-lucide="alert-triangle" class="icon"></i> Needs attention today</h6>
-        {% for booking in checkouts_missing_visit %}
-        <div class="d-flex justify-content-between align-items-center py-1 border-top">
-            <span class="small">{{ booking.property.name }} — checkout today, no visit scheduled</span>
-            <a href="{% url 'onsite_visit_create' %}?property={{ booking.property_id }}" class="btn btn-outline-secondary btn-sm">Schedule</a>
-        </div>
-        {% endfor %}
-        {% for visit in unassigned_visits %}
-        <div class="d-flex justify-content-between align-items-center py-1 border-top">
-            <span class="small">{{ visit.property.name }} — {{ visit.visit_type }} unassigned</span>
-            <a href="{% url 'onsite_visit_detail' visit.pk %}" class="btn btn-outline-secondary btn-sm">Assign</a>
-        </div>
-        {% endfor %}
-        {% for visit in at_risk_visits %}
-        <div class="d-flex justify-content-between align-items-center py-1 border-top">
-            <span class="small fw-semibold" style="color: var(--status-critical);">{{ visit.property.name }} — {{ visit.visit_type }} at risk{% if visit.ready_by %} (ready by {{ visit.ready_by|time:"g:i A" }}){% endif %}</span>
-            <a href="{% url 'onsite_visit_detail' visit.pk %}" class="btn btn-outline-secondary btn-sm">View</a>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-</div>
 
 <div class="mo-chiprow d-md-none">
     {% if drilled_in_date %}
@@ -130,7 +78,7 @@
                     <td>
                         <a href="{% url 'onsite_visit_detail' visit.pk %}" class="text-decoration-none">{{ visit.property.name }}</a>
                         {% if visit.is_same_day_checkin %}
-                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--priority-urgent) 15%, white); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, white); font-size: 0.6rem;" title="Next guest checks in the same day">
+                        <span class="badge rounded-pill" style="background: color-mix(in srgb, var(--priority-urgent) 15%, var(--surface-card)); color: var(--priority-urgent); border: 1px solid color-mix(in srgb, var(--priority-urgent) 35%, var(--surface-card)); font-size: 0.6rem;" title="Next guest checks in the same day">
                             <i data-lucide="log-in" class="icon" style="width: 10px; height: 10px;"></i> Same-day check-in
                         </span>
                         {% elif visit.vacancy_days %}

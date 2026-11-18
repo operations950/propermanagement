@@ -2,7 +2,7 @@
 {% block title %}Tourist tax split {{ rep.month|date:"F Y" }}{% endblock %}
 {% block content %}
 <style>
-    @media print { nav, .navbar, .no-print, footer { display: none !important; } body { background: #fff; } }
+    @media print { nav, .navbar, .no-print, footer { display: none !important; } body { background: var(--surface-card); } }
     .ts-table th, .ts-table td { padding: 0.35rem 0.6rem; }
     .ts-table .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

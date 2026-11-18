@@ -1,5 +1,7 @@
 from django.urls import path
 
+from onsite import views_turnovers
+
 from . import views
 
 urlpatterns = [
@@ -7,11 +9,10 @@ urlpatterns = [
     path('home/', views.home),
     path('compliance/', views.compliance, name='ws_compliance'),
     path('projects/', views.projects, name='ws_projects'),
+    path('projects/start/', views.start_project_new, name='ws_start_project'),
     path('financials/', views.financials, name='ws_financials'),
     path('lines/<slug:slug>/', views.line, name='ws_line'),
-    path('onsite/properties/', views.week, name='ws_week'),
-    path('onsite/properties/time/', views.week_time, name='ws_week_time'),
-    path('onsite/properties/clean/', views.week_clean, name='ws_week_clean'),
+    path('onsite/properties/', views_turnovers.old_properties, name='ws_week'),       # the old On-Site Properties board: it is the Turnovers screen now
     path('tickets/<int:pk>/project/', views.make_project, name='ws_make_project'),
     path('runs/<int:pk>/', views.run_detail, name='ws_run_detail'),
     path('runs/<int:pk>/notes/', views.run_note, name='ws_run_note'),

@@ -13,7 +13,7 @@
 <div class="d-flex gap-2 flex-wrap align-items-center mb-3">
     <form method="post">{% csrf_token %}<input type="hidden" name="action" value="refresh"><button class="btn btn-outline-secondary btn-sm"><i data-lucide="refresh-cw" class="icon"></i> Refresh accounts from QuickBooks</button></form>
     <span class="small text-muted">{% if synced_at %}{{ account_count }} accounts, last read {{ synced_at|timesince }} ago.{% else %}No accounts read yet — press Refresh.{% endif %}</span>
-    {% if unmapped %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, white); color: #7a5200; border: 1px solid var(--status-warning);">{{ unmapped }} rental{{ unmapped|pluralize }} still need{{ unmapped|pluralize:"s," }} accounts</span>{% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, white); color: #0b6a0b; border: 1px solid var(--status-good);">Every rental is tied</span>{% endif %}
+    {% if unmapped %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-warning) 25%, var(--surface-card)); color: var(--t-7a5200, #7a5200); border: 1px solid var(--status-warning);">{{ unmapped }} rental{{ unmapped|pluralize }} still need{{ unmapped|pluralize:"s," }} accounts</span>{% else %}<span class="badge rounded-pill" style="background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card)); color: var(--t-0b6a0b, #0b6a0b); border: 1px solid var(--status-good);">Every rental is tied</span>{% endif %}
 </div>
 
 <form method="post">

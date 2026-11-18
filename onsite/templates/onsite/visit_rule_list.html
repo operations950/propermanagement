@@ -125,10 +125,10 @@
                         <td class="small">{{ rule.visit_type.name }}</td>
                         <td class="small">{{ rule.cadence_display }}</td>
                         <td class="small">{% if rule.default_assignee %}{{ rule.default_assignee.user.get_full_name|default:rule.default_assignee.user.username }}{% else %}Unassigned{% endif %}</td>
-                        <td class="small">{% if rule.next_due %}{{ rule.next_due|date:"D, M j, Y" }}{% else %}<span class="badge rounded-pill" style="background: var(--status-warning); color: #fff;">No start date — set one</span>{% endif %}{% if rule.last_generated_at %}<div class="text-muted" style="font-size: 0.75rem;">last: {{ rule.last_generated_at|date:"M j" }}</div>{% endif %}</td>
+                        <td class="small">{% if rule.next_due %}{{ rule.next_due|date:"D, M j, Y" }}{% else %}<span class="badge rounded-pill" style="background: var(--status-warning); color: var(--on-accent, #fff);">No start date — set one</span>{% endif %}{% if rule.last_generated_at %}<div class="text-muted" style="font-size: 0.75rem;">last: {{ rule.last_generated_at|date:"M j" }}</div>{% endif %}</td>
                         <td class="small">
                             {% if rule.is_active %}
-                            <span class="badge rounded-pill" style="background: var(--status-good); color: #fff;">Active</span>
+                            <span class="badge rounded-pill" style="background: var(--status-good); color: var(--on-accent, #fff);">Active</span>
                             {% else %}
                             <span class="badge rounded-pill bg-secondary">Paused</span>
                             {% endif %}
@@ -167,7 +167,7 @@
                             <div class="small text-muted">{{ rule.visit_type.name }} &middot; every {{ rule.cadence_display }}</div>
                         </div>
                         {% if rule.is_active %}
-                        <span class="badge rounded-pill" style="background: var(--status-good); color: #fff;">Active</span>
+                        <span class="badge rounded-pill" style="background: var(--status-good); color: var(--on-accent, #fff);">Active</span>
                         {% else %}
                         <span class="badge rounded-pill bg-secondary">Paused</span>
                         {% endif %}

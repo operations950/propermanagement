@@ -587,6 +587,10 @@ class Contact(models.Model):
     )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # The little ticker (core/contact_activity.py): when somebody last did something with this person (assigned them a ticket or a visit, sent them an email or text, entered or paid their bill ...)
+    # and how many times, so the Contacts screen can show the people you actually deal with first instead of an alphabetical wall.
+    last_interaction_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    interaction_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ['name']
@@ -813,6 +817,16 @@ class StaffProfile(models.Model):
     timezone = models.CharField(
         max_length=40, choices=Timezone.choices, default=Timezone.EASTERN,
         help_text='Overrides settings.TIME_ZONE for everything this user sees — see core.middleware.TimezoneMiddleware.',
+    )
+
+    class Theme(models.TextChoices):
+        AUTO = 'auto', 'Automatic'
+        LIGHT = 'light', 'Light'
+        DARK = 'dark', 'Dark'
+
+    theme = models.CharField(
+        max_length=5, choices=Theme.choices, default=Theme.AUTO,
+        help_text='Light, dark, or automatic (follows the phone or computer). Chosen from the menu; see static/css/dark.css and the script at the top of templates/base.html.',
     )
 
     def __str__(self):

@@ -68,6 +68,7 @@ urlpatterns = [
         name='staff_toggle_company_admin',
     ),
     path('admin-tools/staff/<int:pk>/role/', views.staff_set_role, name='staff_set_role'),
+    path('theme/', views.theme_set, name='theme_set'),
     path('properties/', views.property_list, name='property_list'),
     path('properties/missing-documents/', views.missing_documents, name='missing_documents'),
     path('properties/new/', views.property_create, name='property_create'),

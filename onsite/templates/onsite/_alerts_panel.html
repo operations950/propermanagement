@@ -1,0 +1,24 @@
+<div class="os-panel" id="os-alerts-panel" hidden>
+    {% for n in alerts %}
+    <div class="os-alert">
+        <div style="min-width: 0;">
+            <div class="fw-medium d-flex align-items-center gap-2"><i data-lucide="{{ n.icon }}" class="icon" style="color: {% if n.level == 'warn' %}color-mix(in srgb, var(--priority-urgent) 90%, black){% else %}var(--ink-muted){% endif %};"></i> {{ n.text }}</div>
+            {% if n.detail %}<div class="small" style="color: var(--ink-muted);">{{ n.detail }}</div>{% endif %}
+        </div>
+        <a href="{{ n.url }}" class="btn btn-outline-secondary btn-sm flex-shrink-0">Open <i data-lucide="arrow-right" class="icon"></i></a>
+    </div>
+    {% empty %}
+    <div class="os-alert small text-muted"><span><i data-lucide="check" class="icon"></i> Nothing on On-Site needs attention.</span></div>
+    {% endfor %}
+</div>
+<script>
+(function () {
+    var btn = document.getElementById('os-alerts-btn'), panel = document.getElementById('os-alerts-panel');
+    if (!btn || !panel) return;
+    btn.addEventListener('click', function () {
+        var open = panel.hidden;
+        panel.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+})();
+</script>

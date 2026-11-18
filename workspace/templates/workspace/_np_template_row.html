@@ -1,0 +1,5 @@
+{% comment %}One template (a project or a process) in a newspaper box: its name and what kind it is, then its steps and how much it has been used. Opens the template builder. Expects r (a row from services.template_rows).{% endcomment %}
+<a class="np-row{% if not r.t.is_active %} np-off{% endif %}" href="{% url 'process_template_edit' r.t.pk %}">
+    <span class="np-l1"><span class="np-name">{{ r.t.name }}</span><span class="np-when">{{ r.kind_label }}</span></span>
+    <span class="np-l2">{{ r.steps }} step{{ r.steps|pluralize }} &middot; used {{ r.used }}&times; &middot; {{ r.active }} {% if r.is_project %}active{% else %}open{% endif %}{% if r.t.category %} &middot; {{ r.t.category }}{% endif %}{% if not r.t.is_active %} &middot; switched off{% endif %}</span>
+</a>

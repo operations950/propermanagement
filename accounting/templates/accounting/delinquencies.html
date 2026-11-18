@@ -15,7 +15,7 @@
     <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Late fees ready</div><div class="ac-big">{{ summary.fees|money }}</div></div></div>
     <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Interest ready</div><div class="ac-big">{{ summary.interest|money }}</div></div></div>
     <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Needs a letter</div><div class="ac-big">{{ summary.letters }}</div></div></div>
-    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Cases to review</div><div class="ac-big" {% if summary.review %}style="color: #8a5a00;"{% endif %}>{{ summary.review }}</div></div></div>
+    <div class="col-6 col-md"><div class="ac-stat"><div class="ac-lab">Cases to review</div><div class="ac-big" {% if summary.review %}style="color: var(--t-8a5a00, #8a5a00);"{% endif %}>{{ summary.review }}</div></div></div>
 </div>
 
 <form method="post" id="dq-form">{% csrf_token %}<input type="hidden" name="threshold" value="{{ threshold }}">

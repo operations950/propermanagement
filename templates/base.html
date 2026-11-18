@@ -1,26 +1,53 @@
-{% load static nav_tags %}<!DOCTYPE html>
-<html lang="en">
+{% load static nav_tags theme_tags %}{% dark_mode_allowed as can_dark %}<!DOCTYPE html>
+<html lang="en"{% if can_dark %} data-theme-pref="{{ user.staff_profile.theme|default:'auto' }}" data-theme-url="{% url 'theme_set' %}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     {% include '_pwa_head.html' %}
     <script>try { if (sessionStorage.getItem('m-full') === '1') document.documentElement.classList.add('m-full'); } catch (e) {}</script>
+    {% if can_dark %}
+    {% comment %}Light / Dark / Automatic, decided BEFORE the first paint so there is no flash. A signed-in person's saved choice (data-theme-pref on <html>) wins and is copied to this browser; a signed-out page
+    uses what this browser remembers; "auto" follows the phone or computer and follows it live. static/js/theme.js wires the menu choices.{% endcomment %}
+    <script>(function () {
+        var d = document.documentElement, pref = 'auto', mq = null;
+        try { mq = window.matchMedia('(prefers-color-scheme: dark)'); } catch (e) {}
+        try {
+            var saved = d.getAttribute('data-theme-pref');
+            if (saved) { try { localStorage.setItem('theme-pref', saved); } catch (e) {} }
+            pref = saved || localStorage.getItem('theme-pref') || 'auto';
+        } catch (e) {}
+        function apply() {
+            var t = pref === 'dark' || (pref === 'auto' && mq && mq.matches) ? 'dark' : 'light';
+            d.setAttribute('data-theme', t);
+            d.setAttribute('data-bs-theme', t);
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute('content', t === 'dark' ? '#22262d' : '#ffffff');
+        }
+        apply();
+        if (mq) { var f = function () { if (pref === 'auto') apply(); }; if (mq.addEventListener) mq.addEventListener('change', f); else if (mq.addListener) mq.addListener(f); }
+        window.__themeApply = function (p) { pref = p; try { localStorage.setItem('theme-pref', p); } catch (e) {} apply(); };
+    })();</script>
+    {% endif %}
     <title>{% block title %}Proper Management{% endblock %}</title>
     {% comment %}Fewer, faster things in front of the first paint: Bootstrap is our own hashed, compressed, long-cached copy (the same files the vendor
     portal already serves) instead of a third-party fetch; htmx and Lucide are pinned to an exact file, so there is no redirect to follow first
     ("@latest" was one on every cold load) and an icon set that changes underneath us cannot happen. Connections to the remaining hosts open early.{% endcomment %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
     <link href="{% static 'vendor/bootstrap5.3.3/css/bootstrap.min.css' %}" rel="stylesheet">
-    <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+    <script src="{% static 'vendor/htmx-1.9.12/htmx.min.js' %}"></script>
     <script src="{% static 'vendor/bootstrap5.3.3/js/bootstrap.bundle.min.js' %}"></script>
-    <script src="https://unpkg.com/lucide@1.52.0/dist/umd/lucide.min.js"></script>
+    <script src="{% static 'vendor/lucide-1.52.0/lucide.min.js' %}"></script>
     <link href="{% static 'css/bubble-picker.css' %}" rel="stylesheet">
     <link href="{% static 'css/checklist-mobile.css' %}" rel="stylesheet">
     <link href="{% static 'css/imessage-thread.css' %}" rel="stylesheet">
     <link href="{% static 'css/mobile.css' %}" rel="stylesheet">
+    <link href="{% static 'css/thumb-rows.css' %}" rel="stylesheet">
+    {% if can_dark %}
+    <link href="{% static 'css/dark-literals.css' %}" rel="stylesheet">
+    <link href="{% static 'css/dark.css' %}" rel="stylesheet">
+    {% endif %}
     <style>
         :root {
             /* Proper Realty brand palette — sampled from proper-realty.com
@@ -69,9 +96,10 @@
 
             --surface-page:   var(--brand-surface);
             --surface-card:   #ffffff;
+            --surface-raised: #e3e0ea;
             --ink-primary:    var(--brand-ink);
             --ink-secondary:  #6b6b6b;
-            --ink-muted:      #92908c;
+            --ink-muted:      #6f6d69;       /* was #92908c (3.2:1 on white); 4.9:1 now, so muted words are readable */
             --border-hairline: rgba(43, 43, 46, 0.10);
 
             /* Shape/type system — borrowed from Railway's app (soft rounded
@@ -135,6 +163,16 @@
             background-color: var(--brand-slate);
             border-color: var(--brand-slate);
         }
+        /* The Alerts button when something needs a look: the theme's orange (the Urgent colour), a little deepened so the white words read. Used on Properties and On-Site. */
+        .btn-alerts-on { background-color: color-mix(in srgb, var(--priority-urgent) 90%, var(--mix-black, black)); border-color: color-mix(in srgb, var(--priority-urgent) 90%, var(--mix-black, black)); color: var(--on-accent, #fff); font-weight: 600; }
+        .btn-alerts-on:hover, .btn-alerts-on:focus { background-color: color-mix(in srgb, var(--priority-urgent) 75%, var(--mix-black, black)); border-color: color-mix(in srgb, var(--priority-urgent) 75%, var(--mix-black, black)); color: var(--on-accent, #fff); }
+        .btn-alerts-on .alerts-n { background: var(--surface-card); color: color-mix(in srgb, var(--priority-urgent) 80%, var(--mix-black, black)); border-radius: 999px; padding: 0 .5rem; margin-left: .4rem; font-weight: 700; }
+        /* The primary action of a main screen (New ticket, New rule, Start project, New visit, New property, New contact): the same button everywhere, a deeper slate than the ordinary buttons so it is easy to find. */
+        .btn-action { display: inline-flex; align-items: center; gap: .4rem; background-color: var(--brand-slate); border: 1px solid var(--brand-slate); color: var(--on-accent, #fff); font-weight: 600; font-size: .92rem; padding: .42rem 1rem; border-radius: .6rem; text-decoration: none; letter-spacing: .01em; box-shadow: 0 1px 2px rgba(43, 43, 46, .14); }
+        .btn-action:hover, .btn-action:focus { background-color: color-mix(in srgb, var(--brand-slate) 82%, var(--mix-black, black)); border-color: color-mix(in srgb, var(--brand-slate) 82%, var(--mix-black, black)); color: var(--on-accent, #fff); }
+        .btn-action .icon { width: 1.05rem; height: 1.05rem; }
+        .btn-action-outline { background-color: transparent; color: var(--brand-slate); box-shadow: none; }
+        .btn-action-outline:hover, .btn-action-outline:focus { background-color: color-mix(in srgb, var(--brand-slate) 12%, var(--surface-card)); color: var(--ink-primary); border-color: var(--brand-slate); }
         .btn-outline-secondary {
             color: var(--ink-secondary);
             border-color: var(--border-hairline);
@@ -148,7 +186,7 @@
         .icon-lg { width: 1.4em; height: 1.4em; stroke-width: 1.75; }
 
         .brand-bar {
-            background: #ffffff;
+            background: var(--surface-card);
             border-bottom: 1px solid var(--border-hairline);
         }
         /* Phones: tighter table cells and no orphaned scroll on slightly-too-wide tables. */
@@ -159,10 +197,14 @@
             .table-responsive .table .text-nowrap, .table-responsive .table td.text-nowrap { white-space: normal !important; }
         }
         .ws-lines { background: var(--surface-card); border-bottom: 1px solid var(--border-hairline); margin-top: -1.5rem; margin-bottom: 1.25rem; position: relative; z-index: 2; }
-        .ws-lines .container-fluid { display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; padding-top: 0.25rem; padding-bottom: 0.35rem; }
-        .ws-lines a { font-size: 0.78rem; color: var(--ink-muted); text-decoration: none; }
-        .ws-lines a:hover, .ws-lines a.on { color: var(--ink-primary); }
-        .ws-lines a.on { font-weight: 600; }
+        /* The four lines of business as real buttons: easy to see, easy to hit. */
+        .ws-lines .container-fluid { display: flex; flex-wrap: wrap; gap: 0.4rem 0.5rem; padding-top: 0.45rem; padding-bottom: 0.5rem; }
+        .ws-lines a { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.28rem 0.85rem; border: 1px solid var(--border-hairline); border-radius: 999px; font-size: 0.88rem; font-weight: 600; color: var(--brand-slate); text-decoration: none; background: var(--surface-page); transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease; }
+        .ws-lines a:hover { border-color: var(--brand-slate); color: var(--ink-primary); }
+        .ws-lines a.on { background: var(--brand-slate); border-color: var(--brand-slate); color: var(--surface-card); }
+        .ws-lines a .icon { width: 15px; height: 15px; flex: none; }
+        .ws-lines a .ws-line-n { font-weight: 500; font-size: 0.76rem; opacity: 0.75; }
+        @media (max-width: 575px) { .ws-lines a { font-size: 0.84rem; padding: 0.25rem 0.7rem; } }
         .brand-bar .nav-link {
             color: var(--ink-secondary) !important;
             display: flex;
@@ -235,6 +277,8 @@
             transition: box-shadow 0.15s ease;
         }
         .list-group-item-action:hover { background: var(--surface-page); }
+        .m-row[data-theme-choice].active { border-color: var(--brand-primary); font-weight: 700; box-shadow: inset 0 0 0 1px var(--brand-primary); }
+        .dropdown-item[data-theme-choice].active::after { content: '\2713'; margin-left: auto; padding-left: 1rem; }
 
         .badge { font-weight: 500; }
         /* A menu item that needs attention carries one small dot in the brand blue, raised a little like a footnote mark. The count is in the markup (and read aloud, and shown on hover),
@@ -346,10 +390,10 @@
             .table-scroll, .table-responsive, .rp-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
             .table-scroll > table { margin-bottom: 0; }
             .is-wide :where(table) > :where(thead, tbody, tfoot) > :where(tr) > :where(th, td):first-child {
-                position: sticky; left: 0; z-index: 2; background-color: var(--surface-card, #fff); box-shadow: 1px 0 0 var(--border-hairline);
+                position: sticky; left: 0; z-index: 2; background-color: var(--surface-card, var(--surface-card)); box-shadow: 1px 0 0 var(--border-hairline);
                 min-width: 6.5rem; max-width: 46vw; white-space: normal; overflow-wrap: break-word;
             }
-            .is-wide :where(table) > thead > :where(tr) > :where(th):first-child { background-color: #f4f6f9; z-index: 3; }
+            .is-wide :where(table) > thead > :where(tr) > :where(th):first-child { background-color: var(--b-f4f6f9, #f4f6f9); z-index: 3; }
 
             .btn:not(.btn-close):not(.btn-link):not([hidden]) { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; }
             a.ac-chip, button.ac-chip, label.ac-chip { min-height: 44px; display: inline-flex; align-items: center; }
@@ -361,7 +405,7 @@
             table.ac-stack { display: block; width: 100%; border: 0; }
             table.ac-stack > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
             table.ac-stack > tbody, table.ac-stack > tbody > tr { display: block; }
-            table.ac-stack > tbody > tr { position: relative; background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: 12px; padding: 0.4rem 0.85rem; margin: 0 0 0.65rem; }
+            table.ac-stack > tbody > tr { position: relative; background: var(--surface-card, var(--surface-card)); border: 1px solid var(--border-hairline); border-radius: 12px; padding: 0.4rem 0.85rem; margin: 0 0 0.65rem; }
             table.ac-stack > tbody > tr[hidden] { display: none; }
             table.ac-stack > tbody > tr > td {
                 display: grid; grid-template-columns: 38% minmax(0, 1fr); column-gap: 0.9rem; align-items: baseline; min-width: 0;
@@ -415,10 +459,10 @@
                     {% else %}
                     <a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i data-lucide="layout-dashboard" class="icon"></i> Dashboard</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'ticket_list' and request.GET.source != 'recurring' %}active{% endif %}" href="{% url 'ticket_list' %}?source=reactive"><i data-lucide="ticket" class="icon"></i> Tickets</a>
+                    <a class="nav-link" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i> Recurring</a>
+                    <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site{% if nav_alerts.onsite %}<span class="nav-pip" title="{{ nav_alerts.onsite }} need{{ nav_alerts.onsite|pluralize:'s,' }} attention">{{ nav_alerts.onsite }}</span>{% endif %}</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'property_list' or request.resolver_match.url_name == 'property_create' or request.resolver_match.url_name == 'property_edit' %}active{% endif %}" href="{% url 'property_list' %}"><i data-lucide="building-2" class="icon"></i> Properties{% if nav_alerts.properties %}<span class="nav-pip" title="{{ nav_alerts.properties }} need{{ nav_alerts.properties|pluralize:'s,' }} attention">{{ nav_alerts.properties }}</span>{% endif %}</a>
                     <a class="nav-link {% if request.resolver_match.url_name == 'contact_list' or request.resolver_match.url_name == 'contact_create' or request.resolver_match.url_name == 'contact_edit' or request.resolver_match.url_name == 'contact_review' %}active{% endif %}" href="{% url 'contact_list' %}"><i data-lucide="contact" class="icon"></i> Contacts{% if nav_alerts.contacts %}<span class="nav-pip" title="{{ nav_alerts.contacts }} need{{ nav_alerts.contacts|pluralize:'s,' }} attention">{{ nav_alerts.contacts }}</span>{% endif %}</a>
-                    <a class="nav-link" href="{% url 'onsite_dashboard' %}"><i data-lucide="spray-can" class="icon"></i> On-Site{% if nav_alerts.onsite %}<span class="nav-pip" title="{{ nav_alerts.onsite }} need{{ nav_alerts.onsite|pluralize:'s,' }} attention">{{ nav_alerts.onsite }}</span>{% endif %}</a>
-                    <a class="nav-link" href="{% url 'my_sessions' %}"><i data-lucide="layers" class="icon"></i> Recurring</a>
                     <a class="nav-link" href="{% url 'supplies:cart' %}"><i data-lucide="package" class="icon"></i> Supplies</a>
                     {% if tc_employee %}
                     <a class="nav-link {% if request.resolver_match.url_name in 'timeclock_home timeclock_time_off timeclock_change timeclock_fix timeclock_policy' %}active{% endif %}" href="{% url 'timeclock_home' %}"><i data-lucide="clock" class="icon"></i> My time</a>
@@ -441,10 +485,27 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: var(--bs-border-radius);">
                             <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'ticket_create' %}"><i data-lucide="ticket" class="icon"></i> New ticket</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'session_template_create' %}"><i data-lucide="calendar-check" class="icon"></i> New compliance rule</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'ws_projects' %}?start=1"><i data-lucide="play" class="icon"></i> Start project</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'process_template_create' %}"><i data-lucide="layers" class="icon"></i> New project template</a></li>
+                            <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'onsite_visit_create' %}"><i data-lucide="spray-can" class="icon"></i> New on-site visit</a></li>
                             <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'property_create' %}"><i data-lucide="building-2" class="icon"></i> New property</a></li>
                             <li><a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'contact_create' %}"><i data-lucide="contact" class="icon"></i> New contact</a></li>
                         </ul>
                     </div>
+
+                    {% if can_dark %}
+                    <div class="dropdown mx-xl-1 my-2 my-xl-0">
+                        <button class="btn btn-link nav-link dropdown-toggle d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Appearance: light, dark or automatic" aria-label="Appearance">
+                            <i data-lucide="sun-moon" class="icon"></i><span class="nav-short-label"><span data-theme-label>Automatic</span></span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: var(--bs-border-radius);">
+                            <li><button type="button" class="dropdown-item d-flex align-items-center gap-2" data-theme-choice="light"><i data-lucide="sun" class="icon"></i> Light</button></li>
+                            <li><button type="button" class="dropdown-item d-flex align-items-center gap-2" data-theme-choice="dark"><i data-lucide="moon" class="icon"></i> Dark</button></li>
+                            <li><button type="button" class="dropdown-item d-flex align-items-center gap-2" data-theme-choice="auto"><i data-lucide="monitor" class="icon"></i> Automatic</button></li>
+                        </ul>
+                    </div>
+                    {% endif %}
 
                     <a class="nav-link d-xl-none" href="#" data-pwa-install hidden><i data-lucide="smartphone" class="icon"></i> Install the app</a>
                     <form method="post" action="{% url 'logout' %}" class="d-inline">
@@ -456,7 +517,7 @@
         </div>
     </nav>
     {% if new_face and ws_lines %}
-    <div class="ws-lines"><div class="container-fluid">{% for l in ws_lines %}<a href="{{ l.url }}" class="{% if l.active %}on{% endif %}">{{ l.label }}</a>{% endfor %}</div></div>
+    <div class="ws-lines"><div class="container-fluid">{% for l in ws_lines %}<a href="{{ l.url }}" class="{% if l.active %}on{% endif %}"><i data-lucide="{{ l.icon }}" class="icon"></i><span>{{ l.label }}</span>{% if l.count %}<span class="ws-line-n">{{ l.count }}</span>{% endif %}</a>{% endfor %}</div></div>
     {% endif %}
     {% endif %}
     {% if mail_problem %}
@@ -493,6 +554,7 @@
     <script src="{% static 'js/photo-capture.js' %}"></script>
     <script src="{% static 'js/weather-widget.js' %}"></script>
     <script src="{% static 'js/toast-messages.js' %}"></script>
+    {% if can_dark %}<script src="{% static 'js/theme.js' %}"></script>{% endif %}
     <script src="{% static 'js/progress-bar.js' %}"></script>
     <script src="{% static 'js/mobile.js' %}"></script>
     {% include '_pwa_body.html' %}

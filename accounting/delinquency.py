@@ -9,6 +9,8 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from core import memo as request_memo
+
 from . import charges, ledger, owners
 from .models import ZERO, CaseEvent, Charge, DelinquencyCase
 
@@ -29,10 +31,16 @@ def breakdown(unit, owner, asof=None):
     """{'assessments', 'late_fees', 'interest', 'other', 'total', 'oldest_due'}: what is still unpaid, split by kind. With `asof`, as the account stood that day (charges due by then, less
     the payments applied by then)."""
     out = {'assessments': ZERO, 'late_fees': ZERO, 'interest': ZERO, 'other': ZERO, 'oldest_due': None}
-    qs = Charge.objects.filter(unit=unit, owner=owner, is_void=False).exclude(kind=Kind.LOAN).prefetch_related('applications')       # an owner loan is never part of what is owed (no letter, no list)
-    if asof:
-        qs = qs.filter(due_date__lte=asof)
-    for c in qs:
+    if request_memo.active() and unit.property_id:
+        # While a page is being built (a GET: core/memo.py) the property's charges are read once, with their payments, and each owner's are cut from them.
+        rows = [c for c in request_memo.get(('charges.by_owner', unit.property_id), lambda: charges._charges_by_owner(unit.property_id)).get((unit.pk, getattr(owner, 'pk', None)), [])
+                if c.kind != Kind.LOAN and (not asof or c.due_date <= asof)]
+    else:
+        qs = Charge.objects.filter(unit=unit, owner=owner, is_void=False).exclude(kind=Kind.LOAN).prefetch_related('applications')       # an owner loan is never part of what is owed (no letter, no list)
+        if asof:
+            qs = qs.filter(due_date__lte=asof)
+        rows = qs
+    for c in rows:
         paid = sum((a.amount for a in c.applications.all() if not asof or a.date <= asof), ZERO)
         bal = c.amount - paid
         if bal <= 0:

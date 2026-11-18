@@ -2,7 +2,7 @@
 {% block acc_title %}Deposits - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <style>
-    .dp-g { background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: 12px; margin-bottom: 8px; }
+    .dp-g { background: var(--surface-card, var(--surface-card)); border: 1px solid var(--border-hairline); border-radius: 12px; margin-bottom: 8px; }
     .dp-g summary { list-style: none; display: grid; grid-template-columns: 56px 1fr auto auto 18px; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; border-radius: 12px; }
     .dp-g summary::-webkit-details-marker { display: none; }
     .dp-g summary:hover { background: color-mix(in srgb, var(--brand-primary) 6%, transparent); }
@@ -16,7 +16,7 @@
     .dp-pick label { display: grid; grid-template-columns: 22px 52px 1fr auto; gap: 8px; padding: 5px 10px; border-top: 1px solid var(--border-hairline); font-size: .88rem; cursor: pointer; margin: 0; }
     .dp-pick label:first-child { border-top: 0; } .dp-pick label.used { opacity: .5; }
     .dp-combo { position: relative; flex: 1; min-width: 240px; max-width: 420px; }
-    .dp-cl { display: none; position: absolute; z-index: 30; left: 0; right: 0; top: 100%; margin-top: 3px; max-height: 260px; overflow: auto; background: var(--surface-card, #fff); border: 1px solid var(--border-hairline); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+    .dp-cl { display: none; position: absolute; z-index: 30; left: 0; right: 0; top: 100%; margin-top: 3px; max-height: 260px; overflow: auto; background: var(--surface-card, var(--surface-card)); border: 1px solid var(--border-hairline); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
     .dp-cl.on { display: block; }
     .dp-cl .it { display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; padding: 6px 10px; font-size: .88rem; cursor: pointer; align-items: center; }
     .dp-cl .it.hl, .dp-cl .it:hover { background: color-mix(in srgb, var(--brand-primary) 14%, var(--surface-card, #fff)); }

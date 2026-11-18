@@ -4,23 +4,23 @@
 {% block acc_body %}
 <style>
     .oc-tabs { display: flex; gap: 6px; margin: 10px 0 12px; flex-wrap: wrap; }
-    .oc-tab { padding: 7px 14px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, #fff); color: inherit; text-decoration: none; font-weight: 600; font-size: 0.92rem; white-space: nowrap; }
+    .oc-tab { padding: 7px 14px; border: 1px solid var(--border-hairline); border-radius: 999px; background: var(--surface-card, var(--surface-card)); color: inherit; text-decoration: none; font-weight: 600; font-size: 0.92rem; white-space: nowrap; }
     .oc-tab:hover { color: inherit; border-color: var(--brand-primary); }
-    .oc-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+    .oc-tab.on { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--on-accent, #fff); }
     .oc-tab .n { display: inline-block; min-width: 1.4em; text-align: center; border-radius: 999px; background: rgba(0,0,0,.1); font-size: .74rem; margin-left: 6px; padding: 0 6px; }
     .oc-tab.on .n { background: rgba(255,255,255,.25); }
     .oc-tab .a { display: inline-block; min-width: 1.4em; text-align: center; border-radius: 999px; background: #b45309; color: #fff; font-size: .72rem; margin-left: 4px; padding: 0 6px; }
-    tr.oc-alert td { background: color-mix(in srgb, var(--status-warning) 12%, white); }
+    tr.oc-alert td { background: color-mix(in srgb, var(--status-warning) 12%, var(--surface-card)); }
     .oc-move summary { list-style: none; cursor: pointer; }
     .oc-move summary::-webkit-details-marker { display: none; }
     .oc-move[open] { position: relative; }
-    .oc-move .oc-pop { margin-top: 6px; padding: 8px; border: 1px solid var(--border-hairline); border-radius: 10px; background: #fff; min-width: 15rem; text-align: left; }
-    .oc-bar { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; margin: 6px 0 4px; padding: 8px 12px; border: 1px solid var(--border-hairline); border-radius: 10px; background: var(--surface-card, #fff); }
+    .oc-move .oc-pop { margin-top: 6px; padding: 8px; border: 1px solid var(--border-hairline); border-radius: 10px; background: var(--surface-card); min-width: 15rem; text-align: left; }
+    .oc-bar { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; margin: 6px 0 4px; padding: 8px 12px; border: 1px solid var(--border-hairline); border-radius: 10px; background: var(--surface-card, var(--surface-card)); }
     .oc-bar form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; }
     .oc-bar .oc-lab { font-weight: 600; font-size: .9rem; white-space: nowrap; }
     .oc-q { padding: 4px 11px; border: 1px solid var(--border-hairline); border-radius: 999px; color: inherit; text-decoration: none; font-size: .88rem; white-space: nowrap; }
     .oc-q:hover { color: inherit; border-color: var(--brand-primary); }
-    .oc-q.on { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+    .oc-q.on { background: var(--brand-primary); border-color: var(--brand-primary); color: var(--on-accent, #fff); }
     .oc-bar input[type=date], .oc-bar input[name=amount] { width: auto; }
     .oc-bar input[name=amount] { width: 6.5rem; text-align: right; }
     @media (max-width: 768px) { .oc-bar { padding: 10px 12px; gap: 12px; } .oc-q { padding: 10px 14px; font-size: 1rem; } .oc-bar .btn { min-height: 44px; } .oc-bar input { min-height: 44px; font-size: 16px; } }
@@ -82,7 +82,7 @@
         <td><input type="checkbox" class="prep-pick" value="{{ r.case.pk }}" aria-label="Tick {{ r.owner.name }}"></td>
         <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }}
             <div class="small text-muted">Owes {{ r.b.total|money }} &middot; {{ r.days_in }} day{{ r.days_in|pluralize }} on this step</div>
-            {% if r.alert %}<div class="small" style="color: #8a5a00; font-weight: 600;">{{ r.alert }}</div>{% endif %}
+            {% if r.alert %}<div class="small" style="color: var(--t-8a5a00, #8a5a00); font-weight: 600;">{{ r.alert }}</div>{% endif %}
             {% if r.paid %}<div class="small"><span class="ac-chip good">Paid in full</span> open the case to resolve it</div>{% endif %}
             <div class="small"><a href="{% url 'accounting:case' assoc.pk r.case.pk %}">Open case</a></div></td>
         <td style="white-space: normal;">{% include 'accounting/_prep_letter.html' with r=r next_url=request.get_full_path %}</td>
@@ -115,7 +115,7 @@
     <thead><tr><th>Unit and owner</th><th>Owes</th><th>Behind</th>{% if tab.key == 'letter' %}<th>Last letter</th>{% endif %}<th>In this step</th><th>Next review</th><th class="d-none d-md-table-cell"></th></tr></thead><tbody>
     {% for r in tab.rows %}<tr class="{% if r.alert %}oc-alert{% endif %}">
         <td style="white-space: normal;"><span class="fw-semibold">{{ r.unit.label }}</span> {{ r.owner.name }} {% include 'accounting/_case_icons.html' with icons=r.icons %}
-            {% if r.alert %}<div class="small" style="color: #8a5a00; font-weight: 600;">{{ r.alert }}</div>{% endif %}
+            {% if r.alert %}<div class="small" style="color: var(--t-8a5a00, #8a5a00); font-weight: 600;">{{ r.alert }}</div>{% endif %}
             {% if r.paid %}<div class="small"><span class="ac-chip good">Paid in full</span> open the case to resolve it</div>{% endif %}
             <div class="d-md-none mt-1 ac-noprint" style="white-space: nowrap;">{% include 'accounting/_collections_actions.html' %}</div></td>
         <td class="num"><strong>{{ r.b.total|money }}</strong></td>

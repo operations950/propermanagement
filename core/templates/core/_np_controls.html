@@ -1,0 +1,13 @@
+{% comment %}The ONE compact row under the tabs: the search box, a Filters button (with how many are on) that opens the screen's own filter box, an optional Sort choice, and Clear. Expects:
+  np_search_id, np_search_placeholder, np_q, np_filter_count, np_filters_id (the id of the filter box wrapper that Filters opens), optionally np_sort_options (a list of {value, label}), np_sort (the current value), np_clear_url,
+  np_search_map (a JSON string: which answer key fills which element id, for the live search, see static/js/newspaper.js), np_hidden (a list of (name, value) pairs of the other filters, kept when the search is submitted).{% endcomment %}
+<form method="get" class="np-controls" role="search" data-np-controls>
+    {% for name, value in np_hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    <div class="np-search">
+        <i data-lucide="search" class="icon"></i>
+        <input type="search" name="q" id="{{ np_search_id }}" class="form-control form-control-sm" placeholder="{{ np_search_placeholder }}" value="{{ np_q }}" autocomplete="off" aria-label="{{ np_search_placeholder }}" data-np-search data-np-map='{{ np_search_map }}'>
+    </div>
+    {% if np_filters_id %}<button type="button" class="btn btn-sm btn-outline-secondary np-filter-btn{% if np_filter_count %} np-on{% endif %}" data-np-filters-toggle="{{ np_filters_id }}" aria-expanded="false"><i data-lucide="sliders-horizontal" class="icon"></i> Filters{% if np_filter_count %}<span class="np-n">{{ np_filter_count }}</span>{% endif %}</button>{% endif %}
+    {% if np_sort_options %}<label class="np-sort"><span class="np-sort-label">Sort</span><select data-np-sort aria-label="Sort">{% for o in np_sort_options %}<option value="{{ o.value }}"{% if o.value == np_sort %} selected{% endif %}>{{ o.label }}</option>{% endfor %}</select></label>{% endif %}
+    {% if np_clear_url %}<a href="{{ np_clear_url }}" class="np-clear">Clear</a>{% endif %}
+</form>

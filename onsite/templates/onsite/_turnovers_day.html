@@ -1,0 +1,39 @@
+{# The Turnovers Day view: a newspaper of boxes. #}
+<div class="top">
+  <span class="seg"><a href="{% url 'onsite_turnovers' %}">Week</a><a href="{% url 'onsite_turnovers' %}?day={{ d.day|date:'Y-m-d' }}" class="on">Day</a></span>
+  <a class="nv" href="?day={{ d.previous|date:'Y-m-d' }}" aria-label="Previous day" title="Previous day">&lsaquo;</a>
+  <a class="nv" href="?day={{ today|date:'Y-m-d' }}"{% if d.is_today %} style="font-weight:600"{% endif %}>Today</a>
+  <a class="nv" href="?day={{ d.next|date:'Y-m-d' }}" aria-label="Next day" title="Next day">&rsaquo;</a>
+  <span>{{ d.day|date:"l, F j" }}{% if d.is_today %} &middot; updated {{ d.now|date:"g:i A" }}{% endif %}{% if d.pending %} &middot; <b style="color:var(--warn-bar)">! {{ d.pending }} waiting for a yes</b>{% endif %}</span>
+  <a class="nv ms-auto" href="{% url 'onsite_turnovers' %}?start={{ d.day|date:'Y-m-d' }}">Week from this day</a>
+</div>
+<div class="foot" style="margin-top:0"><b style="color:var(--ink-primary)">{{ d.summary.out }} out</b> &middot; <b style="color:var(--ink-primary)">{{ d.summary.in }} in</b> &middot; cleanings <b style="color:var(--ink-primary)">{{ d.summary.cleanings_done }} of {{ d.summary.out }}</b> done &middot; <b style="color:var(--ink-primary)">{{ d.summary.turnovers }}</b> same-day turnover{{ d.summary.turnovers|pluralize }} &middot; <b style="color:var(--ink-primary)">{{ d.summary.staying }}</b> guest{{ d.summary.staying|pluralize }} staying through</div>
+<div class="paper">
+  <section class="box out"><h3><span>Checking out</span><span>{{ d.out|length }}</span></h3>
+    {% for x in d.out %}<div class="row2"><span class="nm"><a href="{% url 'property_detail' x.row.property.pk %}">{{ x.name }}</a>{% if x.unit %} <small>{{ x.unit }}</small>{% endif %}</span>
+      {% if x.same_day %}<span class="b bad">same day</span>{% endif %}
+      {% include 'onsite/_tn_dot.html' with e=x.e r=x.row cls='b '|add:x.e.cleaning.badge_tone badge=1 %}
+      {% include 'onsite/_tn_time.html' with e=x.e r=x.row word='out' cls='b out' %}</div>
+    {% empty %}<div class="none">No check-outs.</div>{% endfor %}
+  </section>
+  <section class="box in"><h3><span>Checking in</span><span>{{ d.in|length }}</span></h3>
+    {% for x in d.in %}<div class="row2"><span class="nm"><a href="{% url 'property_detail' x.row.property.pk %}">{{ x.name }}</a>{% if x.unit %} <small>{{ x.unit }}</small>{% endif %}</span>
+      {% if x.same_day %}<span class="b bad">same day</span>{% endif %}
+      <span class="b {{ x.ready_tone }}">{{ x.ready }}</span>
+      {% include 'onsite/_tn_time.html' with e=x.e r=x.row word='in' cls='b in' %}</div>
+    {% empty %}<div class="none">No check-ins.</div>{% endfor %}
+  </section>
+  <section class="box dirty"><h3><span>Needs cleaning</span><span>{{ d.dirty|length }}</span></h3>
+    {% for x in d.dirty %}<div class="row2"><span class="nm"><a href="{% url 'property_detail' x.row.property.pk %}">{{ x.name }}</a>{% if x.unit %} <small>{{ x.unit }}</small>{% endif %}</span><span class="b {{ x.tone }}">{{ x.text }}</span></div>
+    {% empty %}<div class="none">Nothing waiting to be cleaned.</div>{% endfor %}
+  </section>
+  <section class="box clean"><h3><span>Clean &amp; ready</span><span>{{ d.clean|length }}</span></h3>
+    {% for x in d.clean %}<div class="row2"><span class="nm"><a href="{% url 'property_detail' x.row.property.pk %}">{{ x.name }}</a>{% if x.unit %} <small>{{ x.unit }}</small>{% endif %}</span><span class="b good">clean &#10003;</span></div>
+    {% empty %}<div class="none">No empty clean units.</div>{% endfor %}
+  </section>
+  <section class="box"><h3><span>Occupied &middot; staying through</span><span>{{ d.occupied|length }}</span></h3>
+    {% for x in d.occupied %}<div class="row2"><span class="nm"><a href="{% url 'property_detail' x.row.property.pk %}">{{ x.name }}</a>{% if x.unit %} <small>{{ x.unit }}</small>{% endif %}</span><span class="b plain">{% if x.out_day %}out {{ x.out_day|date:"D M j" }}{% else %}in house{% endif %}</span></div>
+    {% empty %}<div class="none">Nobody staying through.</div>{% endfor %}
+  </section>
+</div>
+<div class="lg"><span><i class="sw" style="background:var(--out-bg)"></i>Check-out time</span><span><i class="sw" style="background:var(--in-bg)"></i>Check-in time</span><span><i class="sw" style="border:1.5px dashed var(--warn-bar)"></i>Time change waiting for a yes</span><span>Click a time to change it; click a cleaning to schedule it or give it to someone</span></div>

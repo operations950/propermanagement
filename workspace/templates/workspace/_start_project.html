@@ -1,0 +1,25 @@
+{% comment %}The Start project button and the little form it opens (a project template, optionally a property, a title and who runs it). It sits in the Projects header on both tabs. Posts to ws_start_project.{% endcomment %}
+<details class="np-start"{% if request.GET.start %} open{% endif %}>
+    <summary class="btn-action"><i data-lucide="play" class="icon"></i><span class="np-btn-text"> Start project</span></summary>
+    <form method="post" action="{% url 'ws_start_project' %}" class="np-start-form">{% csrf_token %}
+        <label for="sp-template">Project template</label>
+        <select name="template" id="sp-template" class="form-select form-select-sm" required>
+            <option value="">Choose a template&hellip;</option>
+            {% for t in project_templates %}<option value="{{ t.pk }}">{{ t.name }}</option>{% endfor %}
+        </select>
+        <label for="sp-title">Title <span style="text-transform: none; letter-spacing: 0;">(optional)</span></label>
+        <input type="text" name="title" id="sp-title" class="form-control form-control-sm" maxlength="200" placeholder="Defaults to the template's name">
+        <label for="sp-property">Property <span style="text-transform: none; letter-spacing: 0;">(optional)</span></label>
+        <select name="project_property" id="sp-property" class="form-select form-select-sm">
+            <option value="">No property</option>
+            {% for p in properties %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+        </select>
+        <label for="sp-assignee">Runs it</label>
+        <select name="assignee" id="sp-assignee" class="form-select form-select-sm">
+            <option value="">Me</option>
+            {% for sp in start_staff %}<option value="{{ sp.pk }}">{{ sp.user.get_full_name|default:sp.user.username }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-action mt-2">Start</button>
+        {% if not project_templates %}<p class="small text-muted mb-0 mt-2">There is no project template yet: add one first.</p>{% endif %}
+    </form>
+</details>

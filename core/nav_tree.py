@@ -50,7 +50,7 @@ CHECKLIST = 'Month-end checklist'
 CLOSE_RENTALS = 'Rentals'
 ADMIN = 'Admin Tools'
 ONSITE = 'On-Site Visits'
-RENTALS_TODAY = 'Rentals today'
+TURNOVERS = 'Turnovers'
 TICKETS = 'Tickets'
 PROPERTIES = 'Properties'
 CONTACTS = 'Contacts'
@@ -119,7 +119,7 @@ screen('property_list', PROPERTIES)
 screen('contact_list', CONTACTS)
 screen('ticket_list', TICKETS)
 screen('onsite_dashboard', ONSITE)
-screen('onsite_str_today', RENTALS_TODAY)
+screen('onsite_turnovers', TURNOVERS)
 screen('my_sessions', 'My Recurring')
 screen('session_template_list', 'Recurring Rules')
 screen('portfolio_dashboard', 'My Businesses')
@@ -156,7 +156,7 @@ screen('close_pay_booking', parents=['close_pay_owners', 'close_pay_proper', 'cl
 many(['missing_documents', 'faq_review_queue', 'property_create', 'property_edit'], ['property_list', 'ws_line'], usual=D('property_list', PROPERTIES))
 screen('property_detail', 'Property', kind=DETAIL, usual=D('property_list', PROPERTIES), parents=[
     'property_list', 'ws_line', 'ticket_list', 'dashboard', 'ws_home', 'ws_compliance', 'ws_projects', 'ws_financials', 'close_home', 'close_overview', 'close_long_term', 'accounting:home',
-    'contact_list', 'onsite_dashboard', 'onsite_str_today', 'onsite_performance', 'onsite_reservation_list'])
+    'contact_list', 'onsite_dashboard', 'onsite_turnovers', 'onsite_performance', 'onsite_reservation_list'])
 screen('contact_duplicates', 'Duplicate contacts')
 screen('contact_review', 'Contact review')
 screen('contact_detail', 'Contact', kind=DETAIL, usual=D('contact_list', CONTACTS), parents=['contact_list', 'contact_duplicates', 'contact_review'])
@@ -169,14 +169,14 @@ screen('commercial:ltr_lease', parents=['commercial:ltr_leases'], kind=FORM, usu
 screen('onsite_calendar', 'Calendar', parents=['onsite_dashboard', 'ws_home'], usual=D('onsite_dashboard', ONSITE))
 many(['onsite_booking_feeds', 'onsite_checklist_custom_items', 'onsite_checklist_templates', 'onsite_cleaner_activity', 'onsite_cleaning_payments', 'onsite_visit_create',
       'onsite_visit_rule_list'], ['onsite_dashboard', 'ws_home', 'ws_line'], usual=D('onsite_dashboard', ONSITE))
-screen('onsite_visit_detail', parents=['onsite_dashboard', 'onsite_calendar', 'onsite_str_today', 'ws_home', 'ws_week'], kind=DETAIL, usual=D('onsite_dashboard', ONSITE))
+screen('onsite_visit_detail', parents=['onsite_dashboard', 'onsite_calendar', 'onsite_turnovers', 'ws_home', 'ws_week'], kind=DETAIL, usual=D('onsite_dashboard', ONSITE))
 screen('onsite_checklist_template_detail', parents=[('onsite_checklist_templates', 'Checklist templates')], usual=D('onsite_checklist_templates', 'Checklist templates'))
 screen('onsite_booking_import', 'Import payouts', parents=['close_payouts', 'onsite_dashboard'], usual=D('close_payouts', 'Platform payouts'))
 screen('onsite_booking_import_preview', parents=['onsite_booking_import'], usual=D('onsite_booking_import', 'Import payouts'))
 screen('onsite_feeds_recalibrate', parents=[('onsite_booking_feeds', 'Booking calendars')], usual=D('onsite_booking_feeds', 'Booking calendars'))
-screen('onsite_performance', 'Rental performance', parents=['onsite_str_today', 'ws_line'], usual=D('onsite_str_today', RENTALS_TODAY))
-many(['onsite_rentals_calendar'], ['onsite_str_today', 'ws_line'], usual=D('onsite_str_today', RENTALS_TODAY))
-screen('onsite_reservation_list', 'Reservations', parents=['onsite_str_today', 'ws_line'], usual=D('onsite_str_today', RENTALS_TODAY))
+screen('onsite_performance', 'Rental performance', parents=['onsite_turnovers', 'ws_line'], usual=D('onsite_turnovers', TURNOVERS))
+many(['onsite_rentals_calendar'], ['onsite_turnovers', 'ws_line'], usual=D('onsite_turnovers', TURNOVERS))
+screen('onsite_reservation_list', 'Reservations', parents=['onsite_turnovers', 'ws_line'], usual=D('onsite_turnovers', TURNOVERS))
 screen('onsite_performance_property', 'Property performance', parents=['onsite_performance'], kind=DETAIL, usual=D('onsite_performance', 'Rental performance'))
 screen('onsite_performance_calendar', parents=['onsite_performance_property', 'onsite_performance'], kind=FORM,
        usual=D('onsite_performance_property', 'Property performance', args={'property_id': 'property_id'}))
