@@ -122,6 +122,21 @@ def check_printing_text(prop, profile):
     return 'Ready: standard 3-part check face' if not gaps else 'Missing for ' + '; '.join(gaps)
 
 
+def _late_fee_words(profile):
+    """The late fee in a few words for the property page. Only the kind the association chose is built: a percent-only fee has no flat amount and a flat-only fee has no percent, and
+    building all three at once (as this used to) crashed the whole property page on the one that was empty."""
+    flat = profile.late_fee_flat or 0
+    pct = charges._plain(profile.late_fee_percent) or 0
+    kind = profile.late_fee_kind
+    if kind == 'flat':
+        return f'${flat:,.2f}'
+    if kind == 'percent':
+        return f'{pct}%'
+    if kind == 'greater':
+        return f'${flat:,.2f} or {pct}%, whichever is greater'
+    return ''
+
+
 def settings_rows(prop):
     """The accounting settings, each with whether it is set: what the property page and the settings screen list."""
     profile = ledger.profile_for(prop)
@@ -144,7 +159,7 @@ def settings_rows(prop):
     out = []
     for label, value, ok, url, anchor in rows:
         if label in ('Late fee and interest',) and profile.late_fee_is_set():
-            fee = {'flat': f'${profile.late_fee_flat:,.2f}', 'percent': f'{charges._plain(profile.late_fee_percent)}%', 'greater': f'${profile.late_fee_flat or 0:,.2f} or {charges._plain(profile.late_fee_percent)}%, whichever is greater'}.get(profile.late_fee_kind, '')
+            fee = _late_fee_words(profile)
             value = f'{fee}, {profile.late_fee_grace_days or 0} days after the due date' + (f'; interest {charges._plain(profile.interest_rate)}% a year' if profile.interest_is_set() else '; no interest')
         out.append({'label': label, 'value': value, 'ok': ok, 'url': _go(url, prop.pk) if url else '', 'anchor': anchor, 'key': 'financials' if label == 'We do the financials' else ''})
     return out
