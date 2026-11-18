@@ -1,111 +1,108 @@
 {% extends 'base.html' %}
-{% load alerts %}
-{% load core_extras %}
-{% load static %}
 {% block title %}Properties{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/mobile-lists.css' %}">{% endblock %}
+{% block extra_head %}
+<style>
+    /* Properties: a newspaper. Each line of business is a small box as tall as its own list; the boxes flow down three columns, so a short one leaves no gap. */
+    .pl-top { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: 1rem 0 .75rem; }
+    .pl-top .page-title { margin: 0 .5rem 0 0; }
+    .pl-search { position: relative; flex: 1 1 220px; max-width: 340px; }
+    .pl-search input { padding-left: 2.1rem; }
+    .pl-search .icon { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none; }
+    .pl-spacer { flex: 1 1 auto; }
+    /* The alerts button: the theme's one contrast colour (plum) when something needs a look, an ordinary outline when nothing does. */
+    .pl-alerts-on { background: var(--accent-contrast); border-color: var(--accent-contrast); color: #fff; font-weight: 600; }
+    .pl-alerts-on:hover, .pl-alerts-on:focus { background: #763a5d; border-color: #763a5d; color: #fff; }
+    .pl-alerts-on .pl-n { background: #fff; color: var(--accent-contrast); border-radius: 999px; padding: 0 .5rem; margin-left: .4rem; font-weight: 700; }
+    .pl-panel { background: var(--surface-card); border: 1px solid var(--border-hairline); border-left: 4px solid var(--accent-contrast); border-radius: var(--bs-border-radius-lg); padding: .25rem .9rem; margin-bottom: .9rem; }
+    .pl-panel[hidden] { display: none; }
+    .pl-alert { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .55rem 0; border-top: 1px solid var(--border-hairline); }
+    .pl-alert:first-child { border-top: 0; }
+    .pl-paper { column-count: 3; column-gap: .9rem; }
+    .pl-box { break-inside: avoid; background: var(--surface-card); border: 1px solid var(--border-hairline); border-radius: var(--bs-border-radius-lg); margin: 0 0 .9rem; overflow: hidden; }
+    .pl-box h2 { margin: 0; padding: .3rem .7rem; font-size: .68rem; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-secondary); background: color-mix(in srgb, var(--brand-primary) 8%, white);
+                 border-bottom: 1px solid var(--border-hairline); display: flex; justify-content: space-between; font-family: inherit; font-weight: 600; }
+    .pl-row { display: flex; align-items: center; gap: .4rem; padding: .18rem .7rem; color: var(--ink-primary); text-decoration: none; border-top: 1px solid var(--border-hairline); font-size: .8125rem; line-height: 1.25; }
+    .pl-row:first-of-type { border-top: 0; }
+    .pl-row:hover { background: color-mix(in srgb, var(--brand-primary) 10%, white); color: var(--ink-primary); }
+    .pl-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pl-go { color: var(--ink-muted); }
+    .pl-off .pl-name { color: var(--ink-muted); }
+    .pl-tag { font-size: .68rem; color: var(--ink-muted); border: 1px solid var(--border-hairline); border-radius: 999px; padding: 0 .4rem; }
+    @media (max-width: 991px) { .pl-paper { column-count: 2; } }
+    @media (max-width: 575px) { .pl-paper { column-count: 1; } .pl-row { padding: .45rem .7rem; font-size: .9rem; } }
+</style>
+{% endblock %}
 {% block content %}
-<div class="ml-scope">
-{% page_alerts 'properties' %}
-<div class="ml-title-row d-flex justify-content-between align-items-center flex-wrap gap-2 my-3">
-    <h2 class="page-title mb-0 d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon-lg"></i> Properties</h2>
-    <div class="d-flex gap-2 align-items-center"><a href="{% url 'missing_documents' %}" class="btn btn-outline-secondary btn-sm"><i data-lucide="file-warning" class="icon"></i> Missing documents</a>
-    <a href="{% url 'property_create' %}" class="btn btn-primary"><i data-lucide="plus" class="icon"></i> New property</a></div>
-</div>
-
-{% if faq_waiting.count %}
-<div class="ml-banner d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) {% if faq_waiting.oldest_days >= 7 %}14{% else %}6{% endif %}%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
-    <span class="small"><i data-lucide="messages-square" class="icon"></i> <strong>{{ faq_waiting.count }} assistant FAQ answer{{ faq_waiting.count|pluralize }}</strong> to review across {{ faq_waiting.properties }} propert{{ faq_waiting.properties|pluralize:"y,ies" }}{% if faq_waiting.oldest_days >= 7 %} — the oldest has waited {{ faq_waiting.oldest_days }} days{% endif %}. The assistant already uses them; reviewing makes them permanent.</span>
-    <a href="{% url 'faq_review_queue' %}" class="btn btn-outline-secondary btn-sm">Review them</a>
-</div>
-{% endif %}
-
-{% if incomplete_specs %}
-<div class="ml-banner d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3 rounded" style="background: color-mix(in srgb, var(--status-warning) 14%, white); border: 1px solid color-mix(in srgb, var(--status-warning) 45%, white);">
-    <span class="small"><i data-lucide="ruler" class="icon"></i> <strong>{{ incomplete_specs }} short-term rental{{ incomplete_specs|pluralize }}</strong> {{ incomplete_specs|pluralize:"is,are" }} missing size details (bedrooms, beds, baths, square feet).</span>
-    {% if needs_details %}<a href="?{% if selected_type %}type={{ selected_type }}{% endif %}" class="btn btn-outline-secondary btn-sm">Show all</a>{% else %}<a href="?needs=details" class="btn btn-outline-secondary btn-sm">Show only these</a>{% endif %}
-</div>
-{% endif %}
-
-<form method="get" class="ml-search-form row g-2 mb-3 align-items-center">
-    <div class="col-auto position-relative">
-        <i data-lucide="search" class="icon" style="position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none;"></i>
-        <input type="text" name="q" id="property-search-input" class="form-control" style="padding-left: 2.2rem; min-width: min(320px, 100%);"
-               placeholder="Search name or address…" value="{{ q }}" autocomplete="off">
+<div class="pl-top">
+    <h2 class="page-title d-flex align-items-center gap-2"><i data-lucide="building-2" class="icon-lg"></i> Properties</h2>
+    <form method="get" class="pl-search" onsubmit="return false;">
+        <i data-lucide="search" class="icon"></i>
+        <input type="text" name="q" id="property-search-input" class="form-control form-control-sm" placeholder="Search name or address…" value="{{ q }}" autocomplete="off">
+    </form>
+    <div class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" id="showInactive" {% if show_inactive %}checked{% endif %}>
+        <label class="form-check-label small" for="showInactive">Show inactive</label>
     </div>
-    <input type="hidden" name="type" value="{{ selected_type }}">
-    {% if needs_details %}<input type="hidden" name="needs" value="details">{% endif %}
-    <div class="col-auto">
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="show_inactive" value="1" id="showInactive" {% if show_inactive %}checked{% endif %} onchange="this.form.submit()">
-            <label class="form-check-label small" for="showInactive">Show inactive</label>
+    <span class="pl-spacer"></span>
+    <button type="button" id="pl-alerts-btn" class="btn btn-sm {% if alerts %}pl-alerts-on{% else %}btn-outline-secondary{% endif %}" aria-expanded="false" aria-controls="pl-alerts-panel">
+        <i data-lucide="bell{% if alerts %}-ring{% endif %}" class="icon"></i> Alerts{% if alerts %}<span class="pl-n">{{ alerts|length }}</span>{% endif %}
+    </button>
+    <a href="{% url 'property_create' %}" class="btn btn-primary btn-sm"><i data-lucide="plus" class="icon"></i> New property</a>
+</div>
+
+<div class="pl-panel" id="pl-alerts-panel" hidden>
+    {% for n in alerts %}
+    <div class="pl-alert">
+        <div style="min-width: 0;">
+            <div class="fw-medium d-flex align-items-center gap-2"><i data-lucide="{{ n.icon }}" class="icon" style="color: {% if n.level == 'warn' %}var(--accent-contrast){% else %}var(--ink-muted){% endif %};"></i> {{ n.text }}</div>
+            {% if n.detail %}<div class="small" style="color: var(--ink-muted);">{{ n.detail }}</div>{% endif %}
         </div>
+        <a href="{{ n.url }}" class="btn btn-outline-secondary btn-sm flex-shrink-0">Open <i data-lucide="arrow-right" class="icon"></i></a>
     </div>
-</form>
-
-<div class="ml-chips d-flex flex-wrap gap-2 mb-3">
-    <a href="?{% if q %}q={{ q|urlencode }}&{% endif %}{% if show_inactive %}show_inactive=1{% endif %}" class="bubble{% if not selected_type %} bubble-locked{% endif %}">All types</a>
-    {% for value, label in type_choices %}
-        <a href="?type={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if show_inactive %}&show_inactive=1{% endif %}" class="bubble{% if value == 'snowbird' or value == 'general' %} ml-chip-minor{% endif %}{% if value == selected_type %} bubble-locked{% endif %}">{{ label }}</a>
+    {% empty %}
+    <div class="pl-alert small text-muted"><span><i data-lucide="check" class="icon"></i> Nothing about the properties needs attention.</span></div>
     {% endfor %}
 </div>
 
-<div class="d-none d-md-block card p-0" style="border-radius: var(--bs-border-radius-lg); overflow: hidden;">
-<div class="table-responsive">
-<table class="table bg-white align-middle mb-0">
-    <thead><tr><th>Name</th><th>Type</th><th>Address</th><th></th></tr></thead>
-    <tbody id="property-table-body">
-    {% include 'core/_property_table_rows.html' %}
-    </tbody>
-</table>
-</div>
-</div>
+{% if needs_details %}
+<p class="small text-muted mb-2"><i data-lucide="ruler" class="icon"></i> Showing only the short-term rentals missing size details (bedrooms, beds, baths, square feet). <a href="{% url 'property_list' %}">Show all</a></p>
+{% endif %}
 
-<div class="d-md-none" id="property-mobile-cards">
-{% include 'core/_property_mobile_cards.html' %}
+<div class="pl-paper" id="property-paper">
+{% include 'core/_property_paper.html' %}
 </div>
 <script>
 (function () {
     var input = document.getElementById('property-search-input');
-    var desktopBody = document.getElementById('property-table-body');
-    var mobileBody = document.getElementById('property-mobile-cards');
-    var selectedType = '{{ selected_type|escapejs }}';
-    var showInactive = {% if show_inactive %}true{% else %}false{% endif %};
+    var inactive = document.getElementById('showInactive');
+    var paper = document.getElementById('property-paper');
+    var btn = document.getElementById('pl-alerts-btn');
+    var panel = document.getElementById('pl-alerts-panel');
     var needsDetails = {% if needs_details %}true{% else %}false{% endif %};
     var timer = null;
+
+    btn.addEventListener('click', function () {
+        var open = panel.hidden;
+        panel.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
 
     function runSearch() {
         var params = new URLSearchParams();
         if (input.value) params.set('q', input.value);
-        if (selectedType) params.set('type', selectedType);
-        if (showInactive) params.set('show_inactive', '1');
+        if (inactive.checked) params.set('show_inactive', '1');
         if (needsDetails) params.set('needs', 'details');
-        fetch('{% url "property_list" %}?' + params.toString(), {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('bad response');
-                return resp.json();
-            })
+        fetch('{% url "property_list" %}?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (resp) { if (!resp.ok) throw new Error('bad response'); return resp.json(); })
             .then(function (data) {
-                desktopBody.innerHTML = data.desktop;
-                mobileBody.innerHTML = data.mobile;
+                paper.innerHTML = data.paper;
                 if (window.lucide) lucide.createIcons();
                 history.replaceState(null, '', '?' + params.toString());
             })
-            .catch(function () {
-                // A 500 (or any non-JSON response) would otherwise throw
-                // inside resp.json() with no visible sign anything went
-                // wrong — the list just silently stops updating.
-                console.error('Property search failed');
-            });
+            .catch(function () { console.error('Property search failed'); });
     }
-
-    input.addEventListener('input', function () {
-        clearTimeout(timer);
-        timer = setTimeout(runSearch, 250);
-    });
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(runSearch, 250); });
+    inactive.addEventListener('change', runSearch);
 })();
 </script>
-</div>
 {% endblock %}

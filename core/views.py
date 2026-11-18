@@ -452,49 +452,63 @@ def missing_documents(request):
     return render(request, 'core/missing_documents.html', {'rows': required_docs.all_missing()})
 
 
+# The Properties screen is a newspaper: one little box for each line of business, only as tall as its own list, flowing down three columns. Placeholders ("Commercial (general)", "No specific
+# property") are not listed: they exist so a ticket can be about a whole line of business, not to be looked at here.
+PROPERTY_BOXES = [
+    (Property.Type.ASSOCIATION, 'Associations'),
+    (Property.Type.SHORT_TERM_RENTAL, 'Short-term rentals'),
+    (Property.Type.COMMERCIAL, 'Commercial'),
+    (Property.Type.LONG_TERM_RENTAL, 'Long-term rentals'),
+    (Property.Type.SNOWBIRD, 'Snowbird oversight'),
+]
+
+
+def _is_placeholder(p):
+    return p.is_general and (p.property_type == Property.Type.GENERAL or '(general)' in p.name.lower())
+
+
+def property_boxes(properties):
+    """[{'title', 'rows'}] for the Properties screen: a box for each line of business that has properties (by name), the rest under "Other"; placeholders left out."""
+    by_type = {}
+    for p in properties:
+        if not _is_placeholder(p):
+            by_type.setdefault(p.property_type, []).append(p)
+    boxes, known = [], {t for t, _ in PROPERTY_BOXES}
+    for ptype, title in PROPERTY_BOXES:
+        if by_type.get(ptype):
+            boxes.append({'title': title, 'rows': sorted(by_type[ptype], key=lambda p: p.name.lower())})
+    other = sorted((p for t, rows in by_type.items() if t not in known for p in rows), key=lambda p: p.name.lower())
+    if other:
+        boxes.append({'title': 'Other', 'rows': other})
+    return boxes
+
+
 @login_required
 def property_list(request):
+    from . import property_alerts
     qs = Property.objects.all()
     q = request.GET.get('q', '').strip()
     if q:
         qs = qs.filter(Q(name__icontains=q) | Q(address__icontains=q))
-    selected_type = request.GET.get('type', '')
-    if selected_type:
-        qs = qs.filter(property_type=selected_type)
     show_inactive = request.GET.get('show_inactive') == '1'
     if not show_inactive:
         qs = qs.filter(is_active=True)
-    qs = qs.annotate(unit_count=Count('units', distinct=True)).order_by('property_type', '-is_general', 'name').prefetch_related('units')
-    properties = list(qs)
-    open_counts = dict(Ticket.objects.filter(property__in=[p.pk for p in properties], status__in=OPEN_STATUSES).values_list('property').annotate(n=Count('id')))
-    for p in properties:
-        p.missing_specs = property_specs.missing_specs(p)
-        p.specs_summary = property_specs.summary(p.missing_specs)
-        p.open_ticket_count = open_counts.get(p.pk, 0)               # the phone list shows it under the name
+    properties = list(qs.prefetch_related('units'))
     needs_details = request.GET.get('needs') == 'details'
     if needs_details:
-        properties = [p for p in properties if p.missing_specs]
+        properties = [p for p in properties if property_specs.missing_specs(p)]
+    boxes = property_boxes(properties)
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse({
-            'desktop': render_to_string('core/_property_table_rows.html', {'properties': properties}, request=request),
-            'mobile': render_to_string('core/_property_mobile_cards.html', {'properties': properties}, request=request),
-        })
+        return JsonResponse({'paper': render_to_string('core/_property_paper.html', {'boxes': boxes}, request=request)})
 
-    # How many active short-term rentals still lack size details, whatever the
-    # list is currently filtered to — a reminder, never a requirement.
-    incomplete = sum(
-        1 for p in Property.objects.filter(is_active=True, is_general=False, property_type=Property.Type.SHORT_TERM_RENTAL).prefetch_related('units')
-        if property_specs.missing_specs(p)
-    )
+    alerts = property_alerts.collect(request.user)
     return render(request, 'core/property_list.html', {
-        'properties': properties,
+        'boxes': boxes,
+        'alerts': alerts,
+        'alert_warn': any(a['level'] == 'warn' for a in alerts),
         'needs_details': needs_details,
-        'incomplete_specs': incomplete,
-        'faq_waiting': nudges.faq_stats(),
-        'type_choices': Property.Type.choices,
         'q': q,
-        'selected_type': selected_type,
         'show_inactive': show_inactive,
     })
 

@@ -39,39 +39,7 @@ class PhoneLists(TestCase):
             Ticket.objects.create(title=title, property=self.grand, created_by=self.user)
         Ticket.objects.create(title='Done one', property=self.grand, created_by=self.user, status=Ticket.Status.COMPLETED)
 
-    # ---------------------------------------------------------------- the properties list
-    def test_every_property_is_one_big_row_that_opens_it_with_its_open_ticket_count(self):
-        html = self.client.get(reverse('property_list')).content.decode()
-        self.assertEqual(html.count('class="ml-row"'), 2)                                  # the inactive one is not listed
-        self.assertIn(f'href="{reverse("property_detail", args=[self.grand.pk])}" class="ml-row"', html)
-        self.assertIn('2 open tickets', html)                                              # the completed one is not counted
-        self.assertIn('2 units', html)
-        self.assertNotIn('Palm Cottage 12</span><span class="ml-line d-block">Short-Term Rentals &middot; 0', html)
-
-    def test_an_inactive_property_shows_when_asked_and_says_so(self):
-        html = self.client.get(reverse('property_list') + '?show_inactive=1').content.decode()
-        self.assertIn('Old Duplex', html)
-        self.assertIn('>Inactive<', html)
-
-    def test_the_search_and_type_filters_work_for_the_phone_rows_as_they_do_for_the_table(self):
-        j = self.client.get(reverse('property_list') + '?q=palm', HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
-        self.assertIn('Palm Cottage 12', j['mobile'])
-        self.assertNotIn('St Andrews Grand', j['mobile'])
-        self.assertIn('Palm Cottage 12', j['desktop'])                                     # the table is unchanged
-        resp = self.client.get(reverse('property_list') + '?type=association')
-        self.assertEqual([p.name for p in resp.context['properties']], ['St Andrews Grand'])
-
-    def test_the_phone_chips_hide_the_two_rare_types_unless_chosen(self):
-        html = self.client.get(reverse('property_list')).content.decode()
-        self.assertIn('ml-chips', html)
-        self.assertIn('ml-chip-minor', html)                                               # snowbird and general are tucked away on phones
-        self.assertIn('Associations', html)
-        self.assertIn('ml-search-form', html)
-
-    def test_the_desktop_table_is_still_there(self):
-        html = self.client.get(reverse('property_list')).content.decode()
-        self.assertIn('d-none d-md-block card p-0', html)
-        self.assertIn('id="property-table-body"', html)
+    # the properties list is covered by core/test_property_list.py (the newspaper boxes)
 
     # ---------------------------------------------------------------- a property
     def test_the_phone_header_has_one_primary_action_and_big_buttons(self):
