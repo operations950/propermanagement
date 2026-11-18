@@ -234,7 +234,7 @@ screen('accounting:receipt_new', kind=FORM, parents=['accounting:unit', 'account
                                                       'accounting:close', 'commercial:lease'])
 # collections: late fees is a step BESIDE owner collections, not above it
 screen('accounting:collections_home', 'Owner collections', parents=['ws_financials', 'ws_line'])
-screen('accounting:collections', 'Owner collections', parents=['accounting:hub', 'accounting:close', 'accounting:collections_home'])
+screen('accounting:collections', 'Owner collections', parents=['accounting:close', 'accounting:collections_home'])      # a step of the month-end close: Up is the close sheet, never Accounting
 screen('accounting:late_fees', 'Late fees and interest', parents=['accounting:close', 'accounting:hub'])
 screen('accounting:delinquencies', 'Delinquencies', parents=['accounting:hub', 'accounting:close'])
 screen('accounting:case', kind=DETAIL, parents=['accounting:collections', 'accounting:delinquencies'])

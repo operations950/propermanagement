@@ -84,8 +84,7 @@
         .ac-step:has(> .ac-chip) > .ac-chip { order: 4; margin-left: 2.1rem; }
     }
 </style>
-{% if assoc and request.resolver_match.url_name != 'hub' %}<a href="{% url 'property_detail' assoc.pk %}" class="ac-assoc ac-noprint" title="Open {{ assoc.name }}">{{ assoc.name }}</a>{% endif %}
-{% if assoc and request.resolver_match.url_name != 'hub' %}<a href="{% url 'property_detail' assoc.pk %}" class="ac-assoc ac-noprint" title="Open {{ assoc.name }}">{{ assoc.name }}</a>{% endif %}
+{% block acc_assoc_link %}{% if assoc and request.resolver_match.url_name != 'hub' %}<a href="{% url 'property_detail' assoc.pk %}" class="ac-assoc ac-noprint" title="Open {{ assoc.name }}">{{ assoc.name }}</a>{% endif %}{% endblock %}
 {% up_link css="ac-back mb-1 ac-noprint" %}
 {% block acc_body %}{% endblock %}
 {% include 'accounting/_acpick.html' %}

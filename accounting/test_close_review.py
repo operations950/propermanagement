@@ -202,7 +202,7 @@ class CloseSheetAndUpTests(TestCase):
             r = self.client.get(reverse('accounting:late_fees', args=[self.prop.pk]) + '?month=2026-10&as_of=2026-10-31', **self.html)         # and back to late fees: still the checklist
             self.assertIn(r.context['acc_back_label'], ('Month-end checklist', 'Month-end close'), start)
 
-    def test_owner_collections_opened_from_the_accounting_hub_still_goes_up_to_it(self):
+    def test_owner_collections_opened_from_the_accounting_hub_goes_up_to_the_association_close_sheet_not_to_accounting(self):
         self.client.get(reverse('accounting:hub', args=[self.prop.pk]), **self.html)
         r = self.client.get(reverse('accounting:collections', args=[self.prop.pk]), **self.html)
-        self.assertEqual(r.context['acc_back_label'], 'Accounting')
+        self.assertEqual(r.context['acc_back_label'], 'Month-end close')          # a step of the close: Up is the closing list, never Accounting

@@ -98,6 +98,8 @@ def collections(request, pk):
         except (ValueError, ledger.LedgerError) as e:
             messages.error(request, str(e))
         return redirect(_back(here, tab, asof, given))
+    step = step_done_context(prop, request.GET.get('month'), today)
+    close_url = reverse('accounting:close', args=[pk, f"{step['step_month']:%Y-%m}"])
     data = owner_collections.board(prop, today, asof)
     by_key = {t['key']: t for t in data['tabs']}
     if tab not in by_key:                      # open on the first step that has something to do, else the first that has anyone
@@ -105,8 +107,10 @@ def collections(request, pk):
     ctx = {'assoc': prop, 'profile': profile, 'data': data, 'tabs': data['tabs'], 'tab': by_key[tab], 'today': today, 'terms': charges.terms_sentences(profile), 'threshold': data['threshold'],
            'asof': asof, 'default_asof': data['default_asof'], 'asof_given': given, 'asof_is_default': asof == data['default_asof'], 'asof_is_today': asof == today,
            'asof_qs': f'&asof={asof:%Y-%m-%d}' if given else '',
-           'letter_days': owner_collections.LETTER_DAYS, 'notice_days': owner_collections.NOTICE_DAYS, **step_done_context(prop, request.GET.get('month'), today),
-           **acc_up(request, prop, reverse('accounting:hub', args=[pk]), 'Accounting')}      # late fees is a step beside it, not above it: Up skips it, back to the checklist
+           'letter_days': owner_collections.LETTER_DAYS, 'notice_days': owner_collections.NOTICE_DAYS, **step,
+           **acc_up(request, prop, close_url, 'Month-end close')}      # Owner collections is a step of the month-end close: Up is that close sheet (late fees is a step beside it, not above it), never Accounting
+    if ctx['acc_back'] == reverse('accounting:hub', args=[pk]):          # Accounting is above the close sheet in the tree, so a visit to it can be the nearest screen on the trail: still not where Up goes from here
+        ctx['acc_back'], ctx['acc_back_label'] = close_url, 'Month-end close'
     return render(request, 'accounting/collections.html', ctx)
 
 
