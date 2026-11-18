@@ -14,7 +14,7 @@
 <div class="mb-2 d-flex justify-content-between align-items-start flex-wrap gap-2">
   <div>
     <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="alarm-clock" class="icon-lg"></i> Post late fees and interest {% include '_tip.html' with text="Who is late on the day you choose, from the rules in the declaration. Each owner is judged by what they owed that day: someone who had paid by then is not late, and someone who had not is, even if they paid later. Choosing the 31st with a 10-day grace period is the same as giving 31 days. Nothing is charged until you press a button, so you can look first." %}</h2>
-    <div class="small text-muted">{{ assoc.name }}</div>
+    <div class="small text-muted">{% assoc_link assoc %}</div>
   </div>
   {% if is_set %}{% include 'accounting/_step_done_bar.html' %}{% endif %}
 </div>

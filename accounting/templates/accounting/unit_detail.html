@@ -5,7 +5,7 @@
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="door-open" class="icon-lg"></i> Unit {{ unit.label }}</h2>
-        <div class="small text-muted">{{ assoc.name }}{% if building %} &middot; Building {{ building }}{% endif %}{% if share %} &middot; share {{ share.percent|pct:4 }}%{% endif %}</div>
+        <div class="small text-muted">{% assoc_link assoc %}{% if building %} &middot; Building {{ building }}{% endif %}{% if share %} &middot; share {{ share.percent|pct:4 }}%{% endif %}</div>
     </div>
     <div class="d-flex gap-2 align-items-center flex-wrap">
         {% if balance > 0 %}<span class="ac-chip warn">Owes {{ balance|money }}</span>{% elif balance < 0 %}<span class="ac-chip good">Paid ahead {{ balance|money }}</span>{% else %}<span class="ac-chip good">Paid up</span>{% endif %}

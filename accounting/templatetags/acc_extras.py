@@ -165,3 +165,11 @@ def is_commercial(prop):
     """{% if assoc|is_commercial %}: true for a commercial building."""
     from accounting import labels
     return labels.is_commercial(prop)
+
+
+@register.simple_tag
+def assoc_link(assoc):
+    """The association's name, as a link to its property page. It stands where the name was already printed in a screen's heading; it never adds a name where there was none."""
+    from django.urls import reverse
+    from django.utils.html import format_html
+    return format_html('<a href="{}" class="ac-assoc-link" title="Open {}">{}</a>', reverse('property_detail', args=[assoc.pk]), assoc.name, assoc.name)

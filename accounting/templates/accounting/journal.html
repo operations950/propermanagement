@@ -3,7 +3,7 @@
 {% block acc_title %}Journal - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="book-open" class="icon-lg"></i> Journal</h2><div class="small text-muted">{{ assoc.name }}. An entry is never edited: a mistake is reversed.</div></div>
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="book-open" class="icon-lg"></i> Journal</h2><div class="small text-muted">{% assoc_link assoc %}. An entry is never edited: a mistake is reversed.</div></div>
     <div class="btn-group btn-group-sm"><a href="?month={{ previous|date:'Y-m' }}" class="btn btn-outline-secondary"><i data-lucide="chevron-left" class="icon"></i></a><span class="btn btn-outline-secondary disabled fw-semibold px-3" style="opacity: 1; color: var(--ink-primary); background: var(--surface-card, var(--surface-card));">{{ month|date:"F Y" }}</span><a href="?month={{ next|date:'Y-m' }}" class="btn btn-outline-secondary"><i data-lucide="chevron-right" class="icon"></i></a></div>
 </div>
 <div class="row g-3 mb-3 ac-noprint">

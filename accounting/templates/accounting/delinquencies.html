@@ -4,7 +4,7 @@
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="alarm-clock" class="icon-lg"></i> Delinquencies {% include '_tip.html' with text="Owners who owe more than the amount at the top. Charge their late fees and interest, make their late letters (making the first one opens their case), and review every open case each month. Each review comes back as a compliance item." %}</h2>
-        <div class="small text-muted">{{ assoc.name }}</div></div>
+        <div class="small text-muted">{% assoc_link assoc %}</div></div>
     <form method="get" class="d-flex gap-2 align-items-end ac-noprint"><div><label class="small text-muted d-block mb-0">Behind by more than</label><div class="input-group input-group-sm" style="width: 140px;"><span class="input-group-text">$</span><input class="form-control" name="threshold" value="{{ threshold }}"></div></div>
         <button class="btn btn-sm btn-outline-secondary">Show</button></form>
 </div>

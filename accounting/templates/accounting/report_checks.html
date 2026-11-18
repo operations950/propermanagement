@@ -3,7 +3,7 @@
 {% block acc_title %}Check register - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <h2 class="page-title fs-4 mb-0">Check register</h2>
-<div class="text-muted mb-2">{{ assoc.name }} &middot; {{ start|mdate }} to {{ end|mdate }}</div>
+<div class="text-muted mb-2">{% assoc_link assoc %} &middot; {{ start|mdate }} to {{ end|mdate }}</div>
 {% include 'accounting/_report_filter.html' with show_start=True %}
 <div class="rp-wrap"><div class="p-0"><table class="table table-sm ac-table rp mb-0">
     <thead><tr><th>Date</th><th>Number</th><th>Paid to</th><th>From</th><th>Status</th><th class="ac-num">Amount</th></tr></thead>

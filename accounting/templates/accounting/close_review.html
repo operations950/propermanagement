@@ -5,7 +5,7 @@
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
     <div>
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-check" class="icon-lg"></i> Review {{ month|date:"F Y" }} {% include '_tip.html' with text="This is the financial package for the month: the statements, the aging and the bank statements. Look it over, then approve it. Approving closes the month, so nothing more can be posted into it, and records who approved it. Sending it to the board or owners is the next step." %}</h2>
-        <div class="small text-muted">{{ assoc.name }}</div>
+        <div class="small text-muted">{% assoc_link assoc %}</div>
     </div>
     <div class="d-flex flex-wrap align-items-center justify-content-end gap-2 ac-noprint">
         {% if lock %}

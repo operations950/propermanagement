@@ -3,7 +3,7 @@
 {% block acc_title %}{{ bank.name }} reconciliation report - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2"><div><h2 class="page-title fs-4 mb-0">Bank reconciliation report</h2>
-    <div class="text-muted">{{ assoc.name }} &middot; {{ bank.name }}{% if bank.last4 %} (account ending {{ bank.last4 }}){% endif %} &middot; {{ month|date:"F Y" }}</div></div>
+    <div class="text-muted">{% assoc_link assoc %} &middot; {{ bank.name }}{% if bank.last4 %} (account ending {{ bank.last4 }}){% endif %} &middot; {{ month|date:"F Y" }}</div></div>
     <div class="ac-noprint d-flex gap-2 align-items-center">{% if rec %}<span class="ac-chip good">Closed {{ rec.closed_at|date:"M j, Y" }}</span>{% else %}<span class="ac-chip warn">Not closed</span>{% endif %}<button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i data-lucide="printer" class="icon"></i> Print</button></div></div>
 {% if not s.statement %}<div class="card"><div class="card-body text-muted">No statement has been uploaded for this month.</div></div>{% else %}
 <div class="card mb-3"><div class="card-body"><table class="table table-sm ac-table rp mb-0" style="max-width: 640px;">

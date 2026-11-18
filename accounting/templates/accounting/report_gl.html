@@ -3,7 +3,7 @@
 {% block acc_title %}General ledger - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <h2 class="page-title fs-4 mb-0">General ledger</h2>
-<div class="text-muted mb-2">{{ assoc.name }} &middot; {{ start|mdate }} to {{ end|mdate }} &middot; {{ basis|capfirst }} book</div>
+<div class="text-muted mb-2">{% assoc_link assoc %} &middot; {{ start|mdate }} to {{ end|mdate }} &middot; {{ basis|capfirst }} book</div>
 <form method="get" class="d-flex gap-2 flex-wrap align-items-end mb-3 ac-noprint">
     <div><label class="form-label small text-muted mb-1">Account</label><select class="form-select form-select-sm ac-pick" name="account">{% for a in accounts %}<option value="{{ a.pk }}" {% if acct and a.pk == acct.pk %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
     <div><label class="form-label small text-muted mb-1">From</label><input class="form-control form-control-sm" type="date" name="start" value="{{ start|date:'Y-m-d' }}"></div>

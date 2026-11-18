@@ -3,7 +3,7 @@
 {% block acc_title %}Payables aging - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <h2 class="page-title fs-4 mb-0">Payables aging</h2>
-<div class="text-muted mb-2">{{ assoc.name }} &middot; what we owe vendors as of {{ end|mdate }}</div>
+<div class="text-muted mb-2">{% assoc_link assoc %} &middot; what we owe vendors as of {{ end|mdate }}</div>
 {% include 'accounting/_report_filter.html' %}
 <div class="rp-wrap"><div class="p-0"><table class="table table-sm ac-table rp mb-0">
     <thead><tr><th>Vendor</th><th>Invoice</th><th>Date</th>{% for b in ag.labels %}<th class="ac-num">{{ b }}</th>{% endfor %}<th class="ac-num">Owed</th></tr></thead>

@@ -27,7 +27,7 @@
 </style>
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Owner collections {% include '_tip.html' with text="Every owner who is behind, and where they are in the process: not in a case yet, preparing the late letter (draft it, make it final, print the letter, affidavit and envelope), the late letter sent, the lawyer's first 45-day notice, the second, then a lien or foreclosure. A tab's orange number is how many on it need you: write a letter, send them to the lawyer, or move them on. Posting the late fees and interest is a different job: the Post late fees screen and the month-end close." %}</h2>
-        <div class="small text-muted">{{ assoc.name }}</div></div>
+        <div class="small text-muted">{% assoc_link assoc %}</div></div>
     <div class="d-flex gap-2 align-items-center justify-content-end flex-wrap ac-noprint">
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:late_fees' assoc.pk %}"><i data-lucide="alarm-clock" class="icon"></i> Post late fees</a>
         {% include 'accounting/_step_done_bar.html' %}

@@ -3,7 +3,7 @@
 {% block acc_title %}Checks - {{ assoc.name }}{% endblock %}
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> Checks and payments</h2><div class="small text-muted">{{ assoc.name }} &middot; next check number {{ profile.next_check_number }}</div></div>
+    <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="printer" class="icon-lg"></i> Checks and payments</h2><div class="small text-muted">{% assoc_link assoc %} &middot; next check number {{ profile.next_check_number }}</div></div>
     <div class="d-flex gap-2"><a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:check_setup' assoc.pk %}"><i data-lucide="settings" class="icon"></i> Check stock</a><a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:check_print' assoc.pk %}?sample=1">Test print</a></div>
 </div>
 <div class="card"><div class="card-body p-2">

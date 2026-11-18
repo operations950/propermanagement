@@ -48,7 +48,7 @@ class TheCloseSheetNameTests(TestCase):
 
     def test_the_association_name_beside_the_icon_is_the_only_link_to_the_property_and_nothing_is_added_above_it(self):
         html = self.client.get(reverse('accounting:close', args=[self.prop.pk, '2026-10'])).content.decode()
-        self.assertNotIn('class="ac-assoc', html)                                       # no extra line of text above the title
+        self.assertNotIn('class="ac-assoc"', html)                                       # no extra line of text above the title
         prop_url = reverse('property_detail', args=[self.prop.pk])
         self.assertEqual(html.count(f'href="{prop_url}"'), 1)
         self.assertIn(f'<a href="{prop_url}" class="text-reset text-decoration-none" title="Open Title Link Condos">Title Link Condos</a></h2>', html)

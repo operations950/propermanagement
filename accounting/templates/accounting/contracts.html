@@ -4,7 +4,7 @@
 {% block acc_body %}
 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
     <div><h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="file-signature" class="icon-lg"></i> Contracts {% include '_tip.html' with text="The association's contracts, kept as records the law says we must keep and show. A contract sets up its recurring bill and warns you on the compliance screen before its term ends and before the cancellation notice is due." %}</h2>
-        <div class="small text-muted">{{ assoc.name }}</div></div>
+        <div class="small text-muted">{% assoc_link assoc %}</div></div>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:contracts_print' assoc.pk %}" target="_blank"><i data-lucide="printer" class="icon"></i> Official records list</a>
 </div>
 <div class="card mb-3"><div class="card-body p-2">

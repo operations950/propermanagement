@@ -5,7 +5,7 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
         <h2 class="page-title fs-4 mb-0 d-flex align-items-center gap-2"><i data-lucide="scale" class="icon-lg"></i> Reserve funds and reserve cash {% include '_tip.html' with text="The reserve cash is every reserve bank account; the reserve funds are the reserve accounts on the balance sheet. They should be the same. A reserve project paid from operating, or a transfer not yet booked, is the usual reason they are not." %}</h2>
-        <div class="small text-muted">{{ assoc.name }} &middot; as of {{ info.month_end|date:"F j, Y" }}</div>
+        <div class="small text-muted">{% assoc_link assoc %} &middot; as of {{ info.month_end|date:"F j, Y" }}</div>
     </div>
     <div class="btn-group btn-group-sm">
         <a href="{% url 'accounting:reserve_check' assoc.pk previous|date:'Y-m' %}" class="btn btn-outline-secondary" aria-label="Earlier month"><i data-lucide="chevron-left" class="icon"></i></a>

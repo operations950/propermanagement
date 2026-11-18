@@ -4,7 +4,7 @@
 {% block acc_body %}
 <style>.card:target { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 45%, white); transition: box-shadow .3s; }</style>
 <h2 class="page-title fs-4 mb-1 d-flex align-items-center gap-2"><i data-lucide="settings" class="icon-lg"></i> Accounting settings</h2>
-<p class="text-muted">{{ assoc.name }}</p>
+<p class="text-muted">{% assoc_link assoc %}</p>
 
 <div class="card mb-3"><div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div><strong>We do the financials</strong><div class="small text-muted">Switch this on for an association whose books we keep. It needs the management contract on file.</div></div>
