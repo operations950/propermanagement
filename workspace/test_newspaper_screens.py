@@ -43,6 +43,12 @@ class ComplianceBoxesTests(_Base):
             self.rules[name] = rule
         self.url = reverse('ws_compliance')
 
+    def test_a_compliance_row_is_one_line(self):
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('Bank reconciliation', html)
+        self.assertEqual(html.count('class="np-l2"'), 0)
+        self.assertIn('np-single', html)
+
     def test_the_items_are_boxed_by_how_often_from_daily_to_yearly(self):
         self.assertEqual(self.box_titles(self.client.get(self.url)), ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Twice a year', 'Yearly'])
 
@@ -130,7 +136,8 @@ class ProjectBoxesTests(_Base):
         html = self.client.get(self.url).content.decode()
         self.assertIn('Roof at Grand', html)
         self.assertIn('Step 1 of 1: Get bids', html)
-        self.assertIn('np-bar', html)
+        self.assertNotIn('np-bar', html)                                                           # one line: no second line, no progress bar
+        self.assertNotIn('np-l2', html.split('Roof at Grand')[0][-400:] + html.split('Roof at Grand')[1][:400])
         self.assertTrue(ProcessRun.objects.filter(pk=run.pk).exists())
 
     def test_templates_are_boxed_by_the_line_their_category_names(self):

@@ -1,5 +1,4 @@
-{% comment %}One running project in a newspaper box: the project and its due date (late in red), then the property, the step it is on, who runs it and a small progress bar. Expects r (a row from services.project_runs).{% endcomment %}
-<a class="np-row" href="{{ r.url }}" title="{{ r.origin }}">
-    <span class="np-l1"><span class="np-name">{{ r.title }}</span><span class="np-when{% if r.late %} np-late{% endif %}">{{ r.due }}</span></span>
-    <span class="np-l2">{% if r.where %}{{ r.where }} &middot; {% endif %}Step {{ r.done|add:1 }} of {{ r.total }}: {{ r.next }}{% if r.who %} &middot; {{ r.who }}{% endif %}<span class="np-bar" aria-hidden="true"><i style="width: {{ r.pct }}%"></i></span></span>
+{% comment %}One running project in a newspaper box: ONE line, the whole row a link: the project, the property (small grey), its due date (late in red). The step it is on, who runs it and where it came from are the hover text. Expects r (a row from services.project_runs).{% endcomment %}
+<a class="np-row" href="{{ r.url }}" title="Step {{ r.done|add:1 }} of {{ r.total }}: {{ r.next }}{% if r.who %} &middot; {{ r.who }}{% endif %}{% if r.origin %} &middot; {{ r.origin }}{% endif %}">
+    <span class="np-l1 np-single"><span class="np-name">{{ r.title }}</span><span class="np-sub">{{ r.where }}</span><span class="np-when{% if r.late %} np-late{% endif %}">{{ r.due }}</span></span>
 </a>

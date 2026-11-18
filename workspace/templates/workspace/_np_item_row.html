@@ -1,5 +1,4 @@
-{% comment %}One compliance item in a newspaper box: the item and its due date (late in red), then where, which period, how far along, who. Expects r (a row from services.compliance_row).{% endcomment %}
-<a class="np-row" href="{{ r.url }}">
-    <span class="np-l1"><span class="np-name">{{ r.title }}</span><span class="np-when{% if r.late %} np-late{% endif %}" title="Due">{% if r.due %}{{ r.due|date:'M j' }}{% endif %}</span></span>
-    <span class="np-l2">{{ r.where }}{% if r.period %} &middot; {{ r.period }}{% endif %}{% if r.progress %} &middot; {{ r.progress }}{% endif %}{% if r.done %} &middot; done{% endif %}{% if r.who %} &middot; {{ r.who }}{% endif %}</span>
+{% comment %}One compliance item in a newspaper box: ONE line, the whole row a link: the item, where (small grey), its due date (late in red). Which period, how far along and who has it are the hover text. Expects r (a row from services.compliance_row).{% endcomment %}
+<a class="np-row" href="{{ r.url }}" title="{% if r.period %}{{ r.period }}{% endif %}{% if r.progress %}{% if r.period %} &middot; {% endif %}{{ r.progress }}{% endif %}{% if r.done %} &middot; done{% endif %}{% if r.who %} &middot; {{ r.who }}{% endif %}">
+    <span class="np-l1 np-single"><span class="np-name">{{ r.title }}</span><span class="np-sub">{{ r.where }}</span><span class="np-when{% if r.late %} np-late{% endif %}" title="Due">{% if r.due %}{{ r.due|date:'M j' }}{% endif %}</span></span>
 </a>

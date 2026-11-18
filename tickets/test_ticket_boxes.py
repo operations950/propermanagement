@@ -174,9 +174,20 @@ class TheTicketScreenTests(TestCase):
         html = self.client.get(self.url).content.decode()
         self.assertIn(f'href="{reverse("ticket_detail", args=[self.urgent.pk])}"', html)
         row = html.split(f'<a class="np-row np-tk is-urgent" href="{reverse("ticket_detail", args=[self.urgent.pk])}"')[1].split('</a>')[0]
-        self.assertIn('np-flag-urgent', row)
+        self.assertNotIn('np-flag-urgent', row)                                                   # it is already in the Urgent box: no Urgent tag on the row
         self.assertIn('Roof leak', row)
         self.assertIn('Grand Condos', row)
+
+    def test_a_ticket_row_is_one_line_with_a_high_tag_only_and_the_extra_facts_in_the_hover(self):
+        high = Ticket.objects.create(title='Fix the fence', property=self.prop, created_by=self.staff.user, assigned_staff=self.staff, source=Ticket.Source.MANUAL, priority=Priority.HIGH,
+                                     due_date=at(timezone.localdate() + timedelta(days=2)))
+        html = self.client.get(self.url).content.decode()
+        row = html.split(f'<a class="np-row np-tk" href="{reverse("ticket_detail", args=[high.pk])}"')[1].split('</a>')[0]
+        self.assertNotIn('np-l2', row)                                                              # no second line
+        self.assertIn('np-flag-high', row)
+        self.assertIn('class="np-sub">Grand Condos', row)                                          # the property sits on the same line
+        self.assertNotIn('np-flag-urgent', html)
+        self.assertEqual(html.count('class="np-l2"'), 0)
 
     def test_the_live_search_still_answers_with_the_boxes_and_the_phone_cards(self):
         data = self.client.get(self.url + '?q=gate', HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()

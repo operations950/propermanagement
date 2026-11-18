@@ -54,6 +54,10 @@
 .np-l1 { display: flex; align-items: baseline; gap: .45rem; min-width: 0; font-size: .875rem; line-height: 1.3; }
 .np-l1 .np-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .np-l1 .np-when { flex: none; font-size: .78rem; color: var(--ink-secondary); white-space: nowrap; }
+/* a one-line row (tickets, compliance, projects): the name in plain weight, the property small and grey beside it, the date at the right */
+.np-l1.np-single .np-name { flex: 1 1 auto; font-weight: 400; }
+.np-l1.np-single .np-sub { flex: 0 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; color: var(--ink-muted); text-align: right; }
+.np-l1.np-single .np-sub:empty { display: none; }
 .np-l1 .np-when.np-late { color: var(--status-critical); font-weight: 600; }
 .np-l2 { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; line-height: 1.25; color: var(--ink-muted); }
 .np-flag { flex: none; font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 0 .35rem; border-radius: 3px; line-height: 1.35; }
