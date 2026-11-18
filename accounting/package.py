@@ -15,7 +15,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from . import charges, ledger, reporting
+from . import charges, ledger, owners, reporting
 from .models import ZERO, BankAccount, BankStatement
 
 INK, MUTED, LINE, TINT = '#1c2430', '#6b7280', '#c9ced6', '#eef2f7'
@@ -223,7 +223,7 @@ def _aging_pdf(prop, end, ag):
     doc, on_page = _doc(buf, size, f'{prop.name}  |  Owner aging')
     money = lambda v: '' if not v else f'{v:,.2f}'
     head = ['Unit', 'Owner'] + list(ag['buckets']) + ['Owed']
-    rows = [head] + [[r['unit'].label, r['owner'].name] + [money(v) for v in r['buckets']] + [f'{r["total"]:,.2f}'] for r in ag['rows']]
+    rows = [head] + [[r['unit'].label, owners.display_name(r['owner'])] + [money(v) for v in r['buckets']] + [f'{r["total"]:,.2f}'] for r in ag['rows']]
     if not ag['rows']:
         rows.append(['Nobody owes anything.'] + [''] * (len(head) - 1))
     rows.append(['Total', ''] + [f'{v:,.2f}' for v in ag['totals']] + [f'{ag["total"]:,.2f}'])

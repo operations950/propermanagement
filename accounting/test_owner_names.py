@@ -164,3 +164,30 @@ class FillFromYardiTests(TestCase):
         again = StringIO()
         call_command('fill_owner_legal_names', '--apply', stdout=again)
         self.assertIn('Wrote 0', again.getvalue())                             # safe to run again
+
+
+class TheFinancialPackageNamesTests(DelinquencyBase):
+    """The October package's owner aging (a PDF) names owners by legal name, never by the phone-book tag."""
+
+    def test_the_owner_aging_page_of_the_package_shows_the_legal_name_and_no_tag(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+        from . import charges, package
+        self.owner.name = 'Late Owner GLEN'
+        self.owner.save(update_fields=['name'])
+        OwnerProfile.objects.create(contact=self.owner, legal_name='Lena T. Owner')
+        pdf = package._aging_pdf(self.prop, self.today, charges.aging(self.prop, self.today))
+        text = ' '.join(page.extract_text() for page in PdfReader(BytesIO(pdf)).pages)
+        self.assertIn('Lena T. Owner', text)
+        self.assertNotIn('GLEN', text)
+
+    def test_without_a_legal_name_the_tag_is_still_left_off(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+        from . import charges, package
+        self.owner.name = 'Late Owner - SAG'
+        self.owner.save(update_fields=['name'])
+        pdf = package._aging_pdf(self.prop, self.today, charges.aging(self.prop, self.today))
+        text = ' '.join(page.extract_text() for page in PdfReader(BytesIO(pdf)).pages)
+        self.assertIn('Late Owner', text)
+        self.assertNotIn('SAG', text)
