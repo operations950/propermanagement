@@ -9,16 +9,28 @@
 </div>
 <div class="paper">
   <div class="col">
+    {# Checking out over Checking in. The same-day turnovers sit at the bottom of Checking out and the top of Checking in, inside ONE dotted frame that crosses from one box to the other. #}
+    {% if d.out_same or d.in_same %}
+    <section class="box out cont-down"><h3><span>Checking out</span><span>{{ d.out|length }}</span></h3>
+      {% for x in d.out_plain %}{% include 'onsite/_tn_out_row.html' %}{% endfor %}
+    </section>
+    <div class="sd-frame" title="Same-day turnovers: these units check out and check in today">
+      <section class="box out cont-up">{% for x in d.out_same %}{% include 'onsite/_tn_out_row.html' %}{% endfor %}</section>
+      <section class="box in{% if d.in_plain %} cont-down{% endif %}"><h3><span>Checking in</span><span>{{ d.in|length }}</span></h3>
+        {% for x in d.in_same %}{% include 'onsite/_tn_in_row.html' %}{% endfor %}
+      </section>
+    </div>
+    {% if d.in_plain %}<section class="box in cont-up">{% for x in d.in_plain %}{% include 'onsite/_tn_in_row.html' %}{% endfor %}</section>{% endif %}
+    {% else %}
     <section class="box out"><h3><span>Checking out</span><span>{{ d.out|length }}</span></h3>
       {% for x in d.out_plain %}{% include 'onsite/_tn_out_row.html' %}{% endfor %}
-      {% if d.out_same %}<div class="same" title="Same-day turnovers: these units also have a check-in today">{% for x in d.out_same %}{% include 'onsite/_tn_out_row.html' %}{% endfor %}</div>{% endif %}
       {% if not d.out %}<div class="none">No check-outs.</div>{% endif %}
     </section>
     <section class="box in"><h3><span>Checking in</span><span>{{ d.in|length }}</span></h3>
-      {% if d.in_same %}<div class="same" title="Same-day turnovers: these units also have a check-out today">{% for x in d.in_same %}{% include 'onsite/_tn_in_row.html' %}{% endfor %}</div>{% endif %}
       {% for x in d.in_plain %}{% include 'onsite/_tn_in_row.html' %}{% endfor %}
       {% if not d.in %}<div class="none">No check-ins.</div>{% endif %}
     </section>
+    {% endif %}
   </div>
   <div class="col">
     <section class="box clean"><h3><span>Clean &amp; ready</span><span>{{ d.clean|length }}</span></h3>
@@ -37,4 +49,4 @@
     </section>
   </div>
 </div>
-<div class="lg"><span><i class="sw" style="background:var(--out-bg)"></i>Check-out time</span><span><i class="sw" style="background:var(--in-bg)"></i>Check-in time</span><span><i class="sw" style="border:2px dotted var(--ink-secondary)"></i>Same-day turnover (out and in line up)</span><span><i class="sw" style="border:1.5px dashed var(--warn-bar)"></i>Time change waiting for a yes</span><span>Click a time to change it; click a cleaning to schedule it or give it to someone</span></div>
+<div class="lg"><span><i class="sw" style="background:var(--out-bg)"></i>Check-out time</span><span><i class="sw" style="background:var(--in-bg)"></i>Check-in time</span><span><i class="sw" style="border:3px dotted var(--ink-secondary)"></i>Same-day turnover (out and in line up)</span><span><i class="sw" style="border:1.5px dashed var(--warn-bar)"></i>Time change waiting for a yes</span><span>Click a time to change it; click a cleaning to schedule it or give it to someone</span></div>

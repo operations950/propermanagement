@@ -83,8 +83,13 @@
 .tn .b.pending { outline: 1.5px dashed var(--warn-bar); outline-offset: -1px; background: var(--b-fbf3de, #fbf3de); color: var(--warn-ink); }
 .tn .b[data-wk-clean] { cursor: pointer; }
 .tn .box .none { padding: 0.5rem 0.7rem; color: var(--ink-muted); font-size: 0.8rem; }
-.tn .same { border: 2px dotted var(--ink-secondary); border-radius: 6px; margin: 5px 6px; }
-.tn .same .row2:first-child { border-top: 0; }
+/* the same-day frame: one dotted line round the bottom of Checking out and the top of Checking in. The cards are drawn in pieces so the frame can cross from one to the other; the frame is wider than the cards by its own line and padding, so the pieces line up with the cards above and below it */
+.tn .sd-frame { border: 3px dotted var(--ink-secondary); border-radius: 12px; padding: 6px; margin: 0 -9px 0.9rem; }
+.tn .sd-frame .box { margin-bottom: 6px; } .tn .sd-frame .box:last-child { margin-bottom: 0; }
+.tn .box.cont-down { border-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0; }
+.tn .box.cont-up { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.tn .box.cont-up .row2:first-child { border-top: 0; }
+.tn .sd-frame .box.cont-down { margin-bottom: 0; }
 .tn .row2 .nx { font-size: 0.72rem; color: var(--ink-muted); white-space: nowrap; }
 @media (max-width: 991px) { .tn .paper { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 575px) { .tn .paper { grid-template-columns: 1fr; } }

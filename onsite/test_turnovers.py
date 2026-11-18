@@ -351,14 +351,22 @@ class DayLayoutTests(Base):
         self.assertEqual([x['name'] for x in d['out_plain']], ['Early Leaver'])
         self.assertEqual([x['name'] for x in d['in_plain']], ['Late Arriver'])
 
-    def test_the_page_boxes_the_same_day_groups_in_dotted_lines_and_has_three_columns(self):
+    def test_one_dotted_frame_runs_from_the_bottom_of_checking_out_into_the_top_of_checking_in_and_there_are_three_columns(self):
         html = self.client.get(reverse('onsite_turnovers') + f'?day={self.today:%Y-%m-%d}').content.decode()
-        self.assertEqual(html.count('<div class="same"'), 2)                  # one under Checking out, one over Checking in
+        self.assertEqual(html.count('class="sd-frame"'), 1)                   # ONE frame, not one per box
         self.assertEqual(html.count('<div class="col">'), 3)
-        out_box = html.split('<section class="box out">')[1].split('</section>')[0]
-        in_box = html.split('<section class="box in">')[1].split('</section>')[0]
-        self.assertGreater(out_box.index('<div class="same"'), out_box.index('Early Leaver'))            # the group is below the lone check-out
-        self.assertLess(in_box.index('<div class="same"'), in_box.index('Late Arriver'))                 # and above the lone check-in
+        col1 = html.split('<div class="col">')[1]
+        frame_at = col1.index('class="sd-frame"')
+        frame_end = col1.index('</section>', col1.index('Checking in', frame_at))   # the frame closes after the same-day check-ins card
+        frame = col1[frame_at:frame_end]
+        self.assertGreater(col1.index('Early Leaver'), 0)
+        self.assertLess(col1.index('Early Leaver'), frame_at)                        # the lone check-out is above the frame
+        self.assertGreater(col1.index('Late Arriver'), frame_end)                    # the lone check-in is below it
+        self.assertEqual(frame.count('class="row2"'), 4)                                  # the two turnovers' out rows and in rows, all inside the one frame
+        self.assertIn('Alpha Loft', frame)
+        self.assertIn('Zed Villa', frame)
+        self.assertIn('Checking in', frame)                                           # the frame crosses into the Checking in card (its header is inside it)
+        self.assertLess(frame.index('Alpha Loft'), frame.index('Checking in'))        # the check-outs first, then the Checking in header
         self.assertIn('dotted', html)
         cols = html.split('<div class="col">')
         self.assertIn('Checking out', cols[1])
@@ -366,6 +374,14 @@ class DayLayoutTests(Base):
         self.assertIn('Clean &amp;', cols[2])
         self.assertIn('Needs cleaning', cols[2])
         self.assertIn('Occupied', cols[3])
+
+    def test_a_day_with_no_same_day_turnover_has_no_frame_and_plain_boxes(self):
+        from onsite.models import Booking
+        Booking.objects.filter(unit__property__name__in=('Zed Villa', 'Alpha Loft'), check_in__date=self.today).delete()
+        html = self.client.get(reverse('onsite_turnovers') + f'?day={self.today:%Y-%m-%d}').content.decode()
+        self.assertNotIn('class="sd-frame"', html)
+        self.assertIn('<section class="box out">', html)
+        self.assertIn('<section class="box in">', html)
 
     def test_clean_and_dirty_rows_say_when_the_next_check_in_is(self):
         later = self.prop('Quiet Cottage', 'u')
