@@ -175,6 +175,30 @@ class ThePageTests(TestCase):
         self.assertIn('if (!url) return;', js)
         self.assertIn('X-CSRFToken', js)
 
+    def test_the_choice_is_saved_even_though_the_csrf_cookie_cannot_be_read_by_scripts(self):
+        # on the live site CSRF_COOKIE_HTTPONLY is on, so the switch cannot read the cookie: the token is printed on the page and the save goes through with it
+        from django.test import Client
+        profile = admin('csrf@x.com', theme='auto')
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(profile.user)
+        html = client.get(reverse('property_list')).content.decode()
+        token = re.search(r'<html[^>]*data-csrf="([^"]+)"', html).group(1)
+        self.assertTrue(token)
+        self.assertIn("getAttribute('data-csrf')", read('static', 'js', 'theme.js'))
+        self.assertEqual(client.post(reverse('theme_set'), {'theme': 'dark'}).status_code, 403)                 # without the token: refused (what used to happen)
+        r = client.post(reverse('theme_set'), {'theme': 'dark'}, HTTP_X_CSRFTOKEN=token)
+        self.assertEqual(r.json(), {'ok': True, 'saved': True, 'theme': 'dark'})
+        profile.refresh_from_db()
+        self.assertEqual(profile.theme, 'dark')
+        self.assertIn('data-theme-pref="dark"', client.get(reverse('property_list')).content.decode())       # the next screen opens dark
+
+    def test_a_choice_the_server_has_not_confirmed_yet_wins_over_the_saved_one_on_the_next_screen(self):
+        head = self.page(admin('pend@x.com', theme='auto')).split('</head>')[0]
+        self.assertIn("localStorage.getItem('theme-pending')", head)
+        js = read('static', 'js', 'theme.js')
+        for needle in ("setItem('theme-pending'", "removeItem('theme-pending')", 'keepalive: true'):
+            self.assertIn(needle, js)
+
 
 @override_settings(STORAGES=STORAGES)
 class EveryoneElseIsAlwaysLightTests(TestCase):

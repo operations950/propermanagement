@@ -1,5 +1,5 @@
 {% load static nav_tags theme_tags %}{% dark_mode_allowed as can_dark %}<!DOCTYPE html>
-<html lang="en"{% if can_dark %} data-theme-pref="{{ user.staff_profile.theme|default:'auto' }}" data-theme-url="{% url 'theme_set' %}"{% endif %}>
+<html lang="en"{% if can_dark %} data-theme-pref="{{ user.staff_profile.theme|default:'auto' }}" data-theme-url="{% url 'theme_set' %}" data-csrf="{{ csrf_token }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,9 +12,12 @@
         var d = document.documentElement, pref = 'auto', mq = null;
         try { mq = window.matchMedia('(prefers-color-scheme: dark)'); } catch (e) {}
         try {
-            var saved = d.getAttribute('data-theme-pref');
-            if (saved) { try { localStorage.setItem('theme-pref', saved); } catch (e) {} }
-            pref = saved || localStorage.getItem('theme-pref') || 'auto';
+            var saved = d.getAttribute('data-theme-pref'), pending = localStorage.getItem('theme-pending');
+            if (pending) { pref = pending; }                                  /* a choice just made that the server has not confirmed yet wins over what it still has saved */
+            else {
+                if (saved) { try { localStorage.setItem('theme-pref', saved); } catch (e) {} }
+                pref = saved || localStorage.getItem('theme-pref') || 'auto';
+            }
         } catch (e) {}
         function apply() {
             var t = pref === 'dark' || (pref === 'auto' && mq && mq.matches) ? 'dark' : 'light';

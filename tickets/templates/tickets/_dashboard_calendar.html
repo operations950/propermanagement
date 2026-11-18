@@ -25,14 +25,14 @@ Context: calendar_mode ('today', 'week', 'month' or nothing), calendar_days, cal
 .cal-mnav a:hover { color: var(--ink-primary); border-color: var(--brand-slate); }
 .cal-mg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--border-hairline); border-left: 1px solid var(--border-hairline); }
 .cal-mg .h { padding: 2px 4px; font-size: .68rem; text-transform: uppercase; color: var(--ink-muted); border-right: 1px solid var(--border-hairline); border-bottom: 1px solid var(--border-hairline); text-align: center; background: var(--surface-page); }
-.cal-mg .d { min-width: 0; overflow: hidden; min-height: 82px; padding: 2px 3px; border-right: 1px solid var(--border-hairline); border-bottom: 1px solid var(--border-hairline); cursor: pointer; font-size: .72rem; }
+.cal-mg .d { min-width: 0; overflow: hidden; min-height: 126px; padding: 2px 3px; border-right: 1px solid var(--border-hairline); border-bottom: 1px solid var(--border-hairline); cursor: pointer; font-size: .72rem; }
 .cal-mg .d:hover { background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-card)); }
 .cal-mg .d.out { opacity: .45; }
 .cal-mg .d.today { background: color-mix(in srgb, var(--brand-primary) 11%, var(--surface-card)); }
 .cal-mg .num { display: inline-block; font-size: .74rem; min-width: 1.3rem; height: 1.3rem; line-height: 1.3rem; text-align: center; border-radius: 50%; }
 .cal-mg .d.today .num { background: var(--brand-primary); color: var(--surface-card); font-weight: 700; }
 .cal-chip { display: block; padding: 0 3px; border-radius: 3px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-primary); font-size: .69rem; line-height: 1.35; cursor: pointer; }
-.cal-more { color: var(--ink-muted); font-size: .68rem; margin-top: 1px; }
+.cal-more { display: block; text-align: right; padding-right: 3px; color: var(--ink-muted); font-size: .8rem; line-height: 1.2; margin-top: 1px; }
 .cal-dots { display: none; gap: 2px; flex-wrap: wrap; margin-top: 2px; }
 .cal-dots i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 .cal-dayev { display: none; }
@@ -142,8 +142,8 @@ Context: calendar_mode ('today', 'week', 'month' or nothing), calendar_days, cal
                   data-event-id="{{ e.event_id }}" data-calendar-id="{{ e.calendar_id }}" data-title="{{ e.title }}" data-date="{{ e.date|date:'Y-m-d' }}"
                   data-all-day="{% if e.all_day %}1{% else %}0{% endif %}" data-start-time="{{ e.start_time }}" data-end-time="{{ e.end_time }}">{% if e.time %}{{ e.time }} {% endif %}{{ e.title }}</span>
             {% endfor %}
-            {% if cell.extra %}<div class="cal-more">+{{ cell.extra }} more</div>{% endif %}
-            {% if cell.total %}<div class="cal-dots">{% for e in cell.events|slice:":3" %}<i style="background: {{ e.color }};"></i>{% endfor %}{% if cell.total > 3 %}<span class="cal-more">+{{ cell.total|add:"-3" }}</span>{% endif %}</div>{% endif %}
+            {% if cell.extra %}<div class="cal-more" title="{{ cell.extra }} more event{{ cell.extra|pluralize }}: open the day" aria-label="{{ cell.extra }} more event{{ cell.extra|pluralize }}">&rarr;</div>{% endif %}
+            {% if cell.total %}<div class="cal-dots">{% for e in cell.events|slice:":3" %}<i style="background: {{ e.color }};"></i>{% endfor %}</div>{% endif %}
             <div class="cal-dayev">
                 {% for e in cell.events %}
                 <div class="ev calendar-event-clickable d-flex align-items-center gap-2 small mb-1" style="cursor: pointer;"

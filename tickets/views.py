@@ -361,7 +361,7 @@ def _format_calendar_events(events, days_ahead=2):
     return day_boxes
 
 
-MONTH_CHIPS = 2          # events written out in a day cell of the month grid; the rest are "+N more"
+MONTH_CHIPS = 6          # lines in a day cell of the month grid. A day with more events than that writes out one fewer and spends the last line on a small arrow (open the day to see the rest); no "+N more" text
 
 
 def month_bounds(month_first):
@@ -379,7 +379,7 @@ def _short_time(label):
 
 def _month_grid(events, month_first, today=None):
     """The month grid on Home: {'label', 'weeks': [[cell x 7]]}. A cell is {'date', 'iso', 'num', 'label', 'in_month', 'is_today', 'events' (every event that day, all-day ones first, then by start time),
-    'shown' (the first MONTH_CHIPS of them), 'extra' (how many more), 'total'}; an event carries what the edit form needs (id, calendar, date, times). Days of the months on either side are
+    'shown' (all of them up to MONTH_CHIPS; past that the first MONTH_CHIPS - 1), 'extra' (how many are left out), 'total'}; an event carries what the edit form needs (id, calendar, date, times). Days of the months on either side are
     in the grid too (they are faded on the page)."""
     today = today or timezone.localdate()
     first, last = month_bounds(month_first)
@@ -392,8 +392,9 @@ def _month_grid(events, month_first, today=None):
             items.append({**a, 'time': '', 'start_time': '', 'end_time': '', 'past': False})
         for t in sorted(by_day[d]['timed'], key=lambda t: t['start']):
             items.append({**t, 'time': _short_time(t['start_label'])})
+        shown = items if len(items) <= MONTH_CHIPS else items[:MONTH_CHIPS - 1]            # the last line is the arrow when something is left out, so every line but that one is an event
         cells.append({'date': d, 'iso': d.isoformat(), 'num': d.day, 'label': f'{d:%A, %B} {d.day}', 'in_month': d.month == month_first.month, 'is_today': d == today,
-                      'events': items, 'shown': items[:MONTH_CHIPS], 'extra': max(0, len(items) - MONTH_CHIPS), 'total': len(items)})
+                      'events': items, 'shown': shown, 'extra': len(items) - len(shown), 'total': len(items)})
     return {'label': f'{month_first:%B %Y}', 'first': month_first, 'weeks': [cells[i:i + 7] for i in range(0, len(cells), 7)]}
 
 

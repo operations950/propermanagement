@@ -42,15 +42,26 @@ class TheMonthGridTests(TestCase):
         self.assertEqual(sum(1 for c in flat if c['in_month']), 31)
         self.assertEqual([c['date'] for c in flat if c['is_today']], [date(2026, 12, 15)])
 
-    def test_a_busy_day_shows_two_events_and_counts_the_rest_all_day_ones_first(self):
+    def test_a_busy_day_shows_every_event_up_to_the_cell_height_all_day_ones_first(self):
         day = date(2026, 11, 18)
         events = [timed('Owner call', day, 14), timed('Team standup', day, 9), timed('Dinner', day, 18), all_day('Board holiday', day, day + timedelta(days=1))]
         cell = next(c for w in _month_grid(events, date(2026, 11, 1), today=date(2026, 11, 17))['weeks'] for c in w if c['date'] == day)
-        self.assertEqual(MONTH_CHIPS, 2)
+        self.assertEqual(MONTH_CHIPS, 6)
         self.assertEqual([e['title'] for e in cell['events']], ['Board holiday', 'Team standup', 'Owner call', 'Dinner'])
-        self.assertEqual([e['title'] for e in cell['shown']], ['Board holiday', 'Team standup'])
-        self.assertEqual((cell['extra'], cell['total']), (2, 4))
+        self.assertEqual([e['title'] for e in cell['shown']], ['Board holiday', 'Team standup', 'Owner call', 'Dinner'])
+        self.assertEqual((cell['extra'], cell['total']), (0, 4))
         self.assertEqual([e['time'] for e in cell['events']], ['', '9:00a', '2:00p', '6:00p'])
+
+    def test_exactly_a_full_cell_of_events_shows_them_all_and_no_arrow(self):
+        day = date(2026, 11, 18)
+        cell = next(c for w in _month_grid([timed(f'E{h}', day, h) for h in range(8, 8 + MONTH_CHIPS)], date(2026, 11, 1))['weeks'] for c in w if c['date'] == day)
+        self.assertEqual((len(cell['shown']), cell['extra'], cell['total']), (MONTH_CHIPS, 0, MONTH_CHIPS))
+
+    def test_one_event_too_many_spends_the_last_line_on_an_arrow_not_on_a_plus_n_more(self):
+        day = date(2026, 11, 18)
+        cell = next(c for w in _month_grid([timed(f'E{h}', day, h) for h in range(8, 16)], date(2026, 11, 1))['weeks'] for c in w if c['date'] == day)
+        self.assertEqual((len(cell['shown']), cell['extra'], cell['total']), (MONTH_CHIPS - 1, 8 - (MONTH_CHIPS - 1), 8))      # five events and the arrow take the six lines
+        self.assertEqual([e['title'] for e in cell['shown']], ['E8', 'E9', 'E10', 'E11', 'E12'])
 
     def test_a_multi_day_all_day_event_is_on_every_day_it_covers_and_not_after(self):
         events = [all_day('Conference', date(2026, 11, 10), date(2026, 11, 13))]
@@ -191,6 +202,16 @@ class HomeCalendarCardTests(TestCase):
         self.assertIn('data-cal-newday', html)
         self.assertIn('cal-daypop', html)                                                    # the script that builds the popover
         self.assertIn('+ New event on this day', html)
+
+    def test_a_crowded_day_on_the_month_grid_ends_in_an_arrow_and_the_page_has_no_plus_n_more_text(self):
+        raw = [timed(f'Crowd {h}', self.today, h) for h in range(7, 17)]
+        with mock.patch('core.google_calendar.is_configured', return_value=True), mock.patch('core.google_calendar.get_upcoming_events', return_value=(raw, [])),                 mock.patch('core.google_calendar.get_events_between', return_value=(raw, [])):
+            html = self.client.get(reverse('ws_home'), {'h': 'month'}).content.decode()
+        self.assertIn('class="cal-more"', html)
+        self.assertIn('&rarr;', html)
+        self.assertIn('5 more events: open the day', html)                                   # 10 events, 5 written out, the arrow on the sixth line (its hover text counts the rest)
+        self.assertNotIn(' more</div>', html)
+        self.assertIn('min-height: 126px;', html)                                            # the cell is tall enough for the six lines
 
     def test_on_a_phone_the_month_chips_fold_into_dots(self):
         html = self.home('month')[0].content.decode()
