@@ -61,9 +61,9 @@ def mail_row(prop, case):
     profile = getattr(person, 'owner_profile', None)
     name = ((profile.legal_name if profile else '') or person.name).strip()
     if bp._in_season(profile, timezone.localdate()):
-        lines, source, note = bp.address_lines(profile.seasonal_address), 'seasonal', 'Seasonal address'
+        lines, source, note = bp.address_lines(profile.seasonal_address, prop), 'seasonal', 'Seasonal address'
     elif profile and profile.mailing_address.strip():
-        lines, source, note = bp.address_lines(profile.mailing_address), 'mailing', ''
+        lines, source, note = bp.address_lines(profile.mailing_address, prop), 'mailing', ''
     else:
         lines = bp._unit_address(prop, case.unit)
         source, note = ('unit', 'No mailing address on file: the unit address') if lines else ('none', 'No address at all')

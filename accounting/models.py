@@ -145,6 +145,14 @@ class AssociationDocument(models.Model):
     binder_name = models.CharField(max_length=200, blank=True, default='', help_text='What the whole upload was called.')
     is_staging = models.BooleanField(default=False, help_text='A temporary part of a big upload: not a document of the association, not shown in its lists.')
     binder_state = models.CharField(max_length=14, blank=True, default='', help_text="On part 0 of a binder: reading, sorting, needs_confirm, finalizing or failed.")
+    # when the document took effect (a legal document needs one); read from its words, or typed by a person (a typed date is never overwritten). A file sorted into several documents keeps each one's date in `sections`.
+    effective_date = models.DateField(null=True, blank=True, help_text='The date the document was adopted, recorded or took effect, from its own wording.')
+    effective_source = models.CharField(max_length=8, blank=True, default='', help_text="'read' from the words, 'typed' by a person.")
+    effective_page = models.PositiveIntegerField(null=True, blank=True)
+    effective_quote = models.CharField(max_length=300, blank=True, default='')
+    # reading for settings (late fee, grace period, interest, spending limit, management fee) happens by itself for a new upload, and on request for the rest
+    settings_status = models.CharField(max_length=8, blank=True, default='', help_text="'' not asked, waiting, done or failed.")
+    settings_note = models.CharField(max_length=300, blank=True, default='')
 
     class Meta:
         ordering = ['kind', '-uploaded_at']
@@ -229,6 +237,7 @@ class SettingProposal(models.Model):
         PROPOSED = 'proposed', 'Proposed'
         CONFIRMED = 'confirmed', 'Confirmed'
         DISMISSED = 'dismissed', 'Dismissed'
+        SUPERSEDED = 'superseded', 'Replaced by a later document'
 
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='setting_proposals')
     key = models.CharField(max_length=40)
@@ -236,6 +245,8 @@ class SettingProposal(models.Model):
     document = models.ForeignKey(AssociationDocument, null=True, blank=True, on_delete=models.SET_NULL, related_name='proposals')
     page = models.PositiveIntegerField(null=True, blank=True)
     quote = models.TextField(blank=True)
+    effective_date = models.DateField(null=True, blank=True, help_text='When the document this comes from took effect: the latest one wins.')
+    note = models.CharField(max_length=200, blank=True, default='')
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PROPOSED)
     decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     decided_at = models.DateTimeField(null=True, blank=True)

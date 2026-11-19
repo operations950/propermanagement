@@ -352,6 +352,11 @@ def process_waiting(limit=3, log=None):
         binders.process(say)
     except Exception:
         logger.exception('Moving the big uploads along failed')
+    try:
+        from . import documents
+        documents.process_settings(limit=2, log=say)           # a new upload is read for its effective date and its settings by itself
+    except Exception:
+        logger.exception('Reading the new documents for settings failed')
     for doc in list(AssociationDocument.objects.filter(indexed=False, text_status__in=['ready', 'partial']).order_by('uploaded_at')[:1]):      # one file a run: it is a few calls
         try:
             n = index_document(doc)

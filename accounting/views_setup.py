@@ -197,15 +197,20 @@ def assoc_context(prop):
     board_names = {t.person.name.lower() for t in owners.board(prop)}
     matches = bool(officers) and all(o.get('name', '').lower() in board_names for o in officers)
     proposals = list(SettingProposal.objects.filter(property=prop, status='proposed').select_related('document'))
+    replaced = list(SettingProposal.objects.filter(property=prop, status='superseded').select_related('document'))
+    for p in replaced:
+        p.label, p.summary, p.source = documents.LABELS.get(p.key, p.key), documents.describe(p), documents.source_label(p.document, p.page)
     for p in proposals:
         p.label, p.summary, p.source = documents.LABELS.get(p.key, p.key), documents.describe(p), documents.source_label(p.document, p.page)
     ap_files = documents.files(prop)
+    for f in ap_files:
+        f['dates'] = documents.effective_rows(f['doc']) if not f.get('binder') and f['state'] == 'ready' else []
     if any(f['state'] == 'needs_look' for f in ap_files):
         todo.append('confirm what the uploaded documents are')
     return {'store_limit': documents.STORE_LIMIT, 'ap_files': ap_files, 'doc_kinds': [(k, 'Amendment' if k == 'amendment' else l) for k, l in AssociationDocument.Kind.choices if k != 'other'] + [('other', 'Something else')], 'ap': profile, 'ap_rows': settings_rows(prop), 'ap_docs': documents.checklist(prop), 'staff_choices': active_staff(also=[profile.compliance_owner_id], order=('user__first_name', 'user__username')), 'terms_lines': charges.terms_sentences(profile, _example_assessment(prop)), 'late_days': _bubble_days(profile.late_fee_grace_days or 0, (0, 5, 10, 15, 20, 30)), 'interest_days': _bubble_days(profile.interest_grace_days or 0, (0, 10, 15, 30)),
             'example_assessment': _example_assessment(prop), 'applies_choices': [('declaration', 'Declaration'), ('articles', 'Articles'), ('bylaws', 'Bylaws'), ('rules', 'Rules and regulations')], 'ap_proposals': proposals,
             'ap_units': rows, 'ap_owing': owing[:5], 'ap_totals': totals, 'ap_todo': todo, 'ap_board': owners.board(prop), 'ap_board_matches': matches,
-            'ap_qa': documents.qa_payload(prop), 'ap_has_contract': documents.has_contract(prop)}
+            'ap_qa': documents.qa_payload(prop), 'ap_has_contract': documents.has_contract(prop), 'ap_replaced': replaced, 'ap_settings_waiting': documents.settings_waiting(prop)}
 
 
 @admin_only
@@ -405,6 +410,26 @@ def settings(request, pk):
             elif action == 'read_doc':
                 made = documents.propose_from_document(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop), request.user)
                 messages.success(request, f'{len(made)} setting{"s" if len(made) != 1 else ""} found. Confirm the ones that are right.' if made else 'No settings were found in that document.')
+            elif action == 'read_all_settings':
+                n = documents.queue_settings(prop)
+                waiting = documents.settings_waiting(prop)
+                if n:
+                    messages.success(request, f'Reading {n} document{"s" if n != 1 else ""} for settings. This takes a few minutes: the settings it finds appear here, the latest document first.')
+                elif waiting:
+                    messages.info(request, 'The documents are already being read for settings. Check back in a few minutes.')
+                else:
+                    messages.info(request, 'Every document that can carry settings has already been read.')
+            elif action == 'confirm_all':
+                n, problems = documents.confirm_all(prop, request.user)
+                if n:
+                    messages.success(request, f'{n} setting{"s" if n != 1 else ""} confirmed.')
+                for line in problems:
+                    messages.error(request, line)
+                if not n and not problems:
+                    messages.info(request, 'There is nothing to confirm.')
+            elif action == 'set_effective_date':
+                documents.set_effective_date(get_object_or_404(AssociationDocument, pk=request.POST.get('doc'), property=prop), request.POST.get('effective_date'), request.POST.get('section'))
+                messages.success(request, 'The effective date is saved.')
             elif action in ('confirm', 'dismiss'):
                 p = get_object_or_404(SettingProposal, pk=request.POST.get('proposal'), property=prop)
                 if action == 'dismiss':

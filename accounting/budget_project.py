@@ -210,8 +210,27 @@ def days_before(project):
 
 # ---------------------------------------------------------------- the mailing list
 
-def address_lines(text):
-    """An address as printed lines. One line with commas ("7581 Mackenzie Ct, Lake Worth, FL 33467") becomes the street, then the city, state and zip."""
+_OWN_ENDING = re.compile(r'(?:\b[A-Z]{2}\b|\b(?:Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|District of Columbia|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming)\b)[.,]?\s*\d{5}(?:-\d{4})?\s*$|\b[A-Z]\d[A-Z] ?\d[A-Z]\d\s*$')
+
+
+def drop_added_ending(text, prop):
+    """An owner's address that already ends in its own city, state and zip (or a Canadian postal code) and then has the property's city, state and zip after it: an old import added that
+    ending to every address. The added ending is dropped; an address with only a street keeps the property's, which is right for it."""
+    text = (text or '').strip()
+    if prop is None or not (prop.city and prop.state and prop.zip_code):
+        return text
+    tail = f', {prop.city}, {prop.state} {prop.zip_code}'
+    if text.endswith(tail):
+        base = text[:-len(tail)].strip(' ,')
+        if _OWN_ENDING.search(base) or base.endswith(tail.strip(', ')):
+            return base
+    return text
+
+
+def address_lines(text, prop=None):
+    """An address as printed lines. One line with commas ("7581 Mackenzie Ct, Lake Worth, FL 33467") becomes the street, then the city, state and zip. With the property, an ending the old
+    import added to an address that already had its own is left off."""
+    text = drop_added_ending(text, prop)
     lines = [l.strip(' ,') for l in re.split(r'[\r\n]+', text or '') if l.strip(' ,')]
     if len(lines) == 1 and lines[0].count(',') >= 2:
         parts = [p.strip() for p in lines[0].split(',')]
@@ -244,9 +263,9 @@ def mailing_rows(prop, on=None):
         profile = getattr(person, 'owner_profile', None)
         name = ((profile.legal_name if profile else '') or person.name).strip()
         if _in_season(profile, on):
-            lines, source, note = address_lines(profile.seasonal_address), 'seasonal', 'Seasonal address'
+            lines, source, note = address_lines(profile.seasonal_address, prop), 'seasonal', 'Seasonal address'
         elif profile and profile.mailing_address.strip():
-            lines, source, note = address_lines(profile.mailing_address), 'mailing', ''
+            lines, source, note = address_lines(profile.mailing_address, prop), 'mailing', ''
         else:
             lines = _unit_address(prop, unit)
             source, note = ('unit', 'No mailing address on file: the unit address') if lines else ('none', 'No address at all')

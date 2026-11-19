@@ -20,7 +20,7 @@ from django.utils import timezone
 from core.contact_document_import import _file_to_content_blocks  # noqa: F401  (docreader uses it for a picture)
 
 from . import ledger
-from datetime import timedelta
+from datetime import date, timedelta
 
 from .models import AssociationDocument, DocumentPage, DocumentQuestion, DocumentQuestionRead, SettingProposal
 
@@ -261,6 +261,7 @@ def _parts(uploaded_file, name):
 
 def _store(association, kind, name, file, user, **extra):
     extra.setdefault('text_status', 'waiting')
+    extra.setdefault('settings_status', 'waiting')       # a new upload is read for its effective date and settings by itself, once it can be (see process_settings)
     try:
         return AssociationDocument.objects.create(property=association, kind=kind, name=name[:200], file=file, uploaded_by=user, **extra)
     except DocumentError:
@@ -562,7 +563,7 @@ def propose_from_document(doc, user=None):
         raise DocumentError('The document could not be read right now. Try again in a minute.')
     block = next((b for b in message.content if b.type == 'tool_use'), None)
     found = (block.input.get('settings') if block else None) or []
-    SettingProposal.objects.filter(property=doc.property, document=doc, status=SettingProposal.Status.PROPOSED).delete()
+    SettingProposal.objects.filter(property=doc.property, document=doc, status__in=[SettingProposal.Status.PROPOSED, SettingProposal.Status.SUPERSEDED]).delete()
     made = []
     for f in found:
         key = f.get('key')
@@ -578,7 +579,8 @@ def propose_from_document(doc, user=None):
             continue
         if all(v in (None, '') for k, v in value.items() if k != 'kind'):
             continue
-        made.append(SettingProposal.objects.create(property=doc.property, key=key, value=value, document=doc, page=f.get('page'), quote=(f.get('quote') or '')[:1000]))
+        made.append(SettingProposal.objects.create(property=doc.property, key=key, value=value, document=doc, page=f.get('page'), quote=(f.get('quote') or '')[:1000],
+                                                   effective_date=effective_date_of(doc, f.get('page'))))
     return made
 
 
@@ -641,3 +643,246 @@ def confirm(proposal, user=None, value=None):
 def dismiss(proposal, user=None):
     proposal.status, proposal.decided_by, proposal.decided_at = SettingProposal.Status.DISMISSED, user, timezone.now()
     proposal.save()
+
+
+# ---------------------------------------------------------------- effective dates, and reading everything for settings
+
+SETTINGS_KINDS = {Kind.DECLARATION, Kind.ARTICLES, Kind.BYLAWS, Kind.RULES, Kind.AMENDMENT, Kind.CONTRACT}
+
+DATE_TOOL = {
+    'name': 'report_dates',
+    'description': 'Report the date each legal document took effect, with the page and the exact words.',
+    'input_schema': {'type': 'object', 'properties': {'dates': {'type': 'array', 'items': {'type': 'object', 'properties': {
+        'page': {'type': 'integer', 'description': 'The page number as labelled above where the date is stated.'},
+        'date': {'type': 'string', 'description': 'YYYY-MM-DD: the date this document was adopted, recorded or took effect.'},
+        'quote': {'type': 'string', 'description': 'The exact words that state the date.'}}, 'required': ['page', 'date', 'quote']}}}, 'required': ['dates']},
+}
+
+
+def _to_date(value):
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _pretty(day):
+    return f'{day:%B} {day.day}, {day.year}'
+
+
+def _pieces(doc):
+    """[(section index or None, kind, first page, last page)]: the parts of a file that are legal documents which can carry settings. A file uploaded as one kind is one piece; a sorted file
+    has a piece for each confirmed section (second copies and exhibits are left out). A sorted file nobody has confirmed yet has none: it waits."""
+    if doc.auto_sort:
+        if doc.sort_status != 'confirmed':
+            return []
+        return [(i, sec.get('kind'), sec.get('start') or 1, sec.get('end') or 10 ** 6) for i, sec in enumerate(doc.sections or []) if not sec.get('repeat_of') and sec.get('kind') in SETTINGS_KINDS]
+    return [(None, doc.kind, 1, doc.page_count or 10 ** 6)] if doc.kind in SETTINGS_KINDS else []
+
+
+def effective_date_of(doc, page=None):
+    """The date the document (or, in a sorted file, the part that holds `page`) took effect, or None when it is not known."""
+    if doc.auto_sort and doc.sections:
+        dated = [(sec, _to_date(sec.get('effective_date'))) for sec in doc.sections]
+        if page:
+            for sec, day in dated:
+                if sec.get('start') is not None and sec['start'] <= page <= (sec.get('end') or 10 ** 6):
+                    return day
+        days = [d for _, d in dated if d]
+        return max(days) if days else None
+    return doc.effective_date
+
+
+def read_effective_dates(doc):
+    """Ask, once, for the date each legal document in the file took effect, from the wording of its first and last pages. A date a person typed is never replaced. Returns how many were found."""
+    pieces = _pieces(doc)
+    if not pieces:
+        return 0
+    by_number = {pg.number: pg for pg in DocumentPage.objects.filter(document=doc)}
+    keep = {}
+    for _, _, start, end in pieces:
+        nums = [n for n in sorted(by_number) if start <= n <= end]
+        for n in nums[:3] + nums[-2:]:
+            keep[n] = by_number[n]
+    chosen = [keep[n] for n in sorted(keep)][:60]
+    if not chosen:
+        return 0
+    client = _client()
+    try:
+        message = client.messages.create(
+            model=MODEL, max_tokens=1500, tools=[DATE_TOOL], tool_choice={'type': 'tool', 'name': 'report_dates'},
+            messages=[{'role': 'user', 'content': [{'type': 'text', 'text': _page_text(chosen) + '\n\n' +
+                'Each of the legal documents in these pages (a declaration, amendment, bylaws, rules or contract) took effect on some date: the date it was adopted, signed, recorded or made effective. '
+                'For each document give that date (not a date it merely mentions), the page and the exact words. If a document gives both a signing date and a recording date, give the recording date. '
+                'Omit a document whose date the pages do not state.'}]}])
+    except Exception:
+        logger.exception('Claude could not read a document for its effective date')
+        raise DocumentError('The document could not be read right now. Try again in a minute.')
+    block = next((b for b in message.content if b.type == 'tool_use'), None)
+    found = []
+    for f in ((block.input.get('dates') if block else None) or []):
+        day = _to_date(f.get('date'))
+        if day and date(1900, 1, 1) <= day <= date.today() + timedelta(days=366):
+            found.append((f.get('page'), day, (f.get('quote') or '')[:300]))
+    n = 0
+    if not doc.auto_sort:
+        if found and doc.effective_source != 'typed':
+            page, day, quote = found[0]
+            doc.effective_date, doc.effective_source, doc.effective_page, doc.effective_quote = day, 'read', page, quote
+            doc.save(update_fields=['effective_date', 'effective_source', 'effective_page', 'effective_quote'])
+            n = 1
+        return n
+    sections = list(doc.sections or [])
+    for idx, _, start, end in pieces:
+        sec = sections[idx]
+        if sec.get('effective_source') == 'typed':
+            continue
+        hit = next(((pg, day, q) for pg, day, q in found if isinstance(pg, int) and start <= pg <= end), None)
+        if hit:
+            sec['effective_date'], sec['effective_source'], sec['effective_page'], sec['effective_quote'] = hit[1].isoformat(), 'read', hit[0], hit[2]
+            n += 1
+    doc.sections = sections
+    doc.save(update_fields=['sections'])
+    return n
+
+
+def settle(association):
+    """Of everything proposed for a setting, only the one from the document with the latest effective date stays proposed; the others are marked replaced, with the reason. A document with no
+    date loses to one with a date; between equals the one uploaded last wins. A setting already confirmed from a later document is not proposed again from an earlier one."""
+    live = list(SettingProposal.objects.filter(property=association, status__in=[SettingProposal.Status.PROPOSED, SettingProposal.Status.SUPERSEDED]).select_related('document'))
+    confirmed = {}
+    for c in SettingProposal.objects.filter(property=association, status=SettingProposal.Status.CONFIRMED, effective_date__isnull=False):
+        if c.key not in confirmed or c.effective_date > confirmed[c.key].effective_date:
+            confirmed[c.key] = c
+    floor = date.min
+    stamp = timezone.make_aware(__import__('datetime').datetime(1971, 1, 1))
+    by_key = {}
+    for pr in live:
+        by_key.setdefault(pr.key, []).append(pr)
+    changed = 0
+    for key, items in by_key.items():
+        items.sort(key=lambda x: (x.effective_date or floor, x.document.uploaded_at if x.document_id else stamp, x.pk))
+        winner = items[-1]
+        for pr in items:
+            if pr is winner:
+                status, note = SettingProposal.Status.PROPOSED, ''
+                c = confirmed.get(key)
+                if c and winner.effective_date and c.effective_date >= winner.effective_date:
+                    status, note = SettingProposal.Status.SUPERSEDED, f'Already set from a document dated {_pretty(c.effective_date)}.'
+            else:
+                when = f' dated {_pretty(winner.effective_date)}' if winner.effective_date else ''
+                what = winner.document.name if winner.document_id else 'a later document'
+                status, note = SettingProposal.Status.SUPERSEDED, f'Replaced by {what}{when}.'
+            if pr.status != status or pr.note != note:
+                pr.status, pr.note = status, note
+                pr.save(update_fields=['status', 'note'])
+                changed += 1
+    return changed
+
+
+def read_for_settings(doc, user=None):
+    """The effective date of each legal document in the file, then its settings, then the choice of which proposals are the latest. Returns the proposals made."""
+    try:
+        read_effective_dates(doc)
+    except DocumentError:
+        raise
+    except Exception:
+        logger.exception('Could not read the effective date of "%s"', doc.name)
+    doc.refresh_from_db()
+    made = propose_from_document(doc, user)
+    AssociationDocument.objects.filter(pk=doc.pk).update(settings_status='done', settings_note='')
+    settle(doc.property)
+    return made
+
+
+def queue_settings(association):
+    """The button that reads everything: each document that can carry settings and has not been read for them is asked to be read (the background worker does it, a few at a time).
+    Returns how many were queued."""
+    n = 0
+    for d in _docs(association):
+        if d.settings_status in ('', 'failed') and _pieces(d):
+            AssociationDocument.objects.filter(pk=d.pk).update(settings_status='waiting', settings_note='')
+            n += 1
+    return n
+
+
+def settings_waiting(association):
+    return _docs(association).filter(settings_status='waiting').count()
+
+
+def process_settings(limit=2, log=None):
+    """The worker's turn: read documents that are waiting to be read for settings. A sorted file waits until a person has confirmed what it holds."""
+    say = log or (lambda t: None)
+    done = 0
+    for d in list(AssociationDocument.objects.filter(settings_status='waiting', is_staging=False, text_status__in=['ready', 'partial']).order_by('uploaded_at')[:25]):
+        if done >= limit:
+            break
+        if d.auto_sort and d.sort_status != 'confirmed':
+            continue
+        if not _pieces(d):
+            AssociationDocument.objects.filter(pk=d.pk).update(settings_status='done', settings_note='Nothing in this one carries settings.')
+            continue
+        if not settings.ANTHROPIC_API_KEY:
+            break
+        try:
+            made = read_for_settings(d)
+            say(f'read {d.name} for settings: {len(made)} found')
+            done += 1
+        except Exception as e:
+            logger.exception('Reading "%s" for settings failed', d.name)
+            AssociationDocument.objects.filter(pk=d.pk).update(settings_status='failed', settings_note=(str(e) or 'It could not be read for settings.')[:300])
+    return done
+
+
+def confirm_all(association, user=None):
+    """Confirm every proposal that is still standing (one per setting, each the latest). Returns (how many, [problems])."""
+    n, problems = 0, []
+    for pr in SettingProposal.objects.filter(property=association, status=SettingProposal.Status.PROPOSED).order_by('pk'):
+        try:
+            confirm(pr, user)
+            n += 1
+        except Exception as e:
+            problems.append(f'{LABELS.get(pr.key, pr.key)}: {e}')
+    return n, problems
+
+
+def set_effective_date(doc, day, section=None):
+    """A person types the date a document took effect. It is kept as typed, and the proposals from the document are sorted again."""
+    day = _to_date(day)
+    if day is None:
+        raise DocumentError('That is not a date.')
+    if section in (None, ''):
+        doc.effective_date, doc.effective_source = day, 'typed'
+        doc.save(update_fields=['effective_date', 'effective_source'])
+    else:
+        sections = list(doc.sections or [])
+        try:
+            sec = sections[int(section)]
+        except (ValueError, IndexError):
+            raise DocumentError('That list changed. Reload the page.')
+        sec['effective_date'], sec['effective_source'] = day.isoformat(), 'typed'
+        doc.sections = sections
+        doc.save(update_fields=['sections'])
+    for pr in SettingProposal.objects.filter(document=doc):
+        new = effective_date_of(doc, pr.page)
+        if new != pr.effective_date:
+            pr.effective_date = new
+            pr.save(update_fields=['effective_date'])
+    settle(doc.property)
+
+
+def effective_rows(doc):
+    """What the screen shows for the dates of a file: [{'index', 'title', 'kind', 'date', 'source'}], one for each legal document in it."""
+    out = []
+    for idx, kind, start, end in _pieces(doc):
+        if idx is None:
+            out.append({'index': '', 'title': doc.name, 'kind': kind, 'date': doc.effective_date, 'source': doc.effective_source})
+        else:
+            sec = doc.sections[idx]
+            out.append({'index': idx, 'title': sec.get('title') or Kind(kind).label, 'kind': kind, 'date': _to_date(sec.get('effective_date')), 'source': sec.get('effective_source', '')})
+    return out
+
