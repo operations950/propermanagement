@@ -174,6 +174,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'core.middleware.CompressTextMiddleware',
     'core.middleware.RequestTimingMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -391,6 +392,12 @@ RECURRING_TICKET_INTERVAL_MINUTES = int(os.environ.get('RECURRING_TICKET_INTERVA
 # Gmail auth is OAuth-based (intake/gmail_auth.py, GmailInboxToken), not a
 # static credentials file — see GOOGLE_OAUTH_CLIENT_ID/SECRET below.
 QUO_API_KEY = os.environ.get('QUO_API_KEY', '')
+# How long a live fetch of a Quo conversation is kept (seconds): the ticket page asks for it on every load and every 20 seconds while it is open. 0 turns it off.
+QUO_CONVERSATION_CACHE_SECONDS = int(os.environ.get('QUO_CONVERSATION_CACHE_SECONDS', '30'))
+# How long the home screen keeps what it read from Google Calendar (seconds); a calendar written to from here is read fresh at once. 0 turns it off (the test runs leave it off).
+GOOGLE_CALENDAR_CACHE_SECONDS = 0 if 'test' in __import__('sys').argv else int(os.environ.get('GOOGLE_CALENDAR_CACHE_SECONDS', '60'))
+# How long the Close associations list keeps each association's card (seconds); anything saved to the books drops them at once. 0 turns it off (the test runs leave it off).
+CLOSE_CARD_CACHE_SECONDS = 0 if 'test' in __import__('sys').argv else int(os.environ.get('CLOSE_CARD_CACHE_SECONDS', '45'))
 # The key that locks the secrets the books keep in the database (a bank account's full number): see accounting/fieldcrypt.py. Set it once in production and never change it.
 FIELD_ENCRYPTION_KEY = os.environ.get('FIELD_ENCRYPTION_KEY', '')
 # How often sync_quo_contacts checks Quo's saved contact list for brand-new

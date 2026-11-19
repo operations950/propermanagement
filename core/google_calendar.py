@@ -13,11 +13,13 @@ who connected before that change holds a read-only grant and needs to
 Disconnect/reconnect once to pick up write access; Google returns a 403
 on the write call in the meantime, surfaced as a "reconnect" message
 rather than a silent failure (see the callers in core/views.py)."""
+import copy
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta, timezone as dt_timezone
 
 from django.conf import settings
+from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
 
@@ -87,7 +89,7 @@ def credentials_for(token):
     return creds
 
 
-def get_upcoming_events(token, days_ahead=2, first_day=None, last_day=None, max_results=50):
+def _fetch_upcoming_events(token, days_ahead=2, first_day=None, last_day=None, max_results=50):
     """All of today's events (the ones already over too, so the day still reads as a whole) plus the next `days_ahead` days, from
     whichever of the staff member's own Google calendars they've chosen to
     pull in (token.enabled_calendar_ids — empty means "just the primary
@@ -190,6 +192,31 @@ def get_upcoming_events(token, days_ahead=2, first_day=None, last_day=None, max_
         return [], []
 
 
+def _cache_key(token, *parts):
+    version = cache.get(f'gcal-ver:{token.pk}', 0)
+    return 'gcal:%s:%s:%s' % (token.pk, version, '|'.join(str(p) for p in parts))
+
+
+def forget_events(token):
+    """Something was written to this person's calendars (or the calendars they read changed): what was kept is dropped, so the next look is fresh."""
+    cache.set(f'gcal-ver:{token.pk}', cache.get(f'gcal-ver:{token.pk}', 0) + 1, None)
+
+
+def get_upcoming_events(token, days_ahead=2, first_day=None, last_day=None, max_results=50):
+    """get_upcoming_events as documented on _fetch_upcoming_events, kept for a short time: the home screen reads the calendars on every load, and each read is a round trip to Google
+    for the calendar list and for every chosen calendar (about a second). A read that failed is never kept, so the next look tries again. The copies handed out are the caller's own."""
+    seconds = getattr(settings, 'GOOGLE_CALENDAR_CACHE_SECONDS', 0)
+    key = _cache_key(token, days_ahead, first_day or timezone.localdate(), last_day, max_results, ','.join(token.enabled_calendar_ids or [])) if seconds else None
+    if key:
+        hit = cache.get(key)
+        if hit is not None:
+            return copy.deepcopy(hit)
+    result = _fetch_upcoming_events(token, days_ahead, first_day, last_day, max_results)
+    if key and result[1]:
+        cache.set(key, copy.deepcopy(result), seconds)
+    return result
+
+
 def get_events_between(token, first_day, last_day):
     """The events of every chosen calendar from `first_day` through `last_day` (dates, in the person's time zone), the same shape get_upcoming_events returns: (events, available_calendars).
     Used by the month grid on Home, which needs a whole month in one read (up to 250 events from each calendar)."""
@@ -276,7 +303,9 @@ def _run_write(token, action, *args):
     from googleapiclient.errors import HttpError
 
     try:
-        return action(_service_for(token), *args)
+        result = action(_service_for(token), *args)
+        forget_events(token)                      # what the home screen kept is now out of date
+        return result
     except HttpError as e:
         logger.exception('Google Calendar: write failed for %s', token.staff)
         if e.resp.status in (401, 403):

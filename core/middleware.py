@@ -1,3 +1,4 @@
+from django.middleware.gzip import GZipMiddleware
 from django.utils import timezone
 from django.utils.cache import add_never_cache_headers
 
@@ -159,3 +160,16 @@ class MailNotConnectedMiddleware:
         if back and url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}):
             return redirect(back)
         return redirect('/')
+
+
+class CompressTextMiddleware(GZipMiddleware):
+    """Compress the pages the app builds (HTML, JSON, JavaScript, CSS, plain text and CSV) for any browser that says it can read them: a big screen (a budget, a report, a close sheet) goes over the
+    wire at a fraction of its size, which is most of the wait on a phone. Photos, PDFs and downloads are left as they are (already compressed, or not worth the work); static files are
+    compressed ahead of time by WhiteNoise and never reach this. Django's own GZipMiddleware does the compressing, and the CSRF token is masked differently on every response, which is what
+    keeps compressed pages with a token in them safe."""
+    TEXT = ('text/', 'application/json', 'application/javascript', 'application/xml')
+
+    def process_response(self, request, response):
+        if not response.get('Content-Type', '').startswith(self.TEXT) or response.get('Content-Disposition', '').startswith('attachment'):
+            return response
+        return super().process_response(request, response)

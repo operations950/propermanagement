@@ -2,8 +2,11 @@
 
 The company checklist has one step, "Close associations"; it lists every association we keep the books for, and each opens this sheet.
 """
+import copy
 from datetime import date
 
+from django.conf import settings
+from django.core.cache import cache
 from django.urls import reverse
 
 from core import memo as request_memo
@@ -220,7 +223,40 @@ def _late_fee_candidates(association, as_of):
     return n
 
 
+def _card_key(association, month_first):
+    return f'close-card:{cache.get("close-card-ver", 0)}:{association.pk}:{month_first}'
+
+
+def forget_cards(*args, **kwargs):
+    """Something in the books changed: every kept card is dropped (the next look builds them again). Connected to the models a card is built from; also usable as a signal receiver."""
+    cache.set('close-card-ver', cache.get('close-card-ver', 0) + 1, None)
+
+
+def connect_card_cache():
+    from django.db.models.signals import post_delete, post_save
+    from . import models as m
+    for model in (m.JournalEntry, m.MonthLock, m.CloseStepDone, m.BoardPackageSend, m.ChargeRule, m.Charge, m.Receipt, m.RecurringBill, m.JournalRule, m.Bill, m.Payment, m.BankStatement, m.BankLine,
+                  m.ReconMatch, m.ReconAcceptance, m.Reconciliation):
+        post_save.connect(forget_cards, sender=model, dispatch_uid=f'close-card-save-{model.__name__}')
+        post_delete.connect(forget_cards, sender=model, dispatch_uid=f'close-card-delete-{model.__name__}')
+
+
 def association_card(association, month_first):
+    """The card as association_card_uncached builds it, kept for a short time: the Close associations list builds one for every association (a full close sheet each), which is most of
+    what that screen costs. Anything saved to the books drops them all (forget_cards); a change made in bulk (no signal) is picked up when the time is up."""
+    seconds = getattr(settings, 'CLOSE_CARD_CACHE_SECONDS', 0)
+    if not seconds:
+        return association_card_uncached(association, month_first)
+    key = _card_key(association, month_first)
+    hit = cache.get(key)
+    if hit is not None:
+        return copy.deepcopy(hit)
+    card = association_card_uncached(association, month_first)
+    cache.set(key, copy.deepcopy(card), seconds)
+    return card
+
+
+def association_card_uncached(association, month_first):
     """What the Close associations list shows for one property: {'status', 'detail', 'segments', 'pct'}. `segments` is one entry for EVERY step of its close sheet ('done', 'attention' or
     'not_started'), so the card can draw progress as a bar the eye reads at once, with no numbers; `pct` is the share of the steps that are done. The chip is done (month closed and the
     financials sent), not_started (nothing yet) or attention; a closed month whose financials are not sent yet still needs attention."""

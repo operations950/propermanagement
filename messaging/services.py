@@ -108,7 +108,15 @@ def fetch_quo_conversation(contact):
     if not participant:
         return None
 
+    from django.core.cache import cache
     from intake.models import QuoThreadState
+
+    # A real HTTP round-trip to Quo: the ticket page asks for it on every load and again every 20 seconds while it is open, so what was just fetched is kept for a few seconds.
+    # Sending a message through send_via_quo clears it, so your own text shows at once.
+    key = f'quo-conv:{participant}'
+    hit = cache.get(key)
+    if hit is not None:
+        return hit['messages']
 
     thread = QuoThreadState.objects.filter(participant=participant).order_by('-updated_at').first()
     if not thread:
@@ -127,7 +135,7 @@ def fetch_quo_conversation(contact):
         logger.exception('Quo: live message fetch failed for contact %s', contact.pk)
         return None
 
-    return [
+    result = [
         {
             'direction': 'out' if m.get('direction') == 'outgoing' else 'in',
             'body': m.get('text', ''),
@@ -135,6 +143,10 @@ def fetch_quo_conversation(contact):
         }
         for m in messages
     ]
+    seconds = getattr(settings, 'QUO_CONVERSATION_CACHE_SECONDS', 0)
+    if seconds:
+        cache.set(key, {'messages': result}, seconds)
+    return result
 
 
 def _quo_from_number(thread):
@@ -253,6 +265,8 @@ def send_via_quo(to_number, body, ticket=None, media_urls=None):
         timeout=15,
     )
     resp.raise_for_status()
+    from django.core.cache import cache
+    cache.delete(f'quo-conv:{participant}')            # the thread has a new message: the next look fetches it fresh
     # The send itself is already done and irreversible by this point — a
     # problem recording it locally (malformed/empty response body, a DB
     # hiccup writing QuoMessage) must never turn an actually-successful
