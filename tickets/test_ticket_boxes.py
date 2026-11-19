@@ -3,14 +3,16 @@ from datetime import date, datetime, time, timedelta
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
 from core.models import Property, StaffProfile
 
 from .boxes import bucket_of, ticket_boxes, week_start
-from .models import Priority, Ticket
+from .models import Priority, Ticket, TicketClosingNote, TicketStatusNote
 
 DONE = [Ticket.Status.COMPLETED, Ticket.Status.VERIFIED, Ticket.Status.CANCELLED, Ticket.Status.SKIPPED, Ticket.Status.NOT_APPLICABLE]
 STORAGES = {'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'documents': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
@@ -170,22 +172,64 @@ class TheTicketScreenTests(TestCase):
         self.assertIn('class="np-clear"', html)
         self.assertNotIn('np-clear', self.client.get(self.url).content.decode().split('class="np-controls"')[1].split('</form>')[0])
 
-    def test_a_ticket_row_has_its_title_property_and_due_date_and_links_to_it(self):
+    def row_of(self, html, ticket):
+        """The HTML of one ticket's row in the boxes."""
+        return html.split('<a class="np-link" href="%s"' % reverse('ticket_detail', args=[ticket.pk]))[1].split('<div class="np-row')[0]
+
+    def test_a_ticket_row_shows_only_the_name_and_an_arrow_until_it_is_opened(self):
         html = self.client.get(self.url).content.decode()
-        self.assertIn(f'href="{reverse("ticket_detail", args=[self.urgent.pk])}"', html)
-        row = html.split(f'<a class="np-row np-tk is-urgent" href="{reverse("ticket_detail", args=[self.urgent.pk])}"')[1].split('</a>')[0]
-        self.assertNotIn('np-flag-urgent', row)                                                   # it is already in the Urgent box: no Urgent tag on the row
-        self.assertIn('Roof leak', row)
-        self.assertIn('Grand Condos', row)
+        row = self.row_of(html, self.urgent)
+        shown, hidden = row.split('<div class="np-more-body" hidden>')
+        self.assertIn('Roof leak', shown)
+        self.assertNotIn('np-flag-urgent', html)                                                  # it is already in the Urgent box: no Urgent tag on the row
+        self.assertNotIn('Grand Condos', shown)                                                   # the property and the due date are not on the closed line
+        self.assertNotIn('np-when', shown)
+        self.assertIn('data-np-more aria-expanded="false"', shown)                                 # the down arrow
+        self.assertIn('Grand Condos', hidden)                                                     # they are in the lines under it
+        self.assertRegex(hidden, r'Due [A-Z][a-z]{2} \d{1,2}')
+        self.assertEqual(html.count('class="np-sub"'), 0)
+
+    def test_an_opened_row_has_the_latest_update_or_says_there_is_none(self):
+        first = TicketStatusNote.objects.create(ticket=self.late, body='<b>First</b> note')
+        TicketStatusNote.objects.filter(pk=first.pk).update(created_at=timezone.now() - timedelta(days=2))
+        TicketStatusNote.objects.create(ticket=self.late, body='Gate motor ordered, <i>arrives Friday</i>')
+        html = self.client.get(self.url).content.decode()
+        hidden = self.row_of(html, self.late).split('<div class="np-more-body" hidden>')[1]
+        self.assertIn('Gate motor ordered, arrives Friday', hidden)                               # the latest, tags stripped
+        self.assertNotIn('First note', hidden)
+        self.assertIn('np-late', hidden)                                                          # a late due date is red
+        self.assertIn('No updates yet.', self.row_of(html, self.today).split('<div class="np-more-body" hidden>')[1])
+        self.assertIn('No due date', self.row_of(html, self.nodate).split('<div class="np-more-body" hidden>')[1])
+
+    def test_a_finished_ticket_opens_to_its_closing_note(self):
+        TicketStatusNote.objects.create(ticket=self.late, body='an older update')
+        Ticket.objects.filter(pk=self.late.pk).update(status=Ticket.Status.COMPLETED, completed_at=timezone.now())
+        TicketClosingNote.objects.create(ticket=self.late, body='Gate fixed and tested', status=Ticket.Status.COMPLETED)
+        html = self.client.get(self.url + '?status=complete').content.decode()
+        hidden = self.row_of(html, self.late).split('<div class="np-more-body" hidden>')[1]
+        self.assertIn('Gate fixed and tested', hidden)
+        self.assertNotIn('an older update', hidden)
+
+    def test_opening_a_row_costs_the_page_no_extra_queries(self):
+        self.client.get(self.url)                                                                 # warm anything cached
+        with CaptureQueriesContext(connection) as before:
+            self.client.get(self.url)
+        for i in range(8):
+            t = Ticket.objects.create(title=f'more {i}', property=self.prop, created_by=self.staff.user, assigned_staff=self.staff, source=Ticket.Source.MANUAL, due_date=at(timezone.localdate() + timedelta(days=2)))
+            TicketStatusNote.objects.create(ticket=t, body='an update')
+        with CaptureQueriesContext(connection) as after:
+            self.client.get(self.url)
+        self.assertEqual(len(after), len(before))                                                 # eight more tickets with notes: same number of queries
 
     def test_a_ticket_row_is_one_line_with_a_high_tag_only_and_the_extra_facts_in_the_hover(self):
         high = Ticket.objects.create(title='Fix the fence', property=self.prop, created_by=self.staff.user, assigned_staff=self.staff, source=Ticket.Source.MANUAL, priority=Priority.HIGH,
                                      due_date=at(timezone.localdate() + timedelta(days=2)))
         html = self.client.get(self.url).content.decode()
-        row = html.split(f'<a class="np-row np-tk" href="{reverse("ticket_detail", args=[high.pk])}"')[1].split('</a>')[0]
-        self.assertNotIn('np-l2', row)                                                              # no second line
-        self.assertIn('np-flag-high', row)
-        self.assertIn('class="np-sub">Grand Condos', row)                                          # the property sits on the same line
+        row = self.row_of(html, high)
+        closed = row.split('<div class="np-more-body" hidden>')[0]
+        self.assertNotIn('np-l2', row)                                                              # no second line of the old kind
+        self.assertIn('np-flag-high', closed)
+        self.assertIn('title="', closed)                                                            # who has it is the hover text
         self.assertNotIn('np-flag-urgent', html)
         self.assertEqual(html.count('class="np-l2"'), 0)
 

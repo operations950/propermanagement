@@ -9,6 +9,19 @@
         btn.setAttribute('aria-expanded', box.classList.contains('open') ? 'true' : 'false');
     });
 
+    /* A row with a down arrow (the Tickets list): the arrow opens or closes the lines under the name. Rows start closed on every load; nothing is remembered. */
+    document.addEventListener('click', function (e) {
+        var more = e.target.closest('[data-np-more]');
+        if (!more) return;
+        var row = more.closest('.np-row');
+        var body = row && row.querySelector('.np-more-body');
+        if (!body) return;
+        var open = body.hasAttribute('hidden');
+        if (open) body.removeAttribute('hidden'); else body.setAttribute('hidden', '');
+        more.setAttribute('aria-expanded', open ? 'true' : 'false');
+        more.setAttribute('aria-label', open ? 'Hide the property, due date and latest update' : 'Show the property, due date and latest update');
+    });
+
     document.querySelectorAll('[data-np-sort]').forEach(function (select) {
         select.addEventListener('change', function () {
             var params = new URLSearchParams(window.location.search);
