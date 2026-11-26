@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from core.models import Contact, Unit
 
+from .report_export import exportable
 from . import bankrec, charges, checkprint, closing, invoice_inbox, ledger, owners, package, payables, reporting, scheduled, webvault
 from . import standard_chart as sc
 from .models import (CloseStepDone, ZERO, Account, Bill, BankAccount, BankLine, Budget, BudgetLine, Charge, ChargeRule, JournalEntry, JournalRule, Ownership, Payment, Receipt, ReconMatch, Reconciliation, RecurringBill, VendorTerms)
@@ -818,6 +819,7 @@ def report_package(request, pk):
 
 
 @admin_only
+@exportable
 def report_tb(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -833,6 +835,7 @@ def _end(request, prop):
 
 
 @admin_only
+@exportable
 def report_bs(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -845,6 +848,7 @@ def report_bs(request, pk):
 
 
 @admin_only
+@exportable
 def report_pl(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -857,6 +861,7 @@ def report_pl(request, pk):
 
 
 @admin_only
+@exportable
 def report_bva(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -867,6 +872,7 @@ def report_bva(request, pk):
 
 
 @admin_only
+@exportable
 def report_is(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -885,6 +891,7 @@ def report_is(request, pk):
 
 
 @admin_only
+@exportable
 def report_gl(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -899,6 +906,7 @@ def report_gl(request, pk):
 
 
 @admin_only
+@exportable
 def report_aging(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -913,6 +921,7 @@ def report_aging(request, pk):
 
 
 @admin_only
+@exportable
 def report_payables(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -922,6 +931,7 @@ def report_payables(request, pk):
 
 
 @admin_only
+@exportable
 def report_checks(request, pk):
     prop, redirect_to = _books(request, pk)
     if redirect_to:
@@ -932,6 +942,7 @@ def report_checks(request, pk):
 
 
 @admin_only
+@exportable
 def report_rec(request, pk, bank_pk, month):
     """The bank reconciliation report: what a board packet carries. A closed month shows what was frozen when it closed."""
     prop, redirect_to = _books(request, pk)

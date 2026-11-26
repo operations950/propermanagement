@@ -58,7 +58,7 @@ class BooksSwitchTests(TestCase):
         call_command('enable_commercial_financials', stdout=out)
         self.assertTrue(ledger.profile_for(prop).we_do_financials)
         codes = set(Account.objects.filter(association=prop).values_list('code', flat=True))
-        self.assertTrue({'4100', '4110', '4120', '2255'} <= codes)
+        self.assertTrue({'4140', '4210', '4120', '2255'} <= codes)
         count = Account.objects.filter(association=prop).count()
         out = io.StringIO()
         call_command('enable_commercial_financials', stdout=out)
@@ -68,11 +68,11 @@ class BooksSwitchTests(TestCase):
     def test_the_rent_accounts_are_only_in_a_commercial_chart(self):
         hoa = Property.objects.create(name='Some HOA', property_type=Property.Type.ASSOCIATION)
         ledger.ensure_chart(hoa)
-        self.assertFalse(Account.objects.filter(association=hoa, code__in=['4100', '4110', '4120', '2255']).exists())
+        self.assertFalse(Account.objects.filter(association=hoa, code__in=['4140', '4210', '4120', '2255']).exists())
 
     def test_the_commercial_accounts_are_income_and_liability(self):
         prop = make_commercial()
-        self.assertEqual(Account.objects.get(association=prop, code='4100').kind, 'income')
+        self.assertEqual(Account.objects.get(association=prop, code='4140').kind, 'income')
         self.assertEqual(Account.objects.get(association=prop, code='2255').kind, 'liability')
 
 
@@ -210,7 +210,7 @@ class PostingTests(TestCase):
         lease = make_lease(self.prop, rent_amount='5000', cam='400')
         made = rent.post_lease_month(lease, date(2026, 12, 1))
         self.assertEqual([(c.description, c.amount, c.due_date, c.owner) for c in made], [('Rent Dec 2026', D('5000.00'), date(2026, 12, 1), lease.tenant), ('CAM estimate Dec 2026', D('400.00'), date(2026, 12, 1), lease.tenant)])
-        self.assertEqual({c.income_account.code for c in made}, {'4100', '4110'})
+        self.assertEqual({c.income_account.code for c in made}, {'4140', '4210'})
         for e in JournalEntry.objects.filter(association=self.prop, source='charge'):
             self.assertEqual(sum(l.debit for l in e.lines.all()), sum(l.credit for l in e.lines.all()))
         self.assertEqual(sum(a['balance'] for a in __import__('accounting.charges', fromlist=['x']).accounts(self.prop)), D('5400.00'))

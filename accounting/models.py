@@ -300,7 +300,6 @@ class Account(models.Model):
     kind = models.CharField(max_length=10, choices=Kind.choices)
     is_active = models.BooleanField(default=True)
     budget_section = models.CharField(max_length=14, blank=True, default='', help_text='Where an expense account sits in the budget. Blank: the program decides from the number.')
-    name_locked = models.BooleanField(default=False, help_text="This association's own name for the account (its old system's or its budget's wording): keeping the company chart in line leaves it alone.")
 
     class Meta:
         ordering = ['code']

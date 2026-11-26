@@ -1,10 +1,10 @@
 """CAM reconciliation: the books and the leases in, one charge or credit per tenant out.
 
 The year's real cost of each pool comes from the property's own ledger (the accrual book unless the pool says cash) for the pool's expense accounts. camcalc.py divides it between the
-tenants. The CAM estimates really billed to each tenant in the year (the charges on the CAM Reimbursements account, 4110) are taken off, and the difference is the true-up:
+tenants. The CAM estimates really billed to each tenant in the year (the charges on the Estimated CAM Charges account, 4210) are taken off, and the difference is the true-up:
 
-* The tenant owes it: one charge (kind Special, on 4110) dated the approval date and due `due_days` later.
-* The tenant is credited: a credit held for the tenant, the way a payment made ahead is held (a receipt of method Other that debits 4110 and credits Prepaid Fees, in both books), which
+* The tenant owes it: one charge (kind Special, on 4210) dated the approval date and due `due_days` later.
+* The tenant is credited: a credit held for the tenant, the way a payment made ahead is held (a receipt of method Other that debits 4210 and credits Prepaid Fees, in both books), which
   the next charges use at once (charges.apply_credits). It shows as a negative balance for the tenant and never as an open charge, so aging is untouched.
 
 An approved reconciliation is a record: its lines are kept as approved and it cannot be approved a second time. Undoing it voids its charges and credits.

@@ -87,12 +87,26 @@ CHART = [
     ('6919', 'Tree Trimming', EXPENSE), ('6920', 'Bad Debt Expense', EXPENSE),
 ]
 
-# What a commercial building adds to the chart (income from tenants, and where a tenant's deposit would sit). They are added to a commercial property's chart only
-# (ledger.ensure_chart), never to an association's, so they are in a dict and a list, not module-level strings (those are the accounts every association must have).
-COMMERCIAL_CODES = {'rent': '4100', 'cam': '4110', 'percentage_rent': '4120', 'utility_reimbursement': '4130', 'tenant_deposits': '2255'}
+# The commercial chart: the accounts the commercial buildings (324 Lofts, Del Park, Red Barn) used in Yardi, kept as they were, added to a commercial property's chart only
+# (ledger.ensure_chart), never to an association's. Rent is 4140 Rent-Commercial and the CAM estimates are 4210 Estimated CAM Charges, as in Yardi.
+COMMERCIAL_CODES = {'rent': '4140', 'cam': '4210', 'percentage_rent': '4120', 'utility_reimbursement': '4130', 'tenant_deposits': '2255'}
 COMMERCIAL_CHART = [
-    ('4100', 'Base Rent', INCOME), ('4110', 'CAM Reimbursements', INCOME), ('4120', 'Percentage Rent', INCOME), ('4130', 'Tenant Utility Reimbursements', INCOME),
-    ('2255', 'Tenant Security Deposits', LIABILITY),
+    ('1610', 'Land', ASSET), ('1620', 'Furniture, Fixtures and Equipment', ASSET), ('1700', 'Buildings', ASSET), ('1710', 'Capital Improvements', ASSET),
+    ('1720', 'Tenant Improvements', ASSET), ('1730', 'Tenant Billback', ASSET), ('1900', 'Utility Deposits', ASSET),
+    ('2220', 'Loan Payable', LIABILITY), ('2221', 'Notes/Loan Payable', LIABILITY), ('2222', 'Payable - Other', LIABILITY), ('2223', 'Undeposited Funds', LIABILITY),
+    ('2255', 'Tenant Security Deposits', LIABILITY), ('2310', 'State Sales Tax', LIABILITY), ('2500', 'Mortgage Payable', LIABILITY),
+    ('3200', 'Owner Contribution', EQUITY), ('3400', 'Owner Draw', EQUITY), ('3810', 'Prior Years Retained Earnings', EQUITY), ('3830', 'Irrevocable Trust Equity', EQUITY),
+    ('3840', 'Intercompany Equity', EQUITY), ('3851', 'Capital - Core Atlantic LLC', EQUITY), ('3860', 'Capital Distributions', EQUITY),
+    ('4120', 'Percentage Rent', INCOME), ('4130', 'Tenant Utility Reimbursements', INCOME), ('4140', 'Rent-Commercial', INCOME), ('4160', 'Prepaid Rent', INCOME),
+    ('4210', 'Estimated CAM Charges', INCOME), ('4211', 'CAM reconciliation', INCOME), ('4480', 'Residential Billback Income', INCOME), ('4670', 'Qar Qube Income', INCOME),
+    ('5200', 'Recoverable Maintenance', EXPENSE), ('5210', 'Recoverable Repair', EXPENSE), ('5220', 'Recoverable Janitorial', EXPENSE), ('5240', 'Recoverable HVAC', EXPENSE),
+    ('5250', 'Recoverable Elevator', EXPENSE), ('5260', 'Recoverable Gardening', EXPENSE), ('5270', 'Recoverable Pest Control', EXPENSE), ('5300', 'Recoverable Management', EXPENSE),
+    ('5310', 'Recoverable Security Services', EXPENSE), ('5320', 'Recoverable Insurance', EXPENSE), ('5350', 'Recoverable Property Tax', EXPENSE), ('5410', 'Recoverable Electricity', EXPENSE),
+    ('5430', 'Recoverable Water & Sewer', EXPENSE), ('5450', 'Recoverable Trash', EXPENSE), ('5460', 'Recoverable Fire Safety Expense', EXPENSE),
+    ('5470', 'Recoverable Fire Inspections', EXPENSE), ('5490', 'Recoverable Fire Sprinkler Expense', EXPENSE), ('5510', 'Recoverable Plumbing', EXPENSE),
+    ('5520', 'Recoverable Office Supplies', EXPENSE), ('5530', 'Recoverable Office Expense-Recoverable', EXPENSE), ('5600', 'Recoverable Residential Tenant Billback', EXPENSE),
+    ('6140', 'Asset Management Fee', EXPENSE), ('6150', 'Taxes and Licenses', EXPENSE), ('6160', 'Mortgage Interest', EXPENSE), ('6170', 'Legal Fees', EXPENSE),
+    ('6270', 'Parking Management', EXPENSE), ('6273', 'Parking - Maintenance Contract', EXPENSE), ('6274', 'Parking - Advertising', EXPENSE),
 ]
 
 # Report sections, by account number

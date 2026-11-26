@@ -206,7 +206,7 @@ class ApproveTests(Base):
         self.assertEqual(recon.status, 'approved')
         lines = {l.tenant_name: l for l in recon.lines.all()}
         owed = lines['Alpha Cafe']
-        self.assertEqual((owed.true_up, owed.charge.amount, owed.charge.kind, owed.charge.income_account.code, owed.charge.due_date), (D('6000.00'), D('6000.00'), 'special', '4110', date(2027, 2, 19)))
+        self.assertEqual((owed.true_up, owed.charge.amount, owed.charge.kind, owed.charge.income_account.code, owed.charge.due_date), (D('6000.00'), D('6000.00'), 'special', '4210', date(2027, 2, 19)))
         self.assertEqual(owed.charge.entry.date, date(2027, 1, 20))
         credit = lines['Beta Shop']
         self.assertEqual((credit.true_up, credit.receipt.amount, credit.receipt.method, credit.charge), (D('-1200.00'), D('1200.00'), 'other', None))
@@ -222,7 +222,7 @@ class ApproveTests(Base):
         aging = charges.aging(self.prop, date(2027, 1, 31))
         self.assertTrue(all(r['unit'].label != 'B' or r['total'] >= 0 for r in aging['rows']))
         accts = {l.account.code: (l.debit, l.credit) for l in credit.receipt.entry.lines.select_related('account')}
-        self.assertEqual(accts, {'4110': (D('1200.00'), D('0.00')), '2210': (D('0.00'), D('1200.00'))})
+        self.assertEqual(accts, {'4210': (D('1200.00'), D('0.00')), '2210': (D('0.00'), D('1200.00'))})
 
     def test_a_credit_is_used_at_once_on_what_the_tenant_owes(self):
         rent.post_lease_month(self.b, date(2027, 1, 1))                                    # January rent and CAM are open when the credit comes
