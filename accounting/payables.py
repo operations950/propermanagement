@@ -18,7 +18,7 @@ from core.models import Contact
 from . import ledger
 from . import standard_chart as sc
 from .charges import add_months, default_bank, FREQ_MONTHS
-from .models import ZERO, Bill, BillLine, JournalEntry, Payment, PaymentBill, RecurringBill, VendorTerms
+from .models import ZERO, BankAccount, Bill, BillLine, JournalEntry, Payment, PaymentBill, RecurringBill, VendorTerms
 
 
 class PayableError(Exception):
@@ -203,11 +203,17 @@ def pay_bills(association, bank_account, items, day, method=Payment.Method.CHECK
             raise PayableError(f'The amount for {bill.payee} must be above zero and no more than ${bill.balance:,.2f}.')
         total += amount
     bill0 = items[0][0]
-    check_number = (number if number is not None else (_next_check_number(association) if method == Payment.Method.CHECK else '')) or ''
+    # A check from Proper Realty's own trust account pays this property's bill but is not this property's money: the number comes from the company's checkbook (the bank account's owner),
+    # and the books take the other side to "Paid from Proper Realty trust account" instead of a cash account (the trust accounts are kept in QuickBooks, never here).
+    trust = bank_account.kind == BankAccount.Kind.TRUST
+    if trust and bank_account.association_id == association.pk:
+        raise PayableError("Proper's own bills are not paid from a trust account.")
+    cash_account = ledger.trust_clearing_account(association) if trust else bank_account.account
+    check_number = (number if number is not None else (_next_check_number(bank_account.association) if method == Payment.Method.CHECK else '')) or ''
     payment = Payment.objects.create(association=association, bank_account=bank_account, number=str(check_number), date=day, vendor=bill0.vendor, payee_text=bill0.vendor_text,
                                      amount=total, method=method, memo=memo[:200], created_by=user)
     desc = f'{bill0.payee}' + (f' check {check_number}' if check_number else '')
-    accrual = [{'account': sc.AP, 'debit': total, 'vendor': bill0.vendor, 'memo': desc}, {'account': bank_account.account, 'credit': total, 'vendor': bill0.vendor, 'memo': desc}]
+    accrual = [{'account': sc.AP, 'debit': total, 'vendor': bill0.vendor, 'memo': desc}, {'account': cash_account, 'credit': total, 'vendor': bill0.vendor, 'memo': desc}]
     cash = []
     for bill, amount in items:
         amount = ledger.money(amount)
@@ -215,7 +221,7 @@ def pay_bills(association, bank_account, items, day, method=Payment.Method.CHECK
         for line, part in _allocate(amount, [(l, l.amount) for l in bill_lines]):
             cash.append({'account': line.account, 'debit': part, 'vendor': bill.vendor, 'memo': desc})
         PaymentBill.objects.create(payment=payment, bill=bill, amount=amount)
-    cash.append({'account': bank_account.account, 'credit': total, 'vendor': bill0.vendor, 'memo': desc})
+    cash.append({'account': cash_account, 'credit': total, 'vendor': bill0.vendor, 'memo': desc})
     payment.entry = ledger.post_entry(association, day, accrual, memo=desc, basis=JournalEntry.Basis.ACCRUAL, source=JournalEntry.Source.PAYMENT, source_ref=f'payment:{payment.pk}', user=user)
     payment.cash_entry = ledger.post_entry(association, day, cash, memo=desc, basis=JournalEntry.Basis.CASH, source=JournalEntry.Source.PAYMENT, source_ref=f'payment:{payment.pk}', user=user)
     payment.save(update_fields=['entry', 'cash_entry'])

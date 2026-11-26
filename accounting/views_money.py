@@ -451,34 +451,10 @@ def bill_detail(request, pk, bill_pk):
 
 @admin_only
 def pay(request, pk):
-    """The check run: choose approved bills, pay them, print the checks."""
-    prop, redirect_to = _books(request, pk)
-    if redirect_to:
-        return redirect_to
-    ready = payables.bills_to_pay(prop)
-    if request.method == 'POST':
-        try:
-            ids = [int(i) for i in request.POST.getlist('bill')]
-            chosen = [b for b in ready if b.pk in ids]
-            if not chosen:
-                raise payables.PayableError('Choose the bills to pay.')
-            bank_acct = get_object_or_404(BankAccount, pk=request.POST.get('bank'), association=prop)
-            method = request.POST.get('method') if request.POST.get('method') in ('check', 'ach') else 'check'
-            day = parse_date(request.POST.get('date')) or timezone.localdate()
-            by_vendor = {}
-            for b in chosen:
-                by_vendor.setdefault(b.vendor_id or -b.pk, []).append(b)
-            made = []
-            for group in by_vendor.values():
-                made.append(payables.pay_bills(prop, bank_acct, [(b, b.balance) for b in group], day, method=method, user=request.user))
-            messages.success(request, f'{len(made)} payment{"s" if len(made) != 1 else ""} recorded.')
-            if method == 'check':
-                return redirect(_go('check_print', prop.pk) + '?ids=' + ','.join(str(p.pk) for p in made))
-            return redirect(_go('checks', prop.pk))
-        except (payables.PayableError, ledger.LedgerError) as e:
-            messages.error(request, str(e))
-        return redirect(_go('pay', prop.pk))
-    return render(request, 'accounting/pay.html', {'assoc': prop, 'ready': ready, 'banks': prop.bank_accounts.filter(is_active=True), 'today': timezone.localdate(), **acc_up(request, prop, _go('bills', prop.pk), 'Bills')})
+    """Retired. The old per-association Pay bills screen recorded the payments the moment its button was pressed, then showed a print page with no signature or bank numbers.
+    Paying now happens in one place: Payables > Print checks (every association, checks drawn in full). Old links and bookmarks land there; nothing is recorded here."""
+    association_or_404(pk)
+    return redirect('accounting:payables_print_checks')
 
 
 @admin_only
@@ -499,26 +475,15 @@ def checks(request, pk):
 
 @admin_only
 def check_print(request, pk):
-    """The checks, laid out on the blank stock, ready for the browser's print dialog. ?sample=1 prints one made-up check for lining the stock up."""
-    prop, redirect_to = _books(request, pk)
-    if redirect_to:
-        return redirect_to
-    profile = ledger.profile_for(prop)
-    layout = checkprint.layout_for(profile)
-    sample = bool(request.GET.get('sample'))
-    items = []
-    if sample:
-        items = [checkprint.sample_check()]
-    else:
-        ids = [int(i) for i in (request.GET.get('ids') or '').split(',') if i.strip().isdigit()]
-        pays = list(Payment.objects.filter(association=prop, pk__in=ids, method='check').exclude(status='void').select_related('vendor'))
-        items = [dict(checkprint.check_fields(p), payment=p) for p in pays]
-        if request.method == 'POST' and request.POST.get('action') == 'printed':
-            Payment.objects.filter(pk__in=[i['payment'].pk for i in items]).update(printed_at=timezone.now())
-            messages.success(request, 'Marked as printed.')
-            return redirect(_go('checks', prop.pk))
-    backdrop = profile.check_stock.url if (sample and profile.check_stock and profile.check_stock.name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif'))) else ''
-    return render(request, 'accounting/check_print.html', {'assoc': prop, 'items': items, 'pos': checkprint.positions(layout), 'layout': layout, 'sample': sample, 'backdrop': backdrop})
+    """Retired. The old print page is gone; old links go to the newer check PDFs (a test check, or a reprint of one payment), or to Print checks. Nothing is recorded here."""
+    prop = association_or_404(pk)
+    pdf = reverse('accounting:payables_checks_pdf')
+    if request.GET.get('sample'):
+        return redirect(f'{pdf}?test={prop.pk}')
+    ids = [i for i in (request.GET.get('ids') or '').split(',') if i.strip().isdigit()]
+    if len(ids) == 1 and Payment.objects.filter(association=prop, pk=ids[0], method='check').exclude(status='void').exists():
+        return redirect(f'{pdf}?payment={ids[0]}')
+    return redirect('accounting:payables_print_checks')
 
 
 @admin_only
@@ -927,8 +892,10 @@ def report_gl(request, pk):
     start, end = _range(request, prop)
     basis = _basis(request)
     acct = prop.accounts.filter(pk=request.GET.get('account')).first() or prop.accounts.filter(code=sc.CASH_OPERATING).first()
-    gl = ledger.general_ledger(prop, acct, start, end, basis) if acct else None
-    return render(request, 'accounting/report_gl.html', {'assoc': prop, 'gl': gl, 'acct': acct, 'accounts': prop.accounts.order_by('code'), 'basis': basis, 'start': start, 'end': end, **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
+    acct_to = prop.accounts.filter(pk=request.GET.get('account_to')).first()                # the ending account: blank is just the one account; otherwise every account from one to the other
+    gls = ledger.general_ledger_range(prop, acct, acct_to, start, end, basis) if acct else []
+    return render(request, 'accounting/report_gl.html', {'assoc': prop, 'gls': gls, 'acct': acct, 'acct_to': acct_to, 'is_range': acct_to is not None and acct_to.pk != acct.pk if acct else False,
+                                                         'accounts': prop.accounts.order_by('code'), 'basis': basis, 'start': start, 'end': end, **acc_up(request, prop, _go('reports', prop.pk), 'Reports')})
 
 
 @admin_only

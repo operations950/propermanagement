@@ -63,7 +63,7 @@ def _hex(tone):
 
 
 def heads(sheet):
-    return ['', f'{sheet["year"] - 1} budget', f'{sheet["year"] - 1} {sheet["proj_word"]}', f'{sheet["year"]} budget', '$ change', '% change']
+    return ['', f'{sheet["year"] - 1} budget', '' if sheet.get('hide_proj') else f'{sheet["year"] - 1} {sheet["proj_word"]}', f'{sheet["year"]} budget', '$ change', '% change']
 
 
 def group_label(sheet):
@@ -93,6 +93,15 @@ def _fit(text, width, bold=False, size=8.5, color=None):
     return Paragraph(escape(text), ParagraphStyle('fit', fontName=font, fontSize=small, leading=small + 2, alignment=TA_RIGHT, textColor=colors.HexColor(color or INK)))
 
 
+def _cols(sheet):
+    """The main table's column widths; with no projection column its width goes to the names."""
+    cols = list(COLS)
+    if sheet.get('hide_proj'):
+        cols[0] += cols[2] - 0.01 * inch
+        cols[2] = 0.01 * inch
+    return cols
+
+
 def pdf(sheet):
     """The sheet as a PDF (letter, portrait). `sheet` is views_budget._sheet's dict with assoc name, year, stage label, unit count and date added."""
     buf = io.BytesIO()
@@ -102,6 +111,7 @@ def pdf(sheet):
     sub = ParagraphStyle('s', fontName='Helvetica', fontSize=9.5, leading=13, textColor=colors.HexColor('#667085'))
     story = [Paragraph(sheet['assoc'], title), Paragraph(f'{sheet["year"]} proposed budget &middot; {sheet["stage_label"]} &middot; {sheet["units"]} unit{"s" if sheet["units"] != 1 else ""}', sub),
              Spacer(1, 10)]
+    cols = _cols(sheet)
     rows = [['', '', '', '', group_label(sheet), ''], heads(sheet)]
     style = [('FONT', (0, 0), (-1, -1), 'Helvetica', 8.5), ('ALIGN', (1, 0), (-1, -1), 'RIGHT'), ('TOPPADDING', (0, 0), (-1, -1), 2.6), ('BOTTOMPADDING', (0, 0), (-1, -1), 2.6), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
              ('FONT', (0, 1), (-1, 1), 'Helvetica-Bold', 8), ('TEXTCOLOR', (0, 1), (-1, 1), colors.HexColor(INK)), ('LINEBELOW', (0, 1), (-1, 1), 1, colors.HexColor(INK)),
@@ -109,7 +119,7 @@ def pdf(sheet):
 
     def add(cells, kind='line', tone='', ptone=''):
         size = 9.5 if kind == 'grand' else 8.5
-        cells = [_label_cell(cells[0], kind != 'line', size)] + [_fit(c, COLS[n], kind != 'line' or n == 3, size, _hex(tone) if n == 4 else _hex(ptone) if n == 5 else None)
+        cells = [_label_cell(cells[0], kind != 'line', size)] + [_fit(c, cols[n], kind != 'line' or n == 3, size, _hex(tone) if n == 4 else _hex(ptone) if n == 5 else None)
                                                                   for n, c in enumerate(cells[1:], 1)]
         rows.append(cells)
         i = len(rows) - 1
@@ -127,9 +137,10 @@ def pdf(sheet):
             style.append(('TEXTCOLOR', (5, i), (5, i), colors.HexColor(_hex(ptone))))
 
     cents = bool(sheet.get('cents'))
+    hide = bool(sheet.get('hide_proj'))
 
     def line(label, x, kind='line'):
-        add([label, _d(x['prior'], cents), _d(x['projected'], cents), _d(x['proposed'], cents), _chg(x['d'], cents), _pc(x['p'])], kind, x['tone'], x['ptone'])
+        add([label, _d(x['prior'], cents), '' if hide else _d(x['projected'], cents), _d(x['proposed'], cents), _chg(x['d'], cents), _pc(x['p'])], kind, x['tone'], x['ptone'])
 
     for sec in sheet['sections']:
         if not sec['lines']:
@@ -145,7 +156,7 @@ def pdf(sheet):
     ink = colors.HexColor(INK)
     style.extend([('BACKGROUND', (3, 0), (3, last), colors.HexColor(TINT)), ('LINEBEFORE', (3, 0), (3, last), 1.8, ink), ('LINEAFTER', (3, 0), (3, last), 1.8, ink),
                   ('LINEABOVE', (3, 0), (3, 0), 1.8, ink), ('FONT', (3, 1), (3, last), 'Helvetica-Bold', 8.5)])
-    table = Table(rows, colWidths=COLS, repeatRows=2)
+    table = Table(rows, colWidths=cols, repeatRows=2)
     table.setStyle(TableStyle(style))
     story += [table, Spacer(1, 14)]
     ps = ParagraphStyle('u', fontName='Helvetica', fontSize=7.5, leading=9.5, textColor=colors.HexColor('#667085'))
@@ -161,8 +172,8 @@ def pdf(sheet):
         pstyle.append(('BACKGROUND', (0, len(per) - 1), (2, len(per) - 1), colors.HexColor('#f6f8fb')))
         for p in g['rows']:
             bold = bool(p.get('bold'))
-            per.append([_label_cell(p['label'], bold), _fit(_c2(p['old']), COLS[1], bold), '', _fit(_c2(p['new']), COLS[3], True), _fit(_c2chg(p['d']), COLS[4], bold, 8.5, _hex(p['tone'])),
-                        _fit(_pc(p['p']), COLS[5], bold, 8.5, _hex(p['ptone']))])
+            per.append([_label_cell(p['label'], bold), _fit(_c2(p['old']), cols[1], bold), '', _fit(_c2(p['new']), cols[3], True), _fit(_c2chg(p['d']), cols[4], bold, 8.5, _hex(p['tone'])),
+                        _fit(_pc(p['p']), cols[5], bold, 8.5, _hex(p['ptone']))])
             i = len(per) - 1
             pstyle.append(('LINEBELOW', (0, i), (-1, i), 0.3, colors.HexColor('#e3e8ef')))
             if p.get('bold'):
@@ -174,7 +185,7 @@ def pdf(sheet):
     n = len(per) - 1
     pstyle.extend([('BACKGROUND', (3, 2), (3, n), colors.HexColor(TINT)), ('FONT', (3, 2), (3, n), 'Helvetica-Bold', 8.5), ('LINEBEFORE', (3, 0), (3, n), 1.8, ink), ('LINEAFTER', (3, 0), (3, n), 1.8, ink),
                    ('LINEABOVE', (3, 0), (3, 0), 1.8, ink), ('LINEBELOW', (3, n), (3, n), 1.8, ink)])
-    pt = Table(per, colWidths=COLS, repeatRows=2)
+    pt = Table(per, colWidths=cols, repeatRows=2)
     pt.setStyle(TableStyle(pstyle))
     story += [pt]
 
@@ -225,7 +236,7 @@ def xlsx(sheet):
 
     def put(label, x, bold=False, fill=None, top=False, double=False):
         nonlocal r
-        for c, v in enumerate([label, x['prior'], x['projected'], x['proposed'], x['d'], None if x['p'] is None else x['p'] / 100], 1):
+        for c, v in enumerate([label, x['prior'], None if sheet.get('hide_proj') else x['projected'], x['proposed'], x['d'], None if x['p'] is None else x['p'] / 100], 1):
             if c == 6 and v is None:
                 v = 'new' if abs(x['d']) >= 0.005 else '—'
             cell = ws.cell(row=r, column=c, value=v)
@@ -310,6 +321,8 @@ def xlsx(sheet):
     ws.column_dimensions['A'].width = 44
     for c in range(2, 7):
         ws.column_dimensions[get_column_letter(c)].width = 16
+    if sheet.get('hide_proj'):
+        ws.column_dimensions['C'].hidden = True
     ws.freeze_panes = 'A6'
     ws.page_setup.orientation = 'portrait'
     ws.page_setup.fitToWidth = 1

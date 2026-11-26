@@ -9,7 +9,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounting:checks' assoc.pk %}"><i data-lucide="printer" class="icon"></i> Checks</a>
-        <a class="btn btn-sm btn-primary" href="{% url 'accounting:pay' assoc.pk %}"><i data-lucide="send" class="icon"></i> Pay bills{% if ready %} ({{ ready|length }}){% endif %}</a>
+        <a class="btn btn-sm btn-primary" href="{% url 'accounting:payables_print_checks' %}"><i data-lucide="printer" class="icon"></i> Print checks{% if ready %} ({{ ready|length }} ready){% endif %}</a>
     </div>
 </div>
 

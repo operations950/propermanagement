@@ -46,7 +46,7 @@
         <div class="bp-act">
             {% if s.key == 'draft' %}
                 {% if not have.draft %}
-                    {% if can_start %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="start"><button class="btn btn-primary btn-sm">Start the {{ year }} budget</button></form>
+                    {% if can_start %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="start"><button class="btn btn-primary btn-sm">Start the {{ year }} budget</button> <button class="btn btn-outline-secondary btn-sm" name="from_prior" value="1" title="Last year's approved budget, line for line: nothing worked out from the actuals, no projection, no income added.">Same as last year</button></form>
                     {% else %}<span class="small text-muted">Close at least one month of {{ year|add:"-1" }} first.</span>{% endif %}
                 {% else %}
                     <a class="btn btn-outline-secondary btn-sm" href="{{ draft_url }}">Open the management draft</a>

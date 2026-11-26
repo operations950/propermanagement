@@ -116,19 +116,19 @@ def plan(selected=None):
         if not bank.is_active:
             blocked.append({'bill': b, 'why': f'The bank account {bank.label} is switched off.', 'url': settings_url, 'label': 'Open the bank accounts'})
             continue
-        if b.association_id not in profiles:
-            profiles[b.association_id] = ledger.profile_for(b.association)
-        gaps = bank.print_gaps() if uses_standard_face(profiles[b.association_id]) else []
+        if bank.association_id not in profiles:                       # the checkbook's owner: for a trust account that is Proper Realty, not the property the bill is for
+            profiles[bank.association_id] = ledger.profile_for(bank.association)
+        gaps = bank.print_gaps() if uses_standard_face(profiles[bank.association_id]) else []
         if gaps:
             blocked.append({'bill': b, 'why': f'The bank account {bank.label} is not ready to print checks. Missing: {", ".join(gaps)}.', 'url': settings_url, 'label': 'Set up the bank account', 'gaps': gaps})
             continue
-        g = groups.setdefault(bank.pk, {'association': b.association, 'bank': bank, 'bills': []})
+        g = groups.setdefault((bank.pk, b.association_id), {'association': b.association, 'bank': bank, 'bills': []})
         g['bills'].append(b)
     ordered = sorted(groups.values(), key=lambda g: (g['association'].name.lower(), g['bank'].kind, g['bank'].name.lower()))
     start, counters = {}, {}
     for g in ordered:
-        aid = g['association_id'] = g['association'].pk
-        profile = ledger.profile_for(g['association'])
+        aid = g['association_id'] = g['bank'].association_id          # the number sequence belongs to the checkbook's owner
+        profile = ledger.profile_for(g['bank'].association)
         start.setdefault(aid, profile.next_check_number)
         counters.setdefault(aid, profile.next_check_number)
         g['profile'] = profile
@@ -159,7 +159,7 @@ def plan(selected=None):
             warnings.append({'text': (f'The next check number is {profile.next_check_number}, but the last check written from {g["bank"].label} was {last}'
                                       + (' (a gap)' if profile.next_check_number > last + 1 else ' (that number would be used twice)') + '.'), 'url': reverse('accounting:check_setup', args=[aid]), 'label': 'Check the numbering'})
         if active_count[aid] > 1:
-            warnings.append({'text': f'{g["association"].name} has more than one bank account: its checks share one number sequence.', 'url': '', 'label': ''})
+            warnings.append({'text': f'{g["bank"].association.name} has more than one bank account: its checks share one number sequence.', 'url': '', 'label': ''})
         g['warnings'] = warnings
     n_checks = sum(g['n_checks'] for g in ordered)
     return {'groups': ordered, 'blocked': blocked, 'autopay': autopay, 'n_checks': n_checks, 'total': sum((g['total'] for g in ordered), ZERO), 'n_bills': sum(1 for g in ordered for c in g['checks'] for x in c['bills'])}
@@ -226,7 +226,7 @@ def checks_pdf(payments):
     buf = io.BytesIO()
     c = None
     for p in payments:
-        profile = ledger.profile_for(p.association)
+        profile = ledger.profile_for(p.bank_account.association if p.bank_account_id else p.association)
         learned = not uses_standard_face(profile)
         layout = checkprint.layout_for(profile) if learned else None
         size = (layout['page_width_in'] * 72, layout['page_height_in'] * 72) if learned else (checkface.W, checkface.H)

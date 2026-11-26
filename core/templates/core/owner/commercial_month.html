@@ -1,0 +1,33 @@
+{% extends 'core/owner/base.html' %}
+{% load core_extras %}
+{% block title %}{{ prop.name }} — {{ month|date:"F Y" }}{% endblock %}
+{% block content %}
+<a href="{% url 'owner_home' %}?property={{ prop.pk }}" class="small text-decoration-none d-inline-block py-3 py-md-0 mb-2 no-print">↑ All months</a>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h1 class="fs-3 mb-0">{{ month|date:"F Y" }}</h1>
+        <div class="muted small">{{ prop.name }}{% if prop.address %} · {{ prop.address }}{% endif %}</div>
+    </div>
+    <div class="d-flex gap-2 no-print">
+        {% if earlier %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'owner_month' prop.pk earlier|date:'Y-m' %}">← {{ earlier|date:"M Y" }}</a>{% endif %}
+        {% if later %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'owner_month' prop.pk later|date:'Y-m' %}">{{ later|date:"M Y" }} →</a>{% endif %}
+    </div>
+</div>
+{% if release.revised_at %}
+<div class="alert alert-warning small py-2">
+    <strong>Revised {{ release.revised_at|date:"F j, Y" }}.</strong> Changes were made to this month after it was first released:
+    {% with last=release.revisions|last %}{% for ch in last.changes %}{{ ch.label }} was {{ ch.was|money }}, now {{ ch.now|money }}{% if not forloop.last %}; {% endif %}{% endfor %}{% endwith %}.
+</div>
+{% endif %}
+<div class="op-card p-3 p-md-4">
+    <div class="row text-center g-3">
+        <div class="col-4"><div class="muted small">Income</div><div class="fs-5 fw-semibold">{{ c.figures.income|money }}</div></div>
+        <div class="col-4"><div class="muted small">Expenses</div><div class="fs-5 fw-semibold">{{ c.figures.expenses|money }}</div></div>
+        <div class="col-4"><div class="muted small">Net income</div><div class="fs-5 fw-semibold">{{ c.figures.net|money }}</div></div>
+    </div>
+    {% if has_package %}
+    <div class="text-center mt-4 no-print"><a class="btn btn-brand" href="{% url 'owner_package' prop.pk month|date:'Y-m' %}" target="_blank" rel="noopener">Open the full financial package (PDF)</a></div>
+    {% endif %}
+</div>
+<details class="muted mt-2" style="font-size: 0.8rem;"><summary>What is in the package</summary><div class="pt-1">Profit and loss, balance sheet, budget vs actual, aging, and the bank statements for the month. It is saved exactly as released; if the month is corrected later, a new version replaces it and we email you what changed.</div></details>
+{% endblock %}

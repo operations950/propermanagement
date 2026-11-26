@@ -16,7 +16,7 @@
     <strong>Try it</strong>
     <p class="small text-muted mb-2">Print a made-up check on plain paper, hold it over a blank check against a light, and nudge it until the writing sits where it should.</p>
     <div class="d-flex gap-2 flex-wrap align-items-center">
-        <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:check_print' assoc.pk %}?sample=1"><i data-lucide="printer" class="icon"></i> Print a test check</a>
+        <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{% url 'accounting:payables_checks_pdf' %}?test={{ assoc.pk }}"><i data-lucide="printer" class="icon"></i> Print a test check</a>
         <form method="post" class="d-flex gap-1 align-items-center">{% csrf_token %}<input type="hidden" name="action" value="nudge"><span class="small text-muted">Move everything</span>
             <button class="btn btn-sm btn-outline-secondary" name="dy" value="-0.05" title="Up">Up</button><button class="btn btn-sm btn-outline-secondary" name="dy" value="0.05" title="Down">Down</button>
             <button class="btn btn-sm btn-outline-secondary" name="dx" value="-0.05" title="Left">Left</button><button class="btn btn-sm btn-outline-secondary" name="dx" value="0.05" title="Right">Right</button></form>

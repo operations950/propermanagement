@@ -17,3 +17,7 @@ class CoreConfig(AppConfig):
         # The contact interaction ticker (core/contact_activity.py): a few signals that note when somebody deals with a contact.
         from . import contact_activity
         contact_activity.connect()
+
+        # A commercial building's released month is re-issued when the books lock it again with different figures (core/owner_commercial.py).
+        from . import owner_commercial
+        owner_commercial.connect()

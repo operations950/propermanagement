@@ -11,7 +11,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Max, Q, Sum
+from django.db.models import Max, Min, Q, Sum
 
 from core import memo as request_memo
 
@@ -56,6 +56,21 @@ def profile_for(association):
 
 # ---------------------------------------------------------------- accounts
 
+OFFICE_NAME = 'proper realty co office'
+
+
+def is_office(association):
+    """True for the management company's own books (Proper Realty Co Office 309): a general property named for the office. Its chart is its own, built from the company's QuickBooks
+    accounts, so the association master chart is never merged into it (ensure_chart skips it)."""
+    return getattr(association, 'property_type', '') == 'general' and (association.name or '').strip().lower().startswith(OFFICE_NAME)
+
+
+def trust_clearing_account(association):
+    """The liability on the property a check from Proper's trust account paid for: 'Paid from Proper Realty trust account'. Made on the spot when the property's chart lacks it."""
+    acct, _ = Account.objects.get_or_create(association=association, code=sc.TRUST_CLEARING, defaults={'name': 'Paid from Proper Realty trust account', 'kind': Account.Kind.LIABILITY})
+    return acct
+
+
 def master_chart():
     """The master chart a new association starts from, as (number, name, kind). Falls back to the built-in standard if the master list is empty."""
     rows = list(MasterAccount.objects.filter(is_active=True).order_by('code').values_list('code', 'name', 'kind'))
@@ -64,7 +79,9 @@ def master_chart():
 
 def ensure_chart(association):
     """Make the association's accounts match the company's one chart: add any it lacks, and bring a name or an on/off setting in line. There is one chart for every association,
-    so this is how a new association gets it and how an older one keeps up. Safe to run again; returns how many accounts it added."""
+    so this is how a new association gets it and how an older one keeps up. Safe to run again; returns how many accounts it added. The company's own office books are not an association: skipped."""
+    if is_office(association):
+        return 0
     mine = {a.code: a for a in Account.objects.filter(association=association)}
     rows = {code: (name, kind, True, '') for code, name, kind in sc.CHART if code in sc.SYSTEM_CODES}
     masters = list(MasterAccount.objects.values_list('code', 'name', 'kind', 'is_active', 'budget_section'))
@@ -267,8 +284,76 @@ def balance_sheet(association, day, basis=ACCRUAL):
             'balanced': assets == liabilities + equity, 'day': day, 'basis': basis}
 
 
+class _Plain:
+    """A bare object with the attributes a general-ledger row's line and entry are read for (the old system's lines are not journal entries)."""
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+    def get_source_display(self):
+        return 'Old system'
+
+
+def _old_system_row(day, who, label, ref, remarks, debit, credit, eff=None):
+    line = _Plain(debit=debit, credit=credit, memo=remarks, owner=None, owner_id=None, vendor=None, vendor_id=None, unit=None, unit_id=None)
+    entry = _Plain(date=day, number=label, memo=remarks, source='old_system')
+    return {'line': line, 'entry': entry, 'who': who, 'label': label, 'ref': ref, 'eff': eff or day}
+
+
+def _old_system_first_month(association, basis):
+    """The first month the old system's lines for this association and book cover, or None when none were loaded (remembered for the page being built)."""
+    from .models import LedgerDetail
+    return request_memo.get(('old_system_first', association.pk, basis), lambda: LedgerDetail.objects.filter(association=association, book=basis).aggregate(m=Min('period'))['m'])
+
+
+def _old_system_ledger(association, acct, start, end, basis, detail, first_month):
+    """The general ledger for an account whose year to date was carried across from the old system (Yardi) as one opening entry: the old system's own lines, as it kept them (date, who,
+    control number, reference, remarks), stand in the place of that opening entry. The carried figure is unchanged: what the opening entry held, less the old lines, is the balance the
+    account began the year with (a balance-sheet account) or a labeled adjustment (an income or expense account, where the figure we carry differs from the old ledger's lines)."""
+    year_start = profile_for(association).fiscal_year_start(first_month)
+    ls = lines(association, basis).filter(account=acct)
+    # What came across as one number: the opening entry and the month-by-month entries made from it. Corrections made to the opening afterwards are real entries with their own wording and stay as they are.
+    carry = Q(entry__source=JournalEntry.Source.OPENING) & (Q(entry__memo__startswith='Opening balances') | Q(entry__memo__startswith='Old system'))
+    carried_agg = ls.filter(carry).aggregate(d=Sum('debit'), c=Sum('credit'), last=Max('entry__date'))
+    if not detail and not carried_agg['last']:
+        return None                                                  # nothing came across on this account: it is an ordinary ledger
+    cutoff = max(([month_end(max(max(d.date, d.period) for d in detail))] if detail else []) + ([carried_agg['last']] if carried_agg['last'] else []))
+    gap = money(carried_agg['d'] or 0) - money(carried_agg['c'] or 0) - sum((d.debit - d.credit for d in detail), ZERO)
+    items = []                                              # (sort key, row)
+    if gap:
+        if acct.is_balance_sheet:
+            day, label, text = year_start - timedelta(days=1), 'Balance forward', 'Balance the account began the year with, in the old system'
+            items.append(((day, 0, 0), _old_system_row(day, '', label, '', text, gap if gap > 0 else ZERO, -gap if gap < 0 else ZERO)))
+        else:
+            text = 'The figure carried across differs from the old ledger lines (corrections made when the books moved)'
+            items.append(((cutoff, 1, 0), _old_system_row(cutoff, '', 'Adjustment', '', text, gap if gap > 0 else ZERO, -gap if gap < 0 else ZERO)))
+    for d in detail:
+        eff = max(d.date, d.period)                           # the old system counts a line in its period, whatever day it carries
+        items.append(((eff, 0, d.id), _old_system_row(d.date, d.who, d.ctrl or 'Old system', d.reference, d.remarks, d.debit, d.credit, eff)))
+    native = ls.exclude(carry).filter(entry__date__lte=end).select_related('entry', 'owner', 'vendor')
+    for l in native:
+        items.append(((l.entry.date, 2, l.entry.number, l.id), {'line': l, 'entry': l.entry, 'who': '', 'label': f'J-{l.entry.number}', 'ref': '', 'eff': l.entry.date}))
+    items.sort(key=lambda kr: kr[0])
+    floor = None if acct.is_balance_sheet else profile_for(association).fiscal_year_start(start)       # an income or expense account starts over each fiscal year
+    start_balance = sum((r['line'].debit - r['line'].credit for k, r in items if r['eff'] < start and (floor is None or r['eff'] >= floor)), ZERO)
+    running, rows = start_balance, []
+    for k, r in items:
+        if start <= r['eff'] <= end:
+            running += r['line'].debit - r['line'].credit
+            r['running'] = running
+            rows.append(r)
+    return {'account': acct, 'rows': rows, 'start_balance': start_balance, 'end_balance': running}
+
+
 def general_ledger(association, acct, start, end, basis=ACCRUAL):
-    """Every line on one account in a period, with a running balance that starts from what the account held before."""
+    """Every line on one account in a period, with a running balance that starts from what the account held before. An account whose year to date came across from the old system shows
+    that system's own lines (see _old_system_ledger)."""
+    from .models import LedgerDetail
+    detail = list(LedgerDetail.objects.filter(association=association, account=acct, book=basis).order_by('date', 'id'))
+    first_month = _old_system_first_month(association, basis)
+    if first_month is not None:
+        carried = _old_system_ledger(association, acct, start, end, basis, detail, first_month)
+        if carried is not None:
+            return carried
     before = lines(association, basis).filter(account=acct, entry__date__lt=start)
     if not acct.is_balance_sheet:
         before = before.filter(entry__date__gte=profile_for(association).fiscal_year_start(start))
@@ -280,6 +365,22 @@ def general_ledger(association, acct, start, end, basis=ACCRUAL):
         running += l.debit - l.credit
         rows.append({'line': l, 'entry': l.entry, 'running': running})
     return {'account': acct, 'rows': rows, 'start_balance': start_balance, 'end_balance': running}
+
+
+def general_ledger_range(association, first, last, start, end, basis=ACCRUAL):
+    """The general ledger for every account from `first` through `last` (by account number, either order), one section each, as a list of general_ledger() results. An account with no
+    activity in the period and nothing in it before is left out; `last` None is just `first`."""
+    if last is None or last.pk == first.pk:
+        return [general_ledger(association, first, start, end, basis)]
+    low, high = sorted((first.code, last.code))
+    out = []
+    for acct in Account.objects.filter(association=association, code__gte=low, code__lte=high).order_by('code'):
+        gl = general_ledger(association, acct, start, end, basis)
+        if gl['rows'] or gl['start_balance']:
+            gl['debits'] = sum((r['line'].debit for r in gl['rows']), ZERO)
+            gl['credits'] = sum((r['line'].credit for r in gl['rows']), ZERO)
+            out.append(gl)
+    return out
 
 
 def cash_balance(bank_account, day):

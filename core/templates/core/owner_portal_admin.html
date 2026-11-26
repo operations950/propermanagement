@@ -15,6 +15,35 @@
     <div class="small">Shown once. Read it out or text it only after you have confirmed it is them; never email it. It works for {{ temp.hours }} hours, and they choose their own password at first sign-in.</div>
 </div>
 {% endif %}
+<h3 class="fs-6 fw-semibold">Commercial buildings {% include '_tip.html' with text="Turn a building on here. Its owner contacts (type Owner, with an email) can then sign up and see what you release: the financial package for each closed month, and the tickets you mark Show to owner. Nothing is emailed until you press Release." %}</h3>
+{% for b in buildings %}
+<div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="fw-semibold">{{ b.property.name }}</span>
+        <span class="text-muted small">{{ b.released }} month{{ b.released|pluralize }} released{% if b.open and b.waiting %} · {{ b.waiting|length }} closed, not released{% endif %}</span>
+        <form method="post" class="ms-auto">{% csrf_token %}<input type="hidden" name="action" value="building_portal"><input type="hidden" name="property" value="{{ b.property.pk }}"><input type="hidden" name="open" value="{% if b.open %}0{% else %}1{% endif %}">
+            <button class="btn btn-sm py-0 {% if b.open %}btn-outline-secondary{% else %}btn-primary{% endif %}">{% if b.open %}Portal open: switch off{% else %}Switch the portal on{% endif %}</button></form>
+    </div>
+    {% if b.open %}
+    <div class="table-responsive"><table class="table table-sm mb-0 small">
+        <tbody>
+        {% for o in b.owners %}<tr><td>{{ o.contact.name }}</td><td>{% if o.contact.email %}{{ o.contact.email }}{% else %}<span style="color: var(--t-9a6a00, #9a6a00);">no email: they cannot sign up or be told</span>{% endif %}</td>
+            <td>{% if o.login %}{% if o.login.is_active %}signed up{% else %}switched off{% endif %}{% else %}<span class="text-muted">not signed up yet</span>{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="3" style="color: var(--t-9a6a00, #9a6a00);">No owner contact is linked to this building. Add one on its property page (type Owner), or run <code>attach_commercial_owner</code>.</td></tr>{% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+</div></div>
+{% empty %}<div class="alert alert-info small py-2">No commercial buildings.</div>{% endfor %}
+{% if release_month %}
+<form method="post" class="d-flex gap-2 align-items-center flex-wrap mb-4" onsubmit="return confirm('Release every closed month through ' + this.through.value + ' to the owners of the open buildings now? This emails each owner right away, and cannot be taken back (a later correction emails them what changed).');">
+    {% csrf_token %}<input type="hidden" name="action" value="release_commercial">
+    <label class="small text-muted mb-0" for="release-through">Release through</label>
+    <input type="month" name="through" id="release-through" class="form-control form-control-sm" style="max-width: 11rem;" value="{{ release_month|date:'Y-m' }}">
+    <button class="btn btn-primary btn-sm"><i data-lucide="send" class="icon"></i> Release to owners</button>
+</form>
+{% endif %}
+
 <h3 class="fs-6 fw-semibold">Rentals the portal is open for</h3>
 {% for r in rentals %}
 <div class="card mb-2" style="border-radius: 12px;"><div class="card-body py-2 px-3">

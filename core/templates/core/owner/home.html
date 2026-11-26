@@ -5,6 +5,23 @@
 {% if not props %}
 <div class="op-card p-4 text-center"><h1 class="fs-4">Nothing here yet</h1>
     <p class="muted mb-0">No financials have been released to this login yet. You will get an email when they are ready.</p></div>
+{% elif commercial %}
+{% include 'core/owner/_building_head.html' %}
+{% if not months %}
+<div class="op-card p-4 text-center"><p class="muted mb-0">No months have been released for {{ prop.name }} yet. You will get an email when they are.</p></div>
+{% else %}
+<div class="op-card"><div class="table-responsive">
+<table class="table table-sm mb-0" style="font-size: 0.9rem;">
+    <thead><tr><th>Month</th><th class="amt">Income</th><th class="amt">Expenses</th><th class="amt">Net income</th><th></th></tr></thead>
+    <tbody>{% for m in months %}
+    <tr><td><a href="{% url 'owner_month' prop.pk m.month|date:'Y-m' %}">{{ m.month|date:"F Y" }}</a>{% if m.revised %}<span title="Revised {{ m.revised|date:'M j' }}" style="color: var(--t-9a6a00, #9a6a00);"> ●</span>{% endif %}</td>
+        <td class="amt">{{ m.figures.income|money }}</td><td class="amt">{{ m.figures.expenses|money }}</td><td class="amt fw-semibold">{{ m.figures.net|money }}</td>
+        <td class="amt"><a href="{% url 'owner_package' prop.pk m.month|date:'Y-m' %}" target="_blank" rel="noopener">Full package (PDF)</a></td></tr>{% endfor %}
+    </tbody>
+</table>
+</div></div>
+<details class="muted mt-2" style="font-size: 0.8rem;"><summary>About these months</summary><div class="pt-1">A month appears here once its books are closed and we release it, and we email you. The package is the same one a board receives: profit and loss, balance sheet, budget vs actual, aging and the bank statements. A <span style="color: var(--t-9a6a00, #9a6a00);">●</span> marks a month that was revised after it was first released.</div></details>
+{% endif %}
 {% else %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>

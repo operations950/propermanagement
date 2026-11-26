@@ -137,7 +137,7 @@ def _sheet(version, info, units, cents=False):
     basis_note = 'Every unit pays the same.' if basis == 'equal' else "Split by each unit's share of the common expenses."
     return {'year': year, 'proj_word': 'projected' if info['remaining'] else 'actual', 'sections': sections, 'op': pack(op['prior'], op['projected'], op['proposed']),
             'total': pack(exp['prior'], exp['projected'], exp['proposed']), 'needed': pack(exp['prior'] - oi['prior'], exp['projected'] - oi['projected'], reg['proposed']),
-            'calc': calc, 'basis_note': basis_note, 'units': units, 'cents': cents, 'frequency': fi['key'], 'period_noun': fi['noun']}
+            'calc': calc, 'basis_note': basis_note, 'units': units, 'cents': cents, 'hide_proj': bool(version.from_prior), 'frequency': fi['key'], 'period_noun': fi['noun']}
 
 
 
@@ -188,7 +188,7 @@ def budget_year(request, pk, year):
         action = request.POST.get('action')
         try:
             if action == 'start':
-                bg.start_draft(prop, year, request.user)
+                bg.start_draft(prop, year, request.user, from_prior=bool(request.POST.get('from_prior')))
                 messages.success(request, f'The {year} budget is started.')
             elif action == 'advance' and bud:
                 ver = bg.advance(bud, request.user)
@@ -416,7 +416,7 @@ def _project_post(request, prop, year, bud, have, project):
     action = request.POST.get('action')
     user = request.user
     if action == 'start':
-        bg.start_draft(prop, year, user)
+        bg.start_draft(prop, year, user, from_prior=bool(request.POST.get('from_prior')))
         messages.success(request, f'The {year} budget is started.')
         return
     if bud is None:

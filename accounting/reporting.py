@@ -198,17 +198,29 @@ def profit_and_loss(prop, end, basis=ACCRUAL, view='compare'):
     total_inc = income['raw'] if income else [ZERO] * n
     total_exp = expenses['raw'] if expenses else [ZERO] * n
     net = [a - b for a, b in zip(total_inc, total_exp)]
-    return {'columns': cols, 'blocks': [b for b in (income, expenses) if b], 'finals': [_final('Net income', net, kinds)], 'notes': [], 'periods': periods}
+    return {'columns': cols, 'blocks': [b for b in (income, expenses) if b], 'finals': [_final('Net income', net, kinds)], 'notes': basis_notes(prop, basis, first, end), 'periods': periods}
 
 
 # ---------------------------------------------------------------- budget vs actual
 
 def budget_vs_actual(prop, end, basis=ACCRUAL):
-    """The month and the year to date against the budget of the fiscal year `end` is in. The budget is spread evenly across the months."""
+    """The month and the year to date against the budget of the fiscal year `end` is in. The budget is spread evenly across the months, except on a line that has its own monthly amounts
+    (BudgetLine.months, when they add up to the annual amount)."""
     profile = ledger.profile_for(prop)
     fy = profile.fiscal_year_start(end)
     budget = Budget.objects.filter(association=prop, year=fy.year).first()
-    annual = {l.account_id: l.annual_amount for l in budget.lines.all()} if budget else {}
+    blines = list(budget.lines.all()) if budget else []
+    annual = {l.account_id: l.annual_amount for l in blines}
+    timed = {}                                       # account -> twelve monthly amounts, when the line carries its own timing
+    for l in blines:
+        m = l.months
+        if isinstance(m, list) and len(m) == 12:
+            try:
+                m = [Decimal(str(x or 0)) for x in m]
+            except Exception:
+                continue
+            if sum(m, ZERO).quantize(Decimal('0.01')) == l.annual_amount.quantize(Decimal('0.01')):
+                timed[l.account_id] = m
     first = ledger.month_start(end)
     months_done = (end.year - fy.year) * 12 + end.month - fy.month + 1
     accts = {a.pk: a for a in Account.objects.filter(association=prop)}
@@ -252,7 +264,10 @@ def budget_vs_actual(prop, end, basis=ACCRUAL):
     def row(pk):
         a = accts[pk]
         yb = annual.get(pk, ZERO)
-        mb, tb = yb / 12, yb * months_done / 12
+        if pk in timed:
+            mb, tb = timed[pk][months_done - 1], sum(timed[pk][:months_done], ZERO)
+        else:
+            mb, tb = yb / 12, yb * months_done / 12
         ma, ya = month.get(pk, ZERO), ytd.get(pk, ZERO)
         pctv = (ya / tb * 100) if tb else None
         raw = [ma, mb, ma - mb, ya, tb, ya - tb, pctv, yb, yb - ya]
@@ -293,5 +308,66 @@ def budget_vs_actual(prop, end, basis=ACCRUAL):
     notes = []
     if not annual:
         notes.append(f'No budget is loaded for {fy.year}.')
-    notes.append('The budget is spread evenly across the months. The transfer to reserves is not an expense here: the reserve lines carry it.')
-    return {'columns': cols, 'blocks': blocks, 'finals': finals, 'notes': notes, 'has_budget': bool(annual), 'year': fy.year}
+    if timed and len(timed) == len(annual):
+        notes.append('The budget is by month, as the budget was set (a line is not spread evenly). The transfer to reserves is not an expense here: the reserve lines carry it.')
+    elif timed:
+        notes.append('Lines with their own monthly budget follow it; the others are spread evenly across the months. The transfer to reserves is not an expense here: the reserve lines carry it.')
+    else:
+        notes.append('The budget is spread evenly across the months. The transfer to reserves is not an expense here: the reserve lines carry it.')
+    special = special_assessment_summary(prop, accts, ytd, expenses)
+    return {'columns': cols, 'blocks': blocks, 'finals': finals, 'notes': notes, 'has_budget': bool(annual), 'year': fy.year, 'special': special}
+
+
+# ---------------------------------------------------------------- special assessments and billed vs collected
+
+def special_assessment_accounts(accts):
+    """The association's special assessment income accounts: an income account called 'Assessment Fees' or 'Special Assessment(s)'."""
+    return [a for a in accts.values() if a.kind == Account.Kind.INCOME and (a.name.strip().lower() in ('assessment fees', 'special assessment', 'special assessments') or 'special assessment' in a.name.lower())]
+
+
+def special_assessment_summary(prop, accts, ytd, expenses):
+    """None, or {'collected', 'over', 'difference', 'rows'}: what special assessments brought in this year to date, and by how much the expense lines ran over their regular budget in the
+    same period (only the lines over budget are added up), so the board can see the over-budget lines are funded. `expenses` is the Expenses block of the budget vs actual."""
+    sa = special_assessment_accounts(accts)
+    collected = sum((ytd.get(a.pk, ZERO) for a in sa), ZERO)
+    if not sa or not collected or not expenses:
+        return None
+    over = ZERO
+    for g in expenses['groups']:
+        for l in g['lines']:
+            v = l['raw'][5]                                  # year to date over / (under)
+            if v is not None and v > 0:
+                over += v
+    over = over.quantize(Decimal('0.01'))
+    collected = collected.quantize(Decimal('0.01'))
+    return {'collected': collected, 'over': over, 'difference': (collected - over).quantize(Decimal('0.01')), 'names': ', '.join(a.name for a in sa),
+            'rows': [('Special assessments collected, year to date', collected), ('Expense lines over their regular budget, year to date', over), ('Special assessments not yet spent' if collected >= over else 'Over budget beyond special assessments', abs(collected - over))]}
+
+
+def assessments_billed_collected(prop, start, end, basis_note=True):
+    """(billed, collected, unpaid) for the regular assessments in a period: billed is the income the accrual book counts, collected the same income in the cash book, unpaid the difference.
+    None when the association has no regular assessment income (no account 4701/4500-style assessments line with activity)."""
+    accts = [a for a in Account.objects.filter(association=prop, kind=Account.Kind.INCOME) if a.code in ('4701', '4500') or a.name.strip().lower() in ('maintenance assessments', 'assessments', 'association fees', 'fees - residential', 'regular assessments')]
+    if not accts:
+        return None
+    ids = [a.pk for a in accts]
+
+    def total(basis):
+        sums = ledger._sums(ledger.lines(prop, basis).filter(entry__date__gte=start, entry__date__lte=end, account_id__in=ids))
+        return sum((c - d for d, c in sums.values()), ZERO)
+    billed, collected = total(ACCRUAL), total('cash')
+    if not billed and not collected:
+        return None
+    return billed, collected, billed - collected
+
+
+def basis_notes(prop, basis, start, end):
+    """The lines every profit and loss carries: which book it is and how it differs from a report out of the old system, and (accrual) the month's assessments billed against collected."""
+    if basis == ACCRUAL:
+        out = ['Accrual book: income is counted when billed, expenses when incurred. Reports exported from the old system may be cash basis (counted when paid).']
+        got = assessments_billed_collected(prop, start, end)
+        if got:
+            b, c, u = got
+            out.append(f'Assessments billed ${b:,.2f}; collected ${c:,.2f}; unpaid ${u:,.2f} (see Owner aging).')
+        return out
+    return ['Cash book: income is counted when received, expenses when paid. Reports out of the accrual book count income when billed and expenses when incurred.']

@@ -27,6 +27,7 @@ BANK_FEES = '6510'
 MANAGEMENT_FEES = '6820'
 RESERVE_TRANSFER = '6900'
 UNCATEGORIZED = '6902'
+TRUST_CLEARING = '2290'
 
 # the accounts above, by number: the program posts to these itself, so they can never be turned off or renumbered
 SYSTEM_CODES = {v for n, v in list(globals().items()) if n.isupper() and isinstance(v, str) and v.isdigit()}
@@ -45,7 +46,7 @@ CHART = [
     # liabilities
     ('2200', 'Accounts Payable', LIABILITY), ('2207', 'Due to Reserves', LIABILITY), ('2210', 'Prepaid Fees', LIABILITY),
     ('2213', 'A/P Insurance', LIABILITY), ('2250', 'Owner Deposits', LIABILITY), ('2251', 'Key Deposit', LIABILITY), ('2253', 'Deposits Move In/Move out', LIABILITY),
-    ('2270', 'Clearing-Owner Deposits', LIABILITY), ('2300', 'Premium Insurance Loan', LIABILITY), ('2311', 'Special Assessment Loan', LIABILITY),
+    ('2270', 'Clearing-Owner Deposits', LIABILITY), ('2290', 'Paid from Proper Realty trust account', LIABILITY),('2300', 'Premium Insurance Loan', LIABILITY), ('2311', 'Special Assessment Loan', LIABILITY),
     ('2320', 'Accrued Expense', LIABILITY), ('2400', 'Deferred Assessment', LIABILITY), ('2410', 'Deferred Special Assessment', LIABILITY),
     ('2420', 'Deferred Special Assessment Interest', LIABILITY),
     # equity and the reserve funds

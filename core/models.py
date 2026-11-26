@@ -1488,6 +1488,8 @@ class MonthRelease(models.Model):
     snapshot = models.JSONField()
     revised_at = models.DateTimeField(null=True, blank=True)
     revisions = models.JSONField(default=list, help_text='Each time a released month changed: when, and what (figure, was, now).')
+    package = models.FileField(upload_to='owner_packages/%Y/%m/', storage=DocumentStorage(), blank=True,
+                               help_text="A commercial building: the month's whole financial package (PDF), frozen at release like the snapshot. Blank for a rental.")
 
     class Meta:
         ordering = ['month']

@@ -15,7 +15,9 @@ from decimal import Decimal
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import ledger
@@ -58,8 +60,24 @@ def portal_url():
 
 # ------------------------------------------------------------------------------------------------------------- what an owner may see
 
-def open_properties():
+def open_str_properties():
+    """The short-term rentals the portal is open for (their months are statements of deposits, commission and the owner payment; see statement_data)."""
     return Property.objects.filter(owner_portal_open=True, is_active=True, property_type=Property.Type.SHORT_TERM_RENTAL, is_general=False, financials_managed=True).order_by('name')
+
+
+def open_commercial_properties():
+    """The commercial buildings the portal is open for (their months are the whole financial package, a PDF; see release_commercial)."""
+    return Property.objects.filter(owner_portal_open=True, is_active=True, property_type=Property.Type.COMMERCIAL, is_general=False).order_by('name')
+
+
+def open_properties():
+    """Everything an owner can be shown: the rentals and the commercial buildings the portal is switched on for."""
+    return Property.objects.filter(owner_portal_open=True, is_active=True, is_general=False).filter(
+        Q(property_type=Property.Type.SHORT_TERM_RENTAL, financials_managed=True) | Q(property_type=Property.Type.COMMERCIAL)).order_by('name')
+
+
+def is_commercial(prop):
+    return prop.property_type == Property.Type.COMMERCIAL
 
 
 def owner_contacts(prop):
@@ -336,7 +354,7 @@ def release_plan(through):
     to the one named must be closed (all of its books); a gap blocks the release, because the owners would see a hole."""
     through = ledger.month_of(through)
     plan, blockers = [], []
-    for prop in open_properties():
+    for prop in open_str_properties():
         first = MonthClose.objects.filter(property=prop).order_by('month').values_list('month', flat=True).first()
         if first is None:
             blockers.append(f'{prop.name} has no closed months yet.')
@@ -355,7 +373,7 @@ def release_plan(through):
 def release_status(month):
     """For the close screen: how the month stands with the owners."""
     month = ledger.month_of(month)
-    props = list(open_properties())
+    props = list(open_str_properties())
     if not props:
         return {'open': 0}
     released = set(MonthRelease.objects.filter(month=month, property__in=props).values_list('property_id', flat=True))

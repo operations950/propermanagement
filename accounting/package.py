@@ -212,6 +212,13 @@ def _statement_pdf(prop, title, line2, stmt, size, font=8.5, groups=None):
     story = _heading(prop, title, line2, st) + [_statement_table(stmt, size[0] - 1.2 * inch, font, groups)]
     for note in stmt.get('notes', []):
         story += [Spacer(1, 6), Paragraph(note, st['note'])]
+    special = stmt.get('special')
+    if special:                                                         # budget vs actual: what the special assessments brought in against the lines running over budget
+        rows = [['Special assessment', 'Year to date']] + [[label, f'{amount:,.2f}'] for label, amount in special['rows']]
+        t = Table(rows, colWidths=[3.6 * inch, 1.2 * inch], hAlign='LEFT')
+        t.setStyle(TableStyle([('FONTNAME', (0, 0), (-1, -1), 'Helvetica'), ('FONTSIZE', (0, 0), (-1, -1), font), ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor(INK)), ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                               ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'), ('LINEBELOW', (0, 0), (-1, 0), 0.8, colors.HexColor(INK)), ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
+        story += [Spacer(1, 10), t]
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
     return buf.getvalue()
 

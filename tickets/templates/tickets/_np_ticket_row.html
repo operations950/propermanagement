@@ -8,6 +8,7 @@
     <div class="np-more-body" hidden>
         <div class="np-d-meta">{% if r.property %}{{ r.property.name }}{% if r.unit %} &mdash; {{ r.unit.label }}{% endif %}{% else %}&#9888; no property{% endif %} &middot; <span class="np-d-due{% if late %} np-late{% endif %}">{% if r.due_date %}Due {{ r.due_date|date:'M j' }}{% else %}No due date{% endif %}</span></div>
         <div class="np-d-note">{% if r.status in complete_statuses and r.closing_body %}<span class="np-d-at">Closed {{ r.closing_at|date:'M j' }}:</span> {{ r.closing_body|striptags|truncatechars:400 }}{% elif r.latest_note_body %}<span class="np-d-at">{{ r.latest_note_at|date:'M j' }}:</span> {{ r.latest_note_body|striptags|truncatechars:400 }}{% else %}<span class="np-d-none">No updates yet.</span>{% endif %}</div>
+        {% if r.property and r.property.property_type == 'commercial' %}<form method="post" action="{% url 'ticket_toggle_owner' r.pk %}" class="np-d-owner mt-1">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="btn btn-link p-0" style="font-size: 0.78rem;" title="{% if r.owner_visible %}The owner can see this ticket. Click to make it private.{% else %}Private: the owner cannot see it. Click to show it to the owner.{% endif %}">{% if r.owner_visible %}Shown to owner · make private{% else %}Private · show to owner{% endif %}</button></form>{% endif %}
     </div>
 </div>
 {% endwith %}

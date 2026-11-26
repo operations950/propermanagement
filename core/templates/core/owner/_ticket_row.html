@@ -1,0 +1,4 @@
+<a href="{% url 'owner_ticket' prop.pk t.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2" style="background: transparent;">
+    <span class="text-truncate">{{ t.title }}</span>
+    <span class="d-flex align-items-center gap-2 flex-shrink-0"><span class="muted small">{{ t.created_at|date:"M j" }}</span><span class="badge text-bg-light border">{{ t.owner_status }}</span></span>
+</a>

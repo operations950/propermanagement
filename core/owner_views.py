@@ -10,13 +10,13 @@ from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.http import Http404
+from django.http import FileResponse, Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from vendorportal.models import AccessAttempt
 
-from . import ledger, owner_calendar as owner_calendar_service, owner_portal
+from . import ledger, owner_calendar as owner_calendar_service, owner_commercial, owner_portal
 from .auth_backends import _client_ip
 from .models import MonthRelease, OwnerAccount, OwnerCode
 
@@ -193,6 +193,10 @@ def owner_home(request):
         chosen = None
     prop = next((p for p in props if p.pk == chosen), props[0])
     all_releases = owner_portal.released_months(prop)
+    if owner_portal.is_commercial(prop):
+        return render(request, 'core/owner/home.html', {'props': props, 'prop': prop, 'account': request.owner_account, 'commercial': True, 'tab': 'financials',
+                                                        'months': [owner_commercial.display(r) | {'revised': r.revised_at} for r in reversed(all_releases) if owner_commercial.is_package(r)],
+                                                        'ticket_count': owner_commercial.visible_tickets(prop).count()})
     years = sorted({r.month.year for r in all_releases})
     try:
         year = int(request.GET.get('year', ''))
@@ -230,6 +234,10 @@ def owner_month(request, pk, month):
         raise Http404
     others = list(MonthRelease.objects.filter(property=prop).order_by('month').values_list('month', flat=True))
     i = others.index(first)
+    if owner_commercial.is_package(release):
+        return render(request, 'core/owner/commercial_month.html', {
+            'prop': prop, 'release': release, 'c': owner_commercial.display(release), 'month': first, 'account': request.owner_account, 'props': owner_portal.visible_properties(request.owner_account.email),
+            'has_package': bool(release.package), 'earlier': others[i - 1] if i else None, 'later': others[i + 1] if i + 1 < len(others) else None, 'tab': 'financials'})
     units = [u['unit'] for u in release.snapshot.get('units', [])]
     unit = request.GET.get('unit', '')
     if unit not in units:
@@ -239,3 +247,50 @@ def owner_month(request, pk, month):
         'units': units, 'unit': unit,
         'earlier': others[i - 1] if i else None, 'later': others[i + 1] if i + 1 < len(others) else None,
     })
+
+
+@owner_required
+def owner_package(request, pk, month):
+    """The released month's whole financial package, the PDF kept when it was released (a month that is not released, or a building that is not theirs, is not found)."""
+    prop = _property_for(request, pk)
+    try:
+        first = datetime.strptime(month, '%Y-%m').date().replace(day=1)
+    except ValueError:
+        raise Http404
+    release = MonthRelease.objects.filter(property=prop, month=first).first()
+    if release is None or not owner_commercial.is_package(release) or not release.package:
+        raise Http404
+    response = FileResponse(release.package.open('rb'), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{owner_commercial.package_pdf_name(prop, first)}"'
+    return response
+
+
+def _commercial_property(request, pk):
+    prop = _property_for(request, pk)
+    if not owner_portal.is_commercial(prop):
+        raise Http404
+    return prop
+
+
+@owner_required
+def owner_tickets(request, pk):
+    """The tickets staff have released to the owner for this building: what is still being worked first, then what is finished. A name, a plain status and the dates, nothing else."""
+    prop = _commercial_property(request, pk)
+    tickets = list(owner_commercial.visible_tickets(prop))
+    for t in tickets:
+        t.owner_status = owner_commercial.owner_status(t)
+    return render(request, 'core/owner/tickets.html', {
+        'prop': prop, 'props': owner_portal.visible_properties(request.owner_account.email), 'account': request.owner_account, 'tab': 'tickets',
+        'active': [t for t in tickets if not owner_commercial.finished(t)], 'done': [t for t in tickets if owner_commercial.finished(t)]})
+
+
+@owner_required
+def owner_ticket(request, pk, ticket_id):
+    prop = _commercial_property(request, pk)
+    ticket = owner_commercial.visible_tickets(prop).filter(pk=ticket_id).first()
+    if ticket is None:
+        raise Http404
+    ticket.owner_status = owner_commercial.owner_status(ticket)
+    return render(request, 'core/owner/ticket.html', {
+        'prop': prop, 'props': owner_portal.visible_properties(request.owner_account.email), 'account': request.owner_account, 'tab': 'tickets', 't': ticket,
+        'notes': owner_commercial.visible_notes(ticket)})

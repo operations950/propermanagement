@@ -106,6 +106,7 @@ class Ticket(models.Model):
                    'ticket detail page, never shown in list views.',
     )
     kind = models.CharField(max_length=20, default='generic')
+    owner_visible = models.BooleanField(default=False, help_text="Shown to the property's owners in the owner portal. Every ticket starts private; staff release one on purpose.")
 
     source = models.CharField(max_length=20, choices=Source.choices, default=Source.MANUAL)
     source_reference = models.CharField(
@@ -432,6 +433,7 @@ class TicketStatusNote(models.Model):
     resolution_notes/status_reason fields with an ongoing, reviewable log."""
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='status_notes')
     body = models.TextField()
+    show_to_owner = models.BooleanField(default=False, help_text='The owner portal shows this update (only when the ticket itself is shown to the owner too).')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )

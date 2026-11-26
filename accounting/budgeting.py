@@ -185,6 +185,11 @@ def prior_budget(prop, year):
     return {l.account_id: l.annual_amount for l in bud.lines.all()} if bud else {}
 
 
+def assessment_account(prop):
+    """The association's regular-assessment income account: 4500 in the company chart, or 4701 where the books came from another system and never had a 4500."""
+    return Account.objects.filter(association=prop, code__in=[sc.INCOME_ASSESSMENT, '4701']).order_by('code').first()
+
+
 def default_method(acct):
     return 'b12' if is_reserve(acct) else 'avg'
 
@@ -292,7 +297,7 @@ def info_for(version):
 def is_stale(version):
     """The books have moved on since this version was made (another month closed, or the months counted changed)."""
     info = base_info(version.budget.association, version.budget.year)
-    return bool(version.through_month) and (info['through'] != version.through_month or info['n'] != version.months_actual)
+    return not version.from_prior and bool(version.through_month) and (info['through'] != version.through_month or info['n'] != version.months_actual)
 
 
 @transaction.atomic
@@ -379,6 +384,8 @@ def actual_detail(version, line):
 def heal(version, have):
     """A working version made before the months of the year ahead of our books counted as actual still shows only the months we closed ourselves. When it was made through the same
     month, bring its actuals up to date without anyone asking."""
+    if version.from_prior:                       # built from last year's budget alone: the books' activity never changes it
+        return False
     if version.through_month and is_editable(version, have):
         added = add_missing_income(version)
         info = base_info(version.budget.association, version.budget.year)
@@ -468,15 +475,21 @@ def is_editable(version, have):
 
 
 @transaction.atomic
-def start_draft(prop, year, user):
+def start_draft(prop, year, user, from_prior=False):
+    """Start the management draft. `from_prior`: the draft is last year's approved budget, line for line, with nothing worked out from the year's actuals or projected, and no income
+    added from last year's activity; changes are then typed on top (an adjustment or a new line)."""
     info = base_info(prop, year)
     if not can_start(info):
         raise ledger.LedgerError(f'Close at least one month of {year - 1} first: a budget is built from closed months.')
     bud, _ = Budget.objects.get_or_create(association=prop, year=year)
     if bud.versions.exists():
         raise ledger.LedgerError('This budget already has a draft.')
-    ver = BudgetVersion.objects.create(budget=bud, stage='draft', through_month=info['through'], months_actual=info['n'], created_by=user)
+    ver = BudgetVersion.objects.create(budget=bud, stage='draft', through_month=info['through'], months_actual=info['n'], created_by=user, from_prior=from_prior)
     for r in snapshot(prop, info):
+        if from_prior:
+            if not r['prior_budget']:
+                continue                                   # a line last year's budget did not have (unbudgeted spending or income) is not carried
+            r = dict(r, method='custom', custom=r['prior_budget'] - r['actual'])      # the year's total comes out as last year's budget, whatever the months did
         line = BudgetVersionLine(version=ver, **r)
         recompute(line, info)
         line.save()
@@ -492,7 +505,7 @@ def advance(budget, user):
         raise ledger.LedgerError('There is nothing to move forward.')
     nxt = STAGE_KEYS[STAGE_KEYS.index(cur) + 1]
     src = have[cur]
-    ver = BudgetVersion.objects.create(budget=budget, stage=nxt, through_month=src.through_month, months_actual=src.months_actual, assess_projected=src.assess_projected, created_by=user)
+    ver = BudgetVersion.objects.create(budget=budget, stage=nxt, through_month=src.through_month, months_actual=src.months_actual, assess_projected=src.assess_projected, created_by=user, from_prior=src.from_prior)
     BudgetVersionLine.objects.bulk_create([BudgetVersionLine(version=ver, account_id=l.account_id, prior_budget=l.prior_budget, actual=l.actual, recent=l.recent, method=l.method, custom=l.custom,
                                                               adjust=l.adjust, note=l.note, meeting_amount=l.meeting_amount, proposed=l.proposed) for l in src.lines.all()])
     if nxt == 'approved':
@@ -521,7 +534,7 @@ def unlock(budget, stage):
 def write_budget_lines(budget, version):
     """The approved amounts become the year's budget lines, which the income report compares the books against. The assessment line is the expenses and reserves less the other income."""
     budgetable = [a.pk for a in Account.objects.filter(association=budget.association) if is_budgetable(a)]
-    assessments = Account.objects.filter(association=budget.association, code=sc.INCOME_ASSESSMENT).first()
+    assessments = assessment_account(budget.association)
     BudgetLine.objects.filter(budget=budget, account_id__in=budgetable + ([assessments.pk] if assessments else [])).delete()
     lines = [l for l in version.lines.select_related('account') if is_budgetable(l.account) and l.proposed]
     BudgetLine.objects.bulk_create([BudgetLine(budget=budget, account_id=l.account_id, annual_amount=l.proposed) for l in lines])
@@ -618,7 +631,7 @@ def assessment_row(version, info, needed):
     """The regular assessments as a line of the budget, the way a P&L shows them: last year's approved budget for them, where this year will land (what is booked so far plus the months
     left at the same pace) and next year's amount, which is what the budget needs them to bring in."""
     prop = version.budget.association
-    acct = Account.objects.filter(association=prop, code=sc.INCOME_ASSESSMENT).first()
+    acct = assessment_account(prop)
     prior = actual = ZERO
     if acct:
         prior = prior_budget(prop, version.budget.year).get(acct.pk, ZERO)

@@ -398,6 +398,7 @@ class BudgetLine(models.Model):
     budget = models.ForeignKey(Budget, on_delete=models.CASCADE, related_name='lines')
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='+')
     annual_amount = models.DecimalField(**MONEY)
+    months = models.JSONField(null=True, blank=True, help_text='Optional: the budget by month, twelve amounts starting with the first month of the budget year. Blank (or not adding up to the annual amount): spread evenly.')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['budget', 'account'], name='uniq_budget_account')]
@@ -460,6 +461,7 @@ class BudgetVersion(models.Model):
     stage = models.CharField(max_length=10, choices=Stage.choices)
     through_month = models.DateField(null=True, blank=True, help_text='First day of the last closed month the actuals run through.')
     months_actual = models.PositiveSmallIntegerField(default=0)
+    from_prior = models.BooleanField(default=False, help_text="Built straight from last year's approved budget: no actuals, no projection, and no income added from last year's activity.")
     assess_projected = models.DecimalField(null=True, blank=True, help_text='Where the regular assessments will land this year, typed by hand. Blank: worked out from what is booked so far and the months left.', **MONEY)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
@@ -930,6 +932,7 @@ class BankAccount(models.Model):
     class Kind(models.TextChoices):
         OPERATING = 'operating', 'Operating'
         RESERVE = 'reserve', 'Reserves'
+        TRUST = 'trust', 'Trust (not ours)'
 
     association = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='bank_accounts')
     name = models.CharField(max_length=80)

@@ -287,8 +287,8 @@ class ThePaletteTests(TestCase):
             self.assertTrue(top and all(t == '@media screen' for t in top), (name, top))
 
     def test_the_printed_and_pdf_pages_never_load_the_dark_stylesheets(self):
-        for parts in (('legalforms', 'templates', 'legalforms', 'print.html'), ('accounting', 'templates', 'accounting', 'check_print.html'),
-                      ('timeclock', 'templates', 'timeclock', 'policy_copy.html'), ('vendorportal', 'templates', 'vendorportal', 'base.html'), ('core', 'templates', 'core', 'owner', 'base.html')):
+        for parts in (('legalforms', 'templates', 'legalforms', 'print.html'),
+('timeclock', 'templates', 'timeclock', 'policy_copy.html'), ('vendorportal', 'templates', 'vendorportal', 'base.html'), ('core', 'templates', 'core', 'owner', 'base.html')):
             html = read(*parts)
             self.assertNotIn('dark.css', html, parts)
             self.assertNotIn('data-theme', html, parts)

@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
-from . import bank_tieout, escrow, ledger, month_end_booking, nav, month_end_payments, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
+from . import bank_tieout, escrow, ledger, month_end_booking, nav, month_end_payments, owner_commercial, owner_portal, payout_tracking, recon, tourist_tax as tourist_tax_service
 from . import close_ltr_tax, month_close_project, workdays
 from .models import SalesTaxFiling, SalesTaxReturn
 from .models import BankStatement, ClosedMonthChange, EscrowLine, EscrowMonth, FinancialsSettings, LedgerLine, MonthEndPayment, Property, QuickBooksAccount, QuickBooksToken, TieOutItem, Unit
@@ -1056,6 +1056,34 @@ def owner_portal_admin(request):
             account.failed_attempts, account.locked_until = 0, None
             account.save(update_fields=['failed_attempts', 'locked_until'])
             messages.success(request, f'{account.email} is unlocked.')
+        elif action == 'building_portal':                        # switch the portal on or off for one commercial building
+            prop = Property.objects.filter(pk=request.POST.get('property'), property_type=Property.Type.COMMERCIAL, is_general=False).first()
+            if prop is not None:
+                prop.owner_portal_open = request.POST.get('open') == '1'
+                prop.save(update_fields=['owner_portal_open'])
+                messages.success(request, f'The owner portal is now {"open" if prop.owner_portal_open else "closed"} for {prop.name}.')
+        elif action == 'release_commercial':                     # release every closed month up to the one chosen, for every open commercial building, and email the owners
+            try:
+                through = datetime.strptime(request.POST.get('through') or '', '%Y-%m').date()
+            except ValueError:
+                through = None
+                messages.error(request, 'Choose the month to release through.')
+            result = None
+            if through is not None:
+                try:
+                    result = owner_commercial.release(through, request.user)
+                except owner_portal.ReleaseBlocked as exc:
+                    messages.error(request, 'Nothing was released: ' + ' '.join(exc.reasons))
+            if result is not None:
+                if not result['months']:
+                    messages.info(request, 'Everything through that month had already been released to owners.')
+                else:
+                    messages.success(request, f'Released {result["months"]} month{"" if result["months"] == 1 else "s"} for {result["properties"]} building{"" if result["properties"] == 1 else "s"}; '
+                                              f'{result["emailed"]} email{"" if result["emailed"] == 1 else "s"} sent.')
+                    if result['failed']:
+                        messages.warning(request, 'These emails could not be sent (nothing else was affected): ' + ', '.join(result['failed']))
+                if result['no_email']:
+                    messages.warning(request, 'These owner contacts have no email address, so nobody told them: ' + ', '.join(result['no_email']))
         elif action == 'temp_password':
             email = (request.POST.get('email') or '').strip()
             try:
@@ -1074,13 +1102,22 @@ def _owner_admin_page(request, temp):
     accounts = list(OwnerAccount.objects.order_by('email'))
     logins = {a.email: a for a in accounts}
     rentals = []
-    for prop in owner_portal.open_properties():
+    for prop in owner_portal.open_str_properties():
         owners = list(Contact.objects.filter(contact_type=Contact.ContactType.OWNER, properties=prop).order_by('name'))
         rentals.append({'property': prop, 'released': prop.month_releases.count(), 'owners': [
             {'contact': c, 'login': logins.get((c.email or '').strip().lower())} for c in owners]})
+    buildings = []                      # every commercial building (so one can be switched on here), with its owners, what is released, and what is closed but not released yet
+    for prop in Property.objects.filter(property_type=Property.Type.COMMERCIAL, is_active=True, is_general=False).order_by('name'):
+        locked = owner_commercial.closed_months(prop)
+        released = set(prop.month_releases.values_list('month', flat=True))
+        owners = list(Contact.objects.filter(contact_type=Contact.ContactType.OWNER, properties=prop).order_by('name'))
+        buildings.append({'property': prop, 'open': prop.owner_portal_open, 'released': len(released), 'waiting': [m for m in locked if m not in released],
+                          'owners': [{'contact': c, 'login': logins.get((c.email or '').strip().lower())} for c in owners]})
+    release_month = max((m for b in buildings if b['open'] for m in b['waiting']), default=None)
     for a in accounts:
         a.properties = owner_portal.visible_properties(a.email)
-    return render(request, 'core/owner_portal_admin.html', {'rentals': rentals, 'accounts': accounts, 'portal_url': owner_portal.portal_url(), 'now': timezone.now(), 'temp': temp})
+    return render(request, 'core/owner_portal_admin.html', {'rentals': rentals, 'buildings': buildings, 'release_month': release_month, 'accounts': accounts,
+                                                            'portal_url': owner_portal.portal_url(), 'now': timezone.now(), 'temp': temp})
 
 
 def _money(raw):

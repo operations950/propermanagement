@@ -1,0 +1,14 @@
+{% comment %}The top of every commercial-building page: the owner's buildings as tabs (when there is more than one), the building's name, and its two sections. Expects prop, props, tab ('financials' or 'tickets'); ticket_count is shown when the page has it.{% endcomment %}
+<div class="mb-3">
+    {% if props|length > 1 %}
+    <div class="d-flex flex-wrap gap-1 mb-3 no-print" role="group" aria-label="Your properties">
+        {% for p in props %}<a class="btn btn-sm {% if p.pk == prop.pk %}btn-brand{% else %}btn-outline-secondary{% endif %}" href="{% if tab == 'tickets' and p.property_type == 'commercial' %}{% url 'owner_tickets' p.pk %}{% else %}{% url 'owner_home' %}?property={{ p.pk }}{% endif %}">{{ p.name }}</a>{% endfor %}
+    </div>
+    {% endif %}
+    <h1 class="fs-3 mb-0">{{ prop.name }}</h1>
+    <div class="muted small">{% if prop.address %}{{ prop.address }}{% endif %}</div>
+    <div class="d-flex gap-1 mt-2 no-print" role="group" aria-label="Section">
+        <a class="btn btn-sm {% if tab == 'financials' %}btn-brand{% else %}btn-outline-secondary{% endif %}" href="{% url 'owner_home' %}?property={{ prop.pk }}">Financials</a>
+        <a class="btn btn-sm {% if tab == 'tickets' %}btn-brand{% else %}btn-outline-secondary{% endif %}" href="{% url 'owner_tickets' prop.pk %}">Tickets{% if ticket_count %} <span class="opacity-75">({{ ticket_count }})</span>{% endif %}</a>
+    </div>
+</div>

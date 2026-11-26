@@ -127,7 +127,7 @@ def check_data(payment):
     from types import SimpleNamespace
     assoc = payment.association
     bank = payment.bank_account or SimpleNamespace(payer_name='', payer_address='', bank_name='', bank_address='', routing_number='', account_number='', label='')
-    profile = ledger.profile_for(assoc)
+    profile = ledger.profile_for(payment.bank_account.association if payment.bank_account_id else assoc)          # the checkbook's owner: Proper Realty for a check from its trust account
     rows = invoice_rows(payment)
     memo = payment.memo or ', '.join(r['number'] for r in rows if r['number'] != '(no number)')
     return {

@@ -1,0 +1,23 @@
+{% extends 'core/owner/base.html' %}
+{% block title %}Tickets — {{ prop.name }}{% endblock %}
+{% block content %}
+{% include 'core/owner/_building_head.html' %}
+{% if not active and not done %}
+<div class="op-card p-4 text-center"><p class="muted mb-0">Nothing to show yet. When we want you to follow a ticket, it will appear here.</p></div>
+{% endif %}
+{% if active %}
+<h2 class="fs-6 fw-semibold mb-2">Being worked on</h2>
+<div class="op-card mb-3"><div class="list-group list-group-flush">
+    {% for t in active %}{% include 'core/owner/_ticket_row.html' %}{% endfor %}
+</div></div>
+{% endif %}
+{% if done %}
+<h2 class="fs-6 fw-semibold mb-2">Finished</h2>
+<div class="op-card mb-3"><div class="list-group list-group-flush">
+    {% for t in done %}{% include 'core/owner/_ticket_row.html' %}{% endfor %}
+</div></div>
+{% endif %}
+{% if active or done %}
+<details class="muted" style="font-size: 0.8rem;"><summary>About this list</summary><div class="pt-1">These are the tickets we chose to share with you. Open one to read the updates we posted for you.</div></details>
+{% endif %}
+{% endblock %}

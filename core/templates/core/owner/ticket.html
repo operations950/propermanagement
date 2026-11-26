@@ -1,0 +1,20 @@
+{% extends 'core/owner/base.html' %}
+{% block title %}{{ t.title }} — {{ prop.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'owner_tickets' prop.pk %}" class="small text-decoration-none d-inline-block py-3 py-md-0 mb-2 no-print">↑ All tickets</a>
+<div class="mb-3">
+    <h1 class="fs-4 mb-1">{{ t.title }}</h1>
+    <div class="muted small">{{ prop.name }} · opened {{ t.created_at|date:"M j, Y" }}{% if t.due_date and t.owner_status != 'Done' and t.owner_status != 'Closed' %} · target {{ t.due_date|date:"M j" }}{% endif %}</div>
+    <span class="badge text-bg-light border mt-2">{{ t.owner_status }}</span>
+</div>
+<div class="op-card p-3 p-md-4">
+    {% for n in notes %}
+    <div class="{% if not forloop.last %}mb-3 pb-3 border-bottom{% endif %}">
+        <div class="muted small">{{ n.created_at|date:"M j, Y" }}</div>
+        <div style="white-space: pre-wrap;">{{ n.body }}</div>
+    </div>
+    {% empty %}
+    <p class="muted mb-0">No updates have been posted for you on this one yet.</p>
+    {% endfor %}
+</div>
+{% endblock %}

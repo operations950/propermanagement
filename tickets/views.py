@@ -1515,6 +1515,7 @@ def ticket_detail(request, pk):
         'vendor_link_cooldown_hours_left': vendor_link_cooldown_hours_left,
         'status_notes': ticket.status_notes.select_related('created_by'),
         'closing_notes': ticket.closing_notes.select_related('created_by'),
+        'owner_portal_ticket': bool(ticket.property_id and ticket.property.property_type == Property.Type.COMMERCIAL),          # a building with an owner portal: the Show to owner controls appear
         'now': timezone.now(),
     })
 
@@ -2000,13 +2001,44 @@ def ticket_add_status_note(request, pk):
     if request.method == 'POST':
         body = request.POST.get('body', '').strip()
         if body:
-            TicketStatusNote.objects.create(ticket=ticket, body=body, created_by=request.user)
+            TicketStatusNote.objects.create(ticket=ticket, body=body, created_by=request.user, show_to_owner=request.POST.get('show_to_owner') == 'on')
             if is_ajax:
                 return JsonResponse({'success': True})
             messages.success(request, 'Update posted.')
         elif is_ajax:
             return JsonResponse({'success': False, 'error': 'Write an update first.'})
     return redirect('ticket_detail', pk=ticket.pk)
+
+
+def _back_to(request, ticket):
+    """Where a small toggle sends the person back to: the page it was on (a local address only), else the ticket."""
+    back = request.POST.get('next', '')
+    if back and url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}):
+        return redirect(back)
+    return redirect('ticket_detail', pk=ticket.pk)
+
+
+@login_required
+def ticket_toggle_owner(request, pk):
+    """Show this ticket to the property's owners in the owner portal, or take it back to private. Every ticket starts private. Only the ticket's name, status and the updates marked
+    "show to owner" are ever read by an owner (core/owner_commercial.py)."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.method == 'POST':
+        shown = not ticket.owner_visible
+        Ticket.objects.filter(pk=ticket.pk).update(owner_visible=shown)          # a plain update: this is not a change to the ticket's work, so nothing else on it moves
+        messages.success(request, 'Owners can now see this ticket.' if shown else 'This ticket is private again.')
+    return _back_to(request, ticket)
+
+
+@login_required
+def ticket_note_toggle_owner(request, pk, note_id):
+    """Show one status update to the owner (on a ticket the owner can see), or hide it again."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    note = get_object_or_404(TicketStatusNote, pk=note_id, ticket=ticket)
+    if request.method == 'POST':
+        note.show_to_owner = not note.show_to_owner
+        note.save(update_fields=['show_to_owner'])
+    return _back_to(request, ticket)
 
 
 @login_required

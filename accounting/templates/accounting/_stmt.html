@@ -14,3 +14,4 @@
 {% for f in st.finals %}<tr class="{{ f.style }}"><td>{{ f.label }}</td>{% for v in f.values %}<td class="num{% if v.neg and f.style != 'warn' %} neg{% endif %}">{{ v.t }}</td>{% endfor %}</tr>{% endfor %}
 </tbody></table></div>
 {% for n in st.notes %}<p class="small text-muted mt-2 mb-0">{{ n }}</p>{% endfor %}
+{% if st.special %}<div class="rp-wrap mt-3"><table class="rp"><thead><tr><th>Special assessment</th><th class="num">Year to date</th></tr></thead><tbody>{% for label, amount in st.special.rows %}<tr class="ln"><td>{{ label }}</td><td class="num">{{ amount|floatformat:2 }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}

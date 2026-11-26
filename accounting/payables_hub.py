@@ -18,6 +18,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
@@ -31,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 # The kinds of property a payable may be set up for: the ones whose books we keep (an association, a commercial building). It still needs we_do_financials and a bank account.
 ELIGIBLE_TYPES = (Property.Type.ASSOCIATION, Property.Type.COMMERCIAL)
+# ... and Proper Realty's own office books (ledger.is_office), which pay the company's own bills from its operating account.
+ELIGIBLE_Q = Q(property_type__in=ELIGIBLE_TYPES) | Q(property_type=Property.Type.GENERAL, name__istartswith=ledger.OFFICE_NAME)
 
 ALLOWED = {'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg'}
 MAX_BYTES = 15 * 1024 * 1024
@@ -45,7 +48,7 @@ class IntakeError(Exception):
 
 def eligibility(prop):
     """(code, message, fix_url): code 'ok' when a payable may be set up for this property, else why not and where to fix it."""
-    if prop.property_type not in ELIGIBLE_TYPES:
+    if prop.property_type not in ELIGIBLE_TYPES and not ledger.is_office(prop):
         return 'type', 'Payables are only set up for associations and commercial buildings so far.', None
     profile = ledger.profile_for(prop)
     if not profile.we_do_financials:
@@ -57,7 +60,7 @@ def eligibility(prop):
 
 def candidate_properties():
     """[(property, (code, message, fix_url))] for the picker: every active property of an eligible type, the ones we can pay for first."""
-    props = Property.objects.filter(property_type__in=ELIGIBLE_TYPES, is_active=True).order_by('name')
+    props = Property.objects.filter(ELIGIBLE_Q, is_active=True).order_by('name')
     rows = [(p, eligibility(p)) for p in props if '(general)' not in p.name.lower()]
     return sorted(rows, key=lambda r: (r[1][0] != 'ok', r[0].name.lower()))
 
@@ -140,7 +143,7 @@ def clean_read(raw):
 
 
 def association_names():
-    return [p.name for p in Property.objects.filter(property_type__in=ELIGIBLE_TYPES, is_active=True) if '(general)' not in p.name.lower()]
+    return [p.name for p in Property.objects.filter(ELIGIBLE_Q, is_active=True) if '(general)' not in p.name.lower()]
 
 
 def ingest(upload_file, user=None, source=PayableUpload.Source.UPLOAD):
@@ -241,7 +244,7 @@ def match_property(read, vendor=None):
     hint = _norm(' '.join(x for x in (read.get('bill_to'), read.get('property_address')) if x))
     best, best_len = None, 0
     if hint:
-        for prop in Property.objects.filter(property_type__in=ELIGIBLE_TYPES, is_active=True):
+        for prop in Property.objects.filter(ELIGIBLE_Q, is_active=True):
             if '(general)' in prop.name.lower():
                 continue
             names = {_norm(prop.name)}
@@ -260,7 +263,7 @@ def match_property(read, vendor=None):
     if vendor is not None:
         homes = list(VendorTerms.objects.filter(vendor=vendor).values_list('association_id', flat=True).distinct())
         if len(homes) == 1:
-            prop = Property.objects.filter(pk=homes[0], property_type__in=ELIGIBLE_TYPES, is_active=True).first()
+            prop = Property.objects.filter(ELIGIBLE_Q, pk=homes[0], is_active=True).first()
             if prop is not None:
                 return prop, 'the only association this vendor has been paid by'
     return None, ''
@@ -310,6 +313,14 @@ def banks_for(prop, reserve=False):
     """The bank accounts a check for this payable could be written from: the operating accounts, or the reserve accounts for reserve spending."""
     want = 'reserve' if reserve else 'operating'
     return [b for b in BankAccount.objects.filter(association=prop, is_active=True).order_by('pk') if b.kind == want]
+
+
+def trust_banks_for(prop):
+    """Proper Realty's own trust accounts (Property Management, General Escrow), offered on any other property's payable: the check is Proper's, the bill stays this property's. None for the
+    office itself, whose own bills are never paid from trust money."""
+    if ledger.is_office(prop):
+        return []
+    return list(BankAccount.objects.filter(kind=BankAccount.Kind.TRUST, is_active=True).exclude(association=prop).order_by('pk'))
 
 
 def find_duplicates(prop, vendor, vendor_text, number, amount, exclude=None):
@@ -372,7 +383,7 @@ def build_card(upload):
     # property
     prop, prop_how = None, ''
     if d.get('property_id'):
-        prop = Property.objects.filter(pk=d['property_id'], property_type__in=ELIGIBLE_TYPES).first()
+        prop = Property.objects.filter(ELIGIBLE_Q, pk=d['property_id']).first()
         prop_how = 'you chose it'
     if prop is None:
         prop, prop_how = match_property(read, vendor)
@@ -408,17 +419,18 @@ def build_card(upload):
     bank_state = {'options': [], 'selected': None, 'only': False, 'needs_confirm': False, 'confirmed': False, 'message': '', 'fix_url': None}
     if prop is not None and elig and elig[0] == 'ok':
         options = banks_for(prop, reserve)
-        bank_state['options'] = options
+        trust = [] if reserve else trust_banks_for(prop)              # a trust account can be picked for an ordinary (not reserve) payable
+        bank_state['options'] = options + trust
         if not options:
             kind = 'reserve' if reserve else 'operating'
             bank_state['message'] = f'{prop.name} has no active {kind} bank account to write this check from.'
             bank_state['fix_url'] = reverse('accounting:settings', args=[prop.pk]) + '#banks'
             blocks.append(bank_state['message'])
         else:
-            chosen = next((b for b in options if str(b.pk) == str(d.get('bank_id'))), None)
-            bank_state['only'] = len(options) == 1
+            chosen = next((b for b in options + trust if str(b.pk) == str(d.get('bank_id'))), None)
+            bank_state['only'] = len(options) + len(trust) == 1
             bank_state['selected'] = chosen or options[0]
-            if len(options) > 1:
+            if len(options) > 1 and not (chosen is not None and chosen in trust):
                 bank_state['needs_confirm'] = True
                 bank_state['confirmed'] = bool(d.get('bank_confirmed')) and chosen is not None
                 if not bank_state['confirmed']:
@@ -606,7 +618,8 @@ def board_approve(bill, user, by, on=None, bank=None):
 
 
 def set_bank(bill, bank):
-    if bank.association_id != bill.association_id or not bank.is_active:
+    own = bank.association_id == bill.association_id
+    if not bank.is_active or (bank.kind == BankAccount.Kind.TRUST and ledger.is_office(bill.association)) or not (own or bank.kind == BankAccount.Kind.TRUST):
         raise payables.PayableError('That bank account does not belong to this association.')
     bill.bank_account = bank
     bill.save(update_fields=['bank_account'])
