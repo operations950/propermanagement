@@ -91,8 +91,10 @@ def ensure_chart(association):
         a = mine.get(code)
         if a is None:
             new.append(Account(association=association, code=code, name=name, kind=kind, is_active=active, budget_section=section))
-        elif a.name != name or a.is_active != active or a.budget_section != section:
-            a.name, a.is_active, a.budget_section = name, active, section
+        elif (a.name != name and not a.name_locked) or a.is_active != active or a.budget_section != section:
+            if not a.name_locked:                  # an association's own wording for an account (name_locked) stays; its on/off and budget section still follow the company chart
+                a.name = name
+            a.is_active, a.budget_section = active, section
             a.save(update_fields=['name', 'is_active', 'budget_section'])
     if getattr(association, 'property_type', None) == 'commercial':
         have = set(mine) | {a.code for a in new}
