@@ -99,13 +99,14 @@
     {% endif %}
     {% if s.key == 'mailed' and s.enabled and project.notice_doc_id %}
     <div class="bp-more">
+        {% if not list_locked and not project.mailed_on %}<div class="small mb-1" style="color: var(--t-8a5a00, #8a5a00);">Lock the mailing list first, on <a href="{{ packet_url }}">the packet</a>: it is the official list of who is mailed to.</div>{% endif %}
         <details {% if s.status == 'doing' %}open{% endif %}><summary>{% if project.mailed_on %}Change what was recorded{% else %}Record the mailing{% endif %}</summary>
             <form method="post" class="row g-2 mt-1 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="mailed">
                 <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Date it went out</label><input type="date" name="mailed_on" value="{{ project.mailed_on|default:today|date:'Y-m-d' }}" class="form-control form-control-sm" required></div>
                 <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">How</label><select name="method" class="form-select form-select-sm">{% for m in methods %}<option {% if m == project.mail_method %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
                 <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Who sent it (signs the affidavit)</label><input name="by" value="{{ default_by }}" class="form-control form-control-sm" maxlength="120"></div>
                 <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Their title</label><input name="title" value="{{ default_title }}" class="form-control form-control-sm" maxlength="120"></div>
-                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Owners it went to {% include '_tip.html' with text="Counted from the owners and their addresses as they stand. Change it only if you sent to a different number." %}</label><input type="number" min="1" name="count" value="{{ project.mailed_count|default:live_count }}" class="form-control form-control-sm"></div>
+                <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Owners it went to {% include '_tip.html' with text="Unit owners, counted from the locked mailing list (each owner once, even when mailed at more than one address). Change it only if you sent to a different number." %}</label><input type="number" min="1" name="count" value="{{ project.mailed_count|default:live_count }}" class="form-control form-control-sm"></div>
                 <div class="col-6 col-md-3"><label class="form-label small text-muted mb-0">Posted on the property (optional)</label><input type="date" name="posted_on" class="form-control form-control-sm"></div>
                 <div class="col-12 col-md-auto"><button class="btn btn-primary btn-sm">Record it and make the affidavit</button></div>
             </form>

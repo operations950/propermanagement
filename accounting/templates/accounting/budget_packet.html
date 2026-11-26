@@ -53,24 +53,30 @@
 
 <div class="pk-item">
     <div class="pk-head"><i data-lucide="users" class="icon ico"></i><span class="fw-semibold">Mailing list {% include '_tip.html' with text="Every unit's billed owner, with the name as on the deed and the address to send to: the seasonal address while it is in season, otherwise the mailing address, otherwise the unit itself (flagged, because nothing was on file). Once the mailing is recorded this is the list exactly as it went out." %}</span>
-        <span class="ms-auto"><span class="ac-chip {% if flags %}warn{% else %}done{% endif %}">{{ sent }} of {{ owner_total }} unit{{ owner_total|pluralize }}</span></span></div>
+        <span class="ms-auto"><span class="ac-chip {% if flags %}warn{% else %}done{% endif %}">{{ owners_n }} unit owner{{ owners_n|pluralize }}{% if sent != owners_n %} &middot; {{ sent }} letters{% endif %}</span>{% if locked or project.mailed_on %}<span class="ac-chip done ms-1"><i data-lucide="lock" class="icon"></i> Locked</span>{% endif %}</span></div>
     {% if from_list %}<div class="small text-muted mt-1">As it went out on {{ project.mailed_on|date:"M j, Y" }}.</div>{% endif %}
     {% if flags %}
     <div class="small mt-2"><div class="fw-semibold mb-1" style="color: var(--t-8a5a00, #8a5a00);">{{ flags|length }} to look at</div>
         {% for r in flags|slice:":10" %}<div class="mb-1"><span class="fw-semibold">{{ r.unit }}</span> &nbsp;{{ r.owner|default:"&mdash;" }}<span class="text-muted d-block d-sm-inline ms-sm-2">{{ r.note }}</span></div>{% endfor %}
         {% if flags|length > 10 %}<div class="text-muted">and {{ flags|length|add:"-10" }} more in the list.</div>{% endif %}</div>
     {% endif %}
+    {% if project.mailed_on %}<div class="small text-muted mt-1">Locked. The mailing is recorded, so this list can no longer change.</div>
+    {% elif locked %}<form method="post" class="d-flex gap-2 align-items-center flex-wrap mt-2">{% csrf_token %}<input type="hidden" name="action" value="unlock_list"><span class="small">Locked {{ locked_at|date:"M j, Y g:i a" }}: {% if mail_all %}a letter to every address on file{% else %}one letter per owner{% endif %}.</span><button class="btn btn-outline-secondary btn-sm">Unlock to change it</button></form>
+    {% else %}<form method="post" class="mt-2">{% csrf_token %}<input type="hidden" name="action" value="lock_list">
+        <div class="small fw-semibold mb-1">Who gets a letter {% include '_tip.html' with text="One letter per owner goes to the address the association has on file for the owner, by season: the seasonal address while it is in season, otherwise the main mailing address. Every address on file sends a letter to each different address the owner has (seasonal, mailing, unit), each place once." %}</div>
+        <div class="ac-pills mb-2"><span><input type="radio" name="mail_all" id="mail1" value="0" {% if not mail_all %}checked{% endif %}><label for="mail1">One letter per owner</label></span><span><input type="radio" name="mail_all" id="mail2" value="1" {% if mail_all %}checked{% endif %}><label for="mail2">Every address on file</label></span></div>
+        <button class="btn btn-primary btn-sm"><i data-lucide="lock" class="icon"></i> Lock the mailing list</button> <span class="small text-muted">The envelopes, this list and the affidavit follow it. Review the list first.</span></form>{% endif %}
     <div class="pk-act"><a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ files.mailing_list }}"><i data-lucide="eye" class="icon"></i> View and print</a><a class="btn btn-outline-secondary btn-sm" href="{{ files.mailing_csv }}"><i data-lucide="table" class="icon"></i> CSV</a></div>
 </div>
 
 <div class="pk-item">
     <div class="pk-head"><i data-lucide="mail" class="icon ico"></i><span class="fw-semibold">Envelopes {% include '_tip.html' with text="One envelope per owner on the mailing list, owner name and address, with the return address in the corner. Size 10: the sheet is the envelope itself (9.5 by 4.125 inches). Full page: a letter-size sheet with the address in the middle, for a large envelope. Print one test page first to see where the address lands." %}</span>
         <span class="ms-auto"><span class="ac-chip">{{ sent }} envelope{{ sent|pluralize }}</span></span></div>
+    {% if not locked and not project.mailed_on %}<div class="small mt-1" style="color: var(--t-8a5a00, #8a5a00);">The mailing list is not locked yet: these envelopes follow the list as it stands today.</div>{% endif %}
     <form method="post" class="row g-2 mt-1 align-items-start">{% csrf_token %}<input type="hidden" name="action" value="return">
         <div class="col-12 col-md-5"><div class="pk-size d-flex gap-2 mb-2">
             <span><input type="radio" name="envelope_size" id="sz10" value="no10" {% if envelope_size != 'full' %}checked{% endif %}><label for="sz10">Size 10</label></span>
             <span><input type="radio" name="envelope_size" id="szfull" value="full" {% if envelope_size == 'full' %}checked{% endif %}><label for="szfull">Full page</label></span></div>
-            <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="mail_all" id="mailall" value="1" {% if mail_all %}checked{% endif %}><label class="form-check-label small" for="mailall">Also mail a copy to the unit address {% include '_tip.html' with text="Off: one letter per owner, to the owner's main address. On: an owner whose main address is somewhere other than the unit also gets a second letter and envelope at the unit itself." %}</label></div>
             <button class="btn btn-outline-secondary btn-sm">Save</button></div>
         <div class="col-12 col-md-7"><label class="form-label small text-muted mb-0" for="ret">Return address (top left corner)</label><textarea id="ret" name="return_address" rows="4" class="form-control form-control-sm" maxlength="600">{{ return_text }}</textarea></div>
     </form>

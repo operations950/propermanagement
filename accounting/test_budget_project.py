@@ -75,7 +75,12 @@ class BudgetProjectBase(TestCase):
     def make_notice(self, kind='Condominium'):
         return self.client.post(self.packet_url, {'action': 'notice', 'association_type': kind}, follow=True)
 
-    def mail(self, on=date(2026, 12, 20), **kw):
+    def lock_list(self, all_addresses=False):
+        return self.client.post(self.packet_url, {'action': 'lock_list', 'mail_all': '1' if all_addresses else '0'}, follow=True)
+
+    def mail(self, on=date(2026, 12, 20), lock=True, **kw):
+        if lock and not BudgetProject.objects.filter(budget=self.bud(), list_locked_at__isnull=False).exists():
+            self.lock_list()
         data = dict(mailed_on=on.isoformat(), method='mailed by first class mail', by='Justin Browne', title='Property Manager')
         data.update(kw)
         return self.act('mailed', **data)
@@ -382,6 +387,27 @@ class TheNoticeAndAffidavitTests(BudgetProjectBase):
         self.assertTrue(bp.changed_since_notice(self.prop, self.project(), self.have()))
         self.assertContains(self.client.get(self.packet_url), 'The budget changed after this notice was made')
 
+    def test_the_mailing_cannot_be_recorded_until_the_mailing_list_is_locked(self):
+        self.details(date(2027, 1, 20))
+        self.make_notice()
+        r = self.mail(lock=False)
+        self.assertContains(r, 'Lock the mailing list first')
+        self.assertIsNone(self.project().mailed_on)
+
+    def test_locking_the_list_keeps_it_and_the_envelopes_and_the_affidavit_follow_it(self):
+        self.details(date(2027, 1, 20))
+        self.make_notice()
+        self.assertContains(self.lock_list(all_addresses=True), 'The mailing list is locked')
+        project = self.project()
+        self.assertIsNotNone(project.list_locked_at)
+        self.assertTrue(project.mail_all_addresses)
+        self.assertEqual(len(bp.rows_for_packet(self.prop, project)), len(project.list_snapshot))
+        self.client.post(self.packet_url, {'action': 'unlock_list'})
+        self.assertIsNone(self.project().list_locked_at)
+        self.lock_list()
+        self.mail(date(2026, 12, 20))
+        self.assertContains(self.lock_list(), 'already recorded')                  # a recorded mailing is final
+
     def test_recording_the_mailing_makes_the_affidavit_with_the_count_and_keeps_the_list(self):
         self.details(date(2027, 1, 20))
         self.make_notice()
@@ -432,8 +458,9 @@ class TheNoticeAndAffidavitTests(BudgetProjectBase):
         self.make_notice()
         from .models import Ownership
         Ownership.objects.all().delete()
-        r = self.mail()
+        r = self.lock_list()                                   # the list cannot be locked with nobody on it, so the mailing cannot be recorded either
         self.assertContains(r, 'There is no owner with an address')
+        self.assertContains(self.mail(lock=False), 'Lock the mailing list first')
         self.assertIsNone(self.project().mailed_on)
 
     def test_the_packet_prints_in_two_groups_notice_and_budget_then_envelopes_and_no_affidavit(self):

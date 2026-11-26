@@ -44,7 +44,7 @@
             shown = opts.filter(function (o) {
                 var t = o.text.toLowerCase();
                 return !typing || q.every(function (w) { return t.indexOf(w) !== -1; });
-            }).slice(0, 60);
+            }).slice(0, 500);                      // the whole chart (about 150 accounts) shows and scrolls; only an unusually long list is cut
             hot = shown.length ? 0 : -1;
             list.innerHTML = shown.length ? shown.map(function (o, i) {
                 var t = esc(o.text);

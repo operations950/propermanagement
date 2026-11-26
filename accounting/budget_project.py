@@ -249,23 +249,40 @@ def _in_season(profile, on):
     return bool(profile and profile.seasonal_address.strip() and profile.seasonal_from and profile.seasonal_to and profile.seasonal_from <= on <= profile.seasonal_to)
 
 
+_DIRECTIONS = {'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest'}
+
+
 def _place(lines):
-    """(street number, unit number, zip) of an address, to tell whether two ways of writing an address are the same place."""
+    """(street number, street name, unit, zip) of an address, to tell whether two ways of writing an address are the same place: 4000 South Ocean Boulevard and 4000 S Ocean Blvd Unit 102 are the
+    same building; a unit number, when both give one, is part of the place. An address with no street number (a P.O. box) is its own words."""
     text = ' '.join(lines or [])
-    number = re.match(r'\s*(\d+)', text)
+    street_part = text.split(',')[0] if ',' in text else (lines[0] if lines else text)
+    number = re.match(r'\s*(\d+)', street_part)
     unit = re.search(r'(?:\b(?:apt|apartment|unit|ste|suite)\b|#)\.?\s*#?\s*([0-9a-z-]+)', text.split(',')[0] if ',' in text else text, re.I)
     zip5 = re.search(r'(\d{5})(?:-\d{4})?\s*$', text.strip())
-    return (number.group(1) if number else '', (unit.group(1).lower() if unit else ''), zip5.group(1) if zip5 else '')
+    words = [w for w in re.findall(r'[a-z]+', re.sub(r'(?:\b(?:apt|apartment|unit|ste|suite)\b|#)\.?\s*#?\s*[0-9a-z-]+', ' ', street_part.lower())) if w not in _DIRECTIONS]
+    name = words[0] if words else ''
+    if not number:
+        return ('', re.sub(r'[^a-z0-9]', '', text.lower()), '', zip5.group(1) if zip5 else '')
+    return (number.group(1), name, unit.group(1).lower() if unit else '', zip5.group(1) if zip5 else '')
 
 
 def _same_place(a, b):
-    return bool(a and b) and _place(a) == _place(b)
+    if not (a and b):
+        return False
+    (n1, s1, u1, z1), (n2, s2, u2, z2) = _place(a), _place(b)
+    if n1 != n2 or s1 != s2:
+        return False
+    if z1 and z2 and z1 != z2:
+        return False
+    return not (u1 and u2 and u1 != u2)
 
 
 def mailing_rows(prop, on=None, all_addresses=False):
     """One row for every unit: the billed owner's name as on the deed (else the name on the contact) and where the notice goes: the seasonal address while it is in season, else the mailing
-    address, else the unit itself (flagged: nothing was on file). A unit with no owner has no address to send to. With `all_addresses`, an owner whose letter goes somewhere other than the unit
-    also gets a second row for the unit address (source 'unit_also'): one letter on-site, one off-site. [{'unit', 'owner', 'lines', 'source', 'note'}]"""
+    address, else the unit itself (flagged: nothing was on file). A unit with no owner has no address to send to. With `all_addresses` the owner gets a letter at every address on file instead
+    (the seasonal address, the mailing address and the unit address), each place once: an address that is the same place as one already listed is not listed again.
+    [{'unit', 'owner', 'lines', 'source', 'note'}]"""
     on = on or timezone.localdate()
     rows = []
     units = sorted(owners.active_units(prop), key=lambda u: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', u.label)])
@@ -285,14 +302,46 @@ def mailing_rows(prop, on=None, all_addresses=False):
             source, note = ('unit', 'No mailing address on file: the unit address') if lines else ('none', 'No address at all')
         rows.append({'unit': unit.label, 'owner': name, 'lines': lines, 'source': source, 'note': note})
         if all_addresses and source in ('mailing', 'seasonal'):
-            here = _unit_address(prop, unit)
-            if here and not _same_place(here, lines):
-                rows.append({'unit': unit.label, 'owner': name, 'lines': here, 'source': 'unit_also', 'note': 'Also mailed to the unit address'})
+            listed = [lines]
+            others = []
+            if profile and profile.seasonal_address.strip() and source != 'seasonal':
+                others.append((address_lines(profile.seasonal_address, prop), 'other_also', 'Also on file: seasonal address'))
+            if profile and profile.mailing_address.strip() and source != 'mailing':
+                others.append((address_lines(profile.mailing_address, prop), 'other_also', 'Also on file: mailing address'))
+            others.append((_unit_address(prop, unit), 'unit_also', 'Also mailed to the unit address'))
+            for more, src, why in others:
+                if more and not any(_same_place(more, have) for have in listed):
+                    rows.append({'unit': unit.label, 'owner': name, 'lines': more, 'source': src, 'note': why})
+                    listed.append(more)
     return rows
 
 
 def deliverable(rows):
     return [r for r in rows if r['lines'] and r['source'] not in ('none', 'noowner')]
+
+
+def owner_count(rows):
+    """How many unit owners the list reaches: each unit once, however many addresses it is mailed at."""
+    return len({r['unit'] for r in deliverable(rows)})
+
+
+def lock_list(prop, project, all_addresses, on=None):
+    """Lock the mailing list: who is mailed to and at which addresses, as they stand now. Envelopes, the list and the affidavit all follow it. Not possible once the mailing is recorded."""
+    if project.mailed_on:
+        raise ProjectError('The mailing is already recorded, so its list can no longer change.')
+    rows = mailing_rows(prop, on, bool(all_addresses))
+    if not deliverable(rows):
+        raise ProjectError('There is no owner with an address to send it to. Check the owners of this association first.')
+    project.mail_all_addresses, project.list_snapshot, project.list_locked_at = bool(all_addresses), rows, timezone.now()
+    project.save(update_fields=['mail_all_addresses', 'list_snapshot', 'list_locked_at'])
+    return rows
+
+
+def unlock_list(project):
+    if project.mailed_on:
+        raise ProjectError('The mailing is already recorded, so its list can no longer change.')
+    project.list_locked_at, project.list_snapshot = None, []
+    project.save(update_fields=['list_locked_at', 'list_snapshot'])
 
 
 def flagged(rows):
@@ -483,9 +532,11 @@ def record_mailing(prop, bud, project, user, on, method, by, title, posted=None,
         raise ProjectError('Make the notice first.')
     if method not in MAIL_METHODS:
         raise ProjectError('Choose how it was sent.')
-    rows = mailing_rows(prop, on, bool(project.mail_all_addresses))
+    if not project.list_locked_at:
+        raise ProjectError('Lock the mailing list first (on the packet): it is the official list of who is mailed to.')
+    rows = list(project.list_snapshot)
     sent = len(deliverable(rows))
-    n = count if count else sent
+    n = count if count else owner_count(rows)
     if n <= 0:
         raise ProjectError('There is no owner with an address to send it to. Check the owners of this association first.')
     project.mailed_on, project.mailed_by, project.mail_method, project.mailed_count, project.mailing_snapshot = on, (by or DEFAULT_AFFIANT)[:120], method, n, rows
@@ -494,7 +545,7 @@ def record_mailing(prop, bud, project, user, on, method, by, title, posted=None,
     notice.save(update_fields=['mailed_on', 'mail_method'])
     atype = (notice.values or {}).get('association_type') or last_association_type(prop)
     raw = {'association_name': prop.name, 'association_type': atype, 'county': lf_config.company()['default_county'], 'budget_year': str(bud.year), 'meeting_date': project.meeting_date.isoformat(),
-           'date_mailed': on.isoformat(), 'mail_method': method, 'notice_count': str(n), 'date_posted': posted.isoformat() if posted else '', 'affiant_name': project.mailed_by,
+           'date_mailed': on.isoformat(), 'mail_method': method, 'notice_count': str(n), 'mailings': str(sent) if sent != owner_count(rows) else '', 'date_posted': posted.isoformat() if posted else '', 'affiant_name': project.mailed_by,
            'affiant_title': (title or DEFAULT_TITLE)[:120], 'notary_name': '', 'notary_commission_expires': ''}
     doc, errors = lf_services.save_document(template('budget-mailing-affidavit'), prop, None, user, raw, parent=notice)
     if errors:
@@ -509,6 +560,8 @@ def rows_for_packet(prop, project):
     """The mailing list as it went out if it has gone out; else as it stands today."""
     if project and project.mailed_on and project.mailing_snapshot:
         return list(project.mailing_snapshot)
+    if project and project.list_locked_at and project.list_snapshot:
+        return list(project.list_snapshot)
     return mailing_rows(prop, None, bool(project and project.mail_all_addresses))
 
 

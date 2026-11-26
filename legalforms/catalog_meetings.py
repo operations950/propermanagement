@@ -333,7 +333,7 @@ def compute_budget_notice(v):
 BUDGET_AFFIDAVIT_BODY = """<div class="lf-page">
 <p class="lf-center">AFFIDAVIT OF MAILING<br>NOTICE OF MEETING TO CONSIDER THE {{ budget_year }} ANNUAL BUDGET</p>
 <table class="lf-plain"><tr><td>STATE OF FLORIDA</td><td>)</td></tr><tr><td>COUNTY OF {{ county|upper }}</td><td>)</td></tr></table>
-<p>I, {{ affiant_name }}, the {{ affiant_title }} of {{ association_name }} (the "Association"), hereby state and affirm as follows. In accordance with {{ statute_cite }}, I caused the Notice of the meeting to be held on {{ meeting_date_short }}, at which the proposed {{ budget_year }} annual budget will be considered, together with a copy of the proposed annual budget, to be {{ mail_method }} to each of the {{ notice_count }} {{ owner_word }} of the Association on {{ date_mailed_short }}, at the address shown for each in the Association's official records{% if date_posted %}, and caused the notice to be posted conspicuously on {{ posting_place }} on {{ date_posted_short }}{% endif %}.</p>
+<p>I, {{ affiant_name }}, the {{ affiant_title }} of {{ association_name }} (the "Association"), hereby state and affirm as follows. In accordance with {{ statute_cite }}, I caused the Notice of the meeting to be held on {{ meeting_date_short }}, at which the proposed {{ budget_year }} annual budget will be considered, together with a copy of the proposed annual budget, to be {{ mail_method }} to each of the {{ notice_count }} {{ owner_word }} of the Association on {{ date_mailed_short }}, at the address shown for each in the Association's official records{{ mailing_clause }}{% if date_posted %}, and caused the notice to be posted conspicuously on {{ posting_place }} on {{ date_posted_short }}{% endif %}.</p>
 <div class="lf-sig"><div class="lf-line"></div><div>{{ affiant_name }}, as {{ affiant_title }}</div></div>
 <p>Sworn to (or affirmed) and subscribed before me by means of physical presence notarization this <span class="lf-blank"></span> day of <span class="lf-line-inline"></span>, by {{ affiant_name }} as {{ affiant_title }} of {{ association_name }}.</p>
 <div class="lf-notary">
@@ -359,6 +359,7 @@ BUDGET_AFFIDAVIT_FIELDS = [
     F('date_mailed', 'Date it was mailed or delivered', 'date', parent='mailed_on', required=True, help='Swear only to the day it really went out.'),
     F('mail_method', 'How', 'choice', choices=MAIL_METHODS, default=MAIL_METHODS[0], required=True),
     F('notice_count', 'How many owners it went to', 'integer', required=True),
+    F('mailings', 'Total mailings, when an owner was mailed at more than one address (optional)', 'integer'),
     F('date_posted', 'Date it was posted on the property (optional)', 'date'),
     F('affiant_name', 'Person swearing (who sent it)', default='Justin Browne', required=True),
     F('affiant_title', 'Their title', default='Property Manager', required=True),
@@ -374,6 +375,8 @@ def compute_budget_affidavit(v):
     v['meeting_date_short'] = short_date(v['meeting_date'])
     v['date_mailed_short'] = short_date(v['date_mailed'])
     v['date_posted_short'] = short_date(v['date_posted']) if v.get('date_posted') else ''
+    mailings, owners = v.get('mailings'), v.get('notice_count')
+    v['mailing_clause'] = f' (a copy was sent to every address on file for each owner: {mailings} mailings in all)' if mailings and owners and int(mailings) != int(owners) else ''
     d = v['date_mailed']
     v['notary_day'] = d.day
     v['notary_month_year'] = f'{d:%B}, {d.year}'

@@ -528,11 +528,11 @@ def budget_project(request, pk, year):
     steps = bp.step_list(prop, year, bud, have, project)
     for s in steps:
         s['chip'], s['chip_label'] = bp.chip(s['status'])
-    live_rows = bp.mailing_rows(prop, None, bool(project.mail_all_addresses)) if project and project.notice_doc_id and not project.mailed_on else []
+    live_rows = bp.rows_for_packet(prop, project) if project and project.notice_doc_id and not project.mailed_on else []
     today = timezone.localdate()
     ctx = {'assoc': prop, 'year': year, 'steps': steps, 'have': have, 'project': project, 'info': info, 'closed': bg.closed_note(info), 'can_start': bg.can_start(info), 'units': bg.unit_count(prop),
            **acc_up(request, prop, reverse('accounting:budgets') + f'?year={year}', 'Budgets'), 'today': today, 'methods': bp.MAIL_METHODS, 'default_by': (project.mailed_by if project and project.mailed_by else bp.DEFAULT_AFFIANT),
-           'default_title': bp.DEFAULT_TITLE, 'live_count': len(bp.deliverable(live_rows)) if live_rows else None, 'meeting_ready': bp.meeting_ready(project, place_required=not labels.is_commercial(prop)),
+           'default_title': bp.DEFAULT_TITLE, 'live_count': bp.owner_count(live_rows) if live_rows else None, 'list_locked': bool(project and project.list_locked_at), 'meeting_ready': bp.meeting_ready(project, place_required=not labels.is_commercial(prop)),
            'days_before': bp.days_before(project), 'changed': bp.changed_since_notice(prop, project, have), 'by_key': {s['key']: s for s in steps},
            'draft_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=draft', 'board_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=board',
            'meeting_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=meeting&focus=1', 'approved_url': reverse('accounting:budget_year', args=[pk, year]) + '?stage=approved',
@@ -567,9 +567,14 @@ def budget_packet(request, pk, year):
             if action == 'return':
                 project.return_address = '\n'.join(l.strip() for l in (request.POST.get('return_address') or '').splitlines() if l.strip())[:600]
                 project.envelope_size = 'full' if request.POST.get('envelope_size') == 'full' else 'no10'
-                project.mail_all_addresses = bool(request.POST.get('mail_all'))
-                project.save(update_fields=['return_address', 'envelope_size', 'mail_all_addresses'])
+                project.save(update_fields=['return_address', 'envelope_size'])
                 messages.success(request, 'Saved.')
+            elif action == 'lock_list':              # the official mailing list: who is mailed to, and at which addresses
+                rows = bp.lock_list(prop, project, request.POST.get('mail_all') == '1')
+                messages.success(request, f'The mailing list is locked: {bp.owner_count(rows)} unit owners, {len(bp.deliverable(rows))} letters.')
+            elif action == 'unlock_list':
+                bp.unlock_list(project)
+                messages.success(request, 'The mailing list is unlocked.')
             elif action == 'details':                # the date, time and place of the meeting, right here (the notice needs them)
                 project.meeting_date = parse_date(request.POST.get('meeting_date'))
                 project.meeting_time = (request.POST.get('meeting_time') or '').strip()[:40]
@@ -591,7 +596,7 @@ def budget_packet(request, pk, year):
     sent = bp.deliverable(rows)
     flags = bp.flagged(rows)
     t = bp.proposed_totals(prop, have['board'])
-    ctx = {'period_noun': bg.frequency_info(bud)['noun'], 'assoc': prop, 'year': year, 'project': project, 'rows': rows, 'sent': len(sent), 'flags': flags, 'owner_total': len(rows), 'meeting_ready': bp.meeting_ready(project), 'needed': t['needed'],
+    ctx = {'period_noun': bg.frequency_info(bud)['noun'], 'assoc': prop, 'year': year, 'project': project, 'rows': rows, 'sent': len(sent), 'owners_n': bp.owner_count(rows), 'locked': bool(project and project.list_locked_at), 'locked_at': project.list_locked_at if project else None, 'flags': flags, 'owner_total': len(rows), 'meeting_ready': bp.meeting_ready(project), 'needed': t['needed'],
            'unit_month': t['unit_period'], 'changed': bp.changed_since_notice(prop, project, have), **acc_up(request, prop, back, f'{year} budget project'),
            'notice': project.notice_doc if project else None, 'affidavit': project.affidavit_doc if project else None, 'from_list': bool(project and project.mailed_on and project.mailing_snapshot),
            'return_text': '\n'.join(bp.return_lines(prop, project)), 'envelope_size': project.envelope_size if project else 'no10', 'mail_all': bool(project and project.mail_all_addresses), 'association_type': bp.last_association_type(prop)}
