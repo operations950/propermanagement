@@ -249,9 +249,23 @@ def _in_season(profile, on):
     return bool(profile and profile.seasonal_address.strip() and profile.seasonal_from and profile.seasonal_to and profile.seasonal_from <= on <= profile.seasonal_to)
 
 
-def mailing_rows(prop, on=None):
+def _place(lines):
+    """(street number, unit number, zip) of an address, to tell whether two ways of writing an address are the same place."""
+    text = ' '.join(lines or [])
+    number = re.match(r'\s*(\d+)', text)
+    unit = re.search(r'(?:\b(?:apt|apartment|unit|ste|suite)\b|#)\.?\s*#?\s*([0-9a-z-]+)', text.split(',')[0] if ',' in text else text, re.I)
+    zip5 = re.search(r'(\d{5})(?:-\d{4})?\s*$', text.strip())
+    return (number.group(1) if number else '', (unit.group(1).lower() if unit else ''), zip5.group(1) if zip5 else '')
+
+
+def _same_place(a, b):
+    return bool(a and b) and _place(a) == _place(b)
+
+
+def mailing_rows(prop, on=None, all_addresses=False):
     """One row for every unit: the billed owner's name as on the deed (else the name on the contact) and where the notice goes: the seasonal address while it is in season, else the mailing
-    address, else the unit itself (flagged: nothing was on file). A unit with no owner has no address to send to. [{'unit', 'owner', 'lines', 'source', 'note'}]"""
+    address, else the unit itself (flagged: nothing was on file). A unit with no owner has no address to send to. With `all_addresses`, an owner whose letter goes somewhere other than the unit
+    also gets a second row for the unit address (source 'unit_also'): one letter on-site, one off-site. [{'unit', 'owner', 'lines', 'source', 'note'}]"""
     on = on or timezone.localdate()
     rows = []
     units = sorted(owners.active_units(prop), key=lambda u: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', u.label)])
@@ -270,6 +284,10 @@ def mailing_rows(prop, on=None):
             lines = _unit_address(prop, unit)
             source, note = ('unit', 'No mailing address on file: the unit address') if lines else ('none', 'No address at all')
         rows.append({'unit': unit.label, 'owner': name, 'lines': lines, 'source': source, 'note': note})
+        if all_addresses and source in ('mailing', 'seasonal'):
+            here = _unit_address(prop, unit)
+            if here and not _same_place(here, lines):
+                rows.append({'unit': unit.label, 'owner': name, 'lines': here, 'source': 'unit_also', 'note': 'Also mailed to the unit address'})
     return rows
 
 
@@ -465,7 +483,7 @@ def record_mailing(prop, bud, project, user, on, method, by, title, posted=None,
         raise ProjectError('Make the notice first.')
     if method not in MAIL_METHODS:
         raise ProjectError('Choose how it was sent.')
-    rows = mailing_rows(prop, on)
+    rows = mailing_rows(prop, on, bool(project.mail_all_addresses))
     sent = len(deliverable(rows))
     n = count if count else sent
     if n <= 0:
@@ -491,7 +509,7 @@ def rows_for_packet(prop, project):
     """The mailing list as it went out if it has gone out; else as it stands today."""
     if project and project.mailed_on and project.mailing_snapshot:
         return list(project.mailing_snapshot)
-    return mailing_rows(prop)
+    return mailing_rows(prop, None, bool(project and project.mail_all_addresses))
 
 
 # ---------------------------------------------------------------- loading the locked budget for its year

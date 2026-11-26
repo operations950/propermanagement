@@ -70,6 +70,7 @@
         <div class="col-12 col-md-5"><div class="pk-size d-flex gap-2 mb-2">
             <span><input type="radio" name="envelope_size" id="sz10" value="no10" {% if envelope_size != 'full' %}checked{% endif %}><label for="sz10">Size 10</label></span>
             <span><input type="radio" name="envelope_size" id="szfull" value="full" {% if envelope_size == 'full' %}checked{% endif %}><label for="szfull">Full page</label></span></div>
+            <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="mail_all" id="mailall" value="1" {% if mail_all %}checked{% endif %}><label class="form-check-label small" for="mailall">Also mail a copy to the unit address {% include '_tip.html' with text="Off: one letter per owner, to the owner's main address. On: an owner whose main address is somewhere other than the unit also gets a second letter and envelope at the unit itself." %}</label></div>
             <button class="btn btn-outline-secondary btn-sm">Save</button></div>
         <div class="col-12 col-md-7"><label class="form-label small text-muted mb-0" for="ret">Return address (top left corner)</label><textarea id="ret" name="return_address" rows="4" class="form-control form-control-sm" maxlength="600">{{ return_text }}</textarea></div>
     </form>

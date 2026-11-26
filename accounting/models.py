@@ -419,6 +419,7 @@ class BudgetProject(models.Model):
     meeting_place = models.CharField(max_length=200, blank=True)
     return_address = models.TextField(blank=True, help_text='Printed in the corner of every envelope. Blank: the association, care of the management company.')
     envelope_size = models.CharField(max_length=6, choices=Envelope.choices, default=Envelope.NO10)
+    mail_all_addresses = models.BooleanField(default=False, help_text="Also mail every owner whose address of record is not the unit itself a copy at the unit address (on-site and off-site). Off: one letter, to the main address.")
     notice_doc = models.ForeignKey('legalforms.GeneratedDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     affidavit_doc = models.ForeignKey('legalforms.GeneratedDocument', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     packet_total = models.DecimalField(null=True, blank=True, help_text='The assessments the budget needed when the notice was made, to tell if it changed since.', **MONEY)
